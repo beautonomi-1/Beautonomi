@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -17,6 +17,11 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 
 const PAGE_SIZE = 50;
+const STAGE_TABS = [
+  { key: "pending", label: "Pending Approval" },
+  { key: "draft", label: "Drafts" },
+  { key: "all", label: "All" },
+] as const;
 
 interface ActivationProvider {
   id: string; business_name: string; status: string; is_verified: boolean;
@@ -36,15 +41,20 @@ export function ProviderOpsActivationPage() {
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const search = sp.get("search") || "";
+  const stage = sp.get("stage") || "pending";
   const [searchInput, setSearchInput] = useState(search);
 
-  const qk = useMemo(() => adminQueryKeys.providerOps.activationQueue(`p=${page}|q=${search}`), [page, search]);
+  const qk = useMemo(
+    () => adminQueryKeys.providerOps.activationQueue(`stage=${stage}|p=${page}|q=${search}`),
+    [stage, page, search]
+  );
 
   const q = useQuery({
     queryKey: qk,
     queryFn: async () => {
       const p = new URLSearchParams();
       if (search) p.set("search", search);
+      p.set("stage", stage);
       p.set("page", String(page)); p.set("limit", String(PAGE_SIZE));
       return adminApi.getJson<{ data: ActivationProvider[]; meta: { total: number; has_more: boolean } }>(`/api/admin/provider-ops/activation-queue?${p}`, { timeoutMs: 60_000 });
     },
@@ -71,6 +81,11 @@ export function ProviderOpsActivationPage() {
     if (searchInput.trim()) n.set("search", searchInput.trim()); else n.delete("search");
     n.delete("page"); setSp(n, { replace: true });
   }
+  function setStage(next: string) {
+    const n = new URLSearchParams(sp);
+    if (next === "pending") n.delete("stage"); else n.set("stage", next);
+    n.delete("page"); setSp(n, { replace: true });
+  }
 
   if (denied) return denied;
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Activation Queue" /><AdminPanel><AdminPageSkeleton rows={5} /></AdminPanel></div>;
@@ -83,15 +98,41 @@ export function ProviderOpsActivationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Activation Queue"
-        description={`${total} providers awaiting approval. Activate after business name, location, and verification gates pass.`}
+        description={
+          stage === "draft"
+            ? `${total} incomplete drafts (not yet submitted for review).`
+            : stage === "all"
+              ? `${total} drafts + pending providers. Activate after business name, location, and verification gates pass.`
+              : `${total} providers awaiting approval. Activate after business name, location, and verification gates pass.`
+        }
       />
+
+      <AdminPanel>
+        <div className="flex flex-wrap gap-2">
+          {STAGE_TABS.map((t) => (
+            <button key={t.key} type="button" className={adminTabButtonClass(stage === t.key)} onClick={() => setStage(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </AdminPanel>
 
       <div className="flex items-center gap-3">
         <input type="text" placeholder="Search by business name, owner..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitSearch()} className="w-full max-w-sm rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm placeholder:text-gray-400" />
         <button type="button" className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white" onClick={commitSearch}>Search</button>
       </div>
 
-      {rows.length === 0 ? <EmptyState title="No providers pending approval" /> : (
+      {rows.length === 0 ? (
+        <EmptyState
+          title={
+            stage === "draft"
+              ? "No incomplete drafts"
+              : stage === "all"
+                ? "No drafts or pending providers"
+                : "No providers pending approval"
+          }
+        />
+      ) : (
         <div className="space-y-3">
           {rows.map((p) => {
             const missingGates = activationGateLabels(p.activation_gates);
@@ -107,9 +148,9 @@ export function ProviderOpsActivationPage() {
                     ) : (
                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">Blocked</span>
                     )}
-                    {p.days_waiting > 3 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">{p.days_waiting}d waiting</span>}
+                    {p.days_waiting > 3 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">{p.days_waiting}d in queue</span>}
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">{p.owner_name || p.owner_email} · Submitted {new Date(p.created_at).toLocaleDateString()}</p>
+                  <p className="mt-1 text-xs text-gray-500">{p.owner_name || p.owner_email} · Created {new Date(p.created_at).toLocaleDateString()}</p>
                   <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">
                     <Gate label="Business Name" ok={p.activation_gates.has_business_name} />
                     <Gate label="Location" ok={p.activation_gates.has_location} />

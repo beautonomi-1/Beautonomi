@@ -5,7 +5,11 @@
  * This service provides functions for every notification scenario in the platform
  */
 
-import { sendTemplateNotification, type NotificationChannel } from "./onesignal";
+import { type NotificationChannel } from "./onesignal";
+import {
+  dispatchTemplateNotification,
+  withTenantVariable,
+} from "./dispatch-template-notification";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderTeamUserIds } from "@/lib/notifications/notify-provider-team";
 import { formatCurrency } from "@/lib/utils";
@@ -357,10 +361,10 @@ export async function notifyBookingConfirmed(
 
   const _url = replaceUrlVariables("/bookings/{{booking_id}}", variables);
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_confirmed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer", skipInApp: options?.skipInApp }
   );
@@ -401,10 +405,10 @@ export async function notifyBookingReminder24h(bookingId: string, channels?: Not
 
   const _url = replaceUrlVariables("/bookings/{{booking_id}}", variables);
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_reminder_24h",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -426,10 +430,10 @@ export async function notifyBookingReminder2h(bookingId: string, channels?: Noti
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_reminder_2h",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -461,7 +465,7 @@ export async function notifyBookingCancelled(
     ? "booking_cancelled_by_provider"
     : "booking_cancelled";
 
-  const customerResult = await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, {
+  const customerResult = await dispatchTemplateNotification(templateKey, [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, {
     appType: "customer",
   });
 
@@ -473,16 +477,16 @@ export async function notifyBookingCancelled(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_booking_cancelled",
       recipients,
-      {
+      withTenantVariable(booking.tenant_id, {
         customer_name: booking.customer?.full_name || "Customer",
         booking_date: variables.booking_date,
         booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
         services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
         booking_id: bookingId,
-      },
+      }),
       channels,
       { appType: "provider" }
     );
@@ -514,10 +518,10 @@ export async function notifyBookingRescheduled(
   };
 
   // Notify customer — return value used by resend flows to know if anything was actually dispatched.
-  const customerResult = await sendTemplateNotification(
+  const customerResult = await dispatchTemplateNotification(
     "booking_rescheduled",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" },
   );
@@ -528,7 +532,7 @@ export async function notifyBookingRescheduled(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_booking_rescheduled",
       recipients,
       {
@@ -563,10 +567,10 @@ export async function notifyProviderEnRoute(bookingId: string, estimatedArrival:
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_en_route_home",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -588,10 +592,10 @@ export async function notifyProviderArrivingSoon(bookingId: string, minutes: num
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_arriving_soon_home",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -612,10 +616,10 @@ export async function notifyProviderArrived(bookingId: string, channels?: Notifi
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_arrived_home",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -639,10 +643,10 @@ export async function notifyHomeServiceLocationDetails(bookingId: string, channe
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "home_service_location_details",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -664,10 +668,10 @@ export async function notifyServiceLocationRequired(bookingId: string, channels?
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "home_service_location_required",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -694,10 +698,10 @@ export async function notifyServiceLocationChanged(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "home_service_location_changed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -718,10 +722,10 @@ export async function notifyProviderNeedsDirections(bookingId: string, channels?
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_needs_directions",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -742,10 +746,10 @@ export async function notifyProviderLocationShared(bookingId: string, trackingUr
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_location_shared",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -787,10 +791,10 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "salon_directions",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -820,10 +824,10 @@ export async function notifySalonArrivalReminder(bookingId: string, channels?: N
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "salon_arrival_reminder",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -851,10 +855,10 @@ export async function notifyCustomerArrivedSalon(bookingId: string, channels?: N
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "customer_arrived_salon",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -883,10 +887,10 @@ export async function notifyWaitingArea(bookingId: string, waitingArea: string, 
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "salon_waiting_area",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -909,10 +913,10 @@ export async function notifyServiceStarted(bookingId: string, serviceDuration: s
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_started",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -930,10 +934,10 @@ export async function notifyServiceInProgress(bookingId: string, channels?: Noti
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_in_progress",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -952,10 +956,10 @@ export async function notifyServiceAlmostDone(bookingId: string, remainingTime: 
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_almost_done",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -982,10 +986,10 @@ export async function notifyServiceExtended(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_extended",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1004,10 +1008,10 @@ export async function notifyServiceCompleted(bookingId: string, channels?: Notif
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_completed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1037,10 +1041,10 @@ export async function notifyProviderRunningLate(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_running_late",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1058,10 +1062,10 @@ export async function notifyProviderArrivedEarly(bookingId: string, channels?: N
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_arrived_early",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1089,10 +1093,10 @@ export async function notifyCustomerRunningLate(bookingId: string, channels?: No
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "customer_running_late",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1113,10 +1117,10 @@ export async function notifyCustomerNoShow(bookingId: string, noShowFee: number,
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "customer_no_show",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1147,10 +1151,10 @@ export async function notifyPaymentSuccessful(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "payment_successful",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1175,10 +1179,10 @@ export async function notifyPaymentFailed(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "payment_failed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1207,10 +1211,10 @@ export async function notifyPaymentPending(
     payment_link,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "payment_pending",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1229,10 +1233,10 @@ export async function notifyPaymentMethodExpired(bookingId: string, amount: numb
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "payment_method_expired",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1257,10 +1261,10 @@ export async function notifyPartialPayment(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "partial_payment_received",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1285,10 +1289,10 @@ export async function notifyRefundProcessed(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "refund_processed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1313,10 +1317,10 @@ export async function notifyInvoiceGenerated(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "invoice_generated",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1376,10 +1380,10 @@ export async function notifyReceiptSent(
     pricing_breakdown_html: buildCustomerPricingBreakdownHtml(booking as Record<string, unknown>, currency),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "receipt_sent",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1416,10 +1420,10 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     booking.provider.user_id,
   );
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_booking_request",
     recipients,
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1461,10 +1465,10 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
     booking.provider.user_id,
   );
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_new_customer",
     recipients,
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1493,10 +1497,10 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
     booking.provider.user_id,
   );
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_recurring_customer",
     recipients,
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1525,10 +1529,10 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
     booking.provider.user_id,
   );
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_preferred_customer",
     recipients,
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1547,7 +1551,7 @@ export async function notifyProviderPayoutProcessed(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id, currency")
+    .select("user_id, currency, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -1563,10 +1567,10 @@ export async function notifyProviderPayoutProcessed(
   };
 
   const recipients = await resolveProviderRecipients(providerId, provider.user_id);
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_payout_processed",
     recipients,
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1585,7 +1589,7 @@ export async function notifyProviderPayoutScheduled(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id, currency")
+    .select("user_id, currency, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -1601,10 +1605,10 @@ export async function notifyProviderPayoutScheduled(
   };
 
   const recipients = await resolveProviderRecipients(providerId, provider.user_id);
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_payout_scheduled",
     recipients,
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1622,7 +1626,7 @@ export async function notifyProviderPayoutFailed(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id, currency")
+    .select("user_id, currency, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -1637,10 +1641,10 @@ export async function notifyProviderPayoutFailed(
   };
 
   const recipients = await resolveProviderRecipients(providerId, provider.user_id);
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_payout_failed",
     recipients,
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1660,7 +1664,7 @@ export async function notifyProviderWeeklyEarnings(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id, currency")
+    .select("user_id, currency, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -1676,10 +1680,10 @@ export async function notifyProviderWeeklyEarnings(
     payout_date: payoutDate.toLocaleDateString(),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_earnings_summary",
     [provider.user_id],
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1708,10 +1712,10 @@ export async function notifyProviderAvailabilityChanged(
     availability_changes: availabilityChanges,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_availability_changed",
     [provider.user_id],
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1743,10 +1747,10 @@ export async function notifyProviderHolidayMode(
     return_date: formatBookingDate(returnDate, tz),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_holiday_mode",
     [provider.user_id],
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1776,10 +1780,10 @@ export async function notifyProviderHolidayModeEnding(
     return_date: formatBookingDate(returnDate, tz),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_holiday_mode_ending",
     [provider.user_id],
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1811,10 +1815,10 @@ export async function notifyProviderBreakScheduled(
     break_end: formatBookingDateTime(breakEnd, tz),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_break_scheduled",
     [provider.user_id],
-    variables,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -1838,10 +1842,10 @@ export async function notifyReviewReminder(bookingId: string, channels?: Notific
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "review_reminder",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1868,7 +1872,7 @@ export async function notifyProviderNewReview(
     ...(bookingId ? { booking_id: bookingId } : {}),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_new_review",
     [providerUserId],
     variables,
@@ -1891,10 +1895,10 @@ export async function notifyBookingFollowUp(bookingId: string, channels?: Notifi
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_follow_up",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1913,10 +1917,10 @@ export async function notifyThankYouAfterService(bookingId: string, channels?: N
     booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "thank_you_after_service",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1948,10 +1952,10 @@ export async function notifyAddonAdded(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "addon_added",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -1977,10 +1981,10 @@ export async function notifyAddonRemoved(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "addon_removed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -2007,10 +2011,10 @@ export async function notifyServiceUpgradeOffered(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_upgrade_offered",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -2040,10 +2044,10 @@ export async function notifyTravelFeeApplied(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "travel_fee_applied",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -2074,7 +2078,7 @@ export async function notifyBookingTimeChanged(
   };
 
   // Notify customer
-  await sendTemplateNotification("booking_time_changed", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("booking_time_changed", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -2082,7 +2086,7 @@ export async function notifyBookingTimeChanged(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_booking_time_changed",
       recipients,
       {
@@ -2119,7 +2123,7 @@ export async function notifyBookingDateChanged(
   };
 
   // Notify customer
-  await sendTemplateNotification("booking_date_changed", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("booking_date_changed", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -2127,7 +2131,7 @@ export async function notifyBookingDateChanged(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_booking_date_changed",
       recipients,
       {
@@ -2154,7 +2158,7 @@ export async function notifyPasswordReset(userId: string, resetToken: string, ch
     reset_token: resetToken,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "password_reset",
     [userId],
     variables,
@@ -2171,7 +2175,7 @@ export async function notifyEmailVerification(userId: string, verificationToken:
     verification_token: verificationToken,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "email_verification",
     [userId],
     variables,
@@ -2188,7 +2192,7 @@ export async function notifyAccountSuspended(userId: string, suspensionReason: s
     suspension_reason: suspensionReason,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "account_suspended",
     [userId],
     variables,
@@ -2205,7 +2209,7 @@ export async function notifyAccountSuspended(userId: string, suspensionReason: s
  * Send welcome message to new user
  */
 export async function notifyWelcomeMessage(userId: string, channels?: NotificationChannel[]) {
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "welcome_message",
     [userId],
     {},
@@ -2236,7 +2240,7 @@ export async function notifyPromotionAvailable(
     promotion_id: promotionId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "promotion_available",
     userIds,
     variables,
@@ -2270,7 +2274,7 @@ export async function notifyLoyaltyPointsEarned(
     booking_date: formatBookingDate(bookingDate, timezone),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "loyalty_points_earned",
     [userId],
     variables,
@@ -2295,7 +2299,7 @@ export async function notifyLoyaltyPointsRedeemed(
     remaining_points: remainingPoints.toString(),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "loyalty_points_redeemed",
     [userId],
     variables,
@@ -2320,7 +2324,7 @@ export async function notifyLoyaltyTierUpgraded(
     tier_benefits: tierBenefits,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "loyalty_tier_upgraded",
     [userId],
     variables,
@@ -2345,7 +2349,7 @@ export async function notifyReferralBonusEarned(
     referral_code: referralCode,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "referral_bonus_earned",
     [userId],
     variables,
@@ -2368,7 +2372,7 @@ export async function notifyReferralCodeUsed(
     bonus_amount: fmt(bonusAmount),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "referral_code_used",
     [userId],
     variables,
@@ -2401,7 +2405,7 @@ export async function notifyServicePackagePurchased(
     package_id: packageId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_package_purchased",
     [userId],
     variables,
@@ -2428,7 +2432,7 @@ export async function notifyServicePackageExpiring(
     package_id: packageId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_package_expiring",
     [userId],
     variables,
@@ -2453,7 +2457,7 @@ export async function notifyServicePackageExpired(
     unused_services: unusedServices.toString(),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_package_expired",
     [userId],
     variables,
@@ -2478,7 +2482,7 @@ export async function notifyServicePackageUsed(
     package_id: packageId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_package_used",
     [userId],
     variables,
@@ -2510,7 +2514,7 @@ export async function notifyOrderConfirmation(
     total_amount: fmt(totalAmount),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "order_confirmation",
     [userId],
     variables,
@@ -2539,7 +2543,7 @@ export async function notifyGiftCardPurchased(
     gift_card_code: giftCardCode,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "gift_card_purchased",
     [userId],
     variables,
@@ -2566,7 +2570,7 @@ export async function notifyGiftCardReceived(
     message: message,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "gift_card_received",
     [userId],
     variables,
@@ -2595,7 +2599,7 @@ export async function notifyMembershipRenewalReminder(
     renewal_amount: fmt(renewalAmount),
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "membership_renewal_reminder",
     [userId],
     variables,
@@ -2618,7 +2622,7 @@ export async function notifyMembershipActivated(
     benefits: benefits,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "membership_activated",
     [userId],
     variables,
@@ -2661,7 +2665,7 @@ export async function notifyMembershipWinBack(
   if (args.providerId?.trim()) variables.provider_id = args.providerId.trim();
   if (args.providerSlug?.trim()) variables.provider_slug = args.providerSlug.trim();
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "membership_win_back",
     [userId],
     variables,
@@ -2701,7 +2705,7 @@ export async function notifyProviderMembershipCancelled(params: {
     subscription_id: params.subscriptionId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_membership_cancelled",
     recipients,
     variables,
@@ -2730,7 +2734,7 @@ export async function notifyNewMessage(
     conversation_id: conversationId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "new_message",
     [userId],
     variables,
@@ -2757,7 +2761,7 @@ export async function notifySupportTicketCreated(
     ticket_id: ticketId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "support_ticket_created",
     [userId],
     variables,
@@ -2783,7 +2787,7 @@ export async function notifySupportTicketUpdated(
     ticket_id: ticketId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "support_ticket_updated",
     [userId],
     variables,
@@ -2813,7 +2817,7 @@ export async function notifySupportStaffInboxActivity(
 ) {
   const unique = [...new Set(recipientUserIds)].filter(Boolean);
   if (unique.length === 0) return { success: true as const, skipped: true as const };
-  return sendTemplateNotification(
+  return dispatchTemplateNotification(
     "support_ticket_updated",
     unique,
     {
@@ -2859,7 +2863,7 @@ export async function notifyDisputeOpened(
   };
 
   // Notify customer
-  await sendTemplateNotification("dispute_opened", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("dispute_opened", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -2867,7 +2871,7 @@ export async function notifyDisputeOpened(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_dispute_opened",
       recipients,
       {
@@ -2904,7 +2908,7 @@ export async function notifyDisputeResolved(
   };
 
   // Notify customer
-  await sendTemplateNotification("dispute_resolved", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("dispute_resolved", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -2912,7 +2916,7 @@ export async function notifyDisputeResolved(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_dispute_resolved",
       recipients,
       {
@@ -2946,10 +2950,10 @@ export async function notifyComplaintFiled(
     complaint_id: complaintId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "complaint_filed",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -2973,10 +2977,10 @@ export async function notifyQualityIssueReported(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "quality_issue_reported",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -3000,10 +3004,10 @@ export async function notifySafetyCheckIn(bookingId: string, channels?: Notifica
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "safety_check_in",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );
@@ -3018,7 +3022,7 @@ export async function notifySafetyAlert(bookingId: string, channels?: Notificati
     return { success: false, error: "Booking not found or not at-home service" };
   }
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "safety_alert",
     [booking.customer_id],
     {},
@@ -3052,7 +3056,7 @@ export async function notifySpecialInstructionsAdded(
   };
 
   // Notify customer
-  await sendTemplateNotification("special_instructions_added", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("special_instructions_added", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -3060,7 +3064,7 @@ export async function notifySpecialInstructionsAdded(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_special_instructions",
       recipients,
       {
@@ -3102,10 +3106,10 @@ export async function notifyAllergyAlert(
     booking.provider.user_id,
   );
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "allergy_alert_provider",
     recipients,
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "provider" }
   );
@@ -3135,7 +3139,7 @@ export async function notifyWeatherAlert(
   };
 
   // Notify customer
-  await sendTemplateNotification("weather_alert", [booking.customer_id], variables, channels, { appType: "customer" });
+  await dispatchTemplateNotification("weather_alert", [booking.customer_id], withTenantVariable(booking.tenant_id, variables), channels, { appType: "customer" });
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -3143,7 +3147,7 @@ export async function notifyWeatherAlert(
       booking.provider_id,
       booking.provider.user_id,
     );
-    await sendTemplateNotification(
+    await dispatchTemplateNotification(
       "provider_weather_alert",
       recipients,
       {
@@ -3166,7 +3170,7 @@ export async function notifyWeatherAlert(
  * Notify provider onboarding welcome
  */
 export async function notifyProviderOnboardingWelcome(providerUserId: string, channels?: NotificationChannel[]) {
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_onboarding_welcome",
     [providerUserId],
     {},
@@ -3179,7 +3183,7 @@ export async function notifyProviderOnboardingWelcome(providerUserId: string, ch
  * Notify provider profile approved
  */
 export async function notifyProviderProfileApproved(providerUserId: string, channels?: NotificationChannel[]) {
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_profile_approved",
     [providerUserId],
     {},
@@ -3200,7 +3204,7 @@ export async function notifyProviderProfileRejected(
     rejection_reason: rejectionReason,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_profile_rejected",
     [providerUserId],
     variables,
@@ -3245,7 +3249,7 @@ export async function notifyBookingWaitlistAvailable(
     provider_id: providerId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_waitlist_available",
     [userId],
     variables,
@@ -3274,7 +3278,7 @@ export async function notifyProviderRecommendation(
     provider_id: providerId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "provider_recommendation",
     [userId],
     variables,
@@ -3303,7 +3307,7 @@ export async function notifyServiceSuggestion(
     service_id: serviceId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "service_suggestion",
     [userId],
     variables,
@@ -3336,10 +3340,10 @@ export async function notifyEmergencyCancellation(
     booking_id: bookingId,
   };
 
-  return await sendTemplateNotification(
+  return await dispatchTemplateNotification(
     "booking_cancelled_emergency",
     [booking.customer_id],
-    variables,
+    withTenantVariable(booking.tenant_id, variables),
     channels,
     { appType: "customer" }
   );

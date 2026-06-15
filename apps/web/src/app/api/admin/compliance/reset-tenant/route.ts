@@ -16,11 +16,24 @@ import { writeAuditLog } from "@/lib/audit/audit";
 /**
  * POST /api/admin/compliance/reset-tenant
  *
- * Superadmin-only "clean slate" for a tenant's transactional data (bookings, payments, orders,
- * wallet/ledger movements, reviews, conversations, support tickets, notifications, …).
+ * Superadmin-only "clean slate" for a tenant's transactional + derived/activity data: bookings (and
+ * children), payments, orders, ledger/journal entries, reviews, conversations, support tickets,
+ * notifications, provider gamification, group bookings, explore posts, waitlist, ad campaigns,
+ * payouts, provider invoices, recurring appointments, VAT reminders, payment webhook events,
+ * promotion usage, gift-card/loyalty redemptions, and the booking-linked loyalty ledger.
  *
- * Explicitly preserves structural data (users, providers, services, products, platform settings,
- * tenant config). For full user erasure use `/api/admin/compliance/purge-user` instead.
+ * Then it RECOMPUTES cached aggregates from the surviving rows: provider rating/review_count/
+ * total_bookings/total_paid_out/current_badge_id, and user_wallets.balance (recomputed from remaining
+ * wallet_transactions — multi-tenant safe, never blind-zeroed).
+ *
+ * Explicitly preserves the structural spine (users, providers, services, products, badge/coupon/
+ * loyalty config, platform settings, tenant config) and cross-tenant user-global rows that cannot be
+ * attributed to a single tenant (referrals, user_coupons, loyalty milestone awards, non-booking
+ * loyalty, global webhooks). For full user erasure use `/api/admin/compliance/purge-user` instead.
+ *
+ * Reliability: the DB function isolates each table/recompute (a missing table/column or RESTRICT FK
+ * is reported in `counts` as `{skipped:"error", error:…}` and skipped, never aborting the whole
+ * reset). It is idempotent, so a partial run can be re-executed. Dry-run mutates nothing.
  *
  * Flow:
  *   1) Superadmin gate (role check).

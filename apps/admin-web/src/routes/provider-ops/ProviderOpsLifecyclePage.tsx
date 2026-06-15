@@ -158,7 +158,7 @@ export function ProviderOpsLifecyclePage() {
   const q = useQuery({
     queryKey: lifecycleKey,
     queryFn: () =>
-      adminApi.getJson<{ data: LifecycleData }>(`/api/admin/provider-ops/providers/${providerId}/lifecycle`, {
+      adminApi.getJson<LifecycleData>(`/api/admin/provider-ops/providers/${providerId}/lifecycle`, {
         timeoutMs: 30_000,
       }),
     enabled: allowed && !!providerId,
@@ -208,7 +208,7 @@ export function ProviderOpsLifecyclePage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const data = q.data?.data;
+  const data = q.data;
 
   if (!data) {
     return <AdminRetryBlock message="Lifecycle data not found" onRetry={() => void q.refetch()} />;

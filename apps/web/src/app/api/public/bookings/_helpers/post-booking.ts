@@ -36,6 +36,16 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
 
   await safely(
     async () => {
+      const { invalidateProviderBookingsReadCache } = await import(
+        "@/lib/bookings/provider-bookings-read-cache"
+      );
+      invalidateProviderBookingsReadCache(draft.provider_id);
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "invalidateProviderBookingsReadCache" } },
+  );
+
+  await safely(
+    async () => {
       const { invalidateAvailabilityCache } = await import(
         "@/lib/availability/cache-invalidation"
       );

@@ -17,8 +17,8 @@ export function configureNativePushNotifications() {
         handleNotification: async () => ({
           shouldShowAlert: true,
           shouldPlaySound: true,
-          // OS badge is driven by NotificationsCountContext + server count (not push payload alone).
-          shouldSetBadge: false,
+          // Reconcile to exact server count on app open; allow push to bump badge when killed.
+          shouldSetBadge: true,
           shouldShowBanner: true,
           shouldShowList: true,
         }),

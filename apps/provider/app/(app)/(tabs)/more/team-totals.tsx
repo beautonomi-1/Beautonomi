@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, startOfWeek, endOfWeek, addDays, subDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
@@ -54,7 +54,7 @@ interface StaffMember {
   is_active?: boolean;
 }
 
-export default function TeamTotalsScreen() {
+export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const { selectedLocationId, provider } = useProvider();
   const { screenPadding } = useResponsive();
@@ -150,28 +150,19 @@ export default function TeamTotalsScreen() {
 
   if (error && !totals.length) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team totals" onBack={() => router.back()} />
-        <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error} onRetry={refresh} />
-        </View>
-      </ScreenContainer>
+      <View style={twStyle("flex-1 justify-center px-4")}>
+        <ErrorState message={error} onRetry={refresh} />
+      </View>
     );
   }
 
-  return (
-    <ScreenContainer>
-      <ScreenHeader
-        title="Team totals"
-        subtitle="Revenue = ledger provider_earnings allocated by appointment (scheduled date)"
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        showsVerticalScrollIndicator={false}
-      >
+  const scrollBody = (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      showsVerticalScrollIndicator={false}
+    >
         {/* Period tabs */}
         <View style={twStyle("flex-row rounded-xl bg-gray-100 p-1 mb-4")}>
           <TouchableOpacity
@@ -308,6 +299,24 @@ export default function TeamTotalsScreen() {
           </>
         )}
       </ScrollView>
+  );
+
+  if (embedded) {
+    return <View style={twStyle("flex-1")}>{scrollBody}</View>;
+  }
+
+  return (
+    <ScreenContainer>
+      <ScreenHeader
+        title="Team totals"
+        subtitle="Revenue = ledger provider_earnings allocated by appointment (scheduled date)"
+        onBack={() => router.back()}
+      />
+      {scrollBody}
     </ScreenContainer>
   );
+}
+
+export default function TeamTotalsScreen() {
+  return <Redirect href="/(app)/(tabs)/more/team-pay?tab=team" />;
 }

@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 /**
  * Layout constants for provider app — aligned with bottom tab bar in `(tabs)/_layout.tsx`.
  *
@@ -13,14 +15,23 @@
  *   (or migrate the screen to `ScreenContainer`).
  */
 
-/** Minimum bottom inset inside tab bar (home indicator / gesture bar when OS reports 0). */
+/** Minimum bottom inset inside tab bar (iOS home indicator when OS reports 0). */
 export const TAB_BAR_MIN_BOTTOM_INSET = 8;
+/** Android edge-to-edge fallback when `useSafeAreaInsets().bottom` is 0 (gesture / nav bar). */
+export const TAB_BAR_ANDROID_MIN_BOTTOM_INSET = 24;
 /** Fixed tab bar height excluding safe bottom: paddingTop (~8) + icon + label row (~44). */
 export const TAB_BAR_FIXED_HEIGHT = 52;
 
+/** Bottom padding for tab bar and sticky chrome; prefers OS inset, with platform fallbacks. */
+export function tabBarBottomInset(insetsBottom: number): number {
+  const min =
+    Platform.OS === "android" ? TAB_BAR_ANDROID_MIN_BOTTOM_INSET : TAB_BAR_MIN_BOTTOM_INSET;
+  return Math.max(insetsBottom, min);
+}
+
 /** Total tab bar height including safe-area padding at the bottom. */
 export function tabBarOuterHeight(insetsBottom: number): number {
-  return TAB_BAR_FIXED_HEIGHT + Math.max(insetsBottom, TAB_BAR_MIN_BOTTOM_INSET);
+  return TAB_BAR_FIXED_HEIGHT + tabBarBottomInset(insetsBottom);
 }
 
 /** Scroll / list content padding so items clear the tab bar. */

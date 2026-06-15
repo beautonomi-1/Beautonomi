@@ -1,5 +1,7 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
+import { isDeviceOffline } from "@/lib/connectivity";
+import { isTransientApiFailure } from "@/lib/api-error";
 
 let sentryRecording = false;
 
@@ -99,6 +101,11 @@ export function clearSentryUser() {
 
 export function captureError(error: unknown, context?: Record<string, unknown>) {
   if (!isSentryEnabled()) return;
+  // Don't report failures that are just the device being offline — the user is
+  // already told via the OfflineBar and the request retries on reconnect. We
+  // still report transient-looking failures when ONLINE, since "could not reach
+  // the server" can then indicate a real outage or misconfigured API URL.
+  if (isDeviceOffline() && isTransientApiFailure(error)) return;
   if (context) {
     Sentry.setContext("extra", context);
   }

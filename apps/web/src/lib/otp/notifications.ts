@@ -86,6 +86,40 @@ export async function sendProviderArrivedNotification(
 }
 
 /**
+ * Notify customer that the provider reported arrival WITHOUT the customer's
+ * verification code (manual override). Transparency + dispute-safety: the
+ * customer is told an override happened so they can flag it if it's wrong.
+ */
+export async function sendArrivalOverrideNotification(
+  customerId: string,
+  bookingNumber: string,
+  providerName: string,
+  bookingId: string,
+): Promise<void> {
+  try {
+    await sendToUser(
+      customerId,
+      {
+        title: "Arrival reported",
+        message: `${providerName} reported arrival for booking #${bookingNumber} without your verification code. If this isn't right, please contact support.`,
+        type: "arrival_overridden",
+        bookingId: bookingNumber,
+        data: {
+          type: "arrival_overridden",
+          booking_id: bookingId,
+          booking_number: bookingNumber,
+          provider_name: providerName,
+        },
+      },
+      ["push"],
+      { appType: "customer" },
+    );
+  } catch (error) {
+    console.error("Error sending arrival override notification:", error);
+  }
+}
+
+/**
  * Send notification when provider starts journey.
  * @param bookingId - UUID (for deep-link routing to booking detail)
  * @param bookingNumber - short display number (shown in notification text)

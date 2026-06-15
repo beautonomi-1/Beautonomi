@@ -162,13 +162,10 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     items: [
       { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
       { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
-      { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
-      { icon: "card-outline", label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb", bg: "#dbeafe" },
-      { icon: "qr-code-outline", label: "Paystack Terminal", subtitle: "QR and link payments through Beautonomi payouts", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a", bg: "#dcfce7" },
-      { icon: "ribbon-outline", label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6", bg: "#ede9fe" },
-      { icon: "cash-outline", label: "Payouts", subtitle: "Request payout & view history", route: "/(app)/(tabs)/more/payouts", color: "#047857", bg: "#d1fae5" },
-      { icon: "wallet-outline", label: "Payout bank accounts", subtitle: "Add or manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669", bg: "#d1fae5" },
-      { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "cash-outline", label: "Money", subtitle: "Earnings, ledger, sales & payouts", route: "/(app)/(tabs)/more/money", color: "#22c55e", bg: "#f0fdf4" },
+      { icon: "receipt-outline", label: "Billing", subtitle: "Plan, invoices, bills & VAT", route: "/(app)/(tabs)/more/billing", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "people-outline", label: "Team & pay", subtitle: "Payroll, team totals & your earnings", route: "/(app)/(tabs)/more/team-pay", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "settings-outline", label: "Payment setup", subtitle: "Payout accounts, terminals & gift cards", route: "/(app)/(tabs)/more/payment-setup", color: "#2563eb", bg: "#dbeafe" },
       { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
       { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
     ],
@@ -208,9 +205,9 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
   { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
   { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
-  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
-  { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/payouts", color: "#047857" },
-  { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
+  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/billing?tab=subscription", color: "#8b5cf6" },
+  { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/money?tab=payouts", color: "#047857" },
+  { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/payment-setup", color: "#059669" },
 ];
 
 export default function MoreScreen() {
@@ -554,7 +551,7 @@ export default function MoreScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => handleMenuPress(hasPayoutAccount ? "/(app)/(tabs)/more/payouts" : "/(app)/(tabs)/more/settings/payout-accounts")}
+            onPress={() => handleMenuPress(hasPayoutAccount ? "/(app)/(tabs)/more/money?tab=payouts" : "/(app)/(tabs)/more/payment-setup")}
             activeOpacity={0.75}
             style={{
               marginTop: 14,

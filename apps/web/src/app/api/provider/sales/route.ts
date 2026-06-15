@@ -168,6 +168,7 @@ export async function GET(request: NextRequest) {
     // not just the current page. The mobile sales-history screen relies on this so the
     // "Revenue" card shows the real total, not just the first page.
     let periodTotalAmount = 0;
+    let totalPartial = false;
     try {
       let totalsQuery = supabaseAdmin
         .from("sales")
@@ -192,13 +193,19 @@ export async function GET(request: NextRequest) {
         }
         totalsQuery = totalsQuery.or(clauses.join(","));
       }
-      const { data: totalsRows } = await totalsQuery;
-      periodTotalAmount = (totalsRows ?? []).reduce(
-        (s: number, r: { total_amount?: number | null }) => s + Number(r.total_amount ?? 0),
-        0
-      );
+      const { data: totalsRows, error: totalsError } = await totalsQuery;
+      if (totalsError) {
+        console.error("Sales total aggregate failed:", totalsError);
+        totalPartial = true;
+      } else {
+        periodTotalAmount = (totalsRows ?? []).reduce(
+          (s: number, r: { total_amount?: number | null }) => s + Number(r.total_amount ?? 0),
+          0
+        );
+      }
     } catch (err) {
-      console.warn("Sales total aggregate failed:", err);
+      console.error("Sales total aggregate failed:", err);
+      totalPartial = true;
     }
 
     // Get related data separately to avoid nested join issues
@@ -322,6 +329,7 @@ export async function GET(request: NextRequest) {
       total: count || transformedSales.length,
       /** Sum of `total_amount` across ALL rows matching the filters (not just this page). */
       total_amount_sum: periodTotalAmount,
+      total_partial: totalPartial,
       page,
       limit,
       total_pages: totalPages,

@@ -22,6 +22,8 @@ interface DashboardData {
     stalled_signups: number;
     dropped_off: number;
     pending_approval: number;
+    duplicate_groups?: number;
+    duplicate_leads?: number;
   };
   kpis: {
     signups_today: number;
@@ -29,6 +31,7 @@ interface DashboardData {
     leads_this_week: number;
     active_providers: number;
     total_leads: number;
+    draft_providers?: number;
   };
   pipeline: Record<string, number>;
   recent_activities: Array<{
@@ -85,10 +88,13 @@ export default function ProviderOpsDashboard() {
     );
   }
 
+  const duplicateGroups = data.urgent.duplicate_groups ?? 0;
+  const duplicateLeads = data.urgent.duplicate_leads ?? 0;
   const urgentTotal =
     data.urgent.stalled_signups +
     data.urgent.dropped_off +
-    data.urgent.pending_approval;
+    data.urgent.pending_approval +
+    duplicateGroups;
 
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
@@ -122,7 +128,7 @@ export default function ProviderOpsDashboard() {
 
         {/* Urgent Attention Row */}
         {urgentTotal > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <UrgentCard
               label="Stalled Signups"
               count={data.urgent.stalled_signups}
@@ -144,11 +150,20 @@ export default function ProviderOpsDashboard() {
               href="/admin/provider-ops/activation"
               description="Ready for review"
             />
+            {duplicateGroups > 0 && (
+              <UrgentCard
+                label="Possible Duplicates"
+                count={duplicateGroups}
+                color="yellow"
+                href="/admin/provider-ops/duplicates"
+                description={`${duplicateLeads} lead${duplicateLeads === 1 ? "" : "s"} to review & merge`}
+              />
+            )}
           </div>
         )}
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <KpiCard
             label="Signups Today"
             value={data.kpis.signups_today}
@@ -173,6 +188,11 @@ export default function ProviderOpsDashboard() {
             label="Total Leads"
             value={data.kpis.total_leads}
             icon={Users}
+          />
+          <KpiCard
+            label="Draft Profiles"
+            value={data.kpis.draft_providers ?? 0}
+            icon={ClipboardList}
           />
         </div>
 

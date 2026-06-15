@@ -4,7 +4,7 @@
  */
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { useApi } from "@/hooks/useApi";
@@ -35,7 +35,7 @@ interface PayStub {
   notes?: string;
 }
 
-export default function MyEarningsScreen() {
+export function MyEarningsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -66,39 +66,27 @@ export default function MyEarningsScreen() {
 
   if (loading && !payStubs.length) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="My earnings" onBack={() => router.back()} />
-        <View style={twStyle("flex-1 items-center justify-center py-12")}>
-          <LoadingState />
-        </View>
-      </ScreenContainer>
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
+        <LoadingState />
+      </View>
     );
   }
 
   if (error && !payStubs.length) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="My earnings" onBack={() => router.back()} />
-        <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error} onRetry={refresh} />
-        </View>
-      </ScreenContainer>
+      <View style={twStyle("flex-1 justify-center px-4")}>
+        <ErrorState message={error} onRetry={refresh} />
+      </View>
     );
   }
 
   return (
-    <ScreenContainer>
-      <ScreenHeader
-        title="My earnings"
-        subtitle="Your pay stubs and earnings history"
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        showsVerticalScrollIndicator={false}
-      >
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      showsVerticalScrollIndicator={false}
+    >
         {payStubs.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center mt-4")}>
             <Ionicons name="wallet-outline" size={48} color="#9ca3af" />
@@ -180,8 +168,11 @@ export default function MyEarningsScreen() {
           })
         )}
       </ScrollView>
-    </ScreenContainer>
   );
+}
+
+export default function MyEarningsScreen() {
+  return <Redirect href="/(app)/(tabs)/more/team-pay?tab=my-earnings" />;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

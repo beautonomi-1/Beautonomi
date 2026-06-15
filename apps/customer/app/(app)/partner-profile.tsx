@@ -34,7 +34,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { shareProvider } from "@/lib/share-provider";
 import { Colors, Shadows } from "@/constants/colors";
-import { TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
+import { tabBarBottomInset } from "@/constants/layout";
 import { Skeleton } from "@/components/Skeleton";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
@@ -1093,7 +1093,7 @@ export default function PartnerProfileScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { contentPadding } = useResponsive();
   const insets = useSafeAreaInsets();
-  const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const bottomSafe = tabBarBottomInset(insets.bottom);
   const stickyBarPaddingBottom = 12 + bottomSafe;
   const scrollSpacerForStickyBar = 56 + bottomSafe;
   const membershipPaystackCheckout = useInAppPaystackCheckout();

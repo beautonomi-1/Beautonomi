@@ -34,11 +34,54 @@ async function fetchRowsForScopedUsers<T>(
  * Geographic analytics: provider and customer distribution by city/postal code,
  * booking volume and value by geography, and device platform breakdown.
  */
+/** Supported booking windows. `all` keeps the historical all-time behaviour. */
+const GEO_PERIODS = new Set(["30d", "90d", "1y", "all"]);
+
+function resolveGeoPeriodStart(period: string): string | null {
+  const now = Date.now();
+  switch (period) {
+    case "30d":
+      return new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+    case "90d":
+      return new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
+    case "1y":
+      return new Date(now - 365 * 24 * 60 * 60 * 1000).toISOString();
+    default:
+      return null; // "all"
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
+
+    const { searchParams } = new URL(request.url);
+    const periodParam = searchParams.get("period") || "all";
+    const period = GEO_PERIODS.has(periodParam) ? periodParam : "all";
+    const bookingStart = resolveGeoPeriodStart(period);
+
+    // Bookings are windowed by `scheduled_at` so "booking value" reflects the
+    // selected period; provider/customer locations stay all-time because they
+    // represent the platform's current geographic footprint, not activity.
+    let bookingGeoQuery = supabase
+      .from("bookings")
+      .select(
+        "id, address_city, address_state, address_postal_code, location_type, total_amount, status, scheduled_at"
+      )
+      .eq("tenant_id", tenantId)
+      .not("address_city", "is", null)
+      .not("status", "eq", "cancelled");
+    let bookingValueQuery = supabase
+      .from("bookings")
+      .select("id, total_amount, location_type, status, address_city")
+      .eq("tenant_id", tenantId)
+      .not("status", "eq", "cancelled");
+    if (bookingStart) {
+      bookingGeoQuery = bookingGeoQuery.gte("scheduled_at", bookingStart);
+      bookingValueQuery = bookingValueQuery.gte("scheduled_at", bookingStart);
+    }
 
     const [
       providerLocationsResult,
@@ -56,21 +99,10 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true),
 
       // Bookings with geo data (exclude cancelled so city/value views stay aligned)
-      supabase
-        .from("bookings")
-        .select(
-          "id, address_city, address_state, address_postal_code, location_type, total_amount, status, scheduled_at"
-        )
-        .eq("tenant_id", tenantId)
-        .not("address_city", "is", null)
-        .not("status", "eq", "cancelled"),
+      bookingGeoQuery,
 
       // Booking value aggregation (all non-cancelled bookings, even without geo)
-      supabase
-        .from("bookings")
-        .select("id, total_amount, location_type, status, address_city")
-        .eq("tenant_id", tenantId)
-        .not("status", "eq", "cancelled"),
+      bookingValueQuery,
 
       supabase.rpc("admin_user_ids_in_tenant_scope", { p_tenant_id: tenantId }),
     ]);
@@ -162,23 +194,33 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Customer Distribution by City ---
+    // Count DISTINCT customers per city / per postal code. A customer with
+    // addresses in multiple cities is counted once in each of those cities (a
+    // true geographic distribution), while the `unique_customers` summary stays
+    // a single global distinct count. Dedup is tracked per (city|postal, user)
+    // so multiple saved addresses in the same area never inflate the count.
     const customersByCity: Record<
       string,
-      { count: number; lat: number; lng: number }
+      { count: number; lat: number; lng: number; users: Set<string> }
     > = {};
-    const customersByPostal: Record<string, { count: number; city: string }> =
-      {};
+    const customersByPostal: Record<
+      string,
+      { count: number; city: string; users: Set<string> }
+    > = {};
     const uniqueCustomerIds = new Set<string>();
 
     for (const addr of customerRows) {
       const city = (addr.city || "Unknown").trim();
       const postal = (addr.postal_code || "").trim();
+      const userId = addr.user_id;
+      if (userId) uniqueCustomerIds.add(userId);
+
       if (!customersByCity[city]) {
-        customersByCity[city] = { count: 0, lat: 0, lng: 0 };
+        customersByCity[city] = { count: 0, lat: 0, lng: 0, users: new Set() };
       }
-      if (addr.user_id && !uniqueCustomerIds.has(addr.user_id)) {
+      if (userId && !customersByCity[city].users.has(userId)) {
+        customersByCity[city].users.add(userId);
         customersByCity[city].count++;
-        uniqueCustomerIds.add(addr.user_id);
       }
       if (addr.latitude && addr.longitude) {
         customersByCity[city].lat = addr.latitude;
@@ -186,9 +228,12 @@ export async function GET(request: NextRequest) {
       }
       if (postal) {
         if (!customersByPostal[postal]) {
-          customersByPostal[postal] = { count: 0, city };
+          customersByPostal[postal] = { count: 0, city, users: new Set() };
         }
-        if (addr.user_id) customersByPostal[postal].count++;
+        if (userId && !customersByPostal[postal].users.has(userId)) {
+          customersByPostal[postal].users.add(userId);
+          customersByPostal[postal].count++;
+        }
       }
     }
 
@@ -287,7 +332,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count);
 
     const sortedCustomerCities = Object.entries(customersByCity)
-      .map(([city, data]) => ({ city, ...data }))
+      .map(([city, { count, lat, lng }]) => ({ city, count, lat, lng }))
       .sort((a, b) => b.count - a.count);
 
     const sortedBookingCities = Object.entries(bookingsByCity)
@@ -300,11 +345,16 @@ export async function GET(request: NextRequest) {
       .slice(0, 50);
 
     const sortedCustomerPostals = Object.entries(customersByPostal)
-      .map(([postal, data]) => ({ postal_code: postal, ...data }))
+      .map(([postal, { count, city }]) => ({ postal_code: postal, count, city }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 50);
 
     return successResponse({
+      period,
+      booking_window_note:
+        period === "all"
+          ? "Booking counts/value cover all time. Provider & customer locations are always current footprint."
+          : `Booking counts/value cover the last ${period} (by scheduled date). Provider & customer locations are always current footprint.`,
       summary: {
         total_provider_locations: providerRows.length,
         unique_providers: uniqueProviderIds.size,

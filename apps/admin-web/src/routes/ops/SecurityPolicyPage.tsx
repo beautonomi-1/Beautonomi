@@ -147,6 +147,9 @@ export function SecurityPolicyPage() {
   const d = draft ?? q.data;
   const pw = d?.password_policy ?? {};
   const tf = d?.two_factor ?? {};
+  // True when the operator is turning enforcement on in this unsaved edit.
+  const enforcementBeingEnabled =
+    Boolean(tf.required_for_admins) && !Boolean(q.data?.two_factor?.required_for_admins);
   const rl = d?.rate_limiting ?? {};
   const dr = d?.data_retention ?? {};
   const events = Array.isArray(d?.recent_events) ? d!.recent_events as Record<string, unknown>[] : [];
@@ -267,14 +270,44 @@ export function SecurityPolicyPage() {
             label="Enable 2FA"
             description="Allow users to enroll in two-factor authentication."
             checked={Boolean(tf.enabled)}
-            onChange={(v) => update("two_factor", "enabled", v)}
+            onChange={(v) => {
+              // Requiring MFA is meaningless if enrollment is off — keep them consistent.
+              if (!v && tf.required_for_admins) update("two_factor", "required_for_admins", false);
+              update("two_factor", "enabled", v);
+            }}
           />
           <Toggle
             label="Require 2FA for admins"
-            description="Admins must enable 2FA before accessing the admin portal."
+            description="Admins must complete 2FA (authenticator app) before any admin API or page will load."
             checked={Boolean(tf.required_for_admins)}
-            onChange={(v) => update("two_factor", "required_for_admins", v)}
+            onChange={(v) => {
+              // Enabling enforcement requires enrollment to be on.
+              if (v && !tf.enabled) update("two_factor", "enabled", true);
+              update("two_factor", "required_for_admins", v);
+            }}
           />
+
+          {Boolean(tf.required_for_admins) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="font-semibold">
+                {enforcementBeingEnabled ? "You are about to enforce admin 2FA" : "Admin 2FA enforcement is ON"}
+              </div>
+              <p className="mt-1 leading-relaxed">
+                This policy is authoritative in <strong>every environment, including production</strong>. The
+                moment it is saved, any admin whose current session is not at AAL2 — and anyone without an enrolled
+                authenticator — is locked out of all <code>/api/admin/*</code> routes and admin pages until they
+                complete 2FA.
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                <li>Make sure at least one superadmin has an authenticator enrolled before saving.</li>
+                <li>
+                  If everyone is locked out, follow the break-glass runbook
+                  (<code>docs/ADMIN_MFA_BREAK_GLASS.md</code>) to remove a TOTP factor via the Supabase
+                  service role.
+                </li>
+              </ul>
+            </div>
+          )}
         </div>
       </AdminPanel>
 

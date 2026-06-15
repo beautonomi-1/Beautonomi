@@ -5,7 +5,7 @@ import { Platform, Text, TouchableOpacity, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
 import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
@@ -16,6 +16,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
+import { initConnectivityTracking } from "@/lib/connectivity";
 import { initSingular } from "@/lib/singular";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
 import {
@@ -29,6 +30,9 @@ import { configureNativePushNotifications } from "@/lib/push-notifications-setup
 try {
   initSentry();
   setMobileAppTag("provider");
+} catch {}
+try {
+  initConnectivityTracking();
 } catch {}
 try {
   initSingular();
@@ -121,7 +125,7 @@ function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ErrorBoundary>
         <ThemeProvider>
           <AuthProvider>

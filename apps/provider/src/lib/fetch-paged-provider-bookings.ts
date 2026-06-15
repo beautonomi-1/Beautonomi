@@ -37,7 +37,11 @@ export async function fetchAllProviderBookingsPages<T = Record<string, unknown>>
     const res = await api.get<T[]>(p, timeoutMs && timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
     if (res.error) {
       const e = res.error as ApiError;
-      throw new Error(getApiErrorMessage(e, "Failed to load bookings"));
+      const err = new Error(getApiErrorMessage(e, "Failed to load bookings")) as Error & {
+        code?: string;
+      };
+      err.code = e.code;
+      throw err;
     }
     const rows = (Array.isArray(res.data) ? res.data : []) as T[];
     out.push(...rows);

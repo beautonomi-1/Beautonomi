@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -987,6 +987,8 @@ export function BookingDetailPage() {
         </div>
       </div>
 
+      <BookingTrackingPanel bookingId={bookingId} enabled={allowed} />
+
       <AdminModal
         open={showCancel}
         onClose={() => setShowCancel(false)}
@@ -1063,5 +1065,446 @@ export function BookingDetailPage() {
 
       {isEditing ? <AdminMutationAlert errors={[saveMutation.error]} /> : null}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tracking & activity (arrival, verification, provider location, timeline)
+// ---------------------------------------------------------------------------
+
+interface BookingTrackingData {
+  booking_id: string;
+  location_type: string | null;
+  status: string | null;
+  current_stage: string | null;
+  precise_location_visible: boolean;
+  lifecycle: {
+    scheduled_at: string | null;
+    confirmed_at: string | null;
+    checked_in_time: string | null;
+    provider_en_route_at: string | null;
+    estimated_arrival: string | null;
+    provider_arrived_at: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    cancelled_at: string | null;
+  };
+  arrival: {
+    provider_arrived: boolean;
+    customer_verified: boolean;
+    verification_required: boolean;
+    verification_method: "otp" | "qr" | "none";
+    otp_present: boolean;
+    otp_verified: boolean;
+    otp_expired: boolean;
+    qr_present: boolean;
+    qr_verified: boolean;
+    qr_expired: boolean;
+    arrived_distance_m: number | null;
+    last_distance_to_target_m: number | null;
+  };
+  tracking_state: {
+    status: string | null;
+    tracking_enabled: boolean;
+    arrived_at_target: boolean;
+    arrived_at: string | null;
+    provider_last_at: string | null;
+    last_distance_to_target_m: number | null;
+    provider_last_lat: number | null;
+    provider_last_lng: number | null;
+  } | null;
+  provider_location: { lat: number; lng: number; at: string | null } | null;
+  destination: { lat: number; lng: number } | null;
+  location_events: Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    accuracy_m: number | null;
+    speed_mps: number | null;
+    heading_deg: number | null;
+    recorded_at: string;
+    source: string;
+  }>;
+  location_event_count: number;
+  events: Array<{
+    id: string;
+    event_type: string;
+    event_data: Record<string, unknown> | null;
+    created_by: string | null;
+    created_at: string;
+  }>;
+}
+
+const EVENT_META: Record<string, { label: string; tone: "green" | "red" | "amber" | "blue" }> = {
+  created: { label: "Booking created", tone: "blue" },
+  confirmed: { label: "Confirmed", tone: "green" },
+  provider_on_way: { label: "Provider started journey", tone: "blue" },
+  provider_arrived: { label: "Provider marked arrived", tone: "blue" },
+  service_started: { label: "Service started", tone: "blue" },
+  service_completed: { label: "Service completed", tone: "green" },
+  otp_sent: { label: "Verification code sent to customer", tone: "amber" },
+  otp_verified: { label: "Customer verified arrival (code)", tone: "green" },
+  qr_code_generated: { label: "QR code generated", tone: "amber" },
+  qr_code_verified: { label: "Customer verified arrival (QR)", tone: "green" },
+  arrival_verification_overridden: { label: "Arrival verification overridden", tone: "amber" },
+  status_changed: { label: "Status changed", tone: "blue" },
+  updated: { label: "Booking updated", tone: "blue" },
+  rescheduled: { label: "Rescheduled", tone: "amber" },
+  auto_rescheduled: { label: "Auto-rescheduled", tone: "amber" },
+  cancelled: { label: "Cancelled", tone: "red" },
+  refunded: { label: "Refunded", tone: "red" },
+  refund_issued: { label: "Refund issued", tone: "red" },
+  payment_received: { label: "Payment received", tone: "green" },
+  additional_payment_requested: { label: "Additional payment requested", tone: "amber" },
+  additional_payment_approved: { label: "Additional payment approved", tone: "blue" },
+  additional_payment_initiated: { label: "Additional payment initiated", tone: "blue" },
+  additional_payment_paid: { label: "Additional payment paid", tone: "green" },
+  additional_payment_failed: { label: "Additional payment failed", tone: "red" },
+  recurring_occurrence_created: { label: "Recurring occurrence created", tone: "blue" },
+  double_booking_override: { label: "Double-booking override", tone: "amber" },
+  panic: { label: "Panic / SOS triggered", tone: "red" },
+};
+
+const OVERRIDE_REASON_LABELS: Record<string, string> = {
+  customer_no_phone: "Customer had no phone / couldn't open the app",
+  customer_technical_issue: "App or code wasn't working for the customer",
+  customer_refused: "Customer declined to verify",
+  other: "Other reason",
+};
+
+function eventMeta(type: string): { label: string; tone: "green" | "red" | "amber" | "blue" } {
+  return (
+    EVENT_META[type] ?? {
+      label: type.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()),
+      tone: "blue",
+    }
+  );
+}
+
+const TONE_DOT: Record<string, string> = {
+  green: "bg-emerald-500",
+  red: "bg-red-500",
+  amber: "bg-amber-500",
+  blue: "bg-blue-400",
+};
+
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function relTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(diff)) return "";
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function fmtDistance(m: number | null | undefined): string | null {
+  if (m == null || Number.isNaN(Number(m))) return null;
+  const v = Number(m);
+  return v >= 1000 ? `${(v / 1000).toFixed(2)} km` : `${Math.round(v)} m`;
+}
+
+// Platform default map provider is Mapbox (not Google). Mapbox directions
+// expects lng,lat order. Single point = destination only.
+function mapboxPointUrl(lat: number, lng: number): string {
+  return `https://www.mapbox.com/directions/?destination=${lng},${lat}`;
+}
+
+function mapboxRouteUrl(
+  origin: { lat: number; lng: number },
+  dest: { lat: number; lng: number },
+): string {
+  return `https://www.mapbox.com/directions/?destination=${dest.lng},${dest.lat}&origin=${origin.lng},${origin.lat}`;
+}
+
+function StatusBadge({ tone, children }: { tone: "green" | "red" | "amber" | "gray"; children: ReactNode }) {
+  const cls =
+    tone === "green"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : tone === "red"
+        ? "border-red-200 bg-red-50 text-red-800"
+        : tone === "amber"
+          ? "border-amber-200 bg-amber-50 text-amber-900"
+          : "border-gray-200 bg-gray-50 text-gray-700";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${cls}`}>
+      {children}
+    </span>
+  );
+}
+
+function VerificationLine({ arrival }: { arrival: BookingTrackingData["arrival"] }) {
+  if (arrival.customer_verified) {
+    // A code was issued and matched → genuine customer verification.
+    if (arrival.verification_required) {
+      return (
+        <StatusBadge tone="green">
+          ✓ Customer verified arrival{arrival.verification_method !== "none" ? ` (${arrival.verification_method.toUpperCase()})` : ""}
+        </StatusBadge>
+      );
+    }
+    // No code was issued (verification disabled / simple confirmation) — the
+    // arrival flag was auto-set, the customer did not enter a code.
+    return <StatusBadge tone="gray">Arrival auto-confirmed (no code required)</StatusBadge>;
+  }
+  if (arrival.verification_required) {
+    const expired =
+      (arrival.verification_method === "otp" && arrival.otp_expired) ||
+      (arrival.verification_method === "qr" && arrival.qr_expired);
+    if (expired) {
+      return <StatusBadge tone="red">⚠ Verification code expired — customer never verified</StatusBadge>;
+    }
+    return <StatusBadge tone="amber">Awaiting customer verification ({arrival.verification_method.toUpperCase()})</StatusBadge>;
+  }
+  return <StatusBadge tone="gray">No arrival verification required</StatusBadge>;
+}
+
+function BookingTrackingPanel({ bookingId, enabled }: { bookingId: string; enabled: boolean }) {
+  const q = useQuery({
+    queryKey: adminQueryKeys.bookings.tracking(bookingId),
+    queryFn: () =>
+      adminApi.getJson<BookingTrackingData>(`/api/admin/bookings/${bookingId}/tracking`, { timeoutMs: 30_000 }),
+    enabled: enabled && !!bookingId,
+  });
+
+  if (q.isLoading) {
+    return (
+      <AdminPanel>
+        <h2 className="mb-4 text-lg font-semibold">Tracking &amp; activity</h2>
+        <AdminPageSkeleton rows={4} />
+      </AdminPanel>
+    );
+  }
+  if (q.error) {
+    return (
+      <AdminPanel>
+        <h2 className="mb-2 text-lg font-semibold">Tracking &amp; activity</h2>
+        <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+      </AdminPanel>
+    );
+  }
+
+  const data = q.data;
+  if (!data) return null;
+
+  const isAtHome = data.location_type === "at_home";
+  const lifecycleSteps: Array<{ label: string; at: string | null; tone?: "red" }> = [
+    { label: "Confirmed", at: data.lifecycle.confirmed_at },
+    { label: "Checked in (salon)", at: data.lifecycle.checked_in_time },
+    { label: "Provider en route", at: data.lifecycle.provider_en_route_at },
+    { label: "Provider arrived", at: data.lifecycle.provider_arrived_at },
+    { label: "Service started", at: data.lifecycle.started_at },
+    { label: "Service completed", at: data.lifecycle.completed_at },
+    { label: "Cancelled", at: data.lifecycle.cancelled_at, tone: "red" as const },
+  ].filter((s) => s.at);
+
+  const lastPing = data.location_events[0] ?? null;
+  const distance = fmtDistance(data.arrival.last_distance_to_target_m ?? data.arrival.arrived_distance_m);
+
+  // Most-recent manual arrival override (provider verified without the
+  // customer's code). Surfaced prominently for dispute / safety review.
+  const overrideEvent = [...data.events]
+    .reverse()
+    .find((ev) => ev.event_type === "arrival_verification_overridden");
+  const ovd = (overrideEvent?.event_data ?? null) as {
+    reason_code?: string;
+    reason_text?: string | null;
+    location?: { lat?: number; lng?: number } | null;
+    distance_to_target_m?: number | null;
+    overridden_by?: string | null;
+  } | null;
+  const ovdLat = ovd?.location?.lat;
+  const ovdLng = ovd?.location?.lng;
+
+  return (
+    <AdminPanel>
+      <h2 className="mb-1 text-lg font-semibold">Tracking &amp; activity</h2>
+      <p className="mb-4 text-xs text-gray-500">
+        Did the provider arrive, did the customer verify, and what happened on this booking — straight from the
+        arrival, verification, and tracking records.
+      </p>
+
+      {/* Arrival & verification summary */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {data.arrival.provider_arrived ? (
+          <StatusBadge tone="green">
+            ✓ Provider arrived{data.lifecycle.provider_arrived_at ? ` · ${relTime(data.lifecycle.provider_arrived_at)}` : ""}
+          </StatusBadge>
+        ) : (
+          <StatusBadge tone="gray">Provider not marked arrived</StatusBadge>
+        )}
+        {isAtHome || data.arrival.verification_required ? <VerificationLine arrival={data.arrival} /> : null}
+        {data.tracking_state?.status ? (
+          <StatusBadge tone="amber">Tracking: {data.tracking_state.status.replace(/_/g, " ")}</StatusBadge>
+        ) : null}
+        {distance ? <StatusBadge tone="gray">Distance to address: {distance}</StatusBadge> : null}
+      </div>
+
+      {/* Manual arrival override — prominent because it bypassed customer verification */}
+      {overrideEvent ? (
+        <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-amber-900">⚠ Arrival verified by manual override</span>
+            <span className="text-xs text-amber-800">
+              {fmtDateTime(overrideEvent.created_at)} · {relTime(overrideEvent.created_at)}
+            </span>
+          </div>
+          <p className="mt-1.5 text-sm text-amber-900">
+            The provider marked arrival without the customer's verification code.
+          </p>
+          <dl className="mt-2 space-y-1 text-sm text-amber-900">
+            <div className="flex gap-2">
+              <dt className="shrink-0 font-medium">Reason:</dt>
+              <dd>{OVERRIDE_REASON_LABELS[ovd?.reason_code ?? ""] ?? ovd?.reason_code ?? "—"}</dd>
+            </div>
+            {ovd?.reason_text ? (
+              <div className="flex gap-2">
+                <dt className="shrink-0 font-medium">Detail:</dt>
+                <dd className="italic">“{ovd.reason_text}”</dd>
+              </div>
+            ) : null}
+            <div className="flex gap-2">
+              <dt className="shrink-0 font-medium">By:</dt>
+              <dd className="font-mono text-xs">{ovd?.overridden_by ?? overrideEvent.created_by ?? "—"}</dd>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <dt className="shrink-0 font-medium">Location:</dt>
+              <dd>
+                {ovdLat != null && ovdLng != null ? (
+                  <>
+                    <span className="font-mono text-xs">
+                      {ovdLat.toFixed(5)}, {ovdLng.toFixed(5)}
+                    </span>
+                    {ovd?.distance_to_target_m != null ? (
+                      <span className="ml-2 text-xs">({fmtDistance(ovd.distance_to_target_m)} from address)</span>
+                    ) : null}
+                    <a
+                      href={mapboxPointUrl(ovdLat, ovdLng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-2 text-xs font-medium text-blue-700 underline"
+                    >
+                      Open ↗
+                    </a>
+                  </>
+                ) : (
+                  <span className="text-xs italic">No GPS captured at override time</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Lifecycle timeline */}
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Lifecycle</h3>
+          {lifecycleSteps.length === 0 ? (
+            <p className="text-sm text-gray-500">No lifecycle timestamps recorded yet.</p>
+          ) : (
+            <ol className="space-y-2">
+              {lifecycleSteps.map((s) => (
+                <li key={s.label} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${s.tone === "red" ? "bg-red-500" : "bg-emerald-500"}`} />
+                    <span className={s.tone === "red" ? "text-red-700" : "text-gray-700"}>{s.label}</span>
+                  </span>
+                  <span className="tabular-nums text-gray-500">{fmtDateTime(s.at)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {data.lifecycle.estimated_arrival && !data.lifecycle.provider_arrived_at ? (
+            <p className="mt-2 text-xs text-gray-500">ETA at customer: {fmtDateTime(data.lifecycle.estimated_arrival)}</p>
+          ) : null}
+        </div>
+
+        {/* Provider location */}
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Provider location</h3>
+          {data.precise_location_visible && data.provider_location ? (
+            <div className="space-y-1 text-sm">
+              <div className="font-mono text-gray-800">
+                {data.provider_location.lat.toFixed(5)}, {data.provider_location.lng.toFixed(5)}
+              </div>
+              {data.provider_location.at ? (
+                <div className="text-xs text-gray-500">Updated {relTime(data.provider_location.at)} · {fmtDateTime(data.provider_location.at)}</div>
+              ) : null}
+              <div className="flex flex-wrap gap-3 pt-1 text-xs">
+                <a
+                  href={mapboxPointUrl(data.provider_location.lat, data.provider_location.lng)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-700 underline"
+                >
+                  Open last location ↗
+                </a>
+                {data.destination ? (
+                  <a
+                    href={mapboxRouteUrl(
+                      { lat: data.provider_location.lat, lng: data.provider_location.lng },
+                      { lat: data.destination.lat, lng: data.destination.lng },
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-700 underline"
+                  >
+                    Route to address ↗
+                  </a>
+                ) : null}
+              </div>
+              <p className="pt-1 text-xs text-gray-500">
+                {data.location_event_count.toLocaleString()} GPS ping{data.location_event_count === 1 ? "" : "s"} recorded
+                {lastPing ? ` · last ${relTime(lastPing.recorded_at)}` : ""}
+              </p>
+            </div>
+          ) : data.location_event_count > 0 ? (
+            <p className="text-sm text-gray-600">
+              {data.location_event_count.toLocaleString()} GPS ping{data.location_event_count === 1 ? "" : "s"} recorded for
+              this booking, but no current live coordinate is available.
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500">
+              {isAtHome ? "No live location recorded for this booking." : "Location tracking applies to at-home bookings."}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Activity log */}
+      <div className="mt-6">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Activity log</h3>
+        {data.events.length === 0 ? (
+          <p className="text-sm text-gray-500">No activity events recorded.</p>
+        ) : (
+          <ul className="space-y-2.5">
+            {[...data.events].reverse().map((ev) => {
+              const meta = eventMeta(ev.event_type);
+              return (
+                <li key={ev.id} className="flex items-start gap-3 text-sm">
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONE_DOT[meta.tone]}`} />
+                  <div className="min-w-0">
+                    <span className={meta.tone === "red" ? "font-medium text-red-700" : "text-gray-800"}>{meta.label}</span>
+                    <span className="ml-2 text-xs tabular-nums text-gray-400">
+                      {fmtDateTime(ev.created_at)} · {relTime(ev.created_at)}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </AdminPanel>
   );
 }

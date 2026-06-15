@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -570,17 +570,5 @@ export function PayoutsContent() {
 }
 
 export default function PayoutsScreen() {
-  const handleBack = useProviderStackBack();
-
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Payouts"
-        showBack
-        onBack={handleBack}
-        subtitle="Withdraw earnings · More → Finance hub"
-      />
-      <PayoutsContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/money?tab=payouts" />;
 }

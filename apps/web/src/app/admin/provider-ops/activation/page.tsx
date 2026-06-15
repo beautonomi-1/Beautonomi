@@ -17,7 +17,16 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+
+type ActivationStage = "pending" | "draft" | "all";
+
+const STAGE_TABS: { key: ActivationStage; label: string }[] = [
+  { key: "pending", label: "Pending Approval" },
+  { key: "draft", label: "Drafts" },
+  { key: "all", label: "All" },
+];
 
 interface ActivationProvider {
   id: string;
@@ -51,9 +60,11 @@ const PAGE_SIZE = 50;
 export default function ActivationQueuePage() {
   const [providers, setProviders] = useState<ActivationProvider[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [stage, setStage] = useState<ActivationStage>("pending");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -72,6 +83,7 @@ export default function ActivationQueuePage() {
       setError(null);
       const params = new URLSearchParams();
       if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      params.set("stage", stage);
       params.set("page", String(page));
       params.set("limit", String(PAGE_SIZE));
 
@@ -94,16 +106,29 @@ export default function ActivationQueuePage() {
       else setError("Failed to load activation queue");
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
-  }, [debouncedSearch, page]);
+  }, [debouncedSearch, page, stage]);
 
   useEffect(() => {
     loadQueue();
   }, [loadQueue]);
 
-  const handleApprove = async (providerId: string) => {
+  const handleApprove = async (provider: ActivationProvider) => {
+    if (!provider.ready_to_activate) {
+      const missing: string[] = [];
+      if (!provider.activation_gates.has_business_name) missing.push("Business name");
+      if (!provider.activation_gates.has_location) missing.push("Location");
+      if (!provider.activation_gates.is_verified) missing.push("Verification");
+      const proceed = window.confirm(
+        `${provider.business_name || "This provider"} has not met all activation requirements.\n\n` +
+          `Missing: ${missing.join(", ")}\n\n` +
+          `Activating now overrides these checks. Continue anyway?`
+      );
+      if (!proceed) return;
+    }
     try {
-      await fetcher.patch(`/api/admin/providers/${providerId}`, {
+      await fetcher.patch(`/api/admin/providers/${provider.id}`, {
         status: "active",
       });
       toast.success("Provider activated");
@@ -113,7 +138,7 @@ export default function ActivationQueuePage() {
     }
   };
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="p-8">
         <LoadingTimeout loadingMessage="Loading activation queue..." />
@@ -136,9 +161,31 @@ export default function ActivationQueuePage() {
             Activation Queue
           </h1>
           <p className="text-sm text-zinc-500">
-            {total} providers awaiting approval
+            {total}{" "}
+            {stage === "draft"
+              ? "incomplete draft profiles"
+              : stage === "all"
+                ? "providers in onboarding"
+                : "providers awaiting approval"}
           </p>
         </div>
+
+        {/* Stage filter */}
+        <Tabs
+          value={stage}
+          onValueChange={(v) => {
+            setStage(v as ActivationStage);
+            setPage(1);
+          }}
+        >
+          <TabsList className="flex flex-wrap h-auto gap-1">
+            {STAGE_TABS.map((t) => (
+              <TabsTrigger key={t.key} value={t.key} className="text-xs px-3 py-1.5">
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {/* Search */}
         <div className="relative max-w-md">
@@ -158,7 +205,13 @@ export default function ActivationQueuePage() {
         {!error && providers.length === 0 && (
           <div className="text-center py-16 text-zinc-400">
             <CheckCircle2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>No providers pending approval</p>
+            <p>
+              {stage === "draft"
+                ? "No incomplete draft profiles"
+                : stage === "all"
+                  ? "No providers in onboarding"
+                  : "No providers pending approval"}
+            </p>
           </div>
         )}
 
@@ -183,13 +236,22 @@ export default function ActivationQueuePage() {
                     {p.days_waiting > 3 && (
                       <Badge className="text-[10px] bg-red-100 text-red-700">
                         <Clock className="h-2.5 w-2.5 mr-0.5" />
-                        {p.days_waiting}d waiting
+                        {p.days_waiting}d in queue
+                      </Badge>
+                    )}
+                    {p.ready_to_activate ? (
+                      <Badge className="text-[10px] bg-green-100 text-green-700">
+                        Ready
+                      </Badge>
+                    ) : (
+                      <Badge className="text-[10px] bg-zinc-100 text-zinc-600">
+                        Incomplete
                       </Badge>
                     )}
                   </div>
                   <p className="text-xs text-zinc-500 mt-1">
                     {p.owner_name || p.owner_email} ·{" "}
-                    Submitted {new Date(p.created_at).toLocaleDateString()}
+                    Created {new Date(p.created_at).toLocaleDateString()}
                   </p>
 
                   {/* Activation gates */}
@@ -217,10 +279,15 @@ export default function ActivationQueuePage() {
                   </Link>
                   <Button
                     size="sm"
-                    className="text-xs bg-green-600 hover:bg-green-700"
-                    onClick={() => handleApprove(p.id)}
+                    className={`text-xs ${
+                      p.ready_to_activate
+                        ? "bg-green-600 hover:bg-green-700"
+                        : "bg-amber-500 hover:bg-amber-600"
+                    }`}
+                    onClick={() => handleApprove(p)}
                   >
-                    <CheckCircle2 className="h-3 w-3 mr-1" /> Approve
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    {p.ready_to_activate ? "Approve" : "Override & Approve"}
                   </Button>
                 </div>
               </div>

@@ -11,8 +11,13 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
+
+type GeoPeriod = "30d" | "90d" | "1y" | "all";
 
 interface GeoData {
+  period?: string;
+  booking_window_note?: string;
   summary: {
     total_provider_locations: number;
     unique_providers: number;
@@ -57,12 +62,14 @@ export function AnalyticsGeoPage() {
   useAdminDocumentTitle("Geo & Device Analytics");
   const { allowed, denied } = useSuperadminPage("Geo & Device Analytics is superadmin-only.");
   const [tab, setTab] = useState<"geography" | "devices" | "bookings">("geography");
+  const [period, setPeriod] = useState<GeoPeriod>("all");
   const [providerSearch, setProviderSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
 
   const q = useQuery({
-    queryKey: adminQueryKeys.analyticsGeo(),
-    queryFn: () => adminApi.getJson<GeoData>("/api/admin/analytics/geo", { timeoutMs: 30_000 }),
+    queryKey: adminQueryKeys.analyticsGeo(period),
+    queryFn: () =>
+      adminApi.getJson<GeoData>(`/api/admin/analytics/geo?period=${period}`, { timeoutMs: 30_000 }),
     enabled: allowed,
   });
 
@@ -102,7 +109,24 @@ export function AnalyticsGeoPage() {
       <AdminPageHeader
         title="Geo & Device Analytics"
         description="Understand where your providers and customers are, and how they access the platform."
+        actions={
+          <select
+            className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-gray-950/[0.04]"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as GeoPeriod)}
+            aria-label="Booking window"
+          >
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="1y">Last year</option>
+            <option value="all">All time</option>
+          </select>
+        }
       />
+
+      {data.booking_window_note && (
+        <p className="text-xs text-gray-500">{data.booking_window_note}</p>
+      )}
 
       {/* Summary KPIs */}
       <AdminPanel>
@@ -111,7 +135,7 @@ export function AnalyticsGeoPage() {
             { label: "Provider Locations", value: data.summary.unique_providers.toLocaleString(), sub: `${data.summary.provider_cities} cities` },
             { label: "Customer Addresses", value: data.summary.unique_customers.toLocaleString(), sub: `${data.summary.customer_cities} cities` },
             { label: "Registered Devices", value: data.summary.total_devices.toLocaleString(), sub: `${data.summary.active_devices_30d} active (30d)` },
-            { label: "Avg Booking Value", value: `R ${data.booking_value.avg_booking_value.toFixed(2)}`, sub: `R ${data.booking_value.total.toFixed(2)} total` },
+            { label: "Avg Booking Value", value: formatAdminCurrency(data.booking_value.avg_booking_value), sub: `${formatAdminCurrency(data.booking_value.total)} total` },
           ].map(({ label, value, sub }) => (
             <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
               <div className="text-xs text-gray-500">{label}</div>
@@ -304,17 +328,17 @@ export function AnalyticsGeoPage() {
             <AdminPanel>
               <div className="text-xs text-gray-500 mb-1">At-Home Bookings</div>
               <div className="text-2xl font-bold text-gray-900">{data.booking_value.at_home.count.toLocaleString()}</div>
-              <div className="mt-1 text-sm text-gray-500">Value: R {data.booking_value.at_home.value.toFixed(2)}</div>
+              <div className="mt-1 text-sm text-gray-500">Value: {formatAdminCurrency(data.booking_value.at_home.value)}</div>
             </AdminPanel>
             <AdminPanel>
               <div className="text-xs text-gray-500 mb-1">At-Salon Bookings</div>
               <div className="text-2xl font-bold text-gray-900">{data.booking_value.at_salon.count.toLocaleString()}</div>
-              <div className="mt-1 text-sm text-gray-500">Value: R {data.booking_value.at_salon.value.toFixed(2)}</div>
+              <div className="mt-1 text-sm text-gray-500">Value: {formatAdminCurrency(data.booking_value.at_salon.value)}</div>
             </AdminPanel>
             <AdminPanel>
               <div className="text-xs text-gray-500 mb-1">Average Booking Value</div>
-              <div className="text-2xl font-bold text-gray-900">R {data.booking_value.avg_booking_value.toFixed(2)}</div>
-              <div className="mt-1 text-sm text-gray-500">Total GMV: R {data.booking_value.total.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-gray-900">{formatAdminCurrency(data.booking_value.avg_booking_value)}</div>
+              <div className="mt-1 text-sm text-gray-500">Total GMV: {formatAdminCurrency(data.booking_value.total)}</div>
             </AdminPanel>
           </div>
           <AdminPanel>
@@ -332,7 +356,7 @@ export function AnalyticsGeoPage() {
                   <span className="font-medium text-gray-900">{b.city}</span>
                   <div className="text-right text-xs text-gray-500">
                     <span className="font-semibold text-gray-900">{b.count}</span> bookings ·{" "}
-                    <span className="font-semibold text-pink-700">R {b.value.toFixed(2)}</span>
+                    <span className="font-semibold text-pink-700">{formatAdminCurrency(b.value)}</span>
                     <span className="ml-2 text-purple-600">{b.at_home} home</span>
                     <span className="ml-1 text-blue-600">{b.at_salon} salon</span>
                   </div>
@@ -359,7 +383,7 @@ export function AnalyticsGeoPage() {
                     <tr key={b.city} className="hover:bg-gray-50">
                       <td className="py-2 font-medium text-gray-900">{b.city}</td>
                       <td className="py-2 text-right">{b.count}</td>
-                      <td className="py-2 text-right font-medium">R {b.value.toFixed(2)}</td>
+                      <td className="py-2 text-right font-medium">{formatAdminCurrency(b.value)}</td>
                       <td className="py-2 text-right text-purple-600">{b.at_home}</td>
                       <td className="py-2 text-right text-blue-600">{b.at_salon}</td>
                     </tr>

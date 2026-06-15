@@ -78,6 +78,7 @@ const BASE_EXPO_CONFIG = {
       "onesignal-expo-plugin",
       { mode: oneSignalMode },
     ],
+    "./plugins/onesignal-disable-launch-url/app.plugin.js",
     "expo-notifications",
     "expo-router",
     "expo-font",

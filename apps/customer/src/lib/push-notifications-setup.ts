@@ -14,7 +14,7 @@ export function configureNativePushNotifications() {
           shouldShowAlert: true,
           shouldPlaySound: true,
           // OS badge is driven by NotificationsContext + server count (not push payload alone).
-          shouldSetBadge: false,
+          shouldSetBadge: true,
           shouldShowBanner: true,
           shouldShowList: true,
         }),

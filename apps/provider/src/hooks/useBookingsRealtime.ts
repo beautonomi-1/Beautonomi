@@ -71,18 +71,6 @@ export function useBookingsRealtime(
         {
           event: "*",
           schema: "public",
-          table: "booking_services",
-          filter: `bookings!inner(provider_id=eq.${providerId})`,
-        },
-        () => {
-          scheduleBookingsRefresh();
-        },
-      )
-      .on(
-        "postgres_changes" as never,
-        {
-          event: "*",
-          schema: "public",
           table: "time_blocks",
           filter: `provider_id=eq.${providerId}`,
         },

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
 
     const [
       pendingRes,
+      draftRes,
       activeRes,
       totalLeadsHead,
       leadsWeekHead,
@@ -41,11 +42,18 @@ export async function GET(request: NextRequest) {
       recentActivitiesRes,
       duplicateScanRes,
     ] = await Promise.all([
+      // Truly submitted and awaiting review (the urgent signal).
       supabase
         .from("providers")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
-        .in("status", ["draft", "pending_approval"]),
+        .eq("status", "pending_approval"),
+      // Incomplete provider records still being built — informational, not urgent.
+      supabase
+        .from("providers")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("status", "draft"),
       supabase
         .from("providers")
         .select("id", { count: "exact", head: true })
@@ -221,6 +229,7 @@ export async function GET(request: NextRequest) {
         leads_this_week: leadsWeekHead.count ?? 0,
         active_providers: activeRes.count || 0,
         total_leads: totalLeadsHead.count ?? 0,
+        draft_providers: draftRes.count || 0,
       },
       pipeline: leadsByStage,
       recent_activities: recentActivities ?? [],

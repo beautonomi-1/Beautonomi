@@ -5,7 +5,7 @@ import { Platform, Text, TouchableOpacity, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
 import { NotificationsProvider } from "@/providers/NotificationsContext";
 import { SelectedAddressProvider } from "@/providers/SelectedAddressProvider";
@@ -144,7 +144,7 @@ function RootLayout() {
   return (
     <ErrorBoundary>
       <View style={rootStyle}>
-        <SafeAreaProvider>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <MarketHostBootstrap />
           <ThemeProvider>
             <LanguageReactiveRoot>

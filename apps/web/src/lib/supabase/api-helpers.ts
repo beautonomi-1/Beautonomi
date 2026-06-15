@@ -291,6 +291,60 @@ async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
   };
 }
 
+/**
+ * Best-effort audit of a blocked admin request (MFA not satisfied). Runs only on
+ * the denial path, so the extra auth lookup is acceptable. Never throws — a
+ * logging failure must not change the security decision.
+ */
+async function auditAdminMfaDenied(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  request: NextRequest | Request,
+  userRole: UserRole | string | null | undefined,
+  reason: string,
+): Promise<void> {
+  try {
+    const { writeAuditLog, extractRequestMeta } = await import("@/lib/audit/audit");
+    let actorUserId: string | null = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      actorUserId = data.user?.id ?? null;
+    } catch {
+      actorUserId = null;
+    }
+    let route: string | null = null;
+    try {
+      route = new URL(request.url).pathname;
+    } catch {
+      route = null;
+    }
+    const meta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: actorUserId,
+      actor_role: userRole ? String(userRole) : null,
+      action: "admin.access.mfa_denied",
+      entity_type: "admin_session",
+      entity_id: actorUserId,
+      module: "users_trust",
+      risk_level: "high",
+      status: "failed",
+      reason,
+      metadata: { route },
+      ip_address: meta.ip_address,
+      user_agent: meta.user_agent,
+    });
+  } catch {
+    // Swallow — auditing is best-effort and must never block the security path.
+  }
+}
+
+/**
+ * Enforce admin MFA (AAL2) when the platform security policy requires it.
+ *
+ * The requirement is governed SOLELY by platform_settings.security.two_factor
+ * ({ enabled, required_for_admins }), so superadmins control it from the admin
+ * Security page in every environment — including production. There is no
+ * environment-based override; the DB toggle is always authoritative.
+ */
 export async function requireAdminMfaIfRequired(
   request?: NextRequest | Request,
   userRole?: UserRole | string | null
@@ -299,16 +353,24 @@ export async function requireAdminMfaIfRequired(
   if (userRole && !(ALL_ADMIN_ROLES as readonly string[]).includes(String(userRole))) return;
 
   const policy = await getAdminTwoFactorPolicy();
-  if (!policy.enabled || !policy.required_for_admins) return;
+  const mfaRequired = policy.enabled && policy.required_for_admins;
+  if (!mfaRequired) return;
 
   const supabase = await getSupabaseServer(request);
   const mfa = (supabase as unknown as SupabaseMfaApi).auth?.mfa;
   if (!mfa?.getAuthenticatorAssuranceLevel) {
+    await auditAdminMfaDenied(supabase, request, userRole, "mfa_api_unavailable");
     throw adminMfaRequiredError("Multi-factor authentication is unavailable. Sign in again and complete MFA.");
   }
 
   const { data, error } = await mfa.getAuthenticatorAssuranceLevel();
   if (error || data?.currentLevel !== "aal2") {
+    await auditAdminMfaDenied(
+      supabase,
+      request,
+      userRole,
+      error ? "aal_check_error" : "session_not_aal2",
+    );
     throw adminMfaRequiredError();
   }
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { purgePlatformUserAccountFully } from "@/lib/account/purge-platform-user";
 import { collectUserPurgeSnapshot } from "@/lib/account/compliance-purge-snapshot";
 import {
@@ -92,6 +93,20 @@ export async function POST(request: NextRequest) {
       return Response.json(
         { data: null, error: { message: "Cannot purge another superadmin account", code: "PERMISSION_DENIED" } },
         { status: 403 },
+      );
+    }
+
+    const accessible = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, user_id);
+    if (!accessible) {
+      return Response.json(
+        {
+          data: null,
+          error: {
+            message: "User not found in this tenant scope",
+            code: "USER_NOT_FOUND",
+          },
+        },
+        { status: 404 },
       );
     }
 

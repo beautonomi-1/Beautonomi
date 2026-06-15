@@ -11,7 +11,7 @@ import {
   Share,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -70,7 +70,7 @@ function formatDateSafe(
 const currentYear = new Date().getFullYear();
 const YEAR_OPTIONS = [currentYear, currentYear - 1, currentYear - 2];
 
-export default function VATReportsScreen() {
+export function VATReportsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [refreshing, setRefreshing] = useState(false);
@@ -157,7 +157,7 @@ export default function VATReportsScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="VAT Reports" onBack={() => router.back()} />
+        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -168,7 +168,7 @@ export default function VATReportsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="VAT Reports" onBack={() => router.back()} />
+        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -180,7 +180,7 @@ export default function VATReportsScreen() {
   if (!payload.provider?.is_vat_registered) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="VAT Reports" onBack={() => router.back()} />
+        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 px-4 pt-4")}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-6 items-center")}>
             <Ionicons name="alert-circle-outline" size={48} color="#9ca3af" />
@@ -206,11 +206,13 @@ export default function VATReportsScreen() {
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
-      <ScreenHeader
-        title="VAT Reports"
-        subtitle={payload.provider?.vat_number ? `VAT No. ${payload.provider.vat_number}` : "Bi-monthly SARS submission"}
-        onBack={() => router.back()}
-      />
+      {!embedded ? (
+        <ScreenHeader
+          title="VAT Reports"
+          subtitle={payload.provider?.vat_number ? `VAT No. ${payload.provider.vat_number}` : "Bi-monthly SARS submission"}
+          onBack={() => router.back()}
+        />
+      ) : null}
       <View style={twStyle("mb-4")}>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Year</Text>
         <View style={twStyle("flex-row rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden")}>
@@ -386,4 +388,8 @@ export default function VATReportsScreen() {
       )}
     </ScreenContainer>
   );
+}
+
+export default function VATReportsScreen() {
+  return <Redirect href="/(app)/(tabs)/more/billing?tab=vat" />;
 }

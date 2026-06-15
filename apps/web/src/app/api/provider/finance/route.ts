@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -59,25 +59,7 @@ export async function GET(request: NextRequest) {
     const db = getSupabaseAdmin();
     
     if (!providerId) {
-      const { data: platformRow } = await (supabase as any)
-        .from("platform_settings")
-        .select("settings")
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-      const minimumPayout = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
-      return successResponse({
-        earnings: {
-          total_earnings: 0,
-          pending_payouts: 0,
-          available_balance: 0,
-          minimum_payout_amount: minimumPayout,
-          this_month: 0,
-          last_month: 0,
-          growth_percentage: 0,
-        },
-        transactions: [],
-      });
+      return notFoundResponse("Provider not found");
     }
 
     const { data: prow } = await supabase

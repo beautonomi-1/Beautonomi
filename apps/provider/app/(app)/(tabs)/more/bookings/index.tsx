@@ -7,7 +7,6 @@ import {
   FlatList,
   SectionList,
   RefreshControl,
-  AppState,
   Animated,
 } from "react-native";
 import {
@@ -317,6 +316,37 @@ export default function BookingsListScreen() {
   const selectedDateKey = useMemo(() => {
     return formatBusinessDayYYYYMMDD(selectedDate, providerTimezone);
   }, [selectedDate, providerTimezone]);
+
+  const DATE_STRIP_ITEM_WIDTH = 62;
+  const DATE_STRIP_TODAY_INDEX = 30;
+  const dateStripRef = useRef<FlatList<Date>>(null);
+  const dateStripInitialScrollDoneRef = useRef(false);
+
+  const scrollDateStripToIndex = useCallback((index: number, animated = false) => {
+    if (index < 0) return;
+    dateStripRef.current?.scrollToIndex({ index, animated, viewPosition: 0.5 });
+  }, []);
+
+  const onDateStripScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      dateStripRef.current?.scrollToOffset({
+        offset: Math.max(0, info.averageItemLength * info.index),
+        animated: false,
+      });
+      setTimeout(() => {
+        scrollDateStripToIndex(info.index, false);
+      }, 100);
+    },
+    [scrollDateStripToIndex],
+  );
+
+  useEffect(() => {
+    if (viewMode !== "day" || dateStripInitialScrollDoneRef.current) return;
+    requestAnimationFrame(() => {
+      scrollDateStripToIndex(DATE_STRIP_TODAY_INDEX, false);
+      dateStripInitialScrollDoneRef.current = true;
+    });
+  }, [viewMode, scrollDateStripToIndex]);
 
   useEffect(() => {
     const bookingId =
@@ -662,28 +692,37 @@ export default function BookingsListScreen() {
   //  2. Supabase realtime channel on `bookings` filtered by provider_id
   //     — debounced 400ms refresh when any booking row changes, matching
   //     calendar.tsx behaviour so both surfaces converge.
-  useFocusEffect(
-    useCallback(() => {
-      setBookingsListFocused(true);
-      void refreshAllBookings();
-      return () => setBookingsListFocused(false);
-    }, [refreshAllBookings]),
-  );
-
-  // Keep a stable ref to the latest refresh so the realtime effect doesn't
-  // need to re-subscribe every time refresh changes identity (which happens
-  // on every data fetch, causing "cannot add postgres_changes after subscribe").
+  // Keep a stable ref to the latest refresh so the focus / realtime / AppState
+  // effects can call it without re-subscribing or re-firing every time refresh
+  // changes identity (which happens whenever filters or fetched data change,
+  // and also caused "cannot add postgres_changes after subscribe").
   const refreshRef = useRef(refreshAllBookings);
   useEffect(() => { refreshRef.current = refreshAllBookings; }, [refreshAllBookings]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active" && bookingsListFocused) {
-        refreshRef.current();
+  // The paged bookings hooks already fetch on mount and refetch when their
+  // filters (date range / location / view mode) change. The focus refresh only
+  // needs to cover *returning* to the list (e.g. back from a booking detail),
+  // so skip the very first focus — otherwise every bookings query fires twice
+  // on screen entry. An empty dep list (via refreshRef) also stops this from
+  // re-running on filter churn the underlying hooks already handle.
+  const hasFocusedOnceRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      setBookingsListFocused(true);
+      if (hasFocusedOnceRef.current) {
+        void refreshRef.current();
+      } else {
+        hasFocusedOnceRef.current = true;
       }
-    });
-    return () => sub.remove();
-  }, [bookingsListFocused]);
+      return () => setBookingsListFocused(false);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
+
+  // Note: app-foreground refresh is handled centrally — AuthProvider emits
+  // `beautonomi:app:focus` on AppState "active", and each paged bookings hook
+  // silently refetches on that event. A screen-level AppState listener here
+  // would just fire every bookings query a second time on resume.
 
   const closedDateKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -1089,17 +1128,19 @@ export default function BookingsListScreen() {
         {viewMode === "day" ? (
           <>
             <FlatList<Date>
+              ref={dateStripRef}
               horizontal
               data={stripDays}
               keyExtractor={(d: Date) => d.toISOString()}
               showsHorizontalScrollIndicator={false}
-              initialScrollIndex={30}
               initialNumToRender={40}
+              removeClippedSubviews={false}
               getItemLayout={(_item: Date | ArrayLike<Date> | null | undefined, index: number) => ({
-                length: 62,
-                offset: 62 * index,
+                length: DATE_STRIP_ITEM_WIDTH,
+                offset: DATE_STRIP_ITEM_WIDTH * index,
                 index,
               })}
+              onScrollToIndexFailed={onDateStripScrollToIndexFailed}
               contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8 }}
               renderItem={({ item: day }: { item: Date }) => {
                 const key = formatBusinessDayYYYYMMDD(day, providerTimezone);
@@ -1484,7 +1525,7 @@ export default function BookingsListScreen() {
             ) : null
           }
           stickySectionHeadersEnabled={false}
-          extraData={`${filtered.length}:${refreshing}:${viewMode}:${listSort}`}
+          extraData={`${filtered.length}:${stripBookingsMerged.length}:${selectedDateKey}:${refreshing}:${viewMode}:${listSort}`}
           removeClippedSubviews={false}
           initialNumToRender={12}
           windowSize={7}

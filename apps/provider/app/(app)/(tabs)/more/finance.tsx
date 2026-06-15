@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Redirect } from "expo-router";
 import {
   View,
   Text,
@@ -10,10 +11,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
-import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
@@ -157,7 +156,7 @@ export function FinanceOverviewContent() {
   const url = `/api/provider/finance?range=${range}&transaction_feed=all&tx_limit=${txLimit}${
     selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
   }`;
-  const { data, loading, error, refresh } = useApi<FinanceData>(url);
+  const { data, loading, error, errorCode, refresh } = useApi<FinanceData>(url);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -178,7 +177,7 @@ export function FinanceOverviewContent() {
   if (error && !data) {
     return (
       <View style={twStyle("flex-1 justify-center px-4")}>
-        <ErrorState message={error} onRetry={refresh} />
+        <FinanceReportError error={error} errorCode={errorCode} onRetry={refresh} />
       </View>
     );
   }
@@ -470,11 +469,5 @@ export function FinanceOverviewContent() {
 }
 
 export default function FinanceScreen() {
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Finance" showBack />
-      <ActiveLocationChip />
-      <FinanceOverviewContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/money?tab=overview" />;
 }

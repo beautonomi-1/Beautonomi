@@ -8,7 +8,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -45,7 +45,7 @@ function isPayrollOwnerRole(role: string | null): boolean {
   return role === "provider_owner" || role === "superadmin";
 }
 
-export default function PayrollScreen() {
+export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const { role } = useProvider();
@@ -168,49 +168,22 @@ export default function PayrollScreen() {
 
   if (loading && !data && !loadError) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Payroll" showBack />
-        <View style={twStyle("flex-1 items-center justify-center py-12")}>
-          <LoadingState />
-        </View>
-      </ScreenContainer>
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
+        <LoadingState />
+      </View>
     );
   }
 
   if (loadError && !data) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Payroll" showBack />
-        <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={loadError} onRetry={refresh} />
-        </View>
-      </ScreenContainer>
+      <View style={twStyle("flex-1 justify-center px-4")}>
+        <ErrorState message={loadError} onRetry={refresh} />
+      </View>
     );
   }
 
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Payroll"
-        showBack
-        subtitle={`${payRuns.length} pay run${payRuns.length === 1 ? "" : "s"}`}
-        rightAction={
-          isOwner ? (
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setPeriodDate(new Date());
-                setPeriodType("weekly");
-                setCreateOpen(true);
-              }}
-              style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
-            >
-              <Ionicons name="add" size={18} color="#fff" />
-              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
-            </TouchableOpacity>
-          ) : undefined
-        }
-      />
+  const listBody = (
+    <>
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
@@ -377,6 +350,46 @@ export default function PayrollScreen() {
           fullWidth
         />
       </BottomSheet>
+    </>
+  );
+
+  const newRunButton = isOwner ? (
+    <TouchableOpacity
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setPeriodDate(new Date());
+        setPeriodType("weekly");
+        setCreateOpen(true);
+      }}
+      style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
+    >
+      <Ionicons name="add" size={18} color="#fff" />
+      <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
+    </TouchableOpacity>
+  ) : null;
+
+  if (embedded) {
+    return (
+      <View style={twStyle("flex-1")}>
+        {newRunButton ? <View style={twStyle("mb-2 flex-row justify-end px-4")}>{newRunButton}</View> : null}
+        {listBody}
+      </View>
+    );
+  }
+
+  return (
+    <ScreenContainer scrollable={false}>
+      <ScreenHeader
+        title="Payroll"
+        showBack
+        subtitle={`${payRuns.length} pay run${payRuns.length === 1 ? "" : "s"}`}
+        rightAction={newRunButton}
+      />
+      {listBody}
     </ScreenContainer>
   );
+}
+
+export default function PayrollScreen() {
+  return <Redirect href="/(app)/(tabs)/more/team-pay?tab=payroll" />;
 }

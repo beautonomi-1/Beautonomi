@@ -168,9 +168,14 @@ export function TenantResetPage() {
         title="Tenant transactional reset"
         description={
           <>
-            <strong>Clean slate for a tenant.</strong> Wipes bookings, payments, orders, wallet/ledger movements,
-            reviews, conversations, notifications, and support tickets scoped to that tenant. Preserves
-            users, providers, services, products, catalog, platform settings, and tenant config.
+            <strong>Clean slate for a tenant.</strong> Wipes bookings, payments, orders, ledger/journal entries,
+            reviews, conversations, notifications, support tickets, provider gamification, group bookings, explore
+            posts, waitlist, ad campaigns, payouts, provider invoices, recurring appointments, VAT reminders,
+            payment webhook events, promotion usage, and gift-card/loyalty redemptions scoped to that tenant — then
+            recomputes cached aggregates from surviving data (provider rating, reviews, bookings, payouts, badge,
+            and wallet balances). Preserves users, providers, services, products, badge/coupon/loyalty config,
+            platform settings, tenant config, and cross-tenant user-global data (referrals, coupons, milestone
+            awards, non-booking loyalty).
           </>
         }
       />

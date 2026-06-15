@@ -21,7 +21,7 @@ interface DashboardData {
     duplicate_groups?: number;
     duplicate_leads?: number;
   };
-  kpis: { signups_today: number; signups_this_week: number; leads_this_week: number; active_providers: number; total_leads: number };
+  kpis: { signups_today: number; signups_this_week: number; leads_this_week: number; active_providers: number; total_leads: number; draft_providers?: number };
   pipeline: Record<string, number>;
   recent_activities: { id: string; activity_type: string; description: string; created_at: string }[];
 }
@@ -93,11 +93,12 @@ export function ProviderOpsDashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <KpiCard label="Signups Today" value={data.kpis.signups_today} />
         <KpiCard label="Signups This Week" value={data.kpis.signups_this_week} />
         <KpiCard label="Leads This Week" value={data.kpis.leads_this_week} />
         <KpiCard label="Active Providers" value={data.kpis.active_providers} />
+        <KpiCard label="Draft Profiles" value={data.kpis.draft_providers ?? 0} />
         <KpiCard label="Total Leads" value={data.kpis.total_leads} />
       </div>
 

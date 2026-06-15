@@ -34,10 +34,8 @@ import {
 import { format } from "date-fns";
 import Link from "next/link";
 import { MapPin, Smartphone } from "lucide-react";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
-const CURRENCY_CODE = "R";
-const formatCurrency = (value: number) =>
-  `${CURRENCY_CODE} ${(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatGrowth = (growth: number | undefined | null) => {
   if (growth == null || (typeof growth === "number" && Number.isNaN(growth))) return "No growth data";
   if (growth > 0) return `+${growth}% growth`;
@@ -73,6 +71,11 @@ interface AnalyticsData {
       no_show: number;
     };
   };
+  bookingsByChannel?: Array<{
+    channel: string;
+    count: number;
+    percentage: number;
+  }>;
   topProviders: Array<{
     provider_id: string;
     business_name: string;
@@ -87,11 +90,18 @@ export default function AdminAnalytics() {
   const [stats, setStats] = useState<any>(null);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [period, setPeriod] = useState("30d");
+  const { format: formatCurrency } = useReportCurrency();
 
+  // Dashboard KPI cards + revenue breakdown are lifetime / current-month figures
+  // and do NOT depend on the period selector, so only load them once on mount.
   useEffect(() => {
     loadAnalytics();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+
+  // The period selector only drives the detailed time-series / breakdown charts.
+  useEffect(() => {
     loadDetailedAnalytics();
-  }, [period]); // eslint-disable-line react-hooks/exhaustive-deps -- load when period changes
+  }, [period]); // eslint-disable-line react-hooks/exhaustive-deps -- reload charts when period changes
 
   const loadAnalytics = async () => {
     try {
@@ -172,6 +182,7 @@ export default function AdminAnalytics() {
             <h1 className="text-3xl font-bold text-gray-900">Analytics & Reports</h1>
             <p className="text-gray-600 mt-1">Platform analytics and business intelligence</p>
           </div>
+          <div className="flex flex-col items-end gap-1">
           <div className="flex items-center gap-2">
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[140px]">
@@ -210,6 +221,10 @@ export default function AdminAnalytics() {
                 Export CSV
               </Button>
             </div>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Period applies to the time-series charts. KPI cards &amp; revenue breakdown are lifetime / current-month.
+          </p>
           </div>
         </div>
 
@@ -530,7 +545,7 @@ export default function AdminAnalytics() {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
@@ -567,7 +582,7 @@ export default function AdminAnalytics() {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
@@ -612,6 +627,46 @@ export default function AdminAnalytics() {
                       <Tooltip formatter={(value: number) => formatCurrency(Number(value))} />
                       <Legend />
                       <Bar dataKey="revenue" fill="#0088FE" name="Revenue" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Bookings by Channel */}
+            {(analyticsData.bookingsByChannel?.length ?? 0) > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Bookings by Channel</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Counts by booking source in the selected period (online, walk-in, etc.). Online includes app/web self-service.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={analyticsData.bookingsByChannel ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="channel"
+                        tickFormatter={(v: string) =>
+                          v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                        }
+                      />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip
+                        formatter={(value: number, _name, item) => [
+                          `${value} (${(item?.payload?.percentage ?? 0).toFixed(1)}%)`,
+                          "Bookings",
+                        ]}
+                        labelFormatter={(v: string) =>
+                          v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                        }
+                      />
+                      <Bar dataKey="count" name="Bookings" radius={[4, 4, 0, 0]}>
+                        {(analyticsData.bookingsByChannel ?? []).map((_, index) => (
+                          <Cell key={`channel-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
