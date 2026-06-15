@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { patchAmplitudeEngagementGradle } from "./patch-amplitude-android-gradle.mjs";
+import { patchAllAmplitudeGradlePlugins } from "./patch-amplitude-android-gradle.mjs";
 
 if (process.env.EAS_BUILD_PLATFORM !== "android") {
   process.exit(0);
@@ -19,13 +19,9 @@ const analyticsPkg = join(monorepoRoot, "packages", "analytics");
 
 if (existsSync(join(analyticsPkg, "package.json"))) {
   try {
-    const pkgJson = execSync(
-      'node --print "require.resolve(\'@amplitude/plugin-engagement-react-native/package.json\')"',
-      { cwd: analyticsPkg, encoding: "utf8" },
-    ).trim();
-    patchAmplitudeEngagementGradle(join(pkgJson, "..", "android", "build.gradle"));
+    patchAllAmplitudeGradlePlugins(monorepoRoot);
   } catch {
-    console.warn("[eas-post-install] Amplitude engagement plugin not resolved — skipping pin");
+    console.warn("[eas-post-install] Amplitude Gradle pin failed — skipping");
   }
 }
 

@@ -38,7 +38,7 @@ function upsertGradleProperty(body, line) {
   return `${body.trimEnd()}\n${line}\n`;
 }
 
-function patchAmplitudeEngagementDependency(appRoot) {
+function patchAmplitudeAndroidGradlePlugins(appRoot) {
   const scriptPath = path.join(appRoot, "../../tooling/patch-amplitude-android-gradle.mjs");
   if (!fs.existsSync(scriptPath)) {
     return;
@@ -59,7 +59,7 @@ function patchAmplitudeEngagementDependency(appRoot) {
 /**
  * Hardens Android Gradle for EAS / CI:
  * - Drops JitPack (Beautonomi native deps use Maven Central / Google / vendor repos).
- * - Pins @amplitude/plugin-engagement-react-native analytics-android (upstream uses 1.+).
+ * - Pins Amplitude RN plugin Android deps (engagement 1.+, session-replay ranges).
  * - Longer Gradle wrapper + HTTP timeouts for flaky CI networks.
  */
 module.exports = function withGradleWrapperResilience(config) {
@@ -74,7 +74,7 @@ module.exports = function withGradleWrapperResilience(config) {
       const androidRoot = cfg.modRequest.platformProjectRoot;
       const appRoot = cfg.modRequest.projectRoot;
 
-      patchAmplitudeEngagementDependency(appRoot);
+      patchAmplitudeAndroidGradlePlugins(appRoot);
 
       const wrapperPropsPath = path.join(
         androidRoot,
