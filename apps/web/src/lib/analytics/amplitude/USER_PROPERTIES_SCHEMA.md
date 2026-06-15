@@ -75,7 +75,7 @@ Event properties (track) are redacted by PrivacyPlugin (see `plugins/privacy.ts`
 ## Session replay & consent (behavior)
 
 - **Web:** Session Replay (Amplitude browser plugin) is enabled only for **authenticated** sessions that pass the consent check. Anonymous visitors get events (when the portal is enabled) **without** session replay. If `/api/me/analytics/consent` is missing, errors, or returns non-OK, the SDK is **not** initialized for that user (fail-closed). **Superadmin** never loads the Amplitude SDK (no events, no identify).
-- **Mobile (Expo):** `SessionReplayPlugin` is added only when `initAnalytics(..., { enableSessionReplay: true })`, i.e. when a user is signed in and consent is verified. Anonymous app use uses `enableSessionReplay: false`. Logged-in users: same fail-closed consent rule as web (API error → no init).
+- **Mobile (Expo):** Amplitude Session Replay is not loaded. Logged-in users still use the same fail-closed analytics consent rule as web (API error → no init).
 - **Identify:** User traits are sent to Amplitude only from **POST /api/me/analytics/identify** responses. Clients do not fall back to partial / client-only identify on API failure.
 
 ## Implementation

@@ -9,7 +9,6 @@
 import * as amplitude from "@amplitude/analytics-react-native";
 import { add as amplitudeAdd } from "@amplitude/analytics-react-native";
 import { getPlugin, handleURL as engagementHandleURL } from "@amplitude/plugin-engagement-react-native";
-import { SessionReplayPlugin } from "@amplitude/plugin-session-replay-react-native";
 import type { AmplitudeConfig } from "./types";
 import { applyUserPropertiesToIdentify } from "./identify-helpers";
 import { getMobileAnalyticsAttribution } from "./mobile-attribution";
@@ -33,8 +32,6 @@ let currentConfig: AmplitudeConfig | null = null;
 let engagementEnabled = false;
 let engagementPluginAdded = false;
 let lastBootedEngagementUserId: string | null = null;
-/** Last session replay choice; mismatch → reset + re-init (e.g. sign-in). */
-let lastEnableSessionReplay: boolean | undefined = undefined;
 let lastPortal: "client" | "provider" | null = null;
 /** Ignores stale in-flight init when auth/bootstrap races (anonymous → signed-in). */
 let initGeneration = 0;
@@ -52,7 +49,6 @@ export function resetAnalyticsModule(): void {
   engagementEnabled = false;
   engagementPluginAdded = false;
   lastBootedEngagementUserId = null;
-  lastEnableSessionReplay = undefined;
   lastPortal = null;
 }
 
@@ -67,7 +63,6 @@ function clearAnalyticsModuleState(): void {
   engagementEnabled = false;
   engagementPluginAdded = false;
   lastBootedEngagementUserId = null;
-  lastEnableSessionReplay = undefined;
   lastPortal = null;
 }
 
@@ -91,14 +86,6 @@ export interface AnalyticsClient {
   reset: () => void;
 }
 
-export type InitAnalyticsOptions = {
-  /**
-   * When false, Session Replay is not loaded (anonymous / pre-consent).
-   * When true, replay uses admin-configured sampling_rate (0–1, default 0).
-   */
-  enableSessionReplay?: boolean;
-};
-
 /**
  * Initialize Amplitude from remote config.
  * When guides_enabled or surveys_enabled, adds the Engagement plugin (Guides & Surveys).
@@ -106,10 +93,8 @@ export type InitAnalyticsOptions = {
  */
 export async function initAnalytics(
   config: AmplitudeConfig,
-  portal: "client" | "provider",
-  options?: InitAnalyticsOptions
+  portal: "client" | "provider"
 ): Promise<AnalyticsClient | null> {
-  const enableSessionReplay = options?.enableSessionReplay ?? true;
   const enabled =
     portal === "client" ? config.enabled_client_portal : config.enabled_provider_portal;
   if (!config.api_key_public || !enabled) {
@@ -120,7 +105,6 @@ export async function initAnalytics(
 
   if (
     isInitialized &&
-    lastEnableSessionReplay === enableSessionReplay &&
     lastPortal === portal
   ) {
     try {
@@ -142,21 +126,8 @@ export async function initAnalytics(
     }
     isInitialized = true;
     currentConfig = config;
-    lastEnableSessionReplay = enableSessionReplay;
     lastPortal = portal;
     engagementEnabled = Boolean(config.guides_enabled || config.surveys_enabled);
-
-    if (enableSessionReplay) {
-      const sampleRate =
-        config.sampling_rate != null && config.sampling_rate >= 0 && config.sampling_rate <= 1
-          ? config.sampling_rate
-          : 0;
-      try {
-        await amplitudeAdd(new SessionReplayPlugin({ sampleRate })).promise;
-      } catch (replayErr) {
-        console.warn("[Amplitude] Session Replay plugin add failed:", replayErr);
-      }
-    }
 
     if (generation !== initGeneration) {
       return null;

@@ -63,8 +63,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
           );
           if (cancelled) return;
 
-          const enableSessionReplay = Boolean(user);
-          const client = await initAnalytics(config, "client", { enableSessionReplay });
+          const client = await initAnalytics(config, "client");
           if (cancelled) return;
 
           if (client) {

@@ -80,6 +80,7 @@ interface TrackerStats {
   active_in_wizard: number;
   slowing: number;
   by_step: Record<number, number>;
+  completed: number;
   pending_approval: number;
 }
 
@@ -188,7 +189,7 @@ export default function OnboardingTrackerPage() {
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <StatCard
               label="In Progress"
               value={stats.in_progress}
@@ -215,6 +216,11 @@ export default function OnboardingTrackerPage() {
               value={stats.dropped_off}
               color="text-red-800"
               highlight
+            />
+            <StatCard
+              label="Completed"
+              value={stats.completed}
+              color="text-teal-600"
             />
             <StatCard
               label="Pending Approval"

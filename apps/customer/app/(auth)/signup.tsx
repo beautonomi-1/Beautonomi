@@ -275,7 +275,7 @@ export default function SignupScreen() {
     if (password !== confirmPassword) newErrors.confirmPassword = "Passwords don't match";
     if (!agreedToTerms) {
       newErrors.terms =
-        "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics and optional session replay while signed in).";
+        "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in).";
     }
     if (phone.trim()) {
       const pErr = validatePhone(phone, countryCode);
@@ -429,7 +429,7 @@ export default function SignupScreen() {
       setErrors((p) => ({
         ...p,
         terms:
-          "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics and optional session replay while signed in).",
+          "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in).",
       }));
       return;
     }
@@ -751,7 +751,7 @@ export default function SignupScreen() {
             >
               Cookie Policy
             </Text>
-            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics and limited session replay. I can update analytics preferences in my account privacy settings.
+            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics. I can update analytics preferences in my account privacy settings.
           </Text>
         </TouchableOpacity>
         {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -8, marginBottom: 12 }}>{errors.terms}</Text> : null}
