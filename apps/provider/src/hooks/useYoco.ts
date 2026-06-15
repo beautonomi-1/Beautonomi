@@ -5,6 +5,52 @@
 import { useState, useEffect, useCallback } from "react";
 import { Alert, Linking } from "react-native";
 import { api } from "@/lib/api-client";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+
+/* ─── Platform availability gate ─── */
+
+/**
+ * The provider Yoco endpoints (`/api/provider/yoco/*`) are gated behind the
+ * `payment_yoco` platform feature flag per tenant/market. When it is off the
+ * server replies `403 { code: "YOCO_DISABLED_BY_PLATFORM" }`. Previously the
+ * booking-detail screen and payment sheet probed these endpoints on every open,
+ * producing a stream of 403s for providers in markets without Yoco.
+ *
+ * We avoid that by (1) proactively skipping the fetch when the public config
+ * bundle reports the flag disabled, and (2) remembering an observed platform
+ * 403 for the rest of the session so we never re-probe — even if the flag was
+ * absent from the bundle. We only ever skip after the server (or an explicit
+ * disabled flag) tells us to, so Yoco is never hidden when it should work.
+ */
+const YOCO_PLATFORM_DISABLED_CODE = "YOCO_DISABLED_BY_PLATFORM";
+const YOCO_PLATFORM_FLAG_KEY = "payment_yoco";
+
+let yocoPlatformDisabledForSession = false;
+
+/** Record an observed platform-level 403 so other hooks stop probing too. */
+function noteYocoPlatformDisabled(code: string | undefined): void {
+  if (code === YOCO_PLATFORM_DISABLED_CODE) {
+    yocoPlatformDisabledForSession = true;
+  }
+}
+
+/**
+ * Decide whether the gated Yoco endpoints should be called at all.
+ * `ready` is false until the config bundle has resolved so we don't skip
+ * prematurely on a cold start (or wrongly skip when the bundle failed to load
+ * and the flag is simply unknown — in that case we rely on the 403 cache).
+ */
+function useYocoPlatformAvailability(): { ready: boolean; disabled: boolean } {
+  const { bundle, isLoading, error } = useConfigBundle();
+  const flag = bundle?.flags?.[YOCO_PLATFORM_FLAG_KEY];
+  // Only treat the flag as a hard "off" when the bundle loaded cleanly and the
+  // flag is explicitly present and not enabled.
+  const flagDisabled = !isLoading && !error && flag != null && flag.enabled !== true;
+  return {
+    ready: !isLoading,
+    disabled: yocoPlatformDisabledForSession || flagDisabled,
+  };
+}
 
 /* ─── Types ─── */
 
@@ -132,6 +178,7 @@ function normalizeIntegrationPayload(raw: Record<string, unknown> | null | undef
 }
 
 export function useYocoIntegration() {
+  const { ready: platformReady, disabled: platformDisabled } = useYocoPlatformAvailability();
   const [integration, setIntegration] = useState<YocoIntegration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +189,7 @@ export function useYocoIntegration() {
     try {
       const res = await api.get<Record<string, unknown>>("/api/provider/yoco/integration");
       if (res.error) {
+        noteYocoPlatformDisabled(res.error.code);
         setError(res.error.message ?? "Failed to load Yoco status");
         setIntegration(null);
         return;
@@ -156,8 +204,16 @@ export function useYocoIntegration() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!platformReady) return;
+    // Yoco is off for this market/tenant — skip the gated call entirely.
+    if (platformDisabled) {
+      setIntegration(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    void load();
+  }, [platformReady, platformDisabled, load]);
 
   const connect = useCallback(
     async (apiKey: string | undefined, secretKey: string, webhookSecret?: string) => {
@@ -289,6 +345,7 @@ export function useYocoIntegration() {
 /* ─── Device Management ─── */
 
 export function useYocoDevices() {
+  const { ready: platformReady, disabled: platformDisabled } = useYocoPlatformAvailability();
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -358,6 +415,7 @@ export function useYocoDevices() {
         "/api/provider/yoco/devices",
       );
       if (res.error) {
+        noteYocoPlatformDisabled(res.error.code);
         setError(res.error.message);
       } else {
         const data = res.data;
@@ -378,8 +436,15 @@ export function useYocoDevices() {
   }, [normalizeDevice]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!platformReady) return;
+    if (platformDisabled) {
+      setDevices([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    void load();
+  }, [platformReady, platformDisabled, load]);
 
   const addDevice = useCallback(
     async (input: {

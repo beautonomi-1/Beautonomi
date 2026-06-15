@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Redirect } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -158,7 +159,7 @@ function createDefaultInvoiceForm(): InvoiceForm {
   };
 }
 
-export default function InvoicesScreen() {
+export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -408,27 +409,44 @@ export default function InvoicesScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Invoices"
-        showBack
-        subtitle={`${stats.total} invoices`}
-        rightAction={
-          <View style={twStyle("flex-row")}>
-            <TouchableOpacity
-              style={[twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100"), { marginRight: 8 }]}
-              onPress={handleExportAll}
-            >
-              <Ionicons name="download-outline" size={18} color="#374151" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
-              onPress={openCreateInvoice}
-            >
-              <Ionicons name="add" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      {!embedded ? (
+        <ScreenHeader
+          title="Invoices"
+          showBack
+          subtitle={`${stats.total} invoices`}
+          rightAction={
+            <View style={twStyle("flex-row")}>
+              <TouchableOpacity
+                style={[twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100"), { marginRight: 8 }]}
+                onPress={handleExportAll}
+              >
+                <Ionicons name="download-outline" size={18} color="#374151" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
+                onPress={openCreateInvoice}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      ) : (
+        <View style={twStyle("mb-2 flex-row items-center justify-end gap-2 px-4")}>
+          <TouchableOpacity
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
+            onPress={handleExportAll}
+          >
+            <Ionicons name="download-outline" size={18} color="#374151" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
+            onPress={openCreateInvoice}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
@@ -856,4 +874,8 @@ export default function InvoicesScreen() {
       </BottomSheet>
     </ScreenContainer>
   );
+}
+
+export default function InvoicesScreen() {
+  return <Redirect href="/(app)/(tabs)/more/billing?tab=invoices" />;
 }

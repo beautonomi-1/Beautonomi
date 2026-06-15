@@ -47,8 +47,11 @@ interface GamificationResponse {
     total_bookings: number;
     review_count: number;
     rating_average: number;
-    /** Net provider earnings from ledger (aligned with GET /api/provider/gamification). */
+    /** All-time recognized revenue (matches finance recognized_revenue_all_time). */
     total_earnings?: number;
+    recognized_revenue?: number;
+    net_earnings_after_refunds?: number;
+    refund_deduction?: number;
   };
 }
 
@@ -184,7 +187,22 @@ export function RewardsPointsContent() {
                   <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
                     {formatCurrency(stats.total_earnings)}
                   </Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Net earnings</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Total earned</Text>
+                  {(stats.refund_deduction ?? 0) > 0 &&
+                  typeof stats.net_earnings_after_refunds === "number" ? (
+                    <Text style={{ fontSize: 11, color: Colors.gray[400], marginTop: 2 }} numberOfLines={1}>
+                      {formatCurrency(stats.net_earnings_after_refunds)} after refunds
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+              {stats.total_bookings > 0 &&
+                (typeof stats.total_earnings !== "number" || stats.total_earnings <= 0) && (
+                <View style={{ width: "100%", paddingHorizontal: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                    Earnings appear here once payments are recorded in your finance ledger (online
+                    and platform-held payments). Cash collected directly may not show in this total.
+                  </Text>
                 </View>
               )}
             </View>

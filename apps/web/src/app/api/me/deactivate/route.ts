@@ -7,10 +7,11 @@ import {
   resolveAuthSecurityForUser,
   validateSensitiveActionCredentials,
 } from "@/lib/auth/validate-sensitive-action-input";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user: sessionUser } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const {
       data: { user: authUser },
@@ -60,8 +61,32 @@ export async function POST(request: NextRequest) {
       throw updateError;
     }
 
-    // Sign out the user after deactivation
-    await supabase.auth.signOut();
+    // Sign out the user after deactivation. Best-effort: the account is already
+    // deactivated, so a logout hiccup must not turn success into a 500. The
+    // client signs itself out regardless.
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      console.warn("Deactivate: post-update signOut failed (non-fatal):", signOutError);
+    }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: authUser.id,
+      actor_role: sessionUser.role ?? "customer",
+      action: "user.account.self_service_deactivate",
+      entity_type: "user",
+      entity_id: authUser.id,
+      module: "users_trust",
+      risk_level: sessionUser.role === "provider_owner" ? "high" : "medium",
+      status: "succeeded",
+      reason: reason ?? undefined,
+      metadata: {
+        deactivated_by: "user",
+      },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({ message: "Account deactivated successfully" });
   } catch (error) {

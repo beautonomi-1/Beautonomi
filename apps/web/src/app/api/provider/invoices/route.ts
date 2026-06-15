@@ -139,7 +139,6 @@ export async function GET(request: NextRequest) {
           acc.paid_amount += amount;
         }
         if (
-          row.status === "pending" ||
           row.status === "sent" ||
           row.status === "partially_paid" ||
           row.status === "overdue"

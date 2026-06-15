@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { Colors, Shadows } from "@/constants/colors";
-import { tabBarOuterHeight, TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
+import { tabBarBottomInset, tabBarOuterHeight } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -231,7 +231,7 @@ export default function CartScreen() {
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
-  const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const bottomSafe = tabBarBottomInset(insets.bottom);
   const bottomChromePadding = 12 + bottomSafe;
   const scrollBottomPadding = 28 + tabBarOuterHeight(insets.bottom) + bottomChromePadding;
 

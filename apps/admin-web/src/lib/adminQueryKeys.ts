@@ -27,6 +27,7 @@ export const adminQueryKeys = {
     list: (filters: { statusFilter: string; dateFilter: string; page?: number }) =>
       [...adminQueryKeys.bookings.all(), "list", filters] as const,
     detail: (id: string) => [...adminQueryKeys.bookings.all(), "detail", id] as const,
+    tracking: (id: string) => [...adminQueryKeys.bookings.all(), "tracking", id] as const,
   },
 
   disputes: {
@@ -251,7 +252,7 @@ export const adminQueryKeys = {
     campaignDetail: (id: string) => [...adminQueryKeys.ads.all(), "campaigns", "detail", id] as const,
   },
 
-  analyticsGeo: () => [...adminQueryKeys.root, "analytics", "geo"] as const,
+  analyticsGeo: (period = "all") => [...adminQueryKeys.root, "analytics", "geo", period] as const,
 
   providerOps: {
     all: () => [...adminQueryKeys.root, "provider-ops"] as const,

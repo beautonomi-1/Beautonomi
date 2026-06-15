@@ -1,13 +1,11 @@
 import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { pushInAppBrowser } from "@/lib/in-app-web";
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useResponsive } from "@/hooks/useResponsive";
-import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
@@ -31,13 +29,20 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
-/** Content-only for use in Settings hub tab. */
+type BillingHistoryResponse = {
+  items?: BillingItem[];
+  total?: number;
+  limit?: number;
+  has_more?: boolean;
+};
+
+/** Content-only for use in Billing hub tab. */
 export function BillingHistoryContent() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [limit, setLimit] = useState(50);
-  const { data, loading, error, refresh } = useApi<BillingItem[]>(
+  const { data, loading, error, refresh } = useApi<BillingItem[] | BillingHistoryResponse>(
     `/api/provider/billing-history?limit=${limit}`,
   );
   const onRefresh = useCallback(async () => {
@@ -49,8 +54,12 @@ export function BillingHistoryContent() {
     }
   }, [refresh]);
 
-  const items: BillingItem[] = Array.isArray(data) ? data : [];
-  const canLoadMore = items.length >= limit && limit < 200;
+  const items: BillingItem[] = Array.isArray(data)
+    ? data
+    : (data?.items ?? []);
+  const canLoadMore = Array.isArray(data)
+    ? items.length >= limit && limit < 200
+    : Boolean(data?.has_more) && limit < 200;
   const openInvoice = async (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
@@ -249,10 +258,5 @@ export function BillingHistoryContent() {
 }
 
 export default function BillingHistoryScreen() {
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Billing History" showBack subtitle="Past payments & invoices" />
-      <BillingHistoryContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/billing?tab=bills" />;
 }

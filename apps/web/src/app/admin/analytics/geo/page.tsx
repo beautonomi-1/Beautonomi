@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { fetcher } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -15,6 +15,13 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   BarChart,
   Bar,
@@ -43,7 +50,11 @@ import {
 import Link from "next/link";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
+type GeoPeriod = "30d" | "90d" | "1y" | "all";
+
 interface GeoData {
+  period?: string;
+  booking_window_note?: string;
   summary: {
     total_provider_locations: number;
     unique_providers: number;
@@ -125,18 +136,15 @@ export default function GeoAnalyticsPage() {
   const [providerSearch, setProviderSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [geoTab, setGeoTab] = useState("geography");
+  const [period, setPeriod] = useState<GeoPeriod>("all");
   const { format: fmtMoney } = useReportCurrency();
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetcher.get<{ data: GeoData }>(
-        "/api/admin/analytics/geo",
+        `/api/admin/analytics/geo?period=${period}`,
         { timeoutMs: 30000 }
       );
       setData(res.data);
@@ -145,9 +153,13 @@ export default function GeoAnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period]);
 
-  if (loading) {
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  if (loading && !data) {
     return (
       <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
@@ -196,19 +208,38 @@ export default function GeoAnalyticsPage() {
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8 max-w-[1400px]">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/admin/analytics">
               <ArrowLeft className="h-4 w-4 mr-1" /> Analytics
             </Link>
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold">
               Geographic & Device Analytics
             </h1>
             <p className="text-sm text-gray-500">
               Understand where your providers and customers are, and how they
               access the platform
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <Select
+              value={period}
+              onValueChange={(v) => setPeriod(v as GeoPeriod)}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+                <SelectItem value="1y">Last year</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-gray-400 max-w-[220px] sm:text-right">
+              Window applies to booking counts &amp; value. Locations are current footprint.
             </p>
           </div>
         </div>
@@ -779,6 +810,9 @@ export default function GeoAnalyticsPage() {
 
           {/* Booking Value Tab */}
           <TabsContent value="booking-value" className="space-y-6">
+            {data.booking_window_note && (
+              <p className="text-xs text-gray-500">{data.booking_window_note}</p>
+            )}
             {/* At Home vs At Salon */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Card>

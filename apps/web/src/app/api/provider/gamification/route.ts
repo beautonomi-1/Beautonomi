@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { sumProviderGamificationLedgerNet } from "@/lib/provider/sum-gamification-ledger-net";
+import { getProviderGamificationEarnings } from "@/lib/provider/sum-gamification-ledger-net";
+import { fetchProviderReviewStats } from "@/lib/provider/fetch-provider-review-stats";
 import {
   PROVIDER_POINTS_SELECT,
   fetchProviderGamificationHealSignals,
@@ -106,16 +107,13 @@ export async function GET(request: NextRequest) {
 
     const completedBookings = completedBookingsCount ?? 0;
 
-    const { data: provRow } = await supabaseAdmin
-      .from("providers")
-      .select("total_bookings, review_count, rating_average")
-      .eq("id", providerId)
-      .maybeSingle();
+    const [reviewStats, earnings] = await Promise.all([
+      fetchProviderReviewStats(supabaseAdmin, providerId),
+      getProviderGamificationEarnings(supabaseAdmin, providerId),
+    ]);
 
-    const totalEarnings = await sumProviderGamificationLedgerNet(supabaseAdmin, providerId);
-
-    const reviewCount = Number(provRow?.review_count ?? 0);
-    const ratingAverage = Number(provRow?.rating_average ?? 0);
+    const reviewCount = reviewStats.review_count;
+    const ratingAverage = reviewStats.rating_average;
 
     const badge = resolveJoinedBadge(effectivePointsData?.provider_badges);
     const currentPoints = effectivePointsData?.total_points ?? 0;
@@ -150,7 +148,11 @@ export async function GET(request: NextRequest) {
         total_bookings: completedBookings,
         review_count: reviewCount,
         rating_average: ratingAverage,
-        total_earnings: totalEarnings,
+        /** All-time recognized revenue (finance `recognized_revenue_all_time`). */
+        total_earnings: earnings.recognized_revenue,
+        recognized_revenue: earnings.recognized_revenue,
+        net_earnings_after_refunds: earnings.net_earnings_after_refunds,
+        refund_deduction: earnings.refund_deduction,
       },
     });
   } catch (error) {

@@ -99,7 +99,7 @@ export async function PATCH(
         remitted_at: new Date().toISOString(),
         remitted_by: user.id,
       })
-      .eq("id", id)
+      .eq("id", reminder.id)
       .select()
       .single();
 

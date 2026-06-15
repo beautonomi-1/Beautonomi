@@ -10,10 +10,16 @@ const root = process.cwd();
 const moreDir = join(root, "app", "(app)", "(tabs)", "more");
 const reportsDir = join(moreDir, "reports");
 
+/** Strip Expo Router query/hash suffixes (e.g. `billing?tab=subscription` → `billing`). */
+function moreRouteScreenSegment(segment: string): string {
+  return segment.split("?")[0].split("#")[0];
+}
+
 function moreScreenExists(segment: string): boolean {
-  if (!segment || segment.includes("..")) return false;
-  const file = join(moreDir, `${segment}.tsx`);
-  const index = join(moreDir, segment, "index.tsx");
+  const pathSegment = moreRouteScreenSegment(segment);
+  if (!pathSegment || pathSegment.includes("..")) return false;
+  const file = join(moreDir, `${pathSegment}.tsx`);
+  const index = join(moreDir, pathSegment, "index.tsx");
   return existsSync(file) || existsSync(index);
 }
 

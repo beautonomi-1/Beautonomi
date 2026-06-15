@@ -8,7 +8,7 @@ import { StackActions, type NavigationProp, type ParamListBase } from "@react-na
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
-import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
+import { tabBarBottomInset, tabBarOuterHeight } from "@/constants/layout";
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 import { useApi } from "@/hooks/useApi";
@@ -17,6 +17,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
+import { emitProviderBookingsRefresh } from "@/lib/provider-bookings-events";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -235,7 +236,7 @@ export default function TabsLayout() {
     refreshNavCountsDebounced.current();
   }, [pathname]);
 
-  const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const safeBottom = tabBarBottomInset(insets.bottom);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
   const screenOptions = useMemo(
     () => ({
@@ -346,7 +347,17 @@ export default function TabsLayout() {
           tabBarBadge: bookingsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar-clear" : "calendar-clear-outline"} focused={focused} />,
         }}
-        listeners={makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router, pathname)}
+        listeners={({ navigation }) => {
+          const hub = makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router, pathname)({
+            navigation,
+          });
+          return {
+            tabPress: (e) => {
+              emitProviderBookingsRefresh();
+              hub.tabPress(e);
+            },
+          };
+        }}
       />
       {/* Sales is still reachable via More → Sales history. */}
       <Tabs.Screen name="sales" options={{ href: null }} />

@@ -1008,6 +1008,9 @@ export default function BookingDetailScreen() {
   const [isOverridingArrival, setIsOverridingArrival] = useState(false);
   const [showOverrideArrivalModal, setShowOverrideArrivalModal] = useState(false);
   const [overrideArrivalReason, setOverrideArrivalReason] = useState("");
+  const [overrideReasonCode, setOverrideReasonCode] = useState<
+    "customer_no_phone" | "customer_technical_issue" | "customer_refused" | "other"
+  >("customer_no_phone");
   const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
   const [qrPasteJson, setQrPasteJson] = useState("");
   const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
@@ -2252,16 +2255,40 @@ export default function BookingDetailScreen() {
     if (!id) return;
     // Alert.prompt is iOS-only; use the cross-platform modal instead.
     setOverrideArrivalReason("");
+    setOverrideReasonCode("customer_no_phone");
     setShowOverrideArrivalModal(true);
   };
 
   const submitOverrideArrivalVerification = async () => {
-    if (!id || !overrideArrivalReason.trim()) return;
+    if (!id) return;
+    // Free-text detail is required only for the catch-all "other" reason.
+    if (overrideReasonCode === "other" && !overrideArrivalReason.trim()) return;
     setIsOverridingArrival(true);
     try {
+      const body: Record<string, unknown> = {
+        reason_code: overrideReasonCode,
+        reason_text: overrideArrivalReason.trim() || undefined,
+      };
+      // Capture the provider's exact location at override time so disputes and
+      // the admin tracking panel can show where the provider actually was.
+      try {
+        const allowed = await ensureForegroundLocationPermission({
+          title: "Location permission",
+          message: "Allow location access to record your position for this override.",
+        });
+        if (allowed) {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          body.latitude = loc.coords.latitude;
+          body.longitude = loc.coords.longitude;
+        }
+      } catch {
+        // Proceed without location if permission denied or position fails.
+      }
       const res = await postMutation(
         `/api/provider/bookings/${id}/override-arrival-verification`,
-        { reason_code: "other", reason_text: overrideArrivalReason.trim() },
+        body,
       );
       if (res.error) {
         Alert.alert("Error", res.error);
@@ -4630,13 +4657,61 @@ export default function BookingDetailScreen() {
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
               {"Customer can't verify"}
             </Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>
-              {"Briefly describe why you're marking arrival as verified without the customer's code (required for audit):"}
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+              {"Tell us why you're marking arrival as verified without the customer's code. Your current location is recorded for audit."}
             </Text>
+            <View style={{ gap: 8, marginBottom: 16 }}>
+              {([
+                { code: "customer_no_phone", label: "Customer has no phone / can't open app" },
+                { code: "customer_technical_issue", label: "App or code not working for customer" },
+                { code: "customer_refused", label: "Customer declined to verify" },
+                { code: "other", label: "Other (describe below)" },
+              ] as const).map((opt) => {
+                const selected = overrideReasonCode === opt.code;
+                return (
+                  <TouchableOpacity
+                    key={opt.code}
+                    onPress={() => setOverrideReasonCode(opt.code)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: selected ? "#d97706" : Colors.gray[200],
+                      backgroundColor: selected ? "#fffbeb" : Colors.gray[50],
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: selected ? "#d97706" : Colors.gray[300],
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {selected ? (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#d97706" }} />
+                      ) : null}
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[800] }}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <TextInput
               value={overrideArrivalReason}
               onChangeText={setOverrideArrivalReason}
-              placeholder="e.g. Customer has no phone with them…"
+              placeholder={
+                overrideReasonCode === "other"
+                  ? "Describe what happened (required)…"
+                  : "Add any extra detail (optional)…"
+              }
               placeholderTextColor={Colors.gray[400]}
               multiline
               numberOfLines={3}
@@ -4650,14 +4725,21 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                disabled={isOverridingArrival || !overrideArrivalReason.trim()}
+                disabled={
+                  isOverridingArrival ||
+                  (overrideReasonCode === "other" && !overrideArrivalReason.trim())
+                }
                 onPress={submitOverrideArrivalVerification}
                 style={{
                   flex: 1,
                   paddingVertical: 14,
                   borderRadius: 12,
                   alignItems: "center",
-                  backgroundColor: isOverridingArrival || !overrideArrivalReason.trim() ? Colors.gray[300] : "#d97706",
+                  backgroundColor:
+                    isOverridingArrival ||
+                    (overrideReasonCode === "other" && !overrideArrivalReason.trim())
+                      ? Colors.gray[300]
+                      : "#d97706",
                 }}
               >
                 <Text style={{ fontWeight: "600", color: "#fff" }}>

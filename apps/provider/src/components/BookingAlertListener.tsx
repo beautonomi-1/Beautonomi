@@ -3,7 +3,7 @@
  * to grab the provider's attention. Can be toggled on/off in notification settings.
  * Mounted alongside OnDemandIncomingListener in the app layout.
  */
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, type MutableRefObject } from "react";
 import { Alert, AppState, Platform, Vibration } from "react-native";
 import { useRouter } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
@@ -52,7 +52,21 @@ async function playBookingAlert(): Promise<{ stop: () => void }> {
 
 function shouldAlertForBooking(row: BookingRow): boolean {
   const status = String(row.db_status || row.status || "").toLowerCase();
-  return ["pending", "booked", "confirmed"].includes(status);
+  return ["pending", "booked", "confirmed", "pending_payment"].includes(status);
+}
+
+function handleBookingAlertRow(
+  row: BookingRow,
+  seenBookingIds: MutableRefObject<Set<string>>,
+  appState: MutableRefObject<string>,
+  showBookingAlert: (row: BookingRow) => void,
+): void {
+  if (!shouldAlertForBooking(row)) return;
+  if (seenBookingIds.current.has(row.id)) return;
+  seenBookingIds.current.add(row.id);
+  if (appState.current === "active") {
+    showBookingAlert(row);
+  }
 }
 
 export function BookingAlertListener() {
@@ -144,15 +158,29 @@ export function BookingAlertListener() {
           filter: `provider_id=eq.${provider.id}`,
         },
         (payload) => {
-          const row = payload.new as BookingRow;
-          if (!shouldAlertForBooking(row)) return;
-          if (seenBookingIds.current.has(row.id)) return;
-          seenBookingIds.current.add(row.id);
-
-          // Only alert when the app is in the foreground
-          if (appState.current === "active") {
-            showBookingAlert(row);
-          }
+          handleBookingAlertRow(
+            payload.new as BookingRow,
+            seenBookingIds,
+            appState,
+            showBookingAlert,
+          );
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "bookings",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        (payload) => {
+          handleBookingAlertRow(
+            payload.new as BookingRow,
+            seenBookingIds,
+            appState,
+            showBookingAlert,
+          );
         },
       )
       .subscribe();

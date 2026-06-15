@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { Redirect, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, FlatList, Alert, Share } from "react-native";
-import { useRouter } from "expo-router";
-import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
@@ -14,7 +13,8 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { useProviderStackBack } from "@/lib/provider-tab-navigation";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -97,7 +97,7 @@ function subtypeLabel(sub: string): string {
   return "Standard";
 }
 
-export default function SalesHistoryScreen() {
+export function SalesHistoryContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const handleBack = useProviderStackBack();
   useResponsive();
@@ -136,7 +136,7 @@ export default function SalesHistoryScreen() {
     return parts.join("&");
   }, [page, debouncedSearch, dateRange, selectedLocationId, sourceFilter]);
 
-  const { data: salesPayload, loading, error: salesError, refresh } = useApi<SalesHistoryApiResponse>(
+  const { data: salesPayload, loading, error: salesError, errorCode, refresh } = useApi<SalesHistoryApiResponse>(
     `/api/provider/sales-history?${params}`,
   );
 
@@ -195,12 +195,25 @@ export default function SalesHistoryScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Sales history"
-        showBack
-        onBack={handleBack}
-        subtitle={`${stats.count} rows`}
-        rightAction={
+      {!embedded ? (
+        <ScreenHeader
+          title="Sales history"
+          showBack
+          onBack={handleBack}
+          subtitle={`${stats.count} rows`}
+          rightAction={
+            <TouchableOpacity
+              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
+              onPress={handleExportCsv}
+              disabled={exporting}
+              accessibilityLabel="Export CSV"
+            >
+              <Ionicons name="download-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+          }
+        />
+      ) : (
+        <View style={twStyle("mb-2 flex-row items-center justify-end px-4")}>
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExportCsv}
@@ -209,8 +222,8 @@ export default function SalesHistoryScreen() {
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
           </TouchableOpacity>
-        }
-      />
+        </View>
+      )}
 
       {salesPayload?.default_range_months ? (
         <View style={twStyle("mx-4 mb-2 rounded-lg bg-amber-50 px-3 py-2 border border-amber-100")}>
@@ -275,7 +288,7 @@ export default function SalesHistoryScreen() {
       {loading && !sales.length && !salesError ? (
         <SkeletonList rows={5} />
       ) : salesError && !salesPayload ? (
-        <ErrorState message="Could not load sales history. Pull down to retry." onRetry={refresh} />
+        <FinanceReportError error={salesError} errorCode={errorCode} onRetry={refresh} />
       ) : sales.length === 0 ? (
         <EmptyState
           icon="receipt-outline"
@@ -416,4 +429,8 @@ export default function SalesHistoryScreen() {
       </BottomSheet>
     </ScreenContainer>
   );
+}
+
+export default function SalesHistoryScreen() {
+  return <Redirect href="/(app)/(tabs)/more/money?tab=sales" />;
 }

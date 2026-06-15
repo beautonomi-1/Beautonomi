@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -258,10 +258,5 @@ export function SubscriptionContent() {
 }
 
 export default function SubscriptionScreen() {
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Subscription" showBack />
-      <SubscriptionContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/billing?tab=subscription" />;
 }

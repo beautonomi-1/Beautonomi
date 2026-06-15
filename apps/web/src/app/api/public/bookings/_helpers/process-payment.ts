@@ -28,6 +28,7 @@ import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-paymen
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
+import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -417,6 +418,8 @@ export async function processPayment(
         console.error("[recurring] insert after no-gateway payment:", sub.message);
       }
     }
+
+    invalidateProviderBookingsReadCache(draft.provider_id);
 
     return {
       paymentUrl: null,
@@ -872,6 +875,8 @@ export async function processPayment(
       }
     }
   }
+
+  invalidateProviderBookingsReadCache(draft.provider_id);
 
   return {
     paymentUrl,

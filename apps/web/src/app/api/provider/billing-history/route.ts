@@ -40,13 +40,20 @@ export async function GET(request: NextRequest) {
       200,
     );
 
-    const { data: txns } = await supabaseAdmin
+    const { data: txns, error: txnsError, count } = await supabaseAdmin
       .from("finance_transactions")
-      .select("id, amount, currency, created_at, description, transaction_type, metadata")
+      .select("id, amount, currency, created_at, description, transaction_type, metadata", {
+        count: "exact",
+      })
       .eq("provider_id", providerId)
       .in("transaction_type", ["provider_subscription_payment", "provider_ads_payment"])
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (txnsError) {
+      console.error("Error fetching billing history transactions:", txnsError);
+      return handleApiError(txnsError, "Failed to load billing history");
+    }
 
     const items = (txns || []).map((t: any) => {
       const isAds = t.transaction_type === "provider_ads_payment";
@@ -77,7 +84,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return successResponse(items);
+    return successResponse({
+      items,
+      total: count ?? items.length,
+      limit,
+      has_more: (count ?? 0) > items.length,
+    });
   } catch (error) {
     console.error("Error fetching billing history:", error);
     return handleApiError(error, "Failed to load billing history");

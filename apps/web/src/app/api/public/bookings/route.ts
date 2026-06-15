@@ -22,6 +22,7 @@ import { releaseBookingSlotAfterPaymentFailure } from "./_helpers/release-bookin
 import { validateBooking } from "./_helpers/validate-booking";
 import { checkBookingCreationRateLimit, incrementBookingCreation } from "@/lib/rate-limit/booking-creation";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { NextResponse } from "next/server";
 import {
   extractIdempotencyKey,
@@ -387,6 +388,8 @@ export async function POST(request: NextRequest) {
         }
 
         const { booking } = createResult;
+
+        invalidateProviderBookingsReadCache(booking.provider_id);
 
         stage = "persist_forms";
         // 4a.b. B11: persist provider intake/consent/waiver responses and

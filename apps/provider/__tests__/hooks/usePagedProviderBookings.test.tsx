@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { render, waitFor, act, fireEvent } from "@testing-library/react-native";
-import { Text, View, Pressable } from "react-native";
+import { Text, View, Pressable, DeviceEventEmitter } from "react-native";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
+import { PROVIDER_BOOKINGS_REFRESH_EVENT } from "@/lib/provider-bookings-events";
 
 jest.mock("@/lib/fetch-paged-provider-bookings", () => ({
   ...jest.requireActual("@/lib/fetch-paged-provider-bookings"),
@@ -93,6 +94,52 @@ describe("usePagedProviderBookings", () => {
       const t = getByTestId("snap").props.children as string;
       expect(t).toContain('"len":null');
       expect(t).toContain("bad range");
+    });
+  });
+
+  it("silently refreshes when the app regains focus", async () => {
+    fetchMock.mockResolvedValueOnce([{ id: "1" }]).mockResolvedValueOnce([{ id: "1" }, { id: "2" }]);
+    const { getByTestId } = render(<Harness path="/api/provider/bookings?focus=1" />);
+    await waitFor(() => {
+      expect(getByTestId("snap").props.children).toContain('"len":1');
+    });
+    await act(async () => {
+      DeviceEventEmitter.emit("beautonomi:app:focus");
+    });
+    await waitFor(() => {
+      expect(getByTestId("snap").props.children).toContain('"len":2');
+    });
+  });
+
+  it("refreshes when the Bookings tab emits a refresh event", async () => {
+    fetchMock.mockResolvedValueOnce([{ id: "a" }]).mockResolvedValueOnce([{ id: "a" }, { id: "b" }]);
+    const { getByTestId } = render(<Harness path="/api/provider/bookings?tab=1" />);
+    await waitFor(() => {
+      expect(getByTestId("snap").props.children).toContain('"len":1');
+    });
+    await act(async () => {
+      DeviceEventEmitter.emit(PROVIDER_BOOKINGS_REFRESH_EVENT);
+    });
+    await waitFor(() => {
+      expect(getByTestId("snap").props.children).toContain('"len":2');
+    });
+  });
+
+  it("ignores CANCELLED errors during silent refresh", async () => {
+    fetchMock.mockResolvedValueOnce([{ id: "keep" }]);
+    const cancelled = Object.assign(new Error("Request cancelled"), { code: "CANCELLED" });
+    fetchMock.mockRejectedValueOnce(cancelled);
+    const { getByTestId } = render(<Harness path="/api/provider/bookings?cancel=1" />);
+    await waitFor(() => {
+      expect(getByTestId("snap").props.children).toContain('"len":1');
+    });
+    await act(async () => {
+      DeviceEventEmitter.emit(PROVIDER_BOOKINGS_REFRESH_EVENT);
+    });
+    await waitFor(() => {
+      const t = getByTestId("snap").props.children as string;
+      expect(t).toContain('"len":1');
+      expect(t).not.toContain("cancelled");
     });
   });
 });

@@ -18,6 +18,17 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim()?.toLowerCase();
     const { page, limit } = getPaginationParams(request);
 
+    // `stage` lets the UI distinguish truly-submitted providers (pending_approval)
+    // from incomplete drafts. Defaults to pending_approval so the queue reflects
+    // what is actually awaiting review (matches the hub's urgent count).
+    const stageParam = (searchParams.get("stage") || "pending").toLowerCase();
+    const statusFilter =
+      stageParam === "draft"
+        ? ["draft"]
+        : stageParam === "all"
+          ? ["draft", "pending_approval"]
+          : ["pending_approval"];
+
     const { data: providers, error } = await supabase
       .from("providers")
       .select(
@@ -34,7 +45,7 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq("tenant_id", tenantId)
-      .in("status", ["draft", "pending_approval"])
+      .in("status", statusFilter)
       .order("created_at", { ascending: true });
     if (error) throw error;
 
@@ -108,7 +119,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       data: paginated,
-      meta: { page, limit, total, has_more: total > page * limit },
+      meta: { page, limit, total, has_more: total > page * limit, stage: stageParam },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch activation queue");

@@ -21,6 +21,13 @@ import {
   isMustDeliverPushTemplate,
   resolvePushTemplateKey,
 } from "@/lib/notifications/must-deliver-push";
+import { buildMustDeliverFallback } from "@/lib/notifications/must-deliver-template-fallback";
+import {
+  applyPushUrlToPayload,
+  resolvePushUrlFields,
+  substituteTemplatePath,
+  webUrlToRelativePath,
+} from "@/lib/notifications/push-url";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -970,9 +977,12 @@ export async function sendToUser(
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) {
-    notificationPayload.url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+    const rawUrl = String(payload.url);
+    const relative = rawUrl.startsWith("http") ? webUrlToRelativePath(rawUrl) : rawUrl;
+    applyPushUrlToPayload(
+      notificationPayload,
+      resolvePushUrlFields(relative, {}, { appType: options?.appType }),
+    );
   }
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (normalizedChannels.includes("push")) {
@@ -1074,9 +1084,12 @@ export async function sendToUsers(
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) {
-    notificationPayload.url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+    const rawUrl = String(payload.url);
+    const relative = rawUrl.startsWith("http") ? webUrlToRelativePath(rawUrl) : rawUrl;
+    applyPushUrlToPayload(
+      notificationPayload,
+      resolvePushUrlFields(relative, {}, { appType: options?.appType }),
+    );
   }
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (normalizedChannels.includes("push")) {
@@ -1146,9 +1159,12 @@ export async function sendToSegment(
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) {
-    notificationPayload.url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).url = payload.url;
-    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+    const rawUrl = String(payload.url);
+    const relative = rawUrl.startsWith("http") ? webUrlToRelativePath(rawUrl) : rawUrl;
+    applyPushUrlToPayload(
+      notificationPayload,
+      resolvePushUrlFields(relative, {}, { appType: options?.appType }),
+    );
   }
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (normalizedChannels.includes("push")) {
@@ -1223,6 +1239,10 @@ export type SendTemplateOptions = OneSignalSendOptions & {
    * key) so the same event does not create two bell entries.
    */
   skipInApp?: boolean;
+  /** Fallback copy when the DB template row is missing but push is must-deliver. */
+  fallbackTitle?: string;
+  fallbackBody?: string;
+  fallbackUrl?: string;
 };
 
 /**
@@ -1239,24 +1259,90 @@ export async function sendTemplateNotification(
 ): Promise<SendNotificationResult> {
   const requestedFilter = parseNotificationChannels(channels);
   const templateClient = options?.supabaseClient ?? getSupabaseAdmin();
+  const resolvedTenantId =
+    options?.tenantId ??
+    (typeof variables.tenant_id === "string" && variables.tenant_id.trim()
+      ? variables.tenant_id.trim()
+      : null);
+
   const template = await getNotificationTemplate(
     templateKey,
     templateClient,
-    options?.tenantId
+    resolvedTenantId,
   );
 
+  type ResolvedTemplate = {
+    title: string;
+    body: string;
+    emailSubject: string;
+    emailBody: string;
+    smsBody: string;
+    urlPath: string;
+    image: string;
+    channels: NotificationChannel[];
+    onesignalTemplateId?: string;
+    usedFallback: boolean;
+  };
+
+  let resolved: ResolvedTemplate;
+
   if (!template) {
-    return {
-      success: false,
-      error: `Template ${templateKey} not found or disabled`,
+    if (!isMustDeliverPushTemplate(templateKey)) {
+      return {
+        success: false,
+        error: `Template ${templateKey} not found or disabled`,
+      };
+    }
+    const fallback = buildMustDeliverFallback(templateKey, variables, options);
+    if (!fallback) {
+      return {
+        success: false,
+        error: `Template ${templateKey} not found or disabled`,
+      };
+    }
+    resolved = {
+      title: fallback.title,
+      body: fallback.body,
+      emailSubject: fallback.title,
+      emailBody: fallback.body,
+      smsBody: fallback.body,
+      urlPath: fallback.url,
+      image: "",
+      channels: fallback.channels.filter((c) => requestedFilter.includes(c)),
+      usedFallback: true,
+    };
+    if (resolved.channels.length === 0) {
+      resolved.channels = requestedFilter.includes("push") ? (["push"] as NotificationChannel[]) : requestedFilter;
+    }
+  } else {
+    resolved = {
+      title: template.title || "",
+      body: template.body || "",
+      emailSubject: template.email_subject || template.title || "",
+      emailBody: template.email_body || template.body || "",
+      smsBody: template.sms_body || template.body || "",
+      urlPath: template.url ? String(template.url) : "",
+      image: template.image ? String(template.image) : "",
+      channels:
+        template.channels && template.channels.length > 0
+          ? template.channels.filter((ch): ch is NotificationChannel => {
+              const c = ch as NotificationChannel;
+              return (
+                (c === "push" || c === "email" || c === "sms" || c === "live_activities") &&
+                requestedFilter.includes(c)
+              );
+            })
+          : requestedFilter,
+      onesignalTemplateId: template.onesignal_template_id ?? undefined,
+      usedFallback: false,
     };
   }
 
-  let title = template.title || "";
-  let body = template.body || "";
-  let emailSubject = template.email_subject || template.title || "";
-  let emailBody = template.email_body || template.body || "";
-  let smsBody = template.sms_body || template.body || "";
+  let title = resolved.title;
+  let body = resolved.body;
+  let emailSubject = resolved.emailSubject;
+  let emailBody = resolved.emailBody;
+  let smsBody = resolved.smsBody;
 
   Object.entries(variables).forEach(([key, value]) => {
     const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
@@ -1267,35 +1353,19 @@ export async function sendTemplateNotification(
     smsBody = smsBody.replace(regex, value);
   });
 
-  let templateUrl = template.url ? String(template.url) : "";
-  Object.entries(variables).forEach(([key, value]) => {
-    templateUrl = templateUrl.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+  const templateUrlRelative = resolved.urlPath
+    ? substituteTemplatePath(resolved.urlPath, variables)
+    : "";
+  const pushUrlFields = resolvePushUrlFields(templateUrlRelative, variables, {
+    appType: options?.appType,
   });
-  if (templateUrl.startsWith("/")) {
-    const origin =
-      typeof process.env.NEXT_PUBLIC_APP_URL === "string"
-        ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
-        : "";
-    if (origin) {
-      templateUrl = `${origin}${templateUrl}`;
-    }
-  }
 
-  let templateImage = template.image ? String(template.image) : "";
+  let templateImage = resolved.image;
   Object.entries(variables).forEach(([key, value]) => {
     templateImage = templateImage.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
   });
 
-  const activeChannels: NotificationChannel[] =
-    template.channels && template.channels.length > 0
-      ? template.channels.filter((ch): ch is NotificationChannel => {
-          const c = ch as NotificationChannel;
-          return (
-            (c === "push" || c === "email" || c === "sms" || c === "live_activities") &&
-            requestedFilter.includes(c)
-          );
-        })
-      : requestedFilter;
+  const activeChannels: NotificationChannel[] = resolved.channels;
 
   // Track what was originally requested so we can observe (and log) any push
   // that gets silently dropped by preference gating or quiet hours below.
@@ -1469,14 +1539,12 @@ export async function sendTemplateNotification(
   if (channelsToSend.includes("sms")) {
     notificationPayload.sms_body = smsBody;
   }
-  if (templateUrl) {
-    notificationPayload.url = templateUrl;
-    (notificationPayload.data as Record<string, unknown>).url = templateUrl;
-    (notificationPayload.data as Record<string, unknown>).deep_link = templateUrl;
+  if (templateUrlRelative) {
+    applyPushUrlToPayload(notificationPayload, pushUrlFields);
   }
   if (templateImage) notificationPayload.big_picture = templateImage;
-  if (template.onesignal_template_id) {
-    notificationPayload.template_id = template.onesignal_template_id;
+  if (resolved.onesignalTemplateId) {
+    notificationPayload.template_id = resolved.onesignalTemplateId;
   }
 
   // Auto-create in-app bell rows for every template notification so the bell
@@ -1513,16 +1581,9 @@ export async function sendTemplateNotification(
       }
     });
 
-    // Derive a clean action_url from the resolved template URL
     let actionUrl: string | undefined;
-    if (templateUrl) {
-      try {
-        actionUrl = templateUrl.startsWith("/")
-          ? templateUrl
-          : new URL(templateUrl).pathname;
-      } catch {
-        actionUrl = templateUrl;
-      }
+    if (templateUrlRelative) {
+      actionUrl = templateUrlRelative;
     }
 
     // Capture the insert promise so single-recipient sends can await it before
@@ -1592,6 +1653,16 @@ export async function sendTemplateNotification(
 
   const directResult = await sendOneSignalNotification(notificationPayload, options);
 
+  if (!directResult.success && isMustDeliverPushTemplate(templateKey)) {
+    console.warn("[onesignal] must-deliver template send failed", {
+      templateKey,
+      error: directResult.error,
+      userIds,
+      usedFallback: resolved.usedFallback,
+      appType: options?.appType,
+    });
+  }
+
   if (!directResult.success && userIds.length > 0 && isMustDeliverPushTemplate(templateKey)) {
     const bookingId = (variables as { booking_id?: string })?.booking_id ?? null;
     await enqueueMustDeliverChannelsRetry({
@@ -1607,7 +1678,7 @@ export async function sendTemplateNotification(
       emailBody,
       smsBody,
       data: { template_key: templateKey, ...variables },
-      url: templateUrl || undefined,
+      url: pushUrlFields.actionPath || undefined,
       dedupePrefix: "fallback",
     });
   }

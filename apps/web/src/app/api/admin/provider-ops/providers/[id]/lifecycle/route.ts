@@ -38,19 +38,24 @@ export async function GET(
       )
       .eq("id", providerId)
       .eq("tenant_id", tenantId)
-      .single();
+      .maybeSingle();
     if (provErr) throw provErr;
     if (!provider) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: user, error: userErr } = await supabase
-      .from("users")
-      .select(
-        "id, email, full_name, phone, role, created_at, identity_verified, identity_verification_status"
-      )
-      .eq("id", provider.user_id)
-      .single();
+    // maybeSingle: a provider can legitimately have no linked user row (admin-created
+    // shell, or a deleted owner account). The lifecycle view is designed to render
+    // with user === null, so a missing user must not 500 the whole page.
+    const { data: user, error: userErr } = provider.user_id
+      ? await supabase
+          .from("users")
+          .select(
+            "id, email, full_name, phone, role, created_at, identity_verified, identity_verification_status"
+          )
+          .eq("id", provider.user_id)
+          .maybeSingle()
+      : { data: null, error: null };
     if (userErr) throw userErr;
 
     // Layer 2 — KYC / provider verification snapshot for the lifecycle view.

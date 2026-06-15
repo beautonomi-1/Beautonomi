@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
 
     const allMapped: ProviderLedgerUiRow[] = [];
     let offset = 0;
+    let truncatedLedger = false;
 
     while (offset < MAX_LEDGER_SCAN) {
       const { data: pageRaw, error: pageError } = await supabaseAdmin
@@ -97,6 +98,9 @@ export async function GET(request: NextRequest) {
 
       if (page.length < LEDGER_PAGE_SIZE) break;
       offset += LEDGER_PAGE_SIZE;
+      if (offset >= MAX_LEDGER_SCAN) {
+        truncatedLedger = true;
+      }
     }
 
     const summary = summarizeTransactions(allMapped);
@@ -106,6 +110,7 @@ export async function GET(request: NextRequest) {
       transactions,
       summary,
       truncated_list: allMapped.length > limit,
+      truncated_ledger: truncatedLedger,
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);

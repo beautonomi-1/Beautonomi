@@ -14,7 +14,7 @@ import { onCartUpdated } from "@/lib/cart-events";
 import { haptic } from "@/lib/haptics";
 import { guestCartItemCount, loadGuestCartLines } from "@/lib/guest-cart";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
-import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
+import { tabBarBottomInset, tabBarOuterHeight } from "@/constants/layout";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
@@ -63,7 +63,7 @@ export default function TabsLayout() {
     return unsubscribe;
   }, [user]);
 
-  const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const safeBottom = tabBarBottomInset(insets.bottom);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
 
   const tabsWrapperStyle =

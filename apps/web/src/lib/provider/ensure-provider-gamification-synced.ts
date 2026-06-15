@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recalculateProviderGamification } from "@/lib/services/provider-gamification";
+import { fetchProviderReviewStats } from "@/lib/provider/fetch-provider-review-stats";
 
 export const PROVIDER_POINTS_SELECT = `
         id,
@@ -25,14 +26,28 @@ export const PROVIDER_POINTS_SELECT = `
 export type ProviderGamificationHealSignals = {
   completedBookings: number;
   storedBookings: number;
+  /** Live count from reviews table. */
   reviewCount: number;
+  storedReviewCount: number;
+  ratingAverage: number;
+  storedRatingAverage: number;
   transactionCount: number;
   hasProviderPointsRow: boolean;
 };
 
-/** When true, run backfill + booking sync + recalculate so points/badges match ledger truth. */
+function ratingsDiffer(a: number, b: number): boolean {
+  return Math.abs(a - b) > 0.004;
+}
+
+/** When true, run backfill + stat sync + recalculate so points/badges match ledger truth. */
 export function shouldHealProviderGamification(signals: ProviderGamificationHealSignals): boolean {
   if (signals.storedBookings !== signals.completedBookings) {
+    return true;
+  }
+  if (signals.storedReviewCount !== signals.reviewCount) {
+    return true;
+  }
+  if (ratingsDiffer(signals.storedRatingAverage, signals.ratingAverage)) {
     return true;
   }
   const hasActivity =
@@ -51,7 +66,7 @@ export async function fetchProviderGamificationHealSignals(
   providerId: string,
   options?: { hasProviderPointsRow?: boolean },
 ): Promise<ProviderGamificationHealSignals> {
-  const [{ count: completedBookingsCount }, { count: transactionCount }, { data: provRow }] =
+  const [{ count: completedBookingsCount }, { count: transactionCount }, { data: provRow }, liveReviews] =
     await Promise.all([
       admin
         .from("bookings")
@@ -64,15 +79,19 @@ export async function fetchProviderGamificationHealSignals(
         .eq("provider_id", providerId),
       admin
         .from("providers")
-        .select("total_bookings, review_count")
+        .select("total_bookings, review_count, rating_average")
         .eq("id", providerId)
         .maybeSingle(),
+      fetchProviderReviewStats(admin, providerId),
     ]);
 
   return {
     completedBookings: completedBookingsCount ?? 0,
     storedBookings: Number(provRow?.total_bookings ?? 0),
-    reviewCount: Number(provRow?.review_count ?? 0),
+    reviewCount: liveReviews.review_count,
+    storedReviewCount: Number(provRow?.review_count ?? 0),
+    ratingAverage: liveReviews.rating_average,
+    storedRatingAverage: Number(provRow?.rating_average ?? 0),
     transactionCount: transactionCount ?? 0,
     hasProviderPointsRow: options?.hasProviderPointsRow ?? false,
   };
@@ -82,10 +101,11 @@ export type SyncProviderGamificationResult = {
   healed: boolean;
   transactionsBackfilled: boolean;
   bookingsSynced: boolean;
+  reviewsSynced: boolean;
 };
 
 /**
- * Backfill ledger rows when missing, sync completed booking count, recalculate points/badges.
+ * Backfill ledger rows when missing, sync completed booking/review stats, recalculate points/badges.
  * Safe to call on GET (read path) when {@link shouldHealProviderGamification} is true.
  */
 export async function syncProviderGamification(
@@ -95,7 +115,12 @@ export async function syncProviderGamification(
   options?: { force?: boolean },
 ): Promise<SyncProviderGamificationResult> {
   if (!options?.force && !shouldHealProviderGamification(signals)) {
-    return { healed: false, transactionsBackfilled: false, bookingsSynced: false };
+    return {
+      healed: false,
+      transactionsBackfilled: false,
+      bookingsSynced: false,
+      reviewsSynced: false,
+    };
   }
 
   let transactionsBackfilled = false;
@@ -115,12 +140,27 @@ export async function syncProviderGamification(
 
   let bookingsSynced = false;
   if (options?.force || signals.storedBookings !== signals.completedBookings) {
-    const targetBookings = signals.completedBookings;
     const { error } = await admin
       .from("providers")
-      .update({ total_bookings: targetBookings })
+      .update({ total_bookings: signals.completedBookings })
       .eq("id", providerId);
     bookingsSynced = !error;
+  }
+
+  let reviewsSynced = false;
+  const shouldSyncReviews =
+    options?.force ||
+    signals.storedReviewCount !== signals.reviewCount ||
+    ratingsDiffer(signals.storedRatingAverage, signals.ratingAverage);
+  if (shouldSyncReviews) {
+    const { error } = await admin
+      .from("providers")
+      .update({
+        review_count: signals.reviewCount,
+        rating_average: signals.ratingAverage,
+      })
+      .eq("id", providerId);
+    reviewsSynced = !error;
   }
 
   try {
@@ -132,6 +172,7 @@ export async function syncProviderGamification(
         healed: false,
         transactionsBackfilled,
         bookingsSynced,
+        reviewsSynced,
       };
     }
     throw recalcError;
@@ -142,5 +183,9 @@ export async function syncProviderGamification(
     transactionsBackfilled,
     bookingsSynced:
       bookingsSynced || signals.storedBookings !== signals.completedBookings,
+    reviewsSynced:
+      reviewsSynced ||
+      signals.storedReviewCount !== signals.reviewCount ||
+      ratingsDiffer(signals.storedRatingAverage, signals.ratingAverage),
   };
 }

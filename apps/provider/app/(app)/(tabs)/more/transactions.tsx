@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,8 +11,9 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
+import { TruncationBanner } from "@/components/finance/TruncationBanner";
 import { formatCurrency, formatDate, formatTimeAgo } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
@@ -105,7 +106,7 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
   }
 }
 
-export default function TransactionsScreen() {
+export function TransactionsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const handleBack = useProviderStackBack();
   const [refreshing, setRefreshing] = useState(false);
@@ -124,10 +125,11 @@ export default function TransactionsScreen() {
       basis_note?: string;
     };
     truncated_list?: boolean;
+    truncated_ledger?: boolean;
   }
 
   /** Org-wide ledger: omit `location_id` so payouts and non-booking rows still appear when a branch is selected in the app (matches Transactions hub behaviour). */
-  const { data: txnPayload, loading, error: txnError, refresh } = useApi<TransactionsApiPayload | Transaction[]>(
+  const { data: txnPayload, loading, error: txnError, errorCode, refresh } = useApi<TransactionsApiPayload | Transaction[]>(
     `/api/provider/transactions?period=${period}&limit=200`
   );
 
@@ -140,6 +142,11 @@ export default function TransactionsScreen() {
   const serverSummary = useMemo(() => {
     if (!txnPayload || Array.isArray(txnPayload)) return null;
     return txnPayload.summary ?? null;
+  }, [txnPayload]);
+
+  const showTruncationBanner = useMemo(() => {
+    if (!txnPayload || Array.isArray(txnPayload)) return false;
+    return Boolean(txnPayload.truncated_ledger || txnPayload.truncated_list);
   }, [txnPayload]);
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string },
@@ -286,21 +293,40 @@ export default function TransactionsScreen() {
       refreshing={refreshing}
       onRefresh={handleRefresh}
     >
-      <ScreenHeader
-        title="Transactions"
-        showBack
-        onBack={handleBack}
-        subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
-        rightAction={
+      {!embedded ? (
+        <ScreenHeader
+          title="Transactions"
+          showBack
+          onBack={handleBack}
+          subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
+          rightAction={
+            <TouchableOpacity
+              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
+              onPress={handleExport}
+              disabled={exporting}
+            >
+              <Ionicons name="download-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+          }
+        />
+      ) : (
+        <View style={twStyle("mb-2 flex-row items-center justify-end px-4")}>
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
             disabled={exporting}
+            accessibilityLabel="Export CSV"
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
           </TouchableOpacity>
-        }
-      />
+        </View>
+      )}
+
+      {showTruncationBanner ? (
+        <View style={twStyle("px-4")}>
+          <TruncationBanner />
+        </View>
+      ) : null}
 
       {/* Summary cards */}
       <View style={twStyle("mb-3 flex-row")}>
@@ -355,7 +381,7 @@ export default function TransactionsScreen() {
       {loading && !transactions ? (
         <SkeletonList rows={6} />
       ) : txnError && !transactions ? (
-        <ErrorState message={txnError} onRetry={refresh} />
+        <FinanceReportError error={txnError} errorCode={errorCode} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="swap-horizontal-outline"
@@ -498,4 +524,8 @@ export default function TransactionsScreen() {
       </BottomSheet>
     </ScreenContainer>
   );
+}
+
+export default function TransactionsScreen() {
+  return <Redirect href="/(app)/(tabs)/more/money?tab=ledger" />;
 }

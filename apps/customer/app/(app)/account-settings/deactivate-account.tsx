@@ -2,7 +2,7 @@
  * Self-service account deactivation (App Store / Play parity with web).
  * POST /api/me/deactivate, then sign out → login with deactivated messaging.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import {
   canVerifySensitiveActionWithCode,
+  describeReauthOtpDestination,
   isAuthSecurityLoaded,
   sensitiveActionSubmitReady,
   userHasPassword,
@@ -52,6 +53,8 @@ export default function DeactivateAccountScreen() {
   const [password, setPassword] = useState("");
   const [verificationNonce, setVerificationNonce] = useState("");
   const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(null);
+  const [profileEmail, setProfileEmail] = useState<string | null>(null);
+  const [profilePhone, setProfilePhone] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [requestingNonce, setRequestingNonce] = useState(false);
@@ -59,10 +62,14 @@ export default function DeactivateAccountScreen() {
   const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
   const hasPassword = userHasPassword(authSecurity);
   const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
+  const otpDestination = useMemo(
+    () => describeReauthOtpDestination(authSecurity, { email: profileEmail, phone: profilePhone }),
+    [authSecurity, profileEmail, profilePhone],
+  );
 
   useEffect(() => {
     let alive = true;
-    api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile")
+    api.get<{ auth_security?: AuthSecurityState | null; email?: string; phone?: string }>("/api/me/profile")
       .then((res) => {
         if (!alive) return;
         if (res.error) {
@@ -70,7 +77,10 @@ export default function DeactivateAccountScreen() {
           return;
         }
         setProfileLoadError(null);
-        setAuthSecurity((res.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
+        const data = res.data as { auth_security?: AuthSecurityState | null; email?: string; phone?: string } | undefined;
+        setAuthSecurity(data?.auth_security ?? null);
+        setProfileEmail(data?.email ?? null);
+        setProfilePhone(data?.phone ?? null);
       })
       .catch((e) => {
         if (alive) setProfileLoadError(getApiErrorMessage(e, da("loadFailed")));
@@ -135,20 +145,20 @@ export default function DeactivateAccountScreen() {
 
   const requestVerificationCode = useCallback(async () => {
     if (!canVerifyWithCode) {
-      Alert.alert(errTitle, "Add and verify an email or phone number before deactivating this account.");
+      Alert.alert(errTitle, otpDestination.codeSentMessage);
       return;
     }
     setRequestingNonce(true);
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", "A verification code has been sent to the email address on your account. Enter it below to confirm deactivation.");
+      Alert.alert("Code sent", otpDestination.codeSentMessage);
     } catch (e) {
       Alert.alert(errTitle, getApiErrorMessage(e, "Failed to send verification code."));
     } finally {
       setRequestingNonce(false);
     }
-  }, [canVerifyWithCode, errTitle]);
+  }, [canVerifyWithCode, errTitle, otpDestination.codeSentMessage]);
 
   return (
     <KeyboardAvoidingView
@@ -195,7 +205,7 @@ export default function DeactivateAccountScreen() {
             </>
           ) : (
             <View>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>We&apos;ll send a verification code to the email address on your account.</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{otpDestination.sendButtonHint}</Text>
               <TouchableOpacity
                 onPress={requestVerificationCode}
                 disabled={requestingNonce || !canVerifyWithCode}
