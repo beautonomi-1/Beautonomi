@@ -7,17 +7,39 @@ const { withDangerousMod, withProjectBuildGradle } = require(
     paths: [process.cwd()],
   }),
 );
+const { withSettingsGradle } = require(require.resolve("expo/config-plugins", {
+  paths: [process.cwd()],
+}));
 
 /** JitPack only — must not match other maven { url '...' } blocks (e.g. Singular). */
 const JITPACK_MAVEN_WITH_CONTENT =
-  /maven\s*\{\s*url\s*['"]https:\/\/(www\.)?jitpack\.io['"]\s*content\s*\{[\s\S]*?\}\s*\}\s*\n?/g;
+  /maven\s*\{\s*url\s*=?\s*(?:uri\()?['"]https:\/\/(www\.)?jitpack\.io['"]\)?\s*content\s*\{[\s\S]*?\}\s*\}\s*\n?/g;
 const JITPACK_MAVEN_SINGLE_LINE =
-  /maven\s*\{\s*url\s*['"]https:\/\/(www\.)?jitpack\.io['"]\s*\}\s*\n?/g;
+  /maven\s*\{\s*url\s*=?\s*(?:uri\()?['"]https:\/\/(www\.)?jitpack\.io['"]\)?\s*\}\s*\n?/g;
 
 const GRADLE_HTTP_TIMEOUT_PROPS = [
   "systemProp.org.gradle.internal.http.connectionTimeout=180000",
   "systemProp.org.gradle.internal.http.socketTimeout=180000",
 ];
+
+const AMPLITUDE_RESOLUTION_STRATEGY = `
+subprojects { subproject ->
+    configurations.configureEach { configuration ->
+        configuration.resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == "com.amplitude") {
+                if (details.requested.name == "analytics-core") {
+                    details.useVersion "1.29.0"
+                    details.because "Avoid dynamic Amplitude metadata lookup from JitPack during EAS Android builds"
+                }
+                if (details.requested.name == "analytics-android") {
+                    details.useVersion "1.29.0"
+                    details.because "Avoid dynamic Amplitude metadata lookup from JitPack during EAS Android builds"
+                }
+            }
+        }
+    }
+}
+`;
 
 function removeJitpackRepository(contents) {
   if (!/jitpack\.io/.test(contents)) {
@@ -26,6 +48,13 @@ function removeJitpackRepository(contents) {
   return contents
     .replace(JITPACK_MAVEN_WITH_CONTENT, "")
     .replace(JITPACK_MAVEN_SINGLE_LINE, "");
+}
+
+function ensureAmplitudeResolutionStrategy(contents) {
+  if (contents.includes("Avoid dynamic Amplitude metadata lookup from JitPack")) {
+    return contents;
+  }
+  return `${contents.trimEnd()}\n${AMPLITUDE_RESOLUTION_STRATEGY}`;
 }
 
 function upsertGradleProperty(body, line) {
@@ -58,12 +87,20 @@ function patchAmplitudeAndroidGradlePlugins(appRoot) {
 
 /**
  * Hardens Android Gradle for EAS / CI:
- * - Drops JitPack (Beautonomi native deps use Maven Central / Google / vendor repos).
- * - Pins Amplitude RN plugin Android deps (engagement 1.+, session-replay ranges).
+ * - Drops JitPack from generated Gradle files (Beautonomi native deps use Maven Central / Google / vendor repos).
+ * - Pins Amplitude RN plugin Android deps (engagement 1.+).
+ * - Forces Amplitude Android modules away from dynamic transitive Maven metadata lookup.
  * - Longer Gradle wrapper + HTTP timeouts for flaky CI networks.
  */
 module.exports = function withGradleWrapperResilience(config) {
   config = withProjectBuildGradle(config, (cfg) => {
+    cfg.modResults.contents = ensureAmplitudeResolutionStrategy(
+      removeJitpackRepository(cfg.modResults.contents),
+    );
+    return cfg;
+  });
+
+  config = withSettingsGradle(config, (cfg) => {
     cfg.modResults.contents = removeJitpackRepository(cfg.modResults.contents);
     return cfg;
   });

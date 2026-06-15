@@ -246,6 +246,9 @@ jobs:
       - name: Build packages (turbo)
         run: pnpm turbo run build --filter="./packages/*"
 
+      - name: Audit mobile Gradle resilience
+        run: pnpm run audit:mobile-gradle-resilience
+
       # Validates app.json / plugins / env (no EAS binary export in this repo)
       - name: Validate Expo config (customer)
         run: pnpm --filter customer exec expo config --type public

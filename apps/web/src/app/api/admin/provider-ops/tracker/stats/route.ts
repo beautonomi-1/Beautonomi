@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
       active_in_wizard: activeCount,
       slowing: slowingCount,
       by_step: byStep,
+      completed: totalProviders || 0,
       total_providers: totalProviders || 0,
       active_providers: activeProviders || 0,
       pending_approval: pendingApproval || 0,
