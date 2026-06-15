@@ -1,19 +1,35 @@
 #!/usr/bin/env node
 /**
- * EAS Android: runs after `expo prebuild` (see eas-build-post-install).
- * Retries `./gradlew --version` so the Gradle distribution download can recover
- * from transient HTTP 504s when services.gradle.org / GitHub edges flake.
+ * EAS Android post-install: pin Amplitude Gradle deps, then warm the Gradle wrapper.
  */
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { patchAmplitudeEngagementGradle } from "./patch-amplitude-android-gradle.mjs";
+
 if (process.env.EAS_BUILD_PLATFORM !== "android") {
   process.exit(0);
 }
 
-const androidDir = join(process.cwd(), "android");
+const appRoot = process.cwd();
+const monorepoRoot = join(appRoot, "..", "..");
+const analyticsPkg = join(monorepoRoot, "packages", "analytics");
+
+if (existsSync(join(analyticsPkg, "package.json"))) {
+  try {
+    const pkgJson = execSync(
+      'node --print "require.resolve(\'@amplitude/plugin-engagement-react-native/package.json\')"',
+      { cwd: analyticsPkg, encoding: "utf8" },
+    ).trim();
+    patchAmplitudeEngagementGradle(join(pkgJson, "..", "android", "build.gradle"));
+  } catch {
+    console.warn("[eas-post-install] Amplitude engagement plugin not resolved — skipping pin");
+  }
+}
+
+const androidDir = join(appRoot, "android");
 const gradlew = join(androidDir, "gradlew");
 
 if (!existsSync(gradlew)) {
