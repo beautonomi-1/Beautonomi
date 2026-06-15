@@ -6,8 +6,7 @@ const { withAndroidManifest, AndroidConfig } = require("expo/config-plugins");
  */
 module.exports = function withOneSignalDisableLaunchUrl(config) {
   return withAndroidManifest(config, (cfg) => {
-    const manifest = cfg.modResults.manifest;
-    const application = AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
+    const application = AndroidConfig.Manifest.getMainApplicationOrThrow(cfg.modResults);
 
     AndroidConfig.Manifest.addMetaDataItemToMainApplication(
       application,
