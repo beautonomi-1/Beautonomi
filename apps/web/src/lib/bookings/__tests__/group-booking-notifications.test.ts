@@ -11,9 +11,13 @@ const mockInsertNotification = vi.fn();
 const mockGetGroupBooking = vi.fn();
 const mockSendResendEmail = vi.fn();
 
-vi.mock("@/lib/notifications/onesignal", () => ({
-  sendToUser: (...args: unknown[]) => mockSendToUser(...args),
-}));
+vi.mock("@/lib/notifications/onesignal", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/notifications/onesignal")>();
+  return {
+    ...actual,
+    sendToUser: (...args: unknown[]) => mockSendToUser(...args),
+  };
+});
 
 vi.mock("@/lib/notifications/enqueue", () => ({
   enqueueMultiChannel: (...args: unknown[]) => mockEnqueueMultiChannel(...args),

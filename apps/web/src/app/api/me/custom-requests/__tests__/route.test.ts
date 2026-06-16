@@ -153,16 +153,58 @@ function buildSupabaseMock(config: BuilderConfig) {
   return { from, fromCalls };
 }
 
-function buildAdminMock() {
+function buildAdminMock(config?: {
+  existingConversation?: { data: unknown; error?: unknown };
+  insertConversation?: { data: unknown; error?: unknown };
+  insertMessage?: { error?: unknown };
+}) {
   return {
-    from: vi.fn().mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          in: vi.fn().mockReturnValue({
-            lt: vi.fn().mockResolvedValue({ error: null }),
+    from: vi.fn((table: string) => {
+      if (table === "conversations") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                order: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    maybeSingle: vi
+                      .fn()
+                      .mockResolvedValue(
+                        config?.existingConversation ?? { data: null, error: null },
+                      ),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi
+                .fn()
+                .mockResolvedValue(
+                  config?.insertConversation ?? { data: { id: "conv-1" }, error: null },
+                ),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
+        };
+      }
+      if (table === "messages") {
+        return {
+          insert: vi.fn().mockResolvedValue(config?.insertMessage ?? { error: null }),
+        };
+      }
+      return {
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({
+              lt: vi.fn().mockResolvedValue({ error: null }),
+            }),
           }),
         }),
-      }),
+      };
     }),
   };
 }
