@@ -15,10 +15,24 @@ const CONFIRM_BORDER_RADIUS = 14;
 const FALLBACK_LNG = 28.0473;
 const FALLBACK_LAT = -26.2041;
 
+/** Structured address from Mapbox Geocoding v6 — passed on confirm so callers skip a second geocode. */
+export type ResolvedPinAddress = {
+  place_name?: string;
+  address_line1?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+};
+
 export type AddressMapPinModalProps = {
   visible: boolean;
   onClose: () => void;
-  onPickCoordinates: (latitude: number, longitude: number) => void;
+  onPickCoordinates: (
+    latitude: number,
+    longitude: number,
+    resolved?: ResolvedPinAddress,
+  ) => void;
   initialCoordinate?: { latitude: number; longitude: number } | null;
 };
 
@@ -43,6 +57,53 @@ async function fetchPublicDirectionsConfig(): Promise<{ token: string | null; st
   } catch {
     return { token: null, styleUrl: null };
   }
+}
+
+async function reverseGeocodeV6(
+  token: string,
+  lng: number,
+  lat: number,
+  timeoutMs = 6000,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lng}&latitude=${lat}&access_token=${token}`,
+        { signal: controller.signal },
+      );
+      const json = (await res.json()) as { features?: Record<string, unknown>[] };
+      return json?.features?.[0] ?? null;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
+function parseV6Feature(place: Record<string, unknown>): ResolvedPinAddress {
+  const props = (place?.properties ?? {}) as Record<string, unknown>;
+  const ctx = (props.context ?? {}) as Record<string, { name?: string } | undefined>;
+  const fullAddress = typeof props.full_address === "string" ? props.full_address : "";
+  const line1 =
+    (ctx.address?.name && String(ctx.address.name)) ||
+    (typeof props.name === "string" && props.name) ||
+    (fullAddress ? fullAddress.split(",")[0].trim() : "") ||
+    "";
+  return {
+    place_name: fullAddress || (typeof props.name === "string" ? props.name : undefined),
+    address_line1: line1 || undefined,
+    city: ctx.place?.name || ctx.locality?.name || ctx.district?.name || undefined,
+    state: ctx.region?.name || undefined,
+    postal_code: ctx.postcode?.name || undefined,
+    country: ctx.country?.name || undefined,
+  };
+}
+
+function coordsNear(aLat: number, aLng: number, bLat: number, bLng: number): boolean {
+  return Math.abs(aLat - bLat) < 1e-5 && Math.abs(aLng - bLng) < 1e-5;
 }
 
 function buildMapboxPinPickerHtml(opts: {
@@ -85,20 +146,27 @@ function buildMapboxPinPickerHtml(opts: {
       .setLngLat(center)
       .addTo(map);
     window.__marker = marker;
-    function publish() {
+    function publish(fromUser) {
       var ll = marker.getLngLat();
       window.__pinLngLat = { lat: ll.lat, lng: ll.lng };
       if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pin_update', lat: ll.lat, lng: ll.lng }));
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'pin_update',
+          lat: ll.lat,
+          lng: ll.lng,
+          fromUser: !!fromUser
+        }));
       }
     }
-    marker.on('dragend', publish);
+    marker.on('dragend', function () { publish(true); });
     map.on('click', function (e) {
       marker.setLngLat(e.lngLat);
-      publish();
+      publish(true);
     });
-    map.on('load', publish);
-    publish();
+    map.on('load', function () {
+      var ll = marker.getLngLat();
+      window.__pinLngLat = { lat: ll.lat, lng: ll.lng };
+    });
   } catch (e) {
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map_error', message: String(e && e.message ? e.message : e) }));
@@ -116,12 +184,15 @@ export function AddressMapPinModal({
   initialCoordinate,
 }: AddressMapPinModalProps) {
   const webRef = useRef<WebView>(null);
+  const mapSessionRef = useRef(0);
   const [mapConfigState, setMapConfigState] = useState<"idle" | "loading" | "ready" | "missing">("idle");
   const [token, setToken] = useState<string | null>(null);
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const fetchAddressTimeout = useRef<NodeJS.Timeout | null>(null);
+  const fetchAddressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const geocodeRequestIdRef = useRef(0);
+  const lastPreviewRef = useRef<{ lat: number; lng: number; resolved: ResolvedPinAddress } | null>(null);
   const [currentAddressName, setCurrentAddressName] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
 
@@ -129,11 +200,27 @@ export function AddressMapPinModal({
   const centerLat = initialCoordinate?.latitude ?? FALLBACK_LAT;
   const zoom = initialCoordinate ? 16 : 11;
 
+  const clearPreviewWork = useCallback(() => {
+    if (fetchAddressTimeout.current) {
+      clearTimeout(fetchAddressTimeout.current);
+      fetchAddressTimeout.current = null;
+    }
+    geocodeRequestIdRef.current += 1;
+    setIsFetchingAddress(false);
+  }, []);
+
   useEffect(() => {
     if (!visible) {
       setMapConfigState("idle");
+      clearPreviewWork();
+      lastPreviewRef.current = null;
       return;
     }
+    mapSessionRef.current += 1;
+    setCurrentAddressName(null);
+    setConfirming(false);
+    lastPreviewRef.current = null;
+    clearPreviewWork();
     let cancelled = false;
     setMapConfigState("loading");
     setToken(null);
@@ -151,7 +238,7 @@ export function AddressMapPinModal({
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, [visible, clearPreviewWork]);
 
   const html = useMemo(() => {
     if (!token || mapConfigState !== "ready") return "";
@@ -177,44 +264,83 @@ export function AddressMapPinModal({
     })();`);
   }, []);
 
+  const resolvePinAddress = useCallback(
+    async (lat: number, lng: number): Promise<ResolvedPinAddress | undefined> => {
+      const cached = lastPreviewRef.current;
+      if (cached && coordsNear(cached.lat, cached.lng, lat, lng)) {
+        return cached.resolved;
+      }
+      if (!token) return undefined;
+      const place = await reverseGeocodeV6(token, lng, lat);
+      return place ? parseV6Feature(place) : undefined;
+    },
+    [token],
+  );
+
   const onWebMessage = useCallback(
     (ev: { nativeEvent: { data: string } }) => {
       try {
-        const d = JSON.parse(ev.nativeEvent.data) as { type?: string; lat?: number; lng?: number };
-        if (d.type === "pin_update" && typeof d.lat === "number" && typeof d.lng === "number") {
+        const d = JSON.parse(ev.nativeEvent.data) as {
+          type?: string;
+          lat?: number;
+          lng?: number;
+          fromUser?: boolean;
+        };
+        if (
+          d.type === "pin_update" &&
+          d.fromUser === true &&
+          typeof d.lat === "number" &&
+          typeof d.lng === "number"
+        ) {
           if (fetchAddressTimeout.current) clearTimeout(fetchAddressTimeout.current);
+          const lat = d.lat;
+          const lng = d.lng;
           fetchAddressTimeout.current = setTimeout(async () => {
             if (!token) return;
+            const requestId = ++geocodeRequestIdRef.current;
             setIsFetchingAddress(true);
             try {
-              const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?longitude=${d.lng}&latitude=${d.lat}&access_token=${token}`);
-              const json = await res.json();
-              const place = json.features?.[0];
-              if (place) {
-                setCurrentAddressName(place.properties.full_address || place.properties.name || "Unknown Location");
+              const place = await reverseGeocodeV6(token, lng, lat);
+              if (requestId !== geocodeRequestIdRef.current) return;
+              const parsed = place ? parseV6Feature(place) : null;
+              if (parsed) {
+                lastPreviewRef.current = { lat, lng, resolved: parsed };
+                setCurrentAddressName(parsed.place_name || "Unknown Location");
               } else {
+                lastPreviewRef.current = null;
                 setCurrentAddressName("Unknown Location");
               }
             } catch {
-              setCurrentAddressName("Unknown Location");
+              if (requestId === geocodeRequestIdRef.current) {
+                lastPreviewRef.current = null;
+                setCurrentAddressName("Unknown Location");
+              }
             } finally {
-              setIsFetchingAddress(false);
+              if (requestId === geocodeRequestIdRef.current) {
+                setIsFetchingAddress(false);
+              }
             }
-          }, 400);
+          }, 800);
         } else if (d.type === "pin" && typeof d.lat === "number" && typeof d.lng === "number") {
+          const lat = d.lat;
+          const lng = d.lng;
+          clearPreviewWork();
           setConfirming(true);
-          try {
-            onPickCoordinates(d.lat, d.lng);
-            onClose();
-          } finally {
-            setConfirming(false);
-          }
+          void (async () => {
+            try {
+              const resolved = await resolvePinAddress(lat, lng);
+              onPickCoordinates(lat, lng, resolved);
+              onClose();
+            } finally {
+              setConfirming(false);
+            }
+          })();
         }
       } catch {
         /* ignore non-JSON */
       }
     },
-    [onPickCoordinates, onClose, token],
+    [clearPreviewWork, onPickCoordinates, onClose, resolvePinAddress],
   );
 
   return (
@@ -240,7 +366,7 @@ export function AddressMapPinModal({
         ) : (
           <WebView
             ref={webRef}
-            key={`${centerLng}-${centerLat}-${token?.slice(0, 12)}`}
+            key={`pin-map-${mapSessionRef.current}-${token?.slice(0, 12) ?? "none"}`}
             style={StyleSheet.absoluteFill}
             source={{ html, baseUrl: "https://localhost" }}
             originWhitelist={["*"]}
@@ -263,7 +389,11 @@ export function AddressMapPinModal({
           </TouchableOpacity>
           <View style={{ flex: 1, marginHorizontal: 8 }}>
             <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
-              {isFetchingAddress ? "Locating..." : currentAddressName || "Tap map or drag pin"}
+              {confirming
+                ? "Confirming location..."
+                : isFetchingAddress
+                  ? "Locating..."
+                  : currentAddressName || "Tap map or drag pin"}
             </Text>
           </View>
           <View style={{ width: 44 }} />

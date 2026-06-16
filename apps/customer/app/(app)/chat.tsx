@@ -1619,7 +1619,7 @@ export default function ChatScreen() {
                           (customRequestAttachment as { image_urls?: string[] }).image_urls!.length > 0 ? (
                             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                               {(customRequestAttachment as { image_urls: string[] }).image_urls
-                                .slice(0, 4)
+                                .slice(0, 6)
                                 .map((url, idx) => (
                                   <TouchableOpacity
                                     key={`${msg.id}-cr-${idx}`}

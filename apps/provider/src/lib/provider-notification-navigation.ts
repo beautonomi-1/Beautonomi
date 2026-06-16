@@ -1,4 +1,8 @@
 import type { Router } from "expo-router";
+import {
+  applyProviderNotificationRoute,
+  notificationPayloadToRouteData,
+} from "@/lib/resolveProviderNotificationRoute";
 
 /** Minimal notification shape for navigation (dropdown + legacy root screen). */
 export type ProviderNotificationNavPayload = {
@@ -328,6 +332,10 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   if (nType.includes("payment")) {
     // Payment notifications → Finance screen so provider sees the transaction
     router.push("/(app)/(tabs)/more/finance" as never);
+    return true;
+  }
+
+  if (applyProviderNotificationRoute(router, notificationPayloadToRouteData(n))) {
     return true;
   }
 

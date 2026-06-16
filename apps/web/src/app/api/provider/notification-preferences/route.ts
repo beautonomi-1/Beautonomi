@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
       system_updates: { email: true, sms: false, push: false },
       marketing: { email: true, sms: false, push: false },
       booking_alert_sound: true,
+      order_alert_sound: true,
+      message_alert_sound: true,
       unsubscribe_marketing: false,
     };
 
@@ -177,6 +179,8 @@ export async function PATCH(request: NextRequest) {
       system_updates: { email: true, sms: false, push: false },
       marketing: { email: true, sms: false, push: false },
       booking_alert_sound: true,
+      order_alert_sound: true,
+      message_alert_sound: true,
       unsubscribe_marketing: false,
     };
 

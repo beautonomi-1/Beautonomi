@@ -68,11 +68,17 @@ import {
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
-import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { AddressMapPinModal, type ResolvedPinAddress } from "@/components/AddressMapPinModal";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { webApiTenantHeaders } from "@/config/public-env";
+import {
+  countGroupParticipantsCheckedIn,
+  isGroupParticipantCheckedIn,
+  isGroupParticipantCheckedOut,
+  resolveGroupParticipantCount,
+} from "@/lib/group-booking-detail-helpers";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
@@ -660,6 +666,12 @@ export default function GroupBookingsScreen() {
   const [validatingCreateAddress, setValidatingCreateAddress] = useState(false);
   const [createMapPinOpen, setCreateMapPinOpen] = useState(false);
   const [createLocatingHome, setCreateLocatingHome] = useState(false);
+  const pendingCreateAddressAlertRef = useRef(false);
+  const createAddressValidateGenRef = useRef(0);
+  const [createMapPreviewCoords, setCreateMapPreviewCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [extraGroups, setExtraGroups] = useState<GroupBooking[]>([]);
   const [loadedGroupPage, setLoadedGroupPage] = useState(1);
   const [loadingMoreGroups, setLoadingMoreGroups] = useState(false);
@@ -841,7 +853,10 @@ export default function GroupBookingsScreen() {
       selectedGroup.participants
     );
     if (metaChanged || participantsChanged) {
-      setSelectedGroup(fresh);
+      setSelectedGroup({
+        ...fresh,
+        current_participants: resolveGroupParticipantCount(fresh),
+      });
     }
   }, [groups, selectedGroup, pendingParticipantId, groupActionLoading]);
 
@@ -906,11 +921,15 @@ export default function GroupBookingsScreen() {
       const fetched = Array.isArray(payload) ? null : payload;
       if (!res.error && fetched?.id) {
         const detail = fetched as GroupBooking;
-        setSelectedGroup(detail);
+        const normalized: GroupBooking = {
+          ...detail,
+          current_participants: resolveGroupParticipantCount(detail),
+        };
+        setSelectedGroup(normalized);
         setExtraGroups((prev) =>
-          prev.some((g) => g.id === detail.id)
-            ? prev.map((g) => (g.id === detail.id ? detail : g))
-            : [...prev, detail]
+          prev.some((g) => g.id === normalized.id)
+            ? prev.map((g) => (g.id === normalized.id ? normalized : g))
+            : [...prev, normalized]
         );
       }
     } finally {
@@ -1051,7 +1070,7 @@ export default function GroupBookingsScreen() {
   const stats = useMemo(() => {
     const activeStatuses = new Set(["pending", "confirmed", "booked", "started"]);
     const upcoming = groups.filter((g) => activeStatuses.has(g.status)).length;
-    const totalParticipants = groups.reduce((s, g) => s + (g.current_participants ?? 0), 0);
+    const totalParticipants = groups.reduce((s, g) => s + resolveGroupParticipantCount(g), 0);
     const apiStats = groupData?.stats;
     const bookedGross =
       apiStats?.participant_booked_gross ??
@@ -1216,7 +1235,7 @@ export default function GroupBookingsScreen() {
       originalPackageId: pkgId,
     });
     setEditOriginalSlot({ date: editDate, time: editTime, duration: editDuration });
-    setEditingGroupCurrentCount(group.current_participants ?? 0);
+    setEditingGroupCurrentCount(resolveGroupParticipantCount(group));
     // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
     // real target even after the detail sheet closes.
     setEditingGroupId(group.id);
@@ -2174,7 +2193,7 @@ export default function GroupBookingsScreen() {
     });
   }
 
-  async function applyCreateAddress(parsed: {
+  function applyCreateAddress(parsed: {
     full_address: string;
     address_line1: string;
     city: string;
@@ -2184,6 +2203,7 @@ export default function GroupBookingsScreen() {
     latitude: number;
     longitude: number;
   }) {
+    pendingCreateAddressAlertRef.current = true;
     setCreateForm((p) => ({
       ...p,
       addressSearchValue: parsed.full_address,
@@ -2196,98 +2216,209 @@ export default function GroupBookingsScreen() {
       addressLongitude: parsed.longitude,
     }));
     clearCreateFieldError("address");
-
-    const addressString =
-      parsed.full_address || `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`;
-    if (!provider?.id || !addressString.trim()) return;
-    setValidatingCreateAddress(true);
-    try {
-      const res = await api.post<{
-        valid?: boolean;
-        travelFee?: number;
-        distanceKm?: number;
-        coordinates?: { latitude: number; longitude: number };
-        address?: {
-          line1?: string;
-          city?: string;
-          state?: string;
-          country?: string;
-          postalCode?: string;
-          fullAddress?: string;
-        };
-        reason?: string;
-        errorCode?: string;
-        settingsRoute?: string;
-      }>("/api/location/validate", {
-        address: addressString,
-        provider_id: provider.id,
-        latitude: parsed.latitude,
-        longitude: parsed.longitude,
-      });
-      const data = res.data ?? {};
-      if (!data.valid) {
-        const settingsRoute = data.settingsRoute;
-        const buttons = settingsRoute
-          ? [
-              { text: "Open settings", onPress: () => router.push(settingsRoute as never) },
-              { text: "Cancel", style: "cancel" as const },
-            ]
-          : [{ text: "OK" }];
-        Alert.alert(
-          data.errorCode === "DISTANCE_LIMIT" ? "Outside service radius" : "Outside service area",
-          data.reason || "This address is outside your active service zones.",
-          buttons,
-        );
-        return;
-      }
-      setCreateForm((p) => ({
-        ...p,
-        addressSearchValue: data.address?.fullAddress || parsed.full_address,
-        addressLine1: data.address?.line1 || parsed.address_line1,
-        addressCity: data.address?.city || parsed.city,
-        addressState: data.address?.state || parsed.state,
-        addressPostalCode: data.address?.postalCode || parsed.postal_code,
-        addressCountry: data.address?.country || parsed.country || "South Africa",
-        addressLatitude: data.coordinates?.latitude ?? parsed.latitude,
-        addressLongitude: data.coordinates?.longitude ?? parsed.longitude,
-        travelFee: String(Math.max(0, Number(data.travelFee || 0))),
-        travelPreviewDistanceKm:
-          typeof data.distanceKm === "number" && Number.isFinite(data.distanceKm)
-            ? data.distanceKm
-            : p.travelPreviewDistanceKm,
-      }));
-    } catch (e) {
-      Alert.alert(
-        "Travel fee unavailable",
-        e instanceof Error ? e.message : "Could not calculate the travel fee."
-      );
-    } finally {
-      setValidatingCreateAddress(false);
-    }
   }
 
-  async function handleCreateDropPin(lat: number, lng: number) {
-    const fb = createForm.addressCountry.trim() || "South Africa";
-    const mapped = await reverseGeocodeCoordinates(lat, lng, fb);
-    if (mapped) {
-      await applyCreateAddress({
-        full_address: `${mapped.address_line1}, ${mapped.city}`,
-        address_line1: mapped.address_line1,
-        city: mapped.city,
-        state: mapped.state,
-        postal_code: mapped.postal_code,
-        country: mapped.country,
-        latitude: mapped.latitude,
-        longitude: mapped.longitude,
-      });
-    } else {
-      setCreateForm((p) => ({
-        ...p,
-        addressLatitude: lat,
-        addressLongitude: lng,
-      }));
+  // Debounced travel-fee validation — avoids hammering /api/location/validate while
+  // the user searches, drags the map pin, or edits address fields.
+  useEffect(() => {
+    if (createForm.locationType !== "at_home") {
+      setCreateMapPreviewCoords(null);
+      return;
     }
+    if (!provider?.id) return;
+    if (createForm.addressLatitude == null || createForm.addressLongitude == null) return;
+
+    const validateGen = ++createAddressValidateGenRef.current;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const addressString = [
+          createForm.addressLine1,
+          createForm.addressCity,
+          createForm.addressState,
+          createForm.addressPostalCode,
+          createForm.addressCountry.trim() || "South Africa",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        const fallbackAddress =
+          createForm.addressSearchValue.trim() ||
+          `Pinned location, ${createForm.addressCountry.trim() || "South Africa"}`;
+        const validateAddress = addressString.trim() || fallbackAddress;
+        if (!validateAddress.trim()) return;
+
+        setValidatingCreateAddress(true);
+        try {
+          const res = await api.post<{
+            valid?: boolean;
+            travelFee?: number;
+            distanceKm?: number;
+            coordinates?: { latitude: number; longitude: number };
+            address?: {
+              line1?: string;
+              city?: string;
+              state?: string;
+              country?: string;
+              postalCode?: string;
+              fullAddress?: string;
+            };
+            reason?: string;
+            errorCode?: string;
+            settingsRoute?: string;
+          }>("/api/location/validate", {
+            address: validateAddress,
+            provider_id: provider.id,
+            latitude: createForm.addressLatitude,
+            longitude: createForm.addressLongitude,
+          });
+          if (validateGen !== createAddressValidateGenRef.current) return;
+          const data = res.data ?? {};
+          if (!data.valid) {
+            if (pendingCreateAddressAlertRef.current) {
+              pendingCreateAddressAlertRef.current = false;
+              const settingsRoute = data.settingsRoute;
+              const buttons = settingsRoute
+                ? [
+                    { text: "Open settings", onPress: () => router.push(settingsRoute as never) },
+                    { text: "Cancel", style: "cancel" as const },
+                  ]
+                : [{ text: "OK" }];
+              Alert.alert(
+                data.errorCode === "DISTANCE_LIMIT" ? "Outside service radius" : "Outside service area",
+                data.reason || "This address is outside your active service zones.",
+                buttons,
+              );
+            }
+            setCreateForm((p) => ({
+              ...p,
+              travelFee: "",
+              travelPreviewDistanceKm:
+                typeof data.distanceKm === "number" && Number.isFinite(data.distanceKm)
+                  ? data.distanceKm
+                  : null,
+            }));
+            return;
+          }
+          pendingCreateAddressAlertRef.current = false;
+          setCreateForm((p) => ({
+            ...p,
+            addressSearchValue: data.address?.fullAddress || p.addressSearchValue,
+            addressLine1: data.address?.line1 || p.addressLine1,
+            addressCity: data.address?.city || p.addressCity,
+            addressState: data.address?.state || p.addressState,
+            addressPostalCode: data.address?.postalCode || p.addressPostalCode,
+            addressCountry: data.address?.country || p.addressCountry || "South Africa",
+            addressLatitude: data.coordinates?.latitude ?? p.addressLatitude,
+            addressLongitude: data.coordinates?.longitude ?? p.addressLongitude,
+            travelFee: String(Math.max(0, Number(data.travelFee || 0))),
+            travelPreviewDistanceKm:
+              typeof data.distanceKm === "number" && Number.isFinite(data.distanceKm)
+                ? data.distanceKm
+                : null,
+          }));
+        } catch (e) {
+          if (validateGen !== createAddressValidateGenRef.current) return;
+          if (pendingCreateAddressAlertRef.current) {
+            pendingCreateAddressAlertRef.current = false;
+            Alert.alert(
+              "Travel fee unavailable",
+              e instanceof Error ? e.message : "Could not calculate the travel fee.",
+            );
+          }
+        } finally {
+          if (validateGen === createAddressValidateGenRef.current) {
+            setValidatingCreateAddress(false);
+          }
+        }
+      })();
+    }, 600);
+
+    return () => {
+      clearTimeout(timer);
+      createAddressValidateGenRef.current += 1;
+      setValidatingCreateAddress(false);
+    };
+  }, [
+    createForm.locationType,
+    provider?.id,
+    createForm.addressLine1,
+    createForm.addressSearchValue,
+    createForm.addressCity,
+    createForm.addressState,
+    createForm.addressPostalCode,
+    createForm.addressCountry,
+    createForm.addressLatitude,
+    createForm.addressLongitude,
+    router,
+  ]);
+
+  useEffect(() => {
+    if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
+      setCreateMapPreviewCoords(null);
+      return;
+    }
+    const lat = createForm.addressLatitude;
+    const lng = createForm.addressLongitude;
+    const timer = setTimeout(() => {
+      setCreateMapPreviewCoords({ latitude: lat, longitude: lng });
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [createForm.addressLatitude, createForm.addressLongitude]);
+
+  function applyMapPinToCreateForm(
+    lat: number,
+    lng: number,
+    countryFallback: string,
+    resolved?: ResolvedPinAddress,
+  ) {
+    const fb = countryFallback.trim() || "South Africa";
+    const line1 = resolved?.address_line1?.trim() || resolved?.place_name?.trim();
+    if (line1) {
+      const city = resolved?.city?.trim() || "";
+      const placeName = resolved?.place_name?.trim();
+      applyCreateAddress({
+        full_address: placeName || (city ? `${line1}, ${city}` : line1),
+        address_line1: line1,
+        city,
+        state: resolved?.state?.trim() || "",
+        postal_code: resolved?.postal_code?.trim() || "",
+        country: resolved?.country?.trim() || fb,
+        latitude: lat,
+        longitude: lng,
+      });
+      return;
+    }
+    pendingCreateAddressAlertRef.current = true;
+    setCreateForm((p) => ({
+      ...p,
+      addressSearchValue: "Pinned location",
+      addressLine1: "Pinned location",
+      addressLatitude: lat,
+      addressLongitude: lng,
+    }));
+    clearCreateFieldError("address");
+  }
+
+  function handleCreateDropPin(lat: number, lng: number, resolved?: ResolvedPinAddress) {
     setCreateMapPinOpen(false);
+    const countryFallback = createForm.addressCountry.trim() || "South Africa";
+    InteractionManager.runAfterInteractions(() => {
+      applyMapPinToCreateForm(lat, lng, countryFallback, resolved);
+      if (resolved?.address_line1?.trim() || resolved?.place_name?.trim()) return;
+      void reverseGeocodeCoordinates(lat, lng, countryFallback).then((mapped) => {
+        if (mapped) {
+          applyCreateAddress({
+            full_address: `${mapped.address_line1}, ${mapped.city}`,
+            address_line1: mapped.address_line1,
+            city: mapped.city,
+            state: mapped.state,
+            postal_code: mapped.postal_code,
+            country: mapped.country,
+            latitude: mapped.latitude,
+            longitude: mapped.longitude,
+          });
+        }
+      });
+    });
   }
 
   async function handleCreateUseCurrentLocation() {
@@ -2305,7 +2436,7 @@ export default function GroupBookingsScreen() {
       const fb = createForm.addressCountry.trim() || "South Africa";
       const mapped = await reverseGeocodeCoordinates(loc.coords.latitude, loc.coords.longitude, fb);
       if (mapped) {
-        await applyCreateAddress({
+        applyCreateAddress({
           full_address: `${mapped.address_line1}, ${mapped.city}`,
           address_line1: mapped.address_line1,
           city: mapped.city,
@@ -2316,11 +2447,15 @@ export default function GroupBookingsScreen() {
           longitude: mapped.longitude,
         });
       } else {
+        pendingCreateAddressAlertRef.current = true;
         setCreateForm((p) => ({
           ...p,
+          addressSearchValue: "Pinned location",
+          addressLine1: "Pinned location",
           addressLatitude: loc.coords.latitude,
           addressLongitude: loc.coords.longitude,
         }));
+        clearCreateFieldError("address");
       }
     } catch (e) {
       Alert.alert("Location error", e instanceof Error ? e.message : "Could not read location.");
@@ -2341,7 +2476,7 @@ export default function GroupBookingsScreen() {
     }
     if (
       selectedGroup.max_participants != null &&
-      (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants
+      resolveGroupParticipantCount(selectedGroup) >= selectedGroup.max_participants
     ) {
       Alert.alert(
         "Session full",
@@ -2394,7 +2529,7 @@ export default function GroupBookingsScreen() {
       addOns: line.addOns,
       packageId: selectedGroup.package_id ?? null,
       participant: participantForm,
-      isPrimary: (selectedGroup.current_participants ?? 0) === 0,
+      isPrimary: resolveGroupParticipantCount(selectedGroup) === 0,
     });
     if (res.error) {
       Alert.alert("Participant creation failed", res.error);
@@ -2796,9 +2931,9 @@ export default function GroupBookingsScreen() {
                             style={{ marginRight: 4 }}
                           />
                           <Text style={twStyle("text-xs text-gray-500")}>
-                            {group.current_participants ?? 0}
+                            {resolveGroupParticipantCount(group)}
                             {group.max_participants ? `/${group.max_participants}` : ""}{" "}
-                            {group.max_participants && (group.current_participants ?? 0) >= group.max_participants
+                            {group.max_participants && resolveGroupParticipantCount(group) >= group.max_participants
                               ? "· Full"
                               : "participants"}
                           </Text>
@@ -2903,25 +3038,34 @@ export default function GroupBookingsScreen() {
                 <Text style={twStyle("text-sm text-gray-500")}>Participants</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Text style={twStyle("text-sm text-gray-700")}>
-                    {selectedGroup.current_participants ?? 0}
+                    {resolveGroupParticipantCount(selectedGroup)}
                     {selectedGroup.max_participants ? ` / ${selectedGroup.max_participants}` : ""}
                   </Text>
-                  {selectedGroup.max_participants != null && (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants && (
+                  {selectedGroup.max_participants != null && resolveGroupParticipantCount(selectedGroup) >= selectedGroup.max_participants && (
                     <View style={{ backgroundColor: "#fef2f2", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
                       <Text style={{ fontSize: 10, color: "#dc2626", fontWeight: "600" }}>Full</Text>
                     </View>
                   )}
                   {selectedGroup.max_participants != null &&
-                    (selectedGroup.current_participants ?? 0) < selectedGroup.max_participants &&
-                    selectedGroup.max_participants - (selectedGroup.current_participants ?? 0) <= 2 && (
+                    resolveGroupParticipantCount(selectedGroup) < selectedGroup.max_participants &&
+                    selectedGroup.max_participants - resolveGroupParticipantCount(selectedGroup) <= 2 && (
                     <View style={{ backgroundColor: "#fffbeb", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
                       <Text style={{ fontSize: 10, color: "#d97706", fontWeight: "600" }}>
-                        {selectedGroup.max_participants - (selectedGroup.current_participants ?? 0)} left
+                        {selectedGroup.max_participants - resolveGroupParticipantCount(selectedGroup)} left
                       </Text>
                     </View>
                   )}
                 </View>
               </View>
+              {resolveGroupParticipantCount(selectedGroup) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Checked in</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {countGroupParticipantsCheckedIn(selectedGroup.participants)} /{" "}
+                    {resolveGroupParticipantCount(selectedGroup)}
+                  </Text>
+                </View>
+              ) : null}
               <View style={twStyle("mt-1 border-t border-gray-200 pt-2 flex-row justify-between")}>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
@@ -3097,7 +3241,7 @@ export default function GroupBookingsScreen() {
                 </Text>
                 {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (() => {
                   const atCap = selectedGroup.max_participants != null &&
-                    (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants;
+                    resolveGroupParticipantCount(selectedGroup) >= selectedGroup.max_participants;
                   return (
                     <TouchableOpacity
                       style={[
@@ -3140,10 +3284,8 @@ export default function GroupBookingsScreen() {
                   const displayName =
                     p.customer_name || p.client_name || p.participant_name || "Guest";
                   const displayPhone = p.customer_phone || p.client_phone || p.participant_phone;
-                  const checkedIn =
-                    p.checked_in === true || !!p.checked_in_time || !!p.checked_in_at;
-                  const checkedOut =
-                    p.checked_out === true || !!p.checked_out_time || !!p.checked_out_at;
+                  const checkedIn = isGroupParticipantCheckedIn(p);
+                  const checkedOut = isGroupParticipantCheckedOut(p);
                   const isCheckedIn = checkedIn && !checkedOut;
                   const isCheckedOut = checkedOut;
                   const canCheckInOut =
@@ -4128,6 +4270,8 @@ export default function GroupBookingsScreen() {
           setCreateReviewError(null);
           setCreateFieldError(null);
           setValidatingCreateAddress(false);
+          pendingCreateAddressAlertRef.current = false;
+          setCreateMapPreviewCoords(null);
         }}
         title={createStep === "form" ? "New Group Booking" : "Review group booking"}
         subtitle={createStep === "form" ? "Date, time, location, and participants" : "Confirm session details"}
@@ -4321,11 +4465,11 @@ export default function GroupBookingsScreen() {
                     </Text>
                   </View>
                 ) : null}
-                {createForm.addressLatitude != null && createForm.addressLongitude != null ? (
+                {createMapPreviewCoords ? (
                   <View style={{ marginTop: 12, alignItems: "center" }}>
                     <StaticMapImage
-                      latitude={createForm.addressLatitude}
-                      longitude={createForm.addressLongitude}
+                      latitude={createMapPreviewCoords.latitude}
+                      longitude={createMapPreviewCoords.longitude}
                       width={Math.min(windowWidth - 48, 400)}
                       height={150}
                       zoom={15}
@@ -5416,8 +5560,8 @@ export default function GroupBookingsScreen() {
       <AddressMapPinModal
         visible={createMapPinOpen}
         onClose={() => setCreateMapPinOpen(false)}
-        onPickCoordinates={(lat, lng) => {
-          void handleCreateDropPin(lat, lng);
+        onPickCoordinates={(lat, lng, resolved) => {
+          handleCreateDropPin(lat, lng, resolved);
         }}
         initialCoordinate={
           createForm.addressLatitude != null && createForm.addressLongitude != null

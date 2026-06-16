@@ -16,7 +16,7 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
-import { useImagePicker } from "@/hooks/useImagePicker";
+import { useImagePicker, type PickImageResult } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
@@ -116,7 +116,7 @@ export default function CustomRequestCreateScreen() {
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
-  const { pickFromLibrary } = useImagePicker();
+  const { pickMultipleFromLibrary, pickFromCamera } = useImagePicker();
   const [description, setDescription] = useState("");
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
@@ -198,66 +198,149 @@ export default function CustomRequestCreateScreen() {
     };
   }, [duration, locationType, preferredStartAt, provider_id, selectedDate]);
 
-  const addImage = useCallback(async () => {
-    if (imageUrls.length >= MAX_IMAGE_COUNT) {
-      setUploadError(cr("uploadLimitReached"));
-      return;
-    }
-    setUploadError(null);
-    setUploading(true);
-    try {
-      const result = await pickFromLibrary();
-      if (!result) return;
-
+  const validatePick = useCallback(
+    (result: PickImageResult): string | null => {
       const resolvedMime =
         (result.mimeType && result.mimeType.toLowerCase()) ||
         inferMimeTypeFromName(result.fileName) ||
         "image/jpeg";
-
       if (!ALLOWED_IMAGE_MIME_TYPES.includes(resolvedMime)) {
-        setUploadError(cr("uploadUnsupportedType"));
-        return;
+        return cr("uploadUnsupportedType");
       }
-
       if (typeof result.fileSize === "number" && result.fileSize > MAX_IMAGE_BYTES) {
-        setUploadError(cr("uploadTooLarge"));
+        return cr("uploadTooLarge");
+      }
+      return null;
+    },
+    [cr],
+  );
+
+  const uploadPickedImages = useCallback(
+    async (picked: PickImageResult[]) => {
+      if (picked.length === 0) return;
+      const remaining = MAX_IMAGE_COUNT - imageUrls.length;
+      const batch = picked.slice(0, remaining);
+      if (batch.length === 0) {
+        setUploadError(cr("uploadLimitReached"));
         return;
       }
 
-      const formData = new FormData();
-      appendFormDataFileNative(formData, "files", {
-        uri: result.uri,
-        name: result.fileName || "image.jpg",
-        type: resolvedMime,
-      });
-      const res = await api.fetch<{
-        urls?: string[];
-        partial?: boolean;
-        failed?: { name: string; reason: string }[];
-      }>("/api/me/custom-requests/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (res.error) {
-        setUploadError(getApiErrorMessage(res.error, cr("uploadFailedFallback")));
-        return;
-      }
-      const payload = res.data ?? null;
-      const urls = payload?.urls ?? [];
-      if (urls.length > 0) {
-        setImageUrls((prev) => [...prev, ...urls].slice(0, MAX_IMAGE_COUNT));
-        if (payload?.partial) {
-          setUploadError(cr("uploadPartialSuccess"));
+      setUploadError(null);
+      setUploading(true);
+      try {
+        const validBatch: PickImageResult[] = [];
+        let skippedValidationError: string | null = null;
+        for (const result of batch) {
+          const validationError = validatePick(result);
+          if (validationError) {
+            skippedValidationError = validationError;
+            continue;
+          }
+          validBatch.push(result);
         }
-      } else {
-        setUploadError(cr("uploadProcessedBody"));
+        if (validBatch.length === 0) {
+          setUploadError(skippedValidationError ?? cr("uploadFailedFallback"));
+          return;
+        }
+
+        const formData = new FormData();
+        for (const result of validBatch) {
+          const resolvedMime =
+            (result.mimeType && result.mimeType.toLowerCase()) ||
+            inferMimeTypeFromName(result.fileName) ||
+            "image/jpeg";
+          appendFormDataFileNative(formData, "files", {
+            uri: result.uri,
+            name: result.fileName || "image.jpg",
+            type: resolvedMime,
+          });
+        }
+
+        const res = await api.fetch<{
+          urls?: string[];
+          partial?: boolean;
+          failed?: { name: string; reason: string }[];
+        }>("/api/me/custom-requests/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (res.error) {
+          setUploadError(getApiErrorMessage(res.error, cr("uploadFailedFallback")));
+          return;
+        }
+        const payload = res.data ?? null;
+        const urls = payload?.urls ?? [];
+        if (urls.length > 0) {
+          setImageUrls((prev) => [...prev, ...urls].slice(0, MAX_IMAGE_COUNT));
+          if (payload?.partial || skippedValidationError) {
+            setUploadError(cr("uploadPartialSuccess"));
+          }
+        } else {
+          setUploadError(cr("uploadProcessedBody"));
+        }
+      } catch (e) {
+        setUploadError(e instanceof Error ? e.message : cr("uploadImageFailedBody"));
+      } finally {
+        setUploading(false);
       }
-    } catch (e) {
-      setUploadError(e instanceof Error ? e.message : cr("uploadImageFailedBody"));
-    } finally {
-      setUploading(false);
+    },
+    [cr, imageUrls.length, validatePick],
+  );
+
+  const addImagesFromLibrary = useCallback(async () => {
+    if (imageUrls.length >= MAX_IMAGE_COUNT) {
+      setUploadError(cr("uploadLimitReached"));
+      return;
     }
-  }, [cr, imageUrls.length, pickFromLibrary]);
+    const remaining = MAX_IMAGE_COUNT - imageUrls.length;
+    const picked = await pickMultipleFromLibrary(remaining);
+    await uploadPickedImages(picked);
+  }, [cr, imageUrls.length, pickMultipleFromLibrary, uploadPickedImages]);
+
+  const addImageFromCamera = useCallback(async () => {
+    if (imageUrls.length >= MAX_IMAGE_COUNT) {
+      setUploadError(cr("uploadLimitReached"));
+      return;
+    }
+    const result = await pickFromCamera({ allowsEditing: false });
+    if (!result) return;
+    await uploadPickedImages([result]);
+  }, [cr, imageUrls.length, pickFromCamera, uploadPickedImages]);
+
+  const promptAddPhotos = useCallback(() => {
+    if (uploading || imageUrls.length >= MAX_IMAGE_COUNT) return;
+    haptic.light();
+    if (Platform.OS === "web") {
+      void addImagesFromLibrary();
+      return;
+    }
+    Alert.alert(
+      cr("addPhotosPromptTitle"),
+      cr("addPhotosPromptBody", { remaining: MAX_IMAGE_COUNT - imageUrls.length }),
+      [
+        {
+          text: cr("addPhotosFromLibrary"),
+          onPress: () => {
+            void addImagesFromLibrary();
+          },
+        },
+        {
+          text: cr("addPhotosFromCamera"),
+          onPress: () => {
+            void addImageFromCamera();
+          },
+        },
+        { text: t("common.cancel"), style: "cancel" },
+      ],
+    );
+  }, [
+    addImageFromCamera,
+    addImagesFromLibrary,
+    cr,
+    imageUrls.length,
+    t,
+    uploading,
+  ]);
 
   const removeImage = (idx: number) => {
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
@@ -591,12 +674,17 @@ export default function CustomRequestCreateScreen() {
           )}
         </View>
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 4 }}>{cr("inspirationPhotosLabel")}</Text>
-        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>
           {cr("inspirationPhotosHelper", { max: MAX_IMAGE_COUNT })}
         </Text>
+        {imageUrls.length > 0 ? (
+          <Text style={{ fontSize: 12, color: Colors.gray[600], marginBottom: 8, fontWeight: "600" }}>
+            {cr("photosAddedCount", { count: imageUrls.length, max: MAX_IMAGE_COUNT })}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {imageUrls.map((url, i) => (
-            <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
+            <View key={`${url}-${i}`} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
               <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
               <Pressable
                 onPress={() => removeImage(i)}
@@ -610,13 +698,22 @@ export default function CustomRequestCreateScreen() {
           ))}
           {imageUrls.length < MAX_IMAGE_COUNT && (
             <TouchableOpacity
-              onPress={addImage}
+              onPress={promptAddPhotos}
               disabled={uploading}
               accessibilityRole="button"
               accessibilityLabel={cr("addPhotoA11y")}
-              style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: uploadError ? "#EF4444" : Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}
+              style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: uploadError ? "#EF4444" : Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8, backgroundColor: Colors.gray[50] }}
             >
-              {uploading ? <ActivityIndicator size="small" /> : <Text style={{ color: Colors.gray[500], fontSize: 24 }}>+</Text>}
+              {uploading ? (
+                <ActivityIndicator size="small" />
+              ) : (
+                <>
+                  <Ionicons name="images-outline" size={22} color={Colors.gray[500]} />
+                  <Text style={{ color: Colors.gray[500], fontSize: 10, marginTop: 2, fontWeight: "600" }}>
+                    {cr("addPhotosShort")}
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -634,7 +731,7 @@ export default function CustomRequestCreateScreen() {
             <Text style={{ color: "#B91C1C", fontSize: 13, marginBottom: 8 }}>{uploadError}</Text>
             <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
-                onPress={addImage}
+                onPress={promptAddPhotos}
                 disabled={uploading || imageUrls.length >= MAX_IMAGE_COUNT}
                 accessibilityRole="button"
                 style={{
@@ -685,9 +782,9 @@ export default function CustomRequestCreateScreen() {
         ) : null}
         <TouchableOpacity
           onPress={submit}
-          disabled={submitting}
+          disabled={submitting || uploading}
           accessibilityRole="button"
-          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24, opacity: submitting ? 0.75 : 1 }}
+          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24, opacity: submitting || uploading ? 0.75 : 1 }}
         >
           {submitting ? (
             <ActivityIndicator color={Colors.white} />

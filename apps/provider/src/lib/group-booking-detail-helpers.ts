@@ -11,7 +11,39 @@ export type GroupParticipantRefundContext = {
   id?: string;
   is_primary_contact?: boolean;
   booking_id?: string | null;
+  checked_in?: boolean;
+  checked_in_time?: string | null;
+  checked_in_at?: string | null;
+  checked_out?: boolean;
+  checked_out_time?: string | null;
+  checked_out_at?: string | null;
 };
+
+export type GroupParticipantCountSource = {
+  current_participants?: number | null;
+  participants?: GroupParticipantRefundContext[] | null;
+};
+
+/** Enrollment count — prefer live participants array over stale/missing API field. */
+export function resolveGroupParticipantCount(group: GroupParticipantCountSource): number {
+  const listed = group.participants?.length;
+  if (typeof listed === "number" && listed >= 0) return listed;
+  return Math.max(0, Number(group.current_participants ?? 0));
+}
+
+export function isGroupParticipantCheckedIn(p: GroupParticipantRefundContext): boolean {
+  return p.checked_in === true || !!p.checked_in_time || !!p.checked_in_at;
+}
+
+export function isGroupParticipantCheckedOut(p: GroupParticipantRefundContext): boolean {
+  return p.checked_out === true || !!p.checked_out_time || !!p.checked_out_at;
+}
+
+export function countGroupParticipantsCheckedIn(
+  participants: GroupParticipantRefundContext[] | undefined | null,
+): number {
+  return (participants ?? []).filter(isGroupParticipantCheckedIn).length;
+}
 
 export function formatGroupPaymentStatusLabel(status: string | undefined | null): string {
   const s = String(status ?? "").toLowerCase();

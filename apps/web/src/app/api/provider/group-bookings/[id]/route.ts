@@ -239,6 +239,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       displayTotal,
     );
 
+    const scheduledAtRaw = (groupBooking as any).scheduled_at as string | null | undefined;
+    const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
+
     const groupPayload = groupBooking as unknown as Record<string, unknown>;
     return successResponse({
       ...groupPayload,
@@ -246,6 +249,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       booking_participants: participants,
       participants,
       package_name: pkg?.name ?? null,
+      /** Align list + detail: detail fetch must not drop enrollment count in mobile modal. */
+      current_participants: participants.length,
+      scheduled_date: scheduledAt ? scheduledAt.toISOString().split("T")[0] : "",
+      scheduled_time: scheduledAt ? scheduledAt.toTimeString().slice(0, 5) : "",
+      team_member_id: (groupBooking as any).staff_id ?? null,
       ...groupPayment,
     });
   } catch (error) {

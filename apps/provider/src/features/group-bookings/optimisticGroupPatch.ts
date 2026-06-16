@@ -27,6 +27,7 @@ export type GroupBookingPatch = {
   balance_due?: number | null;
   total_refunded?: number | null;
   is_invoiced?: boolean | null;
+  current_participants?: number;
   participants?: GroupParticipantPatch[];
 };
 
@@ -35,12 +36,14 @@ function mapParticipant<T extends GroupParticipantPatch>(
   participantId: string,
   patch: Partial<T>
 ): GroupBookingPatch {
-  return {
+  const next = {
     ...group,
     participants: (group.participants ?? []).map((p) =>
       p.id === participantId ? { ...p, ...patch } : p
     ),
   };
+  next.current_participants = (next.participants ?? []).length;
+  return next;
 }
 
 function isParticipantCheckedOut(p: GroupParticipantPatch): boolean {
@@ -189,6 +192,8 @@ function participantSnapshotEqual(
   rp: GroupParticipantPatch
 ): boolean {
   if (lp.id !== rp.id) return false;
+  if (lp.checked_in !== rp.checked_in) return false;
+  if (lp.checked_out !== rp.checked_out) return false;
   if (!!lp.checked_in_at !== !!rp.checked_in_at) return false;
   if (!!lp.checked_in_time !== !!rp.checked_in_time) return false;
   if (!!lp.checked_out_at !== !!rp.checked_out_at) return false;

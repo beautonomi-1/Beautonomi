@@ -267,7 +267,7 @@ function RequestCard({
       <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
       {item.attachments && item.attachments.length > 0 ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          {item.attachments.slice(0, 4).map((att) => (
+          {item.attachments.slice(0, 6).map((att) => (
             <Image
               key={att.id}
               source={{ uri: att.url }}

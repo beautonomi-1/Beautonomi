@@ -11,6 +11,7 @@ import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
 import { NativePermissionsOnboardingProvider } from "@/providers/NativePermissionsOnboardingProvider";
 import { PushNotificationsProvider } from "@/providers/PushNotificationsProvider";
+import { InAppBannerProvider } from "@/providers/InAppBannerProvider";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
@@ -97,6 +98,7 @@ function ThemedApp() {
       <SplashController />
       <OfflineBar />
       <ForceUpdateGate>
+        <InAppBannerProvider>
         <PushNotificationsProvider>
           <ScreenshotDeepLinkBootstrap />
           <Stack
@@ -110,6 +112,7 @@ function ThemedApp() {
             <Stack.Screen name="(app)" />
           </Stack>
         </PushNotificationsProvider>
+        </InAppBannerProvider>
       </ForceUpdateGate>
       <StatusBar style={isDark ? "light" : "dark"} />
       <MarketAvailabilityGate />
