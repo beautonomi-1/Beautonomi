@@ -1015,6 +1015,8 @@ export default function BookingDetailScreen() {
   const [qrPasteJson, setQrPasteJson] = useState("");
   const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
   const [showArrivalQrScanner, setShowArrivalQrScanner] = useState(false);
+  const [qrScanError, setQrScanError] = useState<string | null>(null);
+  const verifyQrInFlightRef = useRef(false);
 
   // Consent document upload
   const [uploadingConsentFormId, setUploadingConsentFormId] = useState<string | null>(null);
@@ -2370,22 +2372,30 @@ export default function BookingDetailScreen() {
   };
 
   const submitVerifyQrBody = async (body: { verification_code?: string; qr_data?: string }) => {
-    if (!id) return false;
+    if (!id || verifyQrInFlightRef.current) return false;
+    verifyQrInFlightRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsVerifyingQrArrival(true);
+    setQrScanError(null);
     try {
       const res = await postMutation(`/api/provider/bookings/${id}/verify-qr`, body);
       if (res.error) {
-        Alert.alert("Error", res.error);
+        const message = res.error;
+        setQrScanError(message);
+        if (!showArrivalQrScanner) {
+          Alert.alert("Error", message);
+        }
         return false;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setQrArrivalCodeInput("");
       setQrPasteJson("");
+      setQrScanError(null);
       setShowArrivalQrScanner(false);
       await refresh();
       return true;
     } finally {
+      verifyQrInFlightRef.current = false;
       setIsVerifyingQrArrival(false);
     }
   };
@@ -3311,7 +3321,10 @@ export default function BookingDetailScreen() {
                       accessibilityLabel="Pasted QR JSON"
                     />
                     <TouchableOpacity
-                      onPress={() => setShowArrivalQrScanner(true)}
+                      onPress={() => {
+                        setQrScanError(null);
+                        setShowArrivalQrScanner(true);
+                      }}
                       disabled={isVerifyingQrArrival || Platform.OS === "web"}
                       style={twStyle(
                         `rounded-2xl border-2 border-primary py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
@@ -5058,10 +5071,13 @@ export default function BookingDetailScreen() {
 
       <ArrivalQrScannerModal
         visible={showArrivalQrScanner}
-        onClose={() => setShowArrivalQrScanner(false)}
-        onValidScan={(jsonPayload) => {
-          void submitVerifyQrBody({ qr_data: jsonPayload });
+        onClose={() => {
+          setQrScanError(null);
+          setShowArrivalQrScanner(false);
         }}
+        busy={isVerifyingQrArrival}
+        errorMessage={qrScanError}
+        onValidScan={(jsonPayload) => submitVerifyQrBody({ qr_data: jsonPayload })}
       />
     </ScreenContainer>
   );

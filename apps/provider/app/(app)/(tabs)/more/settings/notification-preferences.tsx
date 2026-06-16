@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Switch, Alert, TouchableOpacity, Platform, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as Notifications from "expo-notifications";
+import { useFocusEffect } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
+import {
+  getOneSignalPermissionAsync,
+  requestOneSignalPushPermission,
+} from "@/lib/onesignal-client";
+import { emitAlertPrefsChanged } from "@/lib/notification-badge-events";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -31,6 +35,8 @@ interface NotifPreferences {
   system_updates: ChannelPrefs;
   marketing: ChannelPrefs;
   booking_alert_sound?: boolean;
+  order_alert_sound?: boolean;
+  message_alert_sound?: boolean;
   unsubscribe_marketing?: boolean;
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: string;
@@ -79,6 +85,8 @@ const DEFAULT_PREFS: NotifPreferences = {
   system_updates: { email: true, sms: false, push: false },
   marketing: { email: true, sms: false, push: false },
   booking_alert_sound: true,
+  order_alert_sound: true,
+  message_alert_sound: true,
   unsubscribe_marketing: false,
   quiet_hours_enabled: false,
   quiet_hours_start: "22:00",
@@ -101,46 +109,41 @@ export default function NotificationPreferencesScreen() {
   const [dirty, setDirty] = useState(false);
   const [pushPermissionStatus, setPushPermissionStatus] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refreshPushPermission = useCallback(async () => {
     if (Platform.OS === "web") return;
-    void Notifications.getPermissionsAsync().then(({ status }) => setPushPermissionStatus(status));
+    const granted = await getOneSignalPermissionAsync();
+    setPushPermissionStatus(granted ? "granted" : "denied");
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshPushPermission();
+    }, [refreshPushPermission]),
+  );
 
   async function handleEnablePushNotifications() {
     if (Platform.OS === "web") return;
-    const current = await Notifications.getPermissionsAsync();
-    setPushPermissionStatus(current.status);
-    if (current.status === "granted") {
+    const granted = await getOneSignalPermissionAsync();
+    setPushPermissionStatus(granted ? "granted" : "denied");
+    if (granted) {
       Alert.alert("Push enabled", "Notifications are already allowed for this device.");
       return;
     }
-    if (current.status === "undetermined" || current.canAskAgain) {
-      const accepted = await requestOneSignalPushPermission(true);
-      const next = await Notifications.getPermissionsAsync();
-      setPushPermissionStatus(next.status);
-      if (accepted || next.status === "granted") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Push enabled", "You will receive push alerts on this device.");
-      } else {
-        Alert.alert(
-          "Enable notifications",
-          "Allow notifications in system settings to receive push alerts.",
-          [
-            { text: "Not now", style: "cancel" },
-            { text: "Open Settings", onPress: () => void Linking.openSettings() },
-          ],
-        );
-      }
-      return;
+    const accepted = await requestOneSignalPushPermission(true);
+    await refreshPushPermission();
+    if (accepted) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Push enabled", "You will receive push alerts on this device.");
+    } else {
+      Alert.alert(
+        "Enable notifications",
+        "Allow notifications in system settings to receive push alerts.",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
+      );
     }
-    Alert.alert(
-      "Enable notifications",
-      "Push was blocked for Beautonomi Provider. Open system settings to turn notifications on.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => void Linking.openSettings() },
-      ],
-    );
   }
 
   useEffect(() => {
@@ -220,6 +223,7 @@ export default function NotificationPreferencesScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDirty(false);
+    emitAlertPrefsChanged();
     refresh();
   }
 
@@ -316,6 +320,58 @@ export default function NotificationPreferencesScreen() {
             }}
             trackColor={{ false: "#d1d5db", true: "#6ee7b7" }}
             thumbColor={local.booking_alert_sound !== false ? "#10b981" : "#f4f4f5"}
+          />
+        </View>
+      </View>
+
+      {/* Order alert sound */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-blue-50")}>
+              <Ionicons name="bag-handle-outline" size={18} color="#2563eb" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Order Alert Sound</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Play a sound when a new product order arrives while the app is open.
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.order_alert_sound !== false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, order_alert_sound: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#93c5fd" }}
+            thumbColor={local.order_alert_sound !== false ? "#2563eb" : "#f4f4f5"}
+          />
+        </View>
+      </View>
+
+      {/* Message alert sound */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-indigo-50")}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color="#4f46e5" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Message Alert Sound</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Play a sound when a client sends a message while you are on another screen.
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.message_alert_sound !== false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, message_alert_sound: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#a5b4fc" }}
+            thumbColor={local.message_alert_sound !== false ? "#4f46e5" : "#f4f4f5"}
           />
         </View>
       </View>

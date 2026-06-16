@@ -34,6 +34,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
+import { setActiveMessagingConversationId } from "@/lib/active-messaging-context";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { CustomOfferCard } from "@beautonomi/ui/native";
 import { Image } from "expo-image";
@@ -205,6 +206,11 @@ export default function ChatScreen() {
   const allMessages = combined.sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  useEffect(() => {
+    setActiveMessagingConversationId(conversationId ?? null);
+    return () => setActiveMessagingConversationId(null);
+  }, [conversationId]);
 
   useEffect(() => {
     setReplyingTo(null);
@@ -943,7 +949,7 @@ export default function ChatScreen() {
                   | undefined;
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const customRequestImages = Array.isArray(customRequestAtt?.image_urls)
-                  ? customRequestAtt!.image_urls!.filter(Boolean).slice(0, 4)
+                  ? customRequestAtt!.image_urls!.filter(Boolean).slice(0, 6)
                   : [];
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());

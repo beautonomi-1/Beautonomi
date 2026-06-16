@@ -17,6 +17,8 @@ import { ProviderProvider } from "@/providers/ProviderContext";
 import { NotificationsCountProvider } from "@/providers/NotificationsCountContext";
 import { OnDemandIncomingListener } from "@/components/OnDemandIncomingListener";
 import { BookingAlertListener } from "@/components/BookingAlertListener";
+import { OrderAlertListener } from "@/components/OrderAlertListener";
+import { MessageAlertListener } from "@/components/MessageAlertListener";
 import { TerminalPaymentAlertListener } from "@/components/TerminalPaymentAlertListener";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
@@ -109,6 +111,8 @@ export default function AppLayout() {
         <BiometricSetupPrompt />
         <OnDemandIncomingListener />
         <BookingAlertListener />
+        <OrderAlertListener />
+        <MessageAlertListener />
         <TerminalPaymentAlertListener />
         <SingularLinkHandler />
         <View style={{ flex: 1 }}>

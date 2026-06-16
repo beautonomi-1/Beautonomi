@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -14,21 +14,50 @@ import { twStyle } from "@/lib/twStyle";
 import { isArrivalQrPayloadString } from "@/lib/arrival-qr-payload";
 import { openAppSettings } from "@/lib/native-permissions";
 
+/** Pause before accepting another scan after a failed verify (camera keeps seeing the same QR). */
+const RESCAN_COOLDOWN_MS = 2500;
+
 type Props = {
   visible: boolean;
   onClose: () => void;
-  /** Raw JSON string from the QR (as stored in the code). */
-  onValidScan: (jsonPayload: string) => void | Promise<void>;
+  /** Return `true` when verification succeeded (modal usually closes). */
+  onValidScan: (jsonPayload: string) => boolean | void | Promise<boolean | void>;
+  /** Parent is calling verify-qr — block duplicate barcode events. */
+  busy?: boolean;
+  errorMessage?: string | null;
 };
 
-export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) {
+export function ArrivalQrScannerModal({
+  visible,
+  onClose,
+  onValidScan,
+  busy = false,
+  errorMessage = null,
+}: Props) {
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
-  const [suppressScan, setSuppressScan] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const scanGateRef = useRef(false);
+  const lastPayloadRef = useRef<string | null>(null);
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCooldown = useCallback(() => {
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
+  }, []);
+
+  const releaseScanLock = useCallback(() => {
+    scanGateRef.current = false;
+    lastPayloadRef.current = null;
+    setLocked(false);
+  }, []);
 
   useEffect(() => {
     if (!visible) {
-      setSuppressScan(false);
+      clearCooldown();
+      releaseScanLock();
       setCameraReady(false);
       return;
     }
@@ -39,19 +68,47 @@ export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) 
       }
     });
     return () => sub.remove();
-  }, [getPermission, visible]);
+  }, [clearCooldown, getPermission, releaseScanLock, visible]);
+
+  /** After a failed verify, wait before accepting another scan (camera keeps seeing the same QR). */
+  useEffect(() => {
+    if (visible && !busy && locked) {
+      clearCooldown();
+      cooldownTimerRef.current = setTimeout(() => {
+        releaseScanLock();
+      }, RESCAN_COOLDOWN_MS);
+      return () => clearCooldown();
+    }
+    return undefined;
+  }, [busy, clearCooldown, locked, releaseScanLock, visible]);
 
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
+      if (busy || locked || scanGateRef.current) return;
       const data = (result.data ?? "").trim();
       if (!isArrivalQrPayloadString(data)) return;
-      setSuppressScan(true);
-      void Promise.resolve(onValidScan(data)).finally(() => {
-        setSuppressScan(false);
-      });
+      if (lastPayloadRef.current === data) return;
+
+      scanGateRef.current = true;
+      lastPayloadRef.current = data;
+      setLocked(true);
+      clearCooldown();
+
+      void (async () => {
+        try {
+          const ok = await Promise.resolve(onValidScan(data));
+          if (ok === true) {
+            return;
+          }
+        } catch {
+          // Parent surfaces errors; cooldown effect re-enables scanning.
+        }
+      })();
     },
-    [onValidScan]
+    [busy, clearCooldown, locked, onValidScan]
   );
+
+  const scanningPaused = busy || locked;
 
   if (Platform.OS === "web") {
     return (
@@ -121,7 +178,7 @@ export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) 
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
               onCameraReady={() => setCameraReady(true)}
-              onBarcodeScanned={cameraReady && !suppressScan ? handleBarcode : undefined}
+              onBarcodeScanned={cameraReady && !scanningPaused ? handleBarcode : undefined}
             />
             {!cameraReady ? (
               <View
@@ -129,6 +186,19 @@ export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) 
                 pointerEvents="none"
               >
                 <ActivityIndicator size="large" color="#fff" />
+              </View>
+            ) : null}
+            {scanningPaused ? (
+              <View style={twStyle("absolute inset-0 items-center justify-center bg-black/50")}>
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={twStyle("text-white text-sm mt-3 px-6 text-center")}>
+                  {busy ? "Verifying arrival…" : "Hold steady…"}
+                </Text>
+              </View>
+            ) : null}
+            {errorMessage ? (
+              <View style={twStyle("absolute bottom-24 left-4 right-4 rounded-xl bg-red-600/90 p-3")}>
+                <Text style={twStyle("text-center text-sm text-white")}>{errorMessage}</Text>
               </View>
             ) : null}
             <View

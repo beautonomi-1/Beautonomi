@@ -10,13 +10,18 @@ import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
-import { api } from "@/lib/api-client";
 import { playNormalBookingRingtone } from "@/lib/on-demand/ringtone";
 import type { OnDemandModuleConfig } from "@/lib/config-bundle";
 import {
+  flushPendingBookingAlerts,
   handleBookingAlertRow,
   type BookingAlertRow,
 } from "@/lib/booking-alert-handler";
+import {
+  getAlertSoundPrefs,
+  refreshAlertSoundPrefs,
+  subscribeAlertSoundPrefs,
+} from "@/lib/notification-alert-prefs";
 
 async function playBookingAlert(): Promise<{ stop: () => void }> {
   try {
@@ -46,37 +51,24 @@ export function BookingAlertListener() {
   const onDemandModule = useModuleConfig("on_demand") as OnDemandModuleConfig;
   const seenBookingIds = useRef<Set<string>>(new Set());
   const seenGroupBookingIds = useRef<Set<string>>(new Set());
+  const pendingWhenInactive = useRef<BookingAlertRow[]>([]);
   const alertSoundRef = useRef<{ stop: () => void } | null>(null);
-  const prefsRef = useRef<{ booking_alert_sound?: boolean }>({ booking_alert_sound: true });
   const appState = useRef(AppState.currentState);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get<Record<string, unknown>>("/api/provider/notification-preferences");
-        if (!cancelled && res.data) {
-          const data = res.data as Record<string, unknown>;
-          const inner = (data.preferences ?? data.data ?? data) as Record<string, unknown>;
-          prefsRef.current = {
-            booking_alert_sound: inner.booking_alert_sound !== false,
-          };
-        }
-      } catch {
-        // Default to enabled
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const dispatchRef = useRef({
+    showIndividualAlert: (_row: BookingAlertRow) => {},
+    showGroupAlert: (_groupId: string) => {},
+  });
 
   const playAlertSound = useCallback(() => {
     alertSoundRef.current?.stop();
-    if (prefsRef.current.booking_alert_sound === false) return;
+    if (getAlertSoundPrefs().booking_alert_sound === false) return;
 
     const useAsset = Boolean(onDemandModule.normal_booking_ringtone_asset_path?.trim());
     if (useAsset) {
+      if (Platform.OS !== "web") {
+        Vibration.vibrate([0, 400, 200, 400]);
+      }
       playNormalBookingRingtone(onDemandModule).then((ctrl) => {
         alertSoundRef.current = ctrl;
       });
@@ -146,6 +138,20 @@ export function BookingAlertListener() {
     [playAlertSound, router],
   );
 
+  dispatchRef.current = {
+    showIndividualAlert: showIndividualBookingAlert,
+    showGroupAlert: showGroupBookingAlert,
+  };
+
+  const flushPending = useCallback(() => {
+    flushPendingBookingAlerts(
+      pendingWhenInactive.current,
+      seenBookingIds.current,
+      seenGroupBookingIds.current,
+      dispatchRef.current,
+    );
+  }, []);
+
   const onRealtimeRow = useCallback(
     (row: BookingAlertRow) => {
       handleBookingAlertRow(
@@ -153,14 +159,19 @@ export function BookingAlertListener() {
         seenBookingIds.current,
         seenGroupBookingIds.current,
         appState.current === "active",
-        {
-          showIndividualAlert: showIndividualBookingAlert,
-          showGroupAlert: showGroupBookingAlert,
-        },
+        dispatchRef.current,
+        pendingWhenInactive.current,
       );
     },
-    [showIndividualBookingAlert, showGroupBookingAlert],
+    [],
   );
+
+  useEffect(() => {
+    void refreshAlertSoundPrefs();
+    return subscribeAlertSoundPrefs(() => {
+      void refreshAlertSoundPrefs();
+    });
+  }, []);
 
   useEffect(() => {
     if (!provider?.id) return;
@@ -195,6 +206,10 @@ export function BookingAlertListener() {
 
     const appStateSub = AppState.addEventListener("change", (next) => {
       appState.current = next;
+      if (next === "active") {
+        void refreshAlertSoundPrefs();
+        flushPending();
+      }
     });
 
     return () => {
@@ -206,7 +221,7 @@ export function BookingAlertListener() {
       appStateSub.remove();
       alertSoundRef.current?.stop();
     };
-  }, [provider?.id, onRealtimeRow]);
+  }, [provider?.id, onRealtimeRow, flushPending]);
 
   return null;
 }
