@@ -211,15 +211,20 @@ async function withSessionRecovery<T>(
       if (isSentryEnabled()) {
         authFlowBreadcrumb("session_recovery", { outcome: "sign_out", reason: refreshError.message });
       }
+      let signOutTimeout: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
           supabase.auth.signOut(),
           new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error("sign_out_timeout")), 2800);
+            signOutTimeout = setTimeout(() => reject(new Error("sign_out_timeout")), 2800);
           }),
         ]);
       } catch {
         await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      } finally {
+        // Clear the race timer so a resolved sign-out never leaves a dangling
+        // timer holding the event loop open (e.g. Jest worker teardown).
+        if (signOutTimeout) clearTimeout(signOutTimeout);
       }
     }
     return res;

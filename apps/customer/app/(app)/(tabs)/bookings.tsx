@@ -181,6 +181,11 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
         <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900] }}>
           {booking.currency} {booking.total_amount?.toFixed(2)}
         </Text>
+        {booking.is_group_booking && (
+          <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+            Your portion · group booking
+          </Text>
+        )}
         <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>#{booking.booking_number}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {booking.is_group_booking && (

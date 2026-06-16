@@ -194,12 +194,15 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     router.push(`/(app)/(tabs)/more/custom-requests/${customRequestId}` as never);
     return true;
   }
-  if (
-    nTypeLc === "custom_offer" ||
-    nTypeLc === "custom_request" ||
-    nTypeLc.includes("custom_request")
-  ) {
-    router.push("/(app)/(tabs)/more/custom-requests" as never);
+
+  const groupBookingIdFromData =
+    typeof data.group_booking_id === "string" && data.group_booking_id.trim()
+      ? data.group_booking_id.trim()
+      : "";
+  if (groupBookingIdFromData) {
+    router.push(
+      `/(app)/(tabs)/more/group-bookings?open_group_id=${encodeURIComponent(groupBookingIdFromData)}` as never,
+    );
     return true;
   }
 
@@ -212,6 +215,15 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     router.push((q ? `/(app)/(tabs)/bookings?${q}` : `/(app)/(tabs)/bookings/${data.booking_id}`) as never);
     return true;
   }
+  if (
+    nTypeLc === "custom_offer" ||
+    nTypeLc === "custom_request" ||
+    nTypeLc.includes("custom_request")
+  ) {
+    router.push("/(app)/(tabs)/more/custom-requests" as never);
+    return true;
+  }
+
   if (data.conversation_id) {
     router.push(`/(app)/(tabs)/chats/${data.conversation_id}` as never);
     return true;

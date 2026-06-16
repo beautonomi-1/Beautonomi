@@ -638,6 +638,9 @@ export default function ChatScreen() {
   // Subscribe to custom_offers status changes so offer cards update in realtime
   // without waiting for patchCustomOfferMessageAttachments to UPDATE the message row.
   // RLS ensures we only receive rows the customer can read.
+  const loadMessagesRef = useRef(loadMessages);
+  loadMessagesRef.current = loadMessages;
+
   useEffect(() => {
     if (!id || !user?.id) return;
     const topic = nextRealtimeTopic(`customer-offer-status:${id}`);
@@ -658,6 +661,30 @@ export default function ChatScreen() {
             // Always accept if we already track it, or if status is a terminal one.
             if (!(oid in prev) && status === "pending") return prev;
             return { ...prev, [oid]: { status, booking_id: bookingId } };
+          });
+        },
+      )
+      .on(
+        "postgres_changes" as never,
+        { event: "INSERT", schema: "public", table: "custom_offers" },
+        (payload: { new: Record<string, unknown> }) => {
+          const oid = typeof payload.new?.id === "string" ? payload.new.id : null;
+          if (!oid) return;
+          setMessages((prev) => {
+            const known = prev.some((m) =>
+              Array.isArray(m.attachments) &&
+              m.attachments.some(
+                (a) =>
+                  typeof a === "object" &&
+                  a &&
+                  (a as { type?: string; offer_id?: string }).type === "custom_offer" &&
+                  (a as { offer_id?: string }).offer_id === oid,
+              ),
+            );
+            if (!known) {
+              void loadMessagesRef.current();
+            }
+            return prev;
           });
         },
       )
@@ -1588,6 +1615,28 @@ export default function ChatScreen() {
                           <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 12, fontWeight: "700" }}>
                             {t("customer.chatScreen.customRequestLabel")}
                           </Text>
+                          {Array.isArray((customRequestAttachment as { image_urls?: string[] }).image_urls) &&
+                          (customRequestAttachment as { image_urls?: string[] }).image_urls!.length > 0 ? (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                              {(customRequestAttachment as { image_urls: string[] }).image_urls
+                                .slice(0, 4)
+                                .map((url, idx) => (
+                                  <TouchableOpacity
+                                    key={`${msg.id}-cr-${idx}`}
+                                    activeOpacity={0.85}
+                                    onPress={() => setPreviewImageUrl(url)}
+                                    accessibilityRole="imagebutton"
+                                  >
+                                    <Image
+                                      source={{ uri: url }}
+                                      style={{ width: 56, height: 56, borderRadius: 8 }}
+                                      contentFit="cover"
+                                      cachePolicy="memory-disk"
+                                    />
+                                  </TouchableOpacity>
+                                ))}
+                            </View>
+                          ) : null}
                           <TouchableOpacity
                             onPress={() => router.push("/(app)/account-settings/custom-requests")}
                             style={{ marginTop: 8, alignSelf: "flex-start" }}

@@ -357,6 +357,8 @@ export async function notifyBookingConfirmed(
     pricing_breakdown_html: buildCustomerPricingBreakdownHtml(booking as Record<string, unknown>, currency),
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
+    group_booking_id: booking.group_booking_id ?? "",
+    is_group_booking: booking.group_booking_id ? "true" : "",
   };
 
   const _url = replaceUrlVariables("/bookings/{{booking_id}}", variables);
@@ -1409,6 +1411,7 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     services: formatBookingServicesLineForTemplates(booking),
     total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
     booking_id: bookingId,
+    group_booking_id: booking.group_booking_id ?? "",
   };
 
   // §Cross-app audit 2026-04 (multi-staff push): fan out to the whole

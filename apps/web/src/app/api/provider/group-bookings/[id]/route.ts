@@ -32,6 +32,7 @@ import {
   PROVIDER_GROUP_DETAIL_SELECT_FALLBACK,
   PROVIDER_CHILD_BOOKINGS_SELECT,
 } from "@/lib/bookings/group-booking-postgrest";
+import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -224,19 +225,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       packageDiscount: 0,
     });
 
+    const displayTotal =
+      linkedParticipantInvoiceTotal > 0
+        ? Math.max(
+            linkedParticipantInvoiceTotal,
+            Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal
+          )
+        : Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal;
+
+    const groupPayment = computeGroupPaymentRollupFields(
+      id,
+      (groupBooking as any).bookings,
+      displayTotal,
+    );
+
     const groupPayload = groupBooking as unknown as Record<string, unknown>;
     return successResponse({
       ...groupPayload,
-      total_price:
-        linkedParticipantInvoiceTotal > 0
-          ? Math.max(
-              linkedParticipantInvoiceTotal,
-              Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal
-            )
-          : Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal,
+      total_price: displayTotal,
       booking_participants: participants,
       participants,
       package_name: pkg?.name ?? null,
+      ...groupPayment,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch group booking");

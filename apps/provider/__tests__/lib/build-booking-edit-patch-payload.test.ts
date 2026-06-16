@@ -2,6 +2,7 @@ import {
   buildBookingEditPatchPayload,
   computeBookingEditLineSubtotal,
   mapBookingDetailToEditLines,
+  resolveBookingEditServiceDisplay,
 } from "@/lib/build-booking-edit-patch-payload";
 
 describe("build-booking-edit-patch-payload", () => {
@@ -57,5 +58,47 @@ describe("build-booking-edit-patch-payload", () => {
     expect(payload.version).toBe(3);
     expect(payload.discount_amount).toBe(20);
     expect(payload.total_amount).toBeGreaterThan(0);
+  });
+
+  it("falls back to booking line snapshot when catalogue misses inactive custom-offer offering", () => {
+    const mapped = mapBookingDetailToEditLines({
+      services: [
+        {
+          offering_id: "ephemeral-offer-1",
+          staff_id: "staff-1",
+          offering_name: "Custom balayage",
+          price: 850,
+          duration_minutes: 120,
+        },
+      ],
+    });
+
+    expect(mapped.services[0]).toMatchObject({
+      serviceId: "ephemeral-offer-1",
+      offeringName: "Custom balayage",
+      price: 850,
+      durationMinutes: 120,
+    });
+
+    const display = resolveBookingEditServiceDisplay(mapped.services[0]!, []);
+    expect(display.title).toBe("Custom balayage");
+    expect(display.price).toBe(850);
+    expect(display.durationMinutes).toBe(120);
+
+    const payload = buildBookingEditPatchPayload({
+      selectedServices: mapped.services,
+      selectedProducts: [],
+      catalogServices: [],
+      manualDiscount: 0,
+      preservedDiscountTotal: 0,
+      taxRate: 0,
+      taxInclusive: true,
+      travelFee: 0,
+      tipAmount: 0,
+      serviceFeeAmount: 0,
+    });
+
+    expect(payload.services[0]?.price).toBe(850);
+    expect(payload.services[0]?.duration).toBe(120);
   });
 });

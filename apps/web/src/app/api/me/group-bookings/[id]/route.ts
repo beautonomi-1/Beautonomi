@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { ME_GROUP_DETAIL_SELECT } from "@/lib/bookings/group-booking-postgrest";
+import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -121,6 +122,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const travelFee = num((group as any).travel_fee);
+    const totalPrice = num((group as any).total_price);
+    const paymentRollup = computeGroupPaymentRollupFields(id, bookings, totalPrice);
+
+    const primaryRow = participantRows.find((p) => p.is_primary_contact);
+    const paidBy = primaryRow?.name ?? null;
+    const isPrimaryPayer = participantRows.some((p) => p.is_current_user && p.is_primary_contact);
+
+    const currency =
+      bookings.find((b: any) => typeof b?.currency === "string" && b.currency.trim())?.currency?.trim() ||
+      "ZAR";
 
     return NextResponse.json({
       data: {
@@ -147,7 +158,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         participants: participantRows,
         products,
         travel_fee: travelFee,
-        total_price: num((group as any).total_price),
+        total_price: totalPrice,
+        currency,
+        payment_status: paymentRollup.payment_status,
+        amount_paid: paymentRollup.amount_paid,
+        balance_due: paymentRollup.balance_due,
+        total_refunded: paymentRollup.total_refunded,
+        is_invoiced: paymentRollup.is_invoiced,
+        paid_by: paidBy,
+        is_primary_payer: isPrimaryPayer,
         notes: (group as any).notes ?? null,
       },
     });

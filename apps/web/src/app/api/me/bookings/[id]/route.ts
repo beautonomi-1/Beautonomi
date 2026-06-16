@@ -392,6 +392,7 @@ export async function GET(
       },
       special_requests: bookingData.special_requests,
       is_group_booking: !!bookingData.group_booking_id,
+      group_booking_id: (bookingData as Record<string, unknown>).group_booking_id ?? null,
       group_booking_ref: (bookingData.group_bookings as { ref_number?: string } | undefined)?.ref_number ?? null,
       custom_offer: bookingData.custom_offer
         ? {

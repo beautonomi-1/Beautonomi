@@ -2531,7 +2531,7 @@ export default function BookingDetailScreen() {
     canProcessPayments && (isStarted || b.status === "completed" || currentDbStatus === "confirmed");
   const canSendPaymentLink =
     paymentLinkEnabled && canProcessPayments && outstanding > 0 && b.status !== "cancelled";
-  const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
+  const canReschedule = canEditAppointments && isActive && Boolean(b.scheduled_at);
   const canEditLineItems =
     canEditAppointments &&
     (isActive || isStarted) &&

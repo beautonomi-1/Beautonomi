@@ -7,6 +7,7 @@ import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useApiMutation } from "@/hooks/useApi";
+import { participantMaxRefundable } from "@/lib/group-booking-detail-helpers";
 
 export type ParticipantRefundTarget = {
   id: string;
@@ -14,8 +15,10 @@ export type ParticipantRefundTarget = {
   displayName: string;
   total_paid?: number | null;
   total_refunded?: number | null;
+  wallet_gift_coverage?: number | null;
   price?: number;
   currency?: string | null;
+  isGroupPaymentRefund?: boolean;
 };
 
 type ParticipantRefundSheetProps = {
@@ -44,7 +47,15 @@ export function ParticipantRefundSheet({
   const currency = participant?.currency ?? getTenantDefaultCurrency();
   const totalPaid = Number(participant?.total_paid ?? 0);
   const totalRefunded = Number(participant?.total_refunded ?? 0);
-  const maxRefundable = Math.max(0, totalPaid - totalRefunded);
+  const walletGiftCoverage = Number(participant?.wallet_gift_coverage ?? 0);
+  const maxRefundable = participantMaxRefundable({
+    total_paid: totalPaid,
+    total_refunded: totalRefunded,
+    wallet_gift_coverage: walletGiftCoverage,
+  });
+  const sheetTitle = participant?.isGroupPaymentRefund
+    ? "Refund group payment"
+    : "Refund participant";
 
   useEffect(() => {
     if (!visible || !participant) return;
@@ -108,7 +119,7 @@ export function ParticipantRefundSheet({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Refund participant"
+      title={sheetTitle}
       subtitle={participant?.displayName}
       footer={
         <ActionButton
@@ -132,11 +143,18 @@ export function ParticipantRefundSheet({
             <Text style={twStyle("text-sm font-medium text-red-800")}>{error}</Text>
           </View>
         ) : null}
+        {participant?.isGroupPaymentRefund ? (
+          <Text style={twStyle("mb-3 text-xs text-amber-700")}>
+            This refunds the whole group charge collected on the primary booking.
+          </Text>
+        ) : null}
         <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-          Net collected: {formatCurrency(maxRefundable, currency)}
+          Net refundable: {formatCurrency(maxRefundable, currency)}
           {totalRefunded > 0
             ? ` (paid ${formatCurrency(totalPaid, currency)}, refunded ${formatCurrency(totalRefunded, currency)})`
-            : ""}
+            : walletGiftCoverage > totalPaid
+              ? ` (includes wallet/gift coverage ${formatCurrency(walletGiftCoverage, currency)})`
+              : ""}
           .
         </Text>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Refund method</Text>

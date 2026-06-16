@@ -84,12 +84,18 @@ export const ME_GROUP_DETAIL_SELECT = `
     id,
     booking_number,
     customer_id,
+    group_booking_id,
     status,
     scheduled_at,
     total_amount,
     total_paid,
     total_refunded,
-    payment_status
+    wallet_amount,
+    gift_card_amount,
+    tip_amount,
+    currency,
+    payment_status,
+    additional_charges(amount,status)
   `)}
 `;
 

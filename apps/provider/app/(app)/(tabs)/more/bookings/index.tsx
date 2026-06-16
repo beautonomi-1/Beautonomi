@@ -16,6 +16,8 @@ import {
   formatBusinessDayYYYYMMDD,
   isPendingOrQueueBooking,
   isTerminalScheduleBooking,
+  PROVIDER_BOOKINGS_STRIP_HALF_DAYS,
+  startOfBusinessDayLocalDate,
 } from "@beautonomi/utils";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,7 +29,7 @@ import AnimatedRe, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { addDays, endOfMonth, endOfWeek, format, isSameDay, isToday, isTomorrow, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, endOfMonth, format, isSameDay, isTomorrow, startOfDay, startOfMonth } from "date-fns";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useProvider } from "@/providers/ProviderContext";
 import { useApi } from "@/hooks/useApi";
@@ -51,10 +53,12 @@ import { SegmentTabs } from "@/components/ui/SegmentTabs";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BookingScheduleCard } from "@/components/bookings/BookingScheduleCard";
 import { mapProviderBookingActionError } from "@/lib/provider-booking-action-policy";
+import { useBusinessToday } from "@/hooks/useBusinessToday";
 import {
   appendBookingsQueryParts,
   buildDateStripInfo,
   buildOverviewDateParams,
+  buildOverviewDateRangeLabel,
   buildStripDateParams,
   filterBookingsForDayKey,
   mergeAtHomeBookings,
@@ -187,7 +191,7 @@ function bookingListCanReschedule(
   if (b.is_group_booking && b.group_booking_id) return true;
   if (b.is_group_booking) return false;
   const status = bookingLifecycleStatus(b);
-  return ["pending", "pending_payment", "confirmed", "waiting", "checked_in", "in_progress", "booked"].includes(
+  return ["pending", "pending_payment", "confirmed", "waiting", "checked_in", "booked"].includes(
     status,
   );
 }
@@ -290,8 +294,11 @@ export default function BookingsListScreen() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [listSort, setListSort] = useState<BookingsListSort>("appointment");
   const [viewMode, setViewMode] = useState<ViewMode>("day");
-  const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const providerTimezone = provider?.timezone?.trim() || null;
+  const { businessToday, businessTodayKey } = useBusinessToday(providerTimezone);
+  const [selectedDate, setSelectedDate] = useState(() => startOfBusinessDayLocalDate(providerTimezone));
+  const prevBusinessTodayKeyRef = useRef(businessTodayKey);
+  const userPickedDateRef = useRef(false);
 
   useEffect(() => {
     const rawStatus = typeof routeParams.status === "string" ? routeParams.status.trim() : "";
@@ -307,7 +314,9 @@ export default function BookingsListScreen() {
       const [y, m, d] = rawDate.split("-").map(Number);
       const parsed = new Date(y, (m || 1) - 1, d || 1);
       if (Number.isFinite(parsed.getTime())) {
-        setSelectedDate(startOfDay(parsed));
+        parsed.setHours(0, 0, 0, 0);
+        setSelectedDate(parsed);
+        userPickedDateRef.current = true;
         setViewMode("day");
       }
     }
@@ -318,9 +327,20 @@ export default function BookingsListScreen() {
   }, [selectedDate, providerTimezone]);
 
   const DATE_STRIP_ITEM_WIDTH = 62;
-  const DATE_STRIP_TODAY_INDEX = 30;
+  const DATE_STRIP_TODAY_INDEX = PROVIDER_BOOKINGS_STRIP_HALF_DAYS;
   const dateStripRef = useRef<FlatList<Date>>(null);
-  const dateStripInitialScrollDoneRef = useRef(false);
+  const scheduleDateStripScrollRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const prevKey = prevBusinessTodayKeyRef.current;
+    if (prevKey === businessTodayKey) return;
+
+    if (!userPickedDateRef.current || selectedDateKey === prevKey) {
+      setSelectedDate(businessToday);
+      userPickedDateRef.current = false;
+    }
+    prevBusinessTodayKeyRef.current = businessTodayKey;
+  }, [businessToday, businessTodayKey, selectedDateKey]);
 
   const scrollDateStripToIndex = useCallback((index: number, animated = false) => {
     if (index < 0) return;
@@ -339,14 +359,6 @@ export default function BookingsListScreen() {
     },
     [scrollDateStripToIndex],
   );
-
-  useEffect(() => {
-    if (viewMode !== "day" || dateStripInitialScrollDoneRef.current) return;
-    requestAnimationFrame(() => {
-      scrollDateStripToIndex(DATE_STRIP_TODAY_INDEX, false);
-      dateStripInitialScrollDoneRef.current = true;
-    });
-  }, [viewMode, scrollDateStripToIndex]);
 
   useEffect(() => {
     const bookingId =
@@ -709,6 +721,7 @@ export default function BookingsListScreen() {
   useFocusEffect(
     useCallback(() => {
       setBookingsListFocused(true);
+      scheduleDateStripScrollRef.current();
       if (hasFocusedOnceRef.current) {
         void refreshRef.current();
       } else {
@@ -740,9 +753,38 @@ export default function BookingsListScreen() {
   }, [availabilityBlocksRaw]);
 
   const stripDays = useMemo(
-    () => Array.from({ length: 60 }, (_, i) => addDays(startOfDay(new Date()), i - 30)),
-    [],
+    () =>
+      Array.from({ length: PROVIDER_BOOKINGS_STRIP_HALF_DAYS * 2 + 1 }, (_, i) =>
+        addDays(businessToday, i - PROVIDER_BOOKINGS_STRIP_HALF_DAYS),
+      ),
+    [businessToday],
   );
+
+  const selectedDateStripIndex = useMemo(() => {
+    const index = stripDays.findIndex((d) => isSameDay(d, selectedDate));
+    return index >= 0 ? index : DATE_STRIP_TODAY_INDEX;
+  }, [stripDays, selectedDate, DATE_STRIP_TODAY_INDEX]);
+
+  const scrollDateStripToSelected = useCallback(
+    (animated = false) => {
+      if (viewMode !== "day") return;
+      scrollDateStripToIndex(selectedDateStripIndex, animated);
+    },
+    [viewMode, selectedDateStripIndex, scrollDateStripToIndex],
+  );
+
+  scheduleDateStripScrollRef.current = () => {
+    requestAnimationFrame(() => {
+      scrollDateStripToSelected(false);
+      // SectionList header mounts the strip lazily — retry once after layout.
+      setTimeout(() => scrollDateStripToSelected(false), 120);
+    });
+  };
+
+  useEffect(() => {
+    if (viewMode !== "day") return;
+    scheduleDateStripScrollRef.current();
+  }, [viewMode, selectedDateStripIndex, businessTodayKey]);
 
   const dateStripInfo = useMemo(
     () => buildDateStripInfo(stripBookingsMerged, timeBlocks, closedDateKeys, providerTimezone),
@@ -797,9 +839,8 @@ export default function BookingsListScreen() {
   }, [viewMode, daySearchFiltered, selectedDateKey, providerTimezone, statusFilter]);
 
   const dayBlocksForSelected = useMemo(() => {
-    const key = format(selectedDate, "yyyy-MM-dd");
-    return timeBlocks.filter((t) => t.date === key && t.is_active);
-  }, [timeBlocks, selectedDate]);
+    return timeBlocks.filter((t) => t.date === selectedDateKey && t.is_active);
+  }, [timeBlocks, selectedDateKey]);
 
   const daySchedule = useMemo(() => {
     const items: ScheduleItem[] = [...dayBookings.map((b) => ({ kind: "booking" as const, booking: b }))];
@@ -872,7 +913,12 @@ export default function BookingsListScreen() {
           (effectiveScheduleAt(a)?.getTime() ?? 0) - (effectiveScheduleAt(b)?.getTime() ?? 0),
       )[0];
     return {
-      label: isToday(selectedDate) ? "Today" : isTomorrow(selectedDate) ? "Tomorrow" : format(selectedDate, "EEE, MMM d"),
+      label:
+        selectedDateKey === businessTodayKey
+          ? "Today"
+          : isTomorrow(selectedDate)
+            ? "Tomorrow"
+            : format(selectedDate, "EEE, MMM d"),
       count: active.length,
       revenue: active.reduce((n, b) => n + Number(b.total_amount || 0), 0),
       pending,
@@ -881,7 +927,7 @@ export default function BookingsListScreen() {
       hasBookingsOnClosed: closed && dayB.length > 0,
       nextUp,
     };
-  }, [stripBookingsMerged, selectedDateKey, timeBlocks, closedDateKeys, selectedDate, providerTimezone]);
+  }, [stripBookingsMerged, selectedDateKey, timeBlocks, closedDateKeys, selectedDate, providerTimezone, businessTodayKey]);
 
   const handleApplyStatus = useCallback(
     async (bookingId: string, action: import("@/lib/provider-booking-action-policy").ProviderBookingAction, successMessage: string) => {
@@ -926,16 +972,10 @@ export default function BookingsListScreen() {
     return "All";
   }, [statsRange]);
 
-  const dateRangeLabel = useMemo(() => {
-    const now = new Date();
-    switch (dateRange) {
-      case "today":     return format(now, "EEE, MMM d");
-      case "week":      return `Week of ${format(startOfWeek(now, { weekStartsOn: 1 }), "MMM d")}`;
-      case "month":     return format(now, "MMMM yyyy");
-      case "upcoming":  return "Upcoming";
-      case "all":       return "All time";
-    }
-  }, [dateRange]);
+  const dateRangeLabel = useMemo(
+    () => buildOverviewDateRangeLabel(dateRange, providerTimezone),
+    [dateRange, providerTimezone],
+  );
 
   const openBooking = useCallback(
     (b: Booking) => {
@@ -1133,6 +1173,7 @@ export default function BookingsListScreen() {
               data={stripDays}
               keyExtractor={(d: Date) => d.toISOString()}
               showsHorizontalScrollIndicator={false}
+              initialScrollIndex={selectedDateStripIndex}
               initialNumToRender={40}
               removeClippedSubviews={false}
               getItemLayout={(_item: Date | ArrayLike<Date> | null | undefined, index: number) => ({
@@ -1146,7 +1187,7 @@ export default function BookingsListScreen() {
                 const key = formatBusinessDayYYYYMMDD(day, providerTimezone);
                 const info = dateStripInfo.get(key);
                 const selected = isSameDay(day, selectedDate);
-                const todayCell = isToday(day);
+                const todayCell = isSameDay(day, businessToday);
                 const dotColor = info?.hasPending ? "#f59e0b" : Colors.primary;
                 const totalCount = (info?.bookings ?? 0) + (info?.blocks ?? 0);
                 const indicatorColor = selected ? "#ffffff" : dotColor;
@@ -1154,7 +1195,8 @@ export default function BookingsListScreen() {
                   <TouchableOpacity
                     onPress={() => {
                       void Haptics.selectionAsync();
-                      setSelectedDate(startOfDay(day));
+                      userPickedDateRef.current = !isSameDay(day, businessToday);
+                      setSelectedDate(day);
                     }}
                     style={[
                       { width: 56, alignItems: "center", borderRadius: 14, paddingVertical: 10, marginRight: 6 },
@@ -1238,7 +1280,7 @@ export default function BookingsListScreen() {
                   </Text>
                 </TouchableOpacity>
               ) : null}
-              {daySummary.nextUp && isToday(selectedDate) && daySummary.nextUp.scheduled_at ? (
+              {daySummary.nextUp && selectedDateKey === businessTodayKey && daySummary.nextUp.scheduled_at ? (
                 <Text style={[twStyle("mt-2 text-xs font-semibold"), { color: Colors.primary }]}>
                   Next: {formatBookingTime(daySummary.nextUp.scheduled_at)} ·{" "}
                   {daySummary.nextUp.customers?.full_name ?? "Customer"}

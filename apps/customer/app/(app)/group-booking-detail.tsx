@@ -9,6 +9,13 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
+import {
+  groupPaymentBadge,
+  groupPayerSummaryLine,
+  participantPaymentBadge,
+} from "@/lib/group-booking-payment-display";
 
 type ParticipantAddon = {
   id: string | null;
@@ -62,6 +69,14 @@ type GroupBookingDetail = {
   products?: GroupProduct[];
   travel_fee?: number;
   total_price: number;
+  currency?: string | null;
+  payment_status?: string | null;
+  amount_paid?: number;
+  balance_due?: number;
+  total_refunded?: number;
+  is_invoiced?: boolean;
+  paid_by?: string | null;
+  is_primary_payer?: boolean;
   notes?: string | null;
 };
 
@@ -79,17 +94,8 @@ function formatTime(value?: string | null) {
   return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
-function money(value: number) {
-  return `R ${Number(value || 0).toFixed(2)}`;
-}
-
-function paymentBadge(status: string | null | undefined): { label: string; bg: string; fg: string } | null {
-  if (!status) return null;
-  if (status === "paid") return { label: "Paid", bg: "#DCFCE7", fg: "#15803D" };
-  if (status === "unpaid" || status === "pending") return { label: "Unpaid", bg: "#FEF3C7", fg: "#92400E" };
-  if (status === "partial") return { label: "Partial", bg: "#FEF9C3", fg: "#854D0E" };
-  if (status === "refunded") return { label: "Refunded", bg: "#EDE9FE", fg: "#6D28D9" };
-  return null;
+function formatGroupMoney(value: number, currency?: string | null) {
+  return formatMoney(Number(value || 0), currency?.trim() || getTenantDefaultCurrency());
 }
 
 function statusColor(status: string) {
@@ -160,6 +166,14 @@ export default function GroupBookingDetailScreen() {
 
   const constrained = isTablet ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const colors = statusColor(data?.status ?? "confirmed");
+  const groupPayment = groupPaymentBadge(data?.payment_status);
+  const payerLine = data
+    ? groupPayerSummaryLine({
+        isPrimaryPayer: Boolean(data.is_primary_payer),
+        paidBy: data.paid_by ?? null,
+      })
+    : null;
+  const groupBalanceDue = Number(data?.balance_due ?? 0);
   const isPrimaryContact = Boolean(data?.participants.some((p) => p.is_current_user && p.is_primary_contact));
   const canRescheduleGroup =
     isPrimaryContact && data != null && !["completed", "cancelled", "started"].includes(data.status);
@@ -268,10 +282,46 @@ export default function GroupBookingDetailScreen() {
               </View>
               <View style={{ flex: 1, backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12 }}>
                 <Text style={{ color: Colors.gray[500], fontSize: 12 }}>Session total</Text>
-                <Text style={{ color: Colors.gray[900], fontSize: 18, fontWeight: "800" }}>{money(data.total_price)}</Text>
+                <Text style={{ color: Colors.gray[900], fontSize: 18, fontWeight: "800" }}>
+                  {formatGroupMoney(data.total_price, data.currency)}
+                </Text>
               </View>
             </View>
           </View>
+
+          {(data.payment_status || data.amount_paid != null) && (
+            <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900] }}>Payment</Text>
+                {groupPayment ? (
+                  <View style={{ backgroundColor: groupPayment.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                    <Text style={{ color: groupPayment.fg, fontWeight: "700", fontSize: 12 }}>{groupPayment.label}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={{ color: Colors.gray[700], fontSize: 15, fontWeight: "600" }}>
+                Paid {formatGroupMoney(data.amount_paid ?? 0, data.currency)} of {formatGroupMoney(data.total_price, data.currency)}
+              </Text>
+              {groupBalanceDue > 0 ? (
+                <Text style={{ color: "#92400E", fontSize: 14, fontWeight: "600", marginTop: 6 }}>
+                  Balance due {formatGroupMoney(groupBalanceDue, data.currency)}
+                </Text>
+              ) : null}
+              {(data.total_refunded ?? 0) > 0 ? (
+                <Text style={{ color: Colors.gray[600], fontSize: 13, marginTop: 6 }}>
+                  Refunded {formatGroupMoney(data.total_refunded ?? 0, data.currency)}
+                </Text>
+              ) : null}
+              {payerLine ? (
+                <Text style={{ color: Colors.gray[600], fontSize: 13, marginTop: 8 }}>{payerLine}</Text>
+              ) : null}
+              {data.is_invoiced === false ? (
+                <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 6 }}>
+                  Payment details will appear once the provider finalises the group invoice.
+                </Text>
+              ) : null}
+            </View>
+          )}
 
           <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
             <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>Provider</Text>
@@ -308,7 +358,7 @@ export default function GroupBookingDetailScreen() {
               </Text>
             )}
             {data.participants.map((p) => {
-              const badge = paymentBadge(p.payment_status);
+              const badge = participantPaymentBadge(p.payment_status, groupBalanceDue);
               return (
                 <TouchableOpacity
                   key={p.id}
@@ -334,7 +384,7 @@ export default function GroupBookingDetailScreen() {
                         )}
                         {p.is_primary_contact && (
                           <View style={{ backgroundColor: "#FDF2F8", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
-                            <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>primary</Text>
+                            <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>Organiser</Text>
                           </View>
                         )}
                         {badge ? (
@@ -350,7 +400,9 @@ export default function GroupBookingDetailScreen() {
                         </Text>
                       ) : null}
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                        <Text style={{ color: Colors.gray[600], fontSize: 14, fontWeight: "700" }}>{money(p.price)}</Text>
+                        <Text style={{ color: Colors.gray[600], fontSize: 14, fontWeight: "700" }}>
+                          {formatGroupMoney(p.price, data.currency)}
+                        </Text>
                         {p.duration_minutes ? (
                           <Text style={{ color: Colors.gray[400], fontSize: 12 }}>{p.duration_minutes} min</Text>
                         ) : null}
@@ -381,11 +433,11 @@ export default function GroupBookingDetailScreen() {
                     <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{product.name}</Text>
                     {product.quantity > 1 ? (
                       <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
-                        {money(product.unit_price)} × {product.quantity}
+                        {formatGroupMoney(product.unit_price, data.currency)} × {product.quantity}
                       </Text>
                     ) : null}
                   </View>
-                  <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{money(product.total)}</Text>
+                  <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{formatGroupMoney(product.total, data.currency)}</Text>
                 </View>
               ))}
             </View>
@@ -397,26 +449,26 @@ export default function GroupBookingDetailScreen() {
             {data.participants.map((p) => (
               <View key={p.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
                 <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{p.name} — {p.service_name}</Text>
-                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(p.price)}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(p.price, data.currency)}</Text>
               </View>
             ))}
             {Array.isArray(data.products) && data.products.length > 0 ? (
               data.products.map((product, idx) => (
                 <View key={`prod-${idx}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
                   <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{product.name} ×{product.quantity}</Text>
-                  <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(product.total)}</Text>
+                  <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(product.total, data.currency)}</Text>
                 </View>
               ))
             ) : null}
             {(data.travel_fee ?? 0) > 0 ? (
               <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
                 <Text style={{ color: Colors.gray[600] }}>Travel fee</Text>
-                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(data.travel_fee ?? 0)}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(data.travel_fee ?? 0, data.currency)}</Text>
               </View>
             ) : null}
             <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[200] }}>
               <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>Total</Text>
-              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>{money(data.total_price)}</Text>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>{formatGroupMoney(data.total_price, data.currency)}</Text>
             </View>
           </View>
         </ScrollView>

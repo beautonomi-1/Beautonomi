@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   providerTemplateKeyToPreferenceSection,
   intersectChannelsForProviderRecipients,
+  resolveChannelsPerProviderRecipient,
 } from "@/lib/notifications/provider-notification-channels";
 
 function mockSupabase(rows: Array<{ user_id: string; notification_preferences: unknown }>) {
@@ -91,5 +92,30 @@ describe("intersectChannelsForProviderRecipients", () => {
     expect(
       await intersectChannelsForProviderRecipients(supabase, ["u1"], "booking_confirmed", []),
     ).toEqual([]);
+  });
+});
+
+describe("resolveChannelsPerProviderRecipient", () => {
+  it("returns per-user allowances so one opt-out doesn't suppress others", async () => {
+    const supabase = mockSupabase([
+      { user_id: "u1", notification_preferences: { payout_updates: { sms: true } } },
+      { user_id: "u2", notification_preferences: { payout_updates: { sms: false } } },
+    ]);
+    const perUser = await resolveChannelsPerProviderRecipient(
+      supabase,
+      ["u1", "u2"],
+      "payout_processed",
+      ["email", "sms"],
+    );
+    expect(perUser.get("u1")!.sort()).toEqual(["email", "sms"]);
+    expect(perUser.get("u2")).toEqual(["email"]); // u2 kept email, dropped sms
+  });
+
+  it("returns an empty map for empty inputs", async () => {
+    const supabase = mockSupabase([]);
+    expect((await resolveChannelsPerProviderRecipient(supabase, [], "k", ["email"])).size).toBe(0);
+    expect(
+      (await resolveChannelsPerProviderRecipient(supabase, ["u1"], "k", [])).size,
+    ).toBe(0);
   });
 });

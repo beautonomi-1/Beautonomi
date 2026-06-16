@@ -377,7 +377,9 @@ export async function createBookingRecord(
         const { sendGroupBookingNotifications } = await import(
           "@/lib/bookings/group-booking-notifications"
         );
-        await sendGroupBookingNotifications(adminSupabase, booking.id, groupBooking.id);
+        await sendGroupBookingNotifications(adminSupabase, booking.id, groupBooking.id, {
+          skipPrimaryContact: true,
+        });
       } catch (notifError) {
         console.error("Failed to send group booking notifications:", notifError);
       }

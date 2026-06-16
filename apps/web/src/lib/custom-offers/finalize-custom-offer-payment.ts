@@ -31,6 +31,8 @@ import {
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { slackNotifyCustomOfferFinalizeFailed } from "@/lib/integrations/slack/ops-triggers";
+import { resolveCustomerProviderConversation } from "@/lib/chat/resolve-conversation";
+import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -1006,15 +1008,13 @@ export async function finalizeCustomOfferPayment(
     let convId = (offerSourceMsg as { conversation_id?: string } | null)?.conversation_id;
 
     if (!convId) {
-      const { data: conv } = await adminSupabase
-        .from("conversations")
-        .select("id, booking_id")
-        .eq("customer_id", req.customer_id)
-        .eq("provider_id", req.provider_id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      convId = (conv as { id?: string } | null)?.id;
+      const { id: resolvedConvId } = await resolveCustomerProviderConversation(adminSupabase, {
+        customerId: req.customer_id,
+        providerId: req.provider_id,
+        bookingId: booking.id,
+        lastMessageSenderId: providerUserId ?? req.customer_id,
+      });
+      convId = resolvedConvId;
     }
 
     if (convId) {
@@ -1058,12 +1058,7 @@ export async function finalizeCustomOfferPayment(
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     const { insertNotification } = await import("@/lib/notifications/insert-notification");
-    const { data: providerRow } = await adminSupabase
-      .from("providers")
-      .select("user_id")
-      .eq("id", req.provider_id)
-      .single();
-    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+    const { notifyProviderNewBooking } = await import("@/lib/notifications/notification-service");
     const baseData = {
       type: "custom_order_paid" as const,
       custom_offer_id: offerId,
@@ -1094,27 +1089,27 @@ export async function finalizeCustomOfferPayment(
         action_url: customerBookingUrl,
       });
     }
+
+    await notifyProviderNewBooking(booking.id as string, ["push"]);
+
+    const { data: providerRow } = await adminSupabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", req.provider_id)
+      .single();
+    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
     if (providerUserId) {
-      await sendToUser(
-        providerUserId,
-        {
-          title: "Custom Order Paid",
-          message: "Your custom order has been paid and a booking has been created.",
-          data: baseData,
-          url: `/provider/bookings/${booking.id}`,
-        },
-        ["push"],
-        { appType: "provider" },
-      );
       await insertNotification({
         user_id: providerUserId,
         type: "custom_offer",
-        title: "Custom Offer Paid",
+        title: "Custom order paid",
         message: "A client paid your custom offer. Booking confirmed.",
         data: baseData,
         action_url: `/provider/bookings/${booking.id}`,
       });
     }
+
+    invalidateProviderBookingsReadCache(req.provider_id);
   } catch (notifyErr) {
     console.error("[finalizeCustomOfferPayment] notifications failed:", notifyErr);
   }

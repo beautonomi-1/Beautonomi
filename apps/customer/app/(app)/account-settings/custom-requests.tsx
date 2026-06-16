@@ -70,6 +70,7 @@ interface CustomRequest {
   address_city?: string | null;
   address_country?: string | null;
   offers?: CustomRequestOffer[];
+  attachments?: Array<{ id: string; url: string; created_at?: string }>;
 }
 
 type OfferDetailData = {
@@ -264,6 +265,19 @@ function RequestCard({
         </View>
       </View>
       <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
+      {item.attachments && item.attachments.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+          {item.attachments.slice(0, 4).map((att) => (
+            <Image
+              key={att.id}
+              source={{ uri: att.url }}
+              style={{ width: 64, height: 64, borderRadius: 8 }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ))}
+        </View>
+      ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
         {budget && <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{budget}</Text>}
         {locationLabel && (

@@ -193,13 +193,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const participants = ((group as any).booking_participants || []) as ParticipantRow[];
-    const bookingIds = participants.map((p) => p.booking_id).filter(Boolean) as string[];
-    const { data: childBookings } =
-      bookingIds.length > 0
-        ? await admin
-            .from("bookings")
-            .select(
-              `
+    const participantBookingIds = participants
+      .map((p) => p.booking_id)
+      .filter(Boolean) as string[];
+
+    const childBookingSelect = `
             id,
             booking_number,
             total_amount,
@@ -220,13 +218,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             payment_status,
             customer:users!bookings_customer_id_fkey(full_name, email, phone),
             booking_payments(id, amount, status, payment_method, payment_provider, paid_at, created_at, notes)
-          `
-            )
-            .in("id", bookingIds)
-        : { data: [] as ChildBookingRow[] };
+          `;
 
-    const childRows = (childBookings || []) as ChildBookingRow[];
-    const childById = new Map<string, ChildBookingRow>(childRows.map((b) => [b.id, b]));
+    const { data: childBookingsByGroup } = await admin
+      .from("bookings")
+      .select(childBookingSelect)
+      .eq("group_booking_id", id);
+
+    const childById = new Map<string, ChildBookingRow>();
+    for (const row of (childBookingsByGroup ?? []) as ChildBookingRow[]) {
+      childById.set(row.id, row);
+    }
+
+    if (participantBookingIds.length > 0) {
+      const missingIds = participantBookingIds.filter((bid) => !childById.has(bid));
+      if (missingIds.length > 0) {
+        const { data: linkedExtras } = await admin
+          .from("bookings")
+          .select(childBookingSelect)
+          .in("id", missingIds);
+        for (const row of (linkedExtras ?? []) as ChildBookingRow[]) {
+          childById.set(row.id, row);
+        }
+      }
+    }
+
+    const childRows = [...childById.values()];
     const participantTotal = participants.reduce((sum, p) => sum + Math.max(0, num(p.price)), 0);
     const products = Array.isArray((group as any).products)
       ? ((group as any).products as any[])

@@ -4,6 +4,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  resolveCustomerProviderConversation,
+  updateConversationAfterMessage,
+} from "@/lib/chat/resolve-conversation";
 
 const createSchema = z.object({
   provider_id: z.string().uuid(),
@@ -161,90 +165,43 @@ export async function POST(request: NextRequest) {
 
     let conversationId: string | null = null;
     let messageWarning: string | null = null;
-    // Also send via messages: create/get a customer<->provider conversation and post a message (best-effort)
+    // Also send via messages: resolve the customer<->provider conversation and post a message
     try {
-      const { data: existingConv } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("customer_id", user.id)
-        .eq("provider_id", body.provider_id)
-        .is("booking_id", null)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      const admin = getSupabaseAdmin();
+      const { id: convId } = await resolveCustomerProviderConversation(admin, {
+        customerId: user.id,
+        providerId: body.provider_id,
+        lastMessageSenderId: user.id,
+      });
+      conversationId = convId;
 
-      let convId = (existingConv as any)?.id;
-      
-      if (!convId) {
-        const { data: newConv, error: convError } = await supabase
-          .from("conversations")
-          .insert({
-            booking_id: null,
-            customer_id: user.id,
+      const preview = body.description.length > 200 ? body.description.slice(0, 200) + "…" : body.description;
+      const messageContent = `Custom request: ${preview}`;
+      const { error: messageError } = await admin.from("messages").insert({
+        conversation_id: convId,
+        sender_id: user.id,
+        sender_role: "customer",
+        content: messageContent,
+        attachments: [
+          {
+            type: "custom_request",
+            request_id: (created as { id: string }).id,
             provider_id: body.provider_id,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: "",
-            last_message_sender_id: user.id,
-            unread_count_customer: 0,
-            unread_count_provider: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-        
-        if (!convError && newConv) {
-          convId = (newConv as any)?.id;
-        }
-      }
-      if (convId) conversationId = convId;
-
-      if (convId) {
-        const preview = body.description.length > 200 ? body.description.slice(0, 200) + "…" : body.description;
-        const messageContent = `Custom request: ${preview}`;
-        const { error: messageError } = await supabase
-          .from("messages")
-          .insert({
-            conversation_id: convId,
-            sender_id: user.id,
-            sender_role: "customer",
-            content: messageContent,
-            attachments: [
-              {
-                type: "custom_request",
-                request_id: (created as any).id,
-                provider_id: body.provider_id,
-              },
-            ],
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
-        if (messageError) {
-          console.error("Failed to insert message:", messageError);
-          messageWarning =
-            "We saved your request, but couldn't post it in your chat with the provider. Open the request from My Requests to follow up.";
-        } else {
-          // Update conversation metadata
-          const { data: currentConv } = await supabase
-            .from("conversations")
-            .select("unread_count_provider")
-            .eq("id", convId)
-            .single();
-          
-          await supabase
-            .from("conversations")
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: messageContent,
-              last_message_sender_id: user.id,
-              unread_count_provider: ((currentConv as any)?.unread_count_provider || 0) + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", convId);
-        }
+            image_urls: body.image_urls.slice(0, 6),
+          },
+        ],
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
+      if (messageError) {
+        console.error("[me/custom-requests] Failed to insert message:", messageError);
+        messageWarning =
+          "We saved your request, but couldn't post it in your chat with the provider. Open the request from My Requests to follow up.";
+      } else {
+        await updateConversationAfterMessage(admin, convId, user.id, messageContent);
       }
     } catch (msgErr) {
-      console.warn("[me/custom-requests] messaging hookup failed:", msgErr);
+      console.error("[me/custom-requests] messaging hookup failed:", msgErr);
       if (!messageWarning) {
         messageWarning =
           "We saved your request, but couldn't post it in your chat with the provider. Open the request from My Requests to follow up.";

@@ -939,9 +939,12 @@ export default function ChatScreen() {
                 );
                 const hasCustomRequest = msg.attachments?.some((a: { type?: string }) => a.type === "custom_request");
                 const customRequestAtt = msg.attachments?.find((a: { type?: string }) => a?.type === "custom_request") as
-                  | { request_id?: string; id?: string }
+                  | { request_id?: string; id?: string; image_urls?: string[] }
                   | undefined;
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
+                const customRequestImages = Array.isArray(customRequestAtt?.image_urls)
+                  ? customRequestAtt!.image_urls!.filter(Boolean).slice(0, 4)
+                  : [];
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
                 const quotedReply = resolveReplyTo(msg);
@@ -1112,6 +1115,27 @@ export default function ChatScreen() {
                         <Text style={twStyle("text-xs text-blue-800 mt-0.5")}>
                           Tap to open the full request in the app{customRequestNavId ? "" : " (inbox)"}.
                         </Text>
+                        {customRequestImages.length > 0 ? (
+                          <View style={twStyle("mt-2 flex-row flex-wrap gap-1.5")}>
+                            {customRequestImages.map((url, idx) => (
+                              <TouchableOpacity
+                                key={`${msg.id}-cr-img-${idx}`}
+                                activeOpacity={0.9}
+                                onPress={(e) => {
+                                  e.stopPropagation?.();
+                                  pushInAppBrowser(router, url, "Attachment");
+                                }}
+                              >
+                                <Image
+                                  source={{ uri: url }}
+                                  style={{ width: 56, height: 56, borderRadius: 8 }}
+                                  contentFit="cover"
+                                  cachePolicy="memory-disk"
+                                />
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : null}
                       </TouchableOpacity>
                     ) : null}
 

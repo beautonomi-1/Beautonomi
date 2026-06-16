@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -15,8 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useBusinessToday } from "@/hooks/useBusinessToday";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
+import { startOfBusinessDayLocalDate } from "@beautonomi/utils";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -201,13 +203,15 @@ function startOfWeekMondayInTz(d: Date, tz?: string | null): Date {
   return local;
 }
 
-const EMPTY_DATE_SHIFT_FORM: DateShiftFormData = {
-  staff_id: "",
-  date: formatDateLocal(new Date()),
-  start_time: "09:00",
-  end_time: "17:00",
-  notes: "",
-};
+function emptyDateShiftForm(tz?: string | null): DateShiftFormData {
+  return {
+    staff_id: "",
+    date: formatDateLocal(startOfBusinessDayLocalDate(tz)),
+    start_time: "09:00",
+    end_time: "17:00",
+    notes: "",
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
@@ -219,6 +223,8 @@ export default function StaffScheduleScreen() {
   useResponsive();
   const { provider } = useProvider();
   const providerTz = provider?.timezone ?? null;
+  const { businessToday } = useBusinessToday(providerTz);
+  const prevBusinessTodayRef = useRef(businessToday);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [shiftFormOpen, setShiftFormOpen] = useState(false);
@@ -227,26 +233,28 @@ export default function StaffScheduleScreen() {
   /** When set, the date-shift sheet edits an existing date-specific shift via PATCH. */
   const [editingDateShift, setEditingDateShift] = useState<ScheduledShift | null>(null);
   const [form, setForm] = useState<ShiftFormData>(EMPTY_SHIFT_FORM);
-  const [dateForm, setDateForm] = useState<DateShiftFormData>(EMPTY_DATE_SHIFT_FORM);
+  const [dateForm, setDateForm] = useState<DateShiftFormData>(() => emptyDateShiftForm(providerTz));
   const [weekStart, setWeekStart] = useState(() =>
-    startOfWeekMondayInTz(new Date(), providerTz),
+    startOfWeekMondayInTz(businessToday, providerTz),
   );
   const [pickerField, setPickerField] = useState<
     "start_time" | "end_time" | "date" | "date_start_time" | "date_end_time" | null
   >(null);
 
-  /* If the provider timezone arrives after first render and changes the
-     "today" calendar day, snap the visible week to the correct Monday so
-     the rendered range matches what the API expects. */
+  /* Re-anchor the visible week when the provider business day rolls over
+     (focus / foreground / timezone) — but only if the user was still on
+     the week that contained the previous business today. */
   useEffect(() => {
-    if (!providerTz) return;
-    const expected = startOfWeekMondayInTz(new Date(), providerTz);
-    if (formatDateLocal(expected) !== formatDateLocal(weekStart)) {
-      setWeekStart(expected);
-    }
-    // We only want to react to the timezone arriving, not every weekStart change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerTz]);
+    const prev = prevBusinessTodayRef.current;
+    const prevWeekMonday = startOfWeekMondayInTz(prev, providerTz);
+    setWeekStart((current) => {
+      const wasOnCurrentWeek = formatDateLocal(current) === formatDateLocal(prevWeekMonday);
+      if (!wasOnCurrentWeek) return current;
+      const expected = startOfWeekMondayInTz(businessToday, providerTz);
+      return formatDateLocal(current) === formatDateLocal(expected) ? current : expected;
+    });
+    prevBusinessTodayRef.current = businessToday;
+  }, [businessToday, providerTz]);
 
   /* ── Data ── */
   const {
@@ -418,14 +426,10 @@ export default function StaffScheduleScreen() {
 
   function openAddDateShift(date?: string) {
     setEditingDateShift(null);
-    const todayInTz = (() => {
-      const { y, m, d } = ymdInTz(new Date(), providerTz);
-      return `${y}-${pad(m)}-${pad(d)}`;
-    })();
     setDateForm({
-      ...EMPTY_DATE_SHIFT_FORM,
+      ...emptyDateShiftForm(providerTz),
       staff_id: selectedStaffId ?? "",
-      date: date ?? todayInTz,
+      date: date ?? formatDateLocal(startOfBusinessDayLocalDate(providerTz)),
     });
     setDateShiftFormOpen(true);
   }

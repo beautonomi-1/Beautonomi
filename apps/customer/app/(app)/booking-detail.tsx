@@ -41,6 +41,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -213,6 +214,10 @@ export default function BookingDetailScreen() {
   const hasLoadedOnce = useRef(false);
   const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
+  const [groupPaymentSummary, setGroupPaymentSummary] = useState<{
+    amount_paid: number;
+    currency: string;
+  } | null>(null);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) {
@@ -265,6 +270,33 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     load();
   }, [id, load]);
+
+  useEffect(() => {
+    const groupId = booking?.group_booking_id;
+    if (!booking?.is_group_booking || !groupId) {
+      setGroupPaymentSummary(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{ amount_paid?: number; currency?: string | null }>(`/api/me/group-bookings/${encodeURIComponent(groupId)}`)
+      .then((res) => {
+        if (cancelled || res.error || !res.data) {
+          if (!cancelled) setGroupPaymentSummary(null);
+          return;
+        }
+        setGroupPaymentSummary({
+          amount_paid: Number(res.data.amount_paid ?? 0),
+          currency: res.data.currency?.trim() || booking.currency || getTenantDefaultCurrency(),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setGroupPaymentSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [booking?.group_booking_id, booking?.is_group_booking, booking?.currency]);
 
   useEffect(() => {
     if (!id || !booking || booking.status !== "completed") {
@@ -2129,6 +2161,11 @@ export default function BookingDetailScreen() {
             <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{booking.group_booking_ref}</Text>
+              {groupPaymentSummary && groupPaymentSummary.amount_paid > 0 ? (
+                <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>
+                  {formatMoney(groupPaymentSummary.amount_paid, groupPaymentSummary.currency)} paid for the whole group
+                </Text>
+              ) : null}
               {booking.group_booking_id ? (
                 <TouchableOpacity
                   onPress={() => router.push({ pathname: "/(app)/group-booking-detail", params: { id: booking.group_booking_id } })}
