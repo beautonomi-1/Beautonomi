@@ -18,6 +18,10 @@ import {
   rescheduleBookingServicesSequential,
   updateAllBookingServicesStaff,
 } from "@/lib/bookings/reschedule-booking-services";
+import {
+  BOOKING_SERVICE_EDIT_LOCKED_STATUSES,
+  PROVIDER_PATCH_NON_RESCHEDULABLE_STATUSES,
+} from "@/lib/bookings/reschedule-core";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -867,6 +871,14 @@ export async function PATCH(
     // Slot conflict check when rescheduling (scheduled_at or services with new times)
     const isReschedule = scheduled_at != null || (Array.isArray(services) && services.some((s: { scheduled_start_at?: string | null }) => s.scheduled_start_at != null));
     if (isReschedule) {
+      const currentStatusForReschedule = String((currentBooking as BookingRow).status ?? "");
+      if (PROVIDER_PATCH_NON_RESCHEDULABLE_STATUSES.has(currentStatusForReschedule)) {
+        return errorResponse(
+          `Cannot reschedule a ${currentStatusForReschedule} booking`,
+          "INVALID_STATUS",
+          400,
+        );
+      }
       const supabaseAdmin = getSupabaseAdmin();
       const { data: currentServices } = await supabaseAdmin
         .from("booking_services")
@@ -1445,6 +1457,14 @@ export async function PATCH(
 
     // Replace entire service line (explicit array from client)
     if (services !== undefined && Array.isArray(services)) {
+      const currentStatusForServices = String((currentBooking as BookingRow).status ?? "");
+      if (BOOKING_SERVICE_EDIT_LOCKED_STATUSES.has(currentStatusForServices)) {
+        return errorResponse(
+          "Services cannot be edited after a booking is completed or closed. Create a sale/refund adjustment instead.",
+          "SERVICE_EDIT_LOCKED",
+          400,
+        );
+      }
       // Delete existing services
       await supabaseAdminPatch
         .from("booking_services")

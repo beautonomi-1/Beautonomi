@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       : attachments?.length ? "Sent an attachment" : "";
 
     // Fire-and-forget: update conversation metadata + send notifications
-    updateConversationMeta(supabase, conversation_id, user.id, messagePreview, isCustomer).catch(() => {});
+    updateConversationMeta(conversation_id, user.id, messagePreview).catch(() => {});
     sendMessageNotification(conv, user, msg.id, messagePreview, isCustomer).catch((e) =>
       console.error("Notification error:", e)
     );
@@ -230,33 +230,20 @@ export async function POST(request: NextRequest) {
 }
 
 async function updateConversationMeta(
-  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   conversationId: string,
   senderId: string,
   preview: string,
-  isCustomer: boolean
 ) {
-  const updatePayload: Record<string, any> = {
-    last_message_at: new Date().toISOString(),
-    last_message_preview: preview,
-    last_message_sender_id: senderId,
-  };
-  if (isCustomer) {
-    updatePayload.unread_count_provider = (await supabase
-      .from("conversations")
-      .select("unread_count_provider")
-      .eq("id", conversationId)
-      .single()
-      .then(r => ((r.data as any)?.unread_count_provider ?? 0) + 1));
-  } else {
-    updatePayload.unread_count_customer = (await supabase
-      .from("conversations")
-      .select("unread_count_customer")
-      .eq("id", conversationId)
-      .single()
-      .then(r => ((r.data as any)?.unread_count_customer ?? 0) + 1));
-  }
-  await supabase.from("conversations").update(updatePayload).eq("id", conversationId);
+  const admin = getSupabaseAdmin();
+  await admin
+    .from("conversations")
+    .update({
+      last_message_at: new Date().toISOString(),
+      last_message_preview: preview,
+      last_message_sender_id: senderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversationId);
 }
 
 async function sendMessageNotification(

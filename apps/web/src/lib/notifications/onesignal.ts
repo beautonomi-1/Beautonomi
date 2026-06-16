@@ -1417,6 +1417,61 @@ export async function sendTemplateNotification(
     channelsToSend = [...nonPref, ...allowed];
   }
 
+  // Per-user email/SMS gating (Option A). Email/SMS are delivered per-recipient
+  // through the durable Resend/Twilio queue, so — unlike the single OneSignal
+  // push payload, which must intersect preferences across all recipients — each
+  // recipient is gated individually. One opted-out user no longer suppresses the
+  // channel for everyone else when a template fans out to many recipients.
+  //
+  // `emailSmsByUser === null` means no preference gating applies (e.g. admin /
+  // no-appType sends) → every recipient gets exactly what was requested.
+  const requestedEmailSms = activeChannels.filter(
+    (c): c is "email" | "sms" => c === "email" || c === "sms",
+  );
+  let emailSmsByUser: Map<string, ("email" | "sms")[]> | null = null;
+  if (
+    requestedEmailSms.length > 0 &&
+    (options?.appType === "customer" || options?.appType === "provider") &&
+    userIds.length > 0
+  ) {
+    let perUser: Map<string, ("push" | "email" | "sms")[]>;
+    if (options.appType === "provider") {
+      const { resolveChannelsPerProviderRecipient } = await import(
+        "@/lib/notifications/provider-notification-channels"
+      );
+      perUser = await resolveChannelsPerProviderRecipient(
+        getSupabaseAdmin(),
+        userIds,
+        templateKey,
+        requestedEmailSms,
+      );
+    } else {
+      const { resolveChannelsPerCustomerRecipient } = await import(
+        "@/lib/notifications/customer-notification-channels"
+      );
+      perUser = await resolveChannelsPerCustomerRecipient(
+        getSupabaseAdmin(),
+        userIds,
+        templateKey,
+        requestedEmailSms,
+      );
+    }
+    emailSmsByUser = new Map();
+    for (const uid of userIds) {
+      const allowedForUser = (perUser.get(uid) ?? []).filter(
+        (c): c is "email" | "sms" => c === "email" || c === "sms",
+      );
+      if (allowedForUser.length > 0) emailSmsByUser.set(uid, allowedForUser);
+    }
+  }
+  // Is there any email/SMS to deliver after per-user gating? Drives the
+  // "nothing to send" guards below so an email-only recipient is not dropped
+  // just because push was gated off.
+  const hasEmailSmsWork =
+    requestedEmailSms.length > 0 &&
+    userIds.length > 0 &&
+    (emailSmsByUser ? emailSmsByUser.size > 0 : true);
+
   // Quiet hours enforcement: suppress push during quiet hours for marketing
   // only; must-deliver transactional pushes always go through.
   if (
@@ -1503,7 +1558,7 @@ export async function sendTemplateNotification(
     });
   }
 
-  if (channelsToSend.length === 0) {
+  if (channelsToSend.length === 0 && !hasEmailSmsWork) {
     return {
       success: true,
       notification_id: quietHoursSuppressedPush ? "suppressed-quiet-hours" : "suppressed-preferences",
@@ -1511,6 +1566,47 @@ export async function sendTemplateNotification(
         ? "Push suppressed: all recipients in quiet hours"
         : "No external channels enabled for recipients (preferences)",
     };
+  }
+
+  // Option A — email & SMS template channels are delivered through the durable
+  // Resend/Twilio queue rather than OneSignal. We keep no OneSignal email/SMS
+  // subscriptions (the product is push-only on OneSignal), so routing these
+  // through the queue is the only path that actually delivers. The cron worker
+  // resolves each recipient's email/phone from `users` and applies retry + DLQ.
+  // Push + in-app continue via OneSignal / the in-app inbox below.
+  // OneSignal must never carry email/SMS in this product — strip them so the
+  // payload below is push-only, regardless of recipient count.
+  channelsToSend = channelsToSend.filter((c) => c !== "email" && c !== "sms");
+  let emailSmsEnqueued = false;
+  if (hasEmailSmsWork) {
+    // Per-user recipient list: gated map when preferences apply, otherwise every
+    // recipient gets exactly the requested email/SMS channels.
+    const recipients = emailSmsByUser
+      ? Array.from(emailSmsByUser.entries()).map(([userId, channels]) => ({ userId, channels }))
+      : userIds.map((userId) => ({ userId, channels: requestedEmailSms }));
+    if (recipients.length > 0) {
+      const bookingId = (variables as { booking_id?: string })?.booking_id ?? null;
+      const { enqueueTemplateEmailSmsChannels } = await import(
+        "@/lib/notifications/enqueue-template-channels"
+      );
+      await enqueueTemplateEmailSmsChannels(
+        {
+          templateKey,
+          recipients,
+          bookingId,
+          tenantId: options?.tenantId ?? null,
+          title,
+          body,
+          emailSubject,
+          emailBody,
+          smsBody,
+          data: { template_key: templateKey, ...variables },
+          url: pushUrlFields.actionPath || undefined,
+        },
+        options?.supabaseClient,
+      );
+      emailSmsEnqueued = true;
+    }
   }
 
   const notificationPayload: Record<string, unknown> = {
@@ -1532,13 +1628,9 @@ export async function sendTemplateNotification(
     notificationPayload.ios_interruption_level = "time_sensitive";
   }
 
-  if (channelsToSend.includes("email")) {
-    notificationPayload.email_subject = emailSubject;
-    notificationPayload.email_body = emailBody;
-  }
-  if (channelsToSend.includes("sms")) {
-    notificationPayload.sms_body = smsBody;
-  }
+  // NOTE: email/SMS are intentionally NOT added to the OneSignal payload here.
+  // Those channels are delivered via the durable Resend/Twilio queue above
+  // (see "Option A" block) and have already been stripped from channelsToSend.
   if (templateUrlRelative) {
     applyPushUrlToPayload(notificationPayload, pushUrlFields);
   }
@@ -1572,7 +1664,7 @@ export async function sendTemplateNotification(
       "booking_id", "conversation_id", "order_id", "request_id", "offer_id",
       "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
       "booking_number", "provider_name", "customer_name",
-      "provider_id", "provider_slug",
+      "provider_id", "provider_slug", "group_booking_id",
     ];
     WELL_KNOWN_VARS.forEach((k) => {
       const v = variables[k];
@@ -1648,7 +1740,13 @@ export async function sendTemplateNotification(
   }
 
   if (channelsToSend.length === 0) {
-    return { success: true, message: "No external channels enabled for recipients (preferences)" };
+    return {
+      success: true,
+      notification_id: emailSmsEnqueued ? "queued-email-sms" : undefined,
+      message: emailSmsEnqueued
+        ? "Email/SMS enqueued for durable delivery; no push channel for recipients"
+        : "No external channels enabled for recipients (preferences)",
+    };
   }
 
   const directResult = await sendOneSignalNotification(notificationPayload, options);

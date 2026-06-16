@@ -21,6 +21,12 @@ export type GroupBookingPatch = {
   id: string;
   status?: string;
   updated_at?: string;
+  total_price?: number | null;
+  payment_status?: string | null;
+  amount_paid?: number | null;
+  balance_due?: number | null;
+  total_refunded?: number | null;
+  is_invoiced?: boolean | null;
   participants?: GroupParticipantPatch[];
 };
 
@@ -39,6 +45,50 @@ function mapParticipant<T extends GroupParticipantPatch>(
 
 function isParticipantCheckedOut(p: GroupParticipantPatch): boolean {
   return p.checked_out === true || !!p.checked_out_time || !!p.checked_out_at;
+}
+
+/** Best-effort group rollup from linked participant rows (detail refetch remains authoritative). */
+export function deriveGroupPaymentFields(
+  group: GroupBookingPatch
+): Pick<
+  GroupBookingPatch,
+  "payment_status" | "amount_paid" | "balance_due" | "total_refunded" | "is_invoiced"
+> {
+  const participants = group.participants ?? [];
+  const withBooking = participants.filter((p) => p.booking_id);
+  const isInvoiced = withBooking.length > 0;
+  const amountPaid = withBooking.reduce((sum, p) => sum + Number(p.total_paid ?? 0), 0);
+  const totalRefunded = withBooking.reduce((sum, p) => sum + Number(p.total_refunded ?? 0), 0);
+  const balanceDue = withBooking.reduce(
+    (sum, p) => sum + Math.max(0, Number(p.balance_due ?? 0)),
+    0
+  );
+  const displayTotal = Number(group.total_price ?? 0);
+
+  let paymentStatus = "pending";
+  if (!isInvoiced) {
+    paymentStatus = "not_invoiced";
+  } else if (totalRefunded > 0 && amountPaid > 0 && totalRefunded >= amountPaid - 0.01) {
+    paymentStatus = "refunded";
+  } else if (totalRefunded > 0) {
+    paymentStatus = "partially_refunded";
+  } else if (displayTotal > 0 && balanceDue <= 0) {
+    paymentStatus = "paid";
+  } else if (amountPaid > 0) {
+    paymentStatus = "partially_paid";
+  }
+
+  return {
+    payment_status: paymentStatus,
+    amount_paid: amountPaid,
+    balance_due: balanceDue,
+    total_refunded: totalRefunded,
+    is_invoiced: isInvoiced,
+  };
+}
+
+function withDerivedGroupPayment(group: GroupBookingPatch): GroupBookingPatch {
+  return { ...group, ...deriveGroupPaymentFields(group) };
 }
 
 export function patchParticipantCheckIn(
@@ -74,11 +124,11 @@ export function patchParticipantCheckOut(
     next.status = "completed";
   }
   next.updated_at = now;
-  return next;
+  return withDerivedGroupPayment(next);
 }
 
 export function patchGroupMarkPaid(group: GroupBookingPatch, now: string): GroupBookingPatch {
-  return {
+  const next: GroupBookingPatch = {
     ...group,
     updated_at: now,
     participants: (group.participants ?? []).map((p) => {
@@ -97,6 +147,7 @@ export function patchGroupMarkPaid(group: GroupBookingPatch, now: string): Group
       };
     }),
   };
+  return withDerivedGroupPayment(next);
 }
 
 export function patchParticipantRefund(
@@ -105,7 +156,7 @@ export function patchParticipantRefund(
   refundAmount: number,
   now: string
 ): GroupBookingPatch {
-  return {
+  const next = {
     ...mapParticipant(group, participantId, (() => {
       const p = (group.participants ?? []).find((row) => row.id === participantId);
       if (!p) return {};
@@ -130,6 +181,7 @@ export function patchParticipantRefund(
     })()),
     updated_at: now,
   };
+  return withDerivedGroupPayment(next);
 }
 
 function participantSnapshotEqual(

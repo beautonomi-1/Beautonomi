@@ -1,4 +1,5 @@
 import {
+  deriveGroupPaymentFields,
   patchGroupMarkPaid,
   patchParticipantCheckIn,
   patchParticipantCheckOut,
@@ -9,6 +10,7 @@ import {
 const baseGroup = {
   id: "group-1",
   status: "confirmed",
+  total_price: 180,
   participants: [
     {
       id: "p1",
@@ -38,6 +40,9 @@ describe("optimisticGroupPatch", () => {
       balance_due: 0,
       total_paid: 100,
     });
+    expect(next.payment_status).toBe("paid");
+    expect(next.balance_due).toBe(0);
+    expect(next.is_invoiced).toBe(true);
     expect(next.updated_at).toBe(now);
   });
 
@@ -68,6 +73,18 @@ describe("optimisticGroupPatch", () => {
       total_refunded: 40,
       balance_due: 40,
       payment_status: "partially_refunded",
+    });
+    expect(refunded.payment_status).toBe("partially_refunded");
+    expect(refunded.total_refunded).toBe(40);
+  });
+
+  it("derives group payment fields from participants", () => {
+    const paid = patchGroupMarkPaid(baseGroup, "2026-06-01T10:00:00.000Z");
+    expect(deriveGroupPaymentFields(paid)).toMatchObject({
+      payment_status: "paid",
+      amount_paid: 180,
+      balance_due: 0,
+      is_invoiced: true,
     });
   });
 

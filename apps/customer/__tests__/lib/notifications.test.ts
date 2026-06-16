@@ -191,4 +191,67 @@ describe("navigateFromNotification", () => {
       params: { id },
     });
   });
+
+  it("routes booking_confirmed with group_booking_id to group booking detail", () => {
+    const groupId = "00000000-0000-4000-8000-000000000456";
+    navigateFromNotification({
+      id: "n-group-confirmed",
+      type: "booking_confirmed",
+      title: "Booking confirmed",
+      message: "Your booking is confirmed",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: {
+        booking_id: "booking-child-1",
+        group_booking_id: groupId,
+      },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/group-booking-detail",
+      params: { id: groupId },
+    });
+  });
+
+  it("routes a typeless group push (booking_id + group_booking_id) to the group screen", () => {
+    const groupId = "00000000-0000-4000-8000-000000000abc";
+    navigateFromNotification({
+      id: "n-group-typeless",
+      type: "",
+      title: "Booking confirmed",
+      message: "Your booking is confirmed",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: {
+        booking_id: "booking-child-3",
+        group_booking_id: groupId,
+      },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/group-booking-detail",
+      params: { id: groupId },
+    });
+  });
+
+  it("prefers group screen when group_booking_id is present on generic booking push", () => {
+    const groupId = "00000000-0000-4000-8000-000000000789";
+    navigateFromNotification({
+      id: "n-group-generic",
+      type: "booking_update",
+      title: "Booking update",
+      message: "Your group booking was updated",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: {
+        booking_id: "booking-child-2",
+        group_booking_id: groupId,
+      },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/group-booking-detail",
+      params: { id: groupId },
+    });
+  });
 });

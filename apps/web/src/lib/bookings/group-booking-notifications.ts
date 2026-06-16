@@ -11,6 +11,8 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendToUser } from '@/lib/notifications/onesignal';
+import { enqueueMultiChannel } from '@/lib/notifications/enqueue';
+import { insertNotification } from '@/lib/notifications/insert-notification';
 import { getGroupBooking } from './group-booking';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 import { sendResendEmail } from '@/lib/integrations/resend';
@@ -23,15 +25,20 @@ type GroupNotificationParticipant = {
   customer_id?: string | null;
 };
 
+export type SendGroupBookingNotificationsOptions = {
+  /** When true, skip the primary contact (e.g. online checkout already sent booking_confirmed). */
+  skipPrimaryContact?: boolean;
+};
+
 /**
  * Send booking confirmation to every participant that maps to a user account.
- * Guests without a user account are skipped because OneSignal targets users by
- * external user id, not raw email addresses or phone numbers.
+ * Guests without a user account receive walk-in email/SMS via Resend/Twilio.
  */
 export async function sendGroupBookingNotifications(
   supabase: SupabaseClient,
   bookingId: string,
-  groupBookingId?: string
+  groupBookingId?: string,
+  options?: SendGroupBookingNotificationsOptions,
 ): Promise<void> {
   let participants: GroupNotificationParticipant[] = [];
 
@@ -59,7 +66,7 @@ export async function sendGroupBookingNotifications(
 
   const { data: booking } = await supabase
     .from('bookings')
-    .select('id, booking_number, scheduled_at, provider_id, location_type')
+    .select('id, booking_number, scheduled_at, provider_id, location_type, tenant_id')
     .eq('id', bookingId)
     .maybeSingle();
 
@@ -72,20 +79,24 @@ export async function sendGroupBookingNotifications(
     .maybeSingle();
 
   for (const participant of participants) {
+    if (options?.skipPrimaryContact && participant.is_primary_contact) {
+      continue;
+    }
+
     const userId = await resolveParticipantUserId(supabase, participant);
-    const channels = {
+    const walkInChannels = {
       email: Boolean(participant.participant_email),
       sms: Boolean(participant.participant_phone),
     };
 
     if (userId) {
       await sendGroupBookingConfirmation(
+        supabase,
         userId,
         participant.participant_name,
         booking,
         provider,
         participant.is_primary_contact,
-        channels,
         groupBookingId,
       );
       continue;
@@ -96,7 +107,7 @@ export async function sendGroupBookingNotifications(
       participant,
       booking,
       provider,
-      channels,
+      walkInChannels,
     );
   }
 }
@@ -141,7 +152,7 @@ function buildGroupConfirmationCopy(
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
-): { title: string; message: string } {
+): { title: string; message: string; pushMessage: string } {
   const scheduledDate = new Date(booking.scheduled_at || Date.now());
   const dateStr = scheduledDate.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -159,6 +170,10 @@ function buildGroupConfirmationCopy(
   const title = isPrimary
     ? `Group Booking Confirmation - ${bookingNumber}`
     : `You're Invited to a Group Booking - ${bookingNumber}`;
+
+  const pushMessage = isPrimary
+    ? `Your group booking ${bookingNumber} is confirmed for ${dateStr} at ${timeStr}.`
+    : `You're invited to a group booking on ${dateStr} at ${timeStr}.`;
 
   const message = `
 Hi ${name},
@@ -184,7 +199,11 @@ Best regards,
 Beautonomi Team
   `.trim();
 
-  return { title, message };
+  return { title, message, pushMessage };
+}
+
+function messageToHtml(body: string): string {
+  return `<p>${body.replace(/\n+/g, '</p><p>')}</p>`;
 }
 
 async function sendWalkInEmail(
@@ -199,7 +218,7 @@ async function sendWalkInEmail(
       to,
       subject,
       text: body,
-      html: `<p>${body.replace(/\n+/g, '</p><p>')}</p>`,
+      html: messageToHtml(body),
     });
   } catch (err) {
     console.warn(
@@ -269,6 +288,7 @@ async function sendWalkInGroupBookingConfirmation(
 }
 
 async function sendGroupBookingConfirmation(
+  supabase: SupabaseClient,
   userId: string,
   name: string,
   booking: {
@@ -276,47 +296,84 @@ async function sendGroupBookingConfirmation(
     booking_number?: string | null;
     scheduled_at?: string | null;
     location_type?: string | null;
+    provider_id?: string | null;
+    tenant_id?: string | null;
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
-  channels: { email: boolean; sms: boolean },
-  groupBookingId?: string | null
+  groupBookingId?: string | null,
 ): Promise<void> {
-  const { title, message } = buildGroupConfirmationCopy(
+  const { title, message, pushMessage } = buildGroupConfirmationCopy(
     name,
     booking,
     provider,
     isPrimary,
   );
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com';
+  const tenantId = booking.tenant_id ?? null;
+  const dedupeBase = `group_booking_confirmation:${userId}:${groupBookingId ?? booking.id}`;
 
-  const deliveryChannels = [
-    ...(channels.email ? (['email'] as const) : []),
-    ...(channels.sms ? (['sms'] as const) : []),
-  ];
-  if (deliveryChannels.length === 0) return;
+  const notificationData = {
+    booking_id: booking.id,
+    booking_number: booking.booking_number ?? null,
+    group_booking: true,
+    group_booking_id: groupBookingId ?? null,
+  };
+
+  const actionUrl = groupBookingId
+    ? `/group-booking-detail?id=${groupBookingId}`
+    : `/booking-detail?id=${booking.id}`;
+
+  try {
+    await insertNotification({
+      user_id: userId,
+      type: 'group_booking_confirmation',
+      title,
+      message: pushMessage,
+      data: notificationData,
+      action_url: actionUrl,
+    });
+  } catch (error) {
+    console.warn('[group booking notifications] in-app insert failed:', error);
+  }
 
   try {
     await sendToUser(
       userId,
       {
         title,
-        message,
+        message: pushMessage,
         type: 'group_booking_confirmation',
-        data: {
-          booking_id: booking.id,
-          booking_number: booking.booking_number ?? null,
-          group_booking: true,
-          group_booking_id: groupBookingId ?? null,
-        },
+        data: notificationData,
         url: groupBookingId
           ? `${appUrl}/account-settings/bookings?group_booking_id=${groupBookingId}`
           : `${appUrl}/account-settings/bookings`,
       },
-      deliveryChannels,
-      { appType: 'customer' }
+      ['push'],
+      { appType: 'customer' },
     );
   } catch (error) {
-    console.warn('Group booking notification failed:', error);
+    console.warn('[group booking notifications] push failed:', error);
+  }
+
+  try {
+    await enqueueMultiChannel(
+      {
+        templateKey: 'group_booking_confirmation',
+        recipientUserId: userId,
+        bookingId: booking.id,
+        tenantId,
+        payload: {
+          subject: title,
+          html: messageToHtml(message),
+          body: message,
+          data: notificationData,
+        },
+      },
+      ['email', 'sms'],
+      dedupeBase,
+    );
+  } catch (error) {
+    console.warn('[group booking notifications] durable email/SMS enqueue failed:', error);
   }
 }

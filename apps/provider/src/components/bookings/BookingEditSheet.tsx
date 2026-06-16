@@ -23,6 +23,8 @@ import {
   computeBookingEditLineSubtotal,
   computeBookingEditTotals,
   mapBookingDetailToEditLines,
+  resolveBookingEditServiceDisplay,
+  resolveBookingEditServiceLabel,
 } from "@/lib/build-booking-edit-patch-payload";
 import type {
   BookingEditCatalogService,
@@ -62,6 +64,9 @@ export type BookingEditSheetBooking = {
     offering_id?: string;
     service_id?: string;
     staff_id?: string | null;
+    offering_name?: string;
+    price?: number;
+    duration_minutes?: number;
   }>;
   products?: Array<{
     product_id?: string;
@@ -83,7 +88,7 @@ type Props = {
 export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
   const locationId = booking.location_id ?? null;
   const servicesUrl =
-    "/api/provider/services?include_inactive=false&include_variants=true&include_offering_resources=false";
+    "/api/provider/services?include_inactive=true&include_variants=true&include_offering_resources=false";
   const staffUrl = locationId
     ? `/api/provider/team?location_id=${encodeURIComponent(locationId)}`
     : "/api/provider/staff";
@@ -127,7 +132,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
   );
 
   const resolveServiceLabel = useCallback(
-    (serviceId: string) => catalogServices.find((s) => s.id === serviceId)?.title ?? "Service",
+    (sel: BookingEditServiceLine) => resolveBookingEditServiceLabel(sel, catalogServices),
     [catalogServices],
   );
 
@@ -330,7 +335,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
                     On this appointment
                   </Text>
                   {selectedServices.map((sel) => {
-                    const svc = catalogServices.find((s) => s.id === sel.serviceId);
+                    const display = resolveBookingEditServiceDisplay(sel, catalogServices);
                     const staffName = staffList.find((s) => s.id === sel.staffId)?.name;
                     return (
                       <View
@@ -340,18 +345,17 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
                         <View style={twStyle("flex-row items-start justify-between gap-2")}>
                           <View style={twStyle("min-w-0 flex-1")}>
                             <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                              {svc?.title ?? resolveServiceLabel(sel.serviceId)}
+                              {display.title}
                             </Text>
-                            {svc ? (
-                              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                                {formatDuration(svc.duration_minutes)} · {formatCurrency(svc.price, svc.currency)}
-                              </Text>
-                            ) : null}
+                            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                              {formatDuration(display.durationMinutes)} ·{" "}
+                              {formatCurrency(display.price, display.currency ?? currency)}
+                            </Text>
                           </View>
                           <TouchableOpacity
                             onPress={() => toggleService(sel.serviceId)}
                             accessibilityRole="button"
-                            accessibilityLabel={`Remove ${resolveServiceLabel(sel.serviceId)}`}
+                            accessibilityLabel={`Remove ${resolveServiceLabel(sel)}`}
                           >
                             <Ionicons name="close-circle" size={22} color="#9ca3af" />
                           </TouchableOpacity>

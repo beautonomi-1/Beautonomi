@@ -77,6 +77,12 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
+import {
+  formatGroupPaymentStatusLabel,
+  groupIsFullyPaid,
+  isSingleChargeOnlineGroup,
+  participantMaxRefundable,
+} from "@/lib/group-booking-detail-helpers";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
 // { client_name, client_email, client_phone, service_name, checked_in,
@@ -115,6 +121,8 @@ interface Participant {
   balance_due?: number | null;
   total_paid?: number | null;
   total_refunded?: number | null;
+  wallet_gift_coverage?: number | null;
+  is_primary_contact?: boolean;
   addons?:
     | {
         id?: string;
@@ -165,6 +173,49 @@ interface GroupBooking {
   // the list endpoint. Keep it typed so the create / detail sheet can
   // show the attached package name + pass the id through on edits.
   package_id?: string | null;
+  payment_status?: string | null;
+  amount_paid?: number | null;
+  balance_due?: number | null;
+  total_refunded?: number | null;
+  tip_amount?: number | null;
+  is_invoiced?: boolean | null;
+  products?: GroupProductLine[];
+  bookings?: GroupChildBooking[];
+}
+
+type GroupProductLine = {
+  name?: string | null;
+  product_name?: string | null;
+  product_variant_name?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  unitPrice?: number | null;
+  price?: number | null;
+  total_price?: number | null;
+  totalPrice?: number | null;
+};
+
+type GroupChildBooking = {
+  id: string;
+  additional_charges?: Array<{
+    description?: string | null;
+    name?: string | null;
+    amount?: number | null;
+    status?: string | null;
+  }>;
+};
+
+/** Mirrors web `groupProductLineTotal` so detail totals match the receipt/invoice. */
+function groupProductLineTotal(product: GroupProductLine): number {
+  const qty = Math.max(1, Number(product.quantity ?? 1) || 1);
+  return Math.max(
+    0,
+    Number(
+      product.total_price ??
+        product.totalPrice ??
+        (Number(product.unit_price ?? product.unitPrice ?? product.price ?? 0) || 0) * qty
+    ) || 0
+  );
 }
 
 /** Package list item from `GET /api/provider/packages` (shape mirrors
@@ -613,6 +664,7 @@ export default function GroupBookingsScreen() {
   const [loadedGroupPage, setLoadedGroupPage] = useState(1);
   const [loadingMoreGroups, setLoadingMoreGroups] = useState(false);
   const openGroupFetchRef = useRef<string | null>(null);
+  const [groupDetailLoading, setGroupDetailLoading] = useState(false);
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
@@ -810,7 +862,7 @@ export default function GroupBookingsScreen() {
     }
     const group = groups.find((g) => g.id === openId);
     if (group) {
-      setSelectedGroup(group);
+      void openGroupDetail(group);
       openGroupFetchRef.current = null;
       router.setParams({ open_group_id: "" });
       return;
@@ -833,13 +885,38 @@ export default function GroupBookingsScreen() {
         return;
       }
       setExtraGroups((prev) =>
-        prev.some((g) => g.id === fetched.id) ? prev : [...prev, fetched as GroupBooking]
+        prev.some((g) => g.id === fetched.id)
+          ? prev.map((g) => (g.id === fetched.id ? (fetched as GroupBooking) : g))
+          : [...prev, fetched as GroupBooking]
       );
       setSelectedGroup(fetched as GroupBooking);
       openGroupFetchRef.current = null;
       router.setParams({ open_group_id: "" });
     })();
   }, [groups, params.open_group_id, router]);
+
+  async function openGroupDetail(group: GroupBooking) {
+    setSelectedGroup(group);
+    setGroupDetailLoading(true);
+    try {
+      const res = await api.get<any>(
+        `/api/provider/group-bookings/${encodeURIComponent(group.id)}`
+      );
+      const payload = res.data?.data ?? res.data?.group ?? res.data;
+      const fetched = Array.isArray(payload) ? null : payload;
+      if (!res.error && fetched?.id) {
+        const detail = fetched as GroupBooking;
+        setSelectedGroup(detail);
+        setExtraGroups((prev) =>
+          prev.some((g) => g.id === detail.id)
+            ? prev.map((g) => (g.id === detail.id ? detail : g))
+            : [...prev, detail]
+        );
+      }
+    } finally {
+      setGroupDetailLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (params.open_edit === "1") pendingGroupDeepLinkRef.current = "edit";
@@ -2487,7 +2564,11 @@ export default function GroupBookingsScreen() {
       displayName,
       total_paid: participant.total_paid,
       total_refunded: participant.total_refunded,
+      wallet_gift_coverage: participant.wallet_gift_coverage,
       price: participant.price,
+      isGroupPaymentRefund: selectedGroup
+        ? isSingleChargeOnlineGroup(selectedGroup.participants, participant.id)
+        : false,
     });
   }
 
@@ -2666,7 +2747,7 @@ export default function GroupBookingsScreen() {
               return (
                 <TouchableOpacity
                   style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
-                  onPress={() => setSelectedGroup(group)}
+                  onPress={() => void openGroupDetail(group)}
                   activeOpacity={0.7}
                 >
                   <View style={twStyle("flex-row items-start justify-between")}>
@@ -2757,6 +2838,12 @@ export default function GroupBookingsScreen() {
       >
         {selectedGroup && (
           <View>
+            {groupDetailLoading ? (
+              <View style={twStyle("mb-3 items-center py-4")}>
+                <ActivityIndicator color="#7C3AED" />
+                <Text style={twStyle("mt-2 text-xs text-gray-500")}>Refreshing details…</Text>
+              </View>
+            ) : null}
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm text-gray-500")}>
                 {formatDate(selectedGroup.scheduled_date)} at{" "}
@@ -2843,11 +2930,164 @@ export default function GroupBookingsScreen() {
               </View>
             </View>
 
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
+              <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Payment</Text>
+                <View
+                  style={twStyle(
+                    `rounded-full px-2 py-0.5 ${
+                      groupIsFullyPaid(selectedGroup)
+                        ? "bg-emerald-50"
+                        : selectedGroup.payment_status === "partially_paid" ||
+                            selectedGroup.payment_status === "partially_refunded"
+                          ? "bg-amber-50"
+                          : selectedGroup.is_invoiced === false ||
+                              selectedGroup.payment_status === "not_invoiced"
+                            ? "bg-gray-100"
+                            : "bg-amber-50"
+                    }`
+                  )}
+                >
+                  <Text
+                    style={twStyle(
+                      `text-[10px] font-medium ${
+                        groupIsFullyPaid(selectedGroup)
+                          ? "text-emerald-700"
+                          : selectedGroup.payment_status === "partially_paid" ||
+                              selectedGroup.payment_status === "partially_refunded"
+                            ? "text-amber-700"
+                            : selectedGroup.is_invoiced === false ||
+                                selectedGroup.payment_status === "not_invoiced"
+                              ? "text-gray-600"
+                              : "text-amber-700"
+                      }`
+                    )}
+                  >
+                    {formatGroupPaymentStatusLabel(selectedGroup.payment_status)}
+                  </Text>
+                </View>
+              </View>
+              <View style={twStyle("flex-row justify-between mb-1")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Session total</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>
+                  {formatCurrency(Number(selectedGroup.total_price) || 0)}
+                </Text>
+              </View>
+              {Number(selectedGroup.amount_paid ?? 0) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Amount paid</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {formatCurrency(Number(selectedGroup.amount_paid ?? 0))}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(selectedGroup.balance_due ?? 0) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Balance due</Text>
+                  <Text style={twStyle("text-sm font-medium text-amber-700")}>
+                    {formatCurrency(Number(selectedGroup.balance_due ?? 0))}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(selectedGroup.total_refunded ?? 0) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Refunded</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {formatCurrency(Number(selectedGroup.total_refunded ?? 0))}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(selectedGroup.tip_amount ?? 0) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Tips</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {formatCurrency(Number(selectedGroup.tip_amount ?? 0))}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
             {selectedGroup.notes && (
               <View style={twStyle("mb-3 rounded-lg bg-gray-50 p-3")}>
                 <Text style={twStyle("text-xs text-gray-600")}>{selectedGroup.notes}</Text>
               </View>
             )}
+
+            {Array.isArray(selectedGroup.products) && selectedGroup.products.length > 0 ? (
+              <View style={twStyle("mb-3")}>
+                <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>
+                  Products
+                </Text>
+                {selectedGroup.products.map((product, index) => {
+                  const baseLabel =
+                    product.name?.trim() ||
+                    product.product_name?.trim() ||
+                    `Product ${index + 1}`;
+                  const variant = product.product_variant_name?.trim();
+                  const label = variant ? `${baseLabel} (${variant})` : baseLabel;
+                  const qty = Number(product.quantity ?? 1);
+                  const lineTotal = groupProductLineTotal(product);
+                  return (
+                    <View
+                      key={`${label}-${index}`}
+                      style={twStyle("mb-1.5 flex-row items-center justify-between rounded-lg bg-gray-50 p-3")}
+                    >
+                      <Text style={twStyle("flex-1 text-sm text-gray-800")} numberOfLines={1}>
+                        {label}
+                        {qty > 1 ? ` × ${qty}` : ""}
+                      </Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(lineTotal)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {(() => {
+              const charges = (selectedGroup.bookings ?? []).flatMap((booking) =>
+                (booking.additional_charges ?? []).map((charge) => ({
+                  ...charge,
+                  bookingId: booking.id,
+                }))
+              );
+              if (charges.length === 0) return null;
+              return (
+                <View style={twStyle("mb-3")}>
+                  <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>
+                    Additional charges
+                  </Text>
+                  {charges.map((charge, index) => {
+                    const label =
+                      charge.description?.trim() ||
+                      charge.name?.trim() ||
+                      `Charge ${index + 1}`;
+                    const status = String(charge.status ?? "").toLowerCase();
+                    return (
+                      <View
+                        key={`${charge.bookingId}-${index}`}
+                        style={twStyle("mb-1.5 flex-row items-center justify-between rounded-lg bg-gray-50 p-3")}
+                      >
+                        <View style={twStyle("flex-1 pr-2")}>
+                          <Text style={twStyle("text-sm text-gray-800")} numberOfLines={1}>
+                            {label}
+                          </Text>
+                          {status ? (
+                            <Text style={twStyle("text-[10px] text-gray-500 capitalize")}>
+                              {status.replace(/_/g, " ")}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                          {formatCurrency(Number(charge.amount ?? 0))}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
 
             {/* Participants */}
             <View style={twStyle("mb-3")}>
@@ -2942,6 +3182,11 @@ export default function GroupBookingsScreen() {
                               <Text style={twStyle("text-xs text-primary")}>{displayPhone}</Text>
                             </TouchableOpacity>
                           )}
+                          {!p.booking_id ? (
+                            <Text style={twStyle("mt-0.5 text-[10px] text-gray-400 italic")}>
+                              Not separately invoiced
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
                           <View
@@ -3071,7 +3316,28 @@ export default function GroupBookingsScreen() {
                           ) : null}
                         </View>
                       )}
-                      {p.booking_id && (Number(p.total_paid ?? 0) - Number(p.total_refunded ?? 0) > 0) ? (
+                      {p.booking_id ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            router.push({
+                              pathname: "/(app)/(tabs)/more/bookings/[id]",
+                              params: { id: p.booking_id!, return_group_id: selectedGroup.id },
+                            } as never);
+                          }}
+                          style={twStyle("mt-2 flex-row items-center")}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open booking for ${displayName}`}
+                        >
+                          <Ionicons name="open-outline" size={14} color="#6366f1" style={{ marginRight: 4 }} />
+                          <Text style={twStyle("text-xs font-medium text-indigo-600")}>Open booking</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {p.booking_id &&
+                      participantMaxRefundable({
+                        total_paid: p.total_paid,
+                        total_refunded: p.total_refunded,
+                        wallet_gift_coverage: p.wallet_gift_coverage,
+                      }) > 0 ? (
                         <TouchableOpacity
                           onPress={() => openParticipantRefund(p)}
                           style={twStyle(
@@ -3087,7 +3353,9 @@ export default function GroupBookingsScreen() {
                             style={{ marginRight: 4 }}
                           />
                           <Text style={twStyle("text-xs font-semibold text-amber-700")}>
-                            Refund participant
+                            {isSingleChargeOnlineGroup(selectedGroup.participants, p.id)
+                              ? "Refund group payment"
+                              : "Refund participant"}
                           </Text>
                         </TouchableOpacity>
                       ) : null}
@@ -3108,7 +3376,11 @@ export default function GroupBookingsScreen() {
             {selectedGroup.status !== "cancelled" && (selectedGroup.participants ?? []).some(
               (participant) =>
                 !!participant.booking_id &&
-                Number(participant.total_paid ?? 0) - Number(participant.total_refunded ?? 0) > 0
+                participantMaxRefundable({
+                  total_paid: participant.total_paid,
+                  total_refunded: participant.total_refunded,
+                  wallet_gift_coverage: participant.wallet_gift_coverage,
+                }) > 0
             ) ? (
               <TouchableOpacity
                 style={twStyle(
@@ -3119,7 +3391,11 @@ export default function GroupBookingsScreen() {
                   const refundableParticipants = (selectedGroup.participants ?? []).filter(
                     (participant) =>
                       !!participant.booking_id &&
-                      Number(participant.total_paid ?? 0) - Number(participant.total_refunded ?? 0) > 0
+                      participantMaxRefundable({
+                        total_paid: participant.total_paid,
+                        total_refunded: participant.total_refunded,
+                        wallet_gift_coverage: participant.wallet_gift_coverage,
+                      }) > 0
                   );
                   if (refundableParticipants.length === 1) {
                     openParticipantRefund(refundableParticipants[0]);
@@ -3211,20 +3487,7 @@ export default function GroupBookingsScreen() {
             ) : null}
             {/* Record payment — only when there is outstanding balance */}
             {(() => {
-              const participants = selectedGroup.participants ?? [];
-              const hasParticipantsWithBookings = participants.some((p) => !!p.booking_id);
-              // Group is paid when all participants with bookings have no remaining balance_due.
-              const isFullyPaid =
-                hasParticipantsWithBookings &&
-                participants
-                  .filter((p) => !!p.booking_id)
-                  .every((p) => {
-                    if (p.payment_status === "paid" || p.paid) return true;
-                    const balanceDue = Number(p.balance_due ?? 0);
-                    const totalPaid = Number(p.total_paid ?? 0);
-                    const price = Number(p.price ?? 0);
-                    return balanceDue <= 0 && (totalPaid >= price || totalPaid > 0);
-                  });
+              const isFullyPaid = groupIsFullyPaid(selectedGroup);
               return !isFullyPaid && selectedGroup.status !== "cancelled" ? (
               <View style={twStyle("mt-2")}>
                 <View style={twStyle("mb-2 flex-row items-center rounded-lg bg-amber-50 p-2")}>
@@ -3267,13 +3530,16 @@ export default function GroupBookingsScreen() {
                       ]}
                       disabled={isPreparingTerminal}
                       onPress={() => {
-                        const outstanding = selectedGroup.participants
-                          ? selectedGroup.participants.reduce(
-                              (s: number, p: any) =>
-                                s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
-                              0
-                            )
-                          : Number(selectedGroup.total_price ?? 0);
+                        const outstanding =
+                          Number(selectedGroup.balance_due ?? 0) > 0
+                            ? Number(selectedGroup.balance_due ?? 0)
+                            : selectedGroup.participants
+                              ? selectedGroup.participants.reduce(
+                                  (s: number, p: Participant) =>
+                                    s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
+                                  0
+                                )
+                              : Number(selectedGroup.total_price ?? 0);
                         handleRequestPaystackTerminal(selectedGroup, outstanding);
                       }}
                     >

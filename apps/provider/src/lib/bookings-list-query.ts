@@ -6,6 +6,7 @@ import {
   isTerminalScheduleBooking,
   PROVIDER_BOOKINGS_STRIP_HALF_DAYS,
   resolveBookingDisplayTimezone,
+  startOfBusinessDayLocalDate,
 } from "@beautonomi/utils";
 
 export type BookingsDateRange = "today" | "week" | "month" | "upcoming" | "all";
@@ -76,7 +77,7 @@ export function buildStripDateParams(providerTimezone?: string | null): {
   end_date: string;
 } {
   const tz = resolveBookingDisplayTimezone(providerTimezone);
-  const anchor = new Date();
+  const anchor = startOfBusinessDayLocalDate(providerTimezone);
   return {
     start_date: formatBusinessDayYYYYMMDD(addDays(anchor, -PROVIDER_BOOKINGS_STRIP_HALF_DAYS), tz),
     end_date: formatBusinessDayYYYYMMDD(addDays(anchor, PROVIDER_BOOKINGS_STRIP_HALF_DAYS), tz),
@@ -88,25 +89,45 @@ export function buildOverviewDateParams(
   providerTimezone?: string | null,
 ): { start_date?: string; end_date?: string } {
   const tz = resolveBookingDisplayTimezone(providerTimezone);
-  const now = new Date();
+  const businessToday = startOfBusinessDayLocalDate(providerTimezone);
   if (range === "all") return {};
   if (range === "today") {
-    const ymd = formatBusinessDayYYYYMMDD(now, tz);
+    const ymd = formatBusinessDayYYYYMMDD(businessToday, tz);
     return { start_date: ymd, end_date: ymd };
   }
   if (range === "week") {
     return {
-      start_date: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      end_date: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+      start_date: format(startOfWeek(businessToday, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+      end_date: format(endOfWeek(businessToday, { weekStartsOn: 1 }), "yyyy-MM-dd"),
     };
   }
   if (range === "upcoming") {
-    return { start_date: formatBusinessDayYYYYMMDD(now, tz) };
+    return { start_date: formatBusinessDayYYYYMMDD(businessToday, tz) };
   }
   return {
-    start_date: format(startOfMonth(now), "yyyy-MM-dd"),
-    end_date: format(endOfMonth(now), "yyyy-MM-dd"),
+    start_date: format(startOfMonth(businessToday), "yyyy-MM-dd"),
+    end_date: format(endOfMonth(businessToday), "yyyy-MM-dd"),
   };
+}
+
+/** Human-readable caption for overview date-range chips (provider business day). */
+export function buildOverviewDateRangeLabel(
+  range: BookingsDateRange,
+  providerTimezone?: string | null,
+): string {
+  const businessToday = startOfBusinessDayLocalDate(providerTimezone);
+  switch (range) {
+    case "today":
+      return format(businessToday, "EEE, MMM d");
+    case "week":
+      return `Week of ${format(startOfWeek(businessToday, { weekStartsOn: 1 }), "MMM d")}`;
+    case "month":
+      return format(businessToday, "MMMM yyyy");
+    case "upcoming":
+      return "Upcoming";
+    case "all":
+      return "All time";
+  }
 }
 
 export function mergeAtHomeBookings<T extends { id?: string }>(main: T[], atHome: T[]): T[] {

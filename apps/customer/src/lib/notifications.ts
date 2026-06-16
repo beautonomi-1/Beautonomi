@@ -94,7 +94,11 @@ export function navigateFromNotification(n: Notification): void {
   const anyBookingIdRaw = data.booking_id ?? (data as { bookingId?: unknown }).bookingId;
   const directBookingId =
     anyBookingIdRaw != null && String(anyBookingIdRaw).trim() !== "" ? String(anyBookingIdRaw).trim() : "";
-  if (!nType && !subtype && !dataType && directBookingId && !data.conversation_id) {
+  // Group pushes carry both `booking_id` and `group_booking_id`; defer to the
+  // group-booking routing below so they open the group screen, not the child booking.
+  const hasGroupBookingId =
+    data.group_booking_id != null && String(data.group_booking_id).trim() !== "";
+  if (!nType && !subtype && !dataType && directBookingId && !hasGroupBookingId && !data.conversation_id) {
     router.push({ pathname: "/(app)/booking-detail", params: { id: directBookingId } });
     return;
   }
@@ -247,6 +251,12 @@ export function navigateFromNotification(n: Notification): void {
     }
   }
 
+  // Any booking-related push carrying a group id should open the group screen.
+  if (groupBookingId) {
+    router.push({ pathname: "/(app)/group-booking-detail", params: { id: groupBookingId } });
+    return;
+  }
+
   // ── Bookings ─────────────────────────────────────────────────────────────
   if (anyBookingIdRaw) {
     router.push({ pathname: "/(app)/booking-detail", params: { id: String(anyBookingIdRaw) } });
@@ -364,6 +374,14 @@ export function navigateFromNotification(n: Notification): void {
     nType === "booking_updated" ||
     nType === "booking_completed"
   ) {
+    const gid =
+      data.group_booking_id != null && String(data.group_booking_id).trim() !== ""
+        ? String(data.group_booking_id).trim()
+        : "";
+    if (gid) {
+      router.push({ pathname: "/(app)/group-booking-detail", params: { id: gid } });
+      return;
+    }
     const bid =
       (data.booking_id != null ? String(data.booking_id) : "") ||
       (data.bookingId != null ? String(data.bookingId) : "");

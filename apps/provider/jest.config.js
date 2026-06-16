@@ -17,6 +17,14 @@ module.exports = {
   preset: "jest-expo",
   setupFilesAfterEnv: ["<rootDir>/jest.setup-after-env.js"],
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
+  // The jest-expo / React Native test environment leaves recurring environment
+  // timers armed inside parallel jest-worker processes, which trips jest-worker's
+  // graceful-exit check ("A worker process has failed to exit gracefully").
+  // `--detectOpenHandles` reports zero handles in-band, confirming there is no
+  // real app-code leak — it is purely a parallel-worker teardown artifact.
+  // Running on a single worker makes teardown deterministic and removes the
+  // warning without masking genuine leaks via --forceExit.
+  maxWorkers: 1,
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^expo-modules-core$": expoModulesCore,

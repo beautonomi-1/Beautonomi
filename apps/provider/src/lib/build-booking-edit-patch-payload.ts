@@ -7,6 +7,31 @@ import type {
   BookingEditTotalsInput,
 } from "./booking-edit-types";
 
+function resolveServiceLineFields(
+  sel: BookingEditServiceLine,
+  catalogServices: BookingEditCatalogService[],
+): { title: string; price: number; durationMinutes: number } {
+  const svc = catalogServices.find((s) => s.id === sel.serviceId);
+  const addonPrice = (sel.addOnIds ?? []).reduce((acc, aoId) => {
+    const ao = svc?.add_ons?.find((a) => a.id === aoId);
+    return acc + safeNum(ao?.price);
+  }, 0);
+  const addonMinutes = (sel.addOnIds ?? []).reduce((acc, aoId) => {
+    const ao = svc?.add_ons?.find((a) => a.id === aoId);
+    return acc + safeNum(ao?.duration_minutes);
+  }, 0);
+
+  const title = svc?.title ?? sel.offeringName ?? "Service";
+  const basePrice = svc ? safeNum(svc.price) : safeNum(sel.price);
+  const baseMinutes = svc ? safeNum(svc.duration_minutes) : safeNum(sel.durationMinutes);
+
+  return {
+    title,
+    price: basePrice + addonPrice,
+    durationMinutes: baseMinutes + addonMinutes,
+  };
+}
+
 export function computeBookingEditLineSubtotal(
   selectedServices: BookingEditServiceLine[],
   selectedProducts: BookingEditProductLine[],
@@ -16,16 +41,9 @@ export function computeBookingEditLineSubtotal(
   let totalMinutes = 0;
 
   for (const sel of selectedServices) {
-    const svc = catalogServices.find((s) => s.id === sel.serviceId);
-    if (!svc) continue;
-    subtotal += safeNum(svc.price);
-    totalMinutes += safeNum(svc.duration_minutes);
-    for (const aoId of sel.addOnIds ?? []) {
-      const ao = svc.add_ons?.find((a) => a.id === aoId);
-      if (!ao) continue;
-      subtotal += safeNum(ao.price);
-      totalMinutes += safeNum(ao.duration_minutes);
-    }
+    const line = resolveServiceLineFields(sel, catalogServices);
+    subtotal += line.price;
+    totalMinutes += line.durationMinutes;
   }
 
   for (const p of selectedProducts) {
@@ -93,12 +111,8 @@ export function buildBookingEditPatchPayload(args: {
   let cursorMs = baseScheduledAt ? new Date(baseScheduledAt).getTime() : Date.now();
 
   const services = args.selectedServices.map((sel) => {
-    const svc = args.catalogServices.find((s) => s.id === sel.serviceId);
-    const addonMinutes = (sel.addOnIds ?? []).reduce((acc, aoId) => {
-      const ao = svc?.add_ons?.find((a) => a.id === aoId);
-      return acc + safeNum(ao?.duration_minutes);
-    }, 0);
-    const duration = safeNum(svc?.duration_minutes) + addonMinutes;
+    const line = resolveServiceLineFields(sel, args.catalogServices);
+    const duration = line.durationMinutes;
     const scheduled_start_at = baseScheduledAt
       ? new Date(cursorMs).toISOString()
       : undefined;
@@ -108,7 +122,7 @@ export function buildBookingEditPatchPayload(args: {
       serviceId: sel.serviceId,
       offering_id: sel.serviceId,
       staff_id: sel.staffId,
-      price: safeNum(svc?.price),
+      price: line.price,
       duration,
       ...(scheduled_start_at ? { scheduled_start_at } : {}),
     };
@@ -149,6 +163,9 @@ export function mapBookingDetailToEditLines(booking: {
     offering_id?: string;
     service_id?: string;
     staff_id?: string | null;
+    offering_name?: string;
+    price?: number;
+    duration_minutes?: number;
   }>;
   products?: Array<{
     product_id?: string;
@@ -168,6 +185,9 @@ export function mapBookingDetailToEditLines(booking: {
       if (!serviceId) return null;
       const line: BookingEditServiceLine = { serviceId, addOnIds: [] };
       if (s.staff_id) line.staffId = s.staff_id;
+      if (s.offering_name) line.offeringName = s.offering_name;
+      if (s.price != null) line.price = Number(s.price);
+      if (s.duration_minutes != null) line.durationMinutes = Number(s.duration_minutes);
       return line;
     })
     .filter((s): s is BookingEditServiceLine => s !== null);
@@ -193,4 +213,25 @@ export function mapBookingDetailToEditLines(booking: {
     .filter((p): p is BookingEditProductLine => p !== null);
 
   return { services, products };
+}
+
+export function resolveBookingEditServiceLabel(
+  sel: BookingEditServiceLine,
+  catalogServices: BookingEditCatalogService[],
+): string {
+  return resolveServiceLineFields(sel, catalogServices).title;
+}
+
+export function resolveBookingEditServiceDisplay(
+  sel: BookingEditServiceLine,
+  catalogServices: BookingEditCatalogService[],
+): { title: string; durationMinutes: number; price: number; currency?: string } {
+  const svc = catalogServices.find((s) => s.id === sel.serviceId);
+  const line = resolveServiceLineFields(sel, catalogServices);
+  return {
+    title: line.title,
+    durationMinutes: line.durationMinutes,
+    price: line.price,
+    currency: svc?.currency,
+  };
 }

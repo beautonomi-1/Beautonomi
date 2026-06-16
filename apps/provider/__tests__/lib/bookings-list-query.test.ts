@@ -2,10 +2,12 @@ import {
   appendBookingsQueryParts,
   buildDateStripInfo,
   buildOverviewDateParams,
+  buildOverviewDateRangeLabel,
   buildStripDateParams,
   filterBookingsForDayKey,
   mergeAtHomeBookings,
 } from "@/lib/bookings-list-query";
+import { formatBusinessDayYYYYMMDD, startOfBusinessDayLocalDate } from "@beautonomi/utils";
 
 describe("buildStripDateParams", () => {
   it("returns a 61-day window centered on today in provider timezone", () => {
@@ -27,10 +29,46 @@ describe("mergeAtHomeBookings", () => {
 });
 
 describe("buildOverviewDateParams", () => {
-  it("returns today bounds for today range", () => {
-    const params = buildOverviewDateParams("today", "Africa/Johannesburg");
-    expect(params.start_date).toBeDefined();
+  const tz = "Africa/Johannesburg";
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-10T23:30:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("returns today bounds for today range in provider timezone", () => {
+    const params = buildOverviewDateParams("today", tz);
+    expect(params.start_date).toBe("2026-06-11");
     expect(params.start_date).toBe(params.end_date);
+  });
+
+  it("anchors week and month ranges to the provider business day", () => {
+    const week = buildOverviewDateParams("week", tz);
+    expect(week.start_date).toBe("2026-06-08");
+    expect(week.end_date).toBe("2026-06-14");
+
+    const month = buildOverviewDateParams("month", tz);
+    expect(month.start_date).toBe("2026-06-01");
+    expect(month.end_date).toBe("2026-06-30");
+  });
+});
+
+describe("buildOverviewDateRangeLabel", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-10T23:30:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("labels month using the provider business day", () => {
+    expect(buildOverviewDateRangeLabel("month", "Africa/Johannesburg")).toBe("June 2026");
   });
 });
 
@@ -173,5 +211,21 @@ describe("filterBookingsForDayKey", () => {
     ];
     const day = filterBookingsForDayKey(rows, "2026-06-05", tz);
     expect(day.map((b) => b.id)).toEqual(["1", "2"]);
+  });
+
+  it("uses the same day key for bookings and time blocks on the selected business day", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-11T08:00:00.000Z"));
+    const selectedDate = startOfBusinessDayLocalDate(tz);
+    const selectedDateKey = formatBusinessDayYYYYMMDD(selectedDate, tz);
+    const bookings = filterBookingsForDayKey(
+      [{ id: "b1", scheduled_at: "2026-06-11T08:00:00.000Z", status: "confirmed" }],
+      selectedDateKey,
+      tz,
+    );
+    const blocks = [{ date: selectedDateKey, is_active: true }];
+    expect(bookings).toHaveLength(1);
+    expect(blocks.every((b) => b.date === selectedDateKey)).toBe(true);
+    jest.useRealTimers();
   });
 });

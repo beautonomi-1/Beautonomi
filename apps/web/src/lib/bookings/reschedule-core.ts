@@ -130,6 +130,17 @@ type BookingRow = {
 
 const NON_RESCHEDULABLE_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
+/** Provider PATCH reschedule guard — includes in_progress (service already started). */
+export const PROVIDER_PATCH_NON_RESCHEDULABLE_STATUSES = new Set([
+  "in_progress",
+  "completed",
+  "cancelled",
+  "no_show",
+]);
+
+/** Terminal/closed statuses where service line edits are blocked. */
+export const BOOKING_SERVICE_EDIT_LOCKED_STATUSES = new Set(["completed", "cancelled", "no_show"]);
+
 /**
  * Canonical reschedule flow. Returns a tagged result so callers can map
  * errors to their surface's preferred response shape (RESTful JSON,

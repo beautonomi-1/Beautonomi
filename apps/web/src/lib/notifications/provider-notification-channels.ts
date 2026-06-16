@@ -93,16 +93,19 @@ function channelAllowedForProvider(
 }
 
 /**
- * For a batch of provider users, return channels allowed for every recipient
- * (OneSignal sends one payload per call). Mirrors the customer resolver.
+ * For a batch of provider users, resolve the requested channels each recipient
+ * individually allows. Returns a `Map<userId, allowedChannels[]>`. Used for
+ * per-recipient channels (email/SMS via the durable queue) so a single staff
+ * opt-out doesn't suppress the channel for other recipients.
  */
-export async function intersectChannelsForProviderRecipients(
+export async function resolveChannelsPerProviderRecipient(
   supabase: SupabaseClient,
   userIds: string[],
   templateKey: string,
   requested: NotificationChannelName[],
-): Promise<NotificationChannelName[]> {
-  if (userIds.length === 0 || requested.length === 0) return [];
+): Promise<Map<string, NotificationChannelName[]>> {
+  const out = new Map<string, NotificationChannelName[]>();
+  if (userIds.length === 0 || requested.length === 0) return out;
 
   const { data: profiles } = await supabase
     .from("user_profiles")
@@ -116,9 +119,27 @@ export async function intersectChannelsForProviderRecipients(
     ]),
   );
 
-  return requested.filter((ch) =>
-    userIds.every((uid) =>
-      channelAllowedForProvider(profileByUser.get(uid) ?? null, templateKey, ch),
-    ),
-  );
+  for (const uid of userIds) {
+    const pref = profileByUser.get(uid) ?? null;
+    out.set(
+      uid,
+      requested.filter((ch) => channelAllowedForProvider(pref, templateKey, ch)),
+    );
+  }
+  return out;
+}
+
+/**
+ * For a batch of provider users, return channels allowed for every recipient
+ * (OneSignal sends one payload per call). Mirrors the customer resolver.
+ */
+export async function intersectChannelsForProviderRecipients(
+  supabase: SupabaseClient,
+  userIds: string[],
+  templateKey: string,
+  requested: NotificationChannelName[],
+): Promise<NotificationChannelName[]> {
+  if (userIds.length === 0 || requested.length === 0) return [];
+  const perUser = await resolveChannelsPerProviderRecipient(supabase, userIds, templateKey, requested);
+  return requested.filter((ch) => userIds.every((uid) => (perUser.get(uid) ?? []).includes(ch)));
 }

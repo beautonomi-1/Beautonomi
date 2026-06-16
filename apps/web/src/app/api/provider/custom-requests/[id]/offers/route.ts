@@ -18,6 +18,12 @@ import {
   checkNewGateFeatureAccess,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  resolveCustomerProviderConversation,
+  updateConversationAfterMessage,
+} from "@/lib/chat/resolve-conversation";
+import { insertNotifications } from "@/lib/notifications/insert-notification";
 
 const createOfferSchema = z.object({
   price: z.number().min(0),
@@ -182,146 +188,85 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .update({ status: "offered", updated_at: new Date().toISOString() })
       .eq("id", id);
 
-    // Also send via messages: post an offer message in the customer<->provider conversation (best-effort)
+    // Also send via messages: post an offer message in the customer<->provider conversation
+    let conversationIdForNotify: string | null = null;
     try {
-      // Use the most recently active conversation so the offer appears in the same thread the customer is likely in
-      const { data: existingConv } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("customer_id", customerId)
-        .eq("provider_id", providerId)
-        .is("booking_id", null)
-        .order("last_message_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const admin = getSupabaseAdmin();
+      const { id: convId } = await resolveCustomerProviderConversation(admin, {
+        customerId,
+        providerId,
+        lastMessageSenderId: user.id,
+      });
+      conversationIdForNotify = convId;
 
-      let convId = (existingConv as any)?.id;
-      
-      if (!convId) {
-        const { data: newConv, error: convError } = await supabase
-          .from("conversations")
-          .insert({
-            booking_id: null,
-            customer_id: customerId,
-            provider_id: providerId,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: "",
-            last_message_sender_id: user.id,
-            unread_count_customer: 0,
-            unread_count_provider: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-        
-        type ConvRow = { id: string };
-        if (!convError && newConv) {
-          convId = (newConv as ConvRow)?.id;
-        }
-      }
+      const messageContent = `Custom offer: ${body.currency} ${body.price} • ${body.duration_minutes} mins`;
+      const offerId = (offer as { id: string }).id;
+      const { error: messageError } = await admin.from("messages").insert({
+        conversation_id: convId,
+        sender_id: user.id,
+        sender_role: user.role,
+        content: messageContent,
+        attachments: [
+          {
+            type: "custom_offer",
+            status: "pending",
+            request_id: id,
+            offer_id: offerId,
+            price: body.price,
+            currency: body.currency,
+            duration_minutes: body.duration_minutes,
+            expiration_at: expIso,
+            preferred_start_at: scheduledIso,
+          },
+        ],
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
 
-      if (convId) {
-        const messageContent = `Custom offer: ${body.currency} ${body.price} • ${body.duration_minutes} mins`;
-        const { error: messageError } = await supabase
-          .from("messages")
-          .insert({
-            conversation_id: convId,
-            sender_id: user.id,
-            sender_role: user.role,
-            content: messageContent,
-            attachments: [
-              {
-                type: "custom_offer",
-                status: "pending",
-                request_id: id,
-                offer_id: (offer as { id: string }).id,
-                price: body.price,
-                currency: body.currency,
-                duration_minutes: body.duration_minutes,
-                expiration_at: expIso,
-                preferred_start_at: scheduledIso,
-              },
-            ],
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
-        
-        if (!messageError) {
-          // Update conversation metadata
-          const { data: currentConv } = await supabase
-            .from("conversations")
-            .select("unread_count_customer")
-            .eq("id", convId)
-            .single();
-          
-          await supabase
-            .from("conversations")
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: messageContent,
-              last_message_sender_id: user.id,
-              unread_count_customer: ((currentConv as { unread_count_customer?: number } | null)?.unread_count_customer ?? 0) + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", convId);
-        }
+      if (messageError) {
+        console.error("[provider/custom-requests/offers] Failed to insert message:", messageError);
+      } else {
+        await updateConversationAfterMessage(admin, convId, user.id, messageContent);
       }
-    } catch {
-      // ignore
+    } catch (msgErr) {
+      console.error("[provider/custom-requests/offers] messaging failed:", msgErr);
     }
 
     // Notify customer using template (best-effort)
     try {
-      const { sendTemplateNotification, getNotificationTemplate, sendToUser } = await import(
-        "@/lib/notifications/onesignal"
-      );
-      const template = await getNotificationTemplate("customer_custom_offer");
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
       const providerName = req?.providers?.business_name ?? "A provider";
       const offerId = (offer as { id: string }).id;
+      const checkoutUrl = `/account-settings/custom-requests?request_id=${id}&offer=${encodeURIComponent(offerId)}`;
 
-      if (template && template.enabled) {
-        await sendTemplateNotification(
-          "customer_custom_offer",
-          [customerId],
-          {
-            provider_name: providerName,
-            price: body.price.toString(),
-            currency: body.currency,
+      await sendTemplateNotification(
+        "customer_custom_offer",
+        [customerId],
+        {
+          provider_name: providerName,
+          price: body.price.toString(),
+          currency: body.currency,
+          request_id: id,
+          offer_id: offerId,
+        },
+        ["push", "email"],
+        { appType: "customer" },
+      );
+
+      await insertNotifications([
+        {
+          user_id: customerId,
+          type: "custom_offer",
+          title: "Custom Offer Received",
+          message: `${providerName} sent you an offer for ${body.currency} ${body.price}. Tap to review and accept.`,
+          data: {
             request_id: id,
             offer_id: offerId,
+            conversation_id: conversationIdForNotify,
           },
-          template.channels || ["push", "email"],
-          { appType: "customer" }
-        );
-      } else {
-        /**
-         * §Release-audit 2026-04: previously a missing/disabled template
-         * silently swallowed the notification — the customer never learned a
-         * provider had quoted them. Send a hardcoded fallback push so the
-         * core "you have a new offer" signal cannot disappear due to a
-         * Control Plane misconfiguration.
-         */
-        await sendToUser(
-          customerId,
-          {
-            title: "You have a new custom offer",
-            message: `${providerName} sent you an offer for ${body.currency} ${body.price}. Tap to review and accept.`,
-            type: "custom_offer",
-            data: {
-              request_id: id,
-              offer_id: offerId,
-              provider_name: providerName,
-              price: body.price,
-              currency: body.currency,
-              deeplink: `beautonomi://account-settings/custom-requests`,
-              url: `/account-settings/custom-requests`,
-            },
-          },
-          ["push", "email"],
-          { appType: "customer" },
-        );
-      }
+          action_url: checkoutUrl,
+        },
+      ]);
     } catch (notifyErr) {
       console.error("[provider/custom-requests/offers] notification failed:", notifyErr);
     }

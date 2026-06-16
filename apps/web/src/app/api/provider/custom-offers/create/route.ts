@@ -21,6 +21,11 @@ import {
   checkNewGateFeatureAccess,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
+import {
+  resolveCustomerProviderConversation,
+  updateConversationAfterMessage,
+} from "@/lib/chat/resolve-conversation";
+import { insertNotifications } from "@/lib/notifications/insert-notification";
 
 const createCustomOfferSchema = z.object({
   customer_id: z.string().uuid(),
@@ -220,8 +225,8 @@ export async function POST(request: NextRequest) {
     
     if (createOfferError) throw createOfferError;
 
-    // Send via messages: use conversation_id if provided (same thread), else find or create general conversation.
-    // Use admin client so RLS cannot block the insert; include preferred_start_at so the card can show date/time.
+    // Send via messages: use conversation_id if provided (same thread), else resolve the pair thread.
+    let conversationIdForNotify: string | null = body.conversation_id ?? null;
     try {
       let convId: string | null = null;
 
@@ -233,157 +238,97 @@ export async function POST(request: NextRequest) {
           .eq("customer_id", body.customer_id)
           .eq("provider_id", providerId)
           .single();
-        convId = (conv as any)?.id ?? null;
+        convId = (conv as { id?: string } | null)?.id ?? null;
       }
 
       if (!convId) {
-        const { data: existingConv } = await supabaseAdmin
-          .from("conversations")
-          .select("id")
-          .eq("customer_id", body.customer_id)
-          .eq("provider_id", providerId)
-          .is("booking_id", null)
-          .order("last_message_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        convId = (existingConv as any)?.id ?? null;
+        const resolved = await resolveCustomerProviderConversation(supabaseAdmin, {
+          customerId: body.customer_id,
+          providerId,
+          lastMessageSenderId: user.id,
+        });
+        convId = resolved.id;
       }
+      conversationIdForNotify = convId;
 
-      if (!convId) {
-        const { data: newConv, error: convError } = await supabaseAdmin
-          .from("conversations")
-          .insert({
-            booking_id: null,
-            customer_id: body.customer_id,
-            provider_id: providerId,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: "",
-            last_message_sender_id: user.id,
-            unread_count_customer: 0,
-            unread_count_provider: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
+      const preview = body.description.length > 200 ? body.description.slice(0, 200) + "…" : body.description;
+      const messageContent = `Custom offer: ${body.currency} ${body.price} • ${body.duration_minutes} mins\n\n${preview}`;
+      const requestId = (createdRequest as { id: string }).id;
+      const offerId = (offer as { id: string }).id;
+      const { error: messageError } = await supabaseAdmin.from("messages").insert({
+        conversation_id: convId,
+        sender_id: user.id,
+        sender_role: user.role,
+        content: messageContent,
+        attachments: [
+          {
+            type: "custom_offer",
+            status: "pending",
+            request_id: requestId,
+            offer_id: offerId,
+            price: body.price,
+            currency: body.currency,
+            duration_minutes: body.duration_minutes,
+            expiration_at: expIso,
+            preferred_start_at: preferredIso ?? null,
+          },
+        ],
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
 
-        if (!convError && newConv) {
-          convId = (newConv as any)?.id;
-        }
-      }
-
-      if (convId) {
-        const preview = body.description.length > 200 ? body.description.slice(0, 200) + "…" : body.description;
-        const messageContent = `Custom offer: ${body.currency} ${body.price} • ${body.duration_minutes} mins\n\n${preview}`;
-        const { error: messageError } = await supabaseAdmin
-          .from("messages")
-          .insert({
-            conversation_id: convId,
-            sender_id: user.id,
-            sender_role: user.role,
-            content: messageContent,
-            attachments: [
-              {
-                type: "custom_offer",
-                status: "pending",
-                request_id: (createdRequest as any).id,
-                offer_id: (offer as any).id,
-                price: body.price,
-                currency: body.currency,
-                duration_minutes: body.duration_minutes,
-                expiration_at: expIso,
-                preferred_start_at: preferredIso ?? null,
-              },
-            ],
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
-
-        if (!messageError) {
-          const { data: currentConv } = await supabaseAdmin
-            .from("conversations")
-            .select("unread_count_customer")
-            .eq("id", convId)
-            .single();
-
-          await supabaseAdmin
-            .from("conversations")
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: messageContent,
-              last_message_sender_id: user.id,
-              unread_count_customer: ((currentConv as any)?.unread_count_customer ?? 0) + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", convId);
-        }
+      if (messageError) {
+        console.error("[provider/custom-offers/create] Failed to insert message:", messageError);
+      } else {
+        await updateConversationAfterMessage(supabaseAdmin, convId, user.id, messageContent);
       }
     } catch (err) {
-      console.warn("Custom offer: failed to post message to conversation", err);
+      console.error("[provider/custom-offers/create] failed to post message to conversation:", err);
     }
 
     // Notify customer (best-effort)
     try {
-      const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
-      
-      // Try to use notification template
-      const template = await getNotificationTemplate("customer_custom_offer");
-      
-      if (template && template.enabled) {
-        // Use template with variables
-        await sendTemplateNotification(
-          "customer_custom_offer",
-          [body.customer_id],
-          {
-            provider_name: (await supabase.from("providers").select("business_name").eq("id", providerId).single()).data?.business_name || "A provider",
-            price: body.price.toString(),
-            currency: body.currency,
-            request_id: (createdRequest as any).id,
-            offer_id: (offer as any).id,
-          },
-          template.channels || ["push"],
-          { appType: "customer" }
-        );
-      } else {
-        const providerName =
-          (await supabase.from("providers").select("business_name").eq("id", providerId).single()).data?.business_name ||
-          "A provider";
-        await sendToUser(
-          body.customer_id,
-          {
-            title: "Custom offer received",
-            message: `${providerName} sent you a custom service offer. Open the app to review and accept.`,
-            data: {
-              type: "custom_offer",
-              request_id: (createdRequest as any).id,
-              offer_id: (offer as any).id,
-              deeplink: `beautonomi://account-settings/custom-requests?offer=${encodeURIComponent((offer as any).id)}`,
-            },
-            url: `/account-settings/custom-requests?request_id=${(createdRequest as any).id}&offer=${encodeURIComponent((offer as any).id)}`,
-          },
-          ["push"],
-          { appType: "customer" },
-        );
-      }
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("business_name")
+        .eq("id", providerId)
+        .single();
+      const providerName = providerRow?.business_name || "A provider";
+      const requestId = (createdRequest as { id: string }).id;
+      const offerId = (offer as { id: string }).id;
+      const checkoutUrl = `/account-settings/custom-requests?request_id=${requestId}&offer=${encodeURIComponent(offerId)}`;
 
-      // Create in-app notification record
-      try {
-        await supabase
-          .from("notifications")
-          .insert({
-            user_id: body.customer_id,
-            type: "custom_offer",
-            title: "Custom Offer Received",
-            message: "A provider sent you a custom service offer. Review and accept to proceed.",
-            data: { request_id: (createdRequest as any).id, offer_id: (offer as any).id },
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
-      } catch (notifError) {
-        console.debug("Failed to create notification record:", notifError);
-      }
-    } catch {
-      // ignore
+      await sendTemplateNotification(
+        "customer_custom_offer",
+        [body.customer_id],
+        {
+          provider_name: providerName,
+          price: body.price.toString(),
+          currency: body.currency,
+          request_id: requestId,
+          offer_id: offerId,
+        },
+        ["push", "email"],
+        { appType: "customer" },
+      );
+
+      await insertNotifications([
+        {
+          user_id: body.customer_id,
+          type: "custom_offer",
+          title: "Custom Offer Received",
+          message: `${providerName} sent you a custom service offer. Review and accept to proceed.`,
+          data: {
+            request_id: requestId,
+            offer_id: offerId,
+            conversation_id: conversationIdForNotify,
+          },
+          action_url: checkoutUrl,
+        },
+      ]);
+    } catch (notifyErr) {
+      console.error("[provider/custom-offers/create] notification failed:", notifyErr);
     }
 
     return successResponse({

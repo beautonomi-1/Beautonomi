@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,10 @@ import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useBusinessToday } from "@/hooks/useBusinessToday";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useProvider } from "@/providers/ProviderContext";
+import { startOfBusinessDayLocalDate } from "@beautonomi/utils";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -118,6 +121,10 @@ function PickerDoneBar({ onDone }: { onDone: () => void }) {
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
   const { screenPadding } = useResponsive();
+  const { provider } = useProvider();
+  const providerTz = provider?.timezone?.trim() || null;
+  const { businessToday } = useBusinessToday(providerTz);
+  const prevBusinessTodayRef = useRef(businessToday);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<"blocks" | "types">("blocks");
   const [addOpen, setAddOpen] = useState(false);
@@ -126,7 +133,7 @@ export function TimeBlocksContent() {
   const [notes, setNotes] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [customTypeName, setCustomTypeName] = useState("");
-  const [blockDate, setBlockDate] = useState(() => new Date());
+  const [blockDate, setBlockDate] = useState(() => startOfBusinessDayLocalDate(providerTz));
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [isRecurring, setIsRecurring] = useState(false);
@@ -139,7 +146,19 @@ export function TimeBlocksContent() {
   const [typeDescription, setTypeDescription] = useState("");
   const [typeColor, setTypeColor] = useState("#FF0077");
   const [typeActive, setTypeActive] = useState(true);
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [viewMonth, setViewMonth] = useState(() => startOfMonth(startOfBusinessDayLocalDate(providerTz)));
+
+  useEffect(() => {
+    const prev = prevBusinessTodayRef.current;
+    const prevMonth = startOfMonth(prev);
+    setViewMonth((current) => {
+      const wasOnCurrentMonth = format(current, "yyyy-MM") === format(prevMonth, "yyyy-MM");
+      if (!wasOnCurrentMonth) return current;
+      const expected = startOfMonth(businessToday);
+      return format(current, "yyyy-MM") === format(expected, "yyyy-MM") ? current : expected;
+    });
+    prevBusinessTodayRef.current = businessToday;
+  }, [businessToday]);
 
   // Four-month window anchored on the selected month (month + next three).
   const dateFrom = format(startOfMonth(viewMonth), "yyyy-MM-dd");
@@ -196,7 +215,7 @@ export function TimeBlocksContent() {
     setNotes("");
     setSelectedTypeId(null);
     setCustomTypeName("");
-    setBlockDate(new Date());
+    setBlockDate(startOfBusinessDayLocalDate(providerTz));
     setStartTime("09:00");
     setEndTime("10:00");
     setIsRecurring(false);
@@ -1073,12 +1092,14 @@ export function TimeBlocksContent() {
 }
 
 export default function TimeBlocksScreen() {
-  const now = new Date();
-  const dateFrom = format(startOfMonth(now), "yyyy-MM-dd");
-  const dateTo = format(endOfMonth(now), "yyyy-MM-dd");
+  const { provider } = useProvider();
+  const providerTz = provider?.timezone?.trim() || null;
+  const businessToday = startOfBusinessDayLocalDate(providerTz);
+  const dateFrom = format(startOfMonth(businessToday), "yyyy-MM-dd");
+  const dateTo = format(endOfMonth(businessToday), "yyyy-MM-dd");
   const { data } = useApi<TimeBlock[]>(`/api/provider/time-blocks?date_from=${dateFrom}&date_to=${dateTo}`);
   const blocks: TimeBlock[] = Array.isArray(data) ? data : [];
-  const thisMonthLabel = format(now, "MMMM yyyy");
+  const thisMonthLabel = format(businessToday, "MMMM yyyy");
 
   return (
     <ScreenContainer scrollable={false}>

@@ -11,12 +11,13 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Linking,
   Modal,
   Pressable,
 } from "react-native";
+import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -534,20 +535,24 @@ export default function CustomRequestDetailScreen() {
         {request.attachments && request.attachments.length > 0 ? (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white p-4")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Attachments</Text>
-            {request.attachments.map((a) => (
-              <TouchableOpacity
-                key={a.id}
-                onPress={() => Linking.openURL(a.url)}
-                style={twStyle("mb-2 flex-row items-center")}
-                accessibilityRole="link"
-                accessibilityLabel="Open attachment"
-              >
-                <Text style={twStyle("text-sm font-medium text-primary")} numberOfLines={1}>
-                  {a.url.replace(/^https?:\/\//, "").slice(0, 48)}
-                  {a.url.length > 52 ? "…" : ""}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <View style={twStyle("flex-row flex-wrap gap-2")}>
+              {request.attachments.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  onPress={() => pushInAppBrowser(router, a.url, "Attachment")}
+                  style={twStyle("overflow-hidden rounded-lg")}
+                  accessibilityRole="button"
+                  accessibilityLabel="View attachment image"
+                >
+                  <Image
+                    source={{ uri: a.url }}
+                    style={{ width: 96, height: 96 }}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         ) : null}
 

@@ -29,6 +29,7 @@ import {
   createGroupParticipantChildBooking,
   notifyGroupParticipantBooking,
 } from "@/lib/bookings/create-group-participant-booking";
+import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 import { RECOGNIZED_REVENUE_TYPES, recognizedRevenue } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
@@ -278,6 +279,24 @@ export async function GET(request: NextRequest) {
         ])
       );
 
+      const groupIds = raw.map((r: any) => r.id).filter(Boolean);
+      const childBookingsByGroupId = new Map<string, any[]>();
+      if (groupIds.length > 0) {
+        const { data: childBookingsForRollup } = await admin
+          .from("bookings")
+          .select(
+            "id, group_booking_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, additional_charges(amount,status)",
+          )
+          .in("group_booking_id", groupIds);
+        for (const child of childBookingsForRollup ?? []) {
+          const gid = (child as { group_booking_id?: string | null }).group_booking_id;
+          if (!gid) continue;
+          const bucket = childBookingsByGroupId.get(gid) ?? [];
+          bucket.push(child);
+          childBookingsByGroupId.set(gid, bucket);
+        }
+      }
+
       groupBookings = raw.map((row: any) => {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
         const participants = (row.booking_participants || []).map((p: any) => {
@@ -350,6 +369,11 @@ export async function GET(request: NextRequest) {
               : computedGroupSessionTotal;
         const sid = row.service_id as string | null | undefined;
         const tid = row.staff_id as string | null | undefined;
+        const groupPayment = computeGroupPaymentRollupFields(
+          row.id,
+          childBookingsByGroupId.get(row.id) ?? [],
+          totalPrice,
+        );
         return {
           ...row,
           service_name: row.service_name || (sid ? offeringTitle.get(sid) : null) || null,
@@ -362,6 +386,7 @@ export async function GET(request: NextRequest) {
           scheduled_date: at ? at.toISOString().split("T")[0] : "",
           scheduled_time: at ? at.toTimeString().slice(0, 5) : "",
           participants,
+          ...groupPayment,
         };
       });
       total = count || 0;

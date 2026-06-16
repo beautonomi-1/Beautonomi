@@ -89,6 +89,24 @@ describe("navigateFromProviderNotification", () => {
     );
   });
 
+  it("routes group_booking_id to the group sheet even when booking_id is present", () => {
+    const router = { push: jest.fn() };
+    const groupId = "00000000-0000-4000-8000-000000000654";
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-group-push",
+      type: "provider_booking_request",
+      data: {
+        booking_id: "booking-child-99",
+        group_booking_id: groupId,
+      },
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      `/(app)/(tabs)/more/group-bookings?open_group_id=${encodeURIComponent(groupId)}`,
+    );
+  });
+
   it("routes booking notifications with date to bookings hub before detail", () => {
     const router = { push: jest.fn() };
 
@@ -136,5 +154,29 @@ describe("navigateFromProviderNotification", () => {
 
     expect(navigated).toBe(false);
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("routes custom_offer with booking_id to booking detail before requests list", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-paid-offer",
+      type: "custom_offer",
+      data: { booking_id: "booking-from-offer", custom_offer_id: "offer-1" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings?booking_id=booking-from-offer");
+  });
+
+  it("routes custom_offer without booking_id to requests list", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-new-offer",
+      type: "custom_offer",
+      data: { offer_id: "offer-2" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/custom-requests");
   });
 });

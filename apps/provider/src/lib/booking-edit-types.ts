@@ -3,6 +3,10 @@ export interface BookingEditServiceLine {
   staffId?: string;
   addOnIds?: string[];
   customization?: string;
+  /** Snapshot from booking line when catalog lookup misses (e.g. inactive custom-offer offering). */
+  offeringName?: string;
+  price?: number;
+  durationMinutes?: number;
 }
 
 export interface BookingEditProductLine {
