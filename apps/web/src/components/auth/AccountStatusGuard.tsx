@@ -75,6 +75,11 @@ export default function AccountStatusGuard({ children }: { children: React.React
           }
 
           if (status?.is_deactivated) {
+            if (status.is_pending_deletion || status.deactivated_by === "pending_deletion") {
+              await signOut();
+              router.replace("/?deletion_scheduled=1");
+              return;
+            }
             const canSelfReactivate =
               status.deactivated_by === "user" || status.deactivated_by === "inactive_retention";
             if (canSelfReactivate) {

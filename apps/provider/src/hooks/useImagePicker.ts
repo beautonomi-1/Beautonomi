@@ -9,6 +9,8 @@ import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
 } from "@/lib/native-permissions";
+import { useImageCropper } from "@/components/image-crop";
+import { DEFAULT_ASPECT } from "@/components/image-crop/types";
 
 export interface PickImageResult {
   uri: string;
@@ -29,7 +31,9 @@ export type ImagePickLaunchOptions = Pick<
   | "aspect"
   | "base64"
   | "mediaTypes"
->;
+> & {
+  lockAspect?: boolean;
+};
 
 const PERMISSION_COPY = {
   photos: {
@@ -76,6 +80,33 @@ function toPickResult(asset: ImagePicker.ImagePickerAsset): PickImageResult {
 export function useImagePicker() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cropper = useImageCropper();
+
+  const maybeCropAsset = useCallback(
+    async (
+      asset: ImagePicker.ImagePickerAsset,
+      launchOptions: ImagePickLaunchOptions,
+    ): Promise<PickImageResult | null> => {
+      const allowsEditing = launchOptions.allowsEditing ?? DEFAULT_SINGLE_OPTIONS.allowsEditing ?? true;
+      if (!allowsEditing || Platform.OS === "web") {
+        return toPickResult(asset);
+      }
+
+      const cropped = await cropper.open({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        aspect: launchOptions.aspect ?? DEFAULT_SINGLE_OPTIONS.aspect ?? DEFAULT_ASPECT,
+        lockAspect: launchOptions.lockAspect,
+        quality: launchOptions.quality ?? DEFAULT_SINGLE_OPTIONS.quality,
+        fileName: asset.fileName ?? undefined,
+        includeBase64: launchOptions.base64 === true,
+      });
+
+      return cropped;
+    },
+    [cropper],
+  );
 
   const pickFromLibrary = useCallback(
     async (
@@ -85,8 +116,14 @@ export function useImagePicker() {
       setLoading(true);
       setError(null);
       try {
+        const merged = { ...DEFAULT_SINGLE_OPTIONS, ...launchOptions };
         const result = await launchImageLibraryWithPermission(
-          { ...DEFAULT_SINGLE_OPTIONS, ...launchOptions },
+          {
+            mediaTypes: merged.mediaTypes,
+            allowsEditing: false,
+            quality: merged.quality,
+            base64: merged.base64,
+          },
           {
             title: PERMISSION_COPY.photos.title(),
             message: PERMISSION_COPY.photos.message(),
@@ -104,7 +141,7 @@ export function useImagePicker() {
           return null;
         }
         if (result.canceled || !result.assets[0]) return null;
-        return toPickResult(result.assets[0]);
+        return maybeCropAsset(result.assets[0], merged);
       } catch (e) {
         setError(
           e instanceof Error
@@ -116,7 +153,7 @@ export function useImagePicker() {
         setLoading(false);
       }
     },
-    [],
+    [maybeCropAsset],
   );
 
   const pickFromCamera = useCallback(
@@ -127,8 +164,13 @@ export function useImagePicker() {
       setLoading(true);
       setError(null);
       try {
+        const merged = { ...DEFAULT_SINGLE_OPTIONS, ...launchOptions };
         const result = await launchCameraWithPermission(
-          { ...DEFAULT_SINGLE_OPTIONS, allowsEditing: true, ...launchOptions },
+          {
+            allowsEditing: false,
+            quality: merged.quality,
+            base64: merged.base64,
+          },
           {
             title: PERMISSION_COPY.camera.title(),
             message: PERMISSION_COPY.camera.message(),
@@ -146,7 +188,7 @@ export function useImagePicker() {
           return null;
         }
         if (result.canceled || !result.assets[0]) return null;
-        return toPickResult(result.assets[0]);
+        return maybeCropAsset(result.assets[0], merged);
       } catch (e) {
         setError(
           e instanceof Error
@@ -158,13 +200,13 @@ export function useImagePicker() {
         setLoading(false);
       }
     },
-    [],
+    [maybeCropAsset],
   );
 
   const pickWithOptions = useCallback(
     async (launchOptions: ImagePickLaunchOptions = {}): Promise<PickImageResult | null> => {
       if (Platform.OS === "web") {
-        return pickFromLibrary(launchOptions);
+        return pickFromLibrary({ ...launchOptions, allowsEditing: false });
       }
       return new Promise((resolve) => {
         Alert.alert(
@@ -204,6 +246,7 @@ export function useImagePicker() {
         const result = await launchImageLibraryWithPermission(
           {
             mediaTypes: ["images"],
+            allowsEditing: false,
             allowsMultipleSelection: true,
             quality: 0.85,
             ...launchOptions,

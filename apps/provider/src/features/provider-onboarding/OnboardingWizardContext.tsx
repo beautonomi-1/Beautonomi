@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, Keyboard } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
@@ -276,11 +276,13 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       Alert.alert("Check this step", v.errors[0] ?? "Please complete required fields.");
       return;
     }
+    Keyboard.dismiss();
     const next = getNextStep(currentStep, formData);
     if (next !== null) setCurrentStepState(next);
   }, [currentStep, formData]);
 
   const goBack = useCallback(() => {
+    Keyboard.dismiss();
     const prev = getPreviousStep(currentStep, formData);
     if (prev !== null) setCurrentStepState(prev);
     else router.back();
@@ -289,6 +291,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
   const skipForward = useCallback(() => {
     const meta = STEPS[currentStep - 1];
     if (!meta?.canSkip) return;
+    Keyboard.dismiss();
     const next = getNextStep(currentStep, formData);
     if (next !== null) setCurrentStepState(next);
   }, [currentStep, formData]);
@@ -335,6 +338,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       if (!stepIsVisible(s, formData)) continue;
       const v = validateStep(s, formData);
       if (!v.valid) {
+        Keyboard.dismiss();
         setCurrentStepState(s);
         Alert.alert("Almost there", v.errors[0] ?? "Complete this step first.");
         return;
@@ -343,16 +347,19 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
 
     if (!formData.team_size) {
       Alert.alert("Missing info", "Please select your team size.");
+      Keyboard.dismiss();
       setCurrentStepState(1);
       return;
     }
     if (!formData.phone_verified) {
       Alert.alert("Verify phone", "Please verify your phone number.");
+      Keyboard.dismiss();
       setCurrentStepState(2);
       return;
     }
     if (!formData.global_category_ids?.length) {
       Alert.alert("Categories", "Select at least one category.");
+      Keyboard.dismiss();
       setCurrentStepState(CATEGORIES_STEP_ID);
       return;
     }
@@ -361,6 +368,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
     const addr = payload.address as { line1?: string; city?: string; country?: string };
     if (!addr.line1 || !addr.city || !addr.country) {
       Alert.alert("Address", "Please complete address (line 1, city, country).");
+      Keyboard.dismiss();
       setCurrentStepState(7);
       return;
     }

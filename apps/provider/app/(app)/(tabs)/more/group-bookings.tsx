@@ -2800,8 +2800,8 @@ export default function GroupBookingsScreen() {
           </View>
         </TouchableOpacity>
 
-        <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+        <View style={twStyle("mb-3 flex-row gap-2")}>
+          <View style={[twStyle("flex-1"), { minWidth: 0, marginRight: 4 }]}>
             <StatCard
               title="Total"
               value={String(stats.total)}
@@ -2811,7 +2811,7 @@ export default function GroupBookingsScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { minWidth: 0, marginRight: 4 }]}>
             <StatCard
               title="People"
               value={String(stats.totalParticipants)}
@@ -2821,7 +2821,7 @@ export default function GroupBookingsScreen() {
               compact
             />
           </View>
-          <View style={twStyle("flex-1")}>
+          <View style={[twStyle("flex-1"), { minWidth: 0 }]}>
             <StatCard
               title="Earned"
               value={formatCurrency(stats.recognizedEarnings)}

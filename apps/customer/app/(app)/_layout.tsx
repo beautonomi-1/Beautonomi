@@ -238,6 +238,7 @@ export default function AppLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
+          freezeOnBlur: true,
           contentStyle: { flex: 1, ...(Platform.OS === "web" ? { width: "100%" } : {}) },
           headerLeft: headerBackFallback,
           headerTintColor: Colors.primary,

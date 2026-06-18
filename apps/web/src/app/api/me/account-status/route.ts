@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
@@ -9,35 +9,44 @@ import {
 
 /**
  * GET /api/me/account-status
- * 
- * Get current user's account status (suspended, deactivated, etc.)
+ *
+ * Get current user's account status (suspended, deactivated, pending deletion, etc.)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     if (!user) {
-      return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+      return Response.json({ data: null, error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = await getSupabaseServer(request);
 
-    // Check if user is deactivated
     const { data: userData } = await supabase
       .from("users")
-      .select("deactivated_at, deactivated_by, role")
+      .select(
+        "deactivated_at, deactivated_by, role, account_deletion_purge_after_at, account_deletion_requested_at",
+      )
       .eq("id", user.id)
       .single();
+
+    const isPendingDeletion = userData?.deactivated_by === "pending_deletion";
 
     if (userData?.deactivated_at) {
       return successResponse({
         is_deactivated: true,
         deactivated_at: userData.deactivated_at,
         deactivated_by: userData.deactivated_by || null,
+        is_pending_deletion: isPendingDeletion,
+        purge_after_at: isPendingDeletion
+          ? (userData.account_deletion_purge_after_at as string | null)
+          : null,
+        account_deletion_requested_at: userData.account_deletion_requested_at ?? null,
       });
     }
 
-    // Provider suspension is on providers.status (org-wide). Resolve provider id for both
-    // owners (providers.user_id) and staff (provider_staff.user_id → provider_id).
     if (userData?.role === "provider_owner" || userData?.role === "provider_staff") {
       const providerId = await getProviderIdForUser(user.id, supabase);
       if (providerId) {
@@ -63,6 +72,7 @@ export async function GET(request: NextRequest) {
     return successResponse({
       is_suspended: false,
       is_deactivated: false,
+      is_pending_deletion: false,
     });
   } catch (error) {
     return handleApiError(error, "Failed to get account status");

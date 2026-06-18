@@ -96,18 +96,28 @@ export default function DeleteAccountInfoScreen() {
           text: "Delete permanently",
           style: "destructive",
           onPress: async () => {
-            const { error: deleteError } = await deleteAccount("/api/me/delete-account", {
+            const result = await deleteAccount("/api/me/delete-account", {
               password: hasPassword ? password.trim() : undefined,
               verificationNonce: hasPassword ? undefined : verificationNonce.trim(),
               reason: reason.trim() || "Deleted from mobile app",
             });
-            if (deleteError) {
-              Alert.alert("Could not delete account", deleteError);
+            if (result.error) {
+              Alert.alert("Could not delete account", result.error);
               return;
             }
+            const payload = result.data as { scheduled?: boolean; message?: string; grace_days?: number } | undefined;
             await signOut();
-            Alert.alert("Account deleted", "Your account has been deleted.");
-            router.replace("/(auth)/login" as never);
+            const scheduled = payload?.scheduled === true;
+            Alert.alert(
+              scheduled ? "Deletion scheduled" : "Account deleted",
+              payload?.message ??
+                (scheduled
+                  ? `Your account will be permanently deleted in ${payload?.grace_days ?? 30} days. Check your email to cancel.`
+                  : "Your account has been deleted."),
+            );
+            router.replace(
+              (scheduled ? "/(auth)/login?deletion_scheduled=1" : "/(auth)/login") as never,
+            );
           },
         },
       ],
@@ -189,10 +199,12 @@ export default function DeleteAccountInfoScreen() {
         )}
 
         <Text style={twStyle("text-base text-gray-700 leading-6")}>
-          Permanently delete your account and associated personal data directly from the app.
+          Request permanent deletion of your account. When the grace period is enabled, deletion is scheduled for 30
+          days — your account is locked and you can cancel via the email link or support.
         </Text>
         <Text style={twStyle("mt-4 text-sm text-gray-500")}>
-          Confirm with your password or a one-time verification code. This action cannot be undone.
+          Confirm with your password or a one-time verification code, then type DELETE. After the grace period, data
+          is permanently removed.
         </Text>
 
         <View style={twStyle("mt-5 rounded-xl border border-gray-200 bg-white p-4")}>

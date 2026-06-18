@@ -73,7 +73,11 @@ describe("GET /api/me/account-status", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.data).toEqual({ is_suspended: false, is_deactivated: false });
+    expect(body.data).toEqual({
+      is_suspended: false,
+      is_deactivated: false,
+      is_pending_deletion: false,
+    });
     expect(mockGetProviderIdForUser).not.toHaveBeenCalled();
   });
 

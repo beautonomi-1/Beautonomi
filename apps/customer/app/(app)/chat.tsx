@@ -22,6 +22,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { useNotifications } from "@/providers/NotificationsContext";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { Colors } from "@/constants/colors";
@@ -253,6 +254,7 @@ export default function ChatScreen() {
   const providerName = params.provider_name;
   const bookingIdParam = params.booking_id;
   const { user, loading: authLoading, refreshSession } = useAuth();
+  const { adjustChatUnreadCount } = useNotifications();
   const [messages, setMessages] = useState<Message[]>([]);
   const didRefreshSession = useRef(false);
   const [input, setInput] = useState("");
@@ -471,15 +473,34 @@ export default function ChatScreen() {
     refreshSession();
   }, [authLoading, user, refreshSession]);
 
+  const markedReadRef = useRef<string | null>(null);
+
   // Mark conversation as read when viewing
   useEffect(() => {
-    if (!id || !user) return;
-    api.post(`/api/me/conversations/${id}/read`).then(() => emitChatBadgeRefresh()).catch(() => {});
+    if (!id || !user || loading) return;
+    if (markedReadRef.current === id) return;
+    markedReadRef.current = id;
+    const unreadInThread = messages.filter(
+      (m) => m.sender_id !== user.id && m.is_read === false,
+    ).length;
+    if (unreadInThread > 0) {
+      adjustChatUnreadCount(-unreadInThread);
+    }
+    api
+      .post(`/api/me/conversations/${id}/read`)
+      .then((res) => {
+        if (!res.error) emitChatBadgeRefresh();
+      })
+      .catch(() => {});
     api
       .post("/api/me/notifications/mark-related-read", { conversation_id: id })
       .then(() => emitNotificationBadgeRefresh())
       .catch(() => {});
-  }, [id, user]);
+  }, [id, user, loading, messages, adjustChatUnreadCount]);
+
+  useEffect(() => {
+    markedReadRef.current = null;
+  }, [id]);
 
   // Re-fetch offer rows for bubbles stuck on pending / payment_pending (attachment patch can lag).
   useEffect(() => {

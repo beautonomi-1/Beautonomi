@@ -23,6 +23,7 @@ type Props = {
   onNationalChange: (national: string) => void;
   placeholder?: string;
   accessibilityLabel?: string;
+  inputAccessoryViewID?: string;
 };
 
 export function PhoneInputWithCountry({
@@ -33,6 +34,7 @@ export function PhoneInputWithCountry({
   onNationalChange,
   placeholder,
   accessibilityLabel,
+  inputAccessoryViewID,
 }: Props) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -134,6 +136,7 @@ export function PhoneInputWithCountry({
             keyboardType="phone-pad"
             accessibilityLabel={resolvedA11y}
             accessibilityRole="none"
+            inputAccessoryViewID={inputAccessoryViewID}
           />
         </View>
         <Text

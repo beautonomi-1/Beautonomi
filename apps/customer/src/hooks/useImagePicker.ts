@@ -9,6 +9,8 @@ import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
 } from "@/lib/native-permissions";
+import { useImageCropper } from "@/components/image-crop";
+import { DEFAULT_ASPECT } from "@/components/image-crop/types";
 
 export interface PickImageResult {
   uri: string;
@@ -24,6 +26,9 @@ export interface PickImageResult {
 export type PickSingleLibraryOptions = {
   allowsEditing?: boolean;
   deferLaunch?: boolean;
+  aspect?: [number, number];
+  lockAspect?: boolean;
+  quality?: number;
 };
 
 function assetToPickResult(asset: ImagePicker.ImagePickerAsset): PickImageResult {
@@ -40,20 +45,45 @@ function assetToPickResult(asset: ImagePicker.ImagePickerAsset): PickImageResult
 export function useImagePicker() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cropper = useImageCropper();
+
+  const maybeCropAsset = useCallback(
+    async (
+      asset: ImagePicker.ImagePickerAsset,
+      options: PickSingleLibraryOptions,
+    ): Promise<PickImageResult | null> => {
+      const allowsEditing = options.allowsEditing ?? true;
+      if (!allowsEditing || Platform.OS === "web") {
+        return assetToPickResult(asset);
+      }
+
+      const cropped = await cropper.open({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        aspect: options.aspect ?? DEFAULT_ASPECT,
+        lockAspect: options.lockAspect,
+        quality: options.quality ?? 0.85,
+        fileName: asset.fileName ?? undefined,
+      });
+
+      return cropped;
+    },
+    [cropper],
+  );
 
   const pickFromLibrary = useCallback(async (
     options: PickSingleLibraryOptions = {},
   ): Promise<PickImageResult | null> => {
-    const { allowsEditing = true, deferLaunch = false } = options;
+    const { deferLaunch = false } = options;
     setLoading(true);
     setError(null);
     try {
       const result = await launchImageLibraryWithPermission(
         {
           mediaTypes: ["images"],
-          allowsEditing,
-          ...(allowsEditing ? { aspect: [1, 1] as [number, number] } : {}),
-          quality: 0.85,
+          allowsEditing: false,
+          quality: options.quality ?? 0.85,
         },
         {
           title: i18n.t("customer.mobile.components.imagePicker.photosAccessTitle"),
@@ -66,14 +96,14 @@ export function useImagePicker() {
         return null;
       }
       if (result.canceled || !result.assets?.length) return null;
-      return assetToPickResult(result.assets[0]);
+      return maybeCropAsset(result.assets[0], options);
     } catch (e) {
       setError(e instanceof Error ? e.message : i18n.t("customer.mobile.components.imagePicker.failedPickImage"));
       return null;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [maybeCropAsset]);
 
   /** Pick several photos at once (no crop) — used for inspiration / attachment galleries. */
   const pickMultipleFromLibrary = useCallback(async (
@@ -113,19 +143,18 @@ export function useImagePicker() {
   }, []);
 
   const pickFromCamera = useCallback(async (
-    options: { allowsEditing?: boolean; deferLaunch?: boolean } | boolean = {},
+    options: PickSingleLibraryOptions | boolean = {},
   ): Promise<PickImageResult | null> => {
     const opts =
       typeof options === "boolean" ? { deferLaunch: options } : options;
-    const { allowsEditing = true, deferLaunch = false } = opts;
+    const { deferLaunch = false } = opts;
     setLoading(true);
     setError(null);
     try {
       const result = await launchCameraWithPermission(
         {
-          allowsEditing,
-          ...(allowsEditing ? { aspect: [1, 1] as [number, number] } : {}),
-          quality: 0.85,
+          allowsEditing: false,
+          quality: opts.quality ?? 0.85,
         },
         {
           title: i18n.t("customer.mobile.components.imagePicker.cameraAccessTitle"),
@@ -137,23 +166,15 @@ export function useImagePicker() {
         setError(i18n.t("customer.mobile.components.imagePicker.permissionCameraRequired"));
         return null;
       }
-      if (result.canceled) return null;
-      const asset = result.assets[0];
-      return {
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        fileName: asset.fileName ?? `camera-${Date.now()}.jpg`,
-        mimeType: asset.mimeType ?? undefined,
-        fileSize: typeof asset.fileSize === "number" ? asset.fileSize : undefined,
-      };
+      if (result.canceled || !result.assets?.[0]) return null;
+      return maybeCropAsset(result.assets[0], opts);
     } catch (e) {
       setError(e instanceof Error ? e.message : i18n.t("customer.mobile.components.imagePicker.failedTakePhoto"));
       return null;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [maybeCropAsset]);
 
   const pickWithOptions = useCallback(async (): Promise<PickImageResult | null> => {
     if (Platform.OS === "web") {
@@ -167,7 +188,7 @@ export function useImagePicker() {
           {
             text: i18n.t("customer.mobile.components.imagePicker.takePhoto"),
             onPress: () => {
-              void pickFromCamera(true).then(resolve);
+              void pickFromCamera({ deferLaunch: true }).then(resolve);
             },
           },
           {

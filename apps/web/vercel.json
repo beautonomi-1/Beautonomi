@@ -27,6 +27,8 @@
     { "path": "/api/cron/subscription-reminders", "schedule": "0 7 * * *" },
     { "path": "/api/cron/provider-stall-check", "schedule": "0 */4 * * *" },
     { "path": "/api/cron/purge-audit-logs", "schedule": "0 2 * * 0" },
+    { "path": "/api/cron/purge-compliance-snapshots", "schedule": "30 2 * * 0" },
+    { "path": "/api/cron/process-account-deletions", "schedule": "15 3 * * *" },
     { "path": "/api/cron/prune-webhook-events", "schedule": "30 2 * * *" },
     { "path": "/api/cron/abandoned-carts", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/refresh-provider-analytics", "schedule": "*/15 * * * *" },

@@ -24,25 +24,32 @@ export function StatCard({
   compact = false,
 }: StatCardProps) {
   return (
-    <View style={[ { borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white }, compact ? { padding: 12 } : { padding: 16 } ]}>
+    <View style={[ { borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, minWidth: 0 }, compact ? { padding: 12 } : { padding: 16 } ]}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 12, fontWeight: "500", letterSpacing: 0.5, color: Colors.gray[500] }} numberOfLines={1}>
+        <View style={{ flex: 1, minWidth: 0, paddingRight: icon ? 4 : 0 }}>
+          <Text
+            style={{ fontSize: compact ? 11 : 12, fontWeight: "500", letterSpacing: 0.3, color: Colors.gray[500] }}
+            numberOfLines={2}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.85}
+          >
             {title}
           </Text>
           <Text
             style={[
-              compact ? { marginTop: 4, fontSize: 17 } : { marginTop: 8, fontSize: 20 },
+              compact ? { marginTop: 4, fontSize: 16 } : { marginTop: 8, fontSize: 18 },
               { fontWeight: "700", color: Colors.gray[900] },
             ]}
-            numberOfLines={2}
+            numberOfLines={1}
             adjustsFontSizeToFit={Platform.OS !== "web"}
-            minimumFontScale={0.65}
+            minimumFontScale={0.55}
           >
             {value}
           </Text>
           {subtitle && (
-            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>{subtitle}</Text>
+            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
+              {subtitle}
+            </Text>
           )}
           {trend && (
             <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
@@ -69,11 +76,11 @@ export function StatCard({
         {icon && (
           <View
             style={[
-              { backgroundColor: iconBg, marginLeft: 8, alignItems: "center", justifyContent: "center", borderRadius: 12 },
-              compact ? { height: 36, width: 36 } : { height: 40, width: 40 },
+              { backgroundColor: iconBg, marginLeft: 4, alignItems: "center", justifyContent: "center", borderRadius: 12, flexShrink: 0 },
+              compact ? { height: 32, width: 32 } : { height: 36, width: 36 },
             ]}
           >
-            <Ionicons name={icon} size={compact ? 18 : 20} color={iconColor} />
+            <Ionicons name={icon} size={compact ? 16 : 18} color={iconColor} />
           </View>
         )}
       </View>

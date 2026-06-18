@@ -6,6 +6,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { purgePlatformUserAccountFully } from "@/lib/account/purge-platform-user";
 import { collectUserPurgeSnapshot } from "@/lib/account/compliance-purge-snapshot";
+import { redactUserPurgeSnapshot } from "@/lib/account/compliance-snapshot-redaction";
 import {
   insertCompliancePurgeAuditLog,
   type CompliancePurgeReportV2,
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
     const completedAt = new Date().toISOString();
 
     const report: CompliancePurgeReportV2 = {
-      schema_version: 2,
+      schema_version: 3,
       purge_type: "user",
       started_at: startedAt,
       completed_at: completedAt,
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest) {
         message_attachment_storage_objects_removed: purgeResult.storage_attachments_removed,
         auth_users_deleted: [user_id],
       },
-      snapshot,
+      snapshot: redactUserPurgeSnapshot(snapshot),
     };
 
     const auditInsert = await insertCompliancePurgeAuditLog(admin, {

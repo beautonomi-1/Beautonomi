@@ -3,11 +3,10 @@ import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-na
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { appendFormDataFileNative } from "@beautonomi/utils";
-import { launchCameraWithPermission, launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { useImagePicker } from "@/hooks/useImagePicker";
 
 const MAX_IMAGES = 5;
 
@@ -18,6 +17,7 @@ type Props = {
 
 export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
   const [uploading, setUploading] = useState(false);
+  const { pickFromLibrary, pickFromCamera } = useImagePicker();
 
   const uploadAsset = useCallback(
     async (asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
@@ -46,21 +46,15 @@ export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
   );
 
   const pickLibrary = async () => {
-    const result = await launchImageLibraryWithPermission(
-      { mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 },
-      { title: "Permission needed", message: "Allow photo library access." },
-    );
-    if (!result || result.canceled || !result.assets?.[0]) return;
-    await uploadAsset(result.assets[0]);
+    const picked = await pickFromLibrary({ aspect: [1, 1], allowsEditing: true, quality: 0.8 });
+    if (!picked) return;
+    await uploadAsset(picked);
   };
 
   const takePhoto = async () => {
-    const result = await launchCameraWithPermission(
-      { allowsEditing: true, aspect: [1, 1], quality: 0.8 },
-      { title: "Permission needed", message: "Allow camera access." },
-    );
-    if (!result || result.canceled || !result.assets?.[0]) return;
-    await uploadAsset(result.assets[0]);
+    const picked = await pickFromCamera({ aspect: [1, 1], allowsEditing: true, quality: 0.8 });
+    if (!picked) return;
+    await uploadAsset(picked);
   };
 
   const removeAt = (index: number) => {

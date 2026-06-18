@@ -58,15 +58,24 @@ How account **deactivation** and **deletion** are managed by **super admins** an
 
 ### Deletion (user)
 
+When `ACCOUNT_DELETION_GRACE_ENABLED=true` (recommended for production):
+
+- **Grace period:** 30 days. Account is locked (`deactivated_by = pending_deletion`, auth user banned), user is signed out.
+- **Cancel:** Email link (`GET /api/account-deletion/cancel?t=...`) or support/superadmin (`POST /api/me/cancel-account-deletion`). **Not** by logging in.
+- **Purge:** Daily cron `/api/cron/process-account-deletions` runs `purgePlatformUserAccountFully` after `account_deletion_purge_after_at`.
+
+When grace is disabled (`ACCOUNT_DELETION_GRACE_ENABLED` unset/false), behaviour is **immediate** permanent erasure (legacy).
+
 - **Web:** Account settings → Privacy and sharing → **Delete account**.  
-  - To avoid accidental deletion, the user must:  
-    - Enter their **password**.  
-    - Type the word **DELETE** (exact, case-insensitive) in a confirmation field.  
-  - Dialog copy states that deletion is permanent (bookings, messages, profile, etc.) and suggests “Deactivate account” in Login & security if they only want a break.  
-  - Then calls `POST /api/me/delete-account`; backend sets `account_deletion_requested_at` and performs permanent deletion.  
-- **Customer app:** **Account → Privacy & sharing → Delete account** opens a dedicated screen: password, optional reason, type **DELETE**, then confirmation alert; calls `POST /api/me/delete-account` and signs the user out (parity with web, not browser-only).  
-- **Provider app:** **Delete account** in Settings → Account is an in-app flow on **delete-account-info** (password + optional reason); or web parity paths as documented for your build.  
-  - **Destructive** styling in account lists where applicable.
+  - Password or OTP + type **DELETE**.  
+  - Calls `POST /api/me/delete-account`.  
+- **Customer app:** **Account → Privacy & sharing → Delete account** (same API).  
+- **Provider app:** **Settings → Account → Delete account** (`delete-account-info` screen).
+
+Compliance audit snapshots store **hashed email** (no cleartext name/phone) and auto-purge after **5 years** (`/api/cron/purge-compliance-snapshots`). See [DATA_RETENTION_AND_ERASURE.md](compliance/DATA_RETENTION_AND_ERASURE.md).
+
+- **`GET /api/me/account-status`** also returns `is_pending_deletion` and `purge_after_at` when scheduled.
+- **Login** shows `?deletion_scheduled=1` messaging; cancel success lands on `/?deletion_cancel=success`.
 
 ---
 

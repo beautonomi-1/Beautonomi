@@ -82,6 +82,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const foregroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatRealtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGoodNotifRef = useRef(0);
+  const lastGoodChatRef = useRef(0);
 
   const refetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -94,11 +96,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       );
       const body = res.data as any;
       const count = body?.total_unread ?? body?.data?.total_unread ?? 0;
-      setUnreadCount(typeof count === "number" ? count : 0);
+      const next = typeof count === "number" ? count : 0;
+      setUnreadCount(next);
+      lastGoodNotifRef.current = next;
       setServerSynced(true);
     } catch {
-      // Leave the existing count/badge alone on failure; do not clobber a
-      // push-set badge with 0 just because a refresh failed.
+      // Keep last known good; badge sync still uses lastGoodNotifRef.
     }
   }, [user?.id]);
 
@@ -113,10 +116,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       );
       const raw = res.data;
       const conversations = Array.isArray(raw) ? raw : raw?.data ?? [];
-      setChatUnreadCount(sumCustomerChatUnread(conversations));
+      const next = sumCustomerChatUnread(conversations);
+      setChatUnreadCount(next);
+      lastGoodChatRef.current = next;
       setChatServerSynced(true);
     } catch {
-      // Keep prior chat count on failure.
+      // Keep last known good; badge sync still uses lastGoodChatRef.
     }
   }, [user?.id]);
 
@@ -214,20 +219,38 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     };
   }, [refetchAll]);
 
-  const badgeReady = serverSynced && chatServerSynced;
+  const badgeReady = serverSynced || chatServerSynced;
+
+  const osBadgeTotal = useMemo(
+    () =>
+      computeUnifiedUnread(
+        serverSynced ? unreadCount : lastGoodNotifRef.current,
+        chatServerSynced ? chatUnreadCount : lastGoodChatRef.current,
+      ),
+    [serverSynced, chatServerSynced, unreadCount, chatUnreadCount],
+  );
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    if (!badgeReady) return;
+    if (!user?.id || !badgeReady) return;
     let cancelled = false;
     void (async () => {
       if (cancelled) return;
-      await syncOsBadgeCount(totalUnread);
+      await syncOsBadgeCount(osBadgeTotal);
     })();
     return () => {
       cancelled = true;
     };
-  }, [totalUnread, badgeReady]);
+  }, [osBadgeTotal, badgeReady, user?.id]);
+
+  // Safety net when Supabase realtime disconnects — poll counts periodically.
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      void refetchAll();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [user?.id, refetchAll]);
 
   useEffect(() => {
     if (!user?.id) return;

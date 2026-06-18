@@ -6,6 +6,7 @@ import {
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
 import { collectUserPurgeSnapshot, type UserPurgeSnapshot } from "@/lib/account/compliance-purge-snapshot";
+import { redactUserPurgeSnapshot } from "@/lib/account/compliance-snapshot-redaction";
 import {
   slackNotifySelfServiceAccountDeletionFailed,
   slackNotifySelfServiceAccountDeletionSucceeded,
@@ -153,7 +154,7 @@ export async function notifyOpsSelfServiceAccountDeletion(
 
     const completedAt = new Date().toISOString();
     const report: CompliancePurgeReportV2 = {
-      schema_version: 2,
+      schema_version: 3,
       purge_type: "user",
       started_at: completedAt,
       completed_at: completedAt,
@@ -171,7 +172,7 @@ export async function notifyOpsSelfServiceAccountDeletion(
         message_attachment_storage_objects_removed: params.storageAttachmentsRemoved ?? 0,
         auth_users_deleted: [context.userId],
       },
-      snapshot: context.snapshot,
+      snapshot: context.snapshot ? redactUserPurgeSnapshot(context.snapshot) : null,
     };
 
     const auditInsert = await insertCompliancePurgeAuditLog(admin, {

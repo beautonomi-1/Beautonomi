@@ -42,6 +42,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
 import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
@@ -149,6 +150,7 @@ interface ConversationDetail {
   customer_identity_verified?: boolean | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  unread_count_provider?: number;
   is_pinned?: boolean;
   messages: Message[];
 }
@@ -159,6 +161,7 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
+  const { adjustChatUnreadCount } = useNotificationsCount();
 
   const [message, setMessage] = useState("");
   const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
@@ -263,14 +266,29 @@ export default function ChatScreen() {
   // refresh (realtime update, manual refresh). That caused a mark-read
   // POST storm — one per refresh — and a race with realtime inserts. We
   // now fire exactly once per thread open (per conversationId).
+  const markedReadRef = useRef<string | null>(null);
   useEffect(() => {
     if (!conversationId) return;
-    markReadRef.current(`/api/provider/conversations/${conversationId}/mark-read`, {});
-    emitChatBadgeRefresh();
+    if (markedReadRef.current === conversationId) return;
+    markedReadRef.current = conversationId;
+    const unread = Number(conversation?.unread_count_provider ?? 0);
+    if (unread > 0) {
+      adjustChatUnreadCount(-unread);
+    }
+    void markReadRef
+      .current(`/api/provider/conversations/${conversationId}/mark-read`, {})
+      .then(() => {
+        emitChatBadgeRefresh();
+      })
+      .catch(() => {});
     api
       .post("/api/provider/notifications/mark-related-read", { conversation_id: conversationId })
       .then(() => emitNotificationBadgeRefresh())
       .catch(() => {});
+  }, [conversationId, conversation?.unread_count_provider, adjustChatUnreadCount]);
+
+  useEffect(() => {
+    markedReadRef.current = null;
   }, [conversationId]);
 
   // Reset the "first scroll" flag whenever we switch threads so the

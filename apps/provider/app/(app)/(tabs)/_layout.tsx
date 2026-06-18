@@ -1,17 +1,16 @@
 import { Tabs, useRouter, usePathname, type Router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef } from "react";
-import { View, Platform, AppState, type ViewStyle } from "react-native";
+import { View, Platform, AppState, InteractionManager, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { StackActions, type NavigationProp, type ParamListBase } from "@react-navigation/native";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
-import { tabBarBottomInset, tabBarOuterHeight } from "@/constants/layout";
+import { tabBarBottomInset, tabBarOuterHeight, TAB_BAR_LABEL_FONT_SIZE, TAB_BAR_LABEL_LINE_HEIGHT } from "@/constants/layout";
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
-import { useApi } from "@/hooks/useApi";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useProvider } from "@/providers/ProviderContext";
 import { supabase } from "@/lib/supabase/client";
@@ -22,15 +21,6 @@ import { emitProviderBookingsRefresh } from "@/lib/provider-bookings-events";
 type IconName = keyof typeof Ionicons.glyphMap;
 
 type HubTab = "bookings" | "chats" | "more" | "clients";
-
-type ProviderNavCounts = {
-  pending_bookings: number;
-  active_product_orders: number;
-  unread_messages: number;
-  waiting_room: number;
-  open_return_requests?: number;
-  critical_total: number;
-};
 
 const formatTabBadge = (count: number): string | undefined => {
   if (count <= 0) return undefined;
@@ -91,11 +81,8 @@ export default function TabsLayout() {
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
   const { provider } = useProvider();
-  const { notificationUnread, chatUnreadCount, refresh: refreshUnreadCount } = useNotificationsCount();
-  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
-    "/api/provider/nav-counts",
-    { staleTimeMs: 15_000 },
-  );
+  const { notificationUnread, chatUnreadCount, navCounts, refresh: refreshUnreadCount, refreshNavCounts } =
+    useNotificationsCount();
 
   const bookingsBadge = formatTabBadge(
     Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
@@ -238,8 +225,10 @@ export default function TabsLayout() {
 
   const safeBottom = tabBarBottomInset(insets.bottom);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
+  const sideInset = Math.max(insets.left, insets.right);
   const screenOptions = useMemo(
     () => ({
+      freezeOnBlur: true,
       sceneStyle: {
         backgroundColor: "#ffffff",
         ...(Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : {}),
@@ -247,6 +236,13 @@ export default function TabsLayout() {
       headerShown: false,
       tabBarActiveTintColor: Colors.primary,
       tabBarInactiveTintColor: "#9ca3af",
+      tabBarAllowFontScaling: false,
+      tabBarItemStyle: {
+        flex: 1,
+        justifyContent: "center" as const,
+        alignItems: "center" as const,
+        paddingVertical: 2,
+      },
       tabBarStyle: {
         backgroundColor: "#ffffff",
         borderTopWidth: 1,
@@ -256,6 +252,8 @@ export default function TabsLayout() {
         flexShrink: 0,
         paddingTop: 8,
         paddingBottom: safeBottom,
+        paddingLeft: sideInset,
+        paddingRight: sideInset,
         elevation: 8,
         ...(Platform.OS === "web"
           ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
@@ -265,7 +263,7 @@ export default function TabsLayout() {
               shadowOpacity: 0.06,
               shadowRadius: 6,
             }),
-        ...(isTablet ? { paddingHorizontal: 40 } : {}),
+        ...(isTablet ? { paddingHorizontal: 40 + sideInset } : {}),
         ...(Platform.OS === "web"
           ? ({
               position: "fixed",
@@ -277,9 +275,11 @@ export default function TabsLayout() {
           : {}),
       },
       tabBarLabelStyle: {
-        fontSize: 11,
+        fontSize: TAB_BAR_LABEL_FONT_SIZE,
+        lineHeight: TAB_BAR_LABEL_LINE_HEIGHT,
         fontWeight: "600" as const,
         marginTop: 2,
+        textAlign: "center" as const,
       },
       tabBarBadgeStyle: {
         backgroundColor: "#ef4444",
@@ -287,14 +287,8 @@ export default function TabsLayout() {
         fontSize: 10,
         fontWeight: "700" as const,
       },
-      /**
-       * Six tabs on a narrow phone used to overlap when squeezed into one row; that made the
-       * last tab (More) register presses on the wrong route (often Chats). Scrolling tabs fixes it.
-       * We use the default tab bar button so React Navigation receives refs/hitSlop correctly.
-       */
-      tabBarScrollEnabled: Platform.OS !== "web",
     }),
-    [TAB_BAR_HEIGHT, isTablet, safeBottom],
+    [TAB_BAR_HEIGHT, isTablet, safeBottom, sideInset],
   );
 
   return (
@@ -306,8 +300,10 @@ export default function TabsLayout() {
       screenListeners={{
         tabPress: () => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          void refreshNavCounts();
-          void refreshUnreadCount();
+          InteractionManager.runAfterInteractions(() => {
+            void refreshNavCounts();
+            void refreshUnreadCount();
+          });
         },
       }}
     >

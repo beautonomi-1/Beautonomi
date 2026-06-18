@@ -24,6 +24,8 @@ const ACCOUNT_STATUS_PENDING_WARN_MS = 25_000;
 type AccountStatus = {
   is_deactivated?: boolean;
   is_suspended?: boolean;
+  is_pending_deletion?: boolean;
+  purge_after_at?: string | null;
   deactivated_at?: string;
   deactivated_by?: string | null;
   suspension_reason?: string;
@@ -141,6 +143,14 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
           return;
         }
         if (status.is_deactivated) {
+          if (status.is_pending_deletion || status.deactivated_by === "pending_deletion") {
+            if (isSentryEnabled()) {
+              authFlowBreadcrumb(`${GUARD}.branch_pending_deletion`, {});
+            }
+            await signOut();
+            if (!cancelled) router.replace("/(auth)/login?deletion_scheduled=1" as never);
+            return;
+          }
           const canSelfReactivate =
             status.deactivated_by === "user" || status.deactivated_by === "inactive_retention";
           if (canSelfReactivate) {

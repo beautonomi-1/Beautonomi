@@ -18,6 +18,7 @@ import { STEPS, stepIsVisible } from "./state";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingStepBody } from "./WizardSteps";
 import { validateStep } from "./validation";
+import { useKeyboardOffset } from "./useKeyboardOffset";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -50,6 +51,7 @@ function getMilestoneProgress(stepId: number): number {
 
 export function WizardChrome() {
   const insets = useSafeAreaInsets();
+  const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
   const {
     goBack,
     goNext,
@@ -115,9 +117,10 @@ export function WizardChrome() {
         subtitle={stepMeta?.description}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 24}
+        keyboardVerticalOffset={keyboardOffset}
+        onLayout={onKeyboardLayout}
       >
         {/* ── Progress zone ─────────────────────────────────────────────── */}
         <View style={twStyle("bg-white px-5 pb-4 pt-3")}>
@@ -215,10 +218,10 @@ export function WizardChrome() {
           style={twStyle("flex-1")}
           contentContainerStyle={[
             twStyle("px-5 pt-4"),
-            { paddingBottom: 120 + Math.max(insets.bottom, 8) },
+            { paddingBottom: 16 + Math.max(insets.bottom, 8) },
           ]}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           showsVerticalScrollIndicator={false}
         >
           <OnboardingStepBody />
@@ -227,7 +230,7 @@ export function WizardChrome() {
         {/* ── Footer ───────────────────────────────────────────────────── */}
         <View
           style={[
-            twStyle("absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white px-5 pt-4"),
+            twStyle("border-t border-slate-100 bg-white px-5 pt-4"),
             { paddingBottom: Math.max(insets.bottom, 12) + 12 },
           ]}
         >

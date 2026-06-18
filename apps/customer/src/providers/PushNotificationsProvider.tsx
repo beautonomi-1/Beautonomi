@@ -7,7 +7,8 @@
  * Requires development build (not Expo Go).
  */
 import { useEffect, useRef, useState } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState, Platform, View, Text, TouchableOpacity } from "react-native";
+import { router } from "expo-router";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
@@ -32,6 +33,77 @@ import { navigateFromNotification, type Notification } from "@/lib/notifications
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
+
+function CustomerPushPermissionNudge() {
+  const { user } = useAuth();
+  const { gate } = useNativePermissionsOnboardingGate();
+  const nudgeShownRef = useRef(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !user || gate.phase === "loading") return;
+
+    const check = async () => {
+      try {
+        const { getOneSignalPermissionAsync, getOneSignalSubscriptionId } = await import(
+          "@/lib/onesignal-client"
+        );
+        const [permission, subId] = await Promise.all([
+          getOneSignalPermissionAsync(),
+          getOneSignalSubscriptionId(),
+        ]);
+        if (permission && subId) {
+          nudgeShownRef.current = false;
+          setVisible(false);
+          return;
+        }
+        if (nudgeShownRef.current) {
+          setVisible(true);
+          return;
+        }
+        nudgeShownRef.current = true;
+        setVisible(true);
+      } catch {
+        // ignore
+      }
+    };
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void check();
+    });
+    void check();
+    return () => sub.remove();
+  }, [user, gate.phase]);
+
+  if (!visible) return null;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: "#EFF6FF",
+        borderBottomWidth: 1,
+        borderBottomColor: "#BFDBFE",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+      }}
+    >
+      <Text style={{ flex: 1, fontSize: 13, color: "#1E3A8A", marginRight: 8 }} numberOfLines={2}>
+        Push notifications are off. Turn them on to get booking and message alerts.
+      </Text>
+      <TouchableOpacity
+        onPress={() => router.push("/(app)/account-settings/notifications" as never)}
+        style={{ backgroundColor: "#1D4ED8", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Open notification settings"
+      >
+        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Settings</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 /**
  * Deep link from a push — same rules as the in-app notification list
@@ -345,7 +417,6 @@ function usePushRegistration() {
     const tryRegister = async () => {
       if (cancelled || registeredRef.current) return;
       try {
-        const { OneSignal } = await import("react-native-onesignal");
         const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";
@@ -474,5 +545,10 @@ function useOneSignalLogout() {
 export function PushNotificationsProvider({ children }: { children: React.ReactNode }) {
   usePushRegistration();
   useOneSignalLogout();
-  return <>{children}</>;
+  return (
+    <>
+      <CustomerPushPermissionNudge />
+      {children}
+    </>
+  );
 }

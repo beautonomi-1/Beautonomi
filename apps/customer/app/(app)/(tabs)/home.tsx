@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   retryText: { color: Colors.white, fontWeight: "600" },
 });
 
-function SectionHeader({
+const SectionHeader = memo(function SectionHeader({
   title,
   onViewMore,
   contentPadding,
@@ -271,9 +271,9 @@ function SectionHeader({
       ) : null}
     </View>
   );
-}
+});
 
-function ProviderSection({
+const ProviderSection = memo(function ProviderSection({
   title,
   providers,
   badge,
@@ -330,7 +330,7 @@ function ProviderSection({
       </ScrollView>
     </View>
   );
-}
+});
 
 const CategoryPill = memo(function CategoryPill({
   label,

@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { emitChatBadgeRefresh } from "@/lib/notification-badge-events";
+import { useNotifications } from "@/providers/NotificationsContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -58,6 +59,7 @@ export default function ChatsScreen() {
   useScreenTracking("Chats");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const { user, loading: authLoading, refreshSession } = useAuth();
+  const { adjustChatUnreadCount } = useNotifications();
   const contentContainerStyle = isTablet
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
     : {};
@@ -185,6 +187,10 @@ export default function ChatsScreen() {
   });
 
   const markConversationRead = useCallback(async (conversationId: string) => {
+    const unread = conversations.find((c) => c.id === conversationId)?.unread_count_customer ?? 0;
+    if (unread > 0) {
+      adjustChatUnreadCount(-unread);
+    }
     setConversations((prev) =>
       prev.map((c) =>
         c.id === conversationId ? { ...c, unread_count_customer: 0 } : c
@@ -197,7 +203,7 @@ export default function ChatsScreen() {
     } else {
       emitChatBadgeRefresh();
     }
-  }, [load]);
+  }, [adjustChatUnreadCount, conversations, load]);
 
   const togglePinConversation = useCallback(
     async (conversationId: string, pinned: boolean) => {

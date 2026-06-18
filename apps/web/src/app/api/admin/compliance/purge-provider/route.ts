@@ -9,6 +9,10 @@ import {
   collectUserPurgeSnapshot,
 } from "@/lib/account/compliance-purge-snapshot";
 import {
+  redactProviderOrgPurgeSnapshot,
+  redactUserPurgeSnapshot,
+} from "@/lib/account/compliance-snapshot-redaction";
+import {
   insertCompliancePurgeAuditLog,
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
@@ -149,10 +153,10 @@ export async function POST(request: NextRequest) {
     const perUserSnapshots: NonNullable<CompliancePurgeReportV2["per_user_snapshots"]> = [];
     for (const sid of staffIds) {
       const s = await collectUserPurgeSnapshot(admin, sid);
-      if (s) perUserSnapshots.push(s);
+      if (s) perUserSnapshots.push(redactUserPurgeSnapshot(s));
     }
     const ownerSnap = await collectUserPurgeSnapshot(admin, ownerId);
-    if (ownerSnap) perUserSnapshots.push(ownerSnap);
+    if (ownerSnap) perUserSnapshots.push(redactUserPurgeSnapshot(ownerSnap));
 
     const startedAt = new Date().toISOString();
     const result = await purgeProviderOrganizationFully(admin, {
@@ -173,7 +177,7 @@ export async function POST(request: NextRequest) {
     const completedAt = new Date().toISOString();
 
     const report: CompliancePurgeReportV2 = {
-      schema_version: 2,
+      schema_version: 3,
       purge_type: "provider_org",
       started_at: startedAt,
       completed_at: completedAt,
@@ -191,7 +195,7 @@ export async function POST(request: NextRequest) {
         message_attachment_storage_objects_removed: result.storage_attachments_removed_total,
         auth_users_deleted: result.purged_user_ids,
       },
-      snapshot: orgSnap,
+      snapshot: redactProviderOrgPurgeSnapshot(orgSnap),
       per_user_snapshots: perUserSnapshots,
     };
 

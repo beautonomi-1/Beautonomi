@@ -8,10 +8,11 @@
  * Step 5 — Home address       (required unless address exists)
  * Step 6 — Beauty preferences (skippable)
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -53,6 +54,14 @@ import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { StaticMapImage } from "@/components/StaticMapImage";
 import { useTranslation } from "@beautonomi/i18n";
+import { useAutoFocus } from "@/features/onboarding/useAutoFocus";
+import { useKeyboardOffset } from "@/features/onboarding/useKeyboardOffset";
+import { KeyboardDoneAccessory } from "@/features/onboarding/KeyboardDoneAccessory";
+
+const CUSTOMER_KEYBOARD_ACCESSORY = {
+  phone: "customer-onboarding-phone",
+  postal: "customer-onboarding-postal",
+} as const;
 
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
@@ -155,6 +164,13 @@ export default function CustomerOnboarding() {
   const smsOtpExpirySec = authPolicy.sms_otp_expiration_seconds;
   const { pickWithOptions, loading: pickLoading } = useImagePicker();
   const { t } = useTranslation();
+  const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
+  const preferredNameRef = useRef<TextInput>(null);
+  const addressLine1Ref = useRef<TextInput>(null);
+  const cityRef = useRef<TextInput>(null);
+  const provinceRef = useRef<TextInput>(null);
+  const postalCodeRef = useRef<TextInput>(null);
+  const countryRef = useRef<TextInput>(null);
   const ob = useCallback(
     (key: string, options?: Record<string, string | number>) => {
       const fullKey = `customer.mobile.screens.onboarding.${key}`;
@@ -212,6 +228,12 @@ export default function CustomerOnboarding() {
   const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
   /** Whether to show the manual edit fields below the selected-address card */
   const [showManualFields, setShowManualFields] = useState(false);
+
+  useAutoFocus(preferredNameRef, !initializing && step === 1);
+  useAutoFocus(
+    addressLine1Ref,
+    !initializing && step === 5 && showManualFields && Boolean(addressLine1.trim()),
+  );
 
   /* Step 6 */
   const [hairTypes, setHairTypes] = useState<string[]>([]);
@@ -493,6 +515,7 @@ export default function CustomerOnboarding() {
       Alert.alert(ob("requiredTitle"), err);
       return;
     }
+    Keyboard.dismiss();
     setSaving(true);
     const ok = await saveStep();
     setSaving(false);
@@ -505,6 +528,7 @@ export default function CustomerOnboarding() {
   };
 
   const handleSkip = async () => {
+    Keyboard.dismiss();
     if (step < TOTAL_STEPS) {
       setStep((s) => s + 1);
     } else {
@@ -515,6 +539,7 @@ export default function CustomerOnboarding() {
   // §UX-audit 2026-05: back navigation so users can correct earlier steps
   // without having to skip all the way through and re-enter.
   const handleBack = () => {
+    Keyboard.dismiss();
     if (step > 1) setStep((s) => s - 1);
   };
 
@@ -625,10 +650,10 @@ export default function CustomerOnboarding() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={
-          Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined
-        }
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
+        keyboardVerticalOffset={keyboardOffset}
+        onLayout={onKeyboardLayout}
       >
         <ScrollView
           contentContainerStyle={{
@@ -637,6 +662,7 @@ export default function CustomerOnboarding() {
             paddingBottom: insets.bottom + 24,
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           showsVerticalScrollIndicator={false}
         >
           {/* ── Step 1: Name ── */}
@@ -663,12 +689,13 @@ export default function CustomerOnboarding() {
               </View>
               <SectionLabel required>Preferred name</SectionLabel>
               <TextInput
+                ref={preferredNameRef}
                 value={preferredName}
                 onChangeText={setPreferredName}
                 placeholder="e.g. Nolo"
-                autoFocus
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
+                returnKeyType="done"
               />
               <Text style={hintStyle}>Can be a first name, nickname, or whatever you prefer.</Text>
             </View>
@@ -865,7 +892,9 @@ export default function CustomerOnboarding() {
                       setOtpCode("");
                     }}
                     placeholder="082 123 4567"
+                    inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.phone}
                   />
+                  <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.phone} />
                   <TouchableOpacity
                     onPress={handleSendOtp}
                     disabled={otpSending || resendCooldown > 0 || !phoneNational.trim()}
@@ -1219,6 +1248,7 @@ export default function CustomerOnboarding() {
                         <View>
                           <SectionLabel required>Street address</SectionLabel>
                           <TextInput
+                            ref={addressLine1Ref}
                             value={addressLine1}
                             onChangeText={(t) => {
                               setAddressLine1(t);
@@ -1230,6 +1260,9 @@ export default function CustomerOnboarding() {
                             placeholder="e.g. 12 Main Street"
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
+                            returnKeyType="next"
+                            blurOnSubmit={false}
+                            onSubmitEditing={() => cityRef.current?.focus()}
                           />
 
                           <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
@@ -1239,48 +1272,67 @@ export default function CustomerOnboarding() {
                             placeholder="e.g. Unit 4B, Estate name"
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
+                            returnKeyType="next"
+                            blurOnSubmit={false}
+                            onSubmitEditing={() => cityRef.current?.focus()}
                           />
 
                           <SectionLabel required>City</SectionLabel>
                           <TextInput
+                            ref={cityRef}
                             value={city}
                             onChangeText={setCity}
                             placeholder="e.g. Cape Town"
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
+                            returnKeyType="next"
+                            blurOnSubmit={false}
+                            onSubmitEditing={() => provinceRef.current?.focus()}
                           />
 
                           <View style={{ flexDirection: "row", gap: 10 }}>
                             <View style={{ flex: 1 }}>
                               <SectionLabel>Province</SectionLabel>
                               <TextInput
+                                ref={provinceRef}
                                 value={province}
                                 onChangeText={setProvince}
                                 placeholder="Gauteng"
                                 style={inputStyle}
                                 placeholderTextColor="#94A3B8"
+                                returnKeyType="next"
+                                blurOnSubmit={false}
+                                onSubmitEditing={() => postalCodeRef.current?.focus()}
                               />
                             </View>
                             <View style={{ flex: 1 }}>
                               <SectionLabel>Postal code</SectionLabel>
                               <TextInput
+                                ref={postalCodeRef}
                                 value={postalCode}
                                 onChangeText={setPostalCode}
                                 placeholder="0001"
                                 keyboardType="numeric"
                                 style={inputStyle}
                                 placeholderTextColor="#94A3B8"
+                                inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
+                              />
+                              <KeyboardDoneAccessory
+                                nativeID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
+                                onNext={() => countryRef.current?.focus()}
                               />
                             </View>
                           </View>
 
                           <SectionLabel required>Country</SectionLabel>
                           <TextInput
+                            ref={countryRef}
                             value={country}
                             onChangeText={setCountry}
                             placeholder={tenantRegionName || "Country"}
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
+                            returnKeyType="done"
                           />
                         </View>
                       )}

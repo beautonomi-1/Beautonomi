@@ -20,12 +20,37 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-// APP_ENV drives production-only toggles like APNs env + OneSignal mode.
+// APP_ENV drives production-only toggles (store URLs, market hosts, etc.).
+// Push (APNs + OneSignal) uses production for both production AND preview
+// profiles so TestFlight/internal builds receive real push notifications.
 const appEnv =
   process.env.APP_ENV ||
   (process.env.NODE_ENV === "production" ? "production" : "development");
 const isProduction = appEnv === "production";
-const oneSignalMode = isProduction ? "production" : "development";
+const pushUsesProduction = appEnv === "production" || appEnv === "preview";
+const oneSignalMode = pushUsesProduction ? "production" : "development";
+const apsEnvironment = pushUsesProduction ? "production" : "development";
+
+const easBuildProfile = process.env.EAS_BUILD_PROFILE;
+if (
+  (easBuildProfile === "production" || easBuildProfile === "preview") &&
+  !pushUsesProduction
+) {
+  throw new Error(
+    `[Beautonomi customer] Push misconfiguration: EAS_BUILD_PROFILE=${easBuildProfile} but APP_ENV=${appEnv} ` +
+      `(pushUsesProduction=false). Preview and production builds must use production APNs + OneSignal mode.`,
+  );
+}
+if (process.env.EAS_BUILD === "true" || easBuildProfile) {
+  // eslint-disable-next-line no-console
+  console.log("[Beautonomi customer push-env]", {
+    appEnv,
+    easBuildProfile: easBuildProfile ?? "(local)",
+    oneSignalMode,
+    apsEnvironment,
+    pushUsesProduction,
+  });
+}
 
 /** Base config (previously in app.json). Kept here so expo-doctor passes its
  *  "app.config.js should use app.json values" check and we have a single
@@ -40,7 +65,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.60",
+  version: "1.0.61",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -54,7 +79,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "252",
+    buildNumber: "253",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -66,7 +91,7 @@ const BASE_EXPO_CONFIG = {
       LSApplicationQueriesSchemes: ["provider"],
     },
     entitlements: {
-      "aps-environment": isProduction ? "production" : "development",
+      "aps-environment": apsEnvironment,
       "com.apple.security.application-groups": [
         "group.com.beautonomi.onesignal",
       ],
@@ -88,7 +113,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 253,
+    versionCode: 254,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

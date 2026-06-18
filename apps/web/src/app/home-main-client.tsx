@@ -88,6 +88,32 @@ export default function HomeMainClient({
     window.history.replaceState({}, "", "/");
   }, [searchParams]);
 
+  useEffect(() => {
+    const dc = searchParams.get("deletion_cancel");
+    if (dc === "success") {
+      toast.success("Account deletion cancelled. You can sign in again with your existing credentials.", {
+        duration: 5000,
+      });
+      window.history.replaceState({}, "", "/");
+    } else if (dc === "invalid" || dc === "stale" || dc === "not_pending") {
+      toast.error("That cancellation link is invalid or has expired.");
+      window.history.replaceState({}, "", "/");
+    } else if (dc === "error") {
+      toast.error("We could not cancel your deletion request. Contact support.");
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get("deletion_scheduled") === "1") {
+      toast.message(
+        "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support.",
+        { duration: 6000 },
+      );
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams]);
+
   const isDeactivated = searchParams.get("deactivated") === "true";
 
   return (

@@ -11,12 +11,11 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { appendFormDataFileNative } from "@beautonomi/utils";
-import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { useImagePicker } from "@/hooks/useImagePicker";
 import type { ProductVariantRow, VariantOptionType } from "./types";
 import { generateVariantMatrixRows } from "./variantMatrix";
 import { computeMarkupFromPrices, computeRetailFromMarkup } from "./markupCalc";
@@ -39,6 +38,7 @@ export function VariantMatrixEditor({
 }: Props) {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [barcodeScanRowIndex, setBarcodeScanRowIndex] = useState<number | null>(null);
+  const { pickFromLibrary } = useImagePicker();
 
   const uploadVariantImage = useCallback(async (rowIndex: number, asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
     setUploadingIndex(rowIndex);
@@ -64,13 +64,10 @@ export function VariantMatrixEditor({
   }, [onChangeRows, variantRows]);
 
   const pickVariantImage = useCallback(async (rowIndex: number) => {
-    const result = await launchImageLibraryWithPermission(
-      { mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 },
-      { title: "Permission needed", message: "Allow photo library access for variant images." },
-    );
-    if (!result || result.canceled || !result.assets?.[0]) return;
-    await uploadVariantImage(rowIndex, result.assets[0]);
-  }, [uploadVariantImage]);
+    const picked = await pickFromLibrary({ aspect: [1, 1], allowsEditing: true, quality: 0.8 });
+    if (!picked) return;
+    await uploadVariantImage(rowIndex, picked);
+  }, [pickFromLibrary, uploadVariantImage]);
 
   const updateRow = (idx: number, patch: Partial<ProductVariantRow>) => {
     const next = [...variantRows];
