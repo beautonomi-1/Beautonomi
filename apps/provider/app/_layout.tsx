@@ -26,6 +26,7 @@ import {
 } from "@/config/public-env";
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
+import { ImageCropperProvider } from "@/components/image-crop";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -104,6 +105,7 @@ function ThemedApp() {
           <Stack
             screenOptions={{
               headerShown: false,
+              freezeOnBlur: true,
               contentStyle: { flex: 1, backgroundColor: "#ffffff" },
             }}
           >
@@ -131,6 +133,7 @@ function RootLayout() {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ErrorBoundary>
         <ThemeProvider>
+          <ImageCropperProvider>
           <AuthProvider>
             <NativePermissionsOnboardingProvider>
             <AnalyticsProvider>
@@ -140,6 +143,7 @@ function RootLayout() {
             </AnalyticsProvider>
             </NativePermissionsOnboardingProvider>
           </AuthProvider>
+          </ImageCropperProvider>
         </ThemeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

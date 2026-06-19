@@ -123,6 +123,17 @@ export function clearPendingPushNotification() {
   pendingPushPayload = null;
 }
 
+export async function getOneSignalPermissionAsync(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  try {
+    const { OneSignal } = await import("react-native-onesignal");
+    const granted = await OneSignal.Notifications.getPermissionAsync();
+    return granted === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function requestOneSignalPushPermission(fallbackToSettings = true): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {

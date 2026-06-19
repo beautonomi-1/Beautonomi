@@ -84,11 +84,13 @@ Same as §2, but:
 
 - Web: Privacy → Delete account (password or OTP + type `DELETE`).
 - Mobile: Delete account screen + type `DELETE`.
-- `POST /api/me/delete-account` runs `purgePlatformUserAccountFully` (FK clear + storage + auth delete). Pre-update `account_deletion_requested_at` is **best-effort** (failure must not block purge — same as admin purge path).
+- `POST /api/me/delete-account` runs `purgePlatformUserAccountFully` when `ACCOUNT_DELETION_GRACE_ENABLED` is off; when on, schedules 30-day purge via `scheduleAccountDeletion` and daily `/api/cron/process-account-deletions`.
+- Cancel scheduled deletion: email link `GET /api/account-deletion/cancel?t=...` or `POST /api/me/cancel-account-deletion` (token or superadmin `user_id`). **Not** via login.
 
 | Step | Expected |
 |------|----------|
-| 3.1 | OTP-only account completes delete | 200, signed out, cannot log in |
+| 3.1 | OTP-only account completes delete (grace off) | 200, signed out, cannot log in |
+| 3.1b | Grace enabled | 200 `scheduled: true`, signed out, email with cancel link |
 | 3.2 | User with blocking FKs | No `Could not start account deletion`; message mentions support if `AUTH_DELETE_DATABASE_ERROR` |
 | 3.3 | **Provider owner** (OTP-only) on provider app | Send-code copy shows email or SMS destination; delete **200**; business data removed; no pre-update-only 500 |
 | 3.4 | Ops notification (Slack configured) | Slack receives `compliance.account_deletion.succeeded` or `.failed` (fallback: `dispute.new` channel); Admin → Compliance purge audit lists successful self-service purges |

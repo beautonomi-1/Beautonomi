@@ -22,7 +22,12 @@ interface NotificationsCountResponse {
 }
 
 interface ProviderNavCounts {
+  pending_bookings?: number;
+  active_product_orders?: number;
   unread_messages?: number;
+  waiting_room?: number;
+  open_return_requests?: number;
+  critical_total?: number;
 }
 
 interface NotificationsCountContextValue {
@@ -32,7 +37,10 @@ interface NotificationsCountContextValue {
   chatUnreadCount: number;
   /** Unified total for bell + OS badge. */
   totalUnread: number;
+  /** Full nav-counts payload (bookings, orders, etc.) — single fetch for tab badges. */
+  navCounts: ProviderNavCounts | null;
   refresh: () => Promise<void>;
+  refreshNavCounts: () => Promise<void>;
   adjustUnreadCount: (delta: number) => void;
   replaceUnreadCount: (count: number) => void;
   adjustChatUnreadCount: (delta: number) => void;
@@ -57,7 +65,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     "/api/provider/nav-counts",
     {
       enabled: !!session,
-      staleTimeMs: 0,
+      staleTimeMs: 15_000,
     },
   );
 
@@ -101,7 +109,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     () => computeUnifiedUnread(notificationUnread, chatUnreadCount),
     [notificationUnread, chatUnreadCount],
   );
-  const badgeReady = serverSynced && chatServerSynced;
+  const badgeReady = serverSynced || chatServerSynced;
 
   const adjustUnreadCount = useCallback((delta: number) => {
     setCountBias((b) => b + delta);
@@ -184,7 +192,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    if (!badgeReady) return;
+    if (!session || !badgeReady) return;
     let cancelled = false;
     void (async () => {
       if (cancelled) return;
@@ -193,7 +201,16 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     return () => {
       cancelled = true;
     };
-  }, [totalUnread, badgeReady]);
+  }, [totalUnread, badgeReady, session]);
+
+  // Safety net when Supabase realtime disconnects.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      void refreshAll();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [session, refreshAll]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -271,7 +288,9 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       notificationUnread,
       chatUnreadCount,
       totalUnread,
+      navCounts: navCounts ?? null,
       refresh: refreshCount,
+      refreshNavCounts,
       adjustUnreadCount,
       replaceUnreadCount,
       adjustChatUnreadCount,
@@ -280,7 +299,9 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       notificationUnread,
       chatUnreadCount,
       totalUnread,
+      navCounts,
       refreshCount,
+      refreshNavCounts,
       adjustUnreadCount,
       replaceUnreadCount,
       adjustChatUnreadCount,
@@ -301,7 +322,9 @@ export function useNotificationsCount(): NotificationsCountContextValue {
       notificationUnread: 0,
       chatUnreadCount: 0,
       totalUnread: 0,
+      navCounts: null,
       refresh: async () => {},
+      refreshNavCounts: async () => {},
       adjustUnreadCount: () => {},
       replaceUnreadCount: () => {},
       adjustChatUnreadCount: () => {},

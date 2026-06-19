@@ -1,9 +1,8 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   TextInput,
   Alert,
   ScrollView,
@@ -15,7 +14,10 @@ import {
   Platform,
   Share as RNShare,
   Image,
+  RefreshControl,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -59,7 +61,7 @@ import {
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
-import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { api, getApiBaseUrl } from "@/lib/api-client";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
@@ -377,6 +379,172 @@ function statusStyle(s: string) {
   return { bg: "bg-gray-100", text: "text-gray-500" };
 }
 
+const GROUP_BOOKING_CARD_MIN_HEIGHT = 96;
+
+const GroupBookingCard = memo(function GroupBookingCard({
+  group,
+  onPress,
+}: {
+  group: GroupBooking;
+  onPress: (group: GroupBooking) => void;
+}) {
+  const ss = statusStyle(group.status);
+  return (
+    <TouchableOpacity
+      style={[
+        twStyle("rounded-xl border border-gray-100 bg-white p-4"),
+        { minHeight: GROUP_BOOKING_CARD_MIN_HEIGHT },
+      ]}
+      onPress={() => onPress(group)}
+      activeOpacity={0.7}
+    >
+      <View style={twStyle("flex-row items-start justify-between")}>
+        <View style={twStyle("flex-1")}>
+          <View style={twStyle("flex-row items-center")}>
+            <Text
+              style={[twStyle("text-base font-semibold text-gray-900"), { marginRight: 8 }]}
+            >
+              {group.title?.trim() ||
+                group.service_name ||
+                group.ref_number ||
+                "Group Session"}
+            </Text>
+            <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
+              <Text style={twStyle(`text-[10px] font-medium ${ss.text}`)}>
+                {groupStatusLabel(group.status)}
+              </Text>
+            </View>
+          </View>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+            {formatDate(group.scheduled_date)} at {group.scheduled_time?.substring(0, 5)} ·{" "}
+            {group.duration_minutes}min
+          </Text>
+          <View style={twStyle("mt-1.5 flex-row items-center")}>
+            {group.team_member_name ? (
+              <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                <Ionicons
+                  name="person-outline"
+                  size={12}
+                  color="#6b7280"
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={twStyle("text-xs text-gray-500")}>{group.team_member_name}</Text>
+              </View>
+            ) : null}
+            <View style={twStyle("flex-row items-center")}>
+              <Ionicons
+                name="people-outline"
+                size={12}
+                color="#6b7280"
+                style={{ marginRight: 4 }}
+              />
+              <Text style={twStyle("text-xs text-gray-500")}>
+                {resolveGroupParticipantCount(group)}
+                {group.max_participants ? `/${group.max_participants}` : ""}{" "}
+                {group.max_participants &&
+                resolveGroupParticipantCount(group) >= group.max_participants
+                  ? "· Full"
+                  : "participants"}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <Text style={twStyle("text-base font-bold text-gray-900")}>
+          {formatCurrency(Number(group.total_price) || 0)}
+        </Text>
+      </View>
+
+      {group.ref_number ? (
+        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>#{group.ref_number}</Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+});
+
+function GroupBookingsScrollHeader({
+  stats,
+  onCreate,
+}: {
+  stats: {
+    total: number;
+    totalParticipants: number;
+    recognizedEarnings: number;
+    bookedGross: number;
+  };
+  onCreate: () => void;
+}) {
+  return (
+    <View style={{ paddingBottom: 4 }}>
+      <TouchableOpacity
+        onPress={onCreate}
+        activeOpacity={0.86}
+        style={twStyle("mb-3 overflow-hidden rounded-2xl bg-gray-900 p-4")}
+        accessibilityRole="button"
+        accessibilityLabel="Create a new group booking"
+      >
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1 pr-3")}>
+            <View style={twStyle("mb-2 flex-row items-center")}>
+              <View style={twStyle("mr-2 rounded-full bg-white/10 px-2 py-1")}>
+                <Text
+                  style={twStyle(
+                    "text-[10px] font-semibold uppercase tracking-wide text-indigo-100"
+                  )}
+                >
+                  New
+                </Text>
+              </View>
+              <Text style={twStyle("text-xs font-medium text-indigo-100")}>Guided group setup</Text>
+            </View>
+            <Text style={twStyle("text-lg font-bold text-white")}>Create a group booking</Text>
+            <Text style={twStyle("mt-1 text-xs leading-5 text-gray-300")}>
+              Add a shared time slot, service, team member, and initial participants with calendar
+              checks.
+            </Text>
+          </View>
+          <View style={twStyle("h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500")}>
+            <Ionicons name="add" size={24} color="#ffffff" />
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <View style={twStyle("mb-3 flex-row gap-2")}>
+        <View style={[twStyle("flex-1"), { minWidth: 0, marginRight: 4 }]}>
+          <StatCard
+            title="Total"
+            value={String(stats.total)}
+            icon="people-outline"
+            iconColor="#6366f1"
+            iconBg="bg-indigo-50"
+            compact
+          />
+        </View>
+        <View style={[twStyle("flex-1"), { minWidth: 0, marginRight: 4 }]}>
+          <StatCard
+            title="People"
+            value={String(stats.totalParticipants)}
+            icon="person-outline"
+            iconColor="#3b82f6"
+            iconBg="bg-blue-50"
+            compact
+          />
+        </View>
+        <View style={[twStyle("flex-1"), { minWidth: 0 }]}>
+          <StatCard
+            title="Earned"
+            value={formatCurrency(stats.recognizedEarnings)}
+            subtitle={`Booked ${formatCurrency(stats.bookedGross)}`}
+            icon="cash-outline"
+            iconColor="#22c55e"
+            iconBg="bg-green-50"
+            compact
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^\d{2}:\d{2}$/;
 
@@ -488,6 +656,7 @@ export default function GroupBookingsScreen() {
     default_location_id?: string;
   }>();
   const pendingGroupDeepLinkRef = useRef<"edit" | "cancel" | null>(null);
+  const openGroupDetailRef = useRef<(group: GroupBooking) => Promise<void>>(async () => {});
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -936,6 +1105,7 @@ export default function GroupBookingsScreen() {
       setGroupDetailLoading(false);
     }
   }
+  openGroupDetailRef.current = openGroupDetail;
 
   useEffect(() => {
     if (params.open_edit === "1") pendingGroupDeepLinkRef.current = "edit";
@@ -2741,6 +2911,49 @@ export default function GroupBookingsScreen() {
     ]);
   }
 
+  const insets = useSafeAreaInsets();
+  const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
+
+  // Stable wrapper around `openCreate` (a plain function recreated each render)
+  // so the memoized list header / empty state aren't invalidated every render.
+  const handleOpenCreate = useCallback(() => openCreateRef.current(), []);
+
+  const groupListHeader = useMemo(
+    () => <GroupBookingsScrollHeader stats={stats} onCreate={handleOpenCreate} />,
+    [stats, handleOpenCreate]
+  );
+
+  const groupListEmpty = useMemo(
+    () => (
+      <EmptyState
+        icon="people-outline"
+        title={search.trim() ? "No results" : "No group bookings"}
+        description={
+          search.trim()
+            ? "Try a different search or filter"
+            : "Create a group session for bridal parties, events, families, or shared service appointments."
+        }
+        actionLabel={search.trim() ? undefined : "Create group booking"}
+        actionAccessibilityLabel="Create a new group booking"
+        onAction={search.trim() ? undefined : handleOpenCreate}
+      />
+    ),
+    [search, handleOpenCreate]
+  );
+
+  const handleOpenGroup = useCallback((group: GroupBooking) => {
+    void openGroupDetailRef.current(group);
+  }, []);
+
+  const renderGroupBooking = useCallback(
+    ({ item }: { item: GroupBooking }) => (
+      <GroupBookingCard group={item} onPress={handleOpenGroup} />
+    ),
+    [handleOpenGroup]
+  );
+
+  const renderGroupBookingSeparator = useCallback(() => <View style={{ height: 10 }} />, []);
+
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
@@ -2763,84 +2976,15 @@ export default function GroupBookingsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-        <TouchableOpacity
-          onPress={openCreate}
-          activeOpacity={0.86}
-          style={twStyle("mb-3 overflow-hidden rounded-2xl bg-gray-900 p-4")}
-          accessibilityRole="button"
-          accessibilityLabel="Create a new group booking"
-        >
-          <View style={twStyle("flex-row items-center justify-between")}>
-            <View style={twStyle("flex-1 pr-3")}>
-              <View style={twStyle("mb-2 flex-row items-center")}>
-                <View style={twStyle("mr-2 rounded-full bg-white/10 px-2 py-1")}>
-                  <Text
-                    style={twStyle(
-                      "text-[10px] font-semibold uppercase tracking-wide text-indigo-100"
-                    )}
-                  >
-                    New
-                  </Text>
-                </View>
-                <Text style={twStyle("text-xs font-medium text-indigo-100")}>
-                  Guided group setup
-                </Text>
-              </View>
-              <Text style={twStyle("text-lg font-bold text-white")}>Create a group booking</Text>
-              <Text style={twStyle("mt-1 text-xs leading-5 text-gray-300")}>
-                Add a shared time slot, service, team member, and initial participants with calendar
-                checks.
-              </Text>
-            </View>
-            <View
-              style={twStyle("h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500")}
-            >
-              <Ionicons name="add" size={24} color="#ffffff" />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-            <StatCard
-              title="Total"
-              value={String(stats.total)}
-              icon="people-outline"
-              iconColor="#6366f1"
-              iconBg="bg-indigo-50"
-              compact
-            />
-          </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-            <StatCard
-              title="People"
-              value={String(stats.totalParticipants)}
-              icon="person-outline"
-              iconColor="#3b82f6"
-              iconBg="bg-blue-50"
-              compact
-            />
-          </View>
-          <View style={twStyle("flex-1")}>
-            <StatCard
-              title="Earned"
-              value={formatCurrency(stats.recognizedEarnings)}
-              subtitle={`Booked ${formatCurrency(stats.bookedGross)}`}
-              icon="cash-outline"
-              iconColor="#22c55e"
-              iconBg="bg-green-50"
-              compact
-            />
-          </View>
+        <View style={{ marginBottom: 8 }}>
+          <SearchBar
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by ref, service, staff..."
+          />
         </View>
 
-        <SearchBar
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search by ref, service, staff..."
-        />
-
-        <View style={twStyle("my-3")}>
+        <View style={{ marginBottom: 8 }}>
           <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
         </View>
 
@@ -2848,26 +2992,30 @@ export default function GroupBookingsScreen() {
           <SkeletonList rows={4} />
         ) : groupError && !groups.length ? (
           <ErrorState message={groupError} onRetry={refresh} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No group bookings"
-            description="Create a group session for bridal parties, events, families, or shared service appointments."
-            actionLabel="Create group booking"
-            actionAccessibilityLabel="Create a new group booking"
-            onAction={openCreate}
-          />
         ) : (
-          <FlatList
-            {...verticalFlatListPerf}
+          <FlashList
             data={filtered}
             keyExtractor={(g: GroupBooking) => g.id}
+            renderItem={renderGroupBooking}
             style={{ flex: 1, minHeight: 0 }}
-            showsVerticalScrollIndicator={true}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            contentContainerStyle={{ paddingBottom: listBottomPadding }}
+            showsVerticalScrollIndicator
+            overScrollMode="always"
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor="#7C3AED"
+                colors={["#7C3AED"]}
+              />
+            }
             onEndReached={search.trim() ? undefined : loadMoreGroups}
             onEndReachedThreshold={0.35}
+            ListHeaderComponent={groupListHeader}
+            ListEmptyComponent={groupListEmpty}
+            ItemSeparatorComponent={renderGroupBookingSeparator}
             ListFooterComponent={
               loadingMoreGroups ? (
                 <View style={twStyle("py-4")}>
@@ -2875,84 +3023,6 @@ export default function GroupBookingsScreen() {
                 </View>
               ) : null
             }
-            contentContainerStyle={{ paddingBottom: 120 }}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            renderItem={({ item: group }: { item: GroupBooking }) => {
-              const ss = statusStyle(group.status);
-              return (
-                <TouchableOpacity
-                  style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
-                  onPress={() => void openGroupDetail(group)}
-                  activeOpacity={0.7}
-                >
-                  <View style={twStyle("flex-row items-start justify-between")}>
-                    <View style={twStyle("flex-1")}>
-                      <View style={twStyle("flex-row items-center")}>
-                        <Text
-                          style={[
-                            twStyle("text-base font-semibold text-gray-900"),
-                            { marginRight: 8 },
-                          ]}
-                        >
-                          {group.title?.trim() ||
-                            group.service_name ||
-                            group.ref_number ||
-                            "Group Session"}
-                        </Text>
-                        <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
-                          <Text style={twStyle(`text-[10px] font-medium ${ss.text}`)}>
-                            {groupStatusLabel(group.status)}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                        {formatDate(group.scheduled_date)} at{" "}
-                        {group.scheduled_time?.substring(0, 5)} · {group.duration_minutes}min
-                      </Text>
-                      <View style={twStyle("mt-1.5 flex-row items-center")}>
-                        {group.team_member_name && (
-                          <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
-                            <Ionicons
-                              name="person-outline"
-                              size={12}
-                              color="#6b7280"
-                              style={{ marginRight: 4 }}
-                            />
-                            <Text style={twStyle("text-xs text-gray-500")}>
-                              {group.team_member_name}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={twStyle("flex-row items-center")}>
-                          <Ionicons
-                            name="people-outline"
-                            size={12}
-                            color="#6b7280"
-                            style={{ marginRight: 4 }}
-                          />
-                          <Text style={twStyle("text-xs text-gray-500")}>
-                            {resolveGroupParticipantCount(group)}
-                            {group.max_participants ? `/${group.max_participants}` : ""}{" "}
-                            {group.max_participants && resolveGroupParticipantCount(group) >= group.max_participants
-                              ? "· Full"
-                              : "participants"}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    <Text style={twStyle("text-base font-bold text-gray-900")}>
-                      {formatCurrency(Number(group.total_price) || 0)}
-                    </Text>
-                  </View>
-
-                  {group.ref_number && (
-                    <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>
-                      #{group.ref_number}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              );
-            }}
           />
         )}
       </View>

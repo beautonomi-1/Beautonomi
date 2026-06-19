@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -19,8 +20,9 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ProviderCard } from "@/components/ProviderCard";
-import type { SearchResult, Category } from "@/types/api";
+import type { SearchResult, Category, PublicProviderCard } from "@/types/api";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { captureError } from "@/lib/sentry";
@@ -38,9 +40,18 @@ type Suggestion = {
   distance_km?: number;
 };
 
+const SearchResultRow = memo(function SearchResultRow({ provider }: { provider: PublicProviderCard }) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <ProviderCard provider={provider} />
+    </View>
+  );
+});
+
 export default function SearchScreen() {
   useScreenTracking("Search");
   const { contentPadding } = useResponsive();
+  const listPaddingBottom = useTabContentPaddingBottom();
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ q?: string; category?: string }>();
   const [query, setQuery] = useState(params.q ?? "");
@@ -235,6 +246,62 @@ export default function SearchScreen() {
     setQuery(s.name);
     void searchRef.current?.(false, s.name, category);
   }, [category]);
+
+  const renderProviderItem = useCallback(
+    ({ item }: { item: PublicProviderCard }) => <SearchResultRow provider={item} />,
+    [],
+  );
+
+  const listHeader = (
+    <>
+      {error && (
+        <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <Text style={{ color: "#B91C1C" }}>{error}</Text>
+        </View>
+      )}
+
+      {loading ? (
+        <View style={{ paddingVertical: 48, alignItems: "center" }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={{ color: Colors.gray[500], marginTop: 12 }}>{t("customer.searchScreen.searching")}</Text>
+        </View>
+      ) : !results && searched && !error ? (
+        <View style={{ paddingVertical: 48, alignItems: "center" }}>
+          <Text style={{ color: Colors.gray[600] }}>{t("customer.searchScreen.noResults")}</Text>
+        </View>
+      ) : results && results.providers.length === 0 ? (
+        <View style={{ paddingVertical: 48, alignItems: "center", paddingHorizontal: 24 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+            <Ionicons name="search-outline" size={32} color={Colors.gray[400]} />
+          </View>
+          <Text style={{ color: Colors.gray[700], fontSize: 16, fontWeight: "600", marginBottom: 8, textAlign: "center" }}>{t("customer.searchScreen.noProviders")}</Text>
+          <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center", marginBottom: 20 }}>{t("customer.searchScreen.noProvidersHint")}</Text>
+          {(query.trim() || category) ? (
+            <TouchableOpacity
+              onPress={() => { setQuery(""); setCategory(""); setError(null); search(); }}
+              style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.gray[100] }}
+              accessibilityLabel={t("customer.searchScreen.clearFilters")}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{t("customer.searchScreen.clearFilters")}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : results && results.providers.length > 0 ? (
+        <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
+          {results.total === 1
+            ? t("customer.searchScreen.providersFoundOne")
+            : t("customer.searchScreen.providersFoundMany", { count: results.total })}
+        </Text>
+      ) : (
+        <View style={{ paddingVertical: 48, alignItems: "center" }}>
+          <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
+            {t("customer.searchScreen.promptDefault")}
+          </Text>
+        </View>
+      )}
+    </>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
@@ -458,9 +525,12 @@ export default function SearchScreen() {
         </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: contentPadding, paddingBottom: 220 }}
+        <FlashList
+          data={results?.providers ?? []}
+          keyExtractor={(item) => item.id}
+          renderItem={renderProviderItem}
+          ListHeaderComponent={listHeader}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: listPaddingBottom }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           refreshControl={
@@ -468,63 +538,7 @@ export default function SearchScreen() {
           }
           accessibilityRole="list"
           accessibilityLabel="Search results"
-        >
-        {error && (
-          <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-            <Text style={{ color: "#B91C1C" }}>{error}</Text>
-          </View>
-        )}
-
-        {loading ? (
-          <View style={{ paddingVertical: 48, alignItems: "center" }}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={{ color: Colors.gray[500], marginTop: 12 }}>{t("customer.searchScreen.searching")}</Text>
-          </View>
-        ) : !results && searched && !error ? (
-          <View style={{ paddingVertical: 48, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[600] }}>{t("customer.searchScreen.noResults")}</Text>
-          </View>
-        ) : results && results.providers.length === 0 ? (
-          <View style={{ paddingVertical: 48, alignItems: "center", paddingHorizontal: 24 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-              <Ionicons name="search-outline" size={32} color={Colors.gray[400]} />
-            </View>
-            <Text style={{ color: Colors.gray[700], fontSize: 16, fontWeight: "600", marginBottom: 8, textAlign: "center" }}>{t("customer.searchScreen.noProviders")}</Text>
-            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center", marginBottom: 20 }}>{t("customer.searchScreen.noProvidersHint")}</Text>
-            {(query.trim() || category) ? (
-              <TouchableOpacity
-                onPress={() => { setQuery(""); setCategory(""); setError(null); search(); }}
-                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.gray[100] }}
-                accessibilityLabel={t("customer.searchScreen.clearFilters")}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{t("customer.searchScreen.clearFilters")}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : results ? (
-          <>
-            <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-              {results.total === 1
-                ? t("customer.searchScreen.providersFoundOne")
-                : t("customer.searchScreen.providersFoundMany", { count: results.total })}
-            </Text>
-            <View>
-              {results.providers.map((p) => (
-                <View key={p.id} style={{ marginBottom: 16 }}>
-                  <ProviderCard provider={p} />
-                </View>
-              ))}
-            </View>
-          </>
-        ) : (
-          <View style={{ paddingVertical: 48, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
-              {t("customer.searchScreen.promptDefault")}
-            </Text>
-          </View>
-        )}
-        </ScrollView>
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

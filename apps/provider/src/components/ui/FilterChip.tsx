@@ -12,7 +12,8 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingVertical: 4, flexDirection: "row" }}
+      nestedScrollEnabled
+      contentContainerStyle={{ paddingVertical: 4, paddingRight: 16, flexDirection: "row", alignItems: "center" }}
     >
       {options.map((opt) => {
         const isActive = selected === opt.value;
@@ -35,7 +36,7 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={opt.label}
           >
-            <Text style={{ fontSize: 14, fontWeight: "500", color: isActive ? "#fff" : "#4b5563" }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: isActive ? "#fff" : "#4b5563" }} numberOfLines={1}>
               {opt.label}
             </Text>
           </TouchableOpacity>

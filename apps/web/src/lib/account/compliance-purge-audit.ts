@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { complianceSnapshotPurgeAfterDate } from "@/lib/account/account-deletion-config";
 
 export type CompliancePurgeType = "user" | "provider_org" | "tenant_reset";
 
 export type CompliancePurgeReportV2 = {
-  schema_version: 2;
+  schema_version: 2 | 3;
   purge_type: CompliancePurgeType;
   started_at: string;
   completed_at: string;
@@ -40,8 +41,12 @@ export async function insertCompliancePurgeAuditLog(
     reason: string;
     report: CompliancePurgeReportV2;
     purged_user_ids: string[];
+    purge_after_at?: string | null;
   },
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const purgeAfter =
+    row.purge_after_at ?? complianceSnapshotPurgeAfterDate().toISOString();
+
   const { data, error } = await admin
     .from("compliance_purge_audit_log")
     .insert({
@@ -53,6 +58,7 @@ export async function insertCompliancePurgeAuditLog(
       reason: row.reason.trim(),
       report: row.report as Record<string, unknown>,
       purged_user_ids: row.purged_user_ids,
+      purge_after_at: purgeAfter,
     })
     .select("id")
     .single();

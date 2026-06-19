@@ -27,6 +27,7 @@ import {
 } from "@/config/public-env";
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
+import { ImageCropperProvider } from "@/components/image-crop";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -105,6 +106,7 @@ function ThemedApp() {
           <Stack
             screenOptions={{
               headerShown: false,
+              freezeOnBlur: true,
               contentStyle: {
                 flex: 1,
                 backgroundColor: stackBackground,
@@ -147,6 +149,7 @@ function RootLayout() {
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <MarketHostBootstrap />
           <ThemeProvider>
+            <ImageCropperProvider>
             <LanguageReactiveRoot>
             <AuthProvider>
               <NativePermissionsOnboardingProvider>
@@ -162,6 +165,7 @@ function RootLayout() {
               </NativePermissionsOnboardingProvider>
             </AuthProvider>
             </LanguageReactiveRoot>
+            </ImageCropperProvider>
           </ThemeProvider>
         </SafeAreaProvider>
       </View>

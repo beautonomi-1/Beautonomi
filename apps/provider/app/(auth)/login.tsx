@@ -66,7 +66,7 @@ type LoginMode = "phone" | "email";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ deactivated?: string; suspended?: string }>();
+  const params = useLocalSearchParams<{ deactivated?: string; suspended?: string; deletion_scheduled?: string }>();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,
@@ -100,9 +100,11 @@ export default function LoginScreen() {
   const statusMessage =
     params.suspended === "1"
       ? "Your account has been suspended. Contact support if you believe this is an error."
-      : params.deactivated === "1"
-        ? "You deactivated your account. Log in again to reactivate."
-        : null;
+      : params.deletion_scheduled === "1"
+        ? "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support."
+        : params.deactivated === "1"
+          ? "You deactivated your account. Log in again to reactivate."
+          : null;
   const [countryCode, setCountryCode] = useState(getDeviceDefaultCountryDial);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [phone, setPhone] = useState("");

@@ -15,7 +15,7 @@ const ONBOARDING_ENTRY_ROLES = new Set(["customer", "provider_onboarding"]);
 
 export function ProfileLoadErrorBanner() {
   const pathname = usePathname();
-  const { profileLoadError, loading, refresh, role } = useProvider();
+  const { provider, profileLoadError, loading, refresh, role } = useProvider();
   const isOnboardingRoute = pathname?.includes("/onboarding") ?? false;
   const isExpectedSetupPermissionError =
     isOnboardingRoute &&
@@ -39,6 +39,33 @@ export function ProfileLoadErrorBanner() {
   }, [profileLoadError, loading, refresh]);
 
   if (!profileLoadError || isExpectedSetupPermissionError) return null;
+
+  // Cached profile: show a quiet inline retry instead of a blocking red banner.
+  if (provider) {
+    return (
+      <View style={twStyle("flex-row items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2")}>
+        <View style={twStyle("mr-2 flex-1 flex-row items-center")}>
+          <Ionicons name="cloud-offline-outline" size={18} color="#b45309" style={{ marginRight: 8 }} />
+          <Text style={twStyle("flex-1 text-xs text-amber-900")} numberOfLines={2}>
+            Profile refresh failed. Some data may be outdated.
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => void refresh()}
+          disabled={loading}
+          style={twStyle("rounded-md bg-amber-700 px-2.5 py-1.5")}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading profile"
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <Text style={twStyle("text-xs font-semibold text-white")}>Retry</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={twStyle("border-l-4 border-red-500 bg-red-50 px-4 py-3")}>

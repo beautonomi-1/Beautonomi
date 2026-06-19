@@ -60,6 +60,8 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingTextField } from "./OnboardingTextField";
+import { KeyboardDoneAccessory } from "./KeyboardDoneAccessory";
+import { useAutoFocus } from "./useAutoFocus";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
 import type { BusinessType, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
@@ -81,6 +83,13 @@ import {
 const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
   "rounded-[1.5rem] border border-slate-200 bg-white px-5 py-4 text-base text-slate-900 shadow-sm";
+
+const KEYBOARD_ACCESSORY = {
+  phone: "provider-onboarding-phone",
+  vat: "provider-onboarding-vat",
+  addonPrice: "provider-onboarding-addon-price",
+  addonDuration: "provider-onboarding-addon-duration",
+} as const;
 
 // ─── Step 1: Team size ───────────────────────────────────────────────────────
 
@@ -169,6 +178,10 @@ function Step1TeamSize() {
 
 function Step2Identity() {
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
+  const nameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  useAutoFocus(nameRef);
   const deviceDial = getDeviceDefaultCountryDial();
   const [countryCode, setCountryCode] = useState("+27");
   const [national, setNational] = useState("");
@@ -286,6 +299,7 @@ function Step2Identity() {
             <Ionicons name="person-outline" size={18} color="#9ca3af" />
           </View>
           <TextInput
+            ref={nameRef}
             value={formData.owner_name || ""}
             onChangeText={(t) => updateFormData({ owner_name: t })}
             placeholder="Your name"
@@ -296,6 +310,8 @@ function Step2Identity() {
             textContentType="name"
             autoComplete="name"
             returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => emailRef.current?.focus()}
           />
         </View>
       </View>
@@ -312,6 +328,7 @@ function Step2Identity() {
             <Ionicons name="mail-outline" size={18} color="#9ca3af" />
           </View>
           <TextInput
+            ref={emailRef}
             value={formData.owner_email || ""}
             onChangeText={(t) => updateFormData({ owner_email: t })}
             placeholder="you@example.com"
@@ -323,6 +340,8 @@ function Step2Identity() {
             textContentType="emailAddress"
             autoComplete="email"
             returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => phoneRef.current?.focus()}
           />
         </View>
       </View>
@@ -348,6 +367,7 @@ function Step2Identity() {
             <Ionicons name="chevron-down" size={14} color="#6b7280" />
           </TouchableOpacity>
           <TextInput
+            ref={phoneRef}
             value={national}
             onChangeText={(t) => setNational(t.replace(/[^\d\s]/g, ""))}
             placeholder="82 123 4567"
@@ -359,7 +379,10 @@ function Step2Identity() {
             textContentType="telephoneNumber"
             autoComplete="tel"
             returnKeyType="done"
+            inputAccessoryViewID={KEYBOARD_ACCESSORY.phone}
+            onSubmitEditing={() => phoneRef.current?.blur()}
           />
+          <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.phone} />
         </View>
 
         <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
@@ -552,6 +575,9 @@ type BizTypeOpt = {
 
 function Step3Business() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const businessNameRef = useRef<TextInput>(null);
+  const descriptionRef = useRef<TextInput>(null);
+  useAutoFocus(businessNameRef);
   const types: BizTypeOpt[] = [
     {
       id: "salon",
@@ -578,6 +604,7 @@ function Step3Business() {
             <Ionicons name="briefcase-outline" size={20} color="#64748b" />
           </View>
           <TextInput
+            ref={businessNameRef}
             value={formData.business_name || ""}
             onChangeText={(t) => updateFormData({ business_name: t })}
             placeholder="Shown to clients"
@@ -586,6 +613,8 @@ function Step3Business() {
             accessibilityLabel="Business name"
             accessibilityHint="Shown to clients"
             returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => descriptionRef.current?.focus()}
           />
         </View>
       </View>
@@ -642,6 +671,7 @@ function Step3Business() {
 
       <View>
         <OnboardingTextField
+          ref={descriptionRef}
           label="Description (recommended)"
           hint="Tell clients what you offer and what makes you stand out."
           value={formData.description || ""}
@@ -671,6 +701,10 @@ type YocoOpt = {
 
 function Step4Payment() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const yocoOtherRef = useRef<TextInput>(null);
+  const vatNumberRef = useRef<TextInput>(null);
+  useAutoFocus(yocoOtherRef, formData.yoco_machine === "other");
+  useAutoFocus(vatNumberRef, formData.is_vat_registered === true && formData.yoco_machine !== "other");
   const yoco: YocoOpt[] = [
     {
       id: "yes",
@@ -742,6 +776,7 @@ function Step4Payment() {
         </View>
         {formData.yoco_machine === "other" ? (
           <OnboardingTextField
+            ref={yocoOtherRef}
             label="Card machine model"
             value={formData.yoco_machine_other || ""}
             onChangeText={(t) => updateFormData({ yoco_machine_other: t })}
@@ -782,6 +817,7 @@ function Step4Payment() {
           <>
             <View style={twStyle("h-px bg-slate-100")} />
             <OnboardingTextField
+              ref={vatNumberRef}
               label="VAT number"
               value={formData.vat_number || ""}
               onChangeText={(t) =>
@@ -790,7 +826,9 @@ function Step4Payment() {
               placeholder="10-digit VAT number"
               keyboardType="number-pad"
               returnKeyType="done"
+              inputAccessoryViewID={KEYBOARD_ACCESSORY.vat}
             />
+            <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.vat} />
           </>
         ) : null}
       </View>
@@ -872,6 +910,7 @@ const SPECIAL_SLUGS = new Set(["none", "other"]);
 
 function Step5Software() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const customSoftwareRef = useRef<TextInput>(null);
 
   // Start with the built-in fallback so the UI is never blank while loading.
   const [softwareOptions, setSoftwareOptions] = useState<SoftwareOption[]>(FALLBACK_SOFTWARE);
@@ -925,6 +964,8 @@ function Step5Software() {
       : formData.previous_software === "none"
         ? "none"
         : (allOptions.find((s) => s.id === formData.previous_software)?.id ?? "");
+
+  useAutoFocus(customSoftwareRef, selectedId === "other");
 
   const handleSelect = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -985,6 +1026,7 @@ function Step5Software() {
 
       {selectedId === "other" ? (
         <OnboardingTextField
+          ref={customSoftwareRef}
           label="Other software name"
           value={customValue}
           onChangeText={(t) => {
@@ -996,7 +1038,6 @@ function Step5Software() {
             });
           }}
           placeholder="Type the software name…"
-          autoFocus
           returnKeyType="done"
         />
       ) : null}
@@ -1142,6 +1183,10 @@ function Step6Payroll() {
 function Step7Location() {
   const { formData, updateFormData } = useOnboardingWizard();
   const { width: windowWidth } = useWindowDimensions();
+  const line2Ref = useRef<TextInput>(null);
+  const cityRef = useRef<TextInput>(null);
+  const countryRef = useRef<TextInput>(null);
+  useAutoFocus(line2Ref);
   const [mapPinOpen, setMapPinOpen] = useState(false);
   const [locating, setLocating] = useState(false);
 
@@ -1314,20 +1359,27 @@ function Step7Location() {
 
       <View style={twStyle("gap-4 mt-2")}>
         <OnboardingTextField
+          ref={line2Ref}
           label="Apt / suite (optional)"
           value={addr.line2 || ""}
           onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
           returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => cityRef.current?.focus()}
         />
         <OnboardingTextField
+          ref={cityRef}
           label="City"
           value={addr.city || ""}
           onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
           textContentType="addressCity"
           autoComplete="address-line2"
           returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => countryRef.current?.focus()}
         />
         <OnboardingTextField
+          ref={countryRef}
           label="Country"
           value={addr.country || ""}
           onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
@@ -2157,6 +2209,10 @@ function Step11Services() {
   const [addonDuration, setAddonDuration] = useState("");
   const [addonDescription, setAddonDescription] = useState("");
   const [draftAddons, setDraftAddons] = useState<OnboardingServiceAddon[]>([]);
+  const addonNameRef = useRef<TextInput>(null);
+  const addonPriceRef = useRef<TextInput>(null);
+  const addonDurationRef = useRef<TextInput>(null);
+  const addonDescriptionRef = useRef<TextInput>(null);
 
   const resetForm = useCallback(() => {
     setForm(defaultOnboardingFormState(formData.business_type ?? "salon"));
@@ -2441,6 +2497,7 @@ function Step11Services() {
             </View>
           ))}
           <TextInput
+            ref={addonNameRef}
             value={addonName}
             onChangeText={setAddonName}
             placeholder="Add-on name"
@@ -2448,9 +2505,12 @@ function Step11Services() {
             placeholderTextColor="#94a3b8"
             accessibilityLabel="Add-on name"
             returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => addonPriceRef.current?.focus()}
           />
           <View style={twStyle("flex-row gap-3")}>
             <TextInput
+              ref={addonPriceRef}
               value={addonPrice}
               onChangeText={setAddonPrice}
               placeholder={`Price (${tenantCurrency})`}
@@ -2458,9 +2518,10 @@ function Step11Services() {
               style={twStyle(`${inputCls} flex-1`)}
               placeholderTextColor="#94a3b8"
               accessibilityLabel="Add-on price"
-              returnKeyType="next"
+              inputAccessoryViewID={KEYBOARD_ACCESSORY.addonPrice}
             />
             <TextInput
+              ref={addonDurationRef}
               value={addonDuration}
               onChangeText={setAddonDuration}
               placeholder="+ min"
@@ -2468,10 +2529,19 @@ function Step11Services() {
               style={twStyle(`${inputCls} w-24`)}
               placeholderTextColor="#94a3b8"
               accessibilityLabel="Add-on extra minutes"
-              returnKeyType="next"
+              inputAccessoryViewID={KEYBOARD_ACCESSORY.addonDuration}
             />
           </View>
+          <KeyboardDoneAccessory
+            nativeID={KEYBOARD_ACCESSORY.addonPrice}
+            onNext={() => addonDurationRef.current?.focus()}
+          />
+          <KeyboardDoneAccessory
+            nativeID={KEYBOARD_ACCESSORY.addonDuration}
+            onNext={() => addonDescriptionRef.current?.focus()}
+          />
           <TextInput
+            ref={addonDescriptionRef}
             value={addonDescription}
             onChangeText={setAddonDescription}
             placeholder="Add-on description (optional)"

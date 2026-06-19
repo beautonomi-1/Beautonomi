@@ -48,11 +48,28 @@ vi.mock("@/lib/auth/verify-sensitive-action", () => ({
 
 const mockLoadSelfServiceDeletionContext = vi.fn();
 const mockNotifyOpsSelfServiceAccountDeletion = vi.fn();
+const mockScheduleAccountDeletion = vi.fn();
+const mockIsAccountDeletionGraceEnabled = vi.fn();
+const mockWriteAuditLog = vi.fn();
 
 vi.mock("@/lib/account/notify-ops-self-service-account-deletion", () => ({
   loadSelfServiceDeletionContext: (...args: unknown[]) => mockLoadSelfServiceDeletionContext(...args),
   notifyOpsSelfServiceAccountDeletion: (...args: unknown[]) =>
     mockNotifyOpsSelfServiceAccountDeletion(...args),
+}));
+
+vi.mock("@/lib/account/account-deletion-config", () => ({
+  isAccountDeletionGraceEnabled: () => mockIsAccountDeletionGraceEnabled(),
+  ACCOUNT_DELETION_GRACE_DAYS: 30,
+}));
+
+vi.mock("@/lib/account/schedule-account-deletion", () => ({
+  scheduleAccountDeletion: (...args: unknown[]) => mockScheduleAccountDeletion(...args),
+}));
+
+vi.mock("@/lib/audit/audit", () => ({
+  writeAuditLog: (...args: unknown[]) => mockWriteAuditLog(...args),
+  extractRequestMeta: () => ({ ip_address: "127.0.0.1", user_agent: "test" }),
 }));
 
 function request(body: Record<string, unknown>) {
@@ -109,6 +126,13 @@ describe("POST /api/me/delete-account", () => {
       snapshot: null,
     });
     mockNotifyOpsSelfServiceAccountDeletion.mockResolvedValue(undefined);
+    mockIsAccountDeletionGraceEnabled.mockReturnValue(false);
+    mockScheduleAccountDeletion.mockResolvedValue({
+      ok: true,
+      purge_after_at: "2026-07-18T00:00:00.000Z",
+      cancel_url: "https://example.com/cancel",
+    });
+    mockWriteAuditLog.mockResolvedValue(undefined);
   });
 
   it("purges account when pre-update stamp fails (non-blocking)", async () => {
@@ -179,5 +203,26 @@ describe("POST /api/me/delete-account", () => {
     expect(res.status).toBe(401);
     expect(json.code).toBe("VERIFICATION_FAILED");
     expect(mockPurgePlatformUserAccountFully).not.toHaveBeenCalled();
+  });
+
+  it("schedules deletion when grace period is enabled", async () => {
+    mockIsAccountDeletionGraceEnabled.mockReturnValue(true);
+
+    const { POST } = await import("../route");
+    const res = await POST(request({ verificationNonce: "123456", reason: "Leaving" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data.scheduled).toBe(true);
+    expect(json.data.grace_days).toBe(30);
+    expect(mockScheduleAccountDeletion).toHaveBeenCalledWith(
+      admin,
+      expect.objectContaining({ userId: "user_1", email: "owner@example.com" }),
+    );
+    expect(mockPurgePlatformUserAccountFully).not.toHaveBeenCalled();
+    expect(signOut).toHaveBeenCalled();
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "user.account.deletion_scheduled" }),
+    );
   });
 });

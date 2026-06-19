@@ -26,6 +26,14 @@ export async function POST(request: NextRequest) {
       return successResponse({ reactivated: false, message: "Account is not deactivated" });
     }
 
+    if (row.deactivated_by === "pending_deletion") {
+      return successResponse({
+        reactivated: false,
+        message:
+          "Your account is scheduled for deletion. Use the cancel link from your email or contact support.",
+      });
+    }
+
     const selfServe =
       row.deactivated_by === "user" || row.deactivated_by === "inactive_retention";
     if (!selfServe) {

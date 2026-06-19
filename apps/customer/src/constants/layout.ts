@@ -20,10 +20,18 @@ export const TAB_BAR_MIN_BOTTOM_INSET = 8;
 /** Android edge-to-edge fallback when `useSafeAreaInsets().bottom` is 0 (gesture / nav bar) */
 export const TAB_BAR_ANDROID_MIN_BOTTOM_INSET = 24;
 /**
- * Fixed tab bar height excluding safe bottom: paddingTop (8) + icon + label row (~44).
+ * Fixed tab bar height excluding safe bottom: paddingTop (8) + icon (24) + label row (~28).
  * Keep in sync with `app/(app)/(tabs)/_layout.tsx` tabBarStyle.
  */
-export const TAB_BAR_FIXED_HEIGHT = 52;
+export const TAB_BAR_FIXED_HEIGHT = 60;
+
+/** Tab label typography — shared with `(tabs)/_layout.tsx` tabBarLabelStyle. */
+export const TAB_BAR_LABEL_FONT_SIZE = 11;
+export const TAB_BAR_LABEL_LINE_HEIGHT = 14;
+/** Narrow phones (<360dp): slightly smaller labels so 6 tabs fit. */
+export const TAB_BAR_LABEL_FONT_SIZE_NARROW = 10;
+export const TAB_BAR_LABEL_LINE_HEIGHT_NARROW = 12;
+export const TAB_BAR_NARROW_WIDTH_THRESHOLD = 360;
 
 /** Bottom padding for tab bar and sticky chrome; prefers OS inset, with platform fallbacks. */
 export function tabBarBottomInset(insetsBottom: number): number {

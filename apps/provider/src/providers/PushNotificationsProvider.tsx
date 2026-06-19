@@ -15,6 +15,7 @@ import type {
 } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { api } from "@/lib/api-client";
 import {
   clearPendingPushNotification,
@@ -140,11 +141,16 @@ function PushPermissionMonitor() {
 
 function usePushRegistration() {
   const { user } = useAuth();
+  const { role } = useProvider();
   const { gate } = useNativePermissionsOnboardingGate();
   const registeredRef = useRef(false);
   const lastRegisteredPlayerIdRef = useRef<string | null>(null);
   const oneSignalInitKeyRef = useRef<string | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
+  const roleRetryPendingRef = useRef(false);
+  const registerWithBackendRef = useRef<
+    ((playerId: string, source: string) => Promise<void>) | null
+  >(null);
   const [appId, setAppId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -206,6 +212,7 @@ function usePushRegistration() {
           if (status === 401 || status === 403) {
             // During fresh provider signup the user can still be `customer` until
             // onboarding completes/upgrades role. Skip noisy hard errors here.
+            roleRetryPendingRef.current = true;
             addBreadcrumb(
               "Device register skipped (role not ready)",
               "push_notifications",
@@ -240,6 +247,7 @@ function usePushRegistration() {
         captureError(err, { scope: "push_notifications:device_register", source });
       }
     };
+    registerWithBackendRef.current = registerWithBackend;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -462,6 +470,25 @@ function usePushRegistration() {
     });
     return () => sub.remove();
   }, [appId, user, gate]);
+
+  // Retry device registration once the user's role upgrades after signup.
+  useEffect(() => {
+    if (Platform.OS === "web" || !appId || !user) return;
+    if (!roleRetryPendingRef.current) return;
+    if (role !== "provider_owner" && role !== "provider_staff" && role !== "superadmin") return;
+    roleRetryPendingRef.current = false;
+    void (async () => {
+      try {
+        await ensureOneSignalInitialized(appId, user.id);
+        const id = await getOneSignalSubscriptionId();
+        if (id && registerWithBackendRef.current) {
+          await registerWithBackendRef.current(id, "role_upgrade_retry");
+        }
+      } catch {
+        // Non-fatal; foreground re-register will retry.
+      }
+    })();
+  }, [appId, user, role]);
 }
 
 /**

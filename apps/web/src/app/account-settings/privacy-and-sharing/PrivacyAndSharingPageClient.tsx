@@ -334,19 +334,29 @@ const PrivacyPage = ({
 
     try {
       setIsDeletingAccount(true);
-      await fetcher.post("/api/me/delete-account", {
+      const response = await fetcher.post<{
+        scheduled?: boolean;
+        message?: string;
+        grace_days?: number;
+      }>("/api/me/delete-account", {
         password: deleteHasPassword ? deletePassword.trim() : undefined,
         verificationNonce: deleteHasPassword ? undefined : deleteVerificationNonce.trim(),
         reason: deleteReason || null,
       });
-      toast.success("Your account has been deleted. You will be signed out.");
+      const scheduled = response?.scheduled === true;
+      toast.success(
+        response?.message ??
+          (scheduled
+            ? `Your account is scheduled for deletion in ${response?.grace_days ?? 30} days. Check your email to cancel.`
+            : "Your account has been deleted. You will be signed out."),
+      );
       setShowDeleteDialog(false);
       setDeletePassword("");
       setDeleteVerificationNonce("");
       setDeleteConfirmText("");
       setDeleteReason("");
       setTimeout(() => {
-        window.location.href = "/";
+        window.location.href = scheduled ? "/?deletion_scheduled=1" : "/";
       }, 2000);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to delete your account. Please try again.");
@@ -675,8 +685,9 @@ const PrivacyPage = ({
                     </p>
                     <p className="text-sm text-gray-500 font-light mb-3 max-w-xl">
                       To permanently delete your account we require your password or a verification code, and typing{" "}
-                      <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm.
-                      Prefer a break first? Use{" "}
+                      <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm. When enabled,
+                      deletion is scheduled for 30 days (account locked); cancel via the email link or support — not by
+                      logging in. Prefer a break first? Use{" "}
                       <a
                         href={loginSecurityHref}
                         className="text-gray-700 underline underline-offset-2 hover:text-gray-900"

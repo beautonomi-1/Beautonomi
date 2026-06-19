@@ -19,8 +19,12 @@ import { Platform } from "react-native";
 export const TAB_BAR_MIN_BOTTOM_INSET = 8;
 /** Android edge-to-edge fallback when `useSafeAreaInsets().bottom` is 0 (gesture / nav bar). */
 export const TAB_BAR_ANDROID_MIN_BOTTOM_INSET = 24;
-/** Fixed tab bar height excluding safe bottom: paddingTop (~8) + icon + label row (~44). */
-export const TAB_BAR_FIXED_HEIGHT = 52;
+/** Fixed tab bar height excluding safe bottom: paddingTop (~8) + icon (24) + label row (~28). */
+export const TAB_BAR_FIXED_HEIGHT = 60;
+
+/** Tab label typography — shared with `(tabs)/_layout.tsx` tabBarLabelStyle. */
+export const TAB_BAR_LABEL_FONT_SIZE = 11;
+export const TAB_BAR_LABEL_LINE_HEIGHT = 14;
 
 /** Bottom padding for tab bar and sticky chrome; prefers OS inset, with platform fallbacks. */
 export function tabBarBottomInset(insetsBottom: number): number {

@@ -135,22 +135,40 @@ export default function DeleteAccountScreen() {
         onPress: async () => {
           setLoading(true);
           try {
-            const res = (await api.post<unknown>("/api/me/delete-account", {
+            const res = (await api.post<{
+              scheduled?: boolean;
+              message?: string;
+              grace_days?: number;
+            }>("/api/me/delete-account", {
               password: hasPassword ? password.trim() : undefined,
               verificationNonce: hasPassword ? undefined : verificationNonce.trim(),
               reason: reason.trim() || null,
-            })) as { error?: { message?: string } };
+            })) as {
+              data?: { scheduled?: boolean; message?: string; grace_days?: number };
+              error?: { message?: string };
+            };
             if (res.error) {
               Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? da("deleteError"));
               return;
             }
             await signOut();
-            Alert.alert(da("deletedTitle"), da("deletedBody"), [
-              {
-                text: t("common.ok"),
-                onPress: () => router.replace("/(auth)/login" as never),
-              },
-            ]);
+            const scheduled = res.data?.scheduled === true;
+            Alert.alert(
+              scheduled ? "Deletion scheduled" : da("deletedTitle"),
+              res.data?.message ??
+                (scheduled
+                  ? `Your account will be permanently deleted in ${res.data?.grace_days ?? 30} days. Check your email to cancel.`
+                  : da("deletedBody")),
+              [
+                {
+                  text: t("common.ok"),
+                  onPress: () =>
+                    router.replace(
+                      (scheduled ? "/(auth)/login?deletion_scheduled=1" : "/(auth)/login") as never,
+                    ),
+                },
+              ],
+            );
           } catch (e) {
             Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, da("deleteFailed")));
           } finally {

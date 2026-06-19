@@ -141,15 +141,18 @@ export default function LoginScreen() {
   const params = useLocalSearchParams<{
     deactivated?: string;
     suspended?: string;
+    deletion_scheduled?: string;
     return_to?: string;
     ref?: string;
   }>();
   const statusMessage =
     params.suspended === "1"
       ? "Your account has been suspended. Contact support if you believe this is an error."
-      : params.deactivated === "1"
-        ? "You deactivated your account. Log in again to reactivate."
-        : null;
+      : params.deletion_scheduled === "1"
+        ? "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support."
+        : params.deactivated === "1"
+          ? "You deactivated your account. Log in again to reactivate."
+          : null;
   const { t } = useTranslation();
   const al = useCallback((key: string) => t(`customer.mobile.screens.authLogin.${key}`), [t]);
   const {

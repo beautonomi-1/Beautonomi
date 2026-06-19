@@ -45,6 +45,7 @@ export default function AppLayout() {
   const stackScreenOptions = useMemo(
     () => ({
       headerShown: false,
+      freezeOnBlur: true,
       contentStyle: { flex: 1, backgroundColor: "#ffffff" },
     }),
     [],
