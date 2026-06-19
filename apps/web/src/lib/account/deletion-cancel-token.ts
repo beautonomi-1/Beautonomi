@@ -32,7 +32,7 @@ export function buildAccountDeletionCancelUrl(userId: string, purgeAfterAt: stri
   if (!origin) {
     throw new Error("NEXT_PUBLIC_APP_URL is not configured");
   }
-  return `${origin}/api/account-deletion/cancel?t=${encodeURIComponent(token)}`;
+  return `${origin}/api/public/account-deletion/cancel?t=${encodeURIComponent(token)}`;
 }
 
 export function parseDeletionCancelToken(token: string): DeletionCancelTokenPayload | null {

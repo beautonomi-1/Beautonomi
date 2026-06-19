@@ -127,6 +127,12 @@ const nextConfig = {
       { source: '/terms-of-service', destination: '/terms-and-condition', permanent: true },
       // Legacy clients request /favicon.ico; serve the Beautonomi symbol (same as /icon.svg).
       { source: '/favicon.ico', destination: '/icon.svg', permanent: false },
+      // Legacy deletion-cancel links in scheduled emails (pre-public route move).
+      {
+        source: '/api/account-deletion/cancel',
+        destination: '/api/public/account-deletion/cancel',
+        permanent: false,
+      },
     ];
   },
 

@@ -15,7 +15,7 @@ function redirectTo(path: string, request: NextRequest) {
 }
 
 /**
- * GET /api/account-deletion/cancel?t=...
+ * GET /api/public/account-deletion/cancel?t=...
  * Signed link from deletion-scheduled email: cancels pending purge and restores login.
  */
 export async function GET(request: NextRequest) {
