@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform, Linking, TouchableOpacity } from "react-native";
+import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
+import { openAppNotificationSettings } from "@/lib/native-permissions";
 import * as Notifications from "expo-notifications";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
@@ -169,7 +170,7 @@ export default function NotificationsScreen() {
           "Allow notifications in system settings to receive push alerts.",
           [
             { text: "Not now", style: "cancel" },
-            { text: "Open Settings", onPress: () => void Linking.openSettings() },
+            { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
           ],
         );
       }
@@ -180,7 +181,7 @@ export default function NotificationsScreen() {
       "Push was blocked for Beautonomi. Open system settings to turn notifications on.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
       ],
     );
   }, []);
@@ -241,6 +242,42 @@ export default function NotificationsScreen() {
           ...scrollConstraint,
         }}
       >
+        {/* ── System permission status ── */}
+        {Platform.OS !== "web" && pushPermissionStatus && pushPermissionStatus !== "granted" ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#FEF3F2",
+              borderColor: "#FECDCA",
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Ionicons name="notifications-off-outline" size={22} color="#B42318" style={{ marginRight: 12 }} />
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={{ fontWeight: "700", color: "#7A271A" }}>
+                {t("common.pushPermission.systemOffTitle")}
+              </Text>
+              <Text style={{ fontSize: 13, color: "#912018", marginTop: 2 }}>
+                {t("common.pushPermission.systemOffBody")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => void handleEnablePushNotifications()}
+              accessibilityRole="button"
+              accessibilityLabel={t("common.pushPermission.turnOn")}
+              style={{ backgroundColor: "#B42318", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9 }}
+            >
+              <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>
+                {t("common.pushPermission.turnOn")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* ── Offers & Updates ── */}
         <View style={{ marginBottom: 8 }}>
           <SectionHeader
@@ -425,14 +462,7 @@ export default function NotificationsScreen() {
                 />
               </TouchableOpacity>
               <TouchableOpacity
-              onPress={() => {
-                void Linking.openSettings().catch(() => {
-                  Alert.alert(
-                    "Open settings",
-                    "Open your device Settings to manage system notification permissions for Beautonomi.",
-                  );
-                });
-              }}
+              onPress={() => void openAppNotificationSettings()}
               accessibilityRole="button"
               accessibilityLabel="Open system notification settings"
               style={{

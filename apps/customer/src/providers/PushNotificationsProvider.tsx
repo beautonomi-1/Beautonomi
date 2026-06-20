@@ -6,9 +6,13 @@
  * Handles notification tap deep links via expo-router.
  * Requires development build (not Expo Go).
  */
-import { useEffect, useRef, useState } from "react";
-import { AppState, Platform, View, Text, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Platform, View, Text, TouchableOpacity } from "react-native";
+import { usePathname } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "@beautonomi/i18n";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
@@ -16,6 +20,7 @@ import { api } from "@/lib/api-client";
 import {
   clearPendingPushNotification,
   clearRegisteredPlayerId,
+  ensureOneSignalExternalId,
   ensureOneSignalInitialized,
   enqueueOrRoutePushNotification,
   flushPendingPushNotification,
@@ -34,73 +39,164 @@ import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
 
+/** Don't re-nag for a week after the user explicitly dismisses the nudge. */
+const PUSH_NUDGE_DISMISSED_KEY = "beautonomi.pushNudgeDismissedAt.v1";
+const PUSH_NUDGE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Persistent, safe-area-aware banner shown when OS-level push permission is off
+ * (i.e. the device can't receive push at all). The CTA resolves the *system*
+ * permission directly — `requestPermission(true)` shows the native prompt when
+ * undetermined and falls back to the OS Settings page when already denied — so
+ * tapping it actually fixes the blocker instead of opening the in-app preference
+ * toggles (which are server-stored and look "on", causing the classic
+ * app-vs-OS confusion).
+ */
 function CustomerPushPermissionNudge() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { gate } = useNativePermissionsOnboardingGate();
-  const nudgeShownRef = useRef(false);
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // The notification settings screen renders its own prominent "system off"
+  // banner, so suppress the global one there to avoid duplicate prompts.
+  const onNotificationSettings = (pathname ?? "").includes("account-settings/notifications");
 
-  useEffect(() => {
-    if (Platform.OS === "web" || !user || gate.phase === "loading") return;
-
-    const check = async () => {
+  const check = useCallback(async () => {
+    if (Platform.OS === "web" || !user || gate.phase === "loading") {
+      setVisible(false);
+      return;
+    }
+    try {
+      // Gate on the OS source of truth via expo-notifications — the SAME call
+      // the in-app notification settings screen uses. Unlike OneSignal's
+      // getPermissionAsync(), this needs no SDK init, so a cold-start check can
+      // never produce a false "notifications are off" before OneSignal has
+      // finished initializing (the previous bug: the banner showed even when OS
+      // permission was granted, and only cleared after a background round-trip).
+      const Notifications = await import("expo-notifications");
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status === "granted") {
+        setVisible(false);
+        return;
+      }
+      // Respect a recent manual dismissal so the banner isn't naggy.
       try {
-        const { getOneSignalPermissionAsync, getOneSignalSubscriptionId } = await import(
-          "@/lib/onesignal-client"
-        );
-        const [permission, subId] = await Promise.all([
-          getOneSignalPermissionAsync(),
-          getOneSignalSubscriptionId(),
-        ]);
-        if (permission && subId) {
-          nudgeShownRef.current = false;
+        const raw = await AsyncStorage.getItem(PUSH_NUDGE_DISMISSED_KEY);
+        const dismissedAt = raw ? Number(raw) : 0;
+        if (dismissedAt && Date.now() - dismissedAt < PUSH_NUDGE_COOLDOWN_MS) {
           setVisible(false);
           return;
         }
-        if (nudgeShownRef.current) {
-          setVisible(true);
-          return;
-        }
-        nudgeShownRef.current = true;
-        setVisible(true);
       } catch {
-        // ignore
+        // ignore storage failures; fall through to show the nudge
       }
-    };
+      setVisible(true);
+    } catch {
+      // ignore
+    }
+  }, [user, gate.phase]);
 
+  useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void check();
     });
+    // Re-check the instant OS permission flips (native prompt accepted, or the
+    // user toggles it in Settings while the app is foregrounded) so the banner
+    // clears immediately instead of waiting for the next background→active cycle.
+    let removePermissionObserver: (() => void) | undefined;
+    void import("@/lib/onesignal-client").then(({ addOneSignalPermissionObserver }) => {
+      removePermissionObserver = addOneSignalPermissionObserver(() => void check());
+    });
     void check();
-    return () => sub.remove();
-  }, [user, gate.phase]);
+    return () => {
+      sub.remove();
+      removePermissionObserver?.();
+    };
+  }, [check]);
 
-  if (!visible) return null;
+  const handleTurnOn = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { requestOneSignalPushPermission } = await import("@/lib/onesignal-client");
+      await requestOneSignalPushPermission(true);
+    } catch {
+      // ignore
+    } finally {
+      setBusy(false);
+      void check();
+    }
+  }, [busy, check]);
+
+  const handleDismiss = useCallback(() => {
+    setVisible(false);
+    void AsyncStorage.setItem(PUSH_NUDGE_DISMISSED_KEY, String(Date.now())).catch(() => {});
+  }, []);
+
+  if (!visible || onNotificationSettings) return null;
 
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
         backgroundColor: "#EFF6FF",
         borderBottomWidth: 1,
         borderBottomColor: "#BFDBFE",
-        paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingTop: insets.top,
       }}
     >
-      <Text style={{ flex: 1, fontSize: 13, color: "#1E3A8A", marginRight: 8 }} numberOfLines={2}>
-        Push notifications are off. Turn them on to get booking and message alerts.
-      </Text>
-      <TouchableOpacity
-        onPress={() => router.push("/(app)/account-settings/notifications" as never)}
-        style={{ backgroundColor: "#1D4ED8", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel="Open notification settings"
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+        }}
       >
-        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Settings</Text>
-      </TouchableOpacity>
+        <Ionicons name="notifications-outline" size={20} color="#1D4ED8" style={{ marginRight: 10 }} />
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
+            {t("common.pushPermission.bannerTitle")}
+          </Text>
+          <Text style={{ fontSize: 12, color: "#1E40AF", marginTop: 1 }} numberOfLines={2}>
+            {t("common.pushPermission.bannerBody")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => void handleTurnOn()}
+          disabled={busy}
+          style={{
+            backgroundColor: "#1D4ED8",
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            opacity: busy ? 0.6 : 1,
+            minWidth: 64,
+            alignItems: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.pushPermission.turnOn")}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>
+              {t("common.pushPermission.turnOn")}
+            </Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDismiss}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={{ marginLeft: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.pushPermission.dismiss")}
+        >
+          <Ionicons name="close" size={18} color="#1E3A8A" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -362,6 +458,9 @@ function usePushRegistration() {
             "";
           if (!nextId) return;
           await registerWithBackend(nextId, "subscription_change");
+          // The subscription now exists — re-assert external-id binding so
+          // alias-targeted pushes reach this exact identity (not just broadcasts).
+          if (user) await ensureOneSignalExternalId(user.id);
         };
         OneSignal.User.pushSubscription.addEventListener("change", onPushSubscriptionChange);
 
@@ -473,6 +572,9 @@ function usePushRegistration() {
       void (async () => {
         try {
           await ensureOneSignalInitialized(appId, uid);
+          // Heal a mis-bound external id on foreground (covers the case where the
+          // initial login raced ahead of subscription creation).
+          await ensureOneSignalExternalId(uid);
           const id = await getOneSignalSubscriptionId();
           if (!id) return;
           if (lastRegisteredPlayerIdRef.current === id) return;

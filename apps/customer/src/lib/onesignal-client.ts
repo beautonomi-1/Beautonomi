@@ -134,6 +134,67 @@ export async function getOneSignalPermissionAsync(): Promise<boolean> {
   }
 }
 
+/**
+ * Subscribe to OS push-permission changes. The listener fires with `true`/`false`
+ * whenever the user grants or revokes notification permission (native prompt or
+ * the system Settings screen). Returns an unsubscribe function. No-op on web or
+ * when the OneSignal native module is unavailable (e.g. Expo Go).
+ *
+ * Event name + boolean payload follow react-native-onesignal v5
+ * (`permissionChange` → `(granted: boolean) => void`).
+ */
+export function addOneSignalPermissionObserver(
+  handler: (granted: boolean) => void,
+): () => void {
+  if (Platform.OS === "web") return () => {};
+  let active = true;
+  let cleanup: (() => void) | undefined;
+  void (async () => {
+    try {
+      const { OneSignal } = await import("react-native-onesignal");
+      if (!active) return;
+      OneSignal.Notifications.addEventListener("permissionChange", handler);
+      cleanup = () => {
+        try {
+          OneSignal.Notifications.removeEventListener("permissionChange", handler);
+        } catch {
+          // ignore teardown errors
+        }
+      };
+    } catch {
+      // OneSignal unavailable — callers fall back to AppState re-checks.
+    }
+  })();
+  return () => {
+    active = false;
+    cleanup?.();
+  };
+}
+
+/**
+ * Re-assert the OneSignal external-id ↔ user binding.
+ *
+ * `OneSignal.login(userId)` runs during init, but when it fires before the push
+ * subscription is created the external id can land on a different OneSignal
+ * identity than the one that owns the live subscription. Alias-targeted server
+ * sends (`include_aliases.external_id`) then miss the device even though
+ * broadcasts (segment-targeted) still arrive — the classic "broadcast works but
+ * targeted push doesn't" symptom. Verify the binding once the subscription
+ * exists and re-login only when it doesn't match. Idempotent and best-effort.
+ */
+export async function ensureOneSignalExternalId(userId: string): Promise<void> {
+  if (Platform.OS === "web" || !userId) return;
+  try {
+    const { OneSignal } = await import("react-native-onesignal");
+    const current = await OneSignal.User.getExternalId();
+    if (current === userId) return;
+    OneSignal.login(userId);
+    loggedInUserId = userId;
+  } catch {
+    // ignore — subscription-change / next foreground will re-attempt
+  }
+}
+
 export async function requestOneSignalPushPermission(fallbackToSettings = true): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {

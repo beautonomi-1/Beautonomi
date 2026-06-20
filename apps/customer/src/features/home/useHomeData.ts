@@ -3,9 +3,14 @@
  * Contract: /api/public/home
  */
 import { useState, useEffect, useCallback, useRef } from "react";
+import { DeviceEventEmitter } from "react-native";
 import { api } from "@/lib/api-client";
 import type { HomeApiResponse, PublicProviderCard } from "@/types/api";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import {
+  PROVIDER_UNAVAILABLE_EVENT,
+  type ProviderUnavailablePayload,
+} from "@/lib/provider-availability";
 
 /** Skip silent focus-refresh if data was fetched within this window. */
 const FOCUS_REFRESH_TTL_MS = 45_000;
@@ -186,6 +191,37 @@ export function useHomeData(lat?: number, lng?: number, category?: string) {
   useEffect(() => {
     load("initial");
   }, [load]);
+
+  // Self-heal when a provider becomes unavailable elsewhere (e.g. the user
+  // tapped a now-deleted provider): drop it from the visible feed immediately
+  // and clear the home cache so a revisit within the TTL window can't restore it.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      PROVIDER_UNAVAILABLE_EVENT,
+      (payload: ProviderUnavailablePayload) => {
+        const targets = new Set(
+          [payload?.providerId, payload?.slug]
+            .map((v) => (typeof v === "string" ? v.trim() : ""))
+            .filter((v) => v.length > 0),
+        );
+        if (targets.size === 0) return;
+        responseCache.clear();
+        setData((prev) => {
+          if (!prev) return prev;
+          const keep = (p: PublicProviderCard) => !targets.has(p.id) && !targets.has(p.slug);
+          return {
+            ...prev,
+            topRated: prev.topRated.filter(keep),
+            sponsored: prev.sponsored?.filter(keep),
+            nearest: prev.nearest.filter(keep),
+            hottest: prev.hottest.filter(keep),
+            upcoming: prev.upcoming.filter(keep),
+          };
+        });
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   /** Explicit pull-to-refresh – shows the spinner and bypasses cache. */
   const refetch = useCallback(() => load("refresh", { forceFresh: true }), [load]);

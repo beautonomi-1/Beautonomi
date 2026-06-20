@@ -1,6 +1,7 @@
 import React from "react";
 import { render, waitFor, fireEvent } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { DeviceEventEmitter, Text } from "react-native";
+import { PROVIDER_ROLE_CHANGED_EVENT } from "@/lib/provider-role-events";
 
 const mockApiGet = jest.fn();
 
@@ -144,5 +145,42 @@ describe("ProviderProvider first-run profile loading", () => {
     fireEvent.press(screen.getByTestId("refresh"));
     await waitFor(() => expect(call).toBeGreaterThan(1));
     expect(screen.getByTestId("role").props.children).toBe("provider_owner");
+  });
+
+  it("broadcasts PROVIDER_ROLE_CHANGED_EVENT so root-level consumers (push registration) can react", async () => {
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === "/api/provider/profile") {
+        return Promise.resolve({
+          data: {
+            id: "prov-1",
+            business_name: "Test Salon",
+            business_type: "salon",
+            email: "a@test.com",
+            phone: "+10000000000",
+            avatar_url: null,
+            locations: [],
+          },
+        });
+      }
+      if (path === "/api/me/role") {
+        return Promise.resolve({ data: { role: "provider_owner" } });
+      }
+      return Promise.resolve({ data: null });
+    });
+
+    const seenRoles: Array<string | null> = [];
+    const sub = DeviceEventEmitter.addListener(
+      PROVIDER_ROLE_CHANGED_EVENT,
+      (payload: { role: string | null }) => {
+        seenRoles.push(payload.role);
+      },
+    );
+
+    try {
+      renderProvider();
+      await waitFor(() => expect(seenRoles).toContain("provider_owner"));
+    } finally {
+      sub.remove();
+    }
   });
 });

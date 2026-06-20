@@ -30,6 +30,7 @@ import { Colors } from "@/constants/colors";
 import {
   ensureForegroundLocationPermission,
   ensureMediaLibraryPermission,
+  openAppNotificationSettings,
   showPermissionRecoveryAlert,
 } from "@/lib/native-permissions";
 import {
@@ -362,10 +363,13 @@ async function requestOneSignalPush(userId: string): Promise<void> {
     await ensureOneSignalInitialized(appId, userId);
     const accepted = await requestOneSignalPushPermission(true);
     if (!accepted) {
-      await showPermissionRecoveryAlert({
-        title: "Notifications are off",
-        message: "Turn on notifications in Settings to receive booking updates, messages, and reminders.",
-      });
+      await showPermissionRecoveryAlert(
+        {
+          title: "Notifications are off",
+          message: "Turn on notifications in Settings to receive booking updates, messages, and reminders.",
+        },
+        { openSettings: openAppNotificationSettings },
+      );
     }
   } catch {
     // Expo Go / missing native module

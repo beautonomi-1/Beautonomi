@@ -13,11 +13,16 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
+  DeviceEventEmitter,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, isAuthError } from "@/lib/api-client";
+import {
+  PROVIDER_UNAVAILABLE_EVENT,
+  type ProviderUnavailablePayload,
+} from "@/lib/provider-availability";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -257,6 +262,33 @@ export function SavedTabContent({
     },
     [showRecentlyViewed, tr]
   );
+
+  // Self-heal: when a provider becomes unavailable (tapped a now-deleted
+  // provider), drop it from the saved + recently-viewed lists immediately so it
+  // can't be tapped again into a dead profile.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      PROVIDER_UNAVAILABLE_EVENT,
+      (payload: ProviderUnavailablePayload) => {
+        const targets = new Set(
+          [payload?.providerId, payload?.slug]
+            .map((v) => (typeof v === "string" ? v.trim() : ""))
+            .filter((v) => v.length > 0),
+        );
+        if (targets.size === 0) return;
+        const keep = (item: any): boolean => {
+          const ref = item?.provider ?? item;
+          const candidates = [ref?.id, ref?.provider_id, ref?.slug, ref?.provider_slug]
+            .map((v: unknown) => (typeof v === "string" ? v : ""))
+            .filter((v: string) => v.length > 0);
+          return !candidates.some((c: string) => targets.has(c));
+        };
+        setSaved((prev) => prev.filter(keep));
+        setRecentlyViewed((prev) => prev.filter(keep));
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   const loadProducts = useCallback(
     async (isRefresh = false) => {
