@@ -675,6 +675,35 @@ export default function BookingDetailScreen() {
     booking.payment_status === "pending" &&
     booking.total_amount > 0;
 
+  // Outstanding amount the customer can still pay online. Prefer the server's
+  // computed `outstanding_balance`; fall back to total − total_paid for a freshly
+  // created card booking that never completed payment (status `pending_payment`).
+  const outstandingForPay = (() => {
+    const ob = (booking as any)?.outstanding_balance;
+    if (typeof ob === "number" && ob > 0) return ob;
+    const total = Number((booking as any)?.total_amount ?? 0);
+    const paid = Number((booking as any)?.total_paid ?? 0);
+    return Math.max(0, total - paid);
+  })();
+
+  // World-class retry: any non-cash, non-terminal booking with money still owed
+  // can be paid in-app. This includes the bug state where card checkout was
+  // declined/abandoned and the booking is stuck at `pending_payment` /
+  // `payment_status: pending` with no completed payment. Mirrors the web
+  // `canPayOutstandingOnline` rule. Routed through `pay-remaining`, which the
+  // server already accepts for `pending`, `partially_paid`, and
+  // `partially_refunded` payment states.
+  const canPayOnline =
+    !!booking &&
+    !isCashBooking &&
+    booking.status !== "cancelled" &&
+    booking.status !== "completed" &&
+    booking.status !== "no_show" &&
+    (booking.payment_status === "pending" ||
+      booking.payment_status === "partially_paid" ||
+      booking.payment_status === "partially_refunded") &&
+    outstandingForPay > 0;
+
   const handlePay = async () => {
     if (!booking) return;
     if (!user?.email) {
@@ -692,12 +721,11 @@ export default function BookingDetailScreen() {
     }
   };
 
-  const showPayRemaining =
-    booking &&
-    !isCashBooking &&
-    booking.payment_status === "partially_paid" &&
-    typeof booking.outstanding_balance === "number" &&
-    booking.outstanding_balance > 0;
+  // Show the pay-remaining flow for every payable booking except the strict
+  // `pending`/`pending` case still served by the legacy "Pay Now" button
+  // (`needsPayment`), so we never render two pay buttons at once.
+  const showPayRemaining = canPayOnline && !needsPayment;
+  const isFullyUnpaid = booking?.payment_status === "pending";
 
   const handlePayRemaining = async () => {
     if (!id || !booking) return;
@@ -2019,13 +2047,13 @@ export default function BookingDetailScreen() {
                   disabled={payRemainingLoading}
                   style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel="Pay remaining balance"
+                  accessibilityLabel={isFullyUnpaid ? "Pay now" : "Pay remaining balance"}
                 >
                   {payRemainingLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>
-                      Pay remaining balance
+                      {isFullyUnpaid ? "Pay now" : "Pay remaining balance"}
                     </Text>
                   )}
                 </Pressable>

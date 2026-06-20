@@ -25,6 +25,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { Bell, Edit, Mail, MessageSquare, Plus, Search, Smartphone, Trash2 } from "lucide-react";
+import { NotificationDeliveryLogsTab } from "./NotificationDeliveryLogsTab";
 
 type Template = {
   id: string;
@@ -367,7 +368,23 @@ export function NotificationTemplatesListPage() {
   const [sp, setSp] = useSearchParams();
   const channel = sp.get("channel") || "";
   const enabledFilter = sp.get("enabled") || "";
+  const tab = sp.get("tab") === "logs" ? "logs" : "templates";
   const qc = useQueryClient();
+
+  const setTab = useCallback(
+    (value: "templates" | "logs") => {
+      setSp(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (value === "templates") n.delete("tab");
+          else n.set("tab", value);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSp],
+  );
 
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
@@ -462,10 +479,60 @@ export function NotificationTemplatesListPage() {
   }, [rows, search]);
 
   if (denied) return denied;
+
+  const headerEl = (
+    <AdminPageHeader
+      title="Notification templates"
+      description={
+        <span className="max-w-3xl text-sm font-normal leading-relaxed text-gray-600">
+          Single place for push, email, and SMS copy. Keys are stable identifiers; use{" "}
+          <code className="rounded bg-gray-100 px-1">{"{{variable}}"}</code> in titles and bodies. Matches the legacy Next.js admin
+          workflow.
+        </span>
+      }
+    />
+  );
+
+  const tabBarEl = (
+    <div className="flex gap-1 border-b border-gray-200">
+      {([
+        { id: "templates", label: "Templates" },
+        { id: "logs", label: "Delivery logs" },
+      ] as const).map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => setTab(t.id)}
+          className={cn(
+            "-mb-px min-h-11 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+            tab === t.id
+              ? "border-gray-900 text-gray-900"
+              : "border-transparent text-gray-500 hover:text-gray-800",
+          )}
+          aria-selected={tab === t.id}
+          role="tab"
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === "logs") {
+    return (
+      <div className="space-y-6">
+        {headerEl}
+        {tabBarEl}
+        <NotificationDeliveryLogsTab enabled={allowed && tab === "logs"} />
+      </div>
+    );
+  }
+
   if (q.isLoading) {
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Notification templates" />
+        {headerEl}
+        {tabBarEl}
         <AdminPanel>
           <AdminPageSkeleton rows={5} />
         </AdminPanel>
@@ -474,21 +541,19 @@ export function NotificationTemplatesListPage() {
   }
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+    return (
+      <div className="space-y-6">
+        {headerEl}
+        {tabBarEl}
+        <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title="Notification templates"
-        description={
-          <span className="max-w-3xl text-sm font-normal leading-relaxed text-gray-600">
-            Single place for push, email, and SMS copy. Keys are stable identifiers; use{" "}
-            <code className="rounded bg-gray-100 px-1">{"{{variable}}"}</code> in titles and bodies. Matches the legacy Next.js admin
-            workflow.
-          </span>
-        }
-      />
+      {headerEl}
+      {tabBarEl}
 
       <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
         <strong>Note:</strong> Email and SMS are edited per template here (<code className="rounded bg-amber-100/80 px-1">email_subject</code>,{" "}

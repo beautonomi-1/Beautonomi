@@ -2,8 +2,10 @@
  * Push the exact OS app-icon badge to a user's devices via OneSignal (SetTo).
  * Used after mark-all-read so killed/background apps clear stale badge counts.
  */
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTotalUnreadBadgeCount } from "@/lib/notifications/total-unread-badge";
 import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
+import { resolveTenantIdForPush } from "@/lib/notifications/resolve-tenant-for-push";
 import { sendToUser } from "@/lib/notifications/onesignal";
 import type { OneSignalAppType } from "@/lib/platform/secrets";
 
@@ -63,7 +65,14 @@ export async function syncPushBadgeCount(
 export async function syncPushBadgeCountAllApps(
   userId: string,
   unreadCount?: number,
+  tenantId?: string | null,
 ): Promise<void> {
+  const admin = getSupabaseAdmin();
+  const resolvedTenantId =
+    tenantId !== undefined
+      ? tenantId
+      : await resolveTenantIdForPush(admin, { userId });
+
   const [customerUnread, providerUnread] = await Promise.all([
     typeof unreadCount === "number"
       ? exactIosBadgeCount(unreadCount)
@@ -74,7 +83,15 @@ export async function syncPushBadgeCountAllApps(
   ]);
 
   await Promise.all([
-    syncPushBadgeCount(userId, { appType: "customer", unreadCount: customerUnread }),
-    syncPushBadgeCount(userId, { appType: "provider", unreadCount: providerUnread }),
+    syncPushBadgeCount(userId, {
+      appType: "customer",
+      unreadCount: customerUnread,
+      tenantId: resolvedTenantId,
+    }),
+    syncPushBadgeCount(userId, {
+      appType: "provider",
+      unreadCount: providerUnread,
+      tenantId: resolvedTenantId,
+    }),
   ]);
 }

@@ -43,6 +43,14 @@ export async function syncBookingAfterPaystackSuccess(
     return { ok: true, skippedReason: "cancelled" };
   }
 
+  // §Payment-truth 2026-06: a booking sitting at `pending_payment` was created via
+  // the card-redirect path, where provider/customer confirmation notifications are
+  // intentionally deferred (see post-booking.ts). The first successful charge that
+  // moves it OUT of `pending_payment` is the moment to fire them. Subsequent syncs
+  // (deposit balance, remaining balance) see a non-`pending_payment` status, so
+  // this never double-notifies for the same booking.
+  const wasPendingPayment = row.status === "pending_payment";
+
   const settings = await getAppointmentSettingsFromDB(admin, row.provider_id as string);
   const shouldAutoConfirm = !settings.requireConfirmationForBookings;
 
@@ -97,20 +105,72 @@ export async function syncBookingAfterPaystackSuccess(
     updates.payment_status = "partially_paid";
   }
 
+  // Target lifecycle status after this successful charge.
+  let targetStatus: "confirmed" | "pending" | null = null;
   if (shouldAutoConfirm) {
     if (row.status !== "confirmed" && row.status !== "completed") {
-      updates.status = "confirmed";
+      targetStatus = "confirmed";
       if (!row.confirmed_at) {
         updates.confirmed_at = now;
       }
     }
   } else if (row.status === "pending_payment") {
-    updates.status = "pending";
+    targetStatus = "pending";
   }
   // When requireConfirmationForBookings is true, leave status as pending until provider confirms.
 
-  if (Object.keys(updates).length > 0) {
-    await admin.from("bookings").update(updates).eq("id", bookingId);
+  // Did THIS invocation perform the pending_payment → (confirmed|pending) transition?
+  // Used to fire the deferred confirmation notifications exactly once, even when the
+  // Paystack webhook and the client-side `/api/paystack/verify` both land for the
+  // same charge (both funnel through `processSuccessfulPayment` → here).
+  let claimedPendingPaymentTransition = false;
+
+  if (wasPendingPayment && targetStatus) {
+    // Atomic claim: only the first writer flips a row still at `pending_payment`.
+    // The loser's `.eq("status", "pending_payment")` no longer matches, so it
+    // returns zero rows and skips the notifications.
+    const { data: claimedRows, error: claimError } = await admin
+      .from("bookings")
+      .update({ ...updates, status: targetStatus })
+      .eq("id", bookingId)
+      .eq("status", "pending_payment")
+      .select("id");
+    claimedPendingPaymentTransition = !claimError && (claimedRows?.length ?? 0) > 0;
+
+    // If another writer already transitioned the booking, still persist any
+    // payment-field updates (payment_date/paid_at/reference) that we computed.
+    if (!claimedPendingPaymentTransition && Object.keys(updates).length > 0) {
+      await admin.from("bookings").update(updates).eq("id", bookingId);
+    }
+  } else {
+    if (targetStatus) {
+      updates.status = targetStatus;
+    }
+    if (Object.keys(updates).length > 0) {
+      await admin.from("bookings").update(updates).eq("id", bookingId);
+    }
+  }
+
+  // Deferred confirmation notifications: now that the card payment is confirmed
+  // and this call won the `pending_payment` transition, notify the provider of the
+  // new booking and the customer that it is confirmed. Best-effort — never block or
+  // throw out of the payment-success path.
+  if (claimedPendingPaymentTransition) {
+    try {
+      const { notifyProviderNewBooking, notifyBookingConfirmed } = await import(
+        "@/lib/notifications/notification-service"
+      );
+      await Promise.allSettled([
+        notifyProviderNewBooking(bookingId, ["push"]),
+        notifyBookingConfirmed(bookingId, ["push", "email"]),
+      ]);
+    } catch (notifyErr) {
+      console.warn(
+        "[syncBookingAfterPaystackSuccess] deferred confirmation notifications failed",
+        bookingId,
+        notifyErr,
+      );
+    }
   }
 
   return { ok: true };

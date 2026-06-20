@@ -89,6 +89,12 @@ export const adminQueryKeys = {
 
   notificationTemplates: (q: string) => [...adminQueryKeys.root, "notification-templates", q] as const,
 
+  /** User picker for the notification delivery-logs tab (GET /api/admin/notification-logs?search=). */
+  notificationLogUsers: (q: string) => [...adminQueryKeys.root, "notification-logs", "users", q] as const,
+  /** Per-user delivery history (GET /api/admin/notification-logs?user_id=). */
+  notificationLogsForUser: (userId: string, signature: string) =>
+    [...adminQueryKeys.root, "notification-logs", "user", userId, signature] as const,
+
   notificationsConfig: () => [...adminQueryKeys.root, "notifications", "config"] as const,
 
   smsTemplates: (q: string) => [...adminQueryKeys.root, "sms-templates", q] as const,
