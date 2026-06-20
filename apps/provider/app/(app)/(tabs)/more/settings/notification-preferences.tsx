@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, Switch, Alert, TouchableOpacity, Platform, Linking } from "react-native";
+import { View, Text, Switch, Alert, TouchableOpacity, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
+import * as Notifications from "expo-notifications";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import {
-  getOneSignalPermissionAsync,
-  requestOneSignalPushPermission,
-} from "@/lib/onesignal-client";
+import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
+import { openAppNotificationSettings } from "@/lib/native-permissions";
 import { emitAlertPrefsChanged } from "@/lib/notification-badge-events";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -111,8 +110,15 @@ export default function NotificationPreferencesScreen() {
 
   const refreshPushPermission = useCallback(async () => {
     if (Platform.OS === "web") return;
-    const granted = await getOneSignalPermissionAsync();
-    setPushPermissionStatus(granted ? "granted" : "denied");
+    // Read the OS source of truth (expo-notifications) — same as the customer
+    // settings screen and the permission nudge — instead of OneSignal's
+    // init-dependent getPermissionAsync(), which could disagree on cold start.
+    // "undetermined" maps to null (neutral) so we never flash an alarming red
+    // banner before the user has been asked.
+    const { status } = await Notifications.getPermissionsAsync();
+    setPushPermissionStatus(
+      status === "granted" ? "granted" : status === "denied" ? "denied" : null,
+    );
   }, []);
 
   useFocusEffect(
@@ -123,9 +129,9 @@ export default function NotificationPreferencesScreen() {
 
   async function handleEnablePushNotifications() {
     if (Platform.OS === "web") return;
-    const granted = await getOneSignalPermissionAsync();
-    setPushPermissionStatus(granted ? "granted" : "denied");
-    if (granted) {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === "granted") {
+      setPushPermissionStatus("granted");
       Alert.alert("Push enabled", "Notifications are already allowed for this device.");
       return;
     }
@@ -140,7 +146,7 @@ export default function NotificationPreferencesScreen() {
         "Allow notifications in system settings to receive push alerts.",
         [
           { text: "Not now", style: "cancel" },
-          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
         ],
       );
     }
@@ -260,25 +266,63 @@ export default function NotificationPreferencesScreen() {
 
       {Platform.OS !== "web" && (
         <TouchableOpacity
-          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-white p-3")}
+          style={twStyle(
+            pushPermissionStatus === "denied"
+              ? "mb-4 flex-row items-center rounded-xl border border-red-200 bg-red-50 p-3"
+              : "mb-4 flex-row items-center rounded-xl border border-gray-200 bg-white p-3",
+          )}
           onPress={() => void handleEnablePushNotifications()}
+          accessibilityRole="button"
+          accessibilityLabel={
+            pushPermissionStatus === "granted"
+              ? "Push notifications enabled on this device"
+              : "Turn on push notifications"
+          }
         >
           <Ionicons
             name={pushPermissionStatus === "granted" ? "notifications" : "notifications-off-outline"}
             size={18}
-            color={pushPermissionStatus === "granted" ? "#10b981" : "#6366f1"}
+            color={
+              pushPermissionStatus === "granted"
+                ? "#10b981"
+                : pushPermissionStatus === "denied"
+                  ? "#b42318"
+                  : "#6366f1"
+            }
           />
           <View style={twStyle("ml-2 flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              {pushPermissionStatus === "granted" ? "Push notifications enabled" : "Enable push notifications"}
+            <Text
+              style={twStyle(
+                pushPermissionStatus === "denied"
+                  ? "text-sm font-semibold text-red-900"
+                  : "text-sm font-medium text-gray-900",
+              )}
+            >
+              {pushPermissionStatus === "granted"
+                ? "Push notifications enabled"
+                : pushPermissionStatus === "denied"
+                  ? "System notifications are off"
+                  : "Enable push notifications"}
             </Text>
-            <Text style={twStyle("text-xs text-gray-500")}>
+            <Text
+              style={twStyle(
+                pushPermissionStatus === "denied" ? "text-xs text-red-700" : "text-xs text-gray-500",
+              )}
+            >
               {pushPermissionStatus === "granted"
                 ? "This device can receive push alerts"
-                : "Turn on system permission if you skipped push during setup"}
+                : pushPermissionStatus === "denied"
+                  ? "Beautonomi can’t send push alerts until you allow notifications in your phone’s settings"
+                  : "Turn on system permission if you skipped push during setup"}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          {pushPermissionStatus === "denied" ? (
+            <View style={twStyle("rounded-lg bg-red-600 px-3 py-2")}>
+              <Text style={twStyle("text-xs font-semibold text-white")}>Turn on</Text>
+            </View>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          )}
         </TouchableOpacity>
       )}
 

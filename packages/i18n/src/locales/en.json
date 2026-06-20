@@ -1,5 +1,16 @@
 {
   "common": {
+    "pushPermission": {
+      "bannerTitle": "Turn on notifications",
+      "bannerBody": "Allow notifications to get booking and message alerts.",
+      "turnOn": "Turn on",
+      "dismiss": "Dismiss",
+      "systemOffTitle": "System notifications are off",
+      "systemOffBody": "Beautonomi can’t send push alerts until you allow notifications in your phone’s settings.",
+      "openSettings": "Open settings",
+      "enabledTitle": "Notifications are on",
+      "enabledBody": "This device can receive push alerts."
+    },
     "loading": "Loading...",
     "error": "Something went wrong",
     "retry": "Try again",
@@ -193,6 +204,10 @@
       "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately."
     },
     "providerNotFound": "Provider not found",
+    "providerUnavailableTitle": "This professional is no longer available",
+    "providerUnavailableBody": "They may have left the platform or paused their profile. Discover other great professionals near you.",
+    "providerUnavailableExplore": "Explore professionals",
+    "providerUnavailableGoBack": "Go back",
     "failedToLoad": "Failed to load",
     "failedToReserveSlot": "Failed to reserve slot",
     "failedToCreateBooking": "Failed to create booking",
@@ -2248,7 +2263,12 @@
           "copyFailedBody": "Select the code above to copy it manually.",
           "missingProfileLink": "Provider not found — missing profile link.",
           "providerNotFound": "Provider not found",
-          "loadFailed": "Failed to load profile"
+          "loadFailed": "Failed to load profile",
+          "retryCta": "Retry",
+          "unavailableTitle": "This professional is no longer available",
+          "unavailableBody": "They may have left the platform or paused their profile. Discover other great professionals near you.",
+          "exploreCta": "Explore professionals",
+          "goBackCta": "Go back"
         }
       }
     }

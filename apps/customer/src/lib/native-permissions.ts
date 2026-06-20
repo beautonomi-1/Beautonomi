@@ -1,4 +1,5 @@
 import { Alert, InteractionManager, Linking, Platform, type AlertButton } from "react-native";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 
@@ -37,6 +38,39 @@ export async function openAppSettings(): Promise<void> {
   }
 }
 
+/**
+ * Open the OS notification settings for *this* app so the user can toggle the
+ * system-level "Allow notifications" switch.
+ *
+ * - Android: deep-links straight to the app's notification settings via the
+ *   built-in `Linking.sendIntent` (`APP_NOTIFICATION_SETTINGS`) — no extra
+ *   native module required. Falls back to the app info page if the intent or
+ *   package name is unavailable.
+ * - iOS: opens the app's settings page (the Notifications row lives there;
+ *   iOS does not allow deep-linking to the notification subpage).
+ */
+export async function openAppNotificationSettings(): Promise<void> {
+  if (Platform.OS === "android") {
+    const pkg =
+      Constants.expoConfig?.android?.package ??
+      (Constants as unknown as { manifest?: { android?: { package?: string } } }).manifest?.android
+        ?.package;
+    if (pkg) {
+      try {
+        await Linking.sendIntent("android.settings.APP_NOTIFICATION_SETTINGS", [
+          { key: "android.provider.extra.APP_PACKAGE", value: pkg },
+        ]);
+        return;
+      } catch {
+        // Intent unavailable on this OEM/OS version — fall back below.
+      }
+    }
+    await openAppSettings();
+    return;
+  }
+  await openAppSettings();
+}
+
 export function runAfterNativeUiSettles<T>(fn: () => T | Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     InteractionManager.runAfterInteractions(() => {
@@ -56,9 +90,15 @@ export function runAfterNativeUiSettles<T>(fn: () => T | Promise<T>): Promise<T>
 
 export function showPermissionRecoveryAlert(
   copy: PermissionCopy,
-  options: { canAskAgain?: boolean; retry?: () => Promise<boolean> } = {},
+  options: {
+    canAskAgain?: boolean;
+    retry?: () => Promise<boolean>;
+    /** Override the settings deep-link (e.g. open notification settings). */
+    openSettings?: () => Promise<void>;
+  } = {},
 ): Promise<boolean> {
   return new Promise((resolve) => {
+    const openSettingsAction = options.openSettings ?? openAppSettings;
     const buttons: AlertButton[] = [
       {
         text: copy.notNow ?? DEFAULT_NOT_NOW,
@@ -79,7 +119,7 @@ export function showPermissionRecoveryAlert(
     buttons.push({
       text: copy.openSettings ?? DEFAULT_OPEN_SETTINGS,
       onPress: () => {
-        void openAppSettings().finally(() => resolve(false));
+        void openSettingsAction().finally(() => resolve(false));
       },
     });
 

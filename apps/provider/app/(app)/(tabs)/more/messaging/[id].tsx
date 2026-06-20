@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Alert,
@@ -15,6 +16,7 @@ import {
   Pressable,
   ScrollView,
   InteractionManager,
+  type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
@@ -171,6 +173,21 @@ export default function ChatScreen() {
   const [offerDetailData, setOfferDetailData] = useState<ProviderOfferDetail | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // Tracks whether the list is pinned near the latest message, so incoming
+  // messages / keyboard-open only auto-scroll when the user is already at the
+  // bottom (WhatsApp-style) instead of yanking them out of older history.
+  const isNearBottomRef = useRef(true);
+  // Measured distance from the top of the window to the top of the chat body,
+  // used as the iOS `keyboardVerticalOffset`. Deriving it from a real layout
+  // measurement is device-accurate (vs. a hardcoded header guess that breaks
+  // on non-notched phones / tablets).
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const onChatBodyLayout = useCallback((e: LayoutChangeEvent) => {
+    if (Platform.OS !== "ios") return;
+    e.currentTarget.measureInWindow((_x, y) => {
+      if (Number.isFinite(y)) setKeyboardOffset(Math.round(y));
+    });
+  }, []);
   // §UI-audit 2026-04: `initialScrollDone` used to be a module-level
   // mutable object shared across every mount, so switching between two
   // threads with the same message count never re-ran scroll-to-bottom.
@@ -330,6 +347,18 @@ export default function ChatScreen() {
     prevLoadingRef.current = loading;
   }, [loading, allMessages.length, bumpScrollToLatestForOpenThread]);
 
+  // Keep the latest message visible when the keyboard opens (WhatsApp-style),
+  // but only when the user is already pinned to the bottom so we never pull
+  // them out of older history they're reading.
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const sub = Keyboard.addListener(showEvent, () => {
+      if (!isNearBottomRef.current) return;
+      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
+    });
+    return () => sub.remove();
+  }, []);
+
   // Supabase Realtime: live incoming messages and read receipt updates.
   // Single `postgres_changes` binding (event: "*") — registering multiple `.on`
   // postgres_callbacks then `.subscribe()` can throw "cannot add ... after subscribe()"
@@ -386,6 +415,11 @@ export default function ChatScreen() {
                 `/api/provider/conversations/${conversationId}/mark-read`,
                 {},
               );
+            }
+            // WhatsApp-style: follow the incoming message only when already at
+            // the bottom; otherwise the floating jump button signals new content.
+            if (isNearBottomRef.current) {
+              requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
             }
             return;
           }
@@ -473,8 +507,11 @@ export default function ChatScreen() {
                 : conversation?.customer_name || "Customer",
             content_preview: getMessagePreviewText(replyTarget),
           }
-        : null,
+          : null,
     });
+    // Always follow our own outgoing message to the bottom.
+    isNearBottomRef.current = true;
+    requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
     const { error } = await sendMessage({
       content: text,
       ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
@@ -907,8 +944,14 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={[twStyle("flex-1"), { flex: 1 }]}
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
+        onLayout={onChatBodyLayout}
+        // Android runs edge-to-edge with `softwareKeyboardLayoutMode: "resize"`
+        // (adjustResize): the window already shrinks for the keyboard, so an
+        // extra KeyboardAvoidingView pass double-counts and lifts the input bar
+        // off the keyboard. Defer to the OS on Android; on iOS (no resize) keep
+        // padding with a measured offset for device-accurate spacing.
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? keyboardOffset : 0}
       >
         {loading && !conversation ? (
           <View style={twStyle("flex-1 justify-center py-8")}>
@@ -935,6 +978,7 @@ export default function ChatScreen() {
               onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
                 const { contentSize, layoutMeasurement, contentOffset } = e.nativeEvent;
                 const isNearBottom = contentSize.height - layoutMeasurement.height - contentOffset.y < 200;
+                isNearBottomRef.current = isNearBottom;
                 setShowScrollToBottom(!isNearBottom);
               }}
               scrollEventThrottle={200}

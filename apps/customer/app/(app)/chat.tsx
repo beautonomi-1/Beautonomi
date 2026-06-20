@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Alert,
   Modal,
@@ -281,6 +282,11 @@ export default function ChatScreen() {
   offerStatusByIdRef.current = offerStatusById;
   const flatListRef = useRef<FlatList>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // Tracks whether the list is pinned near the latest message. Drives the
+  // WhatsApp-style behaviour: auto-scroll on new messages / keyboard open only
+  // when the user is already at the bottom, so we never yank them away from
+  // history they're reading. Starts true because the thread opens at the end.
+  const isNearBottomRef = useRef(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
@@ -410,6 +416,19 @@ export default function ChatScreen() {
     }
     prevLoadingForScrollRef.current = loading;
   }, [loading, messages.length, bumpInitialScrollToLatest]);
+
+  // Keep the latest message visible when the keyboard opens (WhatsApp-style).
+  // Only when already pinned to the bottom, so we don't interrupt someone
+  // scrolled up reading history. `keyboardWillShow` on iOS animates in sync
+  // with the input bar; Android only fires `keyboardDidShow`.
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const sub = Keyboard.addListener(showEvent, () => {
+      if (!isNearBottomRef.current) return;
+      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
+    });
+    return () => sub.remove();
+  }, []);
 
   // Resolve provider_id to conversation id (get-or-create) when opening from provider profile
   useEffect(() => {
@@ -615,9 +634,14 @@ export default function ChatScreen() {
             }
             return [...prev, { ...newMsg, reply_to }];
           });
-          requestAnimationFrame(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          });
+          // WhatsApp-style: only follow the new message if the user is already
+          // at the bottom. Otherwise leave their scroll position untouched —
+          // the floating "scroll to bottom" button already signals new content.
+          if (isNearBottomRef.current) {
+            requestAnimationFrame(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            });
+          }
         }
       )
       .on(
@@ -820,6 +844,9 @@ export default function ChatScreen() {
         : null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
+    // Sending our own message re-pins us to the bottom so subsequent incoming
+    // messages keep following (matches WhatsApp).
+    isNearBottomRef.current = true;
     requestAnimationFrame(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     });
@@ -1248,7 +1275,12 @@ export default function ChatScreen() {
       />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        // Android runs edge-to-edge with `softwareKeyboardLayoutMode: "resize"`
+        // (adjustResize), so the window already shrinks for the keyboard —
+        // letting KeyboardAvoidingView ALSO compensate ("height"/"padding")
+        // double-counts and pushes the input bar away from the keyboard. Leave
+        // it to the OS on Android; iOS doesn't resize, so keep padding + offset.
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
         {loading ? (
@@ -1328,6 +1360,7 @@ export default function ChatScreen() {
                   loadOlder();
                 }
                 const isNearBottom = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y < 200;
+                isNearBottomRef.current = isNearBottom;
                 setShowScrollToBottom(!isNearBottom);
               }}
               scrollEventThrottle={200}

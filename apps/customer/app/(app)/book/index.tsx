@@ -32,6 +32,10 @@ import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage, getBookingHoldSlotUnavailableMessage } from "@/lib/api-error";
+import {
+  isProviderUnavailableError,
+  reportProviderUnavailable,
+} from "@/lib/provider-availability";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { trackBookingStarted, trackBookingHoldCreated } from "@/lib/analytics";
 import {
@@ -634,6 +638,8 @@ export default function BookScreen() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Terminal "gone" state (404/NOT_FOUND): show a tombstone with a way out, not a dead Retry. */
+  const [unavailable, setUnavailable] = useState(false);
 
   const [step, setStep] = useState<Step>(initialStep);
   const [selectedService, setSelectedService] = useState<ProviderService | null>(null);
@@ -986,12 +992,14 @@ export default function BookScreen() {
 
   const loadProviderAndServices = useCallback(async () => {
     if (!slug) {
+      // No slug/id to resolve — terminal (a stale or malformed deep link).
       setLoading(false);
-      setError(t("booking.providerNotFound"));
+      setUnavailable(true);
       return;
     }
     setLoading(true);
     setError(null);
+    setUnavailable(false);
     setPackageIncludedPreview([]);
     setPackageResolutionWarning(null);
     setPackageIdForCheckout(null);
@@ -1012,7 +1020,14 @@ export default function BookScreen() {
       ]);
 
       if (provRes.error || !provRes.data) {
-        setError(provRes.error?.message || t("booking.providerNotFound"));
+        if (!provRes.error || isProviderUnavailableError(provRes.error)) {
+          // Permanently gone (404/NOT_FOUND, or empty body): tombstone + self-heal.
+          setUnavailable(true);
+          reportProviderUnavailable({ providerId: providerIdParam || null, slug });
+        } else {
+          // Transient (offline / 5xx / timeout): keep the recoverable Retry path.
+          setError(getApiErrorMessage(provRes.error, t("booking.failedToLoad")));
+        }
       } else {
         setProvider(provRes.data);
         const locs = provRes.data.locations || [];
@@ -1268,6 +1283,7 @@ export default function BookScreen() {
     }
   }, [
     slug,
+    providerIdParam,
     service_id,
     service_ids,
     servicesQueryParam,
@@ -2094,7 +2110,41 @@ export default function BookScreen() {
     );
   }
 
-  /* ═══ Error state ═══ */
+  /* ═══ Unavailable (tombstone) state — provider permanently gone ═══ */
+  if (unavailable && !provider) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="storefront-outline" size={52} color="#9CA3AF" />
+          <Text style={{ color: "#111827", marginTop: 16, textAlign: "center", fontSize: 18, fontWeight: "700" }}>
+            {t("booking.providerUnavailableTitle")}
+          </Text>
+          <Text style={{ color: "#6B7280", marginTop: 8, textAlign: "center", fontSize: 15, lineHeight: 22 }}>
+            {t("booking.providerUnavailableBody")}
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t("booking.providerUnavailableExplore")}
+            onPress={() => router.replace("/(app)/(tabs)/explore" as any)}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 12, marginTop: 24, minWidth: 200, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{t("booking.providerUnavailableExplore")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t("booking.providerUnavailableGoBack")}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)/home" as any))}
+            style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 14 }}>{t("booking.providerUnavailableGoBack")}</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
+  /* ═══ Error state (transient/recoverable) ═══ */
   if (error && !provider) {
     return (
       <>

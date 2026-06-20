@@ -28,6 +28,11 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  isProviderUnavailableError,
+  reportProviderUnavailable,
+} from "@/lib/provider-availability";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -1102,6 +1107,8 @@ export default function PartnerProfileScreen() {
   const [services, setServices] = useState<ProviderServicesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Terminal "gone" state (404/NOT_FOUND): show a tombstone with a way out, not a dead Retry. */
+  const [unavailable, setUnavailable] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -1164,12 +1171,14 @@ export default function PartnerProfileScreen() {
   /* ── Data Loading ── */
   const load = useCallback(async () => {
     if (!effectiveSlug) {
+      // No slug/id to resolve — terminal (a stale or malformed deep link).
       setLoading(false);
-      setError(pp("missingProfileLink"));
+      setUnavailable(true);
       return;
     }
     setLoading(true);
     setError(null);
+    setUnavailable(false);
     const fromRouteLat = paramLat != null ? Number(paramLat) : NaN;
     const fromRouteLng = paramLng != null ? Number(paramLng) : NaN;
     const fromRoute =
@@ -1187,8 +1196,18 @@ export default function PartnerProfileScreen() {
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/services`),
       ]);
       if (provRes.error) {
-        setError(provRes.error.message || pp("providerNotFound"));
         setProvider(null);
+        if (isProviderUnavailableError(provRes.error)) {
+          // Permanently gone: tombstone + self-heal stale caches/lists.
+          setUnavailable(true);
+          reportProviderUnavailable({
+            providerId: paramProviderId ?? null,
+            slug: effectiveSlug,
+          });
+        } else {
+          // Transient (offline / 5xx / timeout): keep the recoverable Retry path.
+          setError(getApiErrorMessage(provRes.error, pp("loadFailed")));
+        }
       } else {
         setProvider(provRes.data);
       }
@@ -1203,6 +1222,7 @@ export default function PartnerProfileScreen() {
     }
   }, [
     effectiveSlug,
+    paramProviderId,
     paramLat,
     paramLng,
     selectedAddress?.latitude,
@@ -1750,7 +1770,41 @@ export default function PartnerProfileScreen() {
     );
   }
 
-  /* ═══ Error state ═══ */
+  /* ═══ Unavailable (tombstone) state — provider permanently gone ═══ */
+  if (unavailable && !provider) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="storefront-outline" size={52} color="#9CA3AF" />
+          <Text style={{ color: "#111827", marginTop: 16, textAlign: "center", fontSize: 18, fontWeight: "700" }}>
+            {pp("unavailableTitle")}
+          </Text>
+          <Text style={{ color: "#6B7280", marginTop: 8, textAlign: "center", fontSize: 15, lineHeight: 22 }}>
+            {pp("unavailableBody")}
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={pp("exploreCta")}
+            onPress={() => router.replace("/(app)/(tabs)/explore" as any)}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 12, marginTop: 24, minWidth: 200, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{pp("exploreCta")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={pp("goBackCta")}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)/home" as any))}
+            style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 14 }}>{pp("goBackCta")}</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
+  /* ═══ Error state (transient/recoverable) ═══ */
   if (error && !provider) {
     return (
       <>
@@ -1758,8 +1812,8 @@ export default function PartnerProfileScreen() {
         <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
           <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center", fontSize: 15 }}>{error}</Text>
-          <TouchableOpacity onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 20 }}>
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={pp("retryCta")} onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 20 }}>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>{pp("retryCta")}</Text>
           </TouchableOpacity>
         </View>
       </>

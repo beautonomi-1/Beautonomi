@@ -7,7 +7,7 @@
  * Notification templates are configured from the superadmin portal.
  */
 import { useEffect, useRef, useState } from "react";
-import { AppState, Platform, Vibration } from "react-native";
+import { AppState, DeviceEventEmitter, Platform, Vibration } from "react-native";
 import { router } from "expo-router";
 import type {
   NotificationClickEvent,
@@ -15,11 +15,15 @@ import type {
 } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
-import { useProvider } from "@/providers/ProviderContext";
+import {
+  PROVIDER_ROLE_CHANGED_EVENT,
+  type ProviderRoleChangedPayload,
+} from "@/lib/provider-role-events";
 import { api } from "@/lib/api-client";
 import {
   clearPendingPushNotification,
   clearRegisteredPlayerId,
+  ensureOneSignalExternalId,
   ensureOneSignalInitialized,
   enqueueOrRoutePushNotification,
   flushPendingPushNotification,
@@ -99,14 +103,13 @@ function PushPermissionMonitor() {
 
     const check = async () => {
       try {
-        const { getOneSignalPermissionAsync, getOneSignalSubscriptionId } = await import(
-          "@/lib/onesignal-client"
-        );
-        const [permission, subId] = await Promise.all([
-          getOneSignalPermissionAsync(),
-          getOneSignalSubscriptionId(),
-        ]);
-        if (permission && subId) {
+        // Gate on the OS source of truth via expo-notifications (same call the
+        // notification-preferences screen uses). Unlike OneSignal's
+        // getPermissionAsync(), this needs no SDK init, so a cold-start check
+        // can't fire a false "push off" nudge before OneSignal initializes.
+        const Notifications = await import("expo-notifications");
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status === "granted") {
           nudgeShownRef.current = false;
           return;
         }
@@ -115,12 +118,19 @@ function PushPermissionMonitor() {
         show({
           icon: "notifications-off-outline",
           title: "Push notifications off",
-          message: "Turn on notifications in Settings so you never miss a booking.",
+          message: "Tap to allow notifications so you never miss a booking.",
           tone: "info",
           durationMs: 6000,
           onPress: () => {
-            void import("expo-router").then(({ router: r }) => {
-              r.push("/(app)/(tabs)/more/settings/notification-preferences" as never);
+            // Resolve the OS-level permission directly: requestPermission(true)
+            // shows the native prompt when undetermined and falls back to the
+            // system Settings page when already denied. Routing to the in-app
+            // preference toggles (which are server-stored and look "on") just
+            // confused users about why push wasn't arriving.
+            void import("@/lib/onesignal-client").then(({ requestOneSignalPushPermission }) => {
+              void requestOneSignalPushPermission(true).finally(() => {
+                nudgeShownRef.current = false;
+              });
             });
           },
         });
@@ -132,8 +142,17 @@ function PushPermissionMonitor() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void check();
     });
+    // Re-check the moment OS permission flips so a stale "push off" nudge can't
+    // linger after the user grants permission while the app stays foregrounded.
+    let removePermissionObserver: (() => void) | undefined;
+    void import("@/lib/onesignal-client").then(({ addOneSignalPermissionObserver }) => {
+      removePermissionObserver = addOneSignalPermissionObserver(() => void check());
+    });
     void check();
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      removePermissionObserver?.();
+    };
   }, [user, gate.phase, show]);
 
   return null;
@@ -141,8 +160,12 @@ function PushPermissionMonitor() {
 
 function usePushRegistration() {
   const { user } = useAuth();
-  const { role } = useProvider();
   const { gate } = useNativePermissionsOnboardingGate();
+  // This provider is mounted at the root layout, ABOVE the authenticated
+  // `ProviderProvider`, so it cannot call `useProvider()` (that throws and
+  // stalls the app on the splash screen). Instead we mirror the role via the
+  // `PROVIDER_ROLE_CHANGED_EVENT` broadcast emitted by `ProviderContext`.
+  const [role, setRole] = useState<string | null>(null);
   const registeredRef = useRef(false);
   const lastRegisteredPlayerIdRef = useRef<string | null>(null);
   const oneSignalInitKeyRef = useRef<string | null>(null);
@@ -152,6 +175,19 @@ function usePushRegistration() {
     ((playerId: string, source: string) => Promise<void>) | null
   >(null);
   const [appId, setAppId] = useState<string | null>(null);
+
+  // Mirror the provider role broadcast by `ProviderContext`. ProviderContext is
+  // mounted below this provider, so role updates always arrive after this
+  // listener is registered (the role is resolved asynchronously post-auth).
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      PROVIDER_ROLE_CHANGED_EVENT,
+      (payload: ProviderRoleChangedPayload) => {
+        setRole(payload?.role ?? null);
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const userId = user?.id ?? null;
@@ -344,6 +380,9 @@ function usePushRegistration() {
             "";
           if (!nextId) return;
           await registerWithBackend(nextId, "subscription_change");
+          // The subscription now exists — re-assert external-id binding so
+          // alias-targeted pushes reach this exact identity (not just broadcasts).
+          if (user) await ensureOneSignalExternalId(user.id);
         };
         OneSignal.User.pushSubscription.addEventListener("change", onPushSubscriptionChange);
 
@@ -444,6 +483,9 @@ function usePushRegistration() {
       void (async () => {
         try {
           await ensureOneSignalInitialized(appId, uid);
+          // Heal a mis-bound external id on foreground (covers the case where the
+          // initial login raced ahead of subscription creation).
+          await ensureOneSignalExternalId(uid);
           const id = await getOneSignalSubscriptionId();
           if (!id) return;
           if (lastRegisteredPlayerIdRef.current === id) return;

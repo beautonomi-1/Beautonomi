@@ -15,6 +15,7 @@ import {
 import { useAuth } from "./AuthProvider";
 import { getApiErrorCode } from "@/lib/api-error";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
+import { emitProviderRoleChanged } from "@/lib/provider-role-events";
 
 const LOCATION_STORAGE_KEY = "provider_selected_location_id";
 /** Persisted when user chooses org-wide view (no branch filter). */
@@ -156,6 +157,9 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     roleRef.current = role;
+    // Broadcast to root-level consumers (e.g. PushNotificationsProvider) that
+    // live above this provider in the tree and therefore can't use useProvider().
+    emitProviderRoleChanged(role);
   }, [role]);
 
   useEffect(() => {
