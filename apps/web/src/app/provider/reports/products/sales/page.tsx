@@ -344,7 +344,7 @@ export default function ProductSalesReport() {
                     className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-gray-200 transition-colors"
                   >
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-[#FF0077] to-[#D60565] flex items-center justify-center text-white font-semibold text-sm">
+                      <div className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center text-white font-semibold text-sm">
                         {index + 1}
                       </div>
                       <div className="min-w-0">

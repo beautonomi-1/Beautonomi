@@ -376,7 +376,7 @@ export default function ServiceZonesPage() {
                       ) : (
                         <Button
                           onClick={() => handleSelectZone(zone)}
-                          className="bg-[#FF0077] hover:bg-[#D60565]"
+                          className="bg-primary hover:bg-primary-hover"
                         >
                           <Plus className="w-4 h-4 mr-2" />
                           Select Zone
@@ -481,7 +481,7 @@ export default function ServiceZonesPage() {
                     </div>
                     <Button
                       onClick={() => handleSelectZone(zoneWithSelection.platform_zone)}
-                      className="bg-[#FF0077] hover:bg-[#D60565]"
+                      className="bg-primary hover:bg-primary-hover"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Select Zone
@@ -608,7 +608,7 @@ export default function ServiceZonesPage() {
                 }} disabled={isSaving}>
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={isSaving} className="bg-[#FF0077] hover:bg-[#D60565]">
+                <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary-hover">
                   {isSaving ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />

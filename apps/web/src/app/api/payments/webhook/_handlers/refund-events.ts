@@ -11,6 +11,7 @@ import type { PaystackEvent, SupabaseClient } from "./shared";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 import { reverseProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
+import { reverseMarketingCreditTopupPayment } from "@/lib/marketing/marketing-credit-topup-payment";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
 
   // Find the original payment transaction (include metadata to detect product orders)
   const { data: txn } = await supabase.from("payment_transactions")
-    .select("id, booking_id, metadata")
+    .select("id, booking_id, amount, metadata")
     .eq("reference", reference)
     .eq("status", "success")
     .maybeSingle();
@@ -163,6 +164,7 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       metadata?.kind === "membership_order" ? (metadata?.membership_order_id ?? null) : null;
     const adsBudgetOrderId =
       metadata?.kind === "ads_budget_order" ? (metadata?.ads_budget_order_id ?? null) : null;
+    const marketingTopup = metadata?.kind === "marketing_credit_topup";
     const subscriptionKind = [
       "provider_subscription_order",
       "subscription_authorization",
@@ -171,7 +173,19 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       ? metadata.kind
       : null;
 
-    if (adsBudgetOrderId) {
+    if (marketingTopup) {
+      // Marketing credit top-up refund: claw back unspent purchased credits and
+      // back out the recognized revenue (posts provider_marketing_credit_refund).
+      const marketingProviderId = String(metadata?.provider_id ?? "");
+      const reversalAmount = refundAmount > 0 ? refundAmount : Number((txn as any)?.amount ?? 0);
+      await reverseMarketingCreditTopupPayment({
+        supabase,
+        providerId: marketingProviderId,
+        reference: String(reference),
+        amountMajor: reversalAmount,
+        reason: "paystack_refund",
+      });
+    } else if (adsBudgetOrderId) {
       // Ads pre-pay refund: stop serving and fully back out the recognized
       // revenue via the shared idempotent reverse helper (posts provider_ads_refund).
       await reverseAdsBudgetOrderPayment({

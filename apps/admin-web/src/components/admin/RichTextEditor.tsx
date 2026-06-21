@@ -7,6 +7,8 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
 import Youtube from "@tiptap/extension-youtube";
+import { mockupsByPlatform, type MockupPlatform } from "@beautonomi/learning-mockups";
+import { LearnMockup } from "./extensions/learnMockup";
 
 type RichTextEditorProps = {
   value: string;
@@ -78,6 +80,41 @@ function EditorToolbar({
     const url = window.prompt("YouTube URL (watch, youtu.be, or Shorts)", "https://www.youtube.com/watch?v=");
     if (!url?.trim()) return;
     editor.chain().focus().setYoutubeVideo({ src: url.trim() }).run();
+  }, [editor]);
+
+  const insertMockup = useCallback(() => {
+    if (!editor) return;
+
+    const platforms: MockupPlatform[] = ["provider-mobile", "customer-mobile", "provider-web", "customer-web"];
+    const lines: string[] = [];
+    let index = 1;
+    const indexToId = new Map<number, string>();
+
+    for (const platform of platforms) {
+      const items = mockupsByPlatform(platform);
+      if (items.length === 0) continue;
+      lines.push(`--- ${platform} ---`);
+      for (const item of items) {
+        lines.push(`${index}. ${item.label}`);
+        indexToId.set(index, item.id);
+        index += 1;
+      }
+    }
+
+    const pick = window.prompt(
+      `Choose a mockup (enter the number):\n\n${lines.join("\n")}`,
+      "1",
+    );
+    if (pick === null) return;
+    const n = parseInt(pick.trim(), 10);
+    const mockupId = indexToId.get(n);
+    if (!mockupId) {
+      window.alert("Invalid selection. Use Insert mockup again and pick a number from the list.");
+      return;
+    }
+
+    const caption = window.prompt("Caption (optional, shown under the mockup on the public site)")?.trim() ?? "";
+    editor.chain().focus().insertLearnMockup({ mockupId, caption }).run();
   }, [editor]);
 
   if (!editor) return null;
@@ -154,6 +191,9 @@ function EditorToolbar({
           <ToolbarButton title="Insert YouTube video" onClick={insertYoutube}>
             YouTube
           </ToolbarButton>
+          <ToolbarButton title="Insert app mockup" onClick={insertMockup}>
+            Mockup
+          </ToolbarButton>
         </>
       ) : null}
       <ToolbarButton title="Undo" onClick={() => editor.chain().focus().undo().run()}>
@@ -204,6 +244,7 @@ export function RichTextEditor({
     if (variant === "learning") {
       return [
         ...base,
+        LearnMockup,
         Image.configure({
           inline: false,
           allowBase64: false,

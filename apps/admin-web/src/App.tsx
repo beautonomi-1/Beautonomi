@@ -96,6 +96,8 @@ export default function App() {
           <Route path="gods-eye" element={<P.GodsEyePage />} />
           <Route path="reports" element={<P.ReportsHubPage />} />
           <Route path="reports/:reportKey" element={<P.ReportDetailPage />} />
+          <Route path="knowledge-base" element={<P.KnowledgeBasePage />} />
+          <Route path="knowledge-base/:slug" element={<P.KnowledgeBaseArticlePage />} />
           <Route path="support-tickets" element={<P.SupportTicketsPage />} />
           <Route path="support-tickets/:id" element={<P.SupportTicketDetailPage />} />
           <Route path="bookings" element={<P.BookingsPage />} />
@@ -173,6 +175,8 @@ export default function App() {
           <Route path="broadcast" element={<P.BroadcastHubPage />} />
           <Route path="automations" element={<P.AutomationsListPage />} />
           <Route path="notification-templates" element={<P.NotificationTemplatesListPage />} />
+          <Route path="whatsapp-content-templates" element={<P.WhatsAppContentTemplatesPage />} />
+          <Route path="marketing-pricebook" element={<P.MarketingPricebookPage />} />
           <Route path="system-health" element={<P.SystemHealthPage />} />
           <Route path="monitoring" element={<P.MonitoringHealthPage />} />
           <Route path="security" element={<P.SecurityPolicyPage />} />

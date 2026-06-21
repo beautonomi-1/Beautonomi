@@ -16,6 +16,10 @@ module.exports = function (api) {
             },
           },
         ],
+        // Downlevel `import()` to `require()` so Jest (CommonJS, no
+        // --experimental-vm-modules) can execute the lazy native-module imports
+        // used across the app (e.g. react-native-onesignal in onesignal-client).
+        "dynamic-import-node",
       ],
     };
   }

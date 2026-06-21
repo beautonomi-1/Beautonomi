@@ -410,7 +410,7 @@ function ConnectCalendarDialog({
           <Button
             onClick={handleConnect}
             disabled={isConnecting}
-            className="bg-[#FF0077] hover:bg-[#D60565]"
+            className="bg-primary hover:bg-primary-hover"
           >
             {isConnecting ? "Connecting..." : "Connect Calendar"}
           </Button>

@@ -75,7 +75,7 @@ export function GradientStatCard({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-xl bg-white border p-4 sm:p-5">
+    <div className="relative overflow-hidden provider-card provider-card-padding">
       {/* Background decoration */}
       <div
         className={cn(

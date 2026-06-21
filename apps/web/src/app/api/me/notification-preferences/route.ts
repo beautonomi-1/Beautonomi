@@ -47,15 +47,15 @@ export async function GET(request: NextRequest) {
 
     // Default notification preferences
     const defaultPreferences = {
-      inspiration_and_offers: { email: true, sms: true, push: false },
-      news_and_programs: { email: true, sms: true, push: false },
-      feedback: { email: true, sms: false, push: false },
-      travel_regulations: { email: true, sms: true, push: false },
-      account_activity: { email: true, sms: true, push: false },
-      client_policies: { email: true, sms: false, push: false },
-      reminders: { email: true, sms: true, push: false },
-      subscription_renewal: { email: true, sms: false, push: false },
-      messages: { email: true, sms: true, push: true },
+      inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
+      news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
+      feedback: { email: true, sms: false, push: false, whatsapp: false },
+      travel_regulations: { email: true, sms: true, push: false, whatsapp: false },
+      account_activity: { email: true, sms: true, push: false, whatsapp: true },
+      client_policies: { email: true, sms: false, push: false, whatsapp: false },
+      reminders: { email: true, sms: true, push: false, whatsapp: true },
+      subscription_renewal: { email: true, sms: false, push: false, whatsapp: false },
+      messages: { email: true, sms: true, push: true, whatsapp: true },
       unsubscribe_marketing: false,
     };
 
@@ -117,15 +117,15 @@ export async function PATCH(request: NextRequest) {
     }
 
     const defaultPreferences = {
-      inspiration_and_offers: { email: true, sms: true, push: false },
-      news_and_programs: { email: true, sms: true, push: false },
-      feedback: { email: true, sms: false, push: false },
-      travel_regulations: { email: true, sms: true, push: false },
-      account_activity: { email: true, sms: true, push: false },
-      client_policies: { email: true, sms: false, push: false },
-      reminders: { email: true, sms: true, push: false },
-      subscription_renewal: { email: true, sms: false, push: false },
-      messages: { email: true, sms: true, push: true },
+      inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
+      news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
+      feedback: { email: true, sms: false, push: false, whatsapp: false },
+      travel_regulations: { email: true, sms: true, push: false, whatsapp: false },
+      account_activity: { email: true, sms: true, push: false, whatsapp: true },
+      client_policies: { email: true, sms: false, push: false, whatsapp: false },
+      reminders: { email: true, sms: true, push: false, whatsapp: true },
+      subscription_renewal: { email: true, sms: false, push: false, whatsapp: false },
+      messages: { email: true, sms: true, push: true, whatsapp: true },
       unsubscribe_marketing: false,
     };
 
@@ -212,7 +212,13 @@ export async function PATCH(request: NextRequest) {
     // Keep users.*_notifications_enabled in sync so cron, retention, and legacy checks match the UI.
     try {
       const rollup = computeUserNotificationRollup(updatedPreferences);
-      await supabase.from("users").update(rollup).eq("id", user.id);
+      const patch: Record<string, unknown> = { ...rollup };
+      const anyWhatsappOn = rollup.whatsapp_notifications_enabled;
+      if (anyWhatsappOn) {
+        patch.whatsapp_opt_in_at = new Date().toISOString();
+        patch.whatsapp_opt_in_source = "notification_preferences";
+      }
+      await supabase.from("users").update(patch).eq("id", user.id);
     } catch (syncErr) {
       console.warn("notification-preferences: could not sync users notification flags", syncErr);
     }

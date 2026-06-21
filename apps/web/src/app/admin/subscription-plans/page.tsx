@@ -85,8 +85,10 @@ type FeatureCategoryForm = {
   max_automations?: number | null;
   max_links?: number | null;
   included_credit_zar_per_month?: number | null;
+  included_marketing_credit_zar_per_month?: number | null;
   advanced_segmentation?: boolean;
   custom_integrations?: boolean;
+  use_platform_credentials?: boolean;
   file_attachments?: boolean;
   group_chats?: boolean;
   advanced_features?: boolean;
@@ -1562,6 +1564,31 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                           }
                         />
                         <Label className="text-sm">Advanced Segmentation</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          checked={formData.features.marketing_campaigns?.use_platform_credentials || false}
+                          onCheckedChange={(checked) =>
+                            updateFeature("marketing_campaigns", { use_platform_credentials: checked })
+                          }
+                        />
+                        <Label className="text-sm">Platform marketing sends (Beautonomi creds)</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Enable on any plan — not Growth-only. Debits marketing credits per send when the provider has no own integration for that channel.
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm">Included marketing credit (ZAR / month)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formData.features.marketing_campaigns?.included_marketing_credit_zar_per_month ?? ""}
+                          onChange={(e) =>
+                            updateFeature("marketing_campaigns", {
+                              included_marketing_credit_zar_per_month: Number(e.target.value) || 0,
+                            })
+                          }
+                        />
                       </div>
                       <div className="flex items-center space-x-2">
                         <Switch

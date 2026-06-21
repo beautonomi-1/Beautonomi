@@ -32,7 +32,7 @@ export function PermissionGate({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FF0077]"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export function PermissionGate({
             {actionHref && (
               <Button
                 asChild
-                className="w-full bg-[#FF0077] hover:bg-[#D60565]"
+                className="w-full bg-primary hover:bg-primary-hover"
               >
                 <Link href={defaultActionHref}>
                   Request Access

@@ -79,8 +79,8 @@ export function SettingsDetailLayout({
               </Link>
             )}
             <div className="min-w-0 flex-1">
-              {title && <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-900 truncate">{title}</h1>}
-              {effectiveSubtitle && <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">{effectiveSubtitle}</p>}
+              {title && <h1 className="text-2xl sm:text-2xl md:text-3xl font-bold text-gray-900 tracking-tight truncate">{title}</h1>}
+              {effectiveSubtitle && <p className="text-sm text-gray-500 mt-1.5 break-words">{effectiveSubtitle}</p>}
             </div>
           </div>
         </div>
@@ -88,7 +88,7 @@ export function SettingsDetailLayout({
           <Button
             onClick={onSave}
             disabled={disabled}
-            className="bg-[#FF0077] hover:bg-[#D60565] text-white w-full sm:w-auto flex-shrink-0 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+            className="provider-btn-brand px-5"
           >
             {label}
           </Button>
@@ -104,7 +104,7 @@ export function SettingsDetailLayout({
           <Button
             onClick={onSave}
             disabled={disabled}
-            className="bg-[#FF0077] hover:bg-[#D60565] text-white w-full min-h-[48px] text-base font-semibold touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+            className="provider-btn-brand w-full min-h-[48px] text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {label}
           </Button>

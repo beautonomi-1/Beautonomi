@@ -23,6 +23,10 @@ export interface SendCampaignOptions {
   from?: string; // From email/phone (optional, uses integration default)
   fromName?: string; // From name (optional)
   metadata?: Record<string, any>; // Additional campaign metadata
+  tenantId?: string | null;
+  campaignId?: string;
+  /** Pass the caller's Supabase client (required for Bearer/mobile API routes). */
+  supabase?: SupabaseClient;
 }
 
 export interface SendCampaignResult {
@@ -99,55 +103,66 @@ export async function getTwilioIntegration(
 }
 
 /**
- * Send marketing campaign using provider's integration
+ * Send marketing campaign using provider's integration or platform credentials.
  */
 export async function sendMessage(
   providerId: string,
   channel: MessagingChannel,
   options: SendCampaignOptions
 ): Promise<SendCampaignResult> {
-  const supabase = await getSupabaseServer();
-  
+  const supabase = options.supabase ?? (await getSupabaseServer());
+  const { getProviderMarketingIntegrations, willUsePlatformForChannel } = await import(
+    "@/lib/marketing/sending-path"
+  );
+  const { checkMarketingFeatureAccess } = await import("@/lib/subscriptions/feature-access");
+  const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
+  const integrations = await getProviderMarketingIntegrations(supabase, providerId);
+
   if (channel === "email") {
     const integration = await getEmailIntegration(supabase, providerId);
-    if (!integration) {
-      return {
-        success: false,
-        error: "No active email integration found. Please configure SendGrid or Mailchimp in settings.",
-      };
+    if (integration) {
+      if (integration.provider_name === "sendgrid") {
+        return await sendViaSendGrid(integration, options);
+      }
+      if (integration.provider_name === "mailchimp") {
+        return await sendViaMailchimp(integration, options);
+      }
     }
-    
-    if (integration.provider_name === "sendgrid") {
-      return await sendViaSendGrid(integration, options);
-    } else if (integration.provider_name === "mailchimp") {
-      return await sendViaMailchimp(integration, options);
+    if (willUsePlatformForChannel(marketingAccess, integrations, "email")) {
+      return await sendViaPlatformEmail(supabase, options);
     }
-  } else if (channel === "sms" || channel === "whatsapp") {
+    return {
+      success: false,
+      error: "No active email integration found. Please configure SendGrid or Mailchimp in settings.",
+    };
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
     const integration = await getTwilioIntegration(supabase, providerId);
-    if (!integration) {
+
+    if (channel === "sms") {
+      if (integration?.is_sms_enabled && integration.sms_from_number) {
+        return await sendViaTwilioSMS(integration, options);
+      }
+      if (willUsePlatformForChannel(marketingAccess, integrations, "sms")) {
+        return await sendViaPlatformTwilio(supabase, "sms", options);
+      }
       return {
         success: false,
-        error: "No Twilio integration found. Please configure Twilio in settings.",
+        error: "SMS is not enabled or configured. Please enable SMS in Twilio settings.",
       };
     }
-    
-    if (channel === "sms") {
-      if (!integration.is_sms_enabled || !integration.sms_from_number) {
-        return {
-          success: false,
-          error: "SMS is not enabled or configured. Please enable SMS in Twilio settings.",
-        };
-      }
-      return await sendViaTwilioSMS(integration, options);
-    } else {
-      if (!integration.is_whatsapp_enabled || !integration.whatsapp_from_number) {
-        return {
-          success: false,
-          error: "WhatsApp is not enabled or configured. Please enable WhatsApp in Twilio settings.",
-        };
-      }
+
+    if (integration?.is_whatsapp_enabled && integration.whatsapp_from_number) {
       return await sendViaTwilioWhatsApp(integration, options);
     }
+    if (willUsePlatformForChannel(marketingAccess, integrations, "whatsapp")) {
+      return await sendViaPlatformTwilio(supabase, "whatsapp", options);
+    }
+    return {
+      success: false,
+      error: "WhatsApp is not enabled or configured. Please enable WhatsApp in Twilio settings.",
+    };
   }
   
   if (channel === "notification") {
@@ -158,6 +173,70 @@ export async function sendMessage(
     success: false,
     error: `Unsupported channel: ${channel}`,
   };
+}
+
+async function sendViaPlatformEmail(
+  supabase: SupabaseClient<any>,
+  options: SendCampaignOptions,
+): Promise<SendCampaignResult> {
+  try {
+    const { sendQueuedEmailViaProvider } = await import("@/lib/notifications/queued-email-provider");
+    const recipients = Array.isArray(options.to) ? options.to : [options.to];
+    const to = recipients[0];
+    if (!to) return { success: false, error: "No recipient" };
+
+    await sendQueuedEmailViaProvider(
+      {
+        to,
+        subject: options.subject || options.fromName || "Beautonomi",
+        html: options.content,
+        text: options.content,
+        templateKey: "marketing_campaign",
+        queueRowId: `marketing-email-${Date.now()}`,
+      },
+      { tenantId: options.tenantId ?? null },
+    );
+    return { success: true, provider: "platform_resend" };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Platform email send failed",
+    };
+  }
+}
+
+async function sendViaPlatformTwilio(
+  supabase: SupabaseClient<any>,
+  channel: "sms" | "whatsapp",
+  options: SendCampaignOptions,
+): Promise<SendCampaignResult> {
+  try {
+    const { resolveTwilioCredentials, sendTwilioSMS, sendTwilioWhatsApp } = await import(
+      "@/lib/integrations/twilio"
+    );
+    const creds = await resolveTwilioCredentials(supabase, options.tenantId ?? "");
+    if (!creds) return { success: false, error: "Platform Twilio not configured" };
+
+    const recipients = Array.isArray(options.to) ? options.to : [options.to];
+    const to = recipients[0];
+    if (!to) return { success: false, error: "No recipient" };
+
+    const result =
+      channel === "sms"
+        ? await sendTwilioSMS(creds, to, options.content)
+        : await sendTwilioWhatsApp(creds, to, options.content);
+
+    return {
+      success: true,
+      messageId: String(result.sid ?? ""),
+      provider: channel === "sms" ? "platform_twilio_sms" : "platform_twilio_whatsapp",
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Platform Twilio send failed",
+    };
+  }
 }
 
 /**

@@ -113,6 +113,7 @@ const channelPrefsSchema = z.object({
   email: z.boolean().optional(),
   sms: z.boolean().optional(),
   push: z.boolean().optional(),
+  whatsapp: z.boolean().optional(),
 });
 
 export const notificationPreferencesSchema = z.object({

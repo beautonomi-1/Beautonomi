@@ -207,21 +207,21 @@ export default function ProviderTeamMembers() {
 
       {/* Freelancer Info Banner */}
       {isFreelancer && (
-        <Alert className="mb-4 sm:mb-6 border-[#FF0077]/20 bg-gradient-to-r from-[#FF0077]/5 to-[#D60565]/5">
-          <Info className="w-4 h-4 text-[#FF0077]" />
+        <Alert className="mb-4 sm:mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-primary-hover/5">
+          <Info className="w-4 h-4 text-primary" />
           <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex-1">
               <p className="text-sm text-gray-700">
-                <span className="font-medium text-[#FF0077]">You're set up as a freelancer.</span>{" "}
+                <span className="font-medium text-primary">You're set up as a freelancer.</span>{" "}
                 You are automatically added as a staff member for calendar bookings. To add team members and unlock advanced features,{" "}
-                <Link href="/provider/settings/upgrade-to-salon" className="text-[#FF0077] hover:underline font-medium">
+                <Link href="/provider/settings/upgrade-to-salon" className="text-primary hover:underline font-medium">
                   upgrade to a salon
                 </Link>
                 .
               </p>
             </div>
             <Link href="/provider/settings/upgrade-to-salon">
-              <button className="px-4 py-2 bg-[#FF0077] hover:bg-[#D60565] text-white rounded-md text-sm font-medium transition-colors whitespace-nowrap min-h-[44px] touch-manipulation">
+              <button className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-md text-sm font-medium transition-colors whitespace-nowrap min-h-[44px] touch-manipulation">
                 Upgrade to Salon
               </button>
             </Link>
@@ -272,8 +272,8 @@ export default function ProviderTeamMembers() {
         </SectionCard>
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077]" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">On Shift</div>
@@ -293,7 +293,7 @@ export default function ProviderTeamMembers() {
             placeholder="Search team members by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full max-w-full pl-10 pr-4 py-2.5 sm:py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077] min-h-[44px] touch-manipulation box-border"
+            className="w-full max-w-full pl-10 pr-4 py-2.5 sm:py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/35 min-h-[44px] touch-manipulation box-border provider-input"
           />
           <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 flex-shrink-0" />
         </div>
@@ -327,20 +327,20 @@ export default function ProviderTeamMembers() {
         <>
           {/* Desktop Table View */}
           <SectionCard className="p-0 overflow-hidden hidden lg:block box-border max-w-full">
-            <div className="overflow-x-auto w-full max-w-full box-border">
+            <div className="provider-table-scroll overflow-x-auto w-full max-w-full box-border">
               <Table className="w-full max-w-full">
                 <TableHeader>
-                  <TableRow className="border-b border-gray-200">
-                    <TableHead className="w-12 px-6 py-4">
+                  <TableRow className="border-b border-gray-200 hover:bg-transparent">
+                    <TableHead className="w-12 px-4 py-3">
                       <GripVertical className="w-4 h-4 text-gray-400" />
                     </TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Name</TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Email</TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Mobile</TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Role</TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Status</TableHead>
-                    <TableHead className="px-6 py-4 font-semibold text-gray-900">Rating</TableHead>
-                    <TableHead className="text-right px-6 py-4 font-semibold text-gray-900">Actions</TableHead>
+                    <TableHead className="px-4 py-3">Name</TableHead>
+                    <TableHead className="px-4 py-3">Email</TableHead>
+                    <TableHead className="px-4 py-3">Mobile</TableHead>
+                    <TableHead className="px-4 py-3">Role</TableHead>
+                    <TableHead className="px-4 py-3">Status</TableHead>
+                    <TableHead className="px-4 py-3">Rating</TableHead>
+                    <TableHead className="text-right px-4 py-3">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -353,7 +353,7 @@ export default function ProviderTeamMembers() {
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
                             <AvatarImage src={member.avatar_url} alt={member.name} />
-                            <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] font-semibold">
+                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                               {member.name.charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
@@ -439,7 +439,7 @@ export default function ProviderTeamMembers() {
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Avatar className="flex-shrink-0">
                         <AvatarImage src={member.avatar_url} alt={member.name} />
-                        <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                        <AvatarFallback className="bg-primary/10 text-primary">
                           {member.name.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>

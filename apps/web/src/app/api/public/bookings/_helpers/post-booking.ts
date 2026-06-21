@@ -72,25 +72,37 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
     ),
   );
 
-  await safely(
-    async () => {
-      const { notifyProviderNewBooking } = await import(
-        "@/lib/notifications/notification-service"
-      );
-      await notifyProviderNewBooking(booking.id, ["push"]);
-    },
-    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyProviderNewBooking" } },
-  );
+  // §Payment-truth 2026-06: when the customer is being redirected to an external
+  // card gateway (Paystack), the booking is NOT yet paid (`status:
+  // pending_payment`). Notifying the provider here causes "new booking / awaiting
+  // payment" rows the instant checkout STARTS — even if the card later declines
+  // or the customer abandons. Defer provider + customer confirmation
+  // notifications to the payment-success path (`syncBookingAfterPaystackSuccess`),
+  // which fires them once the charge is confirmed. Cash / wallet / gift-card /
+  // saved-card-charged bookings have `paymentUrl == null` and notify immediately.
+  const awaitingCardPayment = input.paymentUrl != null;
 
-  await safely(
-    async () => {
-      const { notifyBookingConfirmed } = await import(
-        "@/lib/notifications/notification-service"
-      );
-      await notifyBookingConfirmed(booking.id, ["push", "email"]);
-    },
-    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyBookingConfirmed" } },
-  );
+  if (!awaitingCardPayment) {
+    await safely(
+      async () => {
+        const { notifyProviderNewBooking } = await import(
+          "@/lib/notifications/notification-service"
+        );
+        await notifyProviderNewBooking(booking.id, ["push"]);
+      },
+      { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyProviderNewBooking" } },
+    );
+
+    await safely(
+      async () => {
+        const { notifyBookingConfirmed } = await import(
+          "@/lib/notifications/notification-service"
+        );
+        await notifyBookingConfirmed(booking.id, ["push", "email"]);
+      },
+      { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyBookingConfirmed" } },
+    );
+  }
 
   void safely(
     async () => {

@@ -10,11 +10,15 @@ const templateSchema = z.object({
   key: z.string().min(1, "Key is required"),
   title: z.string().min(1, "Title is required"),
   body: z.string().min(1, "Body is required"),
-  channels: z.array(z.enum(["push", "email", "sms", "live_activities"])).min(1, "At least one channel is required"),
+  channels: z.array(z.enum(["push", "email", "sms", "live_activities", "whatsapp"])).min(1, "At least one channel is required"),
   // Channel-specific content
   email_subject: z.string().optional().nullable(),
   email_body: z.string().optional().nullable(),
   sms_body: z.string().optional().nullable(),
+  whatsapp_body: z.string().optional().nullable(),
+  whatsapp_content_sid: z.string().optional().nullable(),
+  whatsapp_category: z.enum(["utility", "authentication", "marketing"]).optional().nullable(),
+  whatsapp_content_variables: z.array(z.record(z.string(), z.unknown())).optional().nullable(),
   live_activities_config: z.record(z.string(), z.unknown()).optional().nullable(),
   // Template metadata
   variables: z.array(z.string()).optional().default([]),

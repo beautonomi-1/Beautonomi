@@ -211,7 +211,7 @@ export default function CancellationPoliciesPage() {
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-lg font-semibold">{policy.name}</h3>
                     {policy.is_default && (
-                      <span className="text-xs bg-[#FF0077] text-white px-2 py-1 rounded">
+                      <span className="text-xs bg-primary text-white px-2 py-1 rounded">
                         Default
                       </span>
                     )}

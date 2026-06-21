@@ -420,7 +420,7 @@ export default function WaitlistSettings() {
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+            className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
             <Save className="w-4 h-4 mr-2" />
             {isSaving ? "Saving..." : "Save Settings"}

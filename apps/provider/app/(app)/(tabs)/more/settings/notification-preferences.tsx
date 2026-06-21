@@ -19,6 +19,7 @@ interface ChannelPrefs {
   email: boolean;
   sms: boolean;
   push: boolean;
+  whatsapp?: boolean;
 }
 
 interface NotifPreferences {
@@ -72,17 +73,17 @@ const SECTIONS = [
 ];
 
 const DEFAULT_PREFS: NotifPreferences = {
-  booking_updates: { email: true, sms: true, push: true },
-  booking_cancellations: { email: true, sms: true, push: true },
-  booking_reminders: { email: true, sms: true, push: true },
-  new_reviews: { email: true, sms: false, push: true },
-  review_responses: { email: true, sms: false, push: true },
-  client_messages: { email: true, sms: true, push: true },
-  payment_received: { email: true, sms: false, push: true },
-  payout_updates: { email: true, sms: true, push: true },
-  waitlist_notifications: { email: true, sms: false, push: true },
-  system_updates: { email: true, sms: false, push: false },
-  marketing: { email: true, sms: false, push: false },
+  booking_updates: { email: true, sms: true, push: true, whatsapp: false },
+  booking_cancellations: { email: true, sms: true, push: true, whatsapp: false },
+  booking_reminders: { email: true, sms: true, push: true, whatsapp: false },
+  new_reviews: { email: true, sms: false, push: true, whatsapp: false },
+  review_responses: { email: true, sms: false, push: true, whatsapp: false },
+  client_messages: { email: true, sms: true, push: true, whatsapp: false },
+  payment_received: { email: true, sms: false, push: true, whatsapp: false },
+  payout_updates: { email: true, sms: true, push: true, whatsapp: false },
+  waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
+  system_updates: { email: true, sms: false, push: false, whatsapp: false },
+  marketing: { email: true, sms: false, push: false, whatsapp: false },
   booking_alert_sound: true,
   order_alert_sound: true,
   message_alert_sound: true,
@@ -177,7 +178,7 @@ export default function NotificationPreferencesScreen() {
     setDirty(false);
   }, [prefs]);
 
-  function toggle(key: string, channel: "email" | "sms" | "push") {
+  function toggle(key: string, channel: "email" | "sms" | "push" | "whatsapp") {
     setLocal((prev) => ({
       ...prev,
       [key]: {
@@ -195,7 +196,7 @@ export default function NotificationPreferencesScreen() {
         const key = k as keyof NotifPreferences;
         const base = DEFAULT_PREFS[key];
         if (base && typeof base === "object" && "email" in base) {
-          next[key] = { email: true, sms: true, push: true };
+          next[key] = { email: true, sms: true, push: true, whatsapp: true };
         }
       });
       return next;
@@ -210,7 +211,7 @@ export default function NotificationPreferencesScreen() {
         const key = k as keyof NotifPreferences;
         const base = DEFAULT_PREFS[key];
         if (base && typeof base === "object" && "email" in base) {
-          next[key] = { email: false, sms: false, push: false };
+          next[key] = { email: false, sms: false, push: false, whatsapp: false };
         }
       });
       return next;
@@ -539,13 +540,16 @@ export default function NotificationPreferencesScreen() {
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             <View style={twStyle("flex-row items-center border-b border-gray-50 px-4 py-2")}>
               <View style={twStyle("flex-1")} />
-              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
+              <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
                 Email
               </Text>
-              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
+              <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
                 SMS
               </Text>
-              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
+              <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
+                WA
+              </Text>
+              <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
                 Push
               </Text>
             </View>
@@ -570,8 +574,8 @@ export default function NotificationPreferencesScreen() {
                     {PREF_LABELS[key]?.label ?? key}
                   </Text>
                 </View>
-                {(["email", "sms", "push"] as const).map((ch) => (
-                  <View key={ch} style={twStyle("w-14 items-center")}>
+                {(["email", "sms", "whatsapp", "push"] as const).map((ch) => (
+                  <View key={ch} style={twStyle("w-12 items-center")}>
                     <Switch
                       value={(local[key] as ChannelPrefs)?.[ch] ?? false}
                       onValueChange={() => toggle(key, ch)}

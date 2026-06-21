@@ -278,6 +278,16 @@ export const NotificationTemplatesListPage = lazy(() =>
     default: m.NotificationTemplatesListPage,
   }))
 );
+export const WhatsAppContentTemplatesPage = lazy(() =>
+  import("@/routes/marketing/WhatsAppContentTemplatesPage").then((m) => ({
+    default: m.WhatsAppContentTemplatesPage,
+  }))
+);
+export const MarketingPricebookPage = lazy(() =>
+  import("@/routes/marketing/MarketingPricebookPage").then((m) => ({
+    default: m.MarketingPricebookPage,
+  }))
+);
 export const NotificationsConfigPage = lazy(() =>
   import("@/routes/marketing/NotificationsConfigPage").then((m) => ({ default: m.NotificationsConfigPage }))
 );
@@ -313,6 +323,12 @@ export const ContentHubPage = lazy(() =>
 );
 export const LearningArticlesPage = lazy(() =>
   import("@/routes/content/LearningArticlesPage").then((m) => ({ default: m.LearningArticlesPage }))
+);
+export const KnowledgeBasePage = lazy(() =>
+  import("@/routes/learning/KnowledgeBasePage").then((m) => ({ default: m.KnowledgeBasePage }))
+);
+export const KnowledgeBaseArticlePage = lazy(() =>
+  import("@/routes/learning/KnowledgeBaseArticlePage").then((m) => ({ default: m.KnowledgeBaseArticlePage }))
 );
 export const ExplorePostsPage = lazy(() =>
   import("@/routes/content/ExplorePostsPage").then((m) => ({ default: m.ExplorePostsPage }))

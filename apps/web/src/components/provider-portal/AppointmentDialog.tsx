@@ -1256,7 +1256,7 @@ export function AppointmentDialog({
                     <Button
                       type="button"
                       size="sm"
-                      className="mt-2 bg-[#FF0077] hover:bg-[#D60565] text-white text-xs"
+                      className="mt-2 bg-primary hover:bg-primary-hover text-white text-xs"
                       onClick={() => router.push("/provider/subscription")}
                     >
                       View plans

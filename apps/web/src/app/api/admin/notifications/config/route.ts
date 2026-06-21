@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     let emailEnabled = true;
     let smsEnabled = false;
     let pushEnabled = true;
+    let whatsappSettingsEnabled = false;
     let onesignalSectionEnabled = true;
     let twilioSectionEnabled = false;
 
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
         emailEnabled = n.email_enabled !== false;
         smsEnabled = n.sms_enabled === true;
         pushEnabled = n.push_enabled !== false;
+        whatsappSettingsEnabled = n.whatsapp_enabled === true;
       }
       if (s?.onesignal && typeof s.onesignal === "object") {
         const o = s.onesignal as Record<string, unknown>;
@@ -71,6 +73,26 @@ export async function GET(request: NextRequest) {
     let twilioAuthToken = "";
     let twilioSmsFrom = "";
     let twilioWhatsappFrom = "";
+    let twilioMessageServiceSid = "";
+    let twilioWhatsappSandbox = false;
+
+    try {
+      const scopedTwilio = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+        supabase,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const tw = scopedTwilio.data?.settings?.twilio as Record<string, unknown> | undefined;
+      if (typeof tw?.message_service_sid === "string") {
+        twilioMessageServiceSid = tw.message_service_sid.trim();
+      }
+      twilioWhatsappSandbox = tw?.whatsapp_sandbox_enabled === true;
+    } catch {
+      // optional
+    }
 
     try {
       const { data: secretRow } = await supabase
@@ -141,10 +163,15 @@ export async function GET(request: NextRequest) {
         api_key_set: apiKeySet,
       },
       whatsapp: {
-        enabled: twilioIntegrationActive && !!twilioWhatsappFrom,
+        enabled:
+          whatsappSettingsEnabled &&
+          twilioIntegrationActive &&
+          !!twilioWhatsappFrom &&
+          !!twilioMessageServiceSid,
         provider: "twilio",
         api_key_set: twilioAuthTokenSet,
         from: twilioWhatsappFrom || undefined,
+        test_mode: twilioWhatsappSandbox,
       },
       in_app: {
         enabled: true,

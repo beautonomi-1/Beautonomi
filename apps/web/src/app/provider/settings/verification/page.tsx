@@ -300,7 +300,7 @@ export default function VerificationPage() {
                     onClick={() => setDocType(opt.value)}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                       docType === opt.value
-                        ? "bg-[#FF0077] text-white"
+                        ? "bg-primary text-white"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
@@ -319,7 +319,7 @@ export default function VerificationPage() {
                 id="country-of-issue"
                 value={country}
                 onChange={setCountry}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
@@ -328,14 +328,14 @@ export default function VerificationPage() {
               <label className="block text-sm font-medium mb-1">Document photo</label>
               <label
                 className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-colors ${
-                  file ? "border-[#FF0077] bg-pink-50" : "border-gray-300 hover:border-gray-400"
+                  file ? "border-primary bg-pink-50" : "border-gray-300 hover:border-gray-400"
                 }`}
               >
                 {file ? (
                   <>
-                    <FileText className="h-8 w-8 text-[#FF0077]" />
+                    <FileText className="h-8 w-8 text-primary" />
                     <span className="text-sm font-medium text-gray-900">{file.name}</span>
-                    <span className="text-xs text-[#FF0077]">Click to change</span>
+                    <span className="text-xs text-primary">Click to change</span>
                   </>
                 ) : (
                   <>
@@ -356,7 +356,7 @@ export default function VerificationPage() {
             <Button
               onClick={submitManual}
               disabled={uploading || !file || !country.trim()}
-              className="w-full bg-[#FF0077] hover:bg-[#e6006b]"
+              className="w-full bg-primary hover:bg-[#e6006b]"
             >
               {uploading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Uploading…</> : "Submit for verification"}
             </Button>

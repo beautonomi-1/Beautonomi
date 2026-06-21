@@ -201,7 +201,7 @@ export default function VATReportsPage() {
               href="https://www.sars.gov.za/individuals/tax-types/value-added-tax-vat/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#FF0077] hover:underline"
+              className="text-primary hover:underline"
             >
               SARS website
             </a>
@@ -209,7 +209,7 @@ export default function VATReportsPage() {
           </p>
           <Button
             onClick={() => window.location.href = "/provider/settings/sales/taxes"}
-            className="bg-[#FF0077] hover:bg-[#D60565]"
+            className="bg-primary hover:bg-primary-hover"
           >
             Update VAT Registration Status
           </Button>
@@ -317,7 +317,7 @@ export default function VATReportsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-[#FF0077] mb-1">
+                    <div className="text-2xl font-bold text-primary mb-1">
                       {report.vat_collected_formatted}
                     </div>
                     <p className="text-sm text-gray-600">

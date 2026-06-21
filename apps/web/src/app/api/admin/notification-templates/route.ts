@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         body: body.body ?? body.message_template ?? "",
         channels: (() => {
           const raw = Array.isArray(body.channels) && body.channels.length > 0 ? body.channels : ["push"];
-          const allowed = ["push", "email", "sms", "live_activities"];
+          const allowed = ["push", "email", "sms", "live_activities", "whatsapp"];
           return raw.map((c: string) => (c === "in_app" ? "push" : c)).filter((c: string) => allowed.includes(c));
         })(),
         email_subject: body.email_subject ?? null,

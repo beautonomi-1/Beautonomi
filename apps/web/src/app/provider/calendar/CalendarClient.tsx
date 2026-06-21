@@ -1744,7 +1744,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           </div>
         )}
         {/* Desktop Header - Mangomint Style */}
-        <div className="bg-gradient-to-r from-[#1a1f3c] to-[#252a4a] sticky top-0 z-20 px-3 lg:px-6 py-3 overflow-x-auto">
+        <div className="bg-gradient-to-r from-gray-900 to-gray-800 sticky top-0 z-20 px-3 lg:px-6 py-3 overflow-x-auto shadow-sm">
           <div className="flex items-center justify-between gap-2 lg:gap-4 min-w-max">
             {/* Left: Today + Navigation + Date */}
             <div className="flex items-center gap-1 lg:gap-2 flex-shrink-0">

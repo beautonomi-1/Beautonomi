@@ -25,6 +25,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { ProviderBankAccountModal } from "./ProviderBankAccountModal";
+import { ProviderMarketingCreditsPanel } from "@/components/marketing/ProviderMarketingCreditsPanel";
 
 type PayoutAccountRow = Record<string, unknown> & {
   id?: string;
@@ -1082,6 +1083,15 @@ export function ProviderDetailPage() {
           </div>
         ) : null}
       </AdminPanel>
+
+      {id ? (
+        <ProviderMarketingCreditsPanel
+          providerId={id}
+          marketingUsePlatformCredentials={
+            (row?.marketing_use_platform_credentials as boolean | null | undefined) ?? null
+          }
+        />
+      ) : null}
 
       <AdminPanel>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

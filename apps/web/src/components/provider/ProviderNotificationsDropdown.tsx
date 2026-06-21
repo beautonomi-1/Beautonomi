@@ -446,7 +446,7 @@ export function ProviderNotificationsDropdown() {
               <p className="text-sm">No new notifications</p>
               <Link
                 href="/provider/settings/notifications"
-                className="text-xs text-[#FF0077] hover:underline mt-2 inline-block"
+                className="text-xs text-primary hover:underline mt-2 inline-block"
                 onClick={() => setOpen(false)}
               >
                 Manage notifications
@@ -497,7 +497,7 @@ export function ProviderNotificationsDropdown() {
                             </p>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {!notification.read && (
-                                <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5" />
+                                <span className="w-2 h-2 bg-primary rounded-full mt-1.5" />
                               )}
                               <button
                                 type="button"
@@ -547,7 +547,7 @@ export function ProviderNotificationsDropdown() {
         <div className="p-3 border-t bg-gray-50 sticky bottom-0">
           <Link
             href="/provider/notifications"
-            className="text-sm text-[#FF0077] hover:underline text-center block"
+            className="text-sm text-primary hover:underline text-center block"
             onClick={() => setOpen(false)}
           >
             View all notifications

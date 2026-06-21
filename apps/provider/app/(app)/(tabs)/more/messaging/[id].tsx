@@ -184,7 +184,12 @@ export default function ChatScreen() {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const onChatBodyLayout = useCallback((e: LayoutChangeEvent) => {
     if (Platform.OS !== "ios") return;
-    e.currentTarget.measureInWindow((_x, y) => {
+    // `currentTarget` can be null when the layout event fires after the node
+    // detaches (e.g. navigating away mid-render). Guard before measuring to
+    // avoid "Cannot read property 'measureInWindow' of null".
+    const target = e?.currentTarget;
+    if (!target || typeof target.measureInWindow !== "function") return;
+    target.measureInWindow((_x, y) => {
       if (Number.isFinite(y)) setKeyboardOffset(Math.round(y));
     });
   }, []);

@@ -9,6 +9,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import * as Sentry from "@sentry/nextjs";
 import { getTotalUnreadBadgeCount } from "@/lib/notifications/total-unread-badge";
 import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
 import { z } from "zod";
@@ -298,6 +299,47 @@ export async function verifyOneSignalConfig(options?: ResolveOneSignalOptions): 
 /**
  * Log notification to database
  */
+function uniqueNonEmptyUserIds(userIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of userIds) {
+    const id = typeof raw === "string" ? raw.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function enrichNotificationLogPayload(
+  payload: Record<string, unknown>,
+  meta: { appType?: OneSignalAppType | null; tenantId?: string | null },
+): Record<string, unknown> {
+  return {
+    ...payload,
+    app_type: meta.appType ?? null,
+    tenant_id: meta.tenantId ?? null,
+  };
+}
+
+function reportOneSignalCredentialsMissing(meta: {
+  appType?: OneSignalAppType | null;
+  tenantId?: string | null;
+  eventType?: string;
+}): void {
+  Sentry.captureMessage("OneSignal API keys not configured", {
+    level: "error",
+    tags: {
+      onesignal: "credentials_missing",
+      app_type: meta.appType ?? "unset",
+    },
+    extra: {
+      tenant_id: meta.tenantId ?? null,
+      event_type: meta.eventType ?? null,
+    },
+  });
+}
+
 async function logNotification(entry: NotificationLogEntry) {
   // Use service role if available (webhooks/background jobs don't have a session)
   let supabase: SupabaseClient<Database>;
@@ -689,18 +731,77 @@ async function sendOneSignalNotification(
     };
   }
 
+  // Multi-recipient: alias-only fan-out misses devices without external_id; also
+  // target registered subscription ids (same reliability as admin broadcast).
+  if (
+    !payload._dualLeg &&
+    isSinglePushChannel &&
+    dualExtIds.length > 1 &&
+    dualPlayerIds.length > 0
+  ) {
+    const collapseId = payload.collapse_id || generateCollapseId();
+    const subLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: undefined,
+        include_player_ids: dualPlayerIds,
+        collapse_id: collapseId,
+        _dualLeg: "sub",
+        _reconcileUserIds: dualExtIds,
+        ios_badgeType: "Increase",
+        ios_badgeCount: 1,
+      },
+      options,
+    );
+    const aliasLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: dualExtIds,
+        include_player_ids: undefined,
+        collapse_id: collapseId,
+        _dualLeg: "alias",
+        _reconcileUserIds: dualExtIds,
+        ios_badgeType: "Increase",
+        ios_badgeCount: 1,
+      },
+      options,
+    );
+    return {
+      success: subLeg.success || aliasLeg.success,
+      error: subLeg.success || aliasLeg.success ? undefined : (subLeg.error || aliasLeg.error),
+      notification_id: subLeg.notification_id || aliasLeg.notification_id,
+    };
+  }
+
   const appType = options?.appType;
   const resolved = await resolveOneSignalCredentials(appType, { tenantId: options?.tenantId });
   const appId = resolved.appId?.replace(/^\uFEFF/, "").trim() || null;
   const restKey = resolved.restKey?.replace(/^\uFEFF/, "").trim() || null;
   if (!appId || !restKey) {
-    console.warn("OneSignal API keys not configured. Skipping notification send.");
+    const eventType = eventTypeFromPayloadData(payload.data);
+    console.warn("OneSignal API keys not configured. Skipping notification send.", {
+      appType,
+      tenantId: options?.tenantId ?? null,
+      eventType,
+    });
+    reportOneSignalCredentialsMissing({
+      appType,
+      tenantId: options?.tenantId ?? null,
+      eventType,
+    });
     await logNotification({
-      event_type: eventTypeFromPayloadData(payload.data),
+      event_type: eventType,
       recipients: payload.include_player_ids || payload.include_external_user_ids || [],
-      payload,
+      payload: enrichNotificationLogPayload(payload as Record<string, unknown>, {
+        appType,
+        tenantId: options?.tenantId ?? null,
+      }),
       status: "failed",
-      provider_response: { message: "OneSignal API keys not configured" },
+      provider_response: {
+        message: "OneSignal API keys not configured",
+        app_type: appType ?? null,
+        tenant_id: options?.tenantId ?? null,
+      },
       error_message: "OneSignal API keys not configured",
       channels: parseNotificationChannels(payload.channels ?? null),
     });
@@ -884,6 +985,7 @@ async function sendOneSignalNotification(
         message: payload.contents?.en ?? null,
         url: payload.url ?? null,
       },
+      ...(responseData.warnings != null ? { onesignal_warnings: responseData.warnings } : {}),
     };
     await logNotification({
       event_type: eventTypeFromPayloadData(payload.data),
@@ -1048,13 +1150,17 @@ export async function sendToUsers(
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
+  const targetUserIds = uniqueNonEmptyUserIds(userIds);
+  if (targetUserIds.length === 0) {
+    return { success: false, message: "No recipients" };
+  }
   const normalizedChannels = parseNotificationChannels(channels);
   const supabase = options?.supabaseClient ?? getSupabaseAdmin();
 
   let query = supabase
     .from("user_devices")
     .select("onesignal_player_id, user_id")
-    .in("user_id", userIds);
+    .in("user_id", targetUserIds);
 
   if (options?.appType === "provider") {
     query = query.eq("app_type", "provider");
@@ -1069,7 +1175,7 @@ export async function sendToUsers(
       .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
 
   const notificationPayload: Record<string, unknown> = {
-    include_external_user_ids: userIds,
+    include_external_user_ids: targetUserIds,
     channels: normalizedChannels,
     headings: { en: payload.title },
     contents: { en: payload.message },
@@ -1095,15 +1201,15 @@ export async function sendToUsers(
   if (normalizedChannels.includes("push")) {
     if (playerIds.length > 0) {
       notificationPayload.include_player_ids = playerIds;
-      if (userIds.length > 1) {
+      if (targetUserIds.length > 1) {
         notificationPayload.ios_interruption_level = "time_sensitive";
       }
     }
     // §Badge-accuracy: exact SetTo for one user; Increase when fan-out can't carry per-user totals.
-    if (userIds.length === 1) {
+    if (targetUserIds.length === 1) {
       const passthroughBadge = (payload as Record<string, unknown>).ios_badgeCount;
       if (typeof passthroughBadge !== "number") {
-        const unread = await getTotalUnreadBadgeCount(userIds[0], options?.appType ?? "customer");
+        const unread = await getTotalUnreadBadgeCount(targetUserIds[0], options?.appType ?? "customer");
         notificationPayload.ios_badgeType = "SetTo";
         notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
       }
@@ -1257,6 +1363,10 @@ export async function sendTemplateNotification(
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
+  userIds = uniqueNonEmptyUserIds(userIds);
+  if (userIds.length === 0) {
+    return { success: false, message: "No recipients" };
+  }
   const requestedFilter = parseNotificationChannels(channels);
   const templateClient = options?.supabaseClient ?? getSupabaseAdmin();
   const resolvedTenantId =
@@ -1387,21 +1497,25 @@ export async function sendTemplateNotification(
       const { intersectChannelsForProviderRecipients } = await import(
         "@/lib/notifications/provider-notification-channels"
       );
-      allowed = await intersectChannelsForProviderRecipients(
+      allowed = (await intersectChannelsForProviderRecipients(
         getSupabaseAdmin(),
         userIds,
         templateKey,
         triad
+      )).filter((c): c is "email" | "sms" | "push" =>
+        c === "email" || c === "sms" || c === "push",
       );
     } else {
       const { intersectChannelsForCustomerRecipients } = await import(
         "@/lib/notifications/customer-notification-channels"
       );
-      allowed = await intersectChannelsForCustomerRecipients(
+      allowed = (await intersectChannelsForCustomerRecipients(
         getSupabaseAdmin(),
         userIds,
         templateKey,
         triad
+      )).filter((c): c is "email" | "sms" | "push" =>
+        c === "email" || c === "sms" || c === "push",
       );
     }
     // Must-deliver pushes (everything except marketing/promo) bypass preference
@@ -1434,7 +1548,7 @@ export async function sendTemplateNotification(
     (options?.appType === "customer" || options?.appType === "provider") &&
     userIds.length > 0
   ) {
-    let perUser: Map<string, ("push" | "email" | "sms")[]>;
+    let perUser: Map<string, ("push" | "email" | "sms" | "whatsapp")[]>;
     if (options.appType === "provider") {
       const { resolveChannelsPerProviderRecipient } = await import(
         "@/lib/notifications/provider-notification-channels"
@@ -1606,6 +1720,101 @@ export async function sendTemplateNotification(
         options?.supabaseClient,
       );
       emailSmsEnqueued = true;
+    }
+  }
+
+  const whatsappRequested =
+    (template?.channels?.includes("whatsapp") ?? false) &&
+    (!channels?.length || (channels as string[]).includes("whatsapp"));
+  if (whatsappRequested && userIds.length > 0) {
+    const { isWhatsAppNotificationsEnabled, buildOrdinalContentVariables } = await import(
+      "@/lib/whatsapp/config"
+    );
+    const waEnabled = await isWhatsAppNotificationsEnabled(
+      getSupabaseAdmin(),
+      resolvedTenantId,
+    );
+    if (waEnabled && template) {
+      const tpl = template as Record<string, unknown>;
+      const contentSid = String(tpl.whatsapp_content_sid ?? "").trim();
+      const waStatus = String(tpl.whatsapp_template_status ?? "unknown");
+      const waCategory = String(tpl.whatsapp_category ?? "utility");
+      const waBodyRaw = String(tpl.whatsapp_body ?? tpl.sms_body ?? body);
+      let waBody = waBodyRaw;
+      Object.entries(variables).forEach(([key, value]) => {
+        waBody = waBody.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+      });
+      const contentVars = buildOrdinalContentVariables(
+        tpl.whatsapp_content_variables as Array<{ ordinal?: number; var?: string; sample?: string }>,
+        variables as Record<string, string>,
+      );
+
+      let waRecipients: Array<{ userId: string; channels: ("whatsapp")[] }> = userIds.map((uid) => ({
+        userId: uid,
+        channels: ["whatsapp"] as const,
+      }));
+
+      if (options?.appType === "customer" || options?.appType === "provider") {
+        const { resolveChannelsPerCustomerRecipient } = await import(
+          "@/lib/notifications/customer-notification-channels"
+        );
+        const { resolveChannelsPerProviderRecipient } = await import(
+          "@/lib/notifications/provider-notification-channels"
+        );
+        const perUser =
+          options.appType === "provider"
+            ? await resolveChannelsPerProviderRecipient(
+                getSupabaseAdmin(),
+                userIds,
+                templateKey,
+                ["whatsapp"],
+              )
+            : await resolveChannelsPerCustomerRecipient(
+                getSupabaseAdmin(),
+                userIds,
+                templateKey,
+                ["whatsapp"],
+              );
+        waRecipients = [];
+        for (const uid of userIds) {
+          const allowed = (perUser.get(uid) ?? []).filter((c) => c === "whatsapp");
+          if (allowed.length > 0) waRecipients.push({ userId: uid, channels: ["whatsapp"] });
+        }
+      }
+
+      const waterfall = Array.isArray(tpl.channel_waterfall)
+        ? (tpl.channel_waterfall as string[])
+        : [];
+      const whatsappFirst = waterfall.length === 0 || waterfall[0] === "whatsapp";
+
+      if (whatsappFirst && waRecipients.length > 0 && (contentSid || waBody)) {
+        if (!["paused", "disabled", "rejected"].includes(waStatus)) {
+          const { enqueueTemplateEmailSmsChannels } = await import(
+            "@/lib/notifications/enqueue-template-channels"
+          );
+          await enqueueTemplateEmailSmsChannels(
+            {
+              templateKey,
+              recipients: waRecipients,
+              bookingId: (variables as { booking_id?: string })?.booking_id ?? null,
+              tenantId: options?.tenantId ?? null,
+              title,
+              body,
+              emailSubject,
+              emailBody,
+              smsBody,
+              whatsappContentSid: contentSid || null,
+              whatsappContentVariables: contentVars,
+              whatsappCategory: waCategory,
+              whatsappBody: waBody,
+              whatsappTemplateStatus: waStatus,
+              data: { template_key: templateKey, ...variables },
+              url: pushUrlFields.actionPath || undefined,
+            },
+            options?.supabaseClient,
+          );
+        }
+      }
     }
   }
 

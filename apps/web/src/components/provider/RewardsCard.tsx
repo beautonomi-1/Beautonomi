@@ -50,7 +50,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#FF0077] to-[#D60565] flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center">
                 <Trophy className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -107,7 +107,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                   <div className="flex items-baseline gap-2 mb-4">
                     <span className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
                       {showProgress.current_points.toLocaleString()}
-                      <Star className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077] fill-[#FF0077]" />
+                      <Star className="w-5 h-5 sm:w-6 sm:h-6 text-primary fill-primary" />
                     </span>
                     <span className="text-base sm:text-lg text-gray-600">
                       / {showProgress.required_points.toLocaleString()} points
@@ -120,7 +120,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
                       {/* Progress Fill */}
                       <div 
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#FF0077] to-[#D60565] rounded-full transition-all duration-500 ease-out"
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary to-primary-hover rounded-full transition-all duration-500 ease-out"
                         style={{ width: `${showProgress.progress_percentage}%` }}
                       />
                     </div>
@@ -131,7 +131,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                 {showProgress.points_needed > 0 ? (
                   <div className="space-y-2">
                     <p className="text-sm sm:text-base text-gray-700">
-                      <span className="font-semibold text-[#FF0077]">{showProgress.points_needed.toLocaleString()}</span> more points needed
+                      <span className="font-semibold text-primary">{showProgress.points_needed.toLocaleString()}</span> more points needed
                     </p>
                     <p className="text-sm font-medium text-gray-800">
                       You’re {showProgress.points_needed.toLocaleString()} points away from {showProgress.badge.name}.
@@ -141,7 +141,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm sm:text-base text-[#FF0077] font-semibold">
+                  <p className="text-sm sm:text-base text-primary font-semibold">
                     🎉 You've reached the requirements!
                   </p>
                 )}
@@ -160,13 +160,13 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                   {showGetStarted ? (
                     <>Complete bookings and get great reviews to earn points and unlock badges. Higher tiers unlock perks like featured placement and more.</>
                   ) : (
-                    <>Start earning points to unlock your first badge: <span className="font-semibold text-[#FF0077]">{displayBadge.name}</span></>
+                    <>Start earning points to unlock your first badge: <span className="font-semibold text-primary">{displayBadge.name}</span></>
                   )}
                 </p>
                 <div className="flex items-baseline gap-2 mb-3">
                   <span className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
                     {(gamification.total_points ?? 0).toLocaleString()}
-                    <Star className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077] fill-[#FF0077]" />
+                    <Star className="w-5 h-5 sm:w-6 sm:h-6 text-primary fill-primary" />
                   </span>
                   <span className="text-base sm:text-lg text-gray-600">points earned</span>
                 </div>
@@ -182,7 +182,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
             <Button
               onClick={() => router.push("/provider/gamification")}
               variant="outline"
-              className="w-full sm:w-auto border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white transition-colors"
+              className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-white transition-colors"
             >
               <Sparkles className="w-4 h-4 mr-2" />
               View badges & journey

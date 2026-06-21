@@ -575,7 +575,7 @@ export function ClientsClient({
 
             {/* Desktop Table Layout */}
             <SectionCard className="hidden md:block p-0 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="provider-table-scroll overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>

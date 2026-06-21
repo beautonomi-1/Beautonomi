@@ -1,6 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+export function dedupeBroadcastUserIds(userIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of userIds) {
+    const id = typeof raw === "string" ? raw.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 export function isMissingColumnError(error: unknown, column: string): boolean {
   if (!error || typeof error !== "object") return false;
   const record = error as Record<string, unknown>;
@@ -32,7 +44,9 @@ export async function resolveBroadcastCustomerUserIds(
   });
 
   if (!rpcErr && rpcRows != null) {
-    const userIds = ((rpcRows as { id: string }[]) ?? []).map((r) => r.id).filter(Boolean);
+    const userIds = dedupeBroadcastUserIds(
+      ((rpcRows as { id: string }[]) ?? []).map((r) => r.id).filter(Boolean),
+    );
     return { userIds, mode: "tenant_admin_scope" };
   }
 
@@ -62,14 +76,14 @@ export async function resolveBroadcastCustomerUserIds(
         throw fallbackUsersError;
       }
       return {
-        userIds: fallbackUsers?.map((u: { id: string }) => u.id) ?? [],
+        userIds: dedupeBroadcastUserIds(fallbackUsers?.map((u: { id: string }) => u.id) ?? []),
         mode: "fallback_all_customers_column_missing",
       };
     }
     throw usersError;
   }
 
-  const userIds = users?.map((u: { id: string }) => u.id) ?? [];
+  const userIds = dedupeBroadcastUserIds(users?.map((u: { id: string }) => u.id) ?? []);
   return { userIds, mode: "fallback_preferred_home" };
 }
 
@@ -91,7 +105,9 @@ export async function resolveBroadcastProviderUserIds(
     throw providerError;
   }
 
-  let userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) as string[];
+  let userIds = dedupeBroadcastUserIds(
+    providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) as string[],
+  );
   if (userIds.length > 0) {
     return { userIds, mode: "tenant_scoped" };
   }
@@ -111,6 +127,8 @@ export async function resolveBroadcastProviderUserIds(
     throw activeError;
   }
 
-  userIds = active?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) as string[];
+  userIds = dedupeBroadcastUserIds(
+    active?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) as string[],
+  );
   return { userIds, mode: "fallback_active_providers_empty_tenant" };
 }

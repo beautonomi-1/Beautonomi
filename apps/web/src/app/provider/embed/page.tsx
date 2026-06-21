@@ -98,26 +98,26 @@ export default function ProviderEmbedPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
       {status === "waiting" && (
         <>
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#FF0077] border-t-transparent" />
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-4 text-gray-600">Loading session from app…</p>
         </>
       )}
       {status === "setting" && (
         <>
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#FF0077] border-t-transparent" />
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-4 text-gray-600">Signing you in…</p>
         </>
       )}
       {status === "redirecting" && (
         <>
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#FF0077] border-t-transparent" />
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-4 text-gray-600">Redirecting…</p>
         </>
       )}
       {status === "error" && (
         <>
           <p className="text-red-600">{errorMsg || "Something went wrong."}</p>
-          <a href="/provider" className="mt-4 text-[#FF0077] underline">Open provider portal</a>
+          <a href="/provider" className="mt-4 text-primary underline">Open provider portal</a>
         </>
       )}
     </div>

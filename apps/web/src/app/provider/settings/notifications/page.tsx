@@ -128,7 +128,10 @@ export default function ProviderNotificationPreferences() {
     }
   };
 
-  const updatePreference = async (sectionId: string, prefs: { email: boolean; sms: boolean; push: boolean }) => {
+  const updatePreference = async (
+    sectionId: string,
+    prefs: { email: boolean; sms: boolean; push: boolean; whatsapp: boolean },
+  ) => {
     try {
       setIsSaving(true);
       await fetcher.patch("/api/provider/notification-preferences", {
@@ -153,10 +156,16 @@ export default function ProviderNotificationPreferences() {
     }
   };
 
-  const togglePreference = (sectionId: string, channel: 'email' | 'sms' | 'push') => {
-    const currentPrefs = preferences[sectionId as keyof NotificationPreferences] as { email: boolean; sms: boolean; push: boolean } || { email: true, sms: true, push: false };
+  const togglePreference = (sectionId: string, channel: "email" | "sms" | "push" | "whatsapp") => {
+    const currentPrefs = (preferences[sectionId as keyof NotificationPreferences] as {
+      email: boolean;
+      sms: boolean;
+      push: boolean;
+      whatsapp?: boolean;
+    }) || { email: true, sms: true, push: false, whatsapp: false };
     const newPrefs = {
       ...currentPrefs,
+      whatsapp: currentPrefs.whatsapp ?? false,
       [channel]: !currentPrefs[channel],
     };
     updatePreference(sectionId, newPrefs);
@@ -298,7 +307,12 @@ export default function ProviderNotificationPreferences() {
         <div className="space-y-4">
           {notificationSections.map((section) => {
             const Icon = section.icon;
-            const sectionPrefs = preferences[section.id as keyof NotificationPreferences] as { email: boolean; sms: boolean; push: boolean } || { email: true, sms: true, push: false };
+            const sectionPrefs = (preferences[section.id as keyof NotificationPreferences] as {
+              email: boolean;
+              sms: boolean;
+              push: boolean;
+              whatsapp?: boolean;
+            }) || { email: true, sms: true, push: false, whatsapp: false };
 
             return (
               <div key={section.id} className="bg-white border rounded-lg p-6">
@@ -335,6 +349,18 @@ export default function ProviderNotificationPreferences() {
                       onCheckedChange={() => togglePreference(section.id, 'sms')}
                       disabled={isSaving}
                       className="data-[state=checked]:bg-primary"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-emerald-600" />
+                      <span className="font-medium">WhatsApp</span>
+                    </div>
+                    <Switch
+                      checked={sectionPrefs.whatsapp ?? false}
+                      onCheckedChange={() => togglePreference(section.id, "whatsapp")}
+                      disabled={isSaving}
+                      className="data-[state=checked]:bg-emerald-600"
                     />
                   </div>
                   <div className="flex items-center justify-between">

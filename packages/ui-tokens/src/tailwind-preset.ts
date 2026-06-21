@@ -20,6 +20,7 @@ export const beautonomiPreset = {
         foreground: colors.foreground,
         primary: {
           DEFAULT: colors.primary,
+          hover: colors.primaryHover,
           foreground: colors.primaryForeground,
         },
         secondary: {

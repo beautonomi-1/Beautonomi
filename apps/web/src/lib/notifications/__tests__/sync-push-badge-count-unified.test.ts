@@ -13,6 +13,14 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   sendToUser: hoisted.sendToUserMock,
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: vi.fn(() => ({})),
+}));
+
+vi.mock("@/lib/notifications/resolve-tenant-for-push", () => ({
+  resolveTenantIdForPush: vi.fn().mockResolvedValue("tenant-za"),
+}));
+
 describe("syncPushBadgeCountAllApps unified totals", () => {
   beforeEach(() => {
     hoisted.getTotalUnreadBadgeCountMock.mockReset();
@@ -33,5 +41,7 @@ describe("syncPushBadgeCountAllApps unified totals", () => {
     const providerCall = hoisted.sendToUserMock.mock.calls.find((c) => c[3]?.appType === "provider");
     expect(customerCall?.[1]?.ios_badgeCount).toBe(7);
     expect(providerCall?.[1]?.ios_badgeCount).toBe(11);
+    expect(customerCall?.[3]?.tenantId).toBe("tenant-za");
+    expect(providerCall?.[3]?.tenantId).toBe("tenant-za");
   });
 });

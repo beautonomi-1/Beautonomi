@@ -19,6 +19,7 @@ export const colors = {
 
   // Primary — brand accent (hot pink)
   primary: "#FF0077",
+  primaryHover: "#D60565",
   primaryForeground: "#ffffff",
 
   // Secondary — dark neutral
@@ -70,6 +71,7 @@ export const colorsDark = {
   foreground: "#fafafa",
 
   primary: "#FF3399",
+  primaryHover: "#FF0077",
   primaryForeground: "#0a0a0a",
 
   secondary: "#262626",

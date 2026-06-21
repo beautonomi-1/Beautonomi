@@ -229,8 +229,8 @@ export default function DaysOffPage() {
         </SectionCard>
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-              <CalendarIcon2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077]" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <CalendarIcon2 className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Upcoming</div>
@@ -277,7 +277,7 @@ export default function DaysOffPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 sm:gap-3">
                           <Avatar className="w-8 h-8 sm:w-10 sm:h-10">
-                            <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs sm:text-sm">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
                               {member?.name.charAt(0) || "?"}
                             </AvatarFallback>
                           </Avatar>
@@ -363,7 +363,7 @@ export default function DaysOffPage() {
                       />
                     </span>
                     <Avatar className="w-8 h-8">
-                      <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
                         {member.name.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
@@ -461,7 +461,7 @@ export default function DaysOffPage() {
               disabled={
                 isSaving || !selectedDate || selectedMembers.length === 0 || teamMembers.length === 0
               }
-              className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {isSaving ? "Saving…" : "Set Day Off"}
             </Button>

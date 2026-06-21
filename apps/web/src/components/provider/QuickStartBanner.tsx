@@ -123,10 +123,10 @@ export function QuickStartBanner() {
   const incompleteRequiredSteps = requiredSteps.filter((step) => !step.completed);
 
   return (
-    <Alert className="mb-6 border-[#FF0077]/30 bg-gradient-to-r from-[#FF0077]/5 to-[#D60565]/5">
+    <Alert className="mb-6 border-primary/30 bg-gradient-to-r from-primary/5 to-primary-hover/5">
       <div className="flex items-start justify-between w-full">
         <div className="flex items-start gap-4 flex-1">
-          <Sparkles className="w-5 h-5 text-[#FF0077] mt-0.5" />
+          <Sparkles className="w-5 h-5 text-primary mt-0.5" />
           <div className="flex-1">
             <AlertTitle className="text-lg font-semibold text-gray-900 mb-2">
               Complete Your Setup to Start Accepting Bookings
@@ -149,7 +149,7 @@ export function QuickStartBanner() {
                 />
               </div>
               <Link href="/provider/get-started">
-                <Button className="bg-[#FF0077] hover:bg-[#D60565] text-white">
+                <Button className="bg-primary hover:bg-primary-hover text-white">
                   Complete Setup
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
@@ -162,7 +162,7 @@ export function QuickStartBanner() {
                   <Link
                     key={step.id}
                     href={step.link}
-                    className="text-xs text-[#FF0077] hover:text-[#D60565] underline flex items-center gap-1"
+                    className="text-xs text-primary hover:text-primary-hover underline flex items-center gap-1"
                   >
                     <CheckCircle2 className="w-3 h-3" />
                     {step.title}

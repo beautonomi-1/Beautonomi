@@ -46,6 +46,9 @@ type FinanceSummary = {
   ads_net: number;
   ads_gross: number;
   ads_gateway_fees: number;
+  marketing_credit_net?: number;
+  marketing_credit_gross?: number;
+  marketing_credit_gateway_fees?: number;
   total_platform_take_net: number;
   provider_earnings: number;
   cancellation_fees_retained: number;
@@ -71,6 +74,7 @@ type FinanceSummary = {
     customer_paid_platform_fees?: number;
     subscriptions?: number;
     ads?: number;
+    marketing_credits?: number;
     service_fees?: number;
     ecommerce_fees_detail?: number;
     wallet_topups?: number;
@@ -295,6 +299,7 @@ export function FinanceOverviewPage() {
       { label: "Customer-paid platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
       { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
       { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
+      { label: "Marketing credits (net)", value: summary.platform_revenue?.marketing_credits ?? summary.marketing_credit_net ?? 0 },
       { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
     ];
   }, [summary]);
@@ -665,6 +670,7 @@ export function FinanceOverviewPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryMetricCard label="Subscription revenue (net)" value={summary.subscription_net} />
               <SummaryMetricCard label="Ads revenue (net)" value={summary.ads_net ?? 0} />
+              <SummaryMetricCard label="Marketing credit revenue (net)" value={summary.marketing_credit_net ?? 0} />
               <SummaryMetricCard label="Subscription collected (gross)" value={summary.subscription_collected_gross} />
               <SummaryMetricCard label="Tips collected (provider pass-through)" value={summary.pass_through?.tips_collected ?? summary.tips_gross} />
               <SummaryMetricCard label="Taxes collected (pass-through)" value={summary.pass_through?.taxes_collected ?? summary.taxes_gross} />

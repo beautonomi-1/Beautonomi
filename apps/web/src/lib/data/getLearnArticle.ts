@@ -18,6 +18,7 @@ export interface LearnArticleData {
   parent_slugs: string[];
   stats: { view_count: number; helpful_yes_count: number; helpful_no_count: number };
   related_articles: { id: string; title: string; slug: string; summary: string | null }[];
+  category_nav: { prev: { title: string; slug: string } | null; next: { title: string; slug: string } | null };
 }
 
 async function getCategoryLineage(
@@ -103,12 +104,29 @@ export const getLearnArticle = cache(async (slug: string): Promise<LearnArticleD
       .order("updated_at", { ascending: false })
       .limit(3);
 
+    const { data: categorySiblings } = await supabase
+      .from("learning_articles")
+      .select("id, title, slug")
+      .eq("category_id", (article as any).category_id)
+      .eq("status", "published")
+      .eq("is_internal", false)
+      .order("title", { ascending: true });
+
+    const siblings = categorySiblings ?? [];
+    const currentIdx = siblings.findIndex((s) => s.id === article.id);
+    const prevSibling = currentIdx > 0 ? siblings[currentIdx - 1] : null;
+    const nextSibling = currentIdx >= 0 && currentIdx < siblings.length - 1 ? siblings[currentIdx + 1] : null;
+
     return {
       ...(article as any),
       parents: parentsLineage.map((p) => p.title),
       parent_slugs: parentsLineage.map((p) => p.slug),
       stats: stat ?? { view_count: 0, helpful_yes_count: 0, helpful_no_count: 0 },
       related_articles: relatedRows ?? [],
+      category_nav: {
+        prev: prevSibling ? { title: prevSibling.title, slug: prevSibling.slug } : null,
+        next: nextSibling ? { title: nextSibling.title, slug: nextSibling.slug } : null,
+      },
     };
   } catch (error) {
     console.error("getLearnArticle error:", error);

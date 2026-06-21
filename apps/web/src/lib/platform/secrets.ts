@@ -81,6 +81,87 @@ type GlobalOneSignalDb = {
   restKeyProvider: string | null;
 };
 
+function isOneSignalDbEmpty(db: GlobalOneSignalDb): boolean {
+  const has = (v: string | null | undefined) => typeof v === "string" && v.trim().length > 0;
+  return (
+    !has(db.appIdCustomer) &&
+    !has(db.appIdProvider) &&
+    !has(db.restKeyCustomer) &&
+    !has(db.restKeyProvider)
+  );
+}
+
+function mergeOneSignalDb(a: GlobalOneSignalDb, b: GlobalOneSignalDb): GlobalOneSignalDb {
+  return {
+    appIdCustomer: a.appIdCustomer || b.appIdCustomer,
+    appIdProvider: a.appIdProvider || b.appIdProvider,
+    restKeyCustomer: a.restKeyCustomer || b.restKeyCustomer,
+    restKeyProvider: a.restKeyProvider || b.restKeyProvider,
+  };
+}
+
+/**
+ * When creds are saved tenant-scoped only (Superadmin → tenant scope) and global
+ * (`tenant_id IS NULL`) + env are empty, transactional/badge/message sends without
+ * tenantId fail with "OneSignal API keys not configured". Load the most recent
+ * populated rows from any tenant scope as a last resort.
+ */
+async function loadOneSignalFromAnyScope(): Promise<GlobalOneSignalDb> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const admin = getSupabaseAdmin();
+
+    const [{ data: settingsRows }, { data: secretRows }] = await Promise.all([
+      admin
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(25),
+      admin
+        .from("platform_secrets")
+        .select("onesignal_rest_api_key, onesignal_rest_api_key_provider")
+        .order("updated_at", { ascending: false })
+        .limit(25),
+    ]);
+
+    let merged: GlobalOneSignalDb = {
+      appIdCustomer: null,
+      appIdProvider: null,
+      restKeyCustomer: null,
+      restKeyProvider: null,
+    };
+
+    for (const row of settingsRows ?? []) {
+      merged = mergeOneSignalDb(
+        merged,
+        parseOneSignalRows(row as { settings?: { onesignal?: Record<string, unknown> } }, null),
+      );
+    }
+    for (const row of secretRows ?? []) {
+      merged = mergeOneSignalDb(
+        merged,
+        parseOneSignalRows(
+          null,
+          row as {
+            onesignal_rest_api_key?: string | null;
+            onesignal_rest_api_key_provider?: string | null;
+          },
+        ),
+      );
+    }
+
+    return merged;
+  } catch {
+    return {
+      appIdCustomer: null,
+      appIdProvider: null,
+      restKeyCustomer: null,
+      restKeyProvider: null,
+    };
+  }
+}
+
 function parseOneSignalRows(
   settingsRow: { settings?: { onesignal?: Record<string, unknown> } } | null,
   secretRow: {
@@ -105,6 +186,13 @@ function parseOneSignalRows(
  * Load OneSignal app IDs + REST keys from platform_settings / platform_secrets.
  * When `tenantId` is set, merges tenant row over global (`tenant_id IS NULL`) so market-scoped
  * Superadmin settings apply to broadcast and notifications (same as GET /api/admin/settings).
+ *
+ * Credential storage (confirm in Superadmin → Platform settings / Integrations):
+ * - Env: ONESIGNAL_APP_ID(_CUSTOMER|_PROVIDER) + ONESIGNAL_REST_API_KEY(_CUSTOMER|_PROVIDER)
+ * - DB global: platform_settings / platform_secrets where tenant_id IS NULL
+ * - DB tenant: same tables with tenant_id = market scope (used when sends pass tenantId)
+ * When global + env are empty, {@link loadOneSignalFromAnyScope} merges the latest populated
+ * tenant-scoped rows so transactional sends without tenantId still resolve credentials.
  */
 async function loadOneSignalFromDb(tenantId?: string | null): Promise<GlobalOneSignalDb> {
   try {
@@ -143,15 +231,26 @@ async function loadOneSignalFromDb(tenantId?: string | null): Promise<GlobalOneS
 
     const global = await loadScope(null);
     const tid = typeof tenantId === "string" && tenantId.trim() ? tenantId.trim() : null;
-    if (!tid) return global;
 
-    const tenant = await loadScope(tid);
-    return {
-      appIdCustomer: tenant.appIdCustomer || global.appIdCustomer,
-      appIdProvider: tenant.appIdProvider || global.appIdProvider,
-      restKeyCustomer: tenant.restKeyCustomer || global.restKeyCustomer,
-      restKeyProvider: tenant.restKeyProvider || global.restKeyProvider,
-    };
+    let merged: GlobalOneSignalDb;
+    if (!tid) {
+      merged = global;
+    } else {
+      const tenant = await loadScope(tid);
+      merged = {
+        appIdCustomer: tenant.appIdCustomer || global.appIdCustomer,
+        appIdProvider: tenant.appIdProvider || global.appIdProvider,
+        restKeyCustomer: tenant.restKeyCustomer || global.restKeyCustomer,
+        restKeyProvider: tenant.restKeyProvider || global.restKeyProvider,
+      };
+    }
+
+    if (isOneSignalDbEmpty(merged)) {
+      const anyScope = await loadOneSignalFromAnyScope();
+      merged = mergeOneSignalDb(merged, anyScope);
+    }
+
+    return merged;
   } catch {
     return {
       appIdCustomer: null,

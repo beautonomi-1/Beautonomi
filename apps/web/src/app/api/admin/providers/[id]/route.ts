@@ -249,6 +249,11 @@ export async function PATCH(
     if (body.accept_paystack_terminal !== undefined) {
       updateData.accept_paystack_terminal = Boolean(body.accept_paystack_terminal);
     }
+    if (body.marketing_use_platform_credentials !== undefined) {
+      const v = body.marketing_use_platform_credentials;
+      updateData.marketing_use_platform_credentials =
+        v === null || v === "null" ? null : Boolean(v);
+    }
 
     const { data: updatedProvider, error: updateError } = await supabase
       .from("providers")

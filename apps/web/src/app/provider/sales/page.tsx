@@ -150,7 +150,7 @@ function ProviderSalesContent() {
           </div>
           <Button
             onClick={handleCreateSale}
-            className="md:hidden bg-[#FF0077] hover:bg-[#D60565] h-11 px-4 rounded-full shadow-lg active:scale-95 transition-transform"
+            className="md:hidden bg-primary hover:bg-primary-hover h-11 px-4 rounded-full shadow-lg active:scale-95 transition-transform"
             size="lg"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -210,7 +210,7 @@ function ProviderSalesContent() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-[#FF0077] bg-[#FF0077]/10 px-2 py-1 rounded">
+                      <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
                         {sale.ref_number}
                       </span>
                       <span className="text-xs text-gray-500">
@@ -223,7 +223,7 @@ function ProviderSalesContent() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-bold text-[#FF0077]">
+                    <div className="text-lg font-bold text-primary">
                       <Money amount={sale.total} />
                     </div>
                     <div className="text-xs text-gray-500 mt-1">{sale.payment_method}</div>

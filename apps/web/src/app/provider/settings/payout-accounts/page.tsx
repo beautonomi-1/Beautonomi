@@ -386,7 +386,7 @@ export default function PayoutAccountsPage() {
               </div>
               <Button
                 size="sm"
-                className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+                className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
                 onClick={() => setShowAddDialog(true)}
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -737,7 +737,7 @@ export default function PayoutAccountsPage() {
             <Button
               onClick={handleAddAccount}
               disabled={isSubmitting}
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             >
               {isSubmitting ? (
                 <>

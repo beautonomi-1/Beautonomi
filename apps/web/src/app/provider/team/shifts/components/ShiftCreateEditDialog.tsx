@@ -382,7 +382,7 @@ export function ShiftCreateEditDialog({
             <Button
               type="submit"
               disabled={isSaving}
-              className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {isSaving
                 ? "Saving..."

@@ -75,7 +75,7 @@ export function ProductFiltersSheet({ open, onOpenChange }: ProductFiltersSheetP
               Reset
             </Button>
             <Button
-              className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+              className="flex-1 bg-primary hover:bg-primary-hover"
               onClick={() => onOpenChange(false)}
             >
               Apply Filters

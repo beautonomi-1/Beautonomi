@@ -579,7 +579,7 @@ export default function EditPackagePage({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving…" : "Save Changes"}
             </Button>

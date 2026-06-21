@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PartnerNavbar from "../become-a-partner/components/partner-navbar";
 import Footer from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,38 @@ import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 function displayPriceAndPeriod(plan: PricingPlan): { price: string; period: string | null } {
   const price = (plan.price ?? "").trim();
   let period = plan.period?.trim() || null;
+  const priceLower = price.toLowerCase();
+  // Free plans read better without a billing period ("Free" not "Free /month").
+  if (priceLower === "free") return { price, period: null };
   if (!period) return { price, period: null };
   const pLower = period.toLowerCase();
-  const priceLower = price.toLowerCase();
-  if (priceLower === "free" && pLower.startsWith("free")) {
+  if (pLower.startsWith("free")) {
     const rest = period.replace(/^free\s*/i, "").trim();
     period = rest.length ? rest : null;
   }
   return { price, period };
 }
+
+/** Numeric tier rank from a display price ("Free"/"R0" → 0, "R99" → 99). */
+function parsePriceRank(price: string): number {
+  const raw = (price ?? "").toLowerCase().trim();
+  if (!raw || raw.includes("free")) return 0;
+  const digits = raw.replace(/[^0-9.]/g, "");
+  if (!digits) return Number.MAX_SAFE_INTEGER;
+  const value = parseFloat(digits);
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
+
+/** Current subscription context for a signed-in provider viewing the page. */
+type ProviderPlanContext = {
+  planId: string | null;
+  /** Monthly price of the current plan, for upgrade/downgrade direction. */
+  rank: number;
+  /** Whether the current plan is the free tier — lets us match the free card even if it isn't FK-linked. */
+  isFree: boolean;
+  /** Whether the current plan is live (active/trial) — gates the "Current plan" label. */
+  active: boolean;
+};
 
 interface PricingPageClientProps {
   pricingPlans: PricingPlan[];
@@ -39,6 +62,79 @@ export default function PricingPageClient({
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // Only set for a signed-in provider with a known plan; drives the
+  // Current/Upgrade/Switch CTA labels. Stays null for public visitors and
+  // signed-in customers, who keep the acquisition copy from the CMS.
+  const [providerPlan, setProviderPlan] = useState<ProviderPlanContext | null>(null);
+
+  const isProvider = role === "provider_owner" || role === "provider_staff";
+
+  useEffect(() => {
+    if (!user || !isProvider) {
+      setProviderPlan(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/provider/subscription", { credentials: "include" });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data?: {
+            plan_id?: string | null;
+            status?: string | null;
+            plan?: {
+              id?: string | null;
+              is_free?: boolean | null;
+              price_monthly?: number | null;
+              price_yearly?: number | null;
+            } | null;
+          } | null;
+        };
+        const sub = json?.data;
+        if (cancelled || !sub) return;
+        const planId = sub.plan_id ?? sub.plan?.id ?? null;
+        if (!planId) return;
+        const isFree =
+          sub.plan?.is_free === true ||
+          (sub.plan?.price_monthly == null && sub.plan?.price_yearly == null);
+        const rawRank = isFree
+          ? 0
+          : Number(sub.plan?.price_monthly ?? sub.plan?.price_yearly ?? 0);
+        setProviderPlan({
+          planId,
+          rank: Number.isFinite(rawRank) ? rawRank : 0,
+          isFree,
+          active: sub.status === "active" || sub.status === "trial",
+        });
+      } catch {
+        // Non-fatal: fall back to the public acquisition CTA.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isProvider]);
+
+  /**
+   * Context-aware CTA: public visitors / signed-in customers see the CMS
+   * acquisition copy; a signed-in provider sees their subscription state.
+   */
+  const resolveCta = (plan: PricingPlan): { label: string; disabled: boolean } => {
+    if (!providerPlan) return { label: plan.cta_text, disabled: false };
+    const cardRank = parsePriceRank(plan.price);
+    // Prefer an exact FK match; fall back to free↔free matching so the free card
+    // still reads "Current plan" even if its subscription_plan_id link was
+    // cleared via the CMS (the free card is the only R0 tier).
+    const linkMatch =
+      !!plan.subscriptionPlanId && plan.subscriptionPlanId === providerPlan.planId;
+    const freeMatch = providerPlan.isFree && cardRank === 0;
+    if (providerPlan.active && (linkMatch || freeMatch)) {
+      return { label: "Current plan", disabled: true };
+    }
+    if (cardRank > providerPlan.rank) return { label: "Upgrade", disabled: false };
+    return { label: "Switch plan", disabled: false };
+  };
 
   const handleGetStarted = (planName: string, planId?: string) => {
     if (isLoading) return;
@@ -89,25 +185,35 @@ export default function PricingPageClient({
             <p className="text-gray-600">No pricing plans available at the moment.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
             {pricingPlans.map((plan) => {
               const { price: displayPrice, period: displayPeriod } = displayPriceAndPeriod(plan);
+              const cta = resolveCta(plan);
+              const isCurrentPlan = cta.disabled;
               return (
                 <div
                   key={plan.id}
-                  className={`relative rounded-2xl border-2 p-8 ${
-                    plan.is_popular
-                      ? "border-[#FF0077] shadow-xl scale-105 bg-white"
-                      : "border-gray-200 bg-white"
+                  className={`relative flex h-full flex-col rounded-2xl border bg-white p-8 transition-all duration-200 ${
+                    isCurrentPlan
+                      ? "border-gray-300 ring-1 ring-gray-200"
+                      : plan.is_popular
+                        ? "border-primary shadow-xl ring-1 ring-primary/15 md:z-10 md:scale-105"
+                        : "border-gray-200 hover:border-gray-300 hover:shadow-md"
                   }`}
                 >
-                  {plan.is_popular && (
-                    <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                      <span className="bg-[#FF0077] text-white px-4 py-1 rounded-full text-sm font-semibold">
+                  {isCurrentPlan ? (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                      <span className="inline-flex items-center rounded-full bg-gray-900 px-4 py-1 text-sm font-semibold text-white shadow-sm">
+                        Your plan
+                      </span>
+                    </div>
+                  ) : plan.is_popular ? (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                      <span className="inline-flex items-center rounded-full bg-primary px-4 py-1 text-sm font-semibold text-white shadow-sm">
                         Most Popular
                       </span>
                     </div>
-                  )}
+                  ) : null}
 
                   <div className="text-center mb-8">
                     <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
@@ -117,17 +223,21 @@ export default function PricingPageClient({
                       </p>
                     ) : null}
                     <div className="flex items-baseline justify-center gap-1 mb-2">
-                      <span className="text-4xl font-bold text-gray-900">{displayPrice}</span>
-                      {displayPeriod ? <span className="text-gray-600">{displayPeriod}</span> : null}
+                      <span className="text-4xl font-bold text-gray-900 tracking-tight">{displayPrice}</span>
+                      {displayPeriod ? <span className="text-gray-500">{displayPeriod}</span> : null}
                     </div>
-                    {plan.description && <p className="text-gray-600">{plan.description}</p>}
+                    {plan.description && (
+                      <p className="text-sm leading-relaxed text-gray-600">{plan.description}</p>
+                    )}
                   </div>
 
-                  <ul className="space-y-4 mb-8">
+                  <ul className="space-y-4 mb-8 flex-1">
                     {plan.features.map((feature, index) => (
                       <li key={index} className="flex items-start gap-3">
-                        <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
+                        <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                          <Check className="h-3.5 w-3.5 text-primary" />
+                        </span>
+                        <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-primary [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
                           <PricingFeatureHtml html={feature} />
                         </div>
                       </li>
@@ -135,14 +245,20 @@ export default function PricingPageClient({
                   </ul>
 
                   <Button
-                    onClick={() => handleGetStarted(plan.name, plan.id)}
-                    className={`w-full py-6 text-lg font-semibold rounded-full ${
-                      plan.is_popular
-                        ? "bg-[#FF0077] hover:bg-[#D60565] text-white"
-                        : "bg-gray-900 hover:bg-gray-800 text-white"
+                    onClick={() => {
+                      if (!cta.disabled) handleGetStarted(plan.name, plan.id);
+                    }}
+                    disabled={cta.disabled}
+                    aria-disabled={cta.disabled}
+                    className={`mt-auto w-full py-6 text-lg font-semibold rounded-full transition-all ${
+                      cta.disabled
+                        ? "bg-gray-100 text-gray-500 hover:bg-gray-100 cursor-default"
+                        : plan.is_popular
+                          ? "bg-primary hover:bg-primary-hover text-white shadow-sm hover:shadow-md"
+                          : "bg-gray-900 hover:bg-gray-800 text-white"
                     }`}
                   >
-                    {plan.cta_text}
+                    {cta.label}
                   </Button>
                 </div>
               );

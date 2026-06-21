@@ -28,6 +28,8 @@ import { Lock } from "lucide-react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { formatStatusLabel } from "@/lib/locale/status-label";
 import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
+import { PageHeader } from "@/components/provider/PageHeader";
+import { SectionCard } from "@/components/provider/SectionCard";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 
@@ -498,7 +500,8 @@ export default function ProviderFinance() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader title="Finance & Earnings" subtitle="Track earnings, payouts, and customer payments" />
         <LoadingTimeout loadingMessage="Loading finance data..." />
       </div>
     );
@@ -506,7 +509,8 @@ export default function ProviderFinance() {
 
   if (error || !earnings) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader title="Finance & Earnings" />
         <EmptyState
           title="Failed to load finance data"
           description={error || "Unable to load earnings information"}
@@ -521,21 +525,21 @@ export default function ProviderFinance() {
 
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]} redirectTo="/provider/dashboard">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-semibold mb-2">Finance & Earnings</h1>
-            <p className="text-gray-600">
-              Track earnings for the selected period, request payouts, and search customer payments in one place
-            </p>
-            <ActiveLocationChip className="mt-2" />
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4 md:mt-0 items-center">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader
+          title="Finance & Earnings"
+          subtitle="Track earnings for the selected period, request payouts, and search customer payments in one place"
+          breadcrumbs={[
+            { label: "Home", href: "/" },
+            { label: "Provider", href: "/provider" },
+            { label: "Finance" },
+          ]}
+          actions={
+            <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
             {canRequestPayout ? (
             <Dialog open={showPayoutDialog} onOpenChange={setShowPayoutDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary-hover" onClick={openPayoutDialog}>
+                <Button className="provider-btn-brand px-5" onClick={openPayoutDialog}>
                   <ArrowUpRight className="w-4 h-4 mr-2" />
                   Request Payout
                 </Button>
@@ -801,11 +805,14 @@ export default function ProviderFinance() {
               VAT Reports
             </Button>
           </div>
-        </div>
+          }
+        />
+
+        <ActiveLocationChip />
 
         {/* Earnings Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-          <div className="bg-white border rounded-lg p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+          <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-gray-600">{rangeLabel} earnings</p>
               <DollarSign className="w-5 h-5 text-gray-400" />
@@ -819,13 +826,13 @@ export default function ProviderFinance() {
             <p className="text-xs text-gray-400 mt-1">
               Gift card / membership sales below are liability movements — do not add them to earnings totals.
             </p>
-          </div>
-          <div className="bg-white border rounded-lg p-6">
+          </SectionCard>
+          <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-gray-600">All-time available to withdraw</p>
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
-            <p className="text-3xl font-semibold text-green-600">
+            <p className="text-3xl font-bold text-green-600">
               {fmt(earnings.available_balance)}
             </p>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
@@ -841,24 +848,24 @@ export default function ProviderFinance() {
                 {fmt(earnings.raw_payout_balance ?? 0)}). Withdrawable amount is floored at 0 until settled.
               </p>
             ) : null}
-          </div>
-          <div className="bg-white border rounded-lg p-6">
+          </SectionCard>
+          <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-gray-600">Payout requests in queue</p>
               <Calendar className="w-5 h-5 text-gray-400" />
             </div>
-            <p className="text-3xl font-semibold text-yellow-600">
+            <p className="text-3xl font-bold text-yellow-600">
               {fmt(earnings.pending_payouts)}
             </p>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
               Sum of your requests still pending or processing (already deducted from available balance).
             </p>
-          </div>
+          </SectionCard>
         </div>
 
         {/* How your available balance is calculated (recognized revenue -> withdrawable) */}
         {earnings.payout_reconciliation ? (
-          <div className="bg-white border rounded-lg p-6 mb-8">
+          <SectionCard className="p-5 sm:p-6">
             <h3 className="text-sm font-semibold text-gray-900">How your available balance is calculated</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
               Headline revenue reports can read higher than withdrawable because they include cash you collected
@@ -898,12 +905,12 @@ export default function ProviderFinance() {
             <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
               Note: subscription and ads are billed to your card separately and are never deducted from this balance.
             </p>
-          </div>
+          </SectionCard>
         ) : null}
 
         {/* Revenue Streams */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Service Earnings ({rangeLabel})</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.bookings_earnings_this_period ?? earnings.bookings_earnings_total ?? 0)}
@@ -911,7 +918,7 @@ export default function ProviderFinance() {
             <p className="text-xs text-gray-500 mt-1">From bookings &amp; appointments</p>
           </div>
           {(earnings.product_sales_earnings_total ?? 0) > 0 && (
-            <div className="bg-white border rounded-lg p-6">
+            <div className="provider-card provider-card-padding">
               <p className="text-sm text-gray-600 mb-2">Product Sales</p>
               <p className="text-2xl font-semibold text-indigo-600">
                 {fmt(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0)}
@@ -920,7 +927,7 @@ export default function ProviderFinance() {
             </div>
           )}
           {(earnings.platform_fees_deducted ?? 0) > 0 && (
-            <div className="bg-white border rounded-lg p-6">
+            <div className="provider-card provider-card-padding">
               <p className="text-sm text-gray-600 mb-2">Platform Fees Deducted</p>
               <p className="text-2xl font-semibold text-orange-600">
                 {fmt(earnings.platform_fees_deducted_this_period ?? earnings.platform_fees_deducted ?? 0)}
@@ -960,55 +967,55 @@ export default function ProviderFinance() {
               </div>
             </div>
           )}
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Travel Fees</p>
             <p className="text-2xl font-semibold text-purple-600">
               {fmt(earnings.travel_fees_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Travel component (included in service earnings)</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.gift_card_sales_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (liability / float)</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Membership Sales</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.membership_sales_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (deferred revenue)</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Refunds</p>
             <p className="text-2xl font-semibold text-red-600">
               {fmt(earnings.refunds_this_period ?? earnings.refunds_total ?? 0)}
             </p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Walk-in add-ons</p>
             <p className="text-2xl font-semibold text-gray-700">
               {fmt(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Tips</p>
             <p className="text-2xl font-semibold text-emerald-600">
               {fmt(earnings.tips_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Tips from customers</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Cancellation Fees</p>
             <p className="text-2xl font-semibold text-amber-600">
               {fmt(earnings.cancellation_fees_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Fees from booking cancellations</p>
           </div>
-          <div className="bg-white border rounded-lg p-6">
+          <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Additional Charges</p>
             <p className="text-2xl font-semibold text-blue-600">
               {fmt(earnings.additional_charges_this_period || 0)}
@@ -1134,7 +1141,7 @@ export default function ProviderFinance() {
         )}
 
         {/* Transactions */}
-        <div className="bg-white border rounded-lg p-6">
+        <div className="provider-card provider-card-padding">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl font-semibold">Transaction History</h2>

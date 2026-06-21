@@ -183,8 +183,8 @@ export default function TimeClockPage() {
         </SectionCard>
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077]" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Total Staff</div>
@@ -222,7 +222,7 @@ export default function TimeClockPage() {
                 />
                 <Button
                   onClick={handlePinClockIn}
-                  className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+                  className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
                 >
                   Clock In
                 </Button>
@@ -251,7 +251,7 @@ export default function TimeClockPage() {
                       >
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-                            <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                            <AvatarFallback className="bg-primary/10 text-primary">
                               {member.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
@@ -278,7 +278,7 @@ export default function TimeClockPage() {
                             <Button
                               size="sm"
                               onClick={() => handleClockIn(member.id)}
-                              className="bg-[#FF0077] hover:bg-[#D60565] min-h-[36px] touch-manipulation"
+                              className="bg-primary hover:bg-primary-hover min-h-[36px] touch-manipulation"
                             >
                               <LogIn className="w-4 h-4 mr-2" />
                               Clock In
@@ -325,7 +325,7 @@ export default function TimeClockPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Avatar className="w-8 h-8">
-                              <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs">
+                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
                                 {timeCard.team_member_name.charAt(0)}
                               </AvatarFallback>
                             </Avatar>
@@ -429,7 +429,7 @@ export default function TimeClockPage() {
                   toast.error(error?.message || "Failed to update time card");
                 }
               }}
-              className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               Save Changes
             </Button>

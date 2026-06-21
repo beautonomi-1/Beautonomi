@@ -182,7 +182,7 @@ export default function RecurringAppointmentsPage() {
           {loadBlocked.code === "SUBSCRIPTION_REQUIRED" && (
             <Button
               type="button"
-              className="mt-3 bg-[#FF0077] hover:bg-[#D60565] text-white"
+              className="mt-3 bg-primary hover:bg-primary-hover text-white"
               onClick={() => router.push("/provider/subscription")}
             >
               View plans & billing
@@ -208,7 +208,7 @@ export default function RecurringAppointmentsPage() {
             className="pl-10"
           />
         </div>
-        <Button onClick={handleSearch} className="bg-[#FF0077] hover:bg-[#D60565]">
+        <Button onClick={handleSearch} className="bg-primary hover:bg-primary-hover">
           Search
         </Button>
       </div>
@@ -512,7 +512,7 @@ function RecurringAppointmentEditDialog({
               </p>
               <Button
                 type="button"
-                className="mt-2 bg-[#FF0077] hover:bg-[#D60565] text-white"
+                className="mt-2 bg-primary hover:bg-primary-hover text-white"
                 onClick={() => router.push("/provider/subscription")}
               >
                 View plans & billing
@@ -658,7 +658,7 @@ function RecurringAppointmentEditDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : "Update"}
             </Button>

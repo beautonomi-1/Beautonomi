@@ -15,6 +15,56 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 
+type WhatsAppDeliveryRow = {
+  message_sid: string;
+  template_key: string | null;
+  status: string;
+  error_code?: string | null;
+  category?: string | null;
+  updated_at: string;
+};
+
+function WhatsAppDeliveryLogPanel() {
+  const q = useQuery({
+    queryKey: [...adminQueryKeys.root, "whatsapp-delivery-log"],
+    queryFn: () =>
+      adminApi.getJson<{ logs: WhatsAppDeliveryRow[] }>("/api/admin/whatsapp/delivery-log?limit=25"),
+  });
+
+  if (q.isLoading) return <p className="text-sm text-gray-500">Loading delivery log…</p>;
+  if (q.error) return <p className="text-sm text-red-600">{q.error.message}</p>;
+
+  const logs = q.data?.logs ?? [];
+  if (logs.length === 0) {
+    return <p className="text-sm text-gray-500">No WhatsApp sends logged yet.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-gray-500">
+            <th className="py-2 pr-3">Updated</th>
+            <th className="py-2 pr-3">Template</th>
+            <th className="py-2 pr-3">Status</th>
+            <th className="py-2 pr-3">SID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {logs.map((row) => (
+            <tr key={row.message_sid} className="border-b border-gray-100">
+              <td className="py-2 pr-3">{new Date(row.updated_at).toLocaleString()}</td>
+              <td className="py-2 pr-3 font-mono text-xs">{row.template_key ?? "—"}</td>
+              <td className="py-2 pr-3">{row.status}</td>
+              <td className="py-2 pr-3 font-mono text-xs">{row.message_sid}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface NotificationChannel {
   enabled: boolean;
   provider?: string;
@@ -441,7 +491,7 @@ export function NotificationsConfigPage() {
           ))}
         </div>
         <div className="mt-4 flex gap-2">
-          {["push", "email", "sms"].map((ch) => (
+          {["push", "email", "sms", "whatsapp"].map((ch) => (
             <button
               key={ch}
               type="button"
@@ -457,6 +507,11 @@ export function NotificationsConfigPage() {
           <p className="mt-2 text-sm text-green-700">✓ Test notification sent.</p>
         )}
         <AdminMutationAlert errors={[testMutation.error]} />
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="mb-4 text-sm font-semibold text-gray-900">Recent WhatsApp delivery log</h2>
+        <WhatsAppDeliveryLogPanel />
       </AdminPanel>
 
       <AdminPanel>

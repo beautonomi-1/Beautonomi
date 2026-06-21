@@ -259,7 +259,7 @@ export default function ProviderServices() {
           <div className="text-center max-w-md mx-auto">
             <div className="mb-4 sm:mb-6 flex justify-center">
               <div className="w-20 h-20 sm:w-24 sm:h-24 bg-pink-100 rounded-full flex items-center justify-center">
-                <Grid3x3 className="w-10 h-10 sm:w-12 sm:h-12 text-[#FF0077]" />
+                <Grid3x3 className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />
               </div>
             </div>
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 sm:mb-3 px-2">
@@ -270,26 +270,26 @@ export default function ProviderServices() {
             </p>
             <ul className="text-left space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
               <li className="flex items-start gap-2">
-                <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                <span className="text-primary mt-1 flex-shrink-0">•</span>
                 <span>Start with a single service or create service packages</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                <span className="text-primary mt-1 flex-shrink-0">•</span>
                 <span>Organise your services by adding categories</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                <span className="text-primary mt-1 flex-shrink-0">•</span>
                 <span>Set pricing, duration, and assign team members</span>
               </li>
             </ul>
             <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
               <button
                 onClick={handleCreateCategory}
-                className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-[#FF0077] text-white rounded-lg font-medium hover:bg-[#D60565] active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
+                className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
               >
                 Start now
               </button>
-              <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[#FF0077] font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
+              <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-primary font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
                 Learn more
               </button>
             </div>
@@ -641,7 +641,7 @@ export default function ProviderServices() {
                     type="button"
                     className={`w-8 h-8 sm:w-10 sm:h-10 rounded-md border-2 transition-colors ${
                       categoryColor === color 
-                        ? "border-[#FF0077] ring-2 ring-[#FF0077] ring-offset-1 sm:ring-offset-2" 
+                        ? "border-primary ring-2 ring-primary ring-offset-1 sm:ring-offset-2" 
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     style={{ backgroundColor: color }}
@@ -683,7 +683,7 @@ export default function ProviderServices() {
             </Button>
             <Button 
               onClick={handleSaveCategory} 
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
               disabled={!categoryName.trim()}
             >
               {editingCategory ? "Update" : "Add"}

@@ -46,7 +46,12 @@ export async function GET(request: NextRequest) {
         count: "exact",
       })
       .eq("provider_id", providerId)
-      .in("transaction_type", ["provider_subscription_payment", "provider_ads_payment"])
+      .in("transaction_type", [
+        "provider_subscription_payment",
+        "provider_ads_payment",
+        "provider_marketing_credit_topup",
+        "provider_marketing_credit_refund",
+      ])
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -57,6 +62,10 @@ export async function GET(request: NextRequest) {
 
     const items = (txns || []).map((t: any) => {
       const isAds = t.transaction_type === "provider_ads_payment";
+      const isMarketing =
+        t.transaction_type === "provider_marketing_credit_topup" ||
+        t.transaction_type === "provider_marketing_credit_refund";
+      const isMarketingRefund = t.transaction_type === "provider_marketing_credit_refund";
       const meta = (t.metadata as { description?: string; ads_budget_order_id?: string } | null) ?? null;
       const metadataDescription = meta?.description ?? null;
       // Ads payments carry their funding order id in metadata; expose a
@@ -64,21 +73,28 @@ export async function GET(request: NextRequest) {
       const adsOrderId = isAds ? (meta?.ads_budget_order_id ?? null) : null;
       // Subscription payments expose a finance-transaction-keyed receipt so
       // both one-off orders and recurring renewals get a downloadable PDF.
-      const invoiceUrl = isAds
-        ? adsOrderId
-          ? `/api/provider/ads/orders/${adsOrderId}/receipt/pdf`
-          : null
-        : `/api/provider/subscription/receipts/${t.id}/pdf`;
+      const invoiceUrl = isMarketing
+        ? null
+        : isAds
+          ? adsOrderId
+            ? `/api/provider/ads/orders/${adsOrderId}/receipt/pdf`
+            : null
+          : `/api/provider/subscription/receipts/${t.id}/pdf`;
+      const type = isMarketing ? "marketing_credit" : isAds ? "ads" : "subscription";
+      const fallbackDescription = isMarketing
+        ? isMarketingRefund
+          ? "Marketing credit refund"
+          : "Marketing credit top-up"
+        : isAds
+          ? "Ads campaign payment"
+          : "Subscription payment";
       return {
         id: t.id,
         amount: Number(t.amount || 0),
         currency: t.currency || lastResortCurrency,
         status: "paid",
-        type: isAds ? "ads" : "subscription",
-        description:
-          t.description ||
-          metadataDescription ||
-          (isAds ? "Ads campaign payment" : "Subscription payment"),
+        type,
+        description: t.description || metadataDescription || fallbackDescription,
         created_at: t.created_at,
         invoice_url: invoiceUrl,
       };

@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  handleWhatsAppStatusCallback,
+  updateWhatsAppDeliveryLog,
+} from "@/lib/whatsapp/fallback-waterfall";
+import {
+  normalizeWhatsAppPhone,
+  revokeWhatsAppOptIn,
+  upsertWhatsAppInboundSession,
+} from "@/lib/whatsapp/sessions";
+
+const OPT_OUT_KEYWORDS = new Set(["stop", "unsubscribe", "cancel", "optout", "opt out"]);
 
 /**
  * POST /api/webhooks/twilio
  *
- * Receives Twilio status callbacks for SMS and WhatsApp delivery receipts.
- * Validates the request using Twilio's X-Twilio-Signature HMAC.
+ * Receives Twilio status callbacks and inbound WhatsApp/SMS messages.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -38,9 +48,36 @@ export async function POST(request: NextRequest) {
     const messageSid = params.get("MessageSid") || params.get("SmsSid") || "";
     const messageStatus = params.get("MessageStatus") || params.get("SmsStatus") || "";
     const errorCode = params.get("ErrorCode");
+    const from = params.get("From") || "";
+    const bodyText = (params.get("Body") || "").trim().toLowerCase();
+
+    const supabase = getSupabaseAdmin();
+
+    // Inbound WhatsApp (no MessageStatus on some inbound events)
+    if (from.startsWith("whatsapp:") && bodyText && !messageStatus) {
+      const phone = normalizeWhatsAppPhone(from);
+      let userId: string | null = null;
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("id")
+        .or(`phone.eq.${phone},phone.eq.${from.replace("whatsapp:", "")}`)
+        .limit(1)
+        .maybeSingle();
+      userId = userRow?.id ?? null;
+
+      await upsertWhatsAppInboundSession({ phone, userId });
+
+      if (OPT_OUT_KEYWORDS.has(bodyText) && userId) {
+        await revokeWhatsAppOptIn(userId);
+      }
+
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { status: 200, headers: { "Content-Type": "text/xml" } },
+      );
+    }
 
     if (messageSid && messageStatus) {
-      const supabase = getSupabaseAdmin();
       await supabase
         .from("sms_delivery_log")
         .upsert(
@@ -55,6 +92,26 @@ export async function POST(request: NextRequest) {
         .then(({ error }) => {
           if (error) console.warn("Failed to log Twilio delivery:", error.message);
         });
+
+      const { data: waLog } = await supabase
+        .from("whatsapp_delivery_log")
+        .select("id")
+        .eq("message_sid", messageSid)
+        .maybeSingle();
+
+      if (waLog) {
+        await handleWhatsAppStatusCallback({
+          messageSid,
+          messageStatus,
+          errorCode,
+        });
+      } else if (from.startsWith("whatsapp:")) {
+        await updateWhatsAppDeliveryLog({
+          messageSid,
+          status: messageStatus,
+          errorCode,
+        });
+      }
     }
 
     return new NextResponse(null, { status: 204 });

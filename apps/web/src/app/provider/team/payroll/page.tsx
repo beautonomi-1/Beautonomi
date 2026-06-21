@@ -125,7 +125,7 @@ export default function PayrollPage() {
               : "No pay runs yet. Your business owner can create one from Payroll."}
           </p>
           {isOwner && (
-            <Button onClick={() => setIsCreateOpen(true)} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={() => setIsCreateOpen(true)} className="bg-primary hover:bg-primary-hover">
               Create Pay Run
             </Button>
           )}
@@ -194,7 +194,7 @@ export default function PayrollPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={isCreating} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreate} disabled={isCreating} className="bg-primary hover:bg-primary-hover">
               {isCreating ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>

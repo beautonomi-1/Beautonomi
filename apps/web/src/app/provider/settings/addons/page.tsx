@@ -160,7 +160,7 @@ export default function ProviderAddons() {
                 Create addons that customers can add to their bookings to increase revenue and enhance their experience.
               </p>
             </div>
-            <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
               Add Addon
             </Button>
@@ -511,7 +511,7 @@ function AddonDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button type="submit" className="bg-primary hover:bg-primary-hover">
               {addon ? "Update" : "Create"}
             </Button>
           </DialogFooter>

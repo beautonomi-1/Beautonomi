@@ -13,6 +13,8 @@ import { NextRequest } from "next/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/marketing/unified-service";
+import { debitMarketingBalance, getMarketingBalance, priceFor, creditMarketingBalance } from "@/lib/marketing/credits";
+import { resolveMarketingSendingContext } from "@/lib/marketing/sending-path";
 import { addDays, subDays, subMinutes } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -119,6 +121,38 @@ export async function POST(request: NextRequest) {
           continue; // No recipients for this automation
         }
 
+        const channel = automation.action_type as "email" | "sms" | "whatsapp" | "notification";
+        const sendCtx =
+          channel !== "notification"
+            ? await resolveMarketingSendingContext(
+                automation.provider_id,
+                channel,
+                supabaseAdmin,
+              )
+            : null;
+        const debitsCredits = sendCtx?.debitsCredits ?? false;
+
+        const { data: providerRow } = await supabaseAdmin
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", automation.provider_id)
+          .maybeSingle();
+        const tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
+        if (debitsCredits) {
+          const category = channel === "whatsapp" ? "marketing" : "default";
+          const unitCost = await priceFor(supabaseAdmin, channel, category);
+          const estimated = customers.length * unitCost;
+          const balance = await getMarketingBalance(supabaseAdmin, automation.provider_id);
+          if (balance.total_zar < estimated) {
+            errors.push({
+              automationId: automation.id,
+              error: `Insufficient marketing credit (need ~R${estimated.toFixed(2)})`,
+            });
+            continue;
+          }
+        }
+
         // Get automation message content
         const messageContent = await getAutomationMessage(
           automation,
@@ -165,6 +199,31 @@ export async function POST(request: NextRequest) {
             const contactTo =
               channel === "notification" ? customer.id : customer.contact;
 
+            const debitKey = `automation:${automation.id}:${customer.id}:${channel}`;
+            let debitedAmount = 0;
+
+            if (debitsCredits) {
+              const category = channel === "whatsapp" ? "marketing" : "default";
+              const unitCost = await priceFor(supabaseAdmin, channel, category);
+              const debit = await debitMarketingBalance({
+                providerId: automation.provider_id,
+                amountZar: unitCost,
+                reason: "automation_send",
+                idempotencyKey: debitKey,
+                channel,
+                category,
+                supabase: supabaseAdmin,
+              });
+              if (!debit.ok) {
+                errors.push({
+                  automationId: automation.id,
+                  error: "reason" in debit ? debit.reason : "debit failed",
+                });
+                continue;
+              }
+              debitedAmount = unitCost;
+            }
+
             const result = await sendMessage(
               automation.provider_id,
               channel,
@@ -173,6 +232,8 @@ export async function POST(request: NextRequest) {
                 subject: personalizedSubject || undefined,
                 content: personalizedContent,
                 fromName: messageContent.fromName,
+                tenantId,
+                supabase: supabaseAdmin,
               }
             );
 
@@ -181,6 +242,17 @@ export async function POST(request: NextRequest) {
                 automationId: automation.id,
                 error: result.error || "Failed to send message",
               });
+              if (debitedAmount > 0) {
+                await creditMarketingBalance({
+                  providerId: automation.provider_id,
+                  amountZar: debitedAmount,
+                  reason: "refund",
+                  idempotencyKey: `refund:${debitKey}`,
+                  channel,
+                  metadata: { refund_reason: "send_failed", error: result.error ?? null },
+                  supabase: supabaseAdmin,
+                });
+              }
             } else {
               // Log successful execution to prevent duplicates
               await logAutomationExecution(

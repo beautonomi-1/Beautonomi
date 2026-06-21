@@ -705,8 +705,8 @@ export function BookingsClient({
         {viewMode === "table" ? (
           /* Modern desktop table — sticky header, zebra-ish hover, avatars,
              status pill column, inline primary action + overflow. */
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto" style={{ maxHeight: "calc(100vh - 340px)" }}>
+          <div className="provider-table">
+            <div className="provider-table-scroll overflow-x-auto" style={{ maxHeight: "calc(100vh - 340px)" }}>
               <Table className="min-w-[960px]">
                 <TableHeader className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/70 shadow-[inset_0_-1px_0_rgba(0,0,0,0.06)]">
                   <TableRow className="hover:bg-transparent">
@@ -737,7 +737,7 @@ export function BookingsClient({
                         className={
                           "cursor-pointer transition-colors border-b border-gray-100 " +
                           (idx % 2 === 0 ? "bg-white " : "bg-gray-50/40 ") +
-                          "hover:bg-[#FF0077]/[0.035] data-[selected=true]:bg-[#FF0077]/[0.06]"
+                          "hover:bg-primary/[0.035] data-[selected=true]:bg-primary/[0.06]"
                         }
                         onClick={() => handleBookingClick(b)}
                       >
@@ -752,7 +752,7 @@ export function BookingsClient({
                             aria-label={isSel ? "Deselect booking" : "Select booking"}
                           >
                             {isSel ? (
-                              <CheckSquare className="w-4 h-4 text-[#FF0077]" />
+                              <CheckSquare className="w-4 h-4 text-primary" />
                             ) : (
                               <Square className="w-4 h-4 text-gray-300" />
                             )}
@@ -994,7 +994,7 @@ export function BookingsClient({
           />
           <Button
             onClick={() => window.dispatchEvent(new CustomEvent("open-appointment-sidebar"))}
-            className="bg-[#FF0077] hover:bg-[#E6006B] text-white shadow-sm flex-shrink-0"
+            className="provider-btn-brand px-5"
           >
             <Plus className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">New Appointment</span>
@@ -1005,7 +1005,7 @@ export function BookingsClient({
         {/* Snapshot stats strip with its own time-period filter. Revenue
             card inherits brand accent. Mobile: 2 cols; ≥sm: 4 cols. */}
         <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
             {([
               ["today", "Today"],
               ["week", "Week"],
@@ -1306,14 +1306,14 @@ function StatTile({
       label: "text-violet-700",
     },
     brand: {
-      wrap: "border-[#FF0077]/20 bg-gradient-to-br from-[#FF0077]/5 to-[#FF0077]/[0.02]",
-      iconWrap: "bg-[#FF0077]/10 text-[#FF0077]",
-      label: "text-[#FF0077]",
+      wrap: "border-primary/20 bg-gradient-to-br from-primary/5 to-primary/[0.02]",
+      iconWrap: "bg-primary/10 text-primary",
+      label: "text-primary",
     },
   };
   const c = palette[tone];
   return (
-    <div className={`rounded-xl border ${c.wrap} p-3 sm:p-4 shadow-sm`}>
+    <div className={`rounded-2xl border ${c.wrap} p-3 sm:p-4 shadow-sm`}>
       <div className="flex items-center gap-2 sm:gap-3">
         <div className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${c.iconWrap}`}>
           {icon}

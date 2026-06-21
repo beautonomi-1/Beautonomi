@@ -46,6 +46,7 @@ export async function clearRegisteredPlayerId(): Promise<void> {
   }
 }
 
+let initialized = false;
 let initializedFor: string | null = null;
 let initInflight: Promise<void> | null = null;
 let loggedInUserId: string | null = null;
@@ -68,35 +69,57 @@ export async function ensureOneSignalInitialized(appId: string, userId?: string 
   const normalizedAppId = appId.trim();
   if (!normalizedAppId) return;
 
-  if (initInflight && initializedFor === normalizedAppId) {
+  // Coalesce concurrent callers onto a single in-flight init so we never run
+  // `OneSignal.initialize` twice or let a native call race ahead of it (which
+  // surfaces as the native "Must call 'initWithContext' before use" error).
+  if (initInflight) {
     await initInflight;
-    if (userId && loggedInUserId !== userId) {
+  } else {
+    initInflight = (async () => {
+      const { OneSignal, LogLevel } = await import("react-native-onesignal");
+      OneSignal.Debug.setLogLevel(LogLevel.None);
+      if (!initialized || initializedFor !== normalizedAppId) {
+        OneSignal.initialize(normalizedAppId);
+        initialized = true;
+        initializedFor = normalizedAppId;
+        loggedInUserId = null;
+      }
+    })();
+    try {
+      await initInflight;
+    } finally {
+      initInflight = null;
+    }
+  }
+
+  if (initialized && userId && loggedInUserId !== userId) {
+    try {
       const { OneSignal } = await import("react-native-onesignal");
       OneSignal.login(userId);
       loggedInUserId = userId;
+    } catch {
+      // ensureOneSignalExternalId / next foreground re-attempts the binding
     }
-    return;
   }
+}
 
-  initInflight = (async () => {
-    const { OneSignal, LogLevel } = await import("react-native-onesignal");
-    OneSignal.Debug.setLogLevel(LogLevel.None);
-    if (initializedFor !== normalizedAppId) {
-      OneSignal.initialize(normalizedAppId);
-      initializedFor = normalizedAppId;
-      loggedInUserId = null;
-    }
-    if (userId && loggedInUserId !== userId) {
-      OneSignal.login(userId);
-      loggedInUserId = userId;
-    }
-  })();
-
-  try {
-    await initInflight;
-  } finally {
-    initInflight = null;
+/**
+ * Guarantee the OneSignal native SDK is initialized before any of its APIs are
+ * touched. Resolves the app id on demand, so helpers invoked before the push
+ * registration effect runs (e.g. the permission nudge on cold start / resume)
+ * can never trip the native "Must call 'initWithContext' before use" error.
+ * Returns `true` only when the SDK is usable (native build + app id resolved).
+ */
+async function ensureOneSignalReady(userId?: string | null): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  if (!initialized) {
+    const appId = await resolveOneSignalAppId();
+    if (!appId) return false;
+    await ensureOneSignalInitialized(appId, userId);
+  } else if (userId && loggedInUserId !== userId && initializedFor) {
+    await ensureOneSignalInitialized(initializedFor, userId);
   }
+  return initialized;
 }
 
 export function setPushNavigationReady(ready: boolean) {
@@ -128,6 +151,7 @@ export function clearPendingPushNotification() {
 export async function getOneSignalPermissionAsync(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {
+    if (!(await ensureOneSignalReady())) return false;
     const { OneSignal } = await import("react-native-onesignal");
     const granted = await OneSignal.Notifications.getPermissionAsync();
     return granted === true;
@@ -153,8 +177,9 @@ export function addOneSignalPermissionObserver(
   let cleanup: (() => void) | undefined;
   void (async () => {
     try {
-      const { OneSignal } = await import("react-native-onesignal");
+      if (!(await ensureOneSignalReady())) return;
       if (!active) return;
+      const { OneSignal } = await import("react-native-onesignal");
       OneSignal.Notifications.addEventListener("permissionChange", handler);
       cleanup = () => {
         try {
@@ -187,6 +212,7 @@ export function addOneSignalPermissionObserver(
 export async function ensureOneSignalExternalId(userId: string): Promise<void> {
   if (Platform.OS === "web" || !userId) return;
   try {
+    if (!(await ensureOneSignalReady(userId))) return;
     const { OneSignal } = await import("react-native-onesignal");
     const current = await OneSignal.User.getExternalId();
     if (current === userId) return;
@@ -200,6 +226,7 @@ export async function ensureOneSignalExternalId(userId: string): Promise<void> {
 export async function requestOneSignalPushPermission(fallbackToSettings = true): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {
+    if (!(await ensureOneSignalReady())) return false;
     const { OneSignal } = await import("react-native-onesignal");
     const accepted = await OneSignal.Notifications.requestPermission(fallbackToSettings);
     return accepted === true;
@@ -211,6 +238,7 @@ export async function requestOneSignalPushPermission(fallbackToSettings = true):
 export async function getOneSignalSubscriptionId(): Promise<string | null> {
   if (Platform.OS === "web") return null;
   try {
+    if (!(await ensureOneSignalReady())) return null;
     const { OneSignal } = await import("react-native-onesignal");
     const id = await OneSignal.User.pushSubscription.getIdAsync();
     return typeof id === "string" && id.trim() ? id.trim() : null;
@@ -221,10 +249,14 @@ export async function getOneSignalSubscriptionId(): Promise<string | null> {
 
 export async function logoutOneSignal(): Promise<string | null> {
   if (Platform.OS === "web") return null;
+  // Nothing to tear down if the SDK was never initialized — avoids a native
+  // call before init.
+  if (!initialized) return null;
   try {
     const playerId = await getOneSignalSubscriptionId();
     const { OneSignal } = await import("react-native-onesignal");
     OneSignal.logout();
+    initialized = false;
     initializedFor = null;
     loggedInUserId = null;
     return playerId;

@@ -69,7 +69,7 @@ export async function PATCH(
         : typeof body.channels === "string"
           ? body.channels.split(",").map((s: string) => s.trim()).filter(Boolean)
           : [];
-      const allowed = ["push", "email", "sms", "live_activities"];
+      const allowed = ["push", "email", "sms", "live_activities", "whatsapp"];
       const normalized = Array.from(
         new Set(
           raw
@@ -99,6 +99,15 @@ export async function PATCH(
     }
     if (body.enabled !== undefined) updateData.enabled = body.enabled;
     if (body.description !== undefined) updateData.description = body.description;
+    if (body.whatsapp_content_sid !== undefined) updateData.whatsapp_content_sid = body.whatsapp_content_sid;
+    if (body.whatsapp_content_variables !== undefined) updateData.whatsapp_content_variables = body.whatsapp_content_variables;
+    if (body.whatsapp_category !== undefined) updateData.whatsapp_category = body.whatsapp_category;
+    if (body.whatsapp_body !== undefined) updateData.whatsapp_body = body.whatsapp_body;
+    if (body.whatsapp_approval_name !== undefined) updateData.whatsapp_approval_name = body.whatsapp_approval_name;
+    if (body.whatsapp_language !== undefined) updateData.whatsapp_language = body.whatsapp_language;
+    if (body.whatsapp_content_type !== undefined) updateData.whatsapp_content_type = body.whatsapp_content_type;
+    if (body.whatsapp_content_definition !== undefined) updateData.whatsapp_content_definition = body.whatsapp_content_definition;
+    if (body.channel_waterfall !== undefined) updateData.channel_waterfall = body.channel_waterfall;
 
     const { data: template, error } = await supabase
       .from("notification_templates")

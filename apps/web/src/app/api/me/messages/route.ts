@@ -9,6 +9,7 @@ import {
   mapMessageWithReplyFields,
   validateReplyToMessageId,
 } from "@/lib/messaging/message-replies";
+import { resolveTenantIdForPush } from "@/lib/notifications/resolve-tenant-for-push";
 
 /**
  * Verify the caller has access to a conversation. Returns the role ("customer" | "provider").
@@ -305,6 +306,10 @@ async function sendMessageNotification(
     const template = await getNotificationTemplate(templateKey);
 
     const appType = isCustomer ? ("provider" as const) : ("customer" as const);
+    const tenantId = await resolveTenantIdForPush(admin, {
+      providerId: conv.provider_id as string | undefined,
+      userId: recipientUserIds[0],
+    });
     const templateVars: Record<string, string> = {
       type: "new_message",
       message_preview: messagePreview,
@@ -322,7 +327,7 @@ async function sendMessageNotification(
         // The in-app bell row is inserted below with the canonical new_message
         // type + conversation deep link; skip the template auto-insert so a
         // single message doesn't create two bell entries.
-        { appType, skipInApp: true }
+        { appType, skipInApp: true, tenantId }
       );
     } else {
       await sendToUsers(
@@ -340,7 +345,7 @@ async function sendMessageNotification(
           url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
         },
         ["push"],
-        { appType }
+        { appType, tenantId }
       );
     }
   } catch (notifError) {

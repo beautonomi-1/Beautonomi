@@ -30,7 +30,7 @@ export function QueueTabs({ activeTab, onTabChange, counts }: QueueTabsProps) {
             <TabsTrigger
               key={tab.id}
               value={tab.id}
-              className="relative gap-1.5 data-[state=active]:bg-[#FF0077] data-[state=active]:text-white"
+              className="relative gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white"
             >
               {tab.label}
               <Badge

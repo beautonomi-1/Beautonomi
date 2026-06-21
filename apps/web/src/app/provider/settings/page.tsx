@@ -206,7 +206,7 @@ export default function ProviderSettings() {
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <div className="min-w-max sm:min-w-0">
-            <TabsList className="inline-flex h-auto w-full sm:w-auto sm:grid sm:grid-cols-7 gap-1 sm:gap-2 bg-transparent p-0 sm:p-1 sm:bg-muted rounded-none sm:rounded-md border-b border-gray-200 sm:border-b-0">
+            <TabsList className="inline-flex h-auto w-full sm:w-auto sm:grid sm:grid-cols-7 gap-1 sm:gap-2 bg-transparent p-0 sm:p-1.5 sm:bg-gray-100 rounded-none sm:rounded-xl border-b border-gray-200 sm:border-b-0 sm:border sm:border-gray-200">
               <TabsTrigger 
                 value="appointment-activity"
                 className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
@@ -279,7 +279,7 @@ export default function ProviderSettings() {
                       <Link
                         key={index}
                         href={item.href}
-                        className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
+                        className={`flex items-center justify-between p-4 border rounded-2xl transition-colors min-h-[44px] touch-manipulation ${
                           isUpgrade
                             ? "border-primary bg-gradient-to-r from-primary/5 to-primary-hover/5 hover:from-primary/10 hover:to-primary-hover/10"
                             : "border-gray-200 hover:bg-gray-50"

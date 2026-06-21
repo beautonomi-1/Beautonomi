@@ -604,7 +604,7 @@ export default function SubscriptionPage() {
       <div className="mx-auto max-w-5xl">
         <div className="relative mb-8 overflow-hidden rounded-2xl border border-pink-100/80 bg-gradient-to-br from-pink-50/90 via-white to-violet-50/70 px-5 py-8 md:px-8 md:py-10">
           <div
-            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#FF0077]/10 blur-3xl"
+            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
             aria-hidden
           />
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -694,7 +694,7 @@ export default function SubscriptionPage() {
                           </Badge>
                         )}
                       </CardTitle>
-                      <div className="text-base text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                      <div className="text-base text-gray-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                         {currentPlan?.description ? (
                           <PricingFeatureHtml
                             html={currentPlan.description}
@@ -766,8 +766,8 @@ export default function SubscriptionPage() {
                                 key={index}
                                 className="flex items-start gap-3 text-sm text-gray-700"
                               >
-                                <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF0077]" />
-                                <div className="min-w-0 flex-1 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                                <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                                <div className="min-w-0 flex-1 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                                   <PricingFeatureHtml html={feature} className="block" />
                                 </div>
                               </li>
@@ -849,12 +849,12 @@ export default function SubscriptionPage() {
                             key={plan.id}
                             className={`relative flex flex-col rounded-2xl border bg-white/95 p-6 shadow-sm backdrop-blur-sm transition-shadow hover:shadow-md ${
                               plan.is_popular
-                                ? "border-[#FF0077]/40 ring-1 ring-[#FF0077]/20"
+                                ? "border-primary/40 ring-1 ring-primary/20"
                                 : "border-gray-200/90"
                             } ${isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : ""}`}
                           >
                             {plan.is_popular ? (
-                              <span className="absolute -top-3 left-6 rounded-full bg-[#FF0077] px-3 py-0.5 text-xs font-semibold text-white shadow">
+                              <span className="absolute -top-3 left-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-white shadow">
                                 Popular
                               </span>
                             ) : null}
@@ -868,7 +868,7 @@ export default function SubscriptionPage() {
                                 {plan.name}
                               </h4>
                               {plan.description ? (
-                                <div className="mt-2 text-sm leading-relaxed text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                                <div className="mt-2 text-sm leading-relaxed text-gray-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                                   <PricingFeatureHtml html={plan.description} className="block" />
                                 </div>
                               ) : null}
@@ -893,8 +893,8 @@ export default function SubscriptionPage() {
                                 .slice(0, 8)
                                 .map((feature, index) => (
                                   <li key={index} className="flex items-start gap-2.5 text-sm">
-                                    <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#FF0077]" />
-                                    <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                                    <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                                    <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                                       <PricingFeatureHtml
                                         html={feature}
                                         className="block leading-snug"
@@ -910,7 +910,7 @@ export default function SubscriptionPage() {
                               <Button
                                 className={`mt-auto w-full rounded-xl py-5 text-base font-semibold ${
                                   plan.is_popular
-                                    ? "bg-[#FF0077] text-white hover:bg-[#D60565]"
+                                    ? "bg-primary text-white hover:bg-primary-hover"
                                     : "bg-gray-900 text-white hover:bg-gray-800"
                                 }`}
                                 onClick={() => handleUpgrade(plan.id)}
@@ -957,7 +957,7 @@ export default function SubscriptionPage() {
                         <p className="mt-3 text-3xl font-bold">{formatPlanPriceMain(plan)}</p>
                         {!isCurrent || needsReactivate ? (
                           <Button
-                            className="mt-6 w-full rounded-xl bg-[#FF0077] py-5 text-white hover:bg-[#D60565]"
+                            className="mt-6 w-full rounded-xl bg-primary py-5 text-white hover:bg-primary-hover"
                             onClick={() => handleUpgrade(plan.id)}
                           >
                             {planUpgradeButtonLabel(subscription, plan)}
@@ -1059,7 +1059,7 @@ function SubscriptionReviewDialog({
               </p>
               <p className="mt-1 text-xl font-bold text-gray-950">{plan.name}</p>
               {plan.description ? (
-                <div className="mt-1 text-sm leading-relaxed text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                <div className="mt-1 text-sm leading-relaxed text-gray-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                   <PricingFeatureHtml html={plan.description} className="block" />
                 </div>
               ) : null}
@@ -1070,7 +1070,7 @@ function SubscriptionReviewDialog({
                 {plan.features.slice(0, 6).map((feature, index) => (
                   <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
                     <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
-                    <div className="min-w-0 flex-1 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                    <div className="min-w-0 flex-1 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                       <PricingFeatureHtml html={feature} className="block leading-snug" />
                     </div>
                   </li>
@@ -1155,7 +1155,7 @@ function UpgradeDialog({
               key={plan.id}
               className={`border rounded-lg p-4 cursor-pointer transition-colors ${
                 selectedPlan === plan.id
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 hover:border-gray-300"
               }`}
               onClick={() => setSelectedPlan(plan.id)}

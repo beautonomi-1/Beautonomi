@@ -94,6 +94,22 @@ export async function deliverQueueRow(
       return { ok: true };
     }
 
+    if (row.channel === "whatsapp") {
+      const { sendQueuedWhatsApp } = await import(
+        "@/lib/notifications/queued-senders"
+      );
+      const { WhatsAppSkipError } = await import("@/lib/integrations/twilio");
+      try {
+        await sendQueuedWhatsApp(row);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof WhatsAppSkipError) {
+          return { ok: false, error: err.message };
+        }
+        throw err;
+      }
+    }
+
     return { ok: false, error: `unknown channel: ${row.channel}` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

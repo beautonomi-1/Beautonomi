@@ -98,9 +98,9 @@ interface NotificationModalProps {
   onClose: () => void;
   title: string;
   description: string;
-  preferences?: { email?: boolean; sms?: boolean; push?: boolean };
+  preferences?: { email?: boolean; sms?: boolean; push?: boolean; whatsapp?: boolean };
   sectionId: string;
-  onUpdate: (sectionId: string, prefs: { email: boolean; sms: boolean; push: boolean }) => Promise<void>;
+  onUpdate: (sectionId: string, prefs: { email: boolean; sms: boolean; push: boolean; whatsapp: boolean }) => Promise<void>;
 }
 
 const NotificationModal = ({
@@ -112,8 +112,15 @@ const NotificationModal = ({
   sectionId,
   onUpdate,
 }: NotificationModalProps) => {
-  const [localPrefs, setLocalPrefs] = useState<{ email: boolean; sms: boolean; push: boolean }>(
-    preferences ? { email: preferences.email ?? true, sms: preferences.sms ?? true, push: preferences.push ?? false } : { email: true, sms: true, push: false }
+  const [localPrefs, setLocalPrefs] = useState<{ email: boolean; sms: boolean; push: boolean; whatsapp: boolean }>(
+    preferences
+      ? {
+          email: preferences.email ?? true,
+          sms: preferences.sms ?? true,
+          push: preferences.push ?? false,
+          whatsapp: preferences.whatsapp ?? false,
+        }
+      : { email: true, sms: true, push: false, whatsapp: false },
   );
   const [isSaving, setIsSaving] = useState(false);
 
@@ -123,6 +130,7 @@ const NotificationModal = ({
         email: preferences.email ?? true,
         sms: preferences.sms ?? true,
         push: preferences.push ?? false,
+        whatsapp: preferences.whatsapp ?? false,
       });
     }
   }, [preferences]);
@@ -176,6 +184,22 @@ const NotificationModal = ({
                 className="data-[state=checked]:bg-primary"
               />
             </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                <span className="font-medium">WhatsApp</span>
+              </div>
+              <Switch
+                checked={localPrefs.whatsapp}
+                onCheckedChange={(checked) =>
+                  setLocalPrefs({ ...localPrefs, whatsapp: checked })
+                }
+                className="data-[state=checked]:bg-primary"
+              />
+            </div>
+            <p className="text-xs text-gray-500 font-light -mt-2">
+              Opt in to receive updates on WhatsApp. You can reply STOP to opt out anytime.
+            </p>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -263,7 +287,10 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
     }
   };
 
-  const updatePreference = async (sectionId: string, prefs: { email: boolean; sms: boolean; push: boolean }) => {
+  const updatePreference = async (
+    sectionId: string,
+    prefs: { email: boolean; sms: boolean; push: boolean; whatsapp: boolean },
+  ) => {
     try {
       await fetcher.patch("/api/me/notification-preferences", {
         [sectionId]: prefs,
@@ -293,11 +320,13 @@ const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferen
       email?: boolean;
       sms?: boolean;
       push?: boolean;
+      whatsapp?: boolean;
     } | undefined;
     if (!prefs) return "On: Email and SMS";
     const channels = [];
     if (prefs.email) channels.push("Email");
     if (prefs.sms) channels.push("SMS");
+    if (prefs.whatsapp) channels.push("WhatsApp");
     if (prefs.push) channels.push("Push");
     return channels.length > 0 ? `On: ${channels.join(", ")}` : "Off";
   };

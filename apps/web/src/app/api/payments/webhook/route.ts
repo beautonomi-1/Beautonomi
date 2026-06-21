@@ -381,12 +381,25 @@ export async function POST(request: Request) {
         if (disputeRef) {
           try {
             const { data: disputedTxn } = await (supabase.from("payment_transactions") as any)
-              .select("metadata")
+              .select("amount, metadata")
               .eq("reference", String(disputeRef))
               .eq("status", "success")
               .maybeSingle();
             const disputedMeta = (disputedTxn?.metadata ?? {}) as Record<string, unknown>;
-            if (disputedMeta?.kind === "ads_budget_order" && disputedMeta?.ads_budget_order_id) {
+            if (disputedMeta?.kind === "marketing_credit_topup") {
+              // Chargeback on a marketing credit top-up: claw back unspent
+              // credits and reverse the recognized revenue.
+              const { reverseMarketingCreditTopupPayment } = await import(
+                "@/lib/marketing/marketing-credit-topup-payment"
+              );
+              await reverseMarketingCreditTopupPayment({
+                supabase: supabase as never,
+                providerId: String(disputedMeta.provider_id ?? ""),
+                reference: String(disputeRef),
+                amountMajor: Number((disputedTxn as { amount?: number } | null)?.amount ?? 0),
+                reason: `chargeback:${eventType}`,
+              });
+            } else if (disputedMeta?.kind === "ads_budget_order" && disputedMeta?.ads_budget_order_id) {
               const { reverseAdsBudgetOrderPayment } = await import(
                 "@/lib/ads/ads-budget-order-payment"
               );

@@ -394,37 +394,37 @@ export function TeamMemberCreateEditDialog({
                 <TabsList className="inline-flex h-auto w-auto p-1 bg-gray-100 rounded-lg whitespace-nowrap">
                   <TabsTrigger 
                     value="basic" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Basic Info
                   </TabsTrigger>
                   <TabsTrigger 
                     value="service" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Service Provider
                   </TabsTrigger>
                   <TabsTrigger 
                     value="permissions" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Permissions
                   </TabsTrigger>
                   <TabsTrigger 
                     value="notifications" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Notifications
                   </TabsTrigger>
                   <TabsTrigger 
                     value="compensation" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Compensation
                   </TabsTrigger>
                   <TabsTrigger 
                     value="settings" 
-                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-[#FF0077] data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
+                    className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
                     Settings
                   </TabsTrigger>
@@ -446,14 +446,14 @@ export function TeamMemberCreateEditDialog({
                       {avatarPreview ? (
                         <AvatarImage src={avatarPreview} alt={formData.name || "Staff member"} className="object-cover" />
                       ) : (
-                        <AvatarFallback className="bg-gradient-to-br from-[#FF0077] to-[#D60565] text-white text-3xl sm:text-4xl font-bold">
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary-hover text-white text-3xl sm:text-4xl font-bold">
                           {formData.name.charAt(0).toUpperCase() || "?"}
                         </AvatarFallback>
                       )}
                     </Avatar>
                     <label
                       htmlFor="avatar-upload"
-                      className="absolute -bottom-1 -right-1 p-2.5 sm:p-3 bg-[#FF0077] text-white rounded-full cursor-pointer hover:bg-[#D60565] transition-all shadow-lg hover:scale-110 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+                      className="absolute -bottom-1 -right-1 p-2.5 sm:p-3 bg-primary text-white rounded-full cursor-pointer hover:bg-primary-hover transition-all shadow-lg hover:scale-110 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
                     >
                       <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
                       <input
@@ -476,20 +476,20 @@ export function TeamMemberCreateEditDialog({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="name" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Full Name <span className="text-[#FF0077]">*</span>
+                      Full Name <span className="text-primary">*</span>
                     </Label>
                     <Input
                       id="name"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                       placeholder="Enter full name"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Email <span className="text-[#FF0077]">*</span>
+                      Email <span className="text-primary">*</span>
                     </Label>
                     <Input
                       id="email"
@@ -497,7 +497,7 @@ export function TeamMemberCreateEditDialog({
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       required
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                       placeholder="email@example.com"
                     />
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
@@ -521,13 +521,13 @@ export function TeamMemberCreateEditDialog({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Role <span className="text-[#FF0077]">*</span>
+                      Role <span className="text-primary">*</span>
                     </Label>
                     <Select
                       value={formData.role}
                       onValueChange={(value: any) => setFormData({ ...formData, role: value, is_admin: value === "owner" || value === "manager" })}
                     >
-                      <SelectTrigger className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg">
+                      <SelectTrigger className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="z-[10000]">
@@ -728,7 +728,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Email Notifications
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -748,7 +748,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         SMS Notifications
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -767,7 +767,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Desktop Notifications
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -795,7 +795,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Service and Product Commission
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -818,7 +818,7 @@ export function TeamMemberCreateEditDialog({
                           step={0.1}
                           value={formData.commission_rate}
                           onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
-                          className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                          className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                           placeholder="e.g., 50"
                         />
                         <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
@@ -841,7 +841,7 @@ export function TeamMemberCreateEditDialog({
                       step={0.01}
                       value={formData.hourly_rate}
                       onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                       placeholder="0.00"
                     />
                     <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
@@ -860,7 +860,7 @@ export function TeamMemberCreateEditDialog({
                       step={0.01}
                       value={formData.salary}
                       onChange={(e) => setFormData({ ...formData, salary: parseFloat(e.target.value) || 0 })}
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                       placeholder="0.00"
                     />
                     <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
@@ -902,7 +902,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Custom Work Hours
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -921,7 +921,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Time Clock Enabled
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -941,7 +941,7 @@ export function TeamMemberCreateEditDialog({
                           type="text"
                           value={formData.time_clock_pin}
                           onChange={(e) => setFormData({ ...formData, time_clock_pin: e.target.value })}
-                          className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+                          className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
                           placeholder="Enter 4-digit PIN"
                           maxLength={4}
                         />
@@ -960,7 +960,7 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+                        <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                         Phone Call Availability
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
@@ -1008,7 +1008,7 @@ export function TeamMemberCreateEditDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full sm:w-auto bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#B80452] min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all rounded-lg"
+              className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-[#B80452] min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all rounded-lg"
             >
               {isLoading ? "Saving..." : member ? "Update Staff Member" : "Create Staff Member"}
             </Button>

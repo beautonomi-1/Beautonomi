@@ -1399,7 +1399,7 @@ export function ProductCreateEditDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-[#FF0077] hover:bg-[#D60565] min-w-[100px]">
+            <Button type="submit" className="bg-primary hover:bg-primary-hover min-w-[100px]">
               Save
             </Button>
           </div>
@@ -1432,7 +1432,7 @@ export function ProductCreateEditDialog({
               <Button variant="outline" onClick={() => setIsBrandDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateBrand} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Button onClick={handleCreateBrand} className="bg-primary hover:bg-primary-hover">
                 Add Brand
               </Button>
             </QuickDialogFooter>
@@ -1466,7 +1466,7 @@ export function ProductCreateEditDialog({
               <Button variant="outline" onClick={() => setIsSupplierDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateSupplier} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Button onClick={handleCreateSupplier} className="bg-primary hover:bg-primary-hover">
                 Add Supplier
               </Button>
             </QuickDialogFooter>
@@ -1503,7 +1503,7 @@ export function ProductCreateEditDialog({
               <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateCategory} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Button onClick={handleCreateCategory} className="bg-primary hover:bg-primary-hover">
                 Add Product Category
               </Button>
             </QuickDialogFooter>

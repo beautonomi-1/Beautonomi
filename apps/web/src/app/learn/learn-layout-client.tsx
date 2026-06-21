@@ -58,7 +58,7 @@ function SidebarNode({
         style={{ paddingLeft: pl }}
       >
         {isActive && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-[#ff0077]" />
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
         )}
         <span className="flex-1">{node.title}</span>
         <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
@@ -202,7 +202,7 @@ function TopicSidebar({
                           )}
                         >
                           {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-[#ff0077]" />
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
                           )}
                           <span className="flex-1">{c.title}</span>
                           <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
@@ -319,7 +319,7 @@ function LearnLayoutInner({
           <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
           <Link
             href="/learn"
-            className="font-bold text-black text-base md:text-lg shrink-0 hover:text-[#ff0077] transition-colors duration-200 tracking-tight"
+            className="font-bold text-black text-base md:text-lg shrink-0 hover:text-primary transition-colors duration-200 tracking-tight"
           >
             Learning Center
           </Link>

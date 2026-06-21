@@ -36,18 +36,20 @@ export function KpiCardsRow({ cards }: KpiCardsRowProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
       {cards.map((card, index) => (
-        <Card key={index} className="p-4 bg-white border-gray-200">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm text-gray-600 mb-1">{card.label}</p>
-              <p className="text-2xl font-semibold text-gray-900">{formatValue(card.value)}</p>
+        <Card key={index} className="provider-metric-card">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium tracking-[0.01em] text-gray-500 mb-1.5">{card.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight tabular-nums">{formatValue(card.value)}</p>
               {card.delta && (
                 <div
                   className={cn(
-                    "flex items-center gap-1 mt-2 text-xs",
-                    card.delta.isPositive ? "text-green-600" : "text-red-600"
+                    "inline-flex items-center gap-1 mt-2.5 px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums",
+                    card.delta.isPositive
+                      ? "text-green-700 bg-green-50"
+                      : "text-red-700 bg-red-50"
                   )}
                 >
                   {card.delta.isPositive ? (
@@ -59,7 +61,11 @@ export function KpiCardsRow({ cards }: KpiCardsRowProps) {
                 </div>
               )}
             </div>
-            {card.icon && <div className="text-gray-400">{card.icon}</div>}
+            {card.icon && (
+              <div className="flex-shrink-0 p-2.5 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
+                {card.icon}
+              </div>
+            )}
           </div>
         </Card>
       ))}

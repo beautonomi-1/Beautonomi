@@ -7,6 +7,7 @@ import { useCookieConsent } from "@/providers/CookieConsentProvider";
 interface OneSignalSDK {
   init?(opts: { appId: string; notifyButton?: { enable: boolean }; allowLocalhostAsSecureOrigin?: boolean }): void;
   getUserId?(): Promise<string | null>;
+  login?(externalId: string): Promise<void>;
   on?(event: string, cb: (v: boolean) => void): void;
   logout?(): void;
 }
@@ -95,6 +96,10 @@ export function useOneSignal() {
         console.log("OneSignal already initialized or initialization error:", error);
       }
     }
+
+    void OneSignal?.login?.(user.id).catch(() => {
+      // Best-effort — subscription registration still works via player id.
+    });
 
     OneSignal?.getUserId?.()
       .then((playerId: string | null) => {

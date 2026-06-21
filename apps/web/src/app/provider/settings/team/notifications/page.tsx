@@ -195,7 +195,7 @@ export default function NotificationsSettings() {
                       <SelectItem key={member.id} value={member.id}>
                         <div className="flex items-center gap-2">
                           <Avatar className="w-6 h-6">
-                            <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
                               {member.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
@@ -211,7 +211,7 @@ export default function NotificationsSettings() {
                 <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-                      <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                      <AvatarFallback className="bg-primary/10 text-primary">
                         {selectedMemberData.name.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
