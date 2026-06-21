@@ -7,13 +7,25 @@ import {
   type KeyboardAvoidingViewProps,
 } from "react-native-keyboard-controller";
 
+type SupportedBehavior = "height" | "padding" | "translate-with-padding";
+
+function normalizeBehavior(
+  behavior?: KeyboardAvoidingViewProps["behavior"],
+): SupportedBehavior {
+  if (!behavior || behavior === "position") {
+    return "padding";
+  }
+  return behavior;
+}
+
 export function AppKeyboardAvoidingView({
   behavior,
+  contentContainerStyle: _contentContainerStyle,
   ...rest
 }: KeyboardAvoidingViewProps) {
-  // Legacy call sites pass `behavior={undefined}` on Android — coerce to padding so
-  // edge-to-edge devices still lift inputs above the keyboard.
-  return <KeyboardAvoidingView behavior={behavior ?? "padding"} {...rest} />;
+  return (
+    <KeyboardAvoidingView behavior={normalizeBehavior(behavior)} {...rest} />
+  );
 }
 
 export type { KeyboardAvoidingViewProps };
