@@ -20,7 +20,9 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
-import { Building2, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
+import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
+import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
+import { Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -435,6 +437,16 @@ export function SupportTicketDetailPage() {
     (assignedId ? `User ${assignedId.slice(0, 8)}…` : null);
   const iAmAssignee = Boolean(myStaffUserId && assignedId === myStaffUserId);
 
+  const requester = str(ticket.requester_type);
+  const replyAudience: KbAudience =
+    requester === "provider" ? "provider" : requester === "customer" ? "customer" : ticket.provider_id ? "provider" : "customer";
+
+  const insertArticleLink = (article: KbArticleResult) => {
+    const snippet = `${article.title}: ${publicLearnUrl(article.slug)}`;
+    setReply((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet}` : snippet));
+    adminToast.success("Article link added to reply");
+  };
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
@@ -700,6 +712,24 @@ export function SupportTicketDetailPage() {
                 ))}
               </select>
             </div>
+            <details className="rounded-xl border border-gray-200 bg-gray-50/70 p-3">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-gray-800">
+                <BookOpen className="h-4 w-4 text-purple-600" aria-hidden />
+                Help articles
+                <span className="ml-1 text-xs font-normal text-gray-500">
+                  Insert a link to a relevant {replyAudience} guide
+                </span>
+              </summary>
+              <div className="mt-3">
+                <LearningArticlePicker
+                  audience={replyAudience}
+                  includeInternal={replyInternal}
+                  onInsert={insertArticleLink}
+                  initialQuery={str(ticket.subject)}
+                  placeholder="Search guides to share with the customer…"
+                />
+              </div>
+            </details>
             <textarea
               className={`w-full min-h-[120px] rounded-xl border px-3 py-2 text-sm focus:outline-none ${
                 replyInternal

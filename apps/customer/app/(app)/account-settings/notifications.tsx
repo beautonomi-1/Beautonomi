@@ -19,12 +19,12 @@ interface NotificationPrefs {
   sms_notifications: boolean;
   booking_reminders: boolean;
   // Nested category keys
-  inspiration_and_offers?: { email: boolean; sms: boolean; push: boolean };
-  news_and_programs?: { email: boolean; sms: boolean; push: boolean };
-  account_activity?: { email: boolean; sms: boolean; push: boolean };
-  client_policies?: { email: boolean; sms: boolean; push: boolean };
-  reminders?: { email: boolean; sms: boolean; push: boolean };
-  messages?: { email: boolean; sms: boolean; push: boolean };
+  inspiration_and_offers?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  news_and_programs?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  account_activity?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  client_policies?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  reminders?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  messages?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
   unsubscribe_marketing?: boolean;
 }
 
@@ -32,12 +32,12 @@ const DEFAULT_PREFS: NotificationPrefs = {
   email_notifications: true,
   sms_notifications: false,
   booking_reminders: true,
-  inspiration_and_offers: { email: true, sms: true, push: false },
-  news_and_programs: { email: true, sms: true, push: false },
-  account_activity: { email: true, sms: true, push: false },
-  client_policies: { email: true, sms: false, push: false },
-  reminders: { email: true, sms: true, push: false },
-  messages: { email: true, sms: true, push: true },
+  inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
+  news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
+  account_activity: { email: true, sms: true, push: false, whatsapp: false },
+  client_policies: { email: true, sms: false, push: false, whatsapp: false },
+  reminders: { email: true, sms: true, push: false, whatsapp: false },
+  messages: { email: true, sms: true, push: true, whatsapp: false },
   unsubscribe_marketing: false,
 };
 
@@ -205,9 +205,9 @@ export default function NotificationsScreen() {
     }
   }, [np, t]);
 
-  const toggleNested = useCallback(async (category: keyof NotificationPrefs, channel: "email" | "sms" | "push", value: boolean) => {
+  const toggleNested = useCallback(async (category: keyof NotificationPrefs, channel: "email" | "sms" | "push" | "whatsapp", value: boolean) => {
     const previous = prefsRef.current;
-    const existing = (previous[category] as { email: boolean; sms: boolean; push: boolean } | undefined) ?? { email: true, sms: false, push: false };
+    const existing = (previous[category] as { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean } | undefined) ?? { email: true, sms: false, push: false, whatsapp: false };
     const updated = { ...existing, [channel]: value };
     const next = { ...previous, [category]: updated };
     setPrefs(next);
@@ -299,6 +299,13 @@ export default function NotificationsScreen() {
             onToggle={(v) => toggleNested("inspiration_and_offers", "sms", v)}
           />
           <ToggleRow
+            label="WhatsApp offers"
+            description="Receive promotional WhatsApp messages (requires opt-in)"
+            value={prefs.inspiration_and_offers?.whatsapp === true}
+            saving={isSaving("inspiration_and_offers.whatsapp")}
+            onToggle={(v) => toggleNested("inspiration_and_offers", "whatsapp", v)}
+          />
+          <ToggleRow
             label="News and programs"
             description="Brand new programs and announcements"
             value={prefs.news_and_programs?.email !== false}
@@ -342,6 +349,13 @@ export default function NotificationsScreen() {
             onToggle={(v) => toggleNested("account_activity", "sms", v)}
           />
           <ToggleRow
+            label="Booking confirmation WhatsApp"
+            description="WhatsApp when a booking is confirmed or updated"
+            value={prefs.account_activity?.whatsapp === true}
+            saving={isSaving("account_activity.whatsapp")}
+            onToggle={(v) => toggleNested("account_activity", "whatsapp", v)}
+          />
+          <ToggleRow
             label="Email notifications"
             description="Receive general Beautonomi emails"
             value={prefs.email_notifications !== false}
@@ -378,6 +392,13 @@ export default function NotificationsScreen() {
             onToggle={(v) => toggleNested("messages", "sms", v)}
           />
           <ToggleRow
+            label="Message WhatsApp"
+            description="WhatsApp when you receive a new message"
+            value={prefs.messages?.whatsapp === true}
+            saving={isSaving("messages.whatsapp")}
+            onToggle={(v) => toggleNested("messages", "whatsapp", v)}
+          />
+          <ToggleRow
             label="Push notifications for messages"
             description="In-app push alerts for new messages"
             value={prefs.messages?.push === true}
@@ -398,6 +419,13 @@ export default function NotificationsScreen() {
             value={prefs.reminders?.push === true}
             saving={isSaving("reminders.push")}
             onToggle={(v) => toggleNested("reminders", "push", v)}
+          />
+          <ToggleRow
+            label="WhatsApp reminders"
+            description="WhatsApp reminders before your upcoming appointments"
+            value={prefs.reminders?.whatsapp === true}
+            saving={isSaving("reminders.whatsapp")}
+            onToggle={(v) => toggleNested("reminders", "whatsapp", v)}
           />
           <ToggleRow
             label="Account activity"

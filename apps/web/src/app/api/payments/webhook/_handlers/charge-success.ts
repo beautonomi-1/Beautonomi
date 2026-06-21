@@ -239,6 +239,23 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       await applyWalletTopupFromSuccessfulPaystackCharge({ reference, metadata, amount }, supabase);
       return;
     }
+    if (metadata?.marketing_credit_topup === true || metadata?.marketing_credit_topup === "true") {
+      const { applyMarketingTopupFromPaystackSuccess } = await import(
+        "@/lib/marketing/apply-marketing-topup-from-paystack"
+      );
+      const providerId = String(metadata?.provider_id ?? "");
+      const amountZar = Number(metadata?.amount_zar ?? amount / 100);
+      await applyMarketingTopupFromPaystackSuccess({
+        supabase,
+        providerId,
+        amountZar,
+        feesZar: convertFromSmallestUnit(fees || 0),
+        currency: typeof metadata?.currency === "string" ? metadata.currency : null,
+        paystackReference: reference,
+        metadata: metadata as Record<string, unknown>,
+      });
+      return;
+    }
     if (metadata?.gift_card_order_id) {
       await handleGiftCardOrderSuccess({ reference, metadata, amount }, supabase);
       return;

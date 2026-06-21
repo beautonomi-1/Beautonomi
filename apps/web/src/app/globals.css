@@ -27,9 +27,33 @@
   }
 
   :root {
-    /* Brand (align with @beautonomi/ui-tokens) */
-    --primary: #FF0077;
+    /* shadcn / design tokens (align with @beautonomi/ui-tokens) */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+    --primary: 330 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 13%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 330 100% 50%;
+    --radius: 0.75rem;
+
+    /* Brand hex aliases (legacy + calendar) */
+    --primary-hex: #FF0077;
     --primary-hover: #D60565;
+    --primary-soft: #FFE7F1;
+    --primary-ring: rgba(255, 0, 119, 0.35);
 
     /* Status Colors - Normal Mode */
     --status-unconfirmed: #FEC89A;
@@ -114,6 +138,167 @@
     --status-no-show: #F87171;
     --status-no-show-border: #DC2626;
     --status-no-show-text: #FEF2F2;
+  }
+}
+
+@layer components {
+  /* Provider portal surface standard — mirrors mobile Card: 16px radius,
+     calm gray-100 hairline border, soft shadow */
+  .provider-card {
+    @apply bg-white border border-gray-100 rounded-2xl shadow-sm;
+  }
+
+  .provider-card-padding {
+    @apply p-4 sm:p-5 lg:p-6;
+  }
+
+  .provider-surface {
+    @apply provider-card provider-card-padding;
+  }
+
+  /* Brand CTA — use on provider pages without changing global Button defaults.
+     12px radius per premium polish spec (rounded-xl). */
+  .provider-btn-brand {
+    @apply bg-primary hover:bg-primary-hover text-white font-medium min-h-[44px] touch-manipulation rounded-xl transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98];
+  }
+
+  .provider-btn-dark {
+    @apply bg-gray-900 hover:bg-gray-800 text-white font-medium min-h-[44px] touch-manipulation rounded-xl transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98];
+  }
+
+  .provider-input {
+    @apply rounded-xl border border-gray-200 min-h-[44px] focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:border-primary transition-shadow;
+  }
+
+  /* Enterprise table shell — rounded card wrapping data tables */
+  .provider-table {
+    @apply bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm;
+  }
+
+  .provider-table-scroll {
+    @apply overflow-x-auto;
+  }
+
+  /* Metric card — hover lift for clickable KPI tiles */
+  .provider-metric-card {
+    @apply provider-card provider-card-padding transition-all duration-200 ease-out;
+  }
+
+  .provider-metric-card-interactive {
+    @apply provider-metric-card cursor-pointer hover:-translate-y-0.5 hover:shadow-md active:scale-[0.99];
+  }
+}
+
+/* ============================================================================
+   PROVIDER PORTAL — scoped premium / enterprise polish
+   (Does not affect customer site — requires .provider-portal ancestor)
+   ============================================================================ */
+
+@layer components {
+  /* Rounded rectangular buttons; preserve circular FAB / icon / avatar.
+     12px (0.75rem) per premium polish spec. */
+  .provider-portal button.rounded-md:not(.rounded-full),
+  .provider-portal a.rounded-md:not(.rounded-full),
+  .provider-portal [role="button"].rounded-md:not(.rounded-full) {
+    border-radius: 0.75rem;
+    transition-property: color, background-color, border-color, box-shadow, transform;
+    transition-duration: 200ms;
+    transition-timing-function: ease-out;
+  }
+
+  .provider-portal button.rounded-md:not(.rounded-full):not(:disabled):active,
+  .provider-portal a.rounded-md:not(.rounded-full):active {
+    transform: scale(0.98);
+  }
+
+  /* Primary / brand CTAs get subtle elevation */
+  .provider-portal .provider-btn-brand,
+  .provider-portal .provider-btn-dark,
+  .provider-portal button.bg-primary,
+  .provider-portal button[class*="bg-primary"] {
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  }
+
+  .provider-portal .provider-btn-brand:hover,
+  .provider-portal .provider-btn-dark:hover {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+  }
+
+  /* Modern enterprise tables */
+  .provider-portal .provider-table table {
+    @apply w-full text-sm;
+  }
+
+  .provider-portal .provider-table thead {
+    @apply bg-gray-50/90;
+  }
+
+  .provider-portal .provider-table thead tr {
+    @apply border-b border-gray-200;
+  }
+
+  .provider-portal .provider-table thead th {
+    @apply h-11 px-4 py-3 text-left align-middle text-xs font-semibold uppercase tracking-wide text-gray-500;
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+  }
+
+  .provider-portal .provider-table tbody tr {
+    @apply border-b border-gray-100 transition-colors;
+  }
+
+  .provider-portal .provider-table tbody tr:last-child {
+    @apply border-b-0;
+  }
+
+  .provider-portal .provider-table tbody tr:hover {
+    @apply bg-gray-50/80;
+  }
+
+  .provider-portal .provider-table tbody td {
+    @apply px-4 py-3.5 align-middle text-sm text-gray-700;
+  }
+
+  /* Default shadcn TableHead overrides (shared table.tsx uses oversized text) */
+  .provider-portal table thead th {
+    @apply h-11 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500;
+  }
+
+  .provider-portal table thead {
+    @apply bg-gray-50/90;
+  }
+
+  .provider-portal table tbody tr {
+    @apply border-b border-gray-100 transition-colors;
+  }
+
+  .provider-portal table tbody tr:hover {
+    @apply bg-gray-50/80;
+  }
+
+  .provider-portal table tbody td {
+    @apply px-4 py-3.5 text-sm text-gray-700;
+  }
+
+  /* Override shared table.tsx oversized cell padding */
+  .provider-portal table td[class*="py-6"] {
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+  }
+
+  /* Rounded inputs, selects, textareas within provider portal */
+  .provider-portal input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .provider-portal textarea,
+  .provider-portal [role="combobox"],
+  .provider-portal button[role="combobox"] {
+    border-radius: 0.75rem;
+  }
+
+  .provider-portal input:focus-visible,
+  .provider-portal textarea:focus-visible,
+  .provider-portal [role="combobox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(255 255 255), 0 0 0 4px rgba(255, 0, 119, 0.35);
   }
 }
 

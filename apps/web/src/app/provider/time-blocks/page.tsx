@@ -140,7 +140,7 @@ export default function TimeBlocksPage() {
 
         <TabsContent value="blocks" className="mt-6">
           <div className="mb-4 flex justify-end">
-            <Button onClick={handleCreateBlock} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreateBlock} className="bg-primary hover:bg-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
               Add Time Block
             </Button>
@@ -300,7 +300,7 @@ export default function TimeBlocksPage() {
 
         <TabsContent value="types" className="mt-6">
           <div className="mb-4 flex justify-end">
-            <Button onClick={handleCreateType} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreateType} className="bg-primary hover:bg-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
               Add Type
             </Button>

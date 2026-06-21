@@ -18,7 +18,6 @@ import { fetcher, FetchError, FetchTimeoutError, PROVIDER_BOOTSTRAP_TIMEOUT_MS }
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
-import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 import { QuickStartBanner } from "@/components/provider/QuickStartBanner";
@@ -32,7 +31,7 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { handleError, withRetry, getErrorMessage } from "@/lib/provider-portal/error-handler";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import type { ProviderDashboardStats } from "./provider-dashboard-stats";
 import { buildPayoutBalanceCardView } from "./payout-balance-card";
 import { DashboardInsightsPanel } from "./DashboardInsightsPanel";
@@ -44,6 +43,12 @@ const ICON_CLOCK_4 = <Clock className="w-4 h-4" />;
 const ICON_CHECK_4 = <CheckCircle2 className="w-4 h-4" />;
 const ICON_XCIRCLE_4 = <XCircle className="w-4 h-4" />;
 const ICON_ALERT_4 = <AlertCircle className="w-4 h-4" />;
+
+const DASHBOARD_BREADCRUMBS = [
+  { label: "Home", href: "/" },
+  { label: "Provider", href: "/provider" },
+  { label: "Dashboard" },
+] as const;
 
 export type DashboardClientProps = {
   /** Server-rendered dashboard payload (all locations — matches API when no location_id). */
@@ -296,50 +301,32 @@ export function DashboardClient({
   
   if (shouldShowLoading) {
     return (
-      <SettingsDetailLayout
-        title="Dashboard"
-        breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Dashboard" }
-        ]}
-      >
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader title="Dashboard" breadcrumbs={[...DASHBOARD_BREADCRUMBS]} />
         <LoadingTimeout 
           loadingMessage={isLoadingProvider ? "Loading provider..." : "Loading dashboard..."} 
           timeoutMs={PROVIDER_BOOTSTRAP_TIMEOUT_MS}
         />
-      </SettingsDetailLayout>
+      </div>
     );
   }
 
   // Role is provider but no providers row yet — portal redirects to /provider/get-started; avoid empty-state flash
   if (!isLoadingProvider && !provider && !providerError) {
     return (
-      <SettingsDetailLayout
-        title="Dashboard"
-        breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Dashboard" }
-        ]}
-      >
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader title="Dashboard" breadcrumbs={[...DASHBOARD_BREADCRUMBS]} />
         <LoadingTimeout loadingMessage="Continuing to setup…" timeoutMs={PROVIDER_BOOTSTRAP_TIMEOUT_MS} />
-      </SettingsDetailLayout>
+      </div>
     );
   }
 
   if (error || !stats) {
     return (
-      <SettingsDetailLayout
-        title="Dashboard"
-        breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Dashboard" }
-        ]}
-      >
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
+        <PageHeader title="Dashboard" breadcrumbs={[...DASHBOARD_BREADCRUMBS]} />
         {isMissingProfile ? (
-          <div className="bg-white rounded-lg border p-4 sm:p-6 md:p-8 max-w-2xl mx-auto w-full">
+          <div className="provider-surface max-w-2xl mx-auto w-full">
             <div className="text-center">
               <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 text-amber-500 mx-auto mb-3 sm:mb-4" />
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
@@ -376,23 +363,16 @@ export function DashboardClient({
             }}
           />
         )}
-      </SettingsDetailLayout>
+      </div>
     );
   }
 
   return (
-    <SettingsDetailLayout
-      title="Dashboard"
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Dashboard" }
-      ]}
-      showCloseButton={false}
-    >
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">
       <PageHeader
         title="Dashboard"
         subtitle="Overview of your business performance"
+        breadcrumbs={[...DASHBOARD_BREADCRUMBS]}
       />
 
       {isShowingSsrAllLocations && selectedLocationId ? (
@@ -437,7 +417,7 @@ export function DashboardClient({
 
       {/* Business Type Info */}
       {provider?.business_type && (
-        <div className="mb-4 sm:mb-6 p-4 bg-white border rounded-lg">
+        <div className="mb-4 sm:mb-6 provider-surface">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Business Type</p>
@@ -542,7 +522,7 @@ export function DashboardClient({
       {/* Today's Activity */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div 
-          className="bg-white border rounded-lg p-3 sm:p-4 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-metric-card-interactive"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/bookings")}
@@ -556,7 +536,7 @@ export function DashboardClient({
           <p className="text-xs text-gray-500 mt-1">Scheduled for today</p>
         </div>
         <div 
-          className="bg-white border rounded-lg p-3 sm:p-4 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-metric-card-interactive"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/finance")}
@@ -572,7 +552,7 @@ export function DashboardClient({
           <p className="text-xs text-gray-500 mt-1">Recognized when paid (ledger date)</p>
         </div>
         <div 
-          className="bg-white border rounded-lg p-3 sm:p-4 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-metric-card-interactive"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/bookings")}
@@ -590,7 +570,7 @@ export function DashboardClient({
       {/* Earnings & Expenses */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
         {/* Earnings Breakdown */}
-        <div className="bg-white border rounded-lg p-4 sm:p-6">
+        <div className="provider-surface">
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-green-700">Your Earnings</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
@@ -650,7 +630,7 @@ export function DashboardClient({
         </div>
 
         {/* Expenses */}
-        <div className="bg-white border rounded-lg p-4 sm:p-6">
+        <div className="provider-surface">
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-orange-700">Your Expenses</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between p-2">
@@ -685,7 +665,7 @@ export function DashboardClient({
       {/* Performance Metrics & Booking Status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
         {/* Performance Metrics */}
-        <div className="bg-white border rounded-lg p-4 sm:p-6">
+        <div className="provider-surface">
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Performance</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -712,7 +692,7 @@ export function DashboardClient({
         </div>
         
         {/* Booking Status Breakdown */}
-        <div className="bg-white border rounded-lg p-4 sm:p-6">
+        <div className="provider-surface">
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Booking Status</h3>
           <div className="space-y-3">
             <StatusCard
@@ -756,11 +736,11 @@ export function DashboardClient({
 
       {/* Location Type Breakdown */}
       {(stats?.at_home_bookings ?? 0) > 0 || (stats?.at_salon_bookings ?? 0) > 0 ? (
-        <div className="bg-white border rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="provider-surface mb-4 sm:mb-6">
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Booking Type Breakdown</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* At Home Bookings */}
-            <div className="border rounded-lg p-4">
+            <div className="border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Home className="w-5 h-5 text-purple-600" />
                 <h4 className="font-semibold text-gray-900">At Home / House Calls</h4>
@@ -794,7 +774,7 @@ export function DashboardClient({
             </div>
 
             {/* At Salon Bookings */}
-            <div className="border rounded-lg p-4">
+            <div className="border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Building2 className="w-5 h-5 text-blue-600" />
                 <h4 className="font-semibold text-gray-900">At Salon</h4>
@@ -833,7 +813,7 @@ export function DashboardClient({
       {/* Schedule Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <div 
-          className="bg-white border rounded-lg p-4 sm:p-6 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-surface cursor-pointer hover:shadow-md transition-all duration-200"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/calendar")}
@@ -854,7 +834,7 @@ export function DashboardClient({
           </div>
         </div>
         <div 
-          className="bg-white border rounded-lg p-4 sm:p-6 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-surface cursor-pointer hover:shadow-md transition-all duration-200"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/reports/bookings/summary")}
@@ -870,7 +850,7 @@ export function DashboardClient({
           </div>
         </div>
         <div 
-          className="bg-white border rounded-lg p-4 sm:p-6 cursor-pointer hover:shadow-md transition-shadow"
+          className="provider-surface cursor-pointer hover:shadow-md transition-all duration-200"
           role="button"
           tabIndex={0}
           onClick={() => navigateTo("/provider/reports/business/overview")}
@@ -891,7 +871,7 @@ export function DashboardClient({
           </div>
         </div>
       </div>
-    </SettingsDetailLayout>
+    </div>
   );
 }
 
@@ -922,11 +902,21 @@ const StatCard = React.memo(function StatCard({
     orange: "bg-orange-50 text-orange-600",
   };
 
+  const ringClasses = {
+    blue: "ring-blue-100",
+    green: "ring-green-100",
+    purple: "ring-purple-100",
+    orange: "ring-orange-100",
+  };
+
   const ariaLabel = subtitle ? `${title}: ${value}. ${subtitle}` : `${title}: ${value}`;
 
   return (
     <div 
-      className={`bg-white border rounded-lg p-3 sm:p-4 ${handleClick ? 'cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]' : ''}`}
+      className={cn(
+        "provider-metric-card",
+        handleClick && "provider-metric-card-interactive"
+      )}
       onClick={handleClick}
       role={handleClick ? "button" : undefined}
       tabIndex={handleClick ? 0 : undefined}
@@ -938,12 +928,21 @@ const StatCard = React.memo(function StatCard({
         }
       } : undefined}
     >
-      <div className="flex items-center justify-between mb-2 sm:mb-3">
-        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>{icon}</div>
+      <div className="flex items-center justify-between mb-3">
+        <div className={cn("p-2.5 rounded-xl ring-1 ring-inset", colorClasses[color], ringClasses[color])}>{icon}</div>
       </div>
-      <h3 className="text-xl sm:text-2xl font-semibold mb-1">{value}</h3>
-      <p className="text-xs sm:text-sm text-gray-600">{title}</p>
-      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+      <p className="text-xs font-medium tracking-[0.01em] text-gray-500 mb-1">{title}</p>
+      <h3 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight tabular-nums mb-1">{value}</h3>
+      {subtitle && (
+        <p className={cn(
+          "text-xs font-medium tabular-nums inline-flex items-center gap-1 px-2 py-0.5 rounded-full w-fit",
+          subtitle.includes("+") || subtitle.toLowerCase().includes("growth")
+            ? "text-green-700 bg-green-50"
+            : subtitle.includes("-")
+              ? "text-red-700 bg-red-50"
+              : "text-gray-600 bg-gray-50"
+        )}>{subtitle}</p>
+      )}
     </div>
   );
 });
@@ -974,9 +973,20 @@ const StatusCard = React.memo(function StatusCard({
     blue: "bg-blue-50 text-blue-600",
   };
 
+  const ringClasses = {
+    yellow: "ring-yellow-100",
+    green: "ring-green-100",
+    red: "ring-red-100",
+    gray: "ring-gray-100",
+    blue: "ring-blue-100",
+  };
+
   return (
     <div 
-      className={`bg-white border rounded-lg p-3 sm:p-4 ${handleClick ? 'cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]' : ''}`}
+      className={cn(
+        "provider-metric-card",
+        handleClick && "provider-metric-card-interactive"
+      )}
       onClick={handleClick}
       role={handleClick ? "button" : undefined}
       tabIndex={handleClick ? 0 : undefined}
@@ -988,12 +998,12 @@ const StatusCard = React.memo(function StatusCard({
         }
       } : undefined}
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs sm:text-sm text-gray-600 mb-1">{title}</p>
-          <p className="text-xl sm:text-2xl font-semibold">{count}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium tracking-[0.01em] text-gray-500 mb-1">{title}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-gray-900 tabular-nums tracking-tight">{count}</p>
         </div>
-        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>{icon}</div>
+        <div className={cn("p-2.5 rounded-xl ring-1 ring-inset flex-shrink-0", colorClasses[color], ringClasses[color])}>{icon}</div>
       </div>
     </div>
   );

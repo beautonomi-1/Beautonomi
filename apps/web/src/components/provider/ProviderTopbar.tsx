@@ -93,8 +93,8 @@ export function ProviderTopbar() {
   })();
 
   return (
-    <div className="sticky top-0 z-30 bg-white border-b border-gray-200 w-full max-w-full overflow-x-hidden box-border">
-      <div className="h-14 md:h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 mx-auto w-full max-w-full box-border overflow-x-hidden">
+    <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200 w-full max-w-full overflow-x-hidden box-border safe-area-top">
+      <div className="h-14 md:h-[4.25rem] flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 mx-auto w-full max-w-full box-border overflow-x-hidden">
         {/* Left: Logo + Mobile Nav + Breadcrumb */}
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0 overflow-x-hidden box-border">
           <Link
@@ -114,7 +114,7 @@ export function ProviderTopbar() {
           </div>
 
           <div className="md:hidden flex-1 min-w-0">
-            <h1 className="text-base font-semibold truncate">
+            <h1 className="text-base font-bold text-gray-900 truncate tracking-tight">
               {mobilePageTitle}
             </h1>
           </div>

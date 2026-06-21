@@ -69,7 +69,7 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={cn(
-      "bg-gray-50 overflow-x-hidden w-full max-w-full box-border",
+      "provider-portal bg-gray-50/80 overflow-x-hidden w-full max-w-full box-border",
       isFullHeightPage
         ? "flex flex-col min-h-[100dvh] md:h-screen md:max-h-screen"
         : "min-h-screen"
@@ -103,7 +103,7 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
           // Full-height routes: flex column on all breakpoints so nested chat/calendar can use min-h-0.
           isFullHeightPage
             ? "flex-1 flex flex-col min-h-0 overflow-hidden px-0 py-0 md:px-4 md:py-4 lg:px-6"
-            : "md:flex-1 md:min-h-0 px-4 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6 lg:py-8 max-w-[1600px] mx-auto"
+            : "md:flex-1 md:min-h-0 px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 lg:py-7 max-w-[1440px] mx-auto w-full"
         )}>
           <div className={cn(
             "w-full max-w-full box-border",

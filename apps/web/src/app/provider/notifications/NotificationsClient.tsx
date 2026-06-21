@@ -362,7 +362,7 @@ export function NotificationsClient({
             </p>
             <Link
               href="/provider/settings/notifications"
-              className="text-sm text-[#FF0077] hover:underline"
+              className="text-sm text-primary hover:underline"
             >
               Manage notifications
             </Link>
@@ -425,7 +425,7 @@ export function NotificationsClient({
                                 {notification.title}
                               </p>
                               {!notification.read && (
-                                <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5 flex-shrink-0" />
+                                <span className="w-2 h-2 bg-primary rounded-full mt-1.5 flex-shrink-0" />
                               )}
                             </div>
                             <p className={cn("text-sm text-gray-600 mb-1", !isExpanded && "line-clamp-3")}>
@@ -487,7 +487,7 @@ export function NotificationsClient({
       <div className="text-center">
         <Link
           href="/provider/settings/notifications"
-          className="text-sm text-[#FF0077] hover:underline"
+          className="text-sm text-primary hover:underline"
         >
           Manage notifications
         </Link>

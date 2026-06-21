@@ -140,8 +140,8 @@ export default function UpgradeToSalonPage() {
     >
       <div className="space-y-6">
         <SectionCard>
-          <Alert className="mb-6 border-[#FF0077]/20 bg-[#FF0077]/5">
-            <Info className="w-4 h-4 text-[#FF0077]" />
+          <Alert className="mb-6 border-primary/20 bg-primary/5">
+            <Info className="w-4 h-4 text-primary" />
             <AlertDescription className="text-sm text-gray-700">
               Upgrading to a salon will enable team management, multiple
               locations, and advanced scheduling features. This action cannot be
@@ -156,7 +156,7 @@ export default function UpgradeToSalonPage() {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-start gap-3 p-4 border rounded-lg">
-                  <Users className="w-5 h-5 text-[#FF0077] mt-0.5" />
+                  <Users className="w-5 h-5 text-primary mt-0.5" />
                   <div>
                     <h4 className="font-medium">Team Management</h4>
                     <p className="text-sm text-gray-600">
@@ -167,7 +167,7 @@ export default function UpgradeToSalonPage() {
                 </div>
 
                 <div className="flex items-start gap-3 p-4 border rounded-lg">
-                  <MapPin className="w-5 h-5 text-[#FF0077] mt-0.5" />
+                  <MapPin className="w-5 h-5 text-primary mt-0.5" />
                   <div>
                     <h4 className="font-medium">Multiple Locations</h4>
                     <p className="text-sm text-gray-600">
@@ -178,7 +178,7 @@ export default function UpgradeToSalonPage() {
                 </div>
 
                 <div className="flex items-start gap-3 p-4 border rounded-lg">
-                  <Calendar className="w-5 h-5 text-[#FF0077] mt-0.5" />
+                  <Calendar className="w-5 h-5 text-primary mt-0.5" />
                   <div>
                     <h4 className="font-medium">Advanced Scheduling</h4>
                     <p className="text-sm text-gray-600">
@@ -189,7 +189,7 @@ export default function UpgradeToSalonPage() {
                 </div>
 
                 <div className="flex items-start gap-3 p-4 border rounded-lg">
-                  <DollarSign className="w-5 h-5 text-[#FF0077] mt-0.5" />
+                  <DollarSign className="w-5 h-5 text-primary mt-0.5" />
                   <div>
                     <h4 className="font-medium">Commission Tracking</h4>
                     <p className="text-sm text-gray-600">
@@ -241,7 +241,7 @@ export default function UpgradeToSalonPage() {
             <div className="pt-4 border-t">
               <Button
                 onClick={() => setShowConfirmDialog(true)}
-                className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] text-white"
+                className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white"
                 size="lg"
               >
                 Upgrade to Salon
@@ -281,7 +281,7 @@ export default function UpgradeToSalonPage() {
             <Button
               onClick={handleUpgrade}
               disabled={isUpgrading}
-              className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+              className="bg-primary hover:bg-primary-hover text-white"
             >
               {isUpgrading ? "Upgrading..." : "Confirm Upgrade"}
             </Button>

@@ -39,13 +39,13 @@ function CartCard({
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Your cart</h2>
       <div className="flex items-start gap-4">
-        <div className="w-12 h-12 rounded-lg bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-[#FF0077] font-bold text-sm">B</span>
+        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <span className="text-primary font-bold text-sm">B</span>
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-gray-900">{plan.name}</h3>
           {plan.description ? (
-            <div className="mt-0.5 text-sm text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+            <div className="mt-0.5 text-sm text-gray-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
               <PricingFeatureHtml html={plan.description} className="block leading-snug" />
             </div>
           ) : null}
@@ -67,7 +67,7 @@ function CartCard({
                         onClick={() => onBillingPeriodChange(p)}
                         className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
                           billingPeriod === p
-                            ? "bg-white text-[#FF0077] shadow-sm border border-gray-200"
+                            ? "bg-white text-primary shadow-sm border border-gray-200"
                             : "text-gray-600 hover:text-gray-900"
                         }`}
                       >
@@ -94,7 +94,7 @@ function CartCard({
         </div>
       </div>
       {plan.is_popular && (
-        <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#FF0077]/10 px-3 py-1 text-xs font-medium text-[#FF0077]">
+        <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           <Check className="w-3.5 h-3.5" />
           Most popular
         </div>
@@ -137,7 +137,7 @@ function OrderSummaryCard({
           </div>
           <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-100">
             <span className="text-gray-900">Total</span>
-            <span className="text-[#FF0077]">{priceDisplay}</span>
+            <span className="text-primary">{priceDisplay}</span>
           </div>
         </div>
       )}
@@ -151,7 +151,7 @@ function OrderSummaryCard({
         type="button"
         onClick={onSubmit}
         disabled={submitting}
-        className="mt-6 w-full py-3.5 bg-[#FF0077] text-white rounded-xl font-semibold hover:bg-[#e6006b] transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
+        className="mt-6 w-full py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-[#e6006b] transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
       >
         {submitting ? (
           <>
@@ -332,7 +332,7 @@ export default function SubscriptionCheckoutPage() {
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-12 text-center">
           <p className="text-gray-600 mb-4">No plan selected.</p>
-          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
+          <Link href="/pricing" className="text-primary font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -345,7 +345,7 @@ export default function SubscriptionCheckoutPage() {
       <div className="min-h-screen bg-gray-50">
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-24 flex flex-col items-center justify-center gap-4">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
           <p className="text-gray-600">Loading plan…</p>
         </div>
       </div>
@@ -358,7 +358,7 @@ export default function SubscriptionCheckoutPage() {
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-12 text-center">
           <p className="text-gray-600 mb-4">{error || "Plan not found."}</p>
-          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
+          <Link href="/pricing" className="text-primary font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -375,7 +375,7 @@ export default function SubscriptionCheckoutPage() {
             This plan is not available for subscription at the moment. Please contact support or
             choose another plan.
           </p>
-          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
+          <Link href="/pricing" className="text-primary font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -406,7 +406,7 @@ export default function SubscriptionCheckoutPage() {
             className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
               plan.is_free
                 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                : "bg-[#FF0077]/10 text-[#FF0077] ring-1 ring-[#FF0077]/20"
+                : "bg-primary/10 text-primary ring-1 ring-primary/20"
             }`}
           >
             <Check className="h-3.5 w-3.5" />

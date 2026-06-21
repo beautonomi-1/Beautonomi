@@ -46,7 +46,7 @@ export function ProviderBreadcrumb() {
     <div className="flex items-center gap-2 text-sm text-gray-600 overflow-hidden">
       <Link
         href="/provider/dashboard"
-        className="flex items-center gap-1 hover:text-[#FF0077] transition-colors flex-shrink-0"
+        className="flex items-center gap-1 hover:text-primary transition-colors flex-shrink-0"
       >
         <Home className="w-4 h-4 flex-shrink-0" />
         <span className="truncate">Dashboard</span>
@@ -63,7 +63,7 @@ export function ProviderBreadcrumb() {
             ) : (
               <Link
                 href={href}
-                className="hover:text-[#FF0077] transition-colors truncate"
+                className="hover:text-primary transition-colors truncate"
               >
                 {item.label}
               </Link>

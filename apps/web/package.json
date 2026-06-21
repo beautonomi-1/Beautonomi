@@ -42,6 +42,7 @@
     "@beautonomi/subscription-features": "workspace:*",
     "@beautonomi/maintenance-paths": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
+    "@beautonomi/learning-mockups": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/shipping": "workspace:*",
     "@beautonomi/ui": "workspace:*",

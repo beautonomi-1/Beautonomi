@@ -294,8 +294,8 @@ export default function BusinessDetailsSettings() {
 
       {/* Language Settings */}
       <SectionCard title="Language Settings" className="w-full">
-        <Alert className="mb-4 sm:mb-6 border-[#FF0077]/20 bg-[#FF0077]/5">
-          <Info className="w-4 h-4 text-[#FF0077] flex-shrink-0" />
+        <Alert className="mb-4 sm:mb-6 border-primary/20 bg-primary/5">
+          <Info className="w-4 h-4 text-primary flex-shrink-0" />
           <AlertDescription className="text-xs sm:text-sm text-gray-700">
             Language settings affect how notifications and communications are sent to clients and team members.
           </AlertDescription>
@@ -346,8 +346,8 @@ export default function BusinessDetailsSettings() {
 
       {/* Online Links */}
       <SectionCard title="Online Links" className="w-full">
-        <Alert className="mb-4 sm:mb-6 border-[#FF0077]/20 bg-[#FF0077]/5">
-          <Info className="w-4 h-4 text-[#FF0077] flex-shrink-0" />
+        <Alert className="mb-4 sm:mb-6 border-primary/20 bg-primary/5">
+          <Info className="w-4 h-4 text-primary flex-shrink-0" />
           <AlertDescription className="text-xs sm:text-sm text-gray-700">
             Add your social media and website links to help clients find you online.
           </AlertDescription>
@@ -501,8 +501,8 @@ export default function BusinessDetailsSettings() {
                     }}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                       isSelected
-                        ? "bg-[#FF0077] text-white border-2 border-[#FF0077]"
-                        : "bg-white text-gray-700 border-2 border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077]"
+                        ? "bg-primary text-white border-2 border-primary"
+                        : "bg-white text-gray-700 border-2 border-gray-300 hover:border-primary hover:text-primary"
                     } ${isSelected && (formData.languagesSpoken || ["English"]).length === 1 ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
                     disabled={isSelected && (formData.languagesSpoken || ["English"]).length === 1}
                     title={isSelected && (formData.languagesSpoken || ["English"]).length === 1 ? "At least one language is required" : ""}

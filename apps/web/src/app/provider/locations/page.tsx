@@ -228,7 +228,7 @@ function ZoneSuggestionsModal({
                 </div>
                 <Button
                   onClick={() => onSelectZone(zone.id)}
-                  className="bg-[#FF0077] hover:bg-[#D60565] text-white ml-4"
+                  className="bg-primary hover:bg-primary-hover text-white ml-4"
                 >
                   Select Zone
                 </Button>
@@ -245,7 +245,7 @@ function ZoneSuggestionsModal({
             onClick={() => {
               window.location.href = "/provider/settings/service-zones";
             }}
-            className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+            className="bg-primary hover:bg-primary-hover text-white"
           >
             View All Zones
           </Button>

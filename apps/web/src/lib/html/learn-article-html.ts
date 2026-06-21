@@ -80,6 +80,7 @@ const LEARN_ARTICLE_SANITIZE: sanitizeHtml.IOptions = {
     th: ["colspan", "rowspan", "scope", "abbr"],
     td: ["colspan", "rowspan"],
     col: ["span", "width"],
+    div: ["data-learn-mockup", "data-caption"],
     "*": ["class", "id", "style"],
   },
   allowedSchemes: ["http", "https", "mailto"],

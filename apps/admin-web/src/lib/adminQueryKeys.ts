@@ -88,6 +88,10 @@ export const adminQueryKeys = {
   gamificationBadges: (inc: string) => [...adminQueryKeys.root, "gamification", "badges", inc] as const,
 
   notificationTemplates: (q: string) => [...adminQueryKeys.root, "notification-templates", q] as const,
+  whatsappContentTemplates: () => [...adminQueryKeys.root, "whatsapp-content-templates"] as const,
+  marketingPricebook: () => [...adminQueryKeys.root, "marketing-pricebook"] as const,
+  providerMarketingCredits: (providerId: string) =>
+    [...adminQueryKeys.root, "provider-marketing-credits", providerId] as const,
 
   /** User picker for the notification delivery-logs tab (GET /api/admin/notification-logs?search=). */
   notificationLogUsers: (q: string) => [...adminQueryKeys.root, "notification-logs", "users", q] as const,
@@ -126,6 +130,14 @@ export const adminQueryKeys = {
   learningArticles: (q: string) => [...adminQueryKeys.root, "learning", "articles", q] as const,
   /** Prefix-match invalidates all learning article list queries (any status filter). */
   learningArticlesAll: () => [...adminQueryKeys.root, "learning", "articles"] as const,
+
+  /** Internal Knowledge Base reader + support article search. */
+  knowledgeBase: {
+    all: () => [...adminQueryKeys.root, "knowledge-base"] as const,
+    browse: () => [...adminQueryKeys.root, "knowledge-base", "browse"] as const,
+    article: (slug: string) => [...adminQueryKeys.root, "knowledge-base", "article", slug] as const,
+    search: (signature: string) => [...adminQueryKeys.root, "knowledge-base", "search", signature] as const,
+  },
 
   addons: (q: string) => [...adminQueryKeys.root, "addons", q] as const,
 

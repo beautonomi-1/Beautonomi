@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, createPaginatedResponse, getPaginationParams } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  createPaginatedResponse,
+  getPaginationParams,
+} from "@/lib/supabase/api-helpers";
+import { checkMarketingFeatureAccess, canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays, startOfDay } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
@@ -172,6 +181,28 @@ export async function POST(request: NextRequest) {
 
     if (!["email", "sms", "whatsapp"].includes(type)) {
       return errorResponse("Invalid campaign type. Must be email, sms, or whatsapp", "VALIDATION_ERROR", 400);
+    }
+
+    const canUseChannel = await canUseMarketingChannel(
+      providerId,
+      type as "email" | "sms" | "whatsapp",
+      supabase,
+    );
+    if (!canUseChannel) {
+      return errorResponse(
+        `${type === "email" ? "Email" : type === "sms" ? "SMS" : "WhatsApp"} campaigns are not enabled on your plan.`,
+        "SUBSCRIPTION_REQUIRED",
+        403,
+      );
+    }
+
+    const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
+    if (recipient_type === "segment" && !marketingAccess.advancedSegmentation) {
+      return errorResponse(
+        "Segment campaigns require advanced segmentation on your subscription plan.",
+        "SUBSCRIPTION_REQUIRED",
+        403,
+      );
     }
 
     if (type === "email" && !subject) {

@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type NotificationChannelName = "push" | "email" | "sms";
+export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
-type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean };
+type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean; whatsapp?: boolean };
 
 /**
  * Provider preference sections, mirroring the defaults returned by
@@ -89,6 +89,7 @@ function channelAllowedForProvider(
   if (channel === "email") return sec.email !== false;
   if (channel === "sms") return sec.sms !== false;
   if (channel === "push") return sec.push !== false;
+  if (channel === "whatsapp") return sec.whatsapp !== false;
   return true;
 }
 

@@ -39,6 +39,17 @@ type Template = {
   email_subject?: string;
   email_body?: string;
   sms_body?: string;
+  whatsapp_body?: string;
+  whatsapp_content_sid?: string;
+  whatsapp_category?: string;
+  whatsapp_template_status?: string;
+  whatsapp_approval_name?: string;
+  whatsapp_content_error?: string;
+  whatsapp_content_variables?: WhatsappVarMapping[];
+  whatsapp_content_type?: string;
+  whatsapp_content_definition?: { media_url?: string };
+  whatsapp_content_hash?: string;
+  channel_waterfall?: string[];
   channels?: string[];
   enabled?: boolean;
   description?: string;
@@ -79,10 +90,46 @@ const NOTIFICATION_TYPE_PRESETS = [
   { value: "high_priority", label: "High Priority" },
 ] as const;
 
-const CHANNEL_KEYS = ["email", "sms", "push", "in_app"] as const;
+const CHANNEL_KEYS = ["email", "sms", "push", "in_app", "whatsapp"] as const;
+
+const WATERFALL_CHANNELS = ["whatsapp", "sms", "email"] as const;
+
+type WhatsappVarMapping = { ordinal: number; var: string; sample?: string };
+
+function extractNamedVars(text: string): string[] {
+  const re = /\{\{([^}]+)\}\}/g;
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const v = m[1].trim();
+    if (v && !/^\d+$/.test(v) && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+function parseVarMappings(raw: unknown): WhatsappVarMapping[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row, i) => {
+      const r = row as { ordinal?: number; var?: string; sample?: string };
+      return {
+        ordinal: typeof r.ordinal === "number" ? r.ordinal : i + 1,
+        var: String(r.var ?? ""),
+        sample: r.sample,
+      };
+    })
+    .filter((m) => m.var);
+}
+
+function normalizeWaterfall(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [...WATERFALL_CHANNELS];
+  const allowed = new Set<string>(WATERFALL_CHANNELS);
+  const out = raw.map(String).filter((c) => allowed.has(c));
+  return out.length > 0 ? out : [...WATERFALL_CHANNELS];
+}
 
 function normalizeChannelsForApi(ch: string[]): string[] {
-  const allowed = new Set(["push", "email", "sms", "live_activities"]);
+  const allowed = new Set(["push", "email", "sms", "live_activities", "whatsapp"]);
   const mapped = ch.map((c) => (c === "in_app" ? "push" : c));
   const out = Array.from(new Set(mapped.filter((c) => allowed.has(c))));
   return out.length > 0 ? out : ["push"];
@@ -115,6 +162,27 @@ function TemplateEditor({
   const [emailSubject, setEmailSubject] = useState(initial.email_subject ?? "");
   const [emailBody, setEmailBody] = useState(initial.email_body ?? "");
   const [smsBody, setSmsBody] = useState(initial.sms_body ?? "");
+  const [whatsappBody, setWhatsappBody] = useState(initial.whatsapp_body ?? initial.sms_body ?? "");
+  const [whatsappCategory, setWhatsappCategory] = useState(initial.whatsapp_category ?? "utility");
+  const [whatsappApprovalName, setWhatsappApprovalName] = useState(initial.whatsapp_approval_name ?? "");
+  const [whatsappStatus, setWhatsappStatus] = useState(initial.whatsapp_template_status ?? "unknown");
+  const [whatsappContentSid, setWhatsappContentSid] = useState(initial.whatsapp_content_sid ?? "");
+  const [whatsappContentType, setWhatsappContentType] = useState(
+    initial.whatsapp_content_type ?? "twilio/text",
+  );
+  const [whatsappMediaUrl, setWhatsappMediaUrl] = useState(
+    initial.whatsapp_content_definition?.media_url ?? "",
+  );
+  const [whatsappVarMappings, setWhatsappVarMappings] = useState<WhatsappVarMapping[]>(() =>
+    parseVarMappings(initial.whatsapp_content_variables),
+  );
+  const [channelWaterfall, setChannelWaterfall] = useState<string[]>(() =>
+    normalizeWaterfall(initial.channel_waterfall),
+  );
+  const [whatsappPushBusy, setWhatsappPushBusy] = useState(false);
+  const [readinessScore, setReadinessScore] = useState<number | null>(null);
+  const [readinessFatal, setReadinessFatal] = useState<string[]>([]);
+  const [readinessWarnings, setReadinessWarnings] = useState<string[]>([]);
   const [channels, setChannels] = useState<string[]>(() => channelsForForm(initial.channels));
   const [enabled, setEnabled] = useState(initial.enabled !== false);
   const [description, setDescription] = useState(initial.description ?? "");
@@ -131,6 +199,15 @@ function TemplateEditor({
     setEmailSubject(initial.email_subject ?? "");
     setEmailBody(initial.email_body ?? "");
     setSmsBody(initial.sms_body ?? "");
+    setWhatsappBody(initial.whatsapp_body ?? initial.sms_body ?? "");
+    setWhatsappCategory(initial.whatsapp_category ?? "utility");
+    setWhatsappApprovalName(initial.whatsapp_approval_name ?? "");
+    setWhatsappStatus(initial.whatsapp_template_status ?? "unknown");
+    setWhatsappContentSid(initial.whatsapp_content_sid ?? "");
+    setWhatsappContentType(initial.whatsapp_content_type ?? "twilio/text");
+    setWhatsappMediaUrl(initial.whatsapp_content_definition?.media_url ?? "");
+    setWhatsappVarMappings(parseVarMappings(initial.whatsapp_content_variables));
+    setChannelWaterfall(normalizeWaterfall(initial.channel_waterfall));
     setChannels(channelsForForm(initial.channels));
     setEnabled(initial.enabled !== false);
     setDescription(initial.description ?? "");
@@ -167,6 +244,17 @@ function TemplateEditor({
       email_subject: emailSubject.trim() || null,
       email_body: emailBody.trim() || null,
       sms_body: smsBody.trim() || null,
+      whatsapp_body: whatsappBody.trim() || null,
+      whatsapp_category: whatsappCategory,
+      whatsapp_approval_name: whatsappApprovalName.trim() || null,
+      whatsapp_content_sid: whatsappContentSid.trim() || null,
+      whatsapp_content_type: whatsappContentType,
+      whatsapp_content_definition:
+        whatsappContentType === "twilio/media" && whatsappMediaUrl.trim()
+          ? { media_url: whatsappMediaUrl.trim() }
+          : null,
+      whatsapp_content_variables: whatsappVarMappings,
+      channel_waterfall: channelWaterfall,
       url: url.trim() || null,
       description: description.trim() || null,
     };
@@ -175,6 +263,113 @@ function TemplateEditor({
 
   const emailOn = channels.includes("email");
   const smsOn = channels.includes("sms");
+  const whatsappOn = channels.includes("whatsapp");
+
+  useEffect(() => {
+    if (!whatsappOn) return;
+    const t = window.setTimeout(() => {
+      void adminApi
+        .postJson<{ fatal?: string[]; warnings?: string[]; score?: number }>(
+          "/api/admin/notification-templates/whatsapp/validate-readiness",
+          {
+            key: key || typePreset,
+            body,
+            whatsapp_body: whatsappBody,
+            whatsapp_category: whatsappCategory,
+            whatsapp_approval_name: whatsappApprovalName,
+            whatsapp_content_variables: whatsappVarMappings,
+            whatsapp_content_type: whatsappContentType,
+          },
+        )
+        .then((res) => {
+          setReadinessFatal(res.fatal ?? []);
+          setReadinessWarnings(res.warnings ?? []);
+          setReadinessScore(typeof res.score === "number" ? res.score : null);
+        })
+        .catch(() => {
+          setReadinessFatal([]);
+          setReadinessWarnings([]);
+          setReadinessScore(null);
+        });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    whatsappOn,
+    key,
+    typePreset,
+    body,
+    whatsappBody,
+    whatsappCategory,
+    whatsappApprovalName,
+    whatsappVarMappings,
+    whatsappContentType,
+  ]);
+
+  const buildVarMappingsFromBody = () => {
+    const vars = extractNamedVars(whatsappBody);
+    setWhatsappVarMappings(
+      vars.map((v, i) => ({
+        ordinal: i + 1,
+        var: v,
+        sample: `Sample ${v.replace(/_/g, " ")}`,
+      })),
+    );
+  };
+
+  const toggleWaterfallChannel = (ch: string) => {
+    setChannelWaterfall((prev) => {
+      if (prev.includes(ch)) {
+        const next = prev.filter((c) => c !== ch);
+        return next.length > 0 ? next : prev;
+      }
+      return [...prev, ch];
+    });
+  };
+
+  const pushToTwilio = async () => {
+    if (!initial.id) return;
+    setWhatsappPushBusy(true);
+    try {
+      const res = await adminApi.postJson<{ data?: { content_sid?: string; status?: string } }>(
+        `/api/admin/notification-templates/${initial.id}/whatsapp/push`,
+        { submit: true },
+      );
+      const sid = res.data?.content_sid;
+      const st = res.data?.status;
+      if (sid) setWhatsappContentSid(sid);
+      if (st) setWhatsappStatus(st);
+    } finally {
+      setWhatsappPushBusy(false);
+    }
+  };
+
+  const syncTwilioStatus = async () => {
+    if (!initial.id) return;
+    setWhatsappPushBusy(true);
+    try {
+      const res = await adminApi.getJson<{ data?: { status?: string } }>(
+        `/api/admin/notification-templates/${initial.id}/whatsapp/push`,
+      );
+      if (res.data?.status) setWhatsappStatus(res.data.status);
+    } finally {
+      setWhatsappPushBusy(false);
+    }
+  };
+
+  const deleteRemoteTwilio = async () => {
+    if (!initial.id) return;
+    if (!window.confirm("Delete the remote Twilio Content template? You can push a new version after saving.")) {
+      return;
+    }
+    setWhatsappPushBusy(true);
+    try {
+      await adminApi.deleteJson(`/api/admin/notification-templates/${initial.id}/whatsapp/push`);
+      setWhatsappContentSid("");
+      setWhatsappStatus("unknown");
+    } finally {
+      setWhatsappPushBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-5 text-sm">
@@ -251,6 +446,7 @@ function TemplateEditor({
               {channel === "sms" && <MessageSquare className="h-3.5 w-3.5 shrink-0" />}
               {channel === "push" && <Smartphone className="h-3.5 w-3.5 shrink-0" />}
               {channel === "in_app" && <Bell className="h-3.5 w-3.5 shrink-0" />}
+              {channel === "whatsapp" && <MessageSquare className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
               <span className="capitalize">{channel.replace("_", " ")}</span>
             </button>
           ))}
@@ -297,6 +493,233 @@ function TemplateEditor({
             onChange={(e) => setSmsBody(e.target.value)}
             placeholder="Short SMS; ~160 chars for one segment."
           />
+        </div>
+      )}
+
+      {whatsappOn && (
+        <div className="space-y-3 border-t border-gray-200 pt-4">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            <MessageSquare className="h-4 w-4" /> WhatsApp (Twilio Content)
+          </h4>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize">
+              {whatsappStatus.replace("_", " ")}
+            </span>
+          </div>
+          {initial.whatsapp_content_error && (
+            <p className="text-xs text-red-600">{initial.whatsapp_content_error}</p>
+          )}
+          {readinessScore != null && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs">
+              <p className="font-medium text-gray-800">
+                Approval readiness: {readinessScore}/100
+                {readinessFatal.length > 0 && (
+                  <span className="ml-2 text-red-600">({readinessFatal.length} blocking)</span>
+                )}
+              </p>
+              {readinessFatal.map((f) => (
+                <p key={f} className="mt-1 text-red-600">
+                  • {f}
+                </p>
+              ))}
+              {readinessWarnings.map((w) => (
+                <p key={w} className="mt-1 text-amber-700">
+                  • {w}
+                </p>
+              ))}
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-medium text-gray-700">Category</label>
+            <select
+              className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2"
+              value={whatsappCategory}
+              onChange={(e) => setWhatsappCategory(e.target.value)}
+            >
+              <option value="utility">Utility (transactional)</option>
+              <option value="authentication">Authentication</option>
+              <option value="marketing">Marketing</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700">Twilio approval name</label>
+            <input
+              className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+              value={whatsappApprovalName}
+              onChange={(e) => setWhatsappApprovalName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
+              placeholder="booking_confirmed_utility"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700">WhatsApp body</label>
+            <textarea
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={whatsappBody}
+              onChange={(e) => setWhatsappBody(e.target.value)}
+              placeholder="Hi {{customer_name}}, your appointment is confirmed for {{booking_date}}."
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700">Content type</label>
+            <select
+              className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2"
+              value={whatsappContentType}
+              onChange={(e) => setWhatsappContentType(e.target.value)}
+            >
+              <option value="twilio/text">Text</option>
+              <option value="twilio/media">Media (image/video header)</option>
+            </select>
+          </div>
+          {whatsappContentType === "twilio/media" && (
+            <div>
+              <label className="text-xs font-medium text-gray-700">Media URL</label>
+              <input
+                className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+                value={whatsappMediaUrl}
+                onChange={(e) => setWhatsappMediaUrl(e.target.value)}
+                placeholder="https://cdn.example.com/header.jpg"
+              />
+            </div>
+          )}
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-medium text-gray-700">Variable mapping (ordinal → named var)</label>
+              <button
+                type="button"
+                className="text-xs font-medium text-emerald-700 underline"
+                onClick={buildVarMappingsFromBody}
+              >
+                Auto-map from body
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Twilio Content uses {"{{1}}"}, {"{{2}}"} ordinals. Map each to your template variable for sends.
+            </p>
+            <div className="mt-2 space-y-2">
+              {whatsappVarMappings.map((row, idx) => (
+                <div key={`${row.ordinal}-${idx}`} className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-xs"
+                    value={row.ordinal}
+                    onChange={(e) => {
+                      const ordinal = Number(e.target.value) || 1;
+                      setWhatsappVarMappings((prev) =>
+                        prev.map((m, i) => (i === idx ? { ...m, ordinal } : m)),
+                      );
+                    }}
+                  />
+                  <input
+                    className="min-w-[120px] flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                    value={row.var}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setWhatsappVarMappings((prev) =>
+                        prev.map((m, i) => (i === idx ? { ...m, var: v } : m)),
+                      );
+                    }}
+                    placeholder="customer_name"
+                  />
+                  <input
+                    className="min-w-[120px] flex-1 rounded border border-gray-300 px-2 py-1 text-xs"
+                    value={row.sample ?? ""}
+                    onChange={(e) => {
+                      const sample = e.target.value;
+                      setWhatsappVarMappings((prev) =>
+                        prev.map((m, i) => (i === idx ? { ...m, sample } : m)),
+                      );
+                    }}
+                    placeholder="Sample value"
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-red-600"
+                    onClick={() => setWhatsappVarMappings((prev) => prev.filter((_, i) => i !== idx))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-medium text-gray-700 underline"
+                onClick={() =>
+                  setWhatsappVarMappings((prev) => [
+                    ...prev,
+                    { ordinal: prev.length + 1, var: "", sample: "" },
+                  ])
+                }
+              >
+                Add mapping
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700">Content SID (manual override)</label>
+            <input
+              className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+              value={whatsappContentSid}
+              onChange={(e) => setWhatsappContentSid(e.target.value)}
+              placeholder="HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Usually set by Push to Twilio. Override only if linking an existing approved template.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700">Failure waterfall</label>
+            <p className="mt-1 text-xs text-gray-500">
+              If WhatsApp delivery fails (template/session errors), try these channels in order via status callback.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {WATERFALL_CHANNELS.map((ch) => (
+                <label key={ch} className="flex items-center gap-2 text-xs capitalize">
+                  <input
+                    type="checkbox"
+                    checked={channelWaterfall.includes(ch)}
+                    onChange={() => toggleWaterfallChannel(ch)}
+                    className="h-4 w-4 accent-gray-900"
+                  />
+                  {ch}
+                </label>
+              ))}
+            </div>
+          </div>
+          {initial.whatsapp_content_hash && (
+            <p className="text-xs text-amber-700">
+              Save changes and push again if body, variables, or content type changed (local drift from Twilio).
+            </p>
+          )}
+          {mode === "edit" && initial.id && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={whatsappPushBusy || readinessFatal.length > 0}
+                onClick={() => void pushToTwilio()}
+                className={adminToolbarButtonClass(whatsappPushBusy)}
+              >
+                {whatsappPushBusy ? "Working…" : "Push to Twilio & submit"}
+              </button>
+              <button
+                type="button"
+                disabled={whatsappPushBusy || !whatsappContentSid}
+                onClick={() => void syncTwilioStatus()}
+                className={adminToolbarButtonClass(whatsappPushBusy)}
+              >
+                Re-sync status
+              </button>
+              <button
+                type="button"
+                disabled={whatsappPushBusy || !whatsappContentSid}
+                onClick={() => void deleteRemoteTwilio()}
+                className={adminToolbarButtonClass(whatsappPushBusy)}
+              >
+                Delete remote Content
+              </button>
+            </div>
+          )}
         </div>
       )}
 

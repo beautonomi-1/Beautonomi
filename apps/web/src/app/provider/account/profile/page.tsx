@@ -300,7 +300,7 @@ export default function ProfilePage() {
                 // Don't set a fallback src, let AvatarFallback handle it
               }}
             />
-            <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-2xl">
+            <AvatarFallback className="bg-primary/10 text-primary text-2xl">
               {getInitials()}
             </AvatarFallback>
           </Avatar>
@@ -494,7 +494,7 @@ export default function ProfilePage() {
             <Button
               variant="link"
               size="sm"
-              className="h-auto p-0 text-xs text-[#FF0077]"
+              className="h-auto p-0 text-xs text-primary"
               onClick={() => window.open("/help/submit-ticket", "_blank")}
             >
               Contact Support

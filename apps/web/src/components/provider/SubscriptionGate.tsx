@@ -36,7 +36,7 @@ export function SubscriptionGate({
             <Button
               variant="default"
               size="sm"
-              className="ml-4 bg-[#FF0077] hover:bg-[#D60565]"
+              className="ml-4 bg-primary hover:bg-primary-hover"
             >
               <Sparkles className="w-4 h-4 mr-2" />
               Upgrade Plan

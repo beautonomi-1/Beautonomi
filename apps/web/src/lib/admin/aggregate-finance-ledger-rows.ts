@@ -27,6 +27,12 @@ export type FinanceLedgerAggregate = {
   ads_net: number;
   ads_gateway_fees: number;
   ads_gross: number;
+  /** Net marketing credit revenue (topups less purchase refunds). */
+  marketing_credit_net: number;
+  /** Gateway fees on marketing credit topups. */
+  marketing_credit_gateway_fees: number;
+  /** Gross marketing credit revenue recognized at purchase. */
+  marketing_credit_gross: number;
   provider_earnings_net: number;
   gift_card_sales: number;
   membership_sales: number;
@@ -219,6 +225,12 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const adsGatewayFees = sumFees(tx, ["provider_ads_payment"]);
   const adsGross = adsNet + adsGatewayFees;
 
+  const marketingCreditNet =
+    sum(tx, ["provider_marketing_credit_topup"], "net") +
+    sum(tx, ["provider_marketing_credit_refund"], "net");
+  const marketingCreditGatewayFees = sumFees(tx, ["provider_marketing_credit_topup"]);
+  const marketingCreditGross = marketingCreditNet + marketingCreditGatewayFees;
+
   const payoutsPaidTotal = sum(tx, ["payout"], "net");
 
   return {
@@ -238,6 +250,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     ads_net: adsNet,
     ads_gateway_fees: adsGatewayFees,
     ads_gross: adsGross,
+    marketing_credit_net: marketingCreditNet,
+    marketing_credit_gateway_fees: marketingCreditGatewayFees,
+    marketing_credit_gross: marketingCreditGross,
     provider_earnings_net: sum(tx, ["provider_earnings"], "net"),
     gift_card_sales: sum(tx, ["gift_card_sale"], "amount"),
     membership_sales: sum(tx, ["membership_sale"], "amount"),

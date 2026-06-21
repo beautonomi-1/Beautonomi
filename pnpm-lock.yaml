@@ -64,6 +64,9 @@ importers:
       '@beautonomi/admin-api-client':
         specifier: workspace:*
         version: link:../../packages/admin-api-client
+      '@beautonomi/learning-mockups':
+        specifier: workspace:*
+        version: link:../../packages/learning-mockups
       '@beautonomi/maintenance-paths':
         specifier: workspace:*
         version: link:../../packages/maintenance-paths
@@ -88,6 +91,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.100.5
         version: 5.100.5(react@19.1.0)
+      '@tiptap/core':
+        specifier: ^3.22.4
+        version: 3.22.4(@tiptap/pm@3.22.4)
       '@tiptap/extension-image':
         specifier: ^3.22.4
         version: 3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.4))
@@ -685,6 +691,9 @@ importers:
       '@beautonomi/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@beautonomi/learning-mockups':
+        specifier: workspace:*
+        version: link:../../packages/learning-mockups
       '@beautonomi/maintenance-paths':
         specifier: workspace:*
         version: link:../../packages/maintenance-paths
@@ -1063,6 +1072,15 @@ importers:
       react-i18next:
         specifier: ^15.7.4
         version: 15.7.4(i18next@23.16.8)(react@19.1.0)(typescript@5.9.3)
+
+  packages/learning-mockups:
+    devDependencies:
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.12)(typescript@5.9.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/maintenance-paths:
     devDependencies:

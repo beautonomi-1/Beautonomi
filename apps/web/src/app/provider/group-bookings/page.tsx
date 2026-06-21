@@ -443,7 +443,7 @@ function GroupBookingsPageInner() {
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleSearch} className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation px-4 sm:px-6">
+          <Button onClick={handleSearch} className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation px-4 sm:px-6">
             <span className="hidden sm:inline">Search</span>
             <Search className="w-4 h-4 sm:hidden" />
           </Button>

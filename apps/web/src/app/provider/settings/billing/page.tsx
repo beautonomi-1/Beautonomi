@@ -69,7 +69,7 @@ interface BillingHistoryItem {
   amount: number;
   currency?: string | null;
   status: string;
-  type?: "subscription" | "ads" | string;
+  type?: "subscription" | "ads" | "marketing_credit" | string;
   description?: string | null;
   created_at: string;
   invoice_url?: string | null;
@@ -259,7 +259,7 @@ export default function BillingSettings() {
               <span className="text-sm text-gray-600">No billing address added</span>
               <Button
                 size="sm"
-                className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+                className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
                 onClick={() => setShowBillingDialog(true)}
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -278,7 +278,7 @@ export default function BillingSettings() {
         />
       </SectionCard>
 
-      <SectionCard title="Subscription & Ads Billing History" className="w-full">
+      <SectionCard title="Subscription, Ads & Marketing Billing History" className="w-full">
         <BillingHistorySection items={billingData?.billingHistory || []} />
       </SectionCard>
 
@@ -341,7 +341,7 @@ export default function BillingSettings() {
             <Button
               onClick={handleSaveBilling}
               disabled={isSaving}
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             >
               {isSaving ? (
                 <>
@@ -432,7 +432,7 @@ function PaymentMethodsSection({
           <span className="text-sm text-gray-600">No payment method set</span>
           <Button
             size="sm"
-            className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+            className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             onClick={() => setShowAddDialog(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -611,7 +611,7 @@ function PaymentMethodsSection({
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddPaymentMethod} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleAddPaymentMethod} className="bg-primary hover:bg-primary-hover">
               Add Payment Method
             </Button>
           </DialogFooter>
@@ -636,8 +636,8 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
     return (
       <div className="py-8 sm:py-12 text-center">
         <EmptyState
-          title="No subscription or ads payments yet"
-          description="Subscription renewals and paid ad campaign orders will appear here once payment is confirmed."
+          title="No subscription, ads or marketing payments yet"
+          description="Subscription renewals, paid ad campaign orders, and marketing credit top-ups will appear here once payment is confirmed."
           icon={CreditCard}
         />
       </div>
@@ -648,6 +648,18 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
     <div className="space-y-3">
       {items.map((item) => {
         const isAds = item.type === "ads";
+        const isMarketing = item.type === "marketing_credit";
+        const typeLabel = isMarketing ? "Marketing credits" : isAds ? "Ads" : "Subscription";
+        const fallbackLabel = isMarketing
+          ? "Marketing credit top-up"
+          : isAds
+            ? "Ads campaign payment"
+            : "Subscription payment";
+        const iconClasses = isMarketing
+          ? "bg-emerald-50 text-emerald-700"
+          : isAds
+            ? "bg-amber-50 text-amber-700"
+            : "bg-indigo-50 text-indigo-700";
         return (
           <div
             key={item.id}
@@ -655,19 +667,14 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
           >
             <div className="flex min-w-0 items-start gap-3">
               <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                  isAds ? "bg-amber-50 text-amber-700" : "bg-indigo-50 text-indigo-700"
-                }`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClasses}`}
               >
                 {isAds ? <CreditCard className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
               </div>
               <div className="min-w-0">
-                <p className="font-medium text-slate-900">
-                  {item.description || (isAds ? "Ads campaign payment" : "Subscription payment")}
-                </p>
+                <p className="font-medium text-slate-900">{item.description || fallbackLabel}</p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {new Date(item.created_at).toLocaleDateString()} ·{" "}
-                  {isAds ? "Ads" : "Subscription"}
+                  {new Date(item.created_at).toLocaleDateString()} · {typeLabel}
                 </p>
               </div>
             </div>

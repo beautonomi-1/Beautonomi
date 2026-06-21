@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
-import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
 import { CmsHtml } from "@/components/cms/CmsHtml";
 import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
@@ -28,8 +27,6 @@ interface PartnerHeroProps {
 export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProps) {
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loginModalMode, _setLoginModalMode] = useState<"login" | "signup">("login");
   const [showVideoModal, setShowVideoModal] = useState(false);
   const { content, getSectionContent } = usePageContent("become-a-partner");
 
@@ -61,17 +58,14 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
     }
   }, [featureTabs, activeTab, setActiveTab]);
 
-  const handleVideoTour = () => {
+  const handleViewDemo = () => {
     if (videoEmbedUrl) {
       setShowVideoModal(true);
       return;
     }
-    if (!user) {
-      setIsLoginModalOpen(true);
-    } else if (role === "provider_owner" || role === "provider_staff") {
-      router.push("/provider/dashboard");
-    } else {
-      router.push("/provider/onboarding");
+    const demoEl = document.getElementById("app-demo");
+    if (demoEl) {
+      demoEl.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
@@ -130,12 +124,11 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
               <Button
                 size="lg"
                 variant="ghost"
-                onClick={handleVideoTour}
+                onClick={handleViewDemo}
                 className="text-primary hover:text-primary-hover hover:bg-pink-50 px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full transition-all duration-300 flex items-center gap-2 md:gap-3"
               >
                 <Play className="w-5 h-5 md:w-6 md:h-6 fill-primary" />
-                <span className="hidden sm:inline">WATCH A VIDEO TOUR</span>
-                <span className="sm:hidden">VIDEO TOUR</span>
+                <span>View demo</span>
               </Button>
             </div>
 
@@ -158,12 +151,6 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
           </div>
         </div>
       </div>
-      <LoginModal
-        open={isLoginModalOpen}
-        setOpen={setIsLoginModalOpen}
-        initialMode={loginModalMode}
-        redirectContext="provider"
-      />
       <VideoTourModal open={showVideoModal} onOpenChange={setShowVideoModal} embedUrl={videoEmbedUrl} />
     </>
   );

@@ -506,9 +506,9 @@ export function ProviderSidebar() {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-3 min-h-11 touch-manipulation rounded-xl transition-all relative group",
-                        isExpanded ? "px-3" : "justify-center px-2",
+                        isExpanded ? "px-3 py-2" : "justify-center px-2 py-2",
                         isActive
-                          ? "text-white shadow-lg"
+                          ? "text-white shadow-md"
                           : "text-gray-400 hover:bg-white/10 hover:text-white"
                       )}
                       style={isActive ? {

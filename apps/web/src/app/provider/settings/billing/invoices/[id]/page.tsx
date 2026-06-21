@@ -157,7 +157,7 @@ export default function InvoiceDetailPage() {
         {/* Invoice Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 bg-gray-50 rounded-lg">
           <div>
-            <h2 className="text-2xl font-bold text-[#FF0077]">{invoice.invoice_number}</h2>
+            <h2 className="text-2xl font-bold text-primary">{invoice.invoice_number}</h2>
             <p className="text-sm text-gray-600 mt-1">
               {formatDate(invoice.issue_date)}
             </p>

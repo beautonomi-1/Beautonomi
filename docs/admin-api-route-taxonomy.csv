@@ -175,6 +175,7 @@ path,class,note
 /api/admin/monitoring/errors,T,"review: likely tenant-scoped ops"
 /api/admin/monitoring/health,T,"review: likely tenant-scoped ops"
 /api/admin/nav-counts,T,"uses resolveAdminApiTenantId"
+/api/admin/notification-logs,T,"review: likely tenant-scoped ops"
 /api/admin/notification-templates/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/notification-templates,T,"review: likely tenant-scoped ops"
 /api/admin/notifications/config,T,"uses resolveAdminApiTenantId"

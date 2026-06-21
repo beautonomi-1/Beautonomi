@@ -24,7 +24,7 @@ export default function ServicesMenuSettings() {
           Use the button below to add, edit, or reorder your service menu.
         </p>
         <Link href="/provider/catalogue/services">
-          <Button className="bg-[#FF0077] hover:bg-[#D60565]">
+          <Button className="bg-primary hover:bg-primary-hover">
             Manage Services in Catalogue
           </Button>
         </Link>

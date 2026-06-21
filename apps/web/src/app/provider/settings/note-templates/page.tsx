@@ -401,7 +401,7 @@ function NoteTemplateDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : template ? "Update" : "Create"}
             </Button>

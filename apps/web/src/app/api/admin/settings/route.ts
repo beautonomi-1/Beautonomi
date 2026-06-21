@@ -43,6 +43,7 @@ interface PlatformSettings {
     email_enabled: boolean;
     sms_enabled: boolean;
     push_enabled: boolean;
+    whatsapp_enabled: boolean;
   };
   payment_types: {
     cash: boolean;
@@ -99,6 +100,7 @@ interface PlatformSettings {
     /** Optional; for WhatsApp-only / Content API (Supabase dashboard). */
     content_sid: string;
     enabled: boolean;
+    whatsapp_sandbox_enabled?: boolean;
   };
   mapbox: {
     access_token: string;
@@ -242,6 +244,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
         email_enabled: true,
         sms_enabled: false,
         push_enabled: true,
+        whatsapp_enabled: false,
       },
       payment_types: {
         cash: false,
@@ -320,6 +323,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
         message_service_sid: "",
         content_sid: "",
         enabled: false,
+        whatsapp_sandbox_enabled: false,
       },
       apps: (() => {
         const d = getDefaultPublicAppsResponse();

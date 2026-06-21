@@ -200,7 +200,7 @@ export default function ProviderShifts() {
         </p>
         <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-indigo-700">
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded bg-[#FF0077]/10 border border-[#FF0077]/20" /> Date-specific shift
+            <span className="inline-block w-3 h-3 rounded bg-primary/10 border border-primary/20" /> Date-specific shift
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> Weekly schedule
@@ -285,7 +285,7 @@ export default function ProviderShifts() {
                                   ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs"
                                   : isSchedule
                                     ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
-                                    : "bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20 text-xs";
+                                    : "bg-primary/10 text-primary border-primary/20 text-xs";
                                 const editTitle = isLocation
                                   ? "Inherited from location operating hours — add a date-specific shift to override"
                                   : isSchedule

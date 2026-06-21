@@ -95,7 +95,7 @@ export function BadgeCongratsModal({ gamification }: BadgeCongratsModalProps) {
             Thanks!
           </Button>
           <Button
-            className="bg-[#FF0077] hover:bg-[#FF0077]/90"
+            className="bg-primary hover:bg-primary/90"
             onClick={() => {
               handleClose();
               router.push("/provider/gamification");

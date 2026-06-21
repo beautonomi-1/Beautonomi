@@ -363,7 +363,7 @@ export default function ProviderAutomations() {
                   Reload automations
                 </Button>
                 <NextLink href="/provider/marketing/campaigns">
-                  <Button className="bg-[#FF0077] hover:bg-[#D60565]">
+                  <Button className="bg-primary hover:bg-primary-hover">
                     Create a campaign
                   </Button>
                 </NextLink>

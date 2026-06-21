@@ -238,7 +238,7 @@ export default function PackageUsageReport() {
                     className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-4 shadow-sm ring-1 ring-gray-100/80 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-start gap-3 min-w-0">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#FF0077] to-[#D60565] text-sm font-semibold text-white">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-hover text-sm font-semibold text-white">
                         {index + 1}
                       </div>
                       <div className="min-w-0">

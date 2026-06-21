@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type NotificationChannelName = "push" | "email" | "sms";
+export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
-type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean };
+type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean; whatsapp?: boolean };
 
 const DEFAULT_PREFS: Record<string, SectionPrefs> = {
   // Marketing sections: push stays opt-in (false) by default.
@@ -91,6 +91,7 @@ export function computeUserNotificationRollup(prefs: Record<string, unknown>): {
   email_notifications_enabled: boolean;
   sms_notifications_enabled: boolean;
   push_notifications_enabled: boolean;
+  whatsapp_notifications_enabled: boolean;
 } {
   const unsub = prefs.unsubscribe_marketing === true;
 
@@ -104,7 +105,15 @@ export function computeUserNotificationRollup(prefs: Record<string, unknown>): {
   const pushKeys = [...TRANSACTIONAL_SECTIONS, ...MARKETING_SECTIONS] as string[];
   const push_notifications_enabled = pushKeys.some((s) => mergeSection(prefs, s).push === true);
 
-  return { email_notifications_enabled, sms_notifications_enabled, push_notifications_enabled };
+  const whatsappKeys = [...TRANSACTIONAL_SECTIONS, ...MARKETING_SECTIONS] as string[];
+  const whatsapp_notifications_enabled = whatsappKeys.some((s) => mergeSection(prefs, s).whatsapp === true);
+
+  return {
+    email_notifications_enabled,
+    sms_notifications_enabled,
+    push_notifications_enabled,
+    whatsapp_notifications_enabled,
+  };
 }
 
 function channelAllowedForUser(
@@ -113,6 +122,8 @@ function channelAllowedForUser(
     email_notifications_enabled?: boolean | null;
     sms_notifications_enabled?: boolean | null;
     push_notifications_enabled?: boolean | null;
+    whatsapp_notifications_enabled?: boolean | null;
+    whatsapp_opt_in_at?: string | null;
   } | null,
   templateKey: string,
   channel: NotificationChannelName
@@ -136,6 +147,11 @@ function channelAllowedForUser(
     if (usersRow?.push_notifications_enabled === false) return false;
     return sec.push === true;
   }
+  if (channel === "whatsapp") {
+    if (usersRow?.whatsapp_notifications_enabled === false) return false;
+    if (!usersRow?.whatsapp_opt_in_at && sec.whatsapp !== true) return false;
+    return sec.whatsapp !== false;
+  }
   return true;
 }
 
@@ -158,7 +174,7 @@ export async function resolveChannelsPerCustomerRecipient(
 
   const { data: users } = await supabase
     .from("users")
-    .select("id, email_notifications_enabled, sms_notifications_enabled, push_notifications_enabled")
+    .select("id, email_notifications_enabled, sms_notifications_enabled, push_notifications_enabled, whatsapp_notifications_enabled, whatsapp_opt_in_at")
     .in("id", userIds);
 
   const { data: profiles } = await supabase

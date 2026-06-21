@@ -23,6 +23,10 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
   const featured = Array.isArray(initialData.featured_articles) ? initialData.featured_articles : [];
   const platformTabs = Array.isArray(initialData.platform_guides?.tabs) ? initialData.platform_guides.tabs : [];
   const activeGuideTab = platformTabs.find((tab) => tab.id === activePlatformTab) ?? platformTabs[0];
+  const videoLibrary = initialData.video_library;
+  const platformUpdates = initialData.platform_updates;
+  const updateArticles = platformUpdates?.articles ?? [];
+  const videos = Array.isArray(videoLibrary?.videos) ? videoLibrary.videos : [];
 
   return (
     <div className="space-y-10 pb-24 md:pb-10">
@@ -32,7 +36,7 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
         <section className="rounded-[32px] border border-zinc-200/70 bg-white p-4 shadow-[0_24px_80px_-48px_rgba(0,0,0,0.35)] md:p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-[#ff0077]">Choose your experience</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-primary">Choose your experience</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">Guides for web and mobile app</h2>
               <p className="mt-2 max-w-2xl text-sm text-zinc-600">
                 Learn the customer and provider flows in the right context, with direct links to current navigation and features.
@@ -70,8 +74,8 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                 return (
                   <div key={`${activeGuideTab.id}-${group.audience}`} className="rounded-[22px] border border-zinc-200/70 bg-white p-4">
                     <div className="mb-4 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#ff0077]/10">
-                        <GroupIcon className="h-5 w-5 text-[#ff0077]" aria-hidden />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10">
+                        <GroupIcon className="h-5 w-5 text-primary" aria-hidden />
                       </div>
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{group.audience}</p>
@@ -85,14 +89,14 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                           href={card.href}
                           className={cn(
                             "group flex items-center gap-3 rounded-2xl border border-zinc-200/50 px-4 py-3",
-                            "transition-all duration-200 hover:border-[#ff0077]/25 hover:bg-[#ff0077]/5 active:scale-[0.99]"
+                            "transition-all duration-200 hover:border-primary/25 hover:bg-primary/5 active:scale-[0.99]"
                           )}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-black">{card.title}</p>
                             <p className="mt-0.5 text-sm text-zinc-600">{card.description}</p>
                           </div>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-[#ff0077]" />
+                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
                         </Link>
                       ))}
                     </div>
@@ -123,13 +127,13 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                   className={cn(
                     "group flex flex-col rounded-[24px] border border-zinc-200/50 bg-white p-6",
                     "transition-all duration-200 ease-in-out",
-                    "hover:shadow-[0_0_20px_-5px_rgba(255,0,119,0.15)] hover:border-[#ff0077]/30 hover:-translate-y-0.5",
+                    "hover:shadow-[0_0_20px_-5px_var(--primary-ring,rgba(255,0,119,0.15))] hover:border-primary/30 hover:-translate-y-0.5",
                     "active:scale-[0.97]"
                   )}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-zinc-200/50 bg-zinc-50 group-hover:bg-[#ff0077]/5 transition-colors duration-200">
-                      <Icon className="h-6 w-6 text-zinc-600 group-hover:text-[#ff0077] transition-colors duration-200" />
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-zinc-200/50 bg-zinc-50 group-hover:bg-primary/5 transition-colors duration-200">
+                      <Icon className="h-6 w-6 text-zinc-600 group-hover:text-primary transition-colors duration-200" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-black text-base">{card.title}</h3>
@@ -140,8 +144,8 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                     <span
                       className={cn(
                         "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium",
-                        "bg-[#ff0077] text-white shadow-sm",
-                        "transition-all duration-200 ease-in-out group-hover:bg-[#ff0077]/90 group-active:scale-[0.97]"
+                        "bg-primary text-white shadow-sm",
+                        "transition-all duration-200 ease-in-out group-hover:bg-primary/90 group-active:scale-[0.97]"
                       )}
                     >
                       {isProvider ? "Explore topics" : "Browse topics"}
@@ -184,6 +188,59 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
         </section>
       )}
 
+      {updateArticles.length > 0 && (
+        <section>
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-4">
+            {platformUpdates?.title ?? "Platform updates"}
+          </h2>
+          <ul className="space-y-0 rounded-[24px] border border-zinc-200/50 bg-white overflow-hidden divide-y divide-zinc-200/50">
+            {updateArticles.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={`/learn/article/${encodeURIComponent(a.slug)}`}
+                  className="flex min-h-[56px] items-center gap-3 px-4 md:px-6 py-3 transition-colors hover:bg-zinc-50"
+                >
+                  <span className="flex-1 font-medium text-sm text-black">{a.title}</span>
+                  {a.summary ? (
+                    <span className="hidden sm:block flex-1 truncate text-xs text-zinc-500 max-w-xs">{a.summary}</span>
+                  ) : null}
+                  <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {videos.length > 0 && (
+        <section>
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-4">
+            {videoLibrary?.title ?? "Video library"}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {videos.map((video, i) => {
+              const v = video as { title?: string; url?: string; description?: string };
+              return (
+                <div key={v.url ?? i} className="rounded-[24px] border border-zinc-200/50 bg-white p-4">
+                  <p className="font-medium text-black">{v.title ?? "Video guide"}</p>
+                  {v.description ? <p className="mt-1 text-sm text-zinc-600">{v.description}</p> : null}
+                  {v.url ? (
+                    <a
+                      href={v.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
+                    >
+                      Watch video
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {featured.length === 0 && cards.length === 0 && (
         <p className="text-sm text-zinc-600">Browse topics from the sidebar to find articles.</p>
       )}
@@ -191,7 +248,7 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
       <div className="fixed bottom-6 right-6 z-30 md:hidden">
         <Button
           size="icon"
-          className="h-14 w-14 rounded-full shadow-lg bg-[#ff0077] hover:bg-[#ff0077]/90 text-white transition-all duration-200 ease-in-out active:scale-95"
+          className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-white transition-all duration-200 ease-in-out active:scale-95"
           onClick={() => setSearchOverlayOpen(true)}
           aria-label="Search articles"
         >

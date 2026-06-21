@@ -35,6 +35,7 @@ export interface MarketingFeatureAccess {
   maxRecipientsPerCampaign?: number;
   advancedSegmentation: boolean;
   customIntegrations: boolean; // Can use own SendGrid/Twilio
+  usePlatformCredentials: boolean;
 }
 
 export interface ChatFeatureAccess {
@@ -358,11 +359,24 @@ export async function checkMarketingFeatureAccess(
       channels: [],
       advancedSegmentation: false,
       customIntegrations: false,
+      usePlatformCredentials: false,
     };
   }
 
   const marketing = tier.features?.marketing_campaigns || {};
-  
+
+  let usePlatformCredentials = marketing.use_platform_credentials === true;
+  const { data: providerRow } = await supabase
+    .from("providers")
+    .select("marketing_use_platform_credentials")
+    .eq("id", providerId)
+    .maybeSingle();
+  const override = (providerRow as { marketing_use_platform_credentials?: boolean | null } | null)
+    ?.marketing_use_platform_credentials;
+  if (override != null) {
+    usePlatformCredentials = override === true;
+  }
+
   return {
     enabled: marketing.enabled === true,
     channels: marketing.channels || [],
@@ -370,6 +384,7 @@ export async function checkMarketingFeatureAccess(
     maxRecipientsPerCampaign: marketing.max_recipients_per_campaign,
     advancedSegmentation: marketing.advanced_segmentation === true,
     customIntegrations: marketing.custom_integrations === true,
+    usePlatformCredentials,
   };
 }
 
@@ -729,6 +744,7 @@ export async function getProviderFeatureAccess(
         channels: [],
         advancedSegmentation: false,
         customIntegrations: false,
+        usePlatformCredentials: false,
       },
       chat: {
         enabled: false,
@@ -779,7 +795,7 @@ export async function getProviderFeatureAccess(
     };
   }
 
-  const marketing = tier.features?.marketing_campaigns || {};
+  const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
   const chat = tier.features?.chat_messages || {};
   const yoco = tier.features?.yoco_integration || {};
   const paystackVirtualTerminal = tier.features?.paystack_virtual_terminal || {};
@@ -793,14 +809,7 @@ export async function getProviderFeatureAccess(
   const calendar = tier.features?.calendar_sync || {};
 
   return {
-    marketing: {
-      enabled: marketing.enabled === true,
-      channels: marketing.channels || [],
-      maxCampaignsPerMonth: marketing.max_campaigns_per_month,
-      maxRecipientsPerCampaign: marketing.max_recipients_per_campaign,
-      advancedSegmentation: marketing.advanced_segmentation === true,
-      customIntegrations: marketing.custom_integrations === true,
-    },
+    marketing: marketingAccess,
     chat: {
       enabled: chat.enabled === true,
       maxMessagesPerMonth: chat.max_messages_per_month,

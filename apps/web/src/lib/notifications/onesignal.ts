@@ -1497,21 +1497,25 @@ export async function sendTemplateNotification(
       const { intersectChannelsForProviderRecipients } = await import(
         "@/lib/notifications/provider-notification-channels"
       );
-      allowed = await intersectChannelsForProviderRecipients(
+      allowed = (await intersectChannelsForProviderRecipients(
         getSupabaseAdmin(),
         userIds,
         templateKey,
         triad
+      )).filter((c): c is "email" | "sms" | "push" =>
+        c === "email" || c === "sms" || c === "push",
       );
     } else {
       const { intersectChannelsForCustomerRecipients } = await import(
         "@/lib/notifications/customer-notification-channels"
       );
-      allowed = await intersectChannelsForCustomerRecipients(
+      allowed = (await intersectChannelsForCustomerRecipients(
         getSupabaseAdmin(),
         userIds,
         templateKey,
         triad
+      )).filter((c): c is "email" | "sms" | "push" =>
+        c === "email" || c === "sms" || c === "push",
       );
     }
     // Must-deliver pushes (everything except marketing/promo) bypass preference
@@ -1544,7 +1548,7 @@ export async function sendTemplateNotification(
     (options?.appType === "customer" || options?.appType === "provider") &&
     userIds.length > 0
   ) {
-    let perUser: Map<string, ("push" | "email" | "sms")[]>;
+    let perUser: Map<string, ("push" | "email" | "sms" | "whatsapp")[]>;
     if (options.appType === "provider") {
       const { resolveChannelsPerProviderRecipient } = await import(
         "@/lib/notifications/provider-notification-channels"
@@ -1716,6 +1720,101 @@ export async function sendTemplateNotification(
         options?.supabaseClient,
       );
       emailSmsEnqueued = true;
+    }
+  }
+
+  const whatsappRequested =
+    (template?.channels?.includes("whatsapp") ?? false) &&
+    (!channels?.length || (channels as string[]).includes("whatsapp"));
+  if (whatsappRequested && userIds.length > 0) {
+    const { isWhatsAppNotificationsEnabled, buildOrdinalContentVariables } = await import(
+      "@/lib/whatsapp/config"
+    );
+    const waEnabled = await isWhatsAppNotificationsEnabled(
+      getSupabaseAdmin(),
+      resolvedTenantId,
+    );
+    if (waEnabled && template) {
+      const tpl = template as Record<string, unknown>;
+      const contentSid = String(tpl.whatsapp_content_sid ?? "").trim();
+      const waStatus = String(tpl.whatsapp_template_status ?? "unknown");
+      const waCategory = String(tpl.whatsapp_category ?? "utility");
+      const waBodyRaw = String(tpl.whatsapp_body ?? tpl.sms_body ?? body);
+      let waBody = waBodyRaw;
+      Object.entries(variables).forEach(([key, value]) => {
+        waBody = waBody.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+      });
+      const contentVars = buildOrdinalContentVariables(
+        tpl.whatsapp_content_variables as Array<{ ordinal?: number; var?: string; sample?: string }>,
+        variables as Record<string, string>,
+      );
+
+      let waRecipients: Array<{ userId: string; channels: ("whatsapp")[] }> = userIds.map((uid) => ({
+        userId: uid,
+        channels: ["whatsapp"] as const,
+      }));
+
+      if (options?.appType === "customer" || options?.appType === "provider") {
+        const { resolveChannelsPerCustomerRecipient } = await import(
+          "@/lib/notifications/customer-notification-channels"
+        );
+        const { resolveChannelsPerProviderRecipient } = await import(
+          "@/lib/notifications/provider-notification-channels"
+        );
+        const perUser =
+          options.appType === "provider"
+            ? await resolveChannelsPerProviderRecipient(
+                getSupabaseAdmin(),
+                userIds,
+                templateKey,
+                ["whatsapp"],
+              )
+            : await resolveChannelsPerCustomerRecipient(
+                getSupabaseAdmin(),
+                userIds,
+                templateKey,
+                ["whatsapp"],
+              );
+        waRecipients = [];
+        for (const uid of userIds) {
+          const allowed = (perUser.get(uid) ?? []).filter((c) => c === "whatsapp");
+          if (allowed.length > 0) waRecipients.push({ userId: uid, channels: ["whatsapp"] });
+        }
+      }
+
+      const waterfall = Array.isArray(tpl.channel_waterfall)
+        ? (tpl.channel_waterfall as string[])
+        : [];
+      const whatsappFirst = waterfall.length === 0 || waterfall[0] === "whatsapp";
+
+      if (whatsappFirst && waRecipients.length > 0 && (contentSid || waBody)) {
+        if (!["paused", "disabled", "rejected"].includes(waStatus)) {
+          const { enqueueTemplateEmailSmsChannels } = await import(
+            "@/lib/notifications/enqueue-template-channels"
+          );
+          await enqueueTemplateEmailSmsChannels(
+            {
+              templateKey,
+              recipients: waRecipients,
+              bookingId: (variables as { booking_id?: string })?.booking_id ?? null,
+              tenantId: options?.tenantId ?? null,
+              title,
+              body,
+              emailSubject,
+              emailBody,
+              smsBody,
+              whatsappContentSid: contentSid || null,
+              whatsappContentVariables: contentVars,
+              whatsappCategory: waCategory,
+              whatsappBody: waBody,
+              whatsappTemplateStatus: waStatus,
+              data: { template_key: templateKey, ...variables },
+              url: pushUrlFields.actionPath || undefined,
+            },
+            options?.supabaseClient,
+          );
+        }
+      }
     }
   }
 

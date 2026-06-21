@@ -229,7 +229,7 @@ export default function LifetimeValueReport() {
                     className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FF0077] text-white font-semibold text-sm">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white font-semibold text-sm">
                         {index + 1}
                       </div>
                       <div>

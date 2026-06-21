@@ -246,6 +246,19 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
       },
       { key: "advanced_segmentation", label: "Advanced segmentation", type: "toggle", freePlanDefault: true },
       { key: "custom_integrations", label: "Custom SendGrid/Twilio", type: "toggle", freePlanDefault: true },
+      {
+        key: "use_platform_credentials",
+        label: "Platform marketing sends (Twilio/Resend)",
+        type: "toggle",
+        freePlanDefault: false,
+      },
+      {
+        key: "included_marketing_credit_zar_per_month",
+        label: "Included marketing credit (ZAR / month)",
+        type: "limit",
+        freePlanDefault: 0,
+        generousDefault: 50,
+      },
     ],
   },
   {

@@ -39,7 +39,11 @@ export type LearnHomePayload = {
     learning_categories?: { slug: string } | null;
   }>;
   video_library: { title: string; videos: unknown[] };
-  platform_updates: { title: string; article_ids: string[] };
+  platform_updates: {
+    title: string;
+    article_ids: string[];
+    articles?: Array<{ id: string; title: string; slug: string; summary: string | null }>;
+  };
 };
 
 function buildTree(items: LearnCategoryRow[], parentId: string | null = null): LearnTreeNode[] {
@@ -187,7 +191,7 @@ export async function getPublicLearnHome(): Promise<LearnHomePayload> {
     },
     featured_articles: [],
     video_library: { title: "Video Library", videos: [] },
-    platform_updates: { title: "Platform Updates", article_ids: [] },
+    platform_updates: { title: "Platform Updates", article_ids: [], articles: [] },
   };
 
   for (const s of sections ?? []) {
@@ -213,6 +217,22 @@ export async function getPublicLearnHome(): Promise<LearnHomePayload> {
     out.featured_articles = (articles ?? []) as unknown as LearnHomePayload["featured_articles"];
   } else {
     out.featured_articles = [];
+  }
+
+  const updateIds = out.platform_updates?.article_ids ?? [];
+  if (updateIds.length > 0) {
+    const { data: updateArticles } = await supabase
+      .from("learning_articles")
+      .select("id, title, slug, summary")
+      .in("id", updateIds)
+      .is("tenant_id", null)
+      .eq("status", "published")
+      .eq("is_internal", false);
+    const byId = new Map((updateArticles ?? []).map((a) => [a.id, a]));
+    out.platform_updates = {
+      ...out.platform_updates,
+      articles: updateIds.map((id) => byId.get(id)).filter(Boolean) as LearnHomePayload["platform_updates"]["articles"],
+    };
   }
 
   return out;

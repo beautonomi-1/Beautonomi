@@ -56,6 +56,7 @@ import {
   Plug,
   Sparkles,
   ScrollText,
+  BookOpen,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -97,6 +98,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3, superadminOnly: true },
       { title: "Geo & Devices", href: "/admin/analytics/geo", icon: Globe2, superadminOnly: true },
       { title: "Reports", href: "/admin/reports", icon: FileText },
+      { title: "Knowledge base", href: "/admin/knowledge-base", icon: BookOpen },
     ],
   },
   {
@@ -199,6 +201,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare },
       { title: "Marketing Automations", href: "/admin/automations", icon: Zap },
       { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell },
+      { title: "WhatsApp Templates", href: "/admin/whatsapp-content-templates", icon: Bell },
+      { title: "Marketing pricebook", href: "/admin/marketing-pricebook", icon: Bell },
       { title: "SMS Templates", href: "/admin/sms-templates", icon: MessageSquare },
       { title: "Email Templates", href: "/admin/email-templates", icon: Bell },
     ],

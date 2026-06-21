@@ -100,7 +100,7 @@ export default function CalendarColorsIconsPage() {
       breadcrumbs={breadcrumbs}
     >
       <div className="mb-4 flex justify-end">
-        <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+        <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
           <Plus className="w-4 h-4 mr-2" />
           Add Color Scheme
         </Button>

@@ -16,6 +16,17 @@ export function AppointmentStatusBadge({ status }: { status: Appointment["status
     no_show: "bg-orange-100 text-orange-800 border-orange-200",
   };
 
+  // Dot color mirrors the mobile Badge's status dot for product-family parity.
+  const dots: Record<string, string> = {
+    pending: "bg-amber-500",
+    pending_payment: "bg-amber-500",
+    booked: "bg-blue-500",
+    started: "bg-yellow-500",
+    completed: "bg-green-500",
+    cancelled: "bg-red-500",
+    no_show: "bg-orange-500",
+  };
+
   const label =
     status === "no_show"
       ? "No Show"
@@ -26,8 +37,9 @@ export function AppointmentStatusBadge({ status }: { status: Appointment["status
   return (
     <Badge
       variant="outline"
-      className={cn("text-xs font-medium", variants[status] ?? "bg-gray-100 text-gray-700 border-gray-200")}
+      className={cn("gap-1.5 text-xs font-medium", variants[status] ?? "bg-gray-100 text-gray-700 border-gray-200")}
     >
+      <span className={cn("h-1.5 w-1.5 rounded-full", dots[status] ?? "bg-gray-400")} aria-hidden />
       {label}
     </Badge>
   );

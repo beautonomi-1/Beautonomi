@@ -14,6 +14,8 @@ export type PricingPlan = {
   features: string[];
   /** Display currency label for the card (e.g. ZAR), from pricing_plans.currency */
   currency: string | null;
+  /** Linked subscription plan id — lets signed-in providers see Current/Upgrade context. */
+  subscriptionPlanId: string | null;
 };
 
 export type PricingFAQ = {
@@ -123,9 +125,27 @@ export async function getPricingPageData(): Promise<{
       is_popular: plan.is_popular,
       features: featuresMap.get(plan.id) || [],
       currency: (plan.currency as string | null | undefined) ?? null,
+      subscriptionPlanId: (plan.subscription_plan_id as string | null | undefined) ?? null,
     }));
 
-    return { plans: normalizedPlans, faqs, pageContent };
+    // Canonical tier order for the public page: Free first, then ascending
+    // monthly price (e.g. Free → Growth → Scale), with "Contact sales"-style
+    // plans (no numeric price) last. Array.sort is stable, so plans that tie
+    // on rank keep their admin-defined display_order. This guarantees a
+    // logical price progression even if display_order values are stale.
+    const priceRank = (plan: PricingPlan): number => {
+      const raw = (plan.price ?? "").toLowerCase().trim();
+      if (!raw || raw.includes("free")) return 0;
+      const digits = raw.replace(/[^0-9.]/g, "");
+      if (!digits) return Number.MAX_SAFE_INTEGER;
+      const value = parseFloat(digits);
+      return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+    };
+    const orderedPlans = [...normalizedPlans].sort(
+      (a, b) => priceRank(a) - priceRank(b),
+    );
+
+    return { plans: orderedPlans, faqs, pageContent };
   } catch (error) {
     console.error("Failed to load pricing page data:", error);
     return { plans: [], faqs: [], pageContent: fallbackContent };

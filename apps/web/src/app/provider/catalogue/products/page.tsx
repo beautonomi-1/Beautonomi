@@ -372,26 +372,26 @@ export default function ProviderProducts() {
               </p>
               <ul className="text-left space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
                 <li className="flex items-start gap-2">
-                  <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                  <span className="text-primary mt-1 flex-shrink-0">•</span>
                   <span>Start with a single product or import many at once</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                  <span className="text-primary mt-1 flex-shrink-0">•</span>
                   <span>Organise your list by adding brands and categories</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-[#FF0077] mt-1 flex-shrink-0">•</span>
+                  <span className="text-primary mt-1 flex-shrink-0">•</span>
                   <span>Set pricing and manage inventory levels</span>
                 </li>
               </ul>
               <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
                 <button
                   onClick={handleCreate}
-                  className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-[#FF0077] text-white rounded-lg font-medium hover:bg-[#D60565] active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
+                  className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
                 >
                   Start now
                 </button>
-                <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[#FF0077] font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
+                <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-primary font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
                   Learn more
                 </button>
               </div>

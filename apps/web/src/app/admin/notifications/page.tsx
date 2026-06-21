@@ -433,9 +433,7 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
       <h2 className="text-lg sm:text-xl font-semibold mb-4">Send Notification</h2>
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
         <p className="text-sm text-blue-800">
-          <strong>Available Channels:</strong> Push Notifications (📱), Email (📧), SMS (💬), and Live Activities (🔴 iOS only).
-          <br />
-          <span className="text-xs text-blue-600 mt-1 block">Note: WhatsApp is not currently supported. Use SMS for text messaging.</span>
+          <strong>Available Channels:</strong> Push Notifications (📱), Email (📧), SMS (💬), WhatsApp (💬), and Live Activities (🔴 iOS only).
         </p>
       </div>
       <form onSubmit={handleSend} className="space-y-4">
@@ -503,7 +501,8 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
                   {[
                     { value: "push", label: "Push Notification", icon: "📱", desc: "Browser/Mobile push notifications" },
                     { value: "email", label: "Email", icon: "📧", desc: "Email notification via OneSignal" },
-                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS) - not WhatsApp" },
+                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS)" },
+                    { value: "whatsapp", label: "WhatsApp", icon: "💬", desc: "WhatsApp via Twilio Content templates" },
                     { value: "live_activities", label: "Live Activities", icon: "🔴", desc: "iOS Live Activities only" },
                   ].map((channel) => (
                     <label key={channel.value} className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors w-full sm:w-auto">
@@ -634,7 +633,8 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
                   {[
                     { value: "push", label: "Push Notification", icon: "📱", desc: "Browser/Mobile push notifications" },
                     { value: "email", label: "Email", icon: "📧", desc: "Email notification via OneSignal" },
-                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS) - not WhatsApp" },
+                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS)" },
+                    { value: "whatsapp", label: "WhatsApp", icon: "💬", desc: "WhatsApp via Twilio Content templates" },
                     { value: "live_activities", label: "Live Activities", icon: "🔴", desc: "iOS Live Activities only" },
                   ].map((channel) => (
                     <label key={channel.value} className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors w-full sm:w-auto">
@@ -1014,7 +1014,8 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
                   {[
                     { value: "push", label: "Push Notification", icon: "📱", desc: "Browser/Mobile push notifications" },
                     { value: "email", label: "Email", icon: "📧", desc: "Email notification via OneSignal" },
-                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS) - not WhatsApp" },
+                    { value: "sms", label: "SMS", icon: "💬", desc: "Text message (SMS)" },
+                    { value: "whatsapp", label: "WhatsApp", icon: "💬", desc: "WhatsApp via Twilio Content templates" },
                     { value: "live_activities", label: "Live Activities", icon: "🔴", desc: "iOS Live Activities only" },
                   ].map((channel) => (
                     <label key={channel.value} className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors w-full sm:w-auto">
@@ -1307,7 +1308,7 @@ function TemplateDialog({
           <div>
             <Label htmlFor="channels">Channels *</Label>
             <div className="flex gap-4 mt-2">
-              {["push", "email", "sms", "live_activities"].map((channel) => (
+              {["push", "email", "sms", "whatsapp", "live_activities"].map((channel) => (
                 <label key={channel} className="flex items-center gap-2">
                   <input
                     type="checkbox"

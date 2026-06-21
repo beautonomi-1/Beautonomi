@@ -66,6 +66,9 @@ const SHADOW_LEDGER_ALLOWLIST = [
   // 664/665: reversal rows for ads + subscription funding integrity.
   "provider_ads_refund",
   "provider_subscription_refund",
+  // 704: marketing credit topup revenue + purchase reversal.
+  "provider_marketing_credit_topup",
+  "provider_marketing_credit_refund",
 ] as const;
 
 /**
@@ -80,6 +83,10 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
   ],
   "664_ads_funding_integrity.sql": ["provider_ads_refund"],
   "665_subscription_funding_integrity.sql": ["provider_subscription_refund"],
+  "704_marketing_credit_revenue_accounting.sql": [
+    "provider_marketing_credit_topup",
+    "provider_marketing_credit_refund",
+  ],
 };
 
 /**

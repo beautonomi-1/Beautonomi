@@ -22,42 +22,32 @@ export function ProviderBottomNav() {
   const lastScrollY = useRef(0);
   const isScrollingUp = useRef(false);
 
-  // Primary navigation tabs with improved structure
+  // Primary navigation tabs — unified brand accent (matches mobile app)
   const primaryTabs = [
     { 
       name: "Home", 
       icon: LayoutDashboard, 
       link: "/provider/dashboard",
-      activeColor: "text-[#FF0077]",
-      activeBg: "bg-[#FF0077]/10"
     },
     { 
       name: "Calendar", 
       icon: Calendar, 
       link: "/provider/calendar",
-      activeColor: "text-[#4fd1c5]",
-      activeBg: "bg-[#4fd1c5]/10"
     },
     { 
       name: "Clients", 
       icon: Users, 
       link: "/provider/clients",
-      activeColor: "text-blue-500",
-      activeBg: "bg-blue-50"
     },
     { 
       name: "Chats", 
       icon: MessageSquare, 
       link: "/provider/messaging",
-      activeColor: "text-green-500",
-      activeBg: "bg-green-50"
     },
     { 
       name: "More", 
       icon: Grid3x3, 
       link: "/provider/more",
-      activeColor: "text-purple-500",
-      activeBg: "bg-purple-50"
     },
   ];
 
@@ -166,7 +156,7 @@ export function ProviderBottomNav() {
                   "py-1.5 px-2 sm:py-2 sm:px-3",
                   "min-w-[56px] sm:min-w-[64px] min-h-[48px]",
                   isActive
-                    ? `${tab.activeColor} ${tab.activeBg}`
+                    ? "text-primary bg-primary/10"
                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 )}
               >
@@ -190,10 +180,7 @@ export function ProviderBottomNav() {
                   {tab.name}
                 </span>
                 {isActive && (
-                  <div className={cn(
-                    "absolute -bottom-0.5 w-1 h-1 rounded-full",
-                    tab.activeColor.replace("text-", "bg-")
-                  )} />
+                  <div className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-primary" />
                 )}
               </Link>
             );
@@ -210,9 +197,9 @@ export function ProviderBottomNav() {
           }}
             className={cn(
             "md:hidden fixed z-40 shadow-lg",
-            "bg-[#FF0077] text-white rounded-full",
+            "bg-primary text-white rounded-full",
             "transition-all duration-300 ease-in-out active:scale-95",
-            "hover:bg-[#D60565] hover:shadow-xl",
+            "hover:bg-primary-hover hover:shadow-xl",
             // Responsive positioning and sizing
             "right-3 sm:right-4",
             "p-2.5 sm:p-3",

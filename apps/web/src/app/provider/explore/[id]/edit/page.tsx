@@ -38,7 +38,7 @@ export default function ProviderExploreEditPage() {
         showLoading={false}
       >
         <div className="min-h-screen bg-white flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
         </div>
       </RoleGuard>
     );
@@ -55,7 +55,7 @@ export default function ProviderExploreEditPage() {
           <p className="text-gray-600 mb-4">Post not found</p>
           <button
             onClick={() => router.push("/provider/explore")}
-            className="text-[#FF0077] hover:underline"
+            className="text-primary hover:underline"
           >
             Back to Explore
           </button>

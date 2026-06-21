@@ -145,7 +145,7 @@ export default function ResourcesPage() {
 
         <TabsContent value="resources" className="mt-6">
           <div className="mb-4 flex justify-end">
-            <Button onClick={handleCreateResource} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreateResource} className="bg-primary hover:bg-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
               Add Resource
             </Button>
@@ -282,7 +282,7 @@ export default function ResourcesPage() {
 
         <TabsContent value="groups" className="mt-6">
           <div className="mb-4 flex justify-end">
-            <Button onClick={handleCreateGroup} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={handleCreateGroup} className="bg-primary hover:bg-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
               Add Group
             </Button>
@@ -600,7 +600,7 @@ function ResourceDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : resource ? "Update" : "Create"}
             </Button>
@@ -764,7 +764,7 @@ function ResourceGroupDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : group ? "Update" : "Create"}
             </Button>

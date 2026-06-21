@@ -238,7 +238,7 @@ export default function RolesSettings() {
           </div>
           <Button
             onClick={handleCreate}
-            className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+            className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Role
@@ -265,7 +265,7 @@ export default function RolesSettings() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <Shield className="w-4 h-4 text-[#FF0077]" />
+                        <Shield className="w-4 h-4 text-primary" />
                         <h3 className="font-semibold text-base sm:text-lg">{role.name}</h3>
                       </div>
                       {role.description && (
@@ -409,7 +409,7 @@ export default function RolesSettings() {
             </Button>
             <Button
               onClick={handleSave}
-              className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {editingRole ? "Update" : "Create"}
             </Button>

@@ -105,6 +105,11 @@ type TwilioForm = {
   content_sid: string;
   sms_from: string;
   whatsapp_from: string;
+  whatsapp_sandbox_enabled: boolean;
+};
+
+type NotificationsForm = {
+  whatsapp_enabled: boolean;
 };
 
 type OnesignalForm = {
@@ -259,6 +264,10 @@ export function GeneralSettingsPage() {
     content_sid: "",
     sms_from: "",
     whatsapp_from: "",
+    whatsapp_sandbox_enabled: false,
+  });
+  const [notifications, setNotifications] = useState<NotificationsForm>({
+    whatsapp_enabled: false,
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -357,6 +366,13 @@ export function GeneralSettingsPage() {
         content_sid: (tw as { content_sid?: string }).content_sid ?? "",
         sms_from: (tw as { sms_from?: string }).sms_from ?? "",
         whatsapp_from: (tw as { whatsapp_from?: string }).whatsapp_from ?? "",
+        whatsapp_sandbox_enabled: (tw as { whatsapp_sandbox_enabled?: boolean }).whatsapp_sandbox_enabled === true,
+      });
+    }
+    const n = (q.data as { notifications?: Partial<NotificationsForm> }).notifications;
+    if (n && typeof n === "object") {
+      setNotifications({
+        whatsapp_enabled: n.whatsapp_enabled === true,
       });
     }
   }, [q.data]);
@@ -451,8 +467,13 @@ export function GeneralSettingsPage() {
           content_sid: twilio.content_sid.trim(),
           sms_from: twilio.sms_from.trim(),
           whatsapp_from: twilio.whatsapp_from.trim(),
+          whatsapp_sandbox_enabled: twilio.whatsapp_sandbox_enabled,
           ...(twilio.auth_token.trim() ? { auth_token: twilio.auth_token.trim() } : {}),
         } as Record<string, unknown>,
+        notifications: {
+          ...((existing.notifications as Record<string, unknown>) ?? {}),
+          whatsapp_enabled: notifications.whatsapp_enabled,
+        },
       };
       return adminApi.patchJson("/api/admin/settings", merged);
     },
@@ -1139,6 +1160,27 @@ export function GeneralSettingsPage() {
       </AdminPanel>
 
       <AdminPanel>
+        <h3 className="mb-1 text-sm font-semibold text-gray-900">WhatsApp transactional notifications</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          Requires Twilio Message Service SID (<code className="rounded bg-gray-100 px-1">MG…</code>), WhatsApp sender, and approved Content templates.
+        </p>
+        <label className="mb-3 flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={notifications.whatsapp_enabled}
+            onChange={(e) => setNotifications((p) => ({ ...p, whatsapp_enabled: e.target.checked }))}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+          />
+          <span className="text-sm text-gray-700">Enable WhatsApp transactional notification channel</span>
+        </label>
+        {notifications.whatsapp_enabled && !twilio.message_service_sid.trim() && (
+          <p className="text-xs font-medium text-amber-700">
+            Message Service SID is required before WhatsApp sends will work.
+          </p>
+        )}
+      </AdminPanel>
+
+      <AdminPanel>
         <h3 className="mb-1 text-sm font-semibold text-gray-900">Twilio (SMS for Supabase Auth)</h3>
         <p className="mb-4 text-xs text-gray-600">
           <strong>Account SID</strong> and <strong>auth token</strong> are stored in{" "}
@@ -1178,6 +1220,15 @@ export function GeneralSettingsPage() {
           {inp("SMS from (E.164 / sender)", twilio.sms_from, (v) => setTwilio((p) => ({ ...p, sms_from: v })))}
           {inp("WhatsApp from (optional)", twilio.whatsapp_from, (v) => setTwilio((p) => ({ ...p, whatsapp_from: v })))}
         </div>
+        <label className="mt-3 flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={twilio.whatsapp_sandbox_enabled}
+            onChange={(e) => setTwilio((p) => ({ ...p, whatsapp_sandbox_enabled: e.target.checked }))}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+          />
+          <span className="text-sm text-gray-700">WhatsApp sandbox mode (Twilio Sandbox sender for testing)</span>
+        </label>
       </AdminPanel>
 
       <AdminPanel>

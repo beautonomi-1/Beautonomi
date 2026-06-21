@@ -31,7 +31,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { OneSignalAppType } from "@/lib/platform/secrets";
 
-export type NotificationChannel = "email" | "push" | "sms" | "in_app";
+export type NotificationChannel = "email" | "push" | "sms" | "in_app" | "whatsapp";
 
 /** Embedded in queue JSON payload for cron retries (OneSignal tenant + app). */
 export type QueuePayloadMeta = {

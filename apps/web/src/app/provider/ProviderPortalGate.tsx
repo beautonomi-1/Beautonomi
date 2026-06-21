@@ -193,7 +193,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
             <button
               type="button"
               onClick={() => setRetryKey((k) => k + 1)}
-              className="px-4 py-2 rounded-md bg-[#FF0077] hover:bg-[#D60565] text-white text-sm font-medium transition-colors"
+              className="px-4 py-2 rounded-md bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-colors"
             >
               Try again
             </button>

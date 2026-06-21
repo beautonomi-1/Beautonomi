@@ -53,7 +53,7 @@ export function DataTableShell({
             placeholder={searchPlaceholder}
             value={searchValue}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            className="pl-10"
+            className="pl-10 provider-input min-h-[44px]"
           />
         </div>
 
@@ -67,7 +67,7 @@ export function DataTableShell({
 
           {sortOptions && (
             <Select value={sortValue} onValueChange={onSortChange}>
-              <SelectTrigger className="w-full md:w-48">
+              <SelectTrigger className="w-full md:w-48 provider-input min-h-[44px]">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -98,7 +98,7 @@ export function DataTableShell({
           {addButton && (
             <Button 
               onClick={addButton.onClick} 
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto min-h-[44px] touch-manipulation"
+              className="provider-btn-brand w-full sm:w-auto px-5"
             >
               <Plus className="w-4 h-4 mr-2" />
               {addButton.label}

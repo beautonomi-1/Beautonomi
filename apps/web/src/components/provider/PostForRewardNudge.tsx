@@ -35,7 +35,7 @@ export function PostForRewardNudge({ open, onOpenChange }: PostForRewardNudgePro
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Maybe later
           </Button>
-          <Button asChild className="bg-[#FF0077] hover:bg-[#FF0077]/90 text-white">
+          <Button asChild className="bg-primary hover:bg-primary/90 text-white">
             <Link href="/provider/explore/new" onClick={() => onOpenChange(false)}>
               <ImageIcon className="w-4 h-4 mr-2" />
               Post to Explore

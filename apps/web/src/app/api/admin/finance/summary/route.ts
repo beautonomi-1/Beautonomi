@@ -126,7 +126,11 @@ export async function GET(request: Request) {
 
     const customerPaidPlatformFees = agg.service_fee_revenue;
     const totalPlatformRecognizedRevenue =
-      agg.platform_take_net + agg.subscription_net + agg.ads_net + customerPaidPlatformFees;
+      agg.platform_take_net +
+      agg.subscription_net +
+      agg.ads_net +
+      agg.marketing_credit_net +
+      customerPaidPlatformFees;
     const totalPlatformRecognizedRevenueAfterReferrals =
       totalPlatformRecognizedRevenue - referralPayouts;
     const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
@@ -200,7 +204,11 @@ export async function GET(request: Request) {
         ads_net: agg.ads_net,
         ads_gross: agg.ads_gross,
         ads_gateway_fees: agg.ads_gateway_fees,
-        total_platform_take_net: agg.platform_take_net + agg.subscription_net + agg.ads_net,
+        marketing_credit_net: agg.marketing_credit_net,
+        marketing_credit_gross: agg.marketing_credit_gross,
+        marketing_credit_gateway_fees: agg.marketing_credit_gateway_fees,
+        total_platform_take_net:
+          agg.platform_take_net + agg.subscription_net + agg.ads_net + agg.marketing_credit_net,
         total_platform_take_net_including_customer_fees: totalPlatformRecognizedRevenue,
 
         provider_earnings: agg.provider_earnings_net,
@@ -239,6 +247,7 @@ export async function GET(request: Request) {
           customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
+          marketing_credits: agg.marketing_credit_net,
           service_fees: customerPaidPlatformFees,
           ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupCashCollected,
@@ -265,6 +274,7 @@ export async function GET(request: Request) {
           customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
+          marketing_credits: agg.marketing_credit_net,
           service_fees: customerPaidPlatformFees,
           ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupCashCollected,
@@ -300,7 +310,12 @@ export async function GET(request: Request) {
               status: highNegativeRefundPressure ? "warning" : "ok",
             },
             platform_net_health: {
-              platform_net: agg.platform_take_net + agg.subscription_net + agg.ads_net + customerPaidPlatformFees,
+              platform_net:
+                agg.platform_take_net +
+                agg.subscription_net +
+                agg.ads_net +
+                agg.marketing_credit_net +
+                customerPaidPlatformFees,
               manual_adjustments_net: agg.manual_adjustments_net,
               status:
                 totalPlatformRecognizedRevenue < 0
