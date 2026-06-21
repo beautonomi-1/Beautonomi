@@ -102,7 +102,6 @@ const BASE_EXPO_CONFIG = {
       { mode: oneSignalMode },
     ],
     "expo-notifications",
-    "react-native-keyboard-controller",
     "expo-router",
     "expo-font",
     [
