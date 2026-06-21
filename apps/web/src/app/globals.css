@@ -213,9 +213,7 @@
 
   /* Primary / brand CTAs get subtle elevation */
   .provider-portal .provider-btn-brand,
-  .provider-portal .provider-btn-dark,
-  .provider-portal button.bg-primary,
-  .provider-portal button[class*="bg-primary"] {
+  .provider-portal .provider-btn-dark {
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   }
 
@@ -300,6 +298,15 @@
     outline: none;
     box-shadow: 0 0 0 2px rgb(255 255 255), 0 0 0 4px rgba(255, 0, 119, 0.35);
   }
+}
+
+/* Subtle elevation for primary-colored buttons in the provider portal.
+   Kept outside @layer so Tailwind does not variant-expand the `bg-primary`
+   utility reference (which would glue the trailing `button` element onto
+   pseudo-class/attribute variant selectors and emit invalid CSS). */
+.provider-portal button.bg-primary,
+.provider-portal button[class*="bg-primary"] {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
 }
 
 @layer utilities {
