@@ -1,17 +1,6 @@
 import { useEffect, useCallback, useState, type ComponentType, type PropsWithChildren } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  Pressable,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Keyboard,
-  Dimensions,
-  useWindowDimensions,
-} from "react-native";
+import { View, Text, TouchableOpacity, Modal, Pressable, ScrollView, Platform, Keyboard, Dimensions, useWindowDimensions } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,

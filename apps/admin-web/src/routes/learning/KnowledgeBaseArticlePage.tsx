@@ -13,14 +13,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { audienceLabel, publicLearnUrl, renderKbHtml, type KbArticleDetail } from "@/lib/learning";
-
-const PROSE_CLASS =
-  "text-sm leading-relaxed text-gray-700 " +
-  "[&_h2]:mt-7 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-gray-900 " +
-  "[&_h3]:mt-5 [&_h3]:mb-1 [&_h3]:font-semibold [&_h3]:text-gray-900 " +
-  "[&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 " +
-  "[&_li]:mt-1 [&_a]:font-medium [&_a]:text-purple-700 [&_a]:underline [&_strong]:font-semibold [&_strong]:text-gray-900";
+import { audienceLabel, LEARNING_ARTICLE_PROSE_CLASS, publicLearnUrl, renderKbHtml, type KbArticleDetail } from "@/lib/learning";
 
 export function KnowledgeBaseArticlePage() {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -102,7 +95,7 @@ export function KnowledgeBaseArticlePage() {
               Updated {new Date(article.updated_at).toLocaleDateString()}
             </span>
           </div>
-          <article className={PROSE_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
+          <article className={LEARNING_ARTICLE_PROSE_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
         </AdminPanel>
       )}
     </div>

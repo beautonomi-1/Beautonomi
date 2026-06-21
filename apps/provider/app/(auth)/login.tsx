@@ -1,18 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Modal,
-  Pressable,
-  FlatList,
-  InteractionManager,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Modal, Pressable, FlatList, InteractionManager } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";

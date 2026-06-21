@@ -192,6 +192,39 @@ describe("navigateFromNotification", () => {
     });
   });
 
+  it("opens booking detail when push carries only booking_id (no type)", () => {
+    navigateFromNotification({
+      id: "n-booking-only",
+      type: "",
+      title: "Booking confirmed",
+      message: "Confirmed",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { booking_id: "booking-only-1" },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: "booking-only-1" },
+    });
+  });
+
+  it("opens support ticket when ticket_id is present", () => {
+    navigateFromNotification({
+      id: "n-ticket",
+      type: "support_ticket_updated",
+      title: "Ticket update",
+      message: "Reply added",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { ticket_id: "00000000-0000-4000-8000-000000000999" },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/(app)/(tabs)/support-tickets/00000000-0000-4000-8000-000000000999",
+    );
+  });
+
   it("routes booking_confirmed with group_booking_id to group booking detail", () => {
     const groupId = "00000000-0000-4000-8000-000000000456";
     navigateFromNotification({

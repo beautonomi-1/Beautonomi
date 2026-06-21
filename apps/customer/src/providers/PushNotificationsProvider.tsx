@@ -37,6 +37,14 @@ import { isTransientApiFailure } from "@/lib/api-error";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
+/** Suppress visible banner for silent OS badge sync (including legacy in-flight payloads). */
+function isBadgeSyncPushData(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (d.type === "badge_sync") return true;
+  return d.silent === true && typeof d.unread_count === "number";
+}
+
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
 
 /** Don't re-nag for a week after the user explicitly dismisses the nudge. */
@@ -435,7 +443,7 @@ function usePushRegistration() {
           // Show in the shade while open; re-sync bell + app-icon badge from server (single source of truth).
           OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
             const data = (event.notification.additionalData ?? {}) as Record<string, unknown>;
-            if (data.type === "badge_sync") {
+            if (isBadgeSyncPushData(data)) {
               event.preventDefault();
               emitNotificationBadgeRefresh();
               return;

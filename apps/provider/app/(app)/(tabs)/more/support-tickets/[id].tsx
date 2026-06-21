@@ -1,19 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Linking,
-  Image,
-  AppState,
-} from "react-native";
+import { View, Text, TextInput, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform, Alert, Linking, Image, AppState } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";

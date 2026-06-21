@@ -43,6 +43,14 @@ import {
 } from "@/lib/resolveProviderNotificationRoute";
 import { useInAppBanner } from "@/providers/InAppBannerProvider";
 
+/** Suppress visible banner for silent OS badge sync (including legacy in-flight payloads). */
+function isBadgeSyncPushData(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (d.type === "badge_sync") return true;
+  return d.silent === true && typeof d.unread_count === "number";
+}
+
 /**
  * When a push is tapped, mark the related in-app notification rows read on the
  * server so the bell + OS badge decrement immediately. Best-effort; never throws.
@@ -346,7 +354,7 @@ function usePushRegistration() {
                 gn && typeof gn === "object" && "additionalData" in gn
                   ? (gn as { additionalData?: Record<string, unknown> }).additionalData
                   : undefined;
-              if (data?.type === "badge_sync") {
+              if (isBadgeSyncPushData(data)) {
                 event.preventDefault();
                 emitNotificationBadgeRefresh();
                 return;

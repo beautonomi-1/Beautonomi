@@ -2,10 +2,9 @@ import {
   View,
   ScrollView,
   RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
   type ViewStyle,
 } from "react-native";
+import { AppKeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
@@ -27,12 +26,11 @@ interface ScreenContainerProps {
   /** When false, omit tab-bar bottom reserve (stack-only flows such as onboarding or full-screen modals). Default true. */
   reserveTabBarSpace?: boolean;
   /**
-   * Wrap screen body so focused inputs stay above the keyboard on iOS.
-   * Android uses `softwareKeyboardLayoutMode: "resize"` in app config; outer `behavior` is omitted there.
-   * Set false when the screen already wraps content in its own `KeyboardAvoidingView`.
+   * Wrap screen body so focused inputs stay above the keyboard (iOS + Android 15 edge-to-edge).
+   * Set false when the screen already wraps content in its own keyboard-avoiding container.
    */
   keyboardAvoiding?: boolean;
-  /** Passed to `KeyboardAvoidingView` when `keyboardAvoiding` is true (stack headers, floating chrome). */
+  /** Passed to `AppKeyboardAvoidingView` when `keyboardAvoiding` is true (stack headers, floating chrome). */
   keyboardVerticalOffset?: number;
 }
 
@@ -81,13 +79,13 @@ export function ScreenContainer({
 
   const wrapped =
     keyboardAvoiding ? (
-      <KeyboardAvoidingView
+      <AppKeyboardAvoidingView
         style={{ flex: 1, minHeight: 0, backgroundColor: "#ffffff" }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
         {content}
-      </KeyboardAvoidingView>
+      </AppKeyboardAvoidingView>
     ) : (
       content
     );

@@ -1,21 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-  ActivityIndicator,
-  Platform,
-  Modal,
-  Switch,
-  TextInput,
-  KeyboardAvoidingView,
-  Pressable,
-  ScrollView,
-} from "react-native";
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, Alert, ActivityIndicator, Platform, Modal, Switch, TextInput, Pressable, ScrollView } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { API_RECURRING_BOOKINGS, apiRecurringBookingPath } from "@/lib/customer-api-paths";

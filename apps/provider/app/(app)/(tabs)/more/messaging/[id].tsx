@@ -1,25 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  ActivityIndicator,
-  Alert,
-  ActionSheetIOS,
-  Linking,
-  Modal,
-  Pressable,
-  ScrollView,
-  InteractionManager,
-  type LayoutChangeEvent,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, FlatList, Keyboard, Platform, ActivityIndicator, Alert, ActionSheetIOS, Linking, Modal, Pressable, ScrollView, InteractionManager, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -950,12 +931,13 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={[twStyle("flex-1"), { flex: 1 }]}
         onLayout={onChatBodyLayout}
-        // Android runs edge-to-edge with `softwareKeyboardLayoutMode: "resize"`
-        // (adjustResize): the window already shrinks for the keyboard, so an
-        // extra KeyboardAvoidingView pass double-counts and lifts the input bar
-        // off the keyboard. Defer to the OS on Android; on iOS (no resize) keep
-        // padding with a measured offset for device-accurate spacing.
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        // Android 15+ (targetSdk 35) forces edge-to-edge, which disables the
+        // legacy `adjustResize` window-resize this screen used to rely on — so the
+        // OS no longer lifts content and the keyboard covers the input bar. Drive
+        // the layout ourselves with `behavior="padding"` on both platforms; the
+        // input bar's bottom inset is 0 under the open keyboard, so this doesn't
+        // double-count. iOS keeps a measured offset; Android needs none.
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? keyboardOffset : 0}
       >
         {loading && !conversation ? (

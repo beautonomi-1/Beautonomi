@@ -1,21 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Share,
-  Alert,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  useWindowDimensions,
-  Animated,
-  FlatList,
-  Pressable,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Share, Alert, Keyboard, Platform, useWindowDimensions, Animated, FlatList, Pressable } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";

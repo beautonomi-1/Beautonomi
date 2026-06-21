@@ -339,10 +339,16 @@ async function sendMessageNotification(
             type: "new_message",
             conversation_id: conv.id,
             message_id: messageId,
-            url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
-            deep_link: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+            url: isCustomer
+              ? `/provider/messaging?conversation=${conv.id}`
+              : `/account-settings/messages?conversation=${conv.id}`,
+            deep_link: isCustomer
+              ? `/provider/messaging?conversation=${conv.id}`
+              : `/account-settings/messages?conversation=${conv.id}`,
           },
-          url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+          url: isCustomer
+            ? `/provider/messaging?conversation=${conv.id}`
+            : `/account-settings/messages?conversation=${conv.id}`,
         },
         ["push"],
         { appType, tenantId }

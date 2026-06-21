@@ -31,7 +31,19 @@ describe("resolveProviderNotificationRoute", () => {
     );
   });
 
-  it("routes booking template keys to booking detail", () => {
+  it("routes provider_new_message from action_url conversation query", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      template_key: "provider_new_message",
+      action_url: "/provider/messaging?conversation=conv-456",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith({
+      pathname: "/(app)/(tabs)/chats/[id]",
+      params: { id: "conv-456" },
+    });
+  });
+
+  it("routes booking_confirmed with booking_id to booking detail", () => {
     const ok = applyProviderNotificationRoute(router, {
       template_key: "provider_booking_request",
       booking_id: "booking-99",

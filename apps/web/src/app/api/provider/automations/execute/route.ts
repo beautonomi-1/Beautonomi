@@ -169,6 +169,8 @@ export async function POST(request: NextRequest) {
 
         // Send messages to all recipients
         for (const customer of customers) {
+          const debitKey = `automation:${automation.id}:${customer.id}:${channel}`;
+          let debitedAmount = 0;
           try {
             // Check if we've already sent this automation to this customer recently
             const alreadySent = await checkIfAlreadySent(
@@ -194,13 +196,9 @@ export async function POST(request: NextRequest) {
               shouldExecute.context
             );
 
-            const channel = automation.action_type as "email" | "sms" | "whatsapp" | "notification";
             // For push notifications, use the customer's user_id (external_id) rather than phone/email.
             const contactTo =
               channel === "notification" ? customer.id : customer.contact;
-
-            const debitKey = `automation:${automation.id}:${customer.id}:${channel}`;
-            let debitedAmount = 0;
 
             if (debitsCredits) {
               const category = channel === "whatsapp" ? "marketing" : "default";
@@ -268,6 +266,22 @@ export async function POST(request: NextRequest) {
               automationId: automation.id,
               error: error.message || "Failed to send message",
             });
+            // Refund a credit debited before the send threw (crash mid-send).
+            if (debitedAmount > 0) {
+              try {
+                await creditMarketingBalance({
+                  providerId: automation.provider_id,
+                  amountZar: debitedAmount,
+                  reason: "refund",
+                  idempotencyKey: `refund:${debitKey}`,
+                  channel,
+                  metadata: { refund_reason: "send_exception", error: error?.message ?? null },
+                  supabase: supabaseAdmin,
+                });
+              } catch {
+                // Best-effort; idempotency key makes a later retry safe.
+              }
+            }
           }
         }
 

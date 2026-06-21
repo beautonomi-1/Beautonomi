@@ -3,16 +3,8 @@
  * (trigger_config, action_config message_template) aligned with web automations.
  */
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import type { Router } from "expo-router";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";

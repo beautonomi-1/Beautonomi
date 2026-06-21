@@ -27,6 +27,7 @@ import {
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 import { ImageCropperProvider } from "@/components/image-crop";
+import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -131,6 +132,7 @@ function RootLayout() {
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <KeyboardRootProvider>
       <ErrorBoundary>
         <ThemeProvider>
           <ImageCropperProvider>
@@ -146,6 +148,7 @@ function RootLayout() {
           </ImageCropperProvider>
         </ThemeProvider>
       </ErrorBoundary>
+      </KeyboardRootProvider>
     </SafeAreaProvider>
   );
 }

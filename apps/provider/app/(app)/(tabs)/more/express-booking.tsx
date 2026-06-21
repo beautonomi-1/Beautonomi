@@ -1,17 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  Share,
-  Alert,
-  ActivityIndicator,
-  Platform,
-  Modal,
-  ScrollView,
-  KeyboardAvoidingView,
-} from "react-native";
+import { View, Text, TouchableOpacity, TextInput, Share, Alert, ActivityIndicator, Platform, Modal, ScrollView } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";

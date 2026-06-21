@@ -3,22 +3,8 @@
  * Search suggestions render directly under the search field so they stay visible.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  ActivityIndicator,
-  Pressable,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  FlatList,
-  StyleSheet,
-} from "react-native";
+import { View, Text, Modal, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Pressable, Keyboard, Platform, Alert, FlatList, StyleSheet } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";

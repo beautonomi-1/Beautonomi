@@ -1,5 +1,14 @@
 /**
  * Provider marketing credits — atomic debit/credit with idempotency.
+ *
+ * The credit tables (`provider_marketing_credits`, `marketing_credit_ledger`,
+ * `marketing_channel_pricebook`) are service-role-only at the RLS layer, so all
+ * access here goes through the admin client regardless of any caller-supplied
+ * client. Debits and credits are executed via the `debit_marketing_credit` /
+ * `credit_marketing_credit` SECURITY DEFINER functions (migration 709) so the
+ * read → update → ledger-insert happens atomically under a row lock; a thin
+ * application-level fallback is kept for environments where the RPC has not yet
+ * been applied (e.g. older databases / tests).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,10 +28,26 @@ export interface MarketingBalance {
   total_zar: number;
 }
 
+type CreditOpResult = { ok: true; balance_after: number } | { ok: false; reason: string };
+
+/** True when an RPC error means the function isn't defined in this database yet. */
+function isMissingFunctionError(error: { code?: string | null; message?: string | null } | null): boolean {
+  if (!error) return false;
+  const code = error.code ?? "";
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    code === "42883" || // undefined_function
+    code === "PGRST202" || // PostgREST: function not found in schema cache
+    message.includes("could not find the function") ||
+    (message.includes("function") && message.includes("does not exist"))
+  );
+}
+
 export async function getMarketingBalance(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient | undefined,
   providerId: string,
 ): Promise<MarketingBalance> {
+  const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("provider_marketing_credits")
     .select("included_balance_zar, purchased_balance_zar")
@@ -39,10 +64,11 @@ export async function getMarketingBalance(
 }
 
 export async function priceFor(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient | undefined,
   channel: string,
   category = "default",
 ): Promise<number> {
+  const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("marketing_channel_pricebook")
     .select("unit_cost_zar")
@@ -80,6 +106,14 @@ async function ensureCreditRow(supabase: SupabaseClient, providerId: string) {
   });
 }
 
+function parseCreditOpResult(data: unknown): CreditOpResult | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as { ok?: boolean; balance_after?: number | string; reason?: string };
+  if (obj.ok === true) return { ok: true, balance_after: Number(obj.balance_after ?? 0) };
+  if (obj.ok === false) return { ok: false, reason: obj.reason ?? "operation failed" };
+  return null;
+}
+
 export async function creditMarketingBalance(input: {
   providerId: string;
   amountZar: number;
@@ -90,10 +124,34 @@ export async function creditMarketingBalance(input: {
   campaignId?: string;
   metadata?: Record<string, unknown>;
   supabase?: SupabaseClient;
-}): Promise<{ ok: true; balance_after: number } | { ok: false; reason: string }> {
-  const supabase = input.supabase ?? getSupabaseAdmin();
+}): Promise<CreditOpResult> {
   if (input.amountZar <= 0) return { ok: false, reason: "amount must be positive" };
+  const supabase = getSupabaseAdmin();
 
+  const rpc = await supabase.rpc("credit_marketing_credit", {
+    p_provider_id: input.providerId,
+    p_amount_zar: input.amountZar,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_channel: input.channel ?? null,
+    p_category: input.category ?? null,
+    p_campaign_id: input.campaignId ?? null,
+    p_metadata: input.metadata ?? {},
+  });
+  if (!rpc.error) {
+    const parsed = parseCreditOpResult(rpc.data);
+    if (parsed) return parsed;
+  } else if (!isMissingFunctionError(rpc.error)) {
+    return { ok: false, reason: rpc.error.message };
+  }
+
+  return creditMarketingBalanceFallback(input, supabase);
+}
+
+async function creditMarketingBalanceFallback(
+  input: Parameters<typeof creditMarketingBalance>[0],
+  supabase: SupabaseClient,
+): Promise<CreditOpResult> {
   await ensureCreditRow(supabase, input.providerId);
 
   if (input.idempotencyKey) {
@@ -109,16 +167,12 @@ export async function creditMarketingBalance(input: {
   }
 
   const bal = await getMarketingBalance(supabase, input.providerId);
-  const newIncluded = bal.included_balance_zar;
   const newPurchased = bal.purchased_balance_zar + input.amountZar;
-  const balanceAfter = newIncluded + newPurchased;
+  const balanceAfter = bal.included_balance_zar + newPurchased;
 
   const { error: updErr } = await supabase
     .from("provider_marketing_credits")
-    .update({
-      purchased_balance_zar: newPurchased,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ purchased_balance_zar: newPurchased, updated_at: new Date().toISOString() })
     .eq("provider_id", input.providerId);
 
   if (updErr) return { ok: false, reason: updErr.message };
@@ -149,10 +203,35 @@ export async function debitMarketingBalance(input: {
   queueRowId?: string;
   metadata?: Record<string, unknown>;
   supabase?: SupabaseClient;
-}): Promise<{ ok: true; balance_after: number } | { ok: false; reason: string }> {
-  const supabase = input.supabase ?? getSupabaseAdmin();
+}): Promise<CreditOpResult> {
   if (input.amountZar <= 0) return { ok: false, reason: "amount must be positive" };
+  const supabase = getSupabaseAdmin();
 
+  const rpc = await supabase.rpc("debit_marketing_credit", {
+    p_provider_id: input.providerId,
+    p_amount_zar: input.amountZar,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+    p_channel: input.channel ?? null,
+    p_category: input.category ?? null,
+    p_campaign_id: input.campaignId ?? null,
+    p_queue_row_id: input.queueRowId ?? null,
+    p_metadata: input.metadata ?? {},
+  });
+  if (!rpc.error) {
+    const parsed = parseCreditOpResult(rpc.data);
+    if (parsed) return parsed;
+  } else if (!isMissingFunctionError(rpc.error)) {
+    return { ok: false, reason: rpc.error.message };
+  }
+
+  return debitMarketingBalanceFallback(input, supabase);
+}
+
+async function debitMarketingBalanceFallback(
+  input: Parameters<typeof debitMarketingBalance>[0],
+  supabase: SupabaseClient,
+): Promise<CreditOpResult> {
   const { data: dup } = await supabase
     .from("marketing_credit_ledger")
     .select("balance_after")
@@ -234,7 +313,7 @@ export async function clawbackPurchasedMarketingBalance(input: {
   metadata?: Record<string, unknown>;
   supabase?: SupabaseClient;
 }): Promise<{ ok: true; clawed_zar: number; balance_after: number } | { ok: false; reason: string }> {
-  const supabase = input.supabase ?? getSupabaseAdmin();
+  const supabase = getSupabaseAdmin();
   if (input.amountZar <= 0) return { ok: false, reason: "amount must be positive" };
 
   const { data: dup } = await supabase
@@ -283,11 +362,12 @@ export async function clawbackPurchasedMarketingBalance(input: {
 }
 
 export async function grantMonthlyIncludedCredits(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient | undefined,
   providerId: string,
   grantZar: number,
   periodKey: string,
 ): Promise<void> {
+  const supabase = getSupabaseAdmin();
   await ensureCreditRow(supabase, providerId);
 
   const idempotencyKey = `monthly_grant:${providerId}:${periodKey}`;

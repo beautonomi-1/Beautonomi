@@ -13,7 +13,6 @@ import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -61,13 +60,16 @@ const STATUS_FILTERS = [
 
 export default function ReviewsScreen() {
   const { screenPadding } = useResponsive();
-  const { selectedLocationId } = useProvider();
   const [status, setStatus] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [respondReview, setRespondReview] = useState<Review | null>(null);
   const [responseText, setResponseText] = useState("");
   const [savingReply, setSavingReply] = useState(false);
-  const url = `/api/provider/reviews?status=${status}&limit=50${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  // Reviews are a business-level reputation signal and the rating aggregate shown
+  // elsewhere (dashboard / More tab) is business-wide, so the list is never scoped
+  // to the selected branch. Filtering by branch silently dropped reviews whose
+  // booking had a null/different location_id, leaving the list empty.
+  const url = `/api/provider/reviews?status=${status}&limit=50`;
   const { data, loading, error, refresh, mutate } = useApi<ReviewsResponse>(url, { staleTimeMs: 0 });
   const { execute: postRespond, loading: responding } = useApiMutation<{ review?: Review; message?: string }>(
     "post",

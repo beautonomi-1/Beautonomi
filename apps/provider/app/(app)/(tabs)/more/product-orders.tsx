@@ -1,17 +1,6 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  RefreshControl,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Linking,
-  Share as RNShare,
-} from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Alert, Platform, Linking, Share as RNShare } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";

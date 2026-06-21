@@ -73,10 +73,40 @@ export type KbArticleDetail = {
   } | null;
 };
 
+/** Article payload from the public Learning Center API (customer/provider-facing). */
+export type PublicLearnArticle = {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  body: string;
+  content_format: "html" | "markdown";
+  content_type: string | null;
+  published_at: string | null;
+  learning_categories?: {
+    id: string;
+    title: string;
+    slug: string;
+  } | null;
+};
+
+/** Shared prose styling for rendered learning article HTML in admin readers. */
+export const LEARNING_ARTICLE_PROSE_CLASS =
+  "text-sm leading-relaxed text-gray-700 " +
+  "[&_h2]:mt-7 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-gray-900 " +
+  "[&_h3]:mt-5 [&_h3]:mb-1 [&_h3]:font-semibold [&_h3]:text-gray-900 " +
+  "[&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 " +
+  "[&_li]:mt-1 [&_a]:font-medium [&_a]:text-purple-700 [&_a]:underline [&_strong]:font-semibold [&_strong]:text-gray-900";
+
 /** Public Learning Center URL for an article slug (same origin as the admin SPA). */
 export function publicLearnUrl(slug: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/learn/article/${slug}`;
+}
+
+/** Public API URL for staff preview reads (skips view-count tracking). */
+export function publicLearnApiUrl(slug: string): string {
+  return `/api/public/learn/article/${encodeURIComponent(slug)}?track=0`;
 }
 
 const AUDIENCE_LABEL: Record<KbAudience, string> = {

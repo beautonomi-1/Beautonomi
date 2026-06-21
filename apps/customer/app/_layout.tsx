@@ -28,6 +28,7 @@ import {
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 import { ImageCropperProvider } from "@/components/image-crop";
+import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -147,6 +148,7 @@ function RootLayout() {
     <ErrorBoundary>
       <View style={rootStyle}>
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <KeyboardRootProvider>
           <MarketHostBootstrap />
           <ThemeProvider>
             <ImageCropperProvider>
@@ -167,6 +169,7 @@ function RootLayout() {
             </LanguageReactiveRoot>
             </ImageCropperProvider>
           </ThemeProvider>
+          </KeyboardRootProvider>
         </SafeAreaProvider>
       </View>
     </ErrorBoundary>

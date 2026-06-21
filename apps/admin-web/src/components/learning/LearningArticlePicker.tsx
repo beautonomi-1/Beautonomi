@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Plus, Search } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { adminSpaTo } from "@/lib/adminSpaPath";
 import { audienceLabel, publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
+import { LearningArticleReaderModal } from "@/components/learning/LearningArticleReaderModal";
 
 type Props = {
   /** Restrict/boost results for the audience you're helping (customer/provider). */
@@ -36,6 +35,7 @@ export function LearningArticlePicker({
 }: Props) {
   const [query, setQuery] = useState(initialQuery);
   const [debounced, setDebounced] = useState(initialQuery.trim());
+  const [readerArticle, setReaderArticle] = useState<KbArticleResult | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 250);
@@ -122,12 +122,13 @@ export function LearningArticlePicker({
                   </button>
                 ) : null}
                 {showOpen ? (
-                  <Link
-                    to={adminSpaTo(`/admin/knowledge-base/${a.slug}`)}
+                  <button
+                    type="button"
                     className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    onClick={() => setReaderArticle(a)}
                   >
                     Read
-                  </Link>
+                  </button>
                 ) : null}
                 {!a.is_internal ? (
                   <a
@@ -147,6 +148,13 @@ export function LearningArticlePicker({
           <p className="px-1 py-2 text-xs text-red-600">Could not load articles. Try again.</p>
         ) : null}
       </div>
+      <LearningArticleReaderModal
+        slug={readerArticle?.slug ?? null}
+        isInternal={Boolean(readerArticle?.is_internal)}
+        audience={readerArticle?.audience ?? audience}
+        open={readerArticle != null}
+        onClose={() => setReaderArticle(null)}
+      />
     </div>
   );
 }

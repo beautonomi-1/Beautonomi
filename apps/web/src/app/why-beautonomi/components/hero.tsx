@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Sparkles, Heart, Star } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
+import { ProviderWebDashboardScreen } from "@/components/mockups/screens/web";
+import { CustomerHomeScreen } from "@/components/mockups/screens/customer-mobile";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -19,64 +21,106 @@ interface WhyBeautonomiHeroProps {
 }
 
 const WhyBeautonomiHero = ({ content }: WhyBeautonomiHeroProps) => {
-  // Get content from CMS or use defaults
+  const heroEyebrow = content?.hero_eyebrow?.content || "The beauty operating system";
   const heroTitle = content?.hero_title?.content || "Why Beautonomi?";
-  const heroSubtitle = content?.hero_subtitle?.content || "The platform built for beauty professionals";
-  const heroDescription = content?.hero_description?.content || "Discover what makes Beautonomi the leading platform for beauty and wellness services. Built with care, designed for growth.";
-  const ctaButtonText = content?.cta_button_text?.content || "Get Started";
+  const heroSubtitle =
+    content?.hero_subtitle?.content || "The platform built for beauty professionals";
+  const heroDescription =
+    content?.hero_description?.content ||
+    "Bookings, payments, clients and growth — beautifully connected in one place. Spend less time on admin and more time doing what you love.";
+  const ctaButtonText = content?.cta_button_text?.content || "Get started free";
   const ctaUrl = content?.cta_url?.content || "/signup?type=provider";
+  const secondaryCtaText = content?.hero_secondary_cta_text?.content || "Explore the platform";
+  const secondaryCtaUrl = content?.hero_secondary_cta_url?.content || "/explore";
+  const trustText =
+    content?.hero_trust_text?.content || "Rated #1 by thousands of beauty & wellness professionals";
   const heroImage = content?.hero_image?.content;
 
   return (
-    <div className="pb-20 md:pb-24 lg:pb-16">
-      <div className="container">
-        <div className="mb-14">
-          <h1 className="text-[56px] md:text-[100px] lg:text-[128px] font-normal text-secondary max-w-4xl leading-[50px] md:leading-[90px] lg:leading-[130px] mx-auto text-center mb-6 lg:mb-10">
+    <section className="relative overflow-hidden">
+      {/* Ambient brand glow */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 left-1/2 h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-[#FFE7F1]/70 blur-3xl" />
+        <div className="absolute right-[-120px] top-32 h-[320px] w-[320px] rounded-full bg-primary/10 blur-3xl" />
+      </div>
+
+      <div className="container relative pt-10 md:pt-16 lg:pt-20 pb-16 md:pb-20 lg:pb-24">
+        <div className="mx-auto max-w-3xl text-center">
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-[#FFE7F1]/60 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            {heroEyebrow}
+          </span>
+
+          <h1 className="mt-6 text-[clamp(2.75rem,8vw,5.5rem)] font-semibold leading-[1.02] tracking-tight text-secondary">
             {heroTitle}
           </h1>
-          <div className="text-center mb-10 lg:mb-14">
-            <Link href={ctaUrl}>
-              <Button variant="secondary" size="rounded" className="bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white">
+
+          <p className="mx-auto mt-6 max-w-2xl text-lg md:text-xl font-light leading-relaxed text-gray-600">
+            {heroDescription}
+          </p>
+
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href={ctaUrl} className="w-full sm:w-auto">
+              <Button
+                variant="secondary"
+                size="rounded"
+                className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] px-8 text-white shadow-lg shadow-primary/25 transition-transform hover:scale-[1.02] hover:from-[#D60565] hover:to-[#FF0077] sm:w-auto"
+              >
                 {ctaButtonText}
-                <ArrowRight className="ml-2 w-4 h-4" />
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href={secondaryCtaUrl} className="w-full sm:w-auto">
+              <Button
+                variant="outline"
+                size="rounded"
+                className="w-full border-gray-300 px-8 text-secondary hover:border-primary hover:text-primary sm:w-auto"
+              >
+                {secondaryCtaText}
               </Button>
             </Link>
           </div>
-          <div className="relative mx-auto">
-            {heroImage ? (
-              <div className="relative z-10 w-full max-w-[900px] h-[500px] md:h-[650px] mx-auto rounded-2xl shadow-2xl overflow-hidden">
-                <Image src={heroImage} alt="Why Beautonomi" fill className="object-cover" unoptimized />
-              </div>
-            ) : (
-              <div className="w-full max-w-[900px] h-[500px] md:h-[650px] mx-auto rounded-2xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-2xl relative overflow-hidden">
-                <div className="absolute inset-0 opacity-20">
-                  <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl"></div>
-                  <div className="absolute bottom-10 right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white rounded-full blur-3xl"></div>
-                </div>
-                <div className="text-center text-white relative z-10">
-                  <div className="flex justify-center gap-4 mb-6">
-                    <Sparkles className="w-12 h-12 md:w-16 md:h-16" />
-                    <Heart className="w-12 h-12 md:w-16 md:h-16" />
-                    <Star className="w-12 h-12 md:w-16 md:h-16" />
-                  </div>
-                  <div className="text-3xl md:text-4xl font-bold mb-2">Beautonomi</div>
-                  <div className="text-xl md:text-2xl font-light">Beauty. Simplified.</div>
-                </div>
-              </div>
-            )}
+
+          <div className="mt-7 flex items-center justify-center gap-2 text-sm text-gray-500">
+            <span className="flex items-center gap-0.5" aria-hidden>
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+              ))}
+            </span>
+            <span className="font-medium text-secondary">{trustText}</span>
           </div>
         </div>
-        <div className="text-center">
-          <h2 className="text-[32px] md:text-[52px] lg:text-6xl font-normal text-secondary mb-4 md:mb-6 lg:mb-8">
+
+        {/* Product preview */}
+        <div className="relative mx-auto mt-14 max-w-5xl md:mt-20">
+          {heroImage ? (
+            <div className="relative z-10 mx-auto h-[460px] w-full max-w-[940px] overflow-hidden rounded-3xl shadow-2xl md:h-[600px]">
+              <Image src={heroImage} alt={heroSubtitle} fill className="object-cover" unoptimized />
+            </div>
+          ) : (
+            <div className="relative">
+              <div
+                aria-hidden
+                className="absolute inset-x-6 top-10 bottom-0 rounded-[2.5rem] bg-gradient-to-b from-[#FFE7F1]/60 to-transparent blur-2xl"
+              />
+              <div className="relative z-10 px-2 sm:px-6">
+                <ProviderWebDashboardScreen />
+              </div>
+              {/* Overlapping mobile preview for depth + dual-surface story */}
+              <div className="absolute -bottom-10 right-2 z-20 hidden w-[210px] drop-shadow-2xl sm:block md:right-8 lg:right-16">
+                <CustomerHomeScreen />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-20 text-center md:mt-24">
+          <h2 className="text-[clamp(1.75rem,4vw,3.25rem)] font-semibold tracking-tight text-secondary">
             {heroSubtitle}
           </h2>
-          <p className="text-sm md:text-base lg:text-lg text-secondary font-normal max-w-3xl mx-auto mb-3 lg:mb-5 leading-relaxed">
-            {heroDescription}
-          </p>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 

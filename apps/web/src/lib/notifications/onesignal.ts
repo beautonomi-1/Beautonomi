@@ -29,6 +29,7 @@ import {
   substituteTemplatePath,
   webUrlToRelativePath,
 } from "@/lib/notifications/push-url";
+import { recordSyncedBadgeCount } from "@/lib/notifications/badge-sync-state";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -519,6 +520,30 @@ async function pruneInvalidOneSignalDevices(
 }
 
 /**
+ * Persist the absolute badge value when a push set it via `SetTo` for exactly
+ * one known user. Multi-recipient `Increase` badges carry no absolute value, so
+ * they are intentionally skipped. Best-effort; never throws.
+ */
+async function recordSetToBadgeState(
+  payload: {
+    ios_badgeType?: "SetTo" | "Increase";
+    ios_badgeCount?: number;
+    include_external_user_ids?: string[];
+    _reconcileUserIds?: string[];
+  },
+  appType: OneSignalAppType | undefined,
+): Promise<void> {
+  if (appType !== "customer" && appType !== "provider") return;
+  if (payload.ios_badgeType !== "SetTo" || typeof payload.ios_badgeCount !== "number") return;
+  const userIds =
+    payload._reconcileUserIds && payload._reconcileUserIds.length > 0
+      ? payload._reconcileUserIds
+      : payload.include_external_user_ids ?? [];
+  if (userIds.length !== 1) return;
+  await recordSyncedBadgeCount(userIds[0], appType, payload.ios_badgeCount);
+}
+
+/**
  * Native Android channel ids created by both apps in push-notifications-setup.ts.
  * OneSignal routes to a native channel via `existing_android_channel_id`. Keep
  * these strings in sync with the channel ids registered on the device.
@@ -1000,6 +1025,12 @@ async function sendOneSignalNotification(
     // dead/uninstalled devices don't accumulate in user_devices.
     void pruneInvalidOneSignalDevices(responseData, appType);
 
+    // Keep the badge_sync dedup state authoritative: any single-recipient SetTo
+    // send (regular notifications included) moves the device's absolute badge, so
+    // record it here. Otherwise a later silent badge_sync with the same numeric
+    // value would be wrongly skipped, leaving a stale badge on a killed app.
+    void recordSetToBadgeState(payload, appType);
+
     const notificationIdRaw = responseData.id;
     const notification_id =
       typeof notificationIdRaw === "string"
@@ -1063,13 +1094,18 @@ export async function sendToUser(
       ?.map((d) => d.onesignal_player_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
 
+  const badgeSync = isBadgeSyncPayload(payload);
   const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: [userId],
     channels: normalizedChannels,
-    headings: { en: payload.title },
-    contents: { en: payload.message },
     data: payload.data || {},
   };
+  // Silent badge_sync: OneSignal requires omitting contents/headings when
+  // content_available is true — otherwise iOS/Android show an empty banner.
+  if (!badgeSync) {
+    notificationPayload.headings = { en: payload.title };
+    notificationPayload.contents = { en: payload.message };
+  }
 
   if (normalizedChannels.includes("email")) {
     notificationPayload.email_subject = payload.title;
@@ -1091,7 +1127,6 @@ export async function sendToUser(
     if (playerIds.length > 0) {
       notificationPayload.include_player_ids = playerIds;
     }
-    const badgeSync = isBadgeSyncPayload(payload);
     if (!badgeSync) {
       notificationPayload.ios_sound = notificationPayload.ios_sound ?? "default";
       notificationPayload.priority = notificationPayload.priority ?? 10;

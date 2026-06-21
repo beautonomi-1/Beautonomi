@@ -6,6 +6,17 @@ import type { Router } from "expo-router";
 import { captureError } from "@/lib/sentry";
 import type { ProviderNotificationNavPayload } from "@/lib/provider-notification-navigation";
 
+function getLinkParam(link: string, key: string): string {
+  if (!link) return "";
+  try {
+    const parsed = new URL(link, "https://beautonomi.local");
+    return parsed.searchParams.get(key)?.trim() ?? "";
+  } catch {
+    const match = link.match(new RegExp(`[?&]${key}=([^&#]+)`, "i"));
+    return match?.[1] ? decodeURIComponent(match[1]).trim() : "";
+  }
+}
+
 /** Keys from sendTemplateNotification(..., { appType: "provider" }). */
 export const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
   "provider_booking_request",
@@ -92,7 +103,10 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
     }
 
     if (templateKey === "provider_new_message") {
-      const cid = String(data.conversation_id ?? data.chat_id ?? "");
+      const cid =
+        String(data.conversation_id ?? data.chat_id ?? "") ||
+        getLinkParam(actionUrl, "conversation") ||
+        getLinkParam(actionUrl, "conversation_id");
       if (cid) {
         router.push({ pathname: "/(app)/(tabs)/chats/[id]", params: { id: cid } });
       } else {
@@ -235,8 +249,16 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
         return true;
       case "new_message":
       case "chat_message":
-        if (conversationId) {
-          router.push({ pathname: "/(app)/(tabs)/chats/[id]", params: { id: conversationId } });
+        if (
+          conversationId ||
+          getLinkParam(actionUrl, "conversation") ||
+          getLinkParam(actionUrl, "conversation_id")
+        ) {
+          const cid =
+            conversationId ||
+            getLinkParam(actionUrl, "conversation") ||
+            getLinkParam(actionUrl, "conversation_id");
+          router.push({ pathname: "/(app)/(tabs)/chats/[id]", params: { id: cid } });
         } else {
           router.push("/(app)/(tabs)/chats");
         }

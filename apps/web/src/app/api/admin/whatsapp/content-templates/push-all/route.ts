@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("notification_templates")
       .select("*")
-      .contains("valid_channels", ["whatsapp"]);
+      .contains("channels", ["whatsapp"]);
 
     if (error) throw error;
 

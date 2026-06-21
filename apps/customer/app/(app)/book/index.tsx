@@ -1,19 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Pressable,
-  KeyboardAvoidingView,
-  Platform,
-  Linking,
-  Alert,
-  ActivityIndicator,
-  Modal,
-  StyleSheet,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Pressable, Platform, Linking, Alert, ActivityIndicator, Modal, StyleSheet } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";

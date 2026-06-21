@@ -50,6 +50,10 @@ import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum } from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
+import {
+  ProviderBookingCreatedSuccessSheet,
+  type ProviderBookingCreatedSuccessPayload,
+} from "@/components/bookings/ProviderBookingCreatedSuccessSheet";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 
 /* ------------------------------------------------------------------ */
@@ -658,6 +662,8 @@ export default function NewBookingScreen() {
     }
   }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, paymentMethod]);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [createdBookingSuccess, setCreatedBookingSuccess] =
+    useState<ProviderBookingCreatedSuccessPayload | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [slotAutoSnapMessage, setSlotAutoSnapMessage] = useState<string | null>(null);
@@ -2071,13 +2077,53 @@ export default function NewBookingScreen() {
         [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectPaystack=1` as never) }],
       );
     } else {
-      if (warnings?.length) {
-        Alert.alert("Booking Created", warnings.join("\n"));
-      } else {
-        Alert.alert("Success", "Booking created successfully");
+      if (!newBookingId.length) {
+        Alert.alert(
+          "Booking created",
+          warnings?.length
+            ? `${warnings.join("\n")}\n\nOpen your bookings list to find the new appointment.`
+            : "Open your bookings list to find the new appointment.",
+        );
+        router.replace("/(app)/(tabs)/bookings" as never);
+        return;
       }
-      // Return to the bookings list hub (avoids a stale "new booking" screen on back stack).
-      router.replace("/(app)/(tabs)/bookings" as never);
+      const responseStatus =
+        responseData && typeof responseData === "object" && responseData !== null && "status" in responseData
+          ? String((responseData as { status: unknown }).status)
+          : "booked";
+      const responsePaymentStatus =
+        responseData &&
+        typeof responseData === "object" &&
+        responseData !== null &&
+        "payment_status" in responseData &&
+        (responseData as { payment_status?: unknown }).payment_status != null
+          ? String((responseData as { payment_status: unknown }).payment_status)
+          : undefined;
+      const bookingNumber =
+        responseData &&
+        typeof responseData === "object" &&
+        responseData !== null &&
+        "booking_number" in responseData &&
+        (responseData as { booking_number?: unknown }).booking_number != null
+          ? String((responseData as { booking_number: unknown }).booking_number)
+          : undefined;
+      const clientName =
+        clientMode === "search" && selectedClient
+          ? selectedClient.full_name
+          : `${newClientFirst.trim()} ${newClientLast.trim()}`.trim();
+      setShowConfirmation(false);
+      setCreatedBookingSuccess({
+        bookingId: newBookingId,
+        status: responseStatus,
+        paymentStatus: responsePaymentStatus,
+        clientName: clientName || undefined,
+        date: format(selectedDate, "EEE, MMM d, yyyy"),
+        time: selectedTime,
+        bookingNumber,
+        warnings,
+        isWalkIn,
+        sendNotification,
+      });
     }
   }
 
@@ -3952,6 +3998,11 @@ export default function NewBookingScreen() {
           />
         </View>
       ) : null}
+      <ProviderBookingCreatedSuccessSheet
+        visible={createdBookingSuccess != null}
+        payload={createdBookingSuccess}
+        onDismiss={() => setCreatedBookingSuccess(null)}
+      />
     </View>
   );
 }
