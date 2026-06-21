@@ -2,19 +2,8 @@
  * Edit location – GET/PATCH/DELETE /api/provider/locations/[id].
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-  Switch,
-  ActivityIndicator,
-  useWindowDimensions,
-} from "react-native";
+import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, Switch, ActivityIndicator, useWindowDimensions } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";

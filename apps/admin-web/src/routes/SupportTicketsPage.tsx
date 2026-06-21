@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -30,6 +30,9 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { Filter, LayoutGrid, LayoutList } from "lucide-react";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
+import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
+import { cn } from "@/lib/cn";
 
 interface SupportTicket {
   id: string;
@@ -73,6 +76,98 @@ function ticketAgeDays(createdAt: string): number {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
+function SupportTicketCard({
+  ticket,
+  isSelected,
+  isDesktopInbox,
+  onSelectDesktop,
+}: {
+  ticket: SupportTicket;
+  isSelected: boolean;
+  isDesktopInbox: boolean;
+  onSelectDesktop: () => void;
+}) {
+  return (
+    <Link
+      to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticket.id)}`)}
+      onClick={(e) => {
+        if (isDesktopInbox) {
+          e.preventDefault();
+          onSelectDesktop();
+        }
+      }}
+      aria-current={isSelected ? "true" : undefined}
+      className={cn(
+        "block rounded-2xl border bg-white p-4 shadow-sm transition-all",
+        isSelected
+          ? "border-gray-900 bg-gray-50 ring-2 ring-gray-900/15"
+          : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs font-medium text-gray-500">{ticket.ticket_number}</span>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium capitalize text-gray-700">
+              {ticket.requester_type || (ticket.provider ? "provider" : "customer")}
+            </span>
+            {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+                Support replied
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 line-clamp-2 font-semibold text-gray-900">{ticket.subject}</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {ticket.category ? labelForSupportTicketCategory(ticket.category) : "Uncategorized"}
+          </p>
+          {ticket.support_context_type ? (
+            <p className="mt-1 text-xs text-gray-600">
+              About {ticket.support_context_type.replace(/_/g, " ")}
+              {ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}
+            </p>
+          ) : null}
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs capitalize ${priorityPillClass(ticket.priority)}`}>
+          {ticket.priority}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-sm text-gray-700">
+        <div>
+          <span className="text-xs text-gray-500">Customer </span>
+          {ticket.user ? ticket.user.full_name || ticket.user.email : ticket.provider?.business_name || "—"}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize">
+            {ticket.status.replace(/_/g, " ")}
+          </span>
+          {ticket.sla_resolution_due_at ? (
+            <span
+              className={
+                isSlaBreached(ticket)
+                  ? "rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+                  : "rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+              }
+            >
+              {isSlaBreached(ticket) ? "SLA overdue" : "SLA due"}{" "}
+              {new Date(ticket.sla_resolution_due_at).toLocaleDateString()}
+            </span>
+          ) : null}
+          {typeof ticket.csat_score === "number" ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              CSAT {ticket.csat_score}/5
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+          <span>{ticket.assigned_user ? ticket.assigned_user.full_name || ticket.assigned_user.email : "Unassigned"}</span>
+          <span>Updated {new Date(ticket.updated_at).toLocaleDateString()}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking" },
   { value: "product_order", label: "Product / ecommerce order" },
@@ -92,6 +187,9 @@ export function SupportTicketsPage() {
   );
   const { bootstrap } = useAdminSession();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
+  const inboxRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -164,6 +262,9 @@ export function SupportTicketsPage() {
   const sortFilter = searchParams.get("sort") ?? "updated_desc";
   const slaOverdueFilter = searchParams.get("sla_overdue") === "1";
   const viewFilter = searchParams.get("view");
+  const selectedId = searchParams.get("selected");
+  const isTableView = viewFilter === "table";
+  const isCardsView = !isTableView;
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const pageIndex = page - 1;
   const qFromUrl = searchParams.get("q") ?? "";
@@ -238,6 +339,51 @@ export function SupportTicketsPage() {
   const rangeStart = total === 0 ? 0 : offset + 1;
   const rangeEnd = offset + tickets.length;
 
+  const setSelectedTicket = useCallback(
+    (ticketId: string) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("selected", ticketId);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    if (!isDesktop || isTableView || tickets.length === 0) return;
+    const valid = selectedId && tickets.some((t) => t.id === selectedId);
+    if (!valid) {
+      setSelectedTicket(tickets[0].id);
+    }
+  }, [isDesktop, isTableView, tickets, selectedId, setSelectedTicket]);
+
+  const handleInboxKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isDesktop || isTableView || tickets.length === 0) return;
+      const currentId = selectedId ?? tickets[0]?.id;
+      const idx = tickets.findIndex((t) => t.id === currentId);
+      if (idx < 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = tickets[Math.min(idx + 1, tickets.length - 1)];
+        if (next) setSelectedTicket(next.id);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = tickets[Math.max(idx - 1, 0)];
+        if (prev) setSelectedTicket(prev.id);
+      } else if (e.key === "Enter" && currentId) {
+        e.preventDefault();
+        navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(currentId)}`));
+      }
+    },
+    [isDesktop, isTableView, tickets, selectedId, setSelectedTicket, navigate],
+  );
+
   const setPage = (next: number) => {
     setSearchParams(
       (prev) => {
@@ -298,7 +444,11 @@ export function SupportTicketsPage() {
     <div className="space-y-6 px-2 sm:px-0">
       <AdminPageHeader
         title="Support tickets"
-        description="Filters sync to the URL; the queue refreshes when you return to this tab and about every minute while it stays open."
+        description={
+          isDesktop && isCardsView
+            ? "Select a ticket to read and reply in the panel. Use ↑↓ to move between tickets and Enter to open full page. Filters sync to the URL."
+            : "Filters sync to the URL; the queue refreshes when you return to this tab and about every minute while it stays open."
+        }
         actions={
           <button
             type="button"
@@ -380,7 +530,7 @@ export function SupportTicketsPage() {
             type="button"
             onClick={() => setView("cards")}
             className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-l-xl px-3 ${
-              viewFilter === "cards" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+              isCardsView ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
             aria-label="Card view"
           >
@@ -390,7 +540,7 @@ export function SupportTicketsPage() {
             type="button"
             onClick={() => setView("table")}
             className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-r-xl px-3 ${
-              viewFilter === "table" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+              isTableView ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
             aria-label="Table view"
           >
@@ -490,80 +640,53 @@ export function SupportTicketsPage() {
         />
       ) : (
         <>
-          <div
-            className={
-              viewFilter === "table"
-                ? "hidden"
-                : viewFilter === "cards"
-                  ? "grid gap-3"
-                  : "grid gap-3 md:hidden"
-            }
-          >
-            {tickets.map((ticket) => (
-              <Link
-                key={ticket.id}
-                to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticket.id)}`)}
-                className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-gray-950/[0.03] transition-colors hover:border-gray-300 hover:bg-gray-50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-medium text-gray-500">{ticket.ticket_number}</span>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium capitalize text-gray-700">
-                      {ticket.requester_type || (ticket.provider ? "provider" : "customer")}
-                    </span>
-                      {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
-                          Support replied
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 line-clamp-2 font-semibold text-gray-900">{ticket.subject}</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {ticket.category ? labelForSupportTicketCategory(ticket.category) : "Uncategorized"}
-                    </p>
-                    {ticket.support_context_type ? (
-                      <p className="mt-1 text-xs text-gray-600">
-                        About {ticket.support_context_type.replace(/_/g, " ")}
-                        {ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}
-                      </p>
-                    ) : null}
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs capitalize ${priorityPillClass(ticket.priority)}`}>
-                    {ticket.priority}
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-2 text-sm text-gray-700">
-                  <div>
-                    <span className="text-xs text-gray-500">Customer </span>
-                    {ticket.user ? ticket.user.full_name || ticket.user.email : ticket.provider?.business_name || "—"}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize">
-                      {ticket.status.replace(/_/g, " ")}
-                    </span>
-                    {ticket.sla_resolution_due_at ? (
-                      <span className={isSlaBreached(ticket) ? "rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800" : "rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"}>
-                        {isSlaBreached(ticket) ? "SLA overdue" : "SLA due"}{" "}
-                        {new Date(ticket.sla_resolution_due_at).toLocaleDateString()}
-                      </span>
-                    ) : null}
-                    {typeof ticket.csat_score === "number" ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                        CSAT {ticket.csat_score}/5
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
-                    <span>{ticket.assigned_user ? ticket.assigned_user.full_name || ticket.assigned_user.email : "Unassigned"}</span>
-                    <span>Updated {new Date(ticket.updated_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+          {isCardsView && isDesktop ? (
+            <div
+              ref={inboxRef}
+              tabIndex={0}
+              onKeyDown={handleInboxKeyDown}
+              className="grid grid-cols-1 gap-4 outline-none lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-start"
+              aria-label="Support ticket inbox"
+            >
+              <div className="max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto pr-1">
+                {tickets.map((ticket) => (
+                  <SupportTicketCard
+                    key={ticket.id}
+                    ticket={ticket}
+                    isSelected={selectedId === ticket.id}
+                    isDesktopInbox
+                    onSelectDesktop={() => setSelectedTicket(ticket.id)}
+                  />
+                ))}
+              </div>
+              <div className="sticky top-4 max-h-[calc(100dvh-14rem)] min-h-[24rem] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-gray-950/[0.03]">
+                {selectedId && tickets.some((t) => t.id === selectedId) ? (
+                  <SupportTicketDetailView id={selectedId} variant="panel" />
+                ) : (
+                  <EmptyState
+                    title="Select a ticket"
+                    description="Choose a ticket from the list to read and reply without leaving the queue."
+                  />
+                )}
+              </div>
+            </div>
+          ) : null}
 
-          <AdminDataTable className={viewFilter === "cards" ? "hidden" : viewFilter === "table" ? "" : "hidden md:block"}>
+          {isCardsView && !isDesktop ? (
+            <div className="grid gap-3">
+              {tickets.map((ticket) => (
+                <SupportTicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  isSelected={false}
+                  isDesktopInbox={false}
+                  onSelectDesktop={() => {}}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <AdminDataTable className={isTableView ? "" : "hidden"}>
             <AdminTableHead>
               <tr>
                 <AdminTh>Ticket #</AdminTh>

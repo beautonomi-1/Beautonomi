@@ -29,11 +29,12 @@ async function getCategoryLineage(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const { slug } = await params;
+    const trackViews = new URL(request.url).searchParams.get("track") !== "0";
     const supabase = await getSupabaseServer();
 
     const { data: article, error } = await supabase
@@ -55,18 +56,20 @@ export async function GET(
     const parents = parentsLineage.map((p) => p.title);
     const parent_slugs = parentsLineage.map((p) => p.slug);
 
-    try {
-      const admin = getSupabaseAdmin();
-      const { data: existing } = await admin.from("learning_article_stats").select("view_count, helpful_yes_count, helpful_no_count").eq("article_id", article.id).single();
-      const view_count = (existing?.view_count ?? 0) + 1;
-      await admin
-        .from("learning_article_stats")
-        .upsert(
-          { article_id: article.id, view_count, helpful_yes_count: existing?.helpful_yes_count ?? 0, helpful_no_count: existing?.helpful_no_count ?? 0, updated_at: new Date().toISOString() },
-          { onConflict: "article_id" }
-        );
-    } catch {
-      // Non-fatal: still return article
+    if (trackViews) {
+      try {
+        const admin = getSupabaseAdmin();
+        const { data: existing } = await admin.from("learning_article_stats").select("view_count, helpful_yes_count, helpful_no_count").eq("article_id", article.id).single();
+        const view_count = (existing?.view_count ?? 0) + 1;
+        await admin
+          .from("learning_article_stats")
+          .upsert(
+            { article_id: article.id, view_count, helpful_yes_count: existing?.helpful_yes_count ?? 0, helpful_no_count: existing?.helpful_no_count ?? 0, updated_at: new Date().toISOString() },
+            { onConflict: "article_id" }
+          );
+      } catch {
+        // Non-fatal: still return article
+      }
     }
 
     const { data: stat } = await supabase.from("learning_article_stats").select("view_count, helpful_yes_count, helpful_no_count").eq("article_id", article.id).single();

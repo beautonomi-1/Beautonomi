@@ -3,17 +3,8 @@
  * Calls POST /api/me/deactivate with password (and optional reason), then signs out.
  */
 import { useEffect, useState, useCallback, useMemo } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, ActivityIndicator } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useAuth } from "@/providers/AuthProvider";

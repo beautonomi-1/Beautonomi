@@ -65,7 +65,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.63",
+  version: "1.0.64",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -79,7 +79,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "255",
+    buildNumber: "256",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -113,7 +113,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 256,
+    versionCode: 257,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -173,7 +173,6 @@ const BASE_EXPO_CONFIG = {
       "onesignal-expo-plugin",
       { mode: oneSignalMode },
     ],
-    "./plugins/onesignal-disable-launch-url/app.plugin.js",
     "expo-notifications",
     "expo-router",
     "expo-font",

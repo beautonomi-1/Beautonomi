@@ -3,16 +3,8 @@
  * POST /api/me/deactivate, then sign out → login with deactivated messaging.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { View, Text, TextInput, Alert, Platform, TouchableOpacity, ActivityIndicator } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";

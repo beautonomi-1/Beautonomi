@@ -592,7 +592,7 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco, collectPaystack, return_group_id, openReschedule, openCancel } =
+  const { id, focusPayment, collectYoco, collectPaystack, return_group_id, openReschedule, openCancel, highlightConfirm } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
@@ -601,6 +601,7 @@ export default function BookingDetailScreen() {
     return_group_id?: string;
     openReschedule?: string;
     openCancel?: string;
+    highlightConfirm?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
@@ -688,6 +689,54 @@ export default function BookingDetailScreen() {
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
+  const nextStepCardYRef = useRef(0);
+  const highlightConfirmHandledRef = useRef(false);
+  const [highlightNextStep, setHighlightNextStep] = useState(false);
+  const [pendingHighlightScroll, setPendingHighlightScroll] = useState(false);
+
+  useEffect(() => {
+    highlightConfirmHandledRef.current = false;
+    setPendingHighlightScroll(false);
+    setHighlightNextStep(false);
+  }, [bookingIdStr]);
+
+  const scrollToNextStepCard = useCallback((y: number) => {
+    mainScrollRef.current?.scrollTo({
+      y: Math.max(0, y - 16),
+      animated: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!data || highlightConfirmHandledRef.current) return;
+    if (!providerParamTruthy(highlightConfirm)) return;
+    highlightConfirmHandledRef.current = true;
+    if (currentDbStatus !== "pending" && currentDbStatus !== "pending_payment") {
+      router.setParams({ highlightConfirm: undefined });
+      return;
+    }
+    setHighlightNextStep(true);
+    setPendingHighlightScroll(true);
+    if (nextStepCardYRef.current > 0) {
+      requestAnimationFrame(() => {
+        scrollToNextStepCard(nextStepCardYRef.current);
+        setPendingHighlightScroll(false);
+      });
+    }
+    router.setParams({ highlightConfirm: undefined });
+    const timer = setTimeout(() => setHighlightNextStep(false), 6000);
+    return () => clearTimeout(timer);
+  }, [currentDbStatus, data, highlightConfirm, router, scrollToNextStepCard]);
+
+  const handleNextStepCardLayout = useCallback(
+    (y: number) => {
+      nextStepCardYRef.current = y;
+      if (!pendingHighlightScroll) return;
+      setPendingHighlightScroll(false);
+      requestAnimationFrame(() => scrollToNextStepCard(y));
+    },
+    [pendingHighlightScroll, scrollToNextStepCard],
+  );
 
   const durationMinutes = useMemo(() => {
     const svcs = data?.services ?? [];
@@ -2883,7 +2932,16 @@ export default function BookingDetailScreen() {
           ) : null}
         </View>
 
-        <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-4 mb-3")}>
+        <View
+          onLayout={(e) => {
+            handleNextStepCardLayout(e.nativeEvent.layout.y);
+          }}
+          style={twStyle(
+            `rounded-2xl border bg-white p-4 mb-3 ${
+              highlightNextStep ? "border-2 border-amber-400 bg-amber-50/50" : "border-gray-200"
+            }`,
+          )}
+        >
           <View style={twStyle("flex-row items-start")}>
             <View style={[twStyle("mr-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: Colors.primarySoft }]}>
               <Ionicons name={nextStep.icon} size={22} color={Colors.primary} />

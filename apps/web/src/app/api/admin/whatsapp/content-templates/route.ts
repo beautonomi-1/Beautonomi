@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("notification_templates")
       .select(
-        "id, key, name, whatsapp_body, whatsapp_content_sid, whatsapp_category, whatsapp_template_status, whatsapp_approval_name, whatsapp_content_hash, whatsapp_content_error, whatsapp_content_synced_at, valid_channels",
+        "id, key, name, whatsapp_body, whatsapp_content_sid, whatsapp_category, whatsapp_template_status, whatsapp_approval_name, whatsapp_content_hash, whatsapp_content_error, whatsapp_content_synced_at, channels",
       )
-      .contains("valid_channels", ["whatsapp"])
+      .contains("channels", ["whatsapp"])
       .order("key");
 
     if (error) throw error;

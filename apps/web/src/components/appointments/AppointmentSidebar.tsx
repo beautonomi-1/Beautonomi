@@ -119,6 +119,10 @@ import {
   openCreateMode,
 } from "@/stores/appointment-sidebar-store";
 import {
+  ProviderBookingCreatedDialog,
+  type ProviderBookingCreatedDialogPayload,
+} from "@/components/appointments/ProviderBookingCreatedDialog";
+import {
   AppointmentStatus,
   AppointmentKind,
   mapStatus,
@@ -263,6 +267,8 @@ export function AppointmentSidebar({
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [_hasExistingRating, _setHasExistingRating] = useState(false);
   const [showPostNudge, setShowPostNudge] = useState(false);
+  const [createdBookingDialog, setCreatedBookingDialog] =
+    useState<ProviderBookingCreatedDialogPayload | null>(null);
 
   // Tax rate state - loaded from API (must be declared before formData)
   const [defaultTaxRate, setDefaultTaxRate] = useState<number>(0); // Default 0% until loaded from provider settings
@@ -2046,6 +2052,24 @@ export function AppointmentSidebar({
   ]);
 
   // Handle create appointment
+  const openCreatedBookingSuccessDialog = useCallback(
+    (created: Appointment, warnings?: string[]) => {
+      setCreatedBookingDialog({
+        bookingId: created.id,
+        status: created.status,
+        paymentStatus: (created as Appointment & { payment_status?: string }).payment_status,
+        clientName: formData.clientName,
+        date: formData.date,
+        time: formData.startTime,
+        bookingNumber: (created as Appointment & { booking_number?: string }).booking_number,
+        warnings,
+        isWalkIn: formData.kind === AppointmentKind.WALK_IN,
+        sendNotification,
+      });
+    },
+    [formData.clientName, formData.date, formData.kind, formData.startTime, sendNotification],
+  );
+
   const handleCreate = async () => {
     if (!formData.clientName || (formData.services.length === 0 && !formData.serviceId)) {
       toast.error("Please fill in all required fields and add at least one service");
@@ -2194,9 +2218,12 @@ export function AppointmentSidebar({
             const createdOnce = await providerApi.createAppointment(appointmentData as any);
             onAppointmentCreated?.(createdOnce);
             onRefresh?.();
-            toast.success(
-              `Appointment booked once. Repeating schedule was not created: ${shortReason}`
+            toast.warning(
+              `Appointment booked once. Repeating schedule was not created: ${shortReason}`,
+              { duration: 8000 },
             );
+            const onceWarnings = (createdOnce as Appointment & { _warnings?: string[] })._warnings;
+            openCreatedBookingSuccessDialog(createdOnce, onceWarnings);
           } catch (singleErr) {
             throw singleErr;
           }
@@ -2204,13 +2231,11 @@ export function AppointmentSidebar({
       } else {
         const created = await providerApi.createAppointment(appointmentData as any);
         onAppointmentCreated?.(created);
-        // Surface resource allocation warnings if present
-        const warnings = (created as any)?._warnings as string[] | undefined;
+        const warnings = (created as Appointment & { _warnings?: string[] })._warnings;
         if (warnings?.length) {
           toast.warning(warnings.join(" "), { duration: 8000 });
-        } else {
-          toast.success("Appointment created successfully");
         }
+        openCreatedBookingSuccessDialog(created, warnings);
       }
 
       clearDraft();
@@ -5839,6 +5864,13 @@ onRatingSubmitted={() => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ProviderBookingCreatedDialog
+        open={createdBookingDialog != null}
+        payload={createdBookingDialog}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setCreatedBookingDialog(null);
+        }}
+      />
     </>
   );
 }

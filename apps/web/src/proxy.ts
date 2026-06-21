@@ -507,9 +507,10 @@ export async function proxy(request: NextRequest) {
           return NextResponse.redirect(new URL('/provider/get-started', request.url));
         }
 
-        // Redirect non-provider users to onboarding (matches ProviderPortalGate).
+        // Existing providers (and admins) proceed; everyone else starts onboarding.
+        if (!['provider_owner', 'provider_staff', 'superadmin'].includes(userRole)) {
           return NextResponse.redirect(new URL('/provider/onboarding', request.url));
-
+        }
         return response;
       } catch (error) {
         console.error("Error in provider route proxy:", error);

@@ -1,17 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  Alert,
-  ScrollView,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, Text, TouchableOpacity, Modal, TextInput, Alert, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";

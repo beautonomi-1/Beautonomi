@@ -2,18 +2,8 @@
  * Edit automation message template — parity with web MessagePreviewDialog.
  */
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  Modal,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
+import { View, Text, Modal, TextInput, TouchableOpacity, ScrollView, Platform, ActivityIndicator, Alert } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

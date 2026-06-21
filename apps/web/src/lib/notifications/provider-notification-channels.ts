@@ -94,6 +94,18 @@ function channelAllowedForProvider(
 }
 
 /**
+ * Whether the provider has push enabled for ANY section. Used to gate silent
+ * badge_sync pushes: a provider who turned push off across every section should
+ * not receive even silent OS-badge updates. Defaults keep push on, so an
+ * untouched preference returns true.
+ */
+export function isAnyProviderPushSectionEnabled(
+  prefs: Record<string, unknown> | null | undefined,
+): boolean {
+  return Object.keys(DEFAULT_PREFS).some((section) => mergeSection(prefs, section).push !== false);
+}
+
+/**
  * For a batch of provider users, resolve the requested channels each recipient
  * individually allows. Returns a `Map<userId, allowedChannels[]>`. Used for
  * per-recipient channels (email/SMS via the durable queue) so a single staff

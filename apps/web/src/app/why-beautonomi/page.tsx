@@ -3,7 +3,9 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import WhyBeautonomiHero from "./components/hero";
+import ProofBand from "./components/proof-band";
 import Features from "./components/features";
+import StorySection from "./components/story-section";
 import Benefits from "./components/benefits";
 import CTABanner from "./components/cta-banner";
 import FAQ from "@/components/global/faq";
@@ -30,7 +32,9 @@ export default async function WhyBeautonomiPage() {
       <BeautonomiHeader />
       <div className="w-full max-w-full overflow-x-hidden">
         <WhyBeautonomiHero content={content} />
+        <ProofBand content={content} />
         <Features content={content} />
+        <StorySection content={content} />
         <Benefits content={content} />
         <CTABanner content={content} />
         <FAQ applyBgPrimary={false} />

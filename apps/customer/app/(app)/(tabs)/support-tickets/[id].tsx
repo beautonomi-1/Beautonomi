@@ -1,19 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  StyleSheet,
-  Linking,
-  AppState,
-} from "react-native";
+import { View, Text, TextInput, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform, Alert, StyleSheet, Linking, AppState } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";

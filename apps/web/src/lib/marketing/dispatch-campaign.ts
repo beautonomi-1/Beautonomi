@@ -250,6 +250,8 @@ export async function dispatchCampaign(
     }
   };
   for (const customer of validCustomers as any as CustomerContact[]) {
+    const debitKey = `campaign:${id}:${customer.id}:${campaign.type}`;
+    let debitedAmount = 0;
     try {
       if (alreadySentIds.has(customer.id)) {
         // Delivered on a previous run — count it but don't re-send or re-bill.
@@ -272,8 +274,6 @@ export async function dispatchCampaign(
       const personalizedContent = substituteMergeTags(campaign.content ?? "", mergeValues);
       const personalizedSubject = substituteMergeTags(campaign.subject || campaign.name || "", mergeValues);
 
-      const debitKey = `campaign:${id}:${customer.id}:${campaign.type}`;
-      let debitedAmount = 0;
       if (debitsCredits) {
         const unitCost = await priceFor(supabase, campaign.type, category);
         const debit = await debitMarketingBalance({
@@ -342,6 +342,24 @@ export async function dispatchCampaign(
       failedCount++;
       errors.push(error?.message || "Unknown error");
       await recordFailure(customer.id, error?.message || "unknown_error");
+      // Refund a credit that was debited before the send threw, so a crash
+      // mid-send never silently keeps the provider's money.
+      if (debitedAmount > 0) {
+        try {
+          await creditMarketingBalance({
+            providerId,
+            amountZar: debitedAmount,
+            reason: "refund",
+            idempotencyKey: `refund:${debitKey}`,
+            channel: campaign.type,
+            campaignId: id,
+            metadata: { refund_reason: "send_exception", error: error?.message ?? null },
+            supabase,
+          });
+        } catch {
+          // Best-effort refund; idempotency key makes a later retry safe.
+        }
+      }
     }
   }
 

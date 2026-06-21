@@ -194,7 +194,7 @@ interface OnboardingData {
   selected_plan_name?: string;
 }
 
-/** Muted secondary actions (Edit / Cancel) â€” light grey, readable contrast, 14px body text (WCAG-friendly on white). */
+/** Muted secondary actions (Edit / Cancel) — light grey, readable contrast, 14px body text (WCAG-friendly on white). */
 const ONBOARDING_SOFT_SECONDARY_BTN =
   "h-10 min-h-10 shrink-0 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 transition-all";
 
@@ -231,8 +231,8 @@ function digitsOnlyPhone(s: string | null | undefined): string {
 }
 
 /**
- * Coerce profile / draft / pasted values to compact E.164 (+countryâ€¦, no spaces).
- * Handles: full E.164, "+27 082â€¦", national with leading 0, legacy 9-digit SA mobile without 0.
+ * Coerce profile / draft / pasted values to compact E.164 (+country…, no spaces).
+ * Handles: full E.164, "+27 082…", national with leading 0, legacy 9-digit SA mobile without 0.
  */
 function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
   if (!raw?.trim()) return "";
@@ -821,7 +821,7 @@ export default function ProviderOnboarding() {
       }
 
       // Â§Provider-launch (audit 2026-04): never log the full onboarding
-      // payload â€” it contains owner name, email, phone, address, ID
+      // payload — it contains owner name, email, phone, address, ID
       // numbers, and banking details. Surface just enough signal for
       // debugging without leaking PII into the browser console.
       if (process.env.NODE_ENV !== "production") {
@@ -1120,28 +1120,28 @@ function Step1TeamSize({
       subtitle: "It's just me",
       description: "Perfect for independent professionals",
       badge: "Most Popular",
-      icon: "ðŸ‘¤",
+      icon: "👤",
     },
     {
       id: "small",
       title: "Small Team",
-      subtitle: "2 â€“ 10 staff members",
+      subtitle: "2 – 10 staff members",
       description: "Growing business with a small team",
-      icon: "ðŸ‘¥",
+      icon: "👥",
     },
     {
       id: "medium",
       title: "Medium Team",
-      subtitle: "11 â€“ 20 staff members",
+      subtitle: "11 – 20 staff members",
       description: "Established business with a solid team",
-      icon: "ðŸ‘¨â€ðŸ‘©â€ðŸ‘§â€ðŸ‘¦",
+      icon: "👨‍👩‍👧‍👦",
     },
     {
       id: "large",
       title: "Large Team",
       subtitle: "20+ staff members",
       description: "Large operation with multiple staff",
-      icon: "ðŸ¢",
+      icon: "🏢",
     },
   ];
 
@@ -1212,7 +1212,7 @@ function Step2Identity({
   const [verificationCode, setVerificationCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  /** E.164 used with `updateUser({ phone })` â€” must match `verifyOtp` phone. */
+  /** E.164 used with `updateUser({ phone })` — must match `verifyOtp` phone. */
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
 
   // Countdown timer
@@ -1375,7 +1375,7 @@ function Step2Identity({
             We'll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
             {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
             {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
-            For South Africa, enter the local number only (omit +27)â€”for example{" "}
+            For South Africa, enter the local number only (omit +27)—for example{" "}
             <span className="whitespace-nowrap font-medium text-slate-700">82 123 4567</span> or{" "}
             <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
           </p>
@@ -2060,7 +2060,7 @@ function Step3BusinessDetails({
           Business Description <span className="text-slate-400 font-normal">(Recommended)</span>
         </Label>
         <p className={helperMuted}>
-          Describe your services, style, and what makes you specialâ€”this appears on your public
+          Describe your services, style, and what makes you special—this appears on your public
           profile.
         </p>
         <Textarea
@@ -2079,7 +2079,7 @@ function Step3BusinessDetails({
             data.description.length > 0 &&
             data.description.length < 50 && (
               <p className="text-sm font-medium text-amber-600">
-                Consider adding more detailâ€”we recommend at least 50 characters.
+                Consider adding more detail—we recommend at least 50 characters.
               </p>
             )}
         </div>
@@ -2107,9 +2107,9 @@ function Step3BusinessDetails({
           <option value="3">3 years</option>
           <option value="4">4 years</option>
           <option value="5">5 years</option>
-          <option value="6">6â€“10 years</option>
-          <option value="11">11â€“15 years</option>
-          <option value="16">16â€“20 years</option>
+          <option value="6">6–10 years</option>
+          <option value="11">11–15 years</option>
+          <option value="16">16–20 years</option>
           <option value="21">20+ years</option>
         </select>
       </section>
@@ -2121,7 +2121,7 @@ function Step3BusinessDetails({
         </Label>
         <p className={helper}>
           Select or type every language you&apos;re comfortable using with clients. At least one
-          language is requiredâ€”we default to English until you add more.
+          language is required—we default to English until you add more.
         </p>
         <div className="mt-2">
           <ChipCombobox
@@ -2136,7 +2136,7 @@ function Step3BusinessDetails({
         </div>
       </section>
 
-      {/* Website â€” collapsible */}
+      {/* Website — collapsible */}
       <section className={`${fieldShell} overflow-hidden`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -2144,7 +2144,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">Website URL</p>
               <p className={`${helperMuted} mt-0.5`}>
-                Optional â€” helps customers learn more and can help discovery.
+                Optional — helps customers learn more and can help discovery.
               </p>
             </div>
           </div>
@@ -2188,7 +2188,7 @@ function Step3BusinessDetails({
         ) : null}
       </section>
 
-      {/* Social â€” collapsible */}
+      {/* Social — collapsible */}
       <section className={`${fieldShell} overflow-hidden`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -2196,7 +2196,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">Social media links</p>
               <p className={`${helperMuted} mt-0.5`}>
-                Optional but recommended â€” helps clients find and follow you.
+                Optional but recommended — helps clients find and follow you.
               </p>
             </div>
           </div>
@@ -2946,7 +2946,7 @@ function Step7Location({
                 <p className={`${helperMuted} text-sm`}>
                   <span className="font-semibold text-slate-800">House calls or no shop yet?</span>{" "}
                   Use the address you travel from (e.g. home). Pick a Mapbox suggestion or drop a
-                  pin so we capture coordinates for zones and feesâ€”you can add a public salon
+                  pin so we capture coordinates for zones and fees—you can add a public salon
                   listing later.
                 </p>
               </div>
@@ -3008,7 +3008,7 @@ function Step7Location({
           <p
             className={`${helperMuted} mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-amber-950`}
           >
-            No GPS yet â€” select a suggestion or use{" "}
+            No GPS yet — select a suggestion or use{" "}
             <strong className="font-semibold">Drop pin on map</strong> so the next step can suggest
             service zones.
           </p>
@@ -3028,7 +3028,7 @@ function Step7Location({
         <Label htmlFor="address_line2" className="text-sm font-semibold text-slate-900">
           Apartment, suite, etc. <span className="text-slate-400 font-normal">(Optional)</span>
         </Label>
-        <p className={helperMuted}>Unit or floor â€” helps couriers and clients find you.</p>
+        <p className={helperMuted}>Unit or floor — helps couriers and clients find you.</p>
         <Input
           id="address_line2"
           value={data.address?.line2 || ""}
@@ -3066,7 +3066,7 @@ function Step7Location({
         />
         {data.address?.city ? (
           <p className="text-sm font-medium text-emerald-800">
-            Filled from Mapbox â€” you can edit if needed.
+            Filled from Mapbox — you can edit if needed.
           </p>
         ) : null}
       </section>
@@ -3117,13 +3117,13 @@ function Step7Location({
           Country <span className="text-primary">*</span>
         </Label>
         <p className={helperMuted}>
-          Used to bias search results â€” change before typing if you operate outside South Africa.
+          Used to bias search results — change before typing if you operate outside South Africa.
         </p>
         {isLoadingCountries ? (
           <div
             className={cn(fieldClass, "flex items-center justify-center border border-slate-200")}
           >
-            <p className="text-sm text-slate-600">Loading countriesâ€¦</p>
+            <p className="text-sm text-slate-600">Loading countries…</p>
           </div>
         ) : (
           <select
@@ -3234,7 +3234,7 @@ function Step9ServiceZones({
         <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50/50 px-8 py-10 text-center shadow-sm">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
           <p className="text-sm font-medium text-slate-800">
-            Finding service zones for your locationâ€¦
+            Finding service zones for your location…
           </p>
         </div>
       </div>
@@ -3354,7 +3354,7 @@ function Step9ServiceZones({
             <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
               <p className="text-sm font-medium text-slate-900">
                 <span className="text-primary">{selectedZoneIds.length}</span> zone
-                {selectedZoneIds.length !== 1 ? "s" : ""} selected â€” set travel fees anytime after
+                {selectedZoneIds.length !== 1 ? "s" : ""} selected — set travel fees anytime after
                 signup.
               </p>
             </div>
@@ -3450,7 +3450,7 @@ function Step10GlobalCategories({
       <div className="flex items-center justify-center py-14">
         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-8 py-10 text-center shadow-sm sm:rounded-3xl">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm font-medium text-slate-800">Loading categoriesâ€¦</p>
+          <p className="text-sm font-medium text-slate-800">Loading categories…</p>
         </div>
       </div>
     );
@@ -3651,7 +3651,7 @@ function Step11ServiceCatalog({
                     </span>
                     <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                       {service.supports_at_salon && "At Salon"}
-                      {service.supports_at_salon && service.supports_at_home && " â€¢ "}
+                      {service.supports_at_salon && service.supports_at_home && " • "}
                       {service.supports_at_home && "At Home"}
                     </span>
                   </div>
@@ -4211,7 +4211,7 @@ function Step12Hours({
           {isFreelancer ? (
             <span>
               <strong className="text-emerald-900">Freelancer hours:</strong> We started you on
-              broad weekday hours (8:00â€“20:00); tweak them to match how you actually work. You can
+              broad weekday hours (8:00–20:00); tweak them to match how you actually work. You can
               change this anytime in Settings.
             </span>
           ) : (
@@ -4383,7 +4383,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
               <div key={index} className="border-b border-slate-200 pb-4 last:border-0 last:pb-0">
                 <div className="text-sm">
                   <div className="mb-1 font-medium text-slate-900">
-                    {service.title} â€” {service.duration_minutes} min â€” {service.currency}{" "}
+                    {service.title} — {service.duration_minutes} min — {service.currency}{" "}
                     {service.price}
                   </div>
                   {service.description && (
@@ -4397,7 +4397,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                     <div className="mt-2 space-y-1 border-l-2 border-slate-200 pl-4">
                       {service.addons.map((addon, addonIndex) => (
                         <div key={addonIndex} className="text-xs text-slate-700">
-                          + {addon.name} â€” {addon.currency} {addon.price}
+                          + {addon.name} — {addon.currency} {addon.price}
                           {addon.duration_minutes &&
                             addon.duration_minutes > 0 &&
                             ` (+${addon.duration_minutes} min)`}
@@ -4433,7 +4433,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                 >
                   <span className="capitalize font-semibold text-slate-900">{day}</span>
                   <span className="text-slate-700">
-                    {hours.closed ? "Closed" : `${hours.open} â€“ ${hours.close}`}
+                    {hours.closed ? "Closed" : `${hours.open} – ${hours.close}`}
                   </span>
                 </div>
               ))}
@@ -4525,7 +4525,7 @@ function Step14PlanSelection({
       <div className="flex items-center justify-center py-14">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/90 px-6 py-5 shadow-sm sm:rounded-3xl">
           <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
-          <span className="text-sm font-medium text-slate-800">Loading plansâ€¦</span>
+          <span className="text-sm font-medium text-slate-800">Loading plans…</span>
         </div>
       </div>
     );
@@ -4678,7 +4678,7 @@ function Step14PlanSelection({
           >
             <strong>{selectedIsFree ? "Free plan selected." : "Paid plan selected."}</strong>{" "}
             {selectedIsFree
-              ? "After you submit, you'll be on this plan immediately â€” no payment needed."
+              ? "After you submit, you'll be on this plan immediately — no payment needed."
               : "After you submit, you'll be taken to a secure Paystack page to complete payment."}
           </AlertDescription>
         </Alert>

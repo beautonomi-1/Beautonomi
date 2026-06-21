@@ -36,28 +36,19 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status") || "all"; // 'all', 'pending_response', 'responded'
-    const locationId = searchParams.get("location_id");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50"); // Increased default limit
     const offset = (page - 1) * limit;
 
-    // When location_id is set, restrict to reviews for bookings at that location
-    let bookingIdsAtLocation: string[] | null = null;
-    if (locationId) {
-      const { data: locBookings, error: locErr } = await supabaseAdmin
-        .from("bookings")
-        .select("id")
-        .eq("provider_id", providerId)
-        .eq("location_id", locationId);
-      if (locErr) throw locErr;
-      bookingIdsAtLocation = locBookings?.map((b) => b.id) ?? [];
-      if (bookingIdsAtLocation.length === 0) {
-        return successResponse({
-          reviews: [],
-          pagination: { page, limit, total: 0, totalPages: 0 },
-        });
-      }
-    }
+    // Reviews are intentionally business-wide and are NOT scoped to a branch.
+    // A review attaches to a booking, but `bookings.location_id` is frequently
+    // null (legacy bookings, freelancer/mobile bookings, accounts created before
+    // multi-location tracking). Filtering by `location_id` therefore silently
+    // dropped legitimate reviews and produced an empty list even though the
+    // business-wide rating aggregate (`providers.review_count`) still counted
+    // them. The web portal and customer-facing profile have always shown reviews
+    // business-wide, so we deliberately ignore any `location_id` param here to
+    // keep every surface consistent and avoid that empty-list trap.
 
     // Build base query with count
     let query = supabaseAdmin
@@ -77,10 +68,6 @@ export async function GET(request: NextRequest) {
       `, { count: "exact" })
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
-
-    if (bookingIdsAtLocation && bookingIdsAtLocation.length > 0) {
-      query = query.in("booking_id", bookingIdsAtLocation);
-    }
 
     // Filter by response status
     if (status === 'pending_response') {

@@ -32,7 +32,7 @@ Use this after the JS-layer reliability fixes ship. Items marked **(you)** requi
 - [ ] After login + permission grant, `POST /api/me/devices` (customer) or `POST /api/provider/devices` (provider) creates/updates a row in `user_devices`.
 - [ ] OneSignal dashboard shows **External User Id** = Supabase user id (`OneSignal.login(userId)`).
 - [ ] Send test push from OneSignal using **External User Id** alias targeting.
-- [ ] Silent `badge_sync` pushes update iOS badge after mark-read (check `sync-push-badge-count.ts`).
+- [ ] Silent `badge_sync` pushes update iOS badge after mark-read (check `sync-push-badge-count.ts`). Server omits OneSignal `contents`/`headings` so no empty banner appears; client suppresses any in-flight legacy badge_sync in `foregroundWillDisplay`; redundant sends are deduped via `user_badge_sync_state`; sends respect the user's push opt-out (customer `users.push_notifications_enabled`, provider per-section prefs) so a user who disabled push gets no silent pushes either.
 
 ## Android launcher badges (expectation)
 
@@ -44,5 +44,9 @@ Use this after the JS-layer reliability fixes ship. Items marked **(you)** requi
 1. Fresh install → complete permission onboarding → grant notifications.
 2. Confirm device row in DB / OneSignal subscribed.
 3. Send test push → notification appears (foreground + background).
-4. Tap push → correct screen opens.
+4. Tap push → correct screen opens (cold start + background). Do **not** re-add `com.onesignal.NotificationOpened.DEFAULT=DISABLE` — it blocks the app from opening on Android; native pushes use in-app routing via `data` (no top-level OneSignal `url`).
 5. Read a message → in-app badge decrements; iOS app icon badge resyncs on foreground.
+
+## Android keyboard (edge-to-edge)
+
+- [ ] Chat, forms, and settings screens keep inputs above the keyboard on Android 15+ (uses `react-native-keyboard-controller` + root `KeyboardProvider`).

@@ -21,6 +21,60 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
+import { useMarketingCredits } from "@/lib/marketing/useMarketingCredits";
+import { MarketingCreditsCard } from "@/components/marketing/MarketingCreditsCard";
+import {
+  AudienceSelector,
+  type RecipientType,
+  type SegmentCriteria,
+  type AudienceValue,
+} from "@/components/marketing/AudienceSelector";
+import {
+  CAMPAIGN_MERGE_TAGS,
+  MERGE_TAG_PREVIEW_SAMPLE,
+  substituteMergeTags,
+} from "@/lib/marketing/campaign-merge-tags";
+
+interface CampaignForm {
+  name: string;
+  type: "email" | "sms" | "whatsapp";
+  subject: string;
+  content: string;
+  /** Optional ISO-8601 datetime string — saves as a scheduled draft. */
+  scheduledAt: string;
+  recipientType: RecipientType;
+  segmentCriteria: SegmentCriteria;
+  recipientIds: string[];
+}
+
+function emptyCampaignForm(): CampaignForm {
+  return {
+    name: "",
+    type: "email",
+    subject: "",
+    content: "",
+    scheduledAt: "",
+    recipientType: "all_clients",
+    segmentCriteria: {},
+    recipientIds: [],
+  };
+}
+
+interface CampaignCostEstimate {
+  estimated_cost_zar: number;
+  current_balance_zar: number;
+  unit_cost_zar: number;
+  recipients: number;
+  sufficient: boolean;
+  debited_on_platform_path: boolean;
+}
+
+const TOPUP_PRESETS_ZAR = [50, 100, 200, 500];
+
+function formatZar(value: number | null | undefined): string {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return `R${n.toFixed(2)}`;
+}
 
 interface Campaign {
   id: string;
@@ -101,25 +155,40 @@ export function MarketingCampaignsContent() {
   const [creating, setCreating] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    type: "email" as "email" | "sms" | "whatsapp",
-    subject: "",
-    content: "",
-    /** Optional ISO-8601 datetime string (e.g. 2026-05-01T09:00:00) — saves as scheduled draft */
-    scheduledAt: "",
-  });
+  const [form, setForm] = useState<CampaignForm>(emptyCampaignForm);
+  const [showPreview, setShowPreview] = useState(false);
+  const [testRecipient, setTestRecipient] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("100");
+  const credits = useMarketingCredits();
   const { data, loading, error, refresh } = useApi<CampaignsListPayload | Record<string, unknown>>(
     "/api/provider/campaigns?limit=50"
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), credits.refresh()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refresh, credits]);
+
+  const submitTopUp = useCallback(async () => {
+    const amount = Number(topUpAmount);
+    if (!Number.isFinite(amount) || amount < 10) {
+      Alert.alert("Invalid amount", "Enter an amount of at least R10.");
+      return;
+    }
+    const result = await credits.topUp(amount);
+    if (result.ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTopUpOpen(false);
+      Alert.alert("Credits added", "Your marketing credit balance has been topped up.");
+    } else if (!result.cancelled) {
+      Alert.alert("Top-up not completed", result.message ?? "Please try again.");
+    }
+  }, [topUpAmount, credits]);
 
   const { items: campaigns, total } = normalizeCampaignsList(data);
 
@@ -130,6 +199,10 @@ export function MarketingCampaignsContent() {
     }
     if (form.type === "email" && !form.subject.trim()) {
       Alert.alert("Missing subject", "Email campaigns require a subject.");
+      return;
+    }
+    if (form.recipientType === "custom" && form.recipientIds.length === 0) {
+      Alert.alert("No recipients", "Pick at least one client, or choose a different audience.");
       return;
     }
     let scheduled_at: string | undefined;
@@ -149,7 +222,9 @@ export function MarketingCampaignsContent() {
         type: form.type,
         subject: form.type === "email" ? form.subject.trim() : undefined,
         content: form.content.trim(),
-        recipient_type: "all_clients",
+        recipient_type: form.recipientType,
+        ...(form.recipientType === "segment" ? { segment_criteria: form.segmentCriteria } : {}),
+        ...(form.recipientType === "custom" ? { recipient_ids: form.recipientIds } : {}),
         ...(scheduled_at ? { scheduled_at } : {}),
       });
       if (res.error || !res.data || typeof res.data !== "object" || !("id" in res.data)) {
@@ -158,7 +233,8 @@ export function MarketingCampaignsContent() {
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCreateOpen(false);
-      setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
+      setShowPreview(false);
+      setForm(emptyCampaignForm());
       refresh();
     } catch (e: unknown) {
       Alert.alert("Could not create campaign", getApiErrorMessage(e, "Try again."));
@@ -167,9 +243,45 @@ export function MarketingCampaignsContent() {
     }
   }, [form, refresh]);
 
+  const sendTest = useCallback(async () => {
+    const to = testRecipient.trim();
+    if (!to) {
+      Alert.alert("Add a test recipient", form.type === "email" ? "Enter an email address to send the test to." : "Enter a phone number to send the test to.");
+      return;
+    }
+    if (!form.content.trim()) {
+      Alert.alert("Nothing to send", "Add some message content first.");
+      return;
+    }
+    setSendingTest(true);
+    try {
+      const res = await api.post<{ sent?: boolean; message?: string }>(
+        "/api/provider/campaigns/test-send",
+        {
+          type: form.type,
+          subject: form.type === "email" ? form.subject.trim() || "Test message" : undefined,
+          content: form.content.trim(),
+          to,
+        },
+      );
+      if (res.error) {
+        Alert.alert("Test not sent", getApiErrorMessage(res.error, "Try again."));
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Test sent", `We sent a sample ${form.type.toUpperCase()} to ${to}.`);
+      void credits.refresh();
+    } catch (e: unknown) {
+      Alert.alert("Test not sent", getApiErrorMessage(e, "Try again."));
+    } finally {
+      setSendingTest(false);
+    }
+  }, [testRecipient, form, credits]);
+
   const openEditCampaign = useCallback((campaign: Campaign) => {
     setEditingCampaignId(campaign.id);
     setForm({
+      ...emptyCampaignForm(),
       name: campaign.name,
       type: (campaign.type as "email" | "sms" | "whatsapp") || "email",
       subject: campaign.subject ?? "",
@@ -252,22 +364,81 @@ export function MarketingCampaignsContent() {
     [refresh],
   );
 
-  const sendCampaign = useCallback(async (id: string) => {
+  const performSend = useCallback(async (id: string) => {
     setSendingId(id);
     try {
-      const res = await api.post<{ message?: string; sent_count?: number }>(`/api/provider/campaigns/${id}/send`, {});
+      const res = await api.post<{ message?: string; sent_count?: number; failed_count?: number }>(`/api/provider/campaigns/${id}/send`, {});
       if (res.error) {
         Alert.alert("Could not send campaign", getApiErrorMessage(res.error, "Try again."));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      const sent = res.data?.sent_count ?? 0;
+      const failed = res.data?.failed_count ?? 0;
+      Alert.alert(
+        "Campaign sent",
+        failed > 0
+          ? `Delivered to ${sent} recipient${sent !== 1 ? "s" : ""}. ${failed} couldn't be delivered.`
+          : `Delivered to ${sent} recipient${sent !== 1 ? "s" : ""}.`,
+      );
+      await Promise.all([refresh(), credits.refresh()]);
     } catch (e: unknown) {
       Alert.alert("Could not send campaign", getApiErrorMessage(e, "Try again."));
     } finally {
       setSendingId(null);
     }
-  }, [refresh]);
+  }, [refresh, credits]);
+
+  // Gate sending behind a cost-aware confirmation. On the platform sending path
+  // this shows the estimated credit cost and blocks (offering a top-up) when the
+  // balance is short — matching the web portal and preventing partial sends.
+  const confirmSend = useCallback(async (campaign: Campaign) => {
+    const recipients = campaign.total_recipients ?? 0;
+    const channelLabel = String(campaign.type || "").toUpperCase();
+    const plural = recipients !== 1 ? "s" : "";
+
+    let est: CampaignCostEstimate | null = null;
+    try {
+      const res = await api.get<CampaignCostEstimate>(
+        `/api/provider/marketing/credits/estimate?channel=${encodeURIComponent(campaign.type)}&recipients=${Math.max(recipients, 1)}`,
+      );
+      if (!res.error && res.data) est = res.data;
+    } catch {
+      // Estimate is best-effort; fall back to a plain confirmation below.
+    }
+
+    if (est && est.debited_on_platform_path && est.estimated_cost_zar > 0) {
+      if (!est.sufficient) {
+        Alert.alert(
+          "Not enough marketing credit",
+          `This ${channelLabel} campaign to ${recipients} recipient${plural} costs about ${formatZar(est.estimated_cost_zar)}, but your balance is ${formatZar(est.current_balance_zar)}.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Top up", onPress: () => { setTopUpOpen(true); } },
+          ],
+        );
+        return;
+      }
+      Alert.alert(
+        "Send campaign?",
+        `Send this ${channelLabel} campaign to ${recipients} recipient${plural} for about ${formatZar(est.estimated_cost_zar)} in marketing credit?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Send", onPress: () => { void performSend(campaign.id); } },
+        ],
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Send campaign?",
+      `Send this ${channelLabel} campaign to ${recipients} recipient${plural} now?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Send", onPress: () => { void performSend(campaign.id); } },
+      ],
+    );
+  }, [performSend]);
 
   if (loading && !data) {
     return (
@@ -293,10 +464,19 @@ export function MarketingCampaignsContent() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <MarketingCreditsCard
+          status={credits.status}
+          ledger={credits.ledger}
+          loading={credits.loading}
+          creditsApply={credits.creditsApply}
+          onTopUp={() => setTopUpOpen(true)}
+        />
         <View style={twStyle("mb-3 flex-row items-center justify-end")}>
           <TouchableOpacity
             onPress={() => {
-              setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
+              setForm(emptyCampaignForm());
+              setShowPreview(false);
+              setTestRecipient("");
               setCreateOpen(true);
             }}
             style={twStyle("flex-row items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2")}
@@ -313,7 +493,7 @@ export function MarketingCampaignsContent() {
             </View>
             <Text style={twStyle("text-center font-semibold text-gray-900")}>No campaigns yet</Text>
             <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
-              Create email, SMS or WhatsApp campaigns to reach your clients. Use Marketing and Ads tools in-app to manage audience reach and scheduling.
+              Create email, SMS or WhatsApp campaigns to reach all your clients. You&apos;ll see the estimated credit cost before each campaign sends.
             </Text>
           </View>
         ) : (
@@ -384,7 +564,7 @@ export function MarketingCampaignsContent() {
                 ) : null}
                 {canSendNow ? (
                   <TouchableOpacity
-                    onPress={() => sendCampaign(c.id)}
+                    onPress={() => confirmSend(c)}
                     disabled={sendingId === c.id}
                     style={twStyle("ml-2 rounded-full bg-indigo-600 px-3 py-1.5")}
                   >
@@ -454,7 +634,98 @@ export function MarketingCampaignsContent() {
                 textAlignVertical="top"
                 style={twStyle("min-h-[110px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
+              <View style={twStyle("mt-2 flex-row flex-wrap gap-2")}>
+                {CAMPAIGN_MERGE_TAGS.map((t) => (
+                  <TouchableOpacity
+                    key={t.tag}
+                    onPress={() => setForm((p) => ({ ...p, content: `${p.content}${t.tag}` }))}
+                    style={twStyle("rounded-full border border-gray-200 bg-gray-50 px-3 py-1")}
+                  >
+                    <Text style={twStyle("text-xs font-medium text-gray-600")}>+ {t.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                Tap a tag to personalise. We swap them per recipient on send.
+              </Text>
             </View>
+
+            <AudienceSelector
+              value={{
+                recipientType: form.recipientType,
+                segmentCriteria: form.segmentCriteria,
+                recipientIds: form.recipientIds,
+              }}
+              onChange={(next: AudienceValue) =>
+                setForm((p) => ({
+                  ...p,
+                  recipientType: next.recipientType,
+                  segmentCriteria: next.segmentCriteria,
+                  recipientIds: next.recipientIds,
+                }))
+              }
+            />
+
+            <View>
+              <TouchableOpacity
+                onPress={() => setShowPreview((v) => !v)}
+                style={twStyle("flex-row items-center")}
+              >
+                <Ionicons
+                  name={showPreview ? "eye-off-outline" : "eye-outline"}
+                  size={16}
+                  color="#4338ca"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={twStyle("text-sm font-semibold text-indigo-800")}>
+                  {showPreview ? "Hide preview" : "Preview message"}
+                </Text>
+              </TouchableOpacity>
+              {showPreview ? (
+                <View style={twStyle("mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+                  {form.type === "email" ? (
+                    <Text style={twStyle("mb-1 text-sm font-semibold text-gray-900")}>
+                      {substituteMergeTags(form.subject || "Email subject", MERGE_TAG_PREVIEW_SAMPLE)}
+                    </Text>
+                  ) : null}
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {substituteMergeTags(form.content || "Your message preview appears here…", MERGE_TAG_PREVIEW_SAMPLE)}
+                  </Text>
+                  <Text style={twStyle("mt-2 text-[11px] text-gray-400")}>
+                    Sample shown for {MERGE_TAG_PREVIEW_SAMPLE.customer_name}.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Send a test</Text>
+              <View style={twStyle("flex-row items-center gap-2")}>
+                <TextInput
+                  value={testRecipient}
+                  onChangeText={setTestRecipient}
+                  placeholder={form.type === "email" ? "you@example.com" : "+27 82 000 0000"}
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType={form.type === "email" ? "email-address" : "phone-pad"}
+                  style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                />
+                <TouchableOpacity
+                  onPress={sendTest}
+                  disabled={sendingTest}
+                  style={twStyle(`rounded-xl px-4 py-3 ${sendingTest ? "bg-indigo-300" : "bg-indigo-600"}`)}
+                >
+                  <Text style={twStyle("text-sm font-semibold text-white")}>
+                    {sendingTest ? "Sending…" : "Test"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                Sends one real message so you can check formatting{credits.creditsApply ? " (uses 1 credit)" : ""}.
+              </Text>
+            </View>
+
             <View>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Schedule send (optional)</Text>
               <TextInput
@@ -491,7 +762,7 @@ export function MarketingCampaignsContent() {
             if (savingEdit) return;
             setEditOpen(false);
             setEditingCampaignId(null);
-            setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
+            setForm(emptyCampaignForm());
           }}
           title="Edit campaign"
           subtitle="Draft and scheduled campaigns can be updated before sending"
@@ -530,6 +801,53 @@ export function MarketingCampaignsContent() {
               onPress={saveCampaignEdit}
               loading={savingEdit}
               disabled={savingEdit}
+              fullWidth
+            />
+          </View>
+        </BottomSheet>
+        <BottomSheet
+          visible={topUpOpen}
+          onClose={() => !credits.toppingUp && setTopUpOpen(false)}
+          title="Top up marketing credit"
+          subtitle="Prepaid credit funds email, SMS and WhatsApp campaigns sent via Beautonomi."
+        >
+          <View style={twStyle("gap-4 pb-6")}>
+            <View>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Choose an amount</Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {TOPUP_PRESETS_ZAR.map((preset) => {
+                  const active = topUpAmount === String(preset);
+                  return (
+                    <TouchableOpacity
+                      key={preset}
+                      onPress={() => setTopUpAmount(String(preset))}
+                      style={twStyle(`rounded-xl px-4 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`)}
+                    >
+                      <Text style={twStyle(`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`)}>
+                        {formatZar(preset)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <View>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Or enter an amount (ZAR)</Text>
+              <TextInput
+                value={topUpAmount}
+                onChangeText={(t) => setTopUpAmount(t.replace(/[^0-9.]/g, ""))}
+                keyboardType="decimal-pad"
+                placeholder="100"
+                placeholderTextColor="#9ca3af"
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              />
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>Minimum R10. Paid securely via Paystack.</Text>
+            </View>
+            <ActionButton
+              label={credits.toppingUp ? "Opening payment…" : `Top up ${formatZar(Number(topUpAmount) || 0)}`}
+              onPress={submitTopUp}
+              loading={credits.toppingUp}
+              disabled={credits.toppingUp || !(Number(topUpAmount) >= 10)}
               fullWidth
             />
           </View>

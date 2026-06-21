@@ -2,20 +2,8 @@
  * Business details – name, description, contact, logo. Uses GET/PATCH /api/provider/settings/business.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Alert,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  Pressable,
-  FlatList,
-} from "react-native";
+import { View, Text, TextInput, ScrollView, Alert, TouchableOpacity, ActivityIndicator, Platform, Modal, Pressable, FlatList } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";

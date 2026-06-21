@@ -136,6 +136,8 @@ export const adminQueryKeys = {
     all: () => [...adminQueryKeys.root, "knowledge-base"] as const,
     browse: () => [...adminQueryKeys.root, "knowledge-base", "browse"] as const,
     article: (slug: string) => [...adminQueryKeys.root, "knowledge-base", "article", slug] as const,
+    readerModal: (slug: string, isInternal: boolean) =>
+      [...adminQueryKeys.root, "knowledge-base", "reader-modal", slug, isInternal ? "internal" : "public"] as const,
     search: (signature: string) => [...adminQueryKeys.root, "knowledge-base", "search", signature] as const,
   },
 

@@ -36,7 +36,7 @@ const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: strin
   provider_new_message: {
     title: "New message",
     body: "{{sender_name}}: {{message_preview}}",
-    url: "/provider/messaging",
+    url: "/provider/messaging?conversation={{conversation_id}}",
   },
   new_message: {
     title: "New message",

@@ -1,19 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Linking,
-  Modal,
-  Pressable,
-  FlatList,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, Linking, Modal, Pressable, FlatList } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";

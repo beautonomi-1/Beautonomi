@@ -1112,11 +1112,21 @@ export class ProviderApiClient implements ProviderApi {
         scheduled_time: wallClock.scheduled_time,
         duration_minutes: data.duration_minutes || firstService.duration_minutes || 60,
         price: data.price || booking.total_amount || 0,
-        status: DEFAULT_APPOINTMENT_STATUS,
+        status: booking.status ?? DEFAULT_APPOINTMENT_STATUS,
         created_by: "current_user",
         created_date: booking.created_at || new Date().toISOString(),
         notes: data.notes,
       };
+
+      if (Array.isArray(booking._warnings) && booking._warnings.length > 0) {
+        (newAppointment as Appointment & { _warnings?: string[] })._warnings = booking._warnings;
+      }
+      if (booking.booking_number) {
+        (newAppointment as Appointment & { booking_number?: string }).booking_number = booking.booking_number;
+      }
+      if (booking.payment_status) {
+        (newAppointment as Appointment & { payment_status?: string }).payment_status = booking.payment_status;
+      }
 
       console.log("Transformed appointment:", newAppointment);
       return newAppointment;

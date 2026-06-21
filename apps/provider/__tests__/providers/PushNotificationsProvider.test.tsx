@@ -50,6 +50,14 @@ jest.mock("@/lib/resolveProviderNotificationRoute", () => ({
   PROVIDER_BOOKING_TEMPLATE_KEYS: new Set<string>(),
 }));
 
+/** Mirrors PushNotificationsProvider.isBadgeSyncPushData */
+function isBadgeSyncPushData(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (d.type === "badge_sync") return true;
+  return d.silent === true && typeof d.unread_count === "number";
+}
+
 jest.mock("@/lib/onesignal-client", () => ({
   clearPendingPushNotification: jest.fn(),
   clearRegisteredPlayerId: jest.fn(),
@@ -94,5 +102,11 @@ describe("PushNotificationsProvider", () => {
     });
 
     await waitFor(() => expect(screen.getByText("app shell")).toBeTruthy());
+  });
+
+  it("isBadgeSyncPushData suppresses legacy silent badge payloads", () => {
+    expect(isBadgeSyncPushData({ type: "badge_sync", silent: true, unread_count: 0 })).toBe(true);
+    expect(isBadgeSyncPushData({ silent: true, unread_count: 2 })).toBe(true);
+    expect(isBadgeSyncPushData({ type: "booking_confirmed" })).toBe(false);
   });
 });

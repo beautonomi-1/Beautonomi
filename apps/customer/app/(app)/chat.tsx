@@ -1,21 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
-import {
-  View,
-  Text,
-  FlatList,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  Alert,
-  Modal,
-  Pressable,
-  Linking,
-  InteractionManager,
-} from "react-native";
+import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Keyboard, Platform, Alert, Modal, Pressable, Linking, InteractionManager } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -1275,12 +1261,13 @@ export default function ChatScreen() {
       />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
-        // Android runs edge-to-edge with `softwareKeyboardLayoutMode: "resize"`
-        // (adjustResize), so the window already shrinks for the keyboard —
-        // letting KeyboardAvoidingView ALSO compensate ("height"/"padding")
-        // double-counts and pushes the input bar away from the keyboard. Leave
-        // it to the OS on Android; iOS doesn't resize, so keep padding + offset.
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        // Android 15+ (targetSdk 35) forces edge-to-edge, which disables the
+        // legacy `adjustResize` window-resize the chat used to rely on — so the
+        // OS no longer lifts content and the keyboard covers the input bar. Drive
+        // the layout ourselves with `behavior="padding"` on both platforms; the
+        // input bar's bottom inset is 0 under the open keyboard, so this doesn't
+        // double-count. iOS keeps a header-height offset; Android needs none.
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
         {loading ? (

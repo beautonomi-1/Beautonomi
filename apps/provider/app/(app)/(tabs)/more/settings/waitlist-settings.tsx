@@ -3,17 +3,8 @@
  * GET/PATCH /api/provider/settings/waitlist
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  Switch,
-  TextInput,
-  Alert,
-  RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, Text, ScrollView, Switch, TextInput, Alert, RefreshControl, Platform } from "react-native";
+import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";

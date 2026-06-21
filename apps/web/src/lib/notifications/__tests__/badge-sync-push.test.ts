@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   getSupabaseAdminMock: vi.fn(),
+  badgeStateUpserts: [] as Array<{ user_id: string; app_type: string; last_count: number }>,
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -39,6 +40,19 @@ function mockAdminNoDevices() {
       };
     }
     if (table === "notification_logs") return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    if (table === "user_badge_sync_state") {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ maybeSingle: async () => ({ data: null, error: null }) }),
+          }),
+        }),
+        upsert: async (row: { user_id: string; app_type: string; last_count: number }) => {
+          hoisted.badgeStateUpserts.push(row);
+          return { error: null };
+        },
+      };
+    }
     throw new Error("unexpected table " + table);
   });
   return { from };
@@ -66,6 +80,7 @@ describe("badge sync push", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     hoisted.getSupabaseAdminMock.mockReset();
+    hoisted.badgeStateUpserts.length = 0;
   });
 
   it("isBadgeSyncPayload detects badge_sync rows", async () => {
@@ -107,8 +122,36 @@ describe("badge sync push", () => {
     expect(body.content_available).toBe(true);
     expect(body.ios_interruption_level).toBe("passive");
     expect(body.ios_sound).toBeUndefined();
+    expect(body.headings).toBeUndefined();
+    expect(body.contents).toBeUndefined();
+    expect(body.subtitle).toBeUndefined();
     expect(body.include_aliases).toEqual({
       external_id: ["dddddddd-dddd-dddd-dddd-dddddddddddd"],
     });
+  });
+
+  it("regular SetTo send records badge state so a later badge_sync isn't wrongly skipped", async () => {
+    hoisted.getSupabaseAdminMock.mockReturnValue(mockAdminNoDevices());
+
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    await sendToUser(
+      "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      {
+        title: "New message",
+        message: "You have a new message",
+        type: "message_received",
+        ios_badgeCount: 1,
+      },
+      ["push"],
+      { appType: "customer", skipMustDeliverRetryEnqueue: true },
+    );
+
+    expect(hoisted.badgeStateUpserts).toContainEqual(
+      expect.objectContaining({
+        user_id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        app_type: "customer",
+        last_count: 1,
+      }),
+    );
   });
 });

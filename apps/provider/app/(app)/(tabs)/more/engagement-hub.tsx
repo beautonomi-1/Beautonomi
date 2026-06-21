@@ -3,7 +3,6 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
-import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -35,11 +34,10 @@ function formatDateSafe(value: unknown): string {
 
 export default function EngagementHubScreen() {
   const router = useRouter();
-  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const reviewsUrl = selectedLocationId
-    ? `/api/provider/reviews?limit=50&location_id=${encodeURIComponent(selectedLocationId)}`
-    : "/api/provider/reviews?limit=50";
+  // Business-wide reviews (not branch-scoped) to match the full reviews screen
+  // and the business-wide rating aggregate shown across the app.
+  const reviewsUrl = "/api/provider/reviews?limit=50";
   const { data, loading, error, refresh } = useApi<ReviewsResponse>(reviewsUrl, { staleTimeMs: 0 });
   const engagementHubInitialFocusRef = useRef(true);
 

@@ -1,4 +1,23 @@
 import React from "react";
+import { LearnHeroGif, LearnHeroImage, LearnHeroVideo } from "./learn-hero-image";
+
+/** Seeded placeholder paths — not real hero images; keep in sync with migration 708. */
+export const PLACEHOLDER_IMAGE_PATHS = ["/images/learn/feature-browser-placeholder.svg"] as const;
+
+export function isRealImage(url?: string | null): boolean {
+  const trimmed = url?.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  if (PLACEHOLDER_IMAGE_PATHS.some((path) => lower === path || lower.endsWith(path))) {
+    return false;
+  }
+  if (lower.includes("feature-browser-placeholder") || lower.includes("placeholder")) {
+    return false;
+  }
+
+  return true;
+}
 
 function parseYouTubeId(raw: string): string | null {
   try {
@@ -90,27 +109,10 @@ export function LearnArticleHero(props: {
 
     const direct = isDirectMedia(videoRaw);
     if (direct === "gif") {
-      return (
-        <div className="relative w-full overflow-hidden rounded-xl bg-zinc-100 border border-zinc-200/80 shadow-sm">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={videoRaw} alt="" className="w-full h-auto max-h-[min(70vh,420px)] object-contain mx-auto" />
-        </div>
-      );
+      return <LearnHeroGif src={videoRaw} />;
     }
     if (direct === "video") {
-      return (
-        <div className="relative w-full overflow-hidden rounded-xl bg-black border border-zinc-200/80 shadow-sm">
-          <video
-            className="w-full max-h-[min(70vh,420px)] object-contain"
-            controls
-            playsInline
-            preload="metadata"
-          >
-            <source src={videoRaw} />
-            Your browser does not support embedded video.
-          </video>
-        </div>
-      );
+      return <LearnHeroVideo src={videoRaw} />;
     }
 
     return (
@@ -133,13 +135,8 @@ export function LearnArticleHero(props: {
     );
   }
 
-  if (imgRaw) {
-    return (
-      <div className="relative w-full overflow-hidden rounded-xl bg-zinc-100 aspect-[16/10] max-h-[min(55vh,320px)] border border-zinc-200/80 shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imgRaw} alt="" className="h-full w-full object-cover object-top" />
-      </div>
-    );
+  if (imgRaw && isRealImage(imgRaw)) {
+    return <LearnHeroImage src={imgRaw} />;
   }
 
   return null;
