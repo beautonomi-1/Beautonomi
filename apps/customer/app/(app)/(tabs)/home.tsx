@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { haptic } from "@/lib/haptics";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotifications } from "@/providers/NotificationsContext";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -408,9 +408,10 @@ export default function HomeScreen() {
   }, []);
   const { user } = useAuth();
   const { totalUnread } = useNotifications();
-  const { coords, loading: locationLoading } = useLocation();
-  const { selectedAddress, setSelectedAddress } = useSelectedAddress();
+  const { selectedAddress, setSelectedAddress, isLoading: selectedAddressLoading } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
+  const shouldUseGps = !selectedAddressLoading && !hasValidServiceCoordinates(selectedAddress);
+  const { coords, loading: locationLoading } = useLocation({ enabled: shouldUseGps });
   const { width: windowWidth, cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const [activeCategory, setActiveCategory] = useState("All");
@@ -551,7 +552,7 @@ export default function HomeScreen() {
 
   const addressLabel =
     selectedAddress?.displayName ??
-    (locationLoading ? "Detecting location…" : coords ? "Current location" : "Select address");
+    (shouldUseGps && locationLoading ? "Detecting location…" : coords ? "Current location" : "Select address");
 
   if (loading && !data) {
     return (

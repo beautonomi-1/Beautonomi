@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
-import { Alert, InteractionManager, Linking, Platform } from "react-native";
+import { Alert, InteractionManager, Platform } from "react-native";
 import Constants from "expo-constants";
-import {
-  ANDROID_PLAY_STORE_PACKAGE,
-  getBackendUrl,
-  IOS_APP_STORE_ID,
-  withWebApiTenantHeaders,
-} from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
+import { openAppStoreUpdate } from "@/lib/open-store-review";
 
 interface VersionInfo {
   minVersion: string | null;
@@ -40,12 +36,7 @@ export function useForceUpdate() {
   const [requiredUpdateUrl, setRequiredUpdateUrl] = useState<string | null>(null);
 
   const openUpdate = () => {
-    const storeUrl =
-      requiredUpdateUrl ??
-      (Platform.OS === "ios"
-        ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-        : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
-    void Linking.openURL(storeUrl);
+    void openAppStoreUpdate(requiredUpdateUrl);
   };
 
   useEffect(() => {
@@ -81,12 +72,7 @@ export function useForceUpdate() {
               {
                 text: "Update Now",
                 onPress: () => {
-                  const storeUrl =
-                    data.updateUrl ??
-                    (Platform.OS === "ios"
-                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
-                  void Linking.openURL(storeUrl);
+                  void openAppStoreUpdate(data.updateUrl);
                 },
               },
             ],
@@ -97,7 +83,6 @@ export function useForceUpdate() {
           data.latestVersion.length > 0 &&
           compareVersions(currentVersion, data.latestVersion) < 0
         ) {
-          // Optional update available
           Alert.alert(
             "Update Available",
             "A new version of Beautonomi is available with improvements and bug fixes.",
@@ -106,12 +91,7 @@ export function useForceUpdate() {
               {
                 text: "Update",
                 onPress: () => {
-                  const storeUrl =
-                    data.updateUrl ??
-                    (Platform.OS === "ios"
-                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
-                  void Linking.openURL(storeUrl);
+                  void openAppStoreUpdate(data.updateUrl);
                 },
               },
             ],

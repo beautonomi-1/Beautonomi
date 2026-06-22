@@ -3,17 +3,20 @@ import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
-  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Pressable,
   Platform,
   StyleSheet,
   Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, router } from "expo-router";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import {
+  GestureHandlerRootView,
+  Pressable,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
@@ -23,6 +26,10 @@ import { Colors, Shadows } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM, RADIUS_CARD } from "@/constants/layout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
+import {
+  SwipeableNotificationRow,
+  useNotificationSwipeRegistry,
+} from "@/components/SwipeableNotificationRow";
 import {
   type Notification,
   formatNotificationTime,
@@ -53,7 +60,8 @@ export default function NotificationsScreen() {
   const { t } = useTranslation();
   const nc = useCallback((key: string) => t(`customer.mobile.screens.notificationsCenter.${key}`), [t]);
   const { user } = useAuth();
-  const { unreadCount, refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
+  const { unreadCount, refetchUnreadCount, refetchChatUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
+  const swipeRegistry = useNotificationSwipeRegistry();
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web")
@@ -188,24 +196,35 @@ export default function NotificationsScreen() {
 
   const markAllRead = useCallback(async () => {
     replaceUnreadCount(0);
+    setTotalUnreadHint(0);
     try {
-      const res = await api.post("/api/me/notifications/mark-all-read");
+      const res = await api.post<{ total_unread?: number; data?: { total_unread?: number } }>(
+        "/api/me/notifications/mark-all-read",
+      );
       if (res.error) {
-        await refetchUnreadCount();
+        await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
         Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || nc("markAllReadError"));
         return;
       }
+      const body = res.data as { total_unread?: number; data?: { total_unread?: number } } | undefined;
+      const serverNotifUnread =
+        typeof body?.total_unread === "number"
+          ? body.total_unread
+          : typeof body?.data?.total_unread === "number"
+            ? body.data.total_unread
+            : 0;
+      replaceUnreadCount(serverNotifUnread);
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setTotalUnreadHint(0);
-      await refetchUnreadCount();
+      setTotalUnreadHint(serverNotifUnread);
+      await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
     } catch (e) {
-      await refetchUnreadCount();
+      await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
       Alert.alert(
         t("customer.mobile.screens.authLogin.errorTitle"),
         e instanceof Error ? e.message : nc("markAllReadError"),
       );
     }
-  }, [refetchUnreadCount, replaceUnreadCount, t, nc]);
+  }, [refetchUnreadCount, refetchChatUnreadCount, replaceUnreadCount, t, nc]);
 
   const deleteNotification = useCallback(async (notificationId: string, wasUnread: boolean) => {
     if (wasUnread) adjustUnreadCount(-1);
@@ -269,30 +288,12 @@ export default function NotificationsScreen() {
       const icon = iconNameForNotificationType(item.type) as IonName;
       const unread = !item.is_read;
       return (
-        <ReanimatedSwipeable
-          friction={2}
-          overshootRight={false}
-          rightThreshold={40}
-          renderRightActions={() => (
-            <View
-              style={{
-                width: 80,
-                backgroundColor: "#ef4444",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => confirmDelete(item)}
-                accessibilityLabel={nc("deleteSwipeA11y")}
-                accessibilityRole="button"
-                style={{ padding: 16, alignItems: "center" }}
-              >
-                <Ionicons name="trash-outline" size={22} color="#fff" />
-                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "600", color: "#fff" }}>{nc("deleteSwipeLabel")}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+        <SwipeableNotificationRow
+          itemId={item.id}
+          onDelete={() => confirmDelete(item)}
+          deleteLabel={nc("deleteSwipeLabel")}
+          deleteA11y={nc("deleteSwipeA11y")}
+          swipeRegistry={swipeRegistry}
         >
           <Pressable
             onPress={() => onPress(item)}
@@ -324,10 +325,10 @@ export default function NotificationsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} style={styles.chevron} />
           </Pressable>
-        </ReanimatedSwipeable>
+        </SwipeableNotificationRow>
       );
     },
-    [onPress, confirmDelete, nc],
+    [onPress, confirmDelete, nc, swipeRegistry],
   );
 
   const bottomPad = STACK_CONTENT_PADDING_BOTTOM + Math.max(insets.bottom, 8);
@@ -409,55 +410,59 @@ export default function NotificationsScreen() {
             <Text style={styles.loaderLabel}>{nc("loadingLabel")}</Text>
           </View>
         ) : (
-          <FlashList
-            data={list}
-            extraData={filter}
-            keyExtractor={notifKeyExtractor}
-            renderItem={renderNotificationItem}
-            contentContainerStyle={{
-              paddingHorizontal: contentPadding,
-              paddingTop: 12,
-              paddingBottom: bottomPad,
-              ...constraint,
-            }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void load({ refresh: true })}
-                tintColor={Colors.primary}
-                colors={[Colors.primary]}
-              />
-            }
-            onEndReached={onEndReached}
-            onEndReachedThreshold={0.4}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={styles.footerMore}>
-                  <ActivityIndicator size="small" color={Colors.primary} />
+          <GestureHandlerRootView style={styles.listRoot}>
+            <FlashList
+              data={list}
+              extraData={filter}
+              keyExtractor={notifKeyExtractor}
+              renderItem={renderNotificationItem}
+              renderScrollComponent={ScrollView}
+              nestedScrollEnabled
+              contentContainerStyle={{
+                paddingHorizontal: contentPadding,
+                paddingTop: 12,
+                paddingBottom: bottomPad,
+                ...constraint,
+              }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => void load({ refresh: true })}
+                  tintColor={Colors.primary}
+                  colors={[Colors.primary]}
+                />
+              }
+              onEndReached={onEndReached}
+              onEndReachedThreshold={0.4}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={styles.footerMore}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyWrap}>
+                  <Ionicons name="notifications-off-outline" size={56} color={Colors.gray[200]} />
+                  <Text style={styles.emptyTitle}>
+                    {loadError ? nc("emptyErrorTitle") : filter === "unread" ? nc("emptyCaughtUp") : nc("emptyNone")}
+                  </Text>
+                  <Text style={styles.emptySub}>
+                    {loadError
+                      ? nc("emptyErrorSub")
+                      : filter === "unread"
+                        ? nc("emptyUnreadSub")
+                        : nc("emptyAllSub")}
+                  </Text>
+                  {loadError ? (
+                    <TouchableOpacity onPress={() => void load()} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel={nc("retryA11y")}>
+                      <Text style={styles.retryBtnText}>{nc("retry")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
-                <Ionicons name="notifications-off-outline" size={56} color={Colors.gray[200]} />
-                <Text style={styles.emptyTitle}>
-                  {loadError ? nc("emptyErrorTitle") : filter === "unread" ? nc("emptyCaughtUp") : nc("emptyNone")}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {loadError
-                    ? nc("emptyErrorSub")
-                    : filter === "unread"
-                      ? nc("emptyUnreadSub")
-                      : nc("emptyAllSub")}
-                </Text>
-                {loadError ? (
-                  <TouchableOpacity onPress={() => void load()} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel={nc("retryA11y")}>
-                    <Text style={styles.retryBtnText}>{nc("retry")}</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            }
-          />
+              }
+            />
+          </GestureHandlerRootView>
         )}
       </View>
     </>
@@ -468,6 +473,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: Colors.gray[50],
+  },
+  listRoot: {
+    flex: 1,
   },
   centered: {
     flex: 1,

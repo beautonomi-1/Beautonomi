@@ -12,6 +12,25 @@ export interface SelectedAddressValue {
   displayName: string;
 }
 
+/** True when lat/lng are usable for discovery, distance, and housecall booking. */
+export function hasValidServiceCoordinates(
+  value: { latitude?: number | null; longitude?: number | null } | null | undefined,
+): boolean {
+  if (!value) return false;
+  const { latitude, longitude } = value;
+  return (
+    typeof latitude === "number" &&
+    typeof longitude === "number" &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
 interface SelectedAddressContextValue {
   selectedAddress: SelectedAddressValue | null;
   setSelectedAddress: (address: SelectedAddressValue | null) => void;

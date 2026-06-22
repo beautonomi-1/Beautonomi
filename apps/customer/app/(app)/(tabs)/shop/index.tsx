@@ -18,7 +18,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { useLocation } from "@/hooks/useLocation";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 
 const PRIMARY = Colors.primary;
 
@@ -73,7 +73,8 @@ export default function ShopScreen() {
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { selectedAddress } = useSelectedAddress();
-  const { coords } = useLocation();
+  const shouldUseGps = !hasValidServiceCoordinates(selectedAddress);
+  const { coords } = useLocation({ enabled: shouldUseGps });
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
   const cart = useCart();

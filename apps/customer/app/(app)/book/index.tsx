@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { api } from "@/lib/api-client";
 import { useLocation } from "@/hooks/useLocation";
 import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
@@ -608,8 +608,9 @@ export default function BookScreen() {
   }, [refParam]);
 
   const { user } = useAuth();
-  const { coords } = useLocation();
   const { selectedAddress: primaryAddress } = useSelectedAddress();
+  const shouldUseGps = !hasValidServiceCoordinates(primaryAddress);
+  const { coords } = useLocation({ enabled: shouldUseGps });
   const {
     addresses: savedAddresses,
     loading: savedAddressesLoading,

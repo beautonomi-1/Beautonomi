@@ -43,6 +43,8 @@ interface NotificationsCountContextValue {
   refreshNavCounts: () => Promise<void>;
   adjustUnreadCount: (delta: number) => void;
   replaceUnreadCount: (count: number) => void;
+  /** Drop optimistic notification deltas — use after mark-all-read before refetch. */
+  resetNotificationUnreadBias: () => void;
   adjustChatUnreadCount: (delta: number) => void;
 }
 
@@ -121,6 +123,10 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     },
     [baseUnread],
   );
+
+  const resetNotificationUnreadBias = useCallback(() => {
+    setCountBias(0);
+  }, []);
 
   const adjustChatUnreadCount = useCallback((delta: number) => {
     setChatBias((b) => b + delta);
@@ -293,6 +299,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       refreshNavCounts,
       adjustUnreadCount,
       replaceUnreadCount,
+      resetNotificationUnreadBias,
       adjustChatUnreadCount,
     }),
     [
@@ -304,6 +311,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       refreshNavCounts,
       adjustUnreadCount,
       replaceUnreadCount,
+      resetNotificationUnreadBias,
       adjustChatUnreadCount,
     ],
   );
@@ -327,6 +335,7 @@ export function useNotificationsCount(): NotificationsCountContextValue {
       refreshNavCounts: async () => {},
       adjustUnreadCount: () => {},
       replaceUnreadCount: () => {},
+      resetNotificationUnreadBias: () => {},
       adjustChatUnreadCount: () => {},
     };
   }

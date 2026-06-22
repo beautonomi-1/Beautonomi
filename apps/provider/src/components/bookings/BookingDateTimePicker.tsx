@@ -220,11 +220,56 @@ type BookingTimeSlotGridProps = {
   onSelectTime: (time: string) => void;
   loading?: boolean;
   providerTimezone?: string | null;
+  /** @deprecated Both values render the same flex-wrap layout. */
   layout?: "grid" | "wrap";
   showLegend?: boolean;
   showNextAvailable?: boolean;
+  /** When set, slots scroll inside this height. Omit to let the parent sheet scroll. */
   maxHeight?: number;
 };
+
+function PeriodSlotGroups({
+  grouped,
+  selectedTime,
+  onSelectTime,
+  chipWidth,
+}: {
+  grouped: ReturnType<typeof groupSlotsByPeriod>;
+  selectedTime: string;
+  onSelectTime: (time: string) => void;
+  chipWidth: number;
+}) {
+  return (
+    <>
+      {grouped.map((group) => {
+        const openCount = group.rows.filter((row) => row.available).length;
+        return (
+          <View key={group.period} style={twStyle("mb-3")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{group.label}</Text>
+              <Text style={twStyle("text-xs text-gray-400")}>
+                {openCount} open
+              </Text>
+            </View>
+            <View style={twStyle("flex-row flex-wrap")}>
+              {group.rows.map((row, index) => (
+                <BookingTimeSlotChip
+                  key={row.time}
+                  row={row}
+                  isActive={selectedTime === row.time}
+                  chipWidth={chipWidth}
+                  columnIndex={index}
+                  onSelect={onSelectTime}
+                  variant="grid"
+                />
+              ))}
+            </View>
+          </View>
+        );
+      })}
+    </>
+  );
+}
 
 export function BookingTimeSlotGrid({
   rows,
@@ -232,10 +277,10 @@ export function BookingTimeSlotGrid({
   onSelectTime,
   loading = false,
   providerTimezone,
-  layout = "grid",
+  layout: _layout = "grid",
   showLegend = true,
   showNextAvailable = true,
-  maxHeight = 360,
+  maxHeight,
 }: BookingTimeSlotGridProps) {
   const { width: windowWidth } = useWindowDimensions();
   const timeSlotGridOuterWidth = Math.min(windowWidth - 32, 400);
@@ -279,7 +324,7 @@ export function BookingTimeSlotGrid({
           </Text>
         </TouchableOpacity>
       ) : null}
-      {showLegend && layout === "grid" ? (
+      {showLegend ? (
         <View style={twStyle("mb-3 flex-row flex-wrap items-center")}>
           <View style={twStyle("mr-4 flex-row items-center")}>
             <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
@@ -292,54 +337,22 @@ export function BookingTimeSlotGrid({
         </View>
       ) : null}
 
-      {layout === "wrap" ? (
+      {maxHeight != null ? (
         <ScrollView style={{ maxHeight }} nestedScrollEnabled>
-          {grouped.map((group) => (
-            <View key={group.period} style={twStyle("mb-2")}>
-              <Text style={twStyle("mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>{group.label}</Text>
-              <View style={twStyle("flex-row flex-wrap")}>
-                {group.rows.map((row) => (
-                  <BookingTimeSlotChip
-                    key={row.time}
-                    row={row}
-                    isActive={selectedTime === row.time}
-                    chipWidth={timeSlotChipWidth}
-                    columnIndex={0}
-                    onSelect={onSelectTime}
-                    variant="wrap"
-                  />
-                ))}
-              </View>
-            </View>
-          ))}
+          <PeriodSlotGroups
+            grouped={grouped}
+            selectedTime={selectedTime}
+            onSelectTime={onSelectTime}
+            chipWidth={timeSlotChipWidth}
+          />
         </ScrollView>
       ) : (
-        grouped.map((group) => (
-          <View key={group.period} style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>{group.label}</Text>
-            <FlatList<BookingSlotRow>
-              data={group.rows}
-              numColumns={3}
-              keyExtractor={(row: BookingSlotRow) => `${group.period}-${row.time}`}
-              style={{ maxHeight: maxHeight / grouped.length }}
-              columnWrapperStyle={twStyle("flex-row")}
-              removeClippedSubviews
-              initialNumToRender={12}
-              windowSize={5}
-              scrollEnabled={false}
-              renderItem={({ item: row, index }: ListRenderItemInfo<BookingSlotRow>) => (
-                <BookingTimeSlotChip
-                  row={row}
-                  isActive={selectedTime === row.time}
-                  chipWidth={timeSlotChipWidth}
-                  columnIndex={index}
-                  onSelect={onSelectTime}
-                  variant="grid"
-                />
-              )}
-            />
-          </View>
-        ))
+        <PeriodSlotGroups
+          grouped={grouped}
+          selectedTime={selectedTime}
+          onSelectTime={onSelectTime}
+          chipWidth={timeSlotChipWidth}
+        />
       )}
     </View>
   );

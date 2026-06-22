@@ -8,6 +8,8 @@
  * article.
  */
 
+import { publicSiteOrigin } from "@/config/publicEnv";
+
 export type KbAudience = "general" | "customer" | "provider" | "internal";
 
 export type KbArticleResult = {
@@ -98,10 +100,11 @@ export const LEARNING_ARTICLE_PROSE_CLASS =
   "[&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 " +
   "[&_li]:mt-1 [&_a]:font-medium [&_a]:text-purple-700 [&_a]:underline [&_strong]:font-semibold [&_strong]:text-gray-900";
 
-/** Public Learning Center URL for an article slug (same origin as the admin SPA). */
+/** Public Learning Center URL for an article slug (customer/provider web app, not admin). */
 export function publicLearnUrl(slug: string): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/learn/article/${slug}`;
+  const origin = publicSiteOrigin();
+  const path = `/learn/article/${encodeURIComponent(slug)}`;
+  return origin ? `${origin}${path}` : path;
 }
 
 /** Public API URL for staff preview reads (skips view-count tracking). */

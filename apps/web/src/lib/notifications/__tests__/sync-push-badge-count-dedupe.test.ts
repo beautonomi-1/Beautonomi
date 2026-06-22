@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   getTotalUnreadBadgeCountMock: vi.fn(),
@@ -25,8 +25,24 @@ function stateKey(userId: string, appType: string) {
   return `${userId}:${appType}`;
 }
 
+function mockClaimRpc(args: { p_user_id: string; p_app_type: string; p_count: number }) {
+  const key = stateKey(args.p_user_id, args.p_app_type);
+  const prev = hoisted.badgeStateRows.get(key);
+  if (prev === args.p_count) {
+    return { data: { claimed: false, previous_count: prev }, error: null };
+  }
+  hoisted.badgeStateRows.set(key, args.p_count);
+  return { data: { claimed: true, previous_count: prev ?? null }, error: null };
+}
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
+    rpc: (name: string, args: { p_user_id: string; p_app_type: string; p_count: number }) => {
+      if (name === "try_claim_badge_sync_send") {
+        return Promise.resolve(mockClaimRpc(args));
+      }
+      return Promise.resolve({ data: null, error: new Error(`unexpected rpc ${name}`) });
+    },
     from: (table: string) => {
       if (table === "user_badge_sync_state") {
         return {
@@ -47,6 +63,17 @@ vi.mock("@/lib/supabase/admin", () => ({
             hoisted.badgeStateRows.set(stateKey(row.user_id, row.app_type), row.last_count);
             return { error: null };
           },
+          delete: () => ({
+            eq: (_col: string, userId: string) => ({
+              eq: (_col2: string, appType: string) =>
+                Promise.resolve({
+                  error: (() => {
+                    hoisted.badgeStateRows.delete(stateKey(userId, appType));
+                    return null;
+                  })(),
+                }),
+            }),
+          }),
         };
       }
       if (table === "user_devices") {
@@ -90,7 +117,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 describe("syncPushBadgeCount dedupe and app scoping", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
     hoisted.getTotalUnreadBadgeCountMock.mockReset();
     hoisted.sendToUserMock.mockReset();
     hoisted.badgeStateRows.clear();
@@ -101,6 +130,12 @@ describe("syncPushBadgeCount dedupe and app scoping", () => {
     hoisted.getTotalUnreadBadgeCountMock.mockImplementation(async (_uid, appType) =>
       appType === "customer" ? 3 : 5,
     );
+    const mod = await import("@/lib/notifications/sync-push-badge-count");
+    mod.resetSyncPushBadgeStateForTests();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("skips OneSignal when last_count matches current unread", async () => {
@@ -138,10 +173,47 @@ describe("syncPushBadgeCount dedupe and app scoping", () => {
     hoisted.deviceAppTypes = ["customer"];
 
     const { syncPushBadgeCountAllApps } = await import("@/lib/notifications/sync-push-badge-count");
-    await syncPushBadgeCountAllApps("user-1");
+    const pending = syncPushBadgeCountAllApps("user-1");
+    await vi.advanceTimersByTimeAsync(800);
+    await pending;
 
     expect(hoisted.sendToUserMock).toHaveBeenCalledTimes(1);
     expect(hoisted.sendToUserMock.mock.calls[0]?.[3]?.appType).toBe("customer");
+  });
+
+  it("debounces rapid syncPushBadgeCountAllApps calls into one burst", async () => {
+    hoisted.deviceAppTypes = ["customer"];
+
+    const { syncPushBadgeCountAllApps } = await import("@/lib/notifications/sync-push-badge-count");
+    void syncPushBadgeCountAllApps("user-1");
+    void syncPushBadgeCountAllApps("user-1");
+    const pending = syncPushBadgeCountAllApps("user-1");
+    await vi.advanceTimersByTimeAsync(800);
+    await pending;
+
+    expect(hoisted.sendToUserMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("concurrent syncPushBadgeCount with same count only sends once", async () => {
+    const { syncPushBadgeCount } = await import("@/lib/notifications/sync-push-badge-count");
+    await Promise.all([
+      syncPushBadgeCount("user-1", { appType: "customer", unreadCount: 2 }),
+      syncPushBadgeCount("user-1", { appType: "customer", unreadCount: 2 }),
+      syncPushBadgeCount("user-1", { appType: "customer", unreadCount: 2 }),
+    ]);
+
+    expect(hoisted.sendToUserMock).toHaveBeenCalledTimes(1);
+    expect(hoisted.badgeStateRows.get(stateKey("user-1", "customer"))).toBe(2);
+  });
+
+  it("syncPushBadgeCountAllAppsImmediate runs without waiting for debounce", async () => {
+    hoisted.deviceAppTypes = ["customer"];
+
+    const mod = await import("@/lib/notifications/sync-push-badge-count");
+    void mod.syncPushBadgeCountAllApps("user-1");
+    await mod.syncPushBadgeCountAllAppsImmediate("user-1");
+
+    expect(hoisted.sendToUserMock).toHaveBeenCalledTimes(1);
   });
 
   it("skips when the customer disabled push notifications", async () => {

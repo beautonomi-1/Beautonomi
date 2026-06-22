@@ -1,5 +1,7 @@
 /**
- * Hook for user location – used for "Nearest" providers on Home.
+ * Hook for device GPS – fallback when no service address is set.
+ * Pass `enabled: false` when SelectedAddress (or route coords) already supplies lat/lng
+ * to avoid unnecessary permission prompts.
  */
 import { useCallback, useEffect, useState } from "react";
 import * as Location from "expo-location";
@@ -11,15 +13,21 @@ export interface Coords {
   longitude: number;
 }
 
+export type UseLocationOptions = {
+  /** When false, skips permission prompts and GPS fetch. Defaults to true. */
+  enabled?: boolean;
+};
+
 function isLocationGranted(permission: Location.LocationPermissionResponse): boolean {
   return permission.granted === true || permission.status === "granted";
 }
 
-export function useLocation() {
+export function useLocation(options: UseLocationOptions = {}) {
+  const enabled = options.enabled !== false;
   const { gate } = useNativePermissionsOnboardingGate();
   const [coords, setCoords] = useState<Coords | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
 
   const getLocation = useCallback(() => {
     let cancelled = false;
@@ -69,7 +77,16 @@ export function useLocation() {
     };
   }, [gate.phase]);
 
-  useEffect(() => getLocation(), [getLocation]);
+  useEffect(() => {
+    if (!enabled) {
+      setCoords(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    return getLocation();
+  }, [enabled, getLocation]);
 
   return { coords, error, loading };
 }

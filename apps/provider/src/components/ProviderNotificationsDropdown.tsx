@@ -7,13 +7,16 @@ import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
-  ScrollView,
+  Pressable as RNPressable,
   ActivityIndicator,
-  Pressable,
   Alert,
 } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import {
+  GestureHandlerRootView,
+  Pressable,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -21,6 +24,10 @@ import { Colors } from "@/constants/colors";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { twStyle } from "@/lib/twStyle";
+import {
+  SwipeableNotificationRow,
+  useNotificationSwipeRegistry,
+} from "@/components/SwipeableNotificationRow";
 import {
   navigateFromProviderNotification,
   type ProviderNotificationNavPayload,
@@ -73,7 +80,8 @@ export interface ProviderNotificationsDropdownProps {
 
 export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: ProviderNotificationsDropdownProps) {
   const router = useRouter();
-  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount } = useNotificationsCount();
+  const swipeRegistry = useNotificationSwipeRegistry();
+  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, resetNotificationUnreadBias } = useNotificationsCount();
   const { data, loading, error, refresh, mutate } = useApi<NotificationsResponse>(
     "/api/provider/notifications?limit=" + DROPDOWN_LIMIT,
   );
@@ -93,22 +101,36 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const prevData = data;
     replaceUnreadCount(0);
+    resetNotificationUnreadBias();
     if (data?.notifications) {
       mutate({
         notifications: data.notifications.map((n) => ({ ...n, read: true, is_read: true })),
         total_unread: 0,
       });
     }
-    const res = await markAllRead("/api/provider/notifications/mark-all-read", {});
+    const res = await markAllRead(
+      "/api/provider/notifications/mark-all-read",
+      {},
+    );
     if (res.error) {
       if (prevData) mutate(prevData);
+      resetNotificationUnreadBias();
       await refreshCount();
       Alert.alert("Error", res.error || "Could not mark notifications as read.");
       return;
     }
+    const body = (res.data as { total_unread?: number; data?: { total_unread?: number } } | undefined) ?? {};
+    const serverNotifUnread =
+      typeof body.total_unread === "number"
+        ? body.total_unread
+        : typeof body.data?.total_unread === "number"
+          ? body.data.total_unread
+          : 0;
+    resetNotificationUnreadBias();
+    replaceUnreadCount(serverNotifUnread);
     await refresh();
     await refreshCount();
-  }, [markAllRead, refresh, refreshCount, data, mutate, replaceUnreadCount]);
+  }, [markAllRead, refresh, refreshCount, data, mutate, replaceUnreadCount, resetNotificationUnreadBias]);
 
   const handleSeeAll = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -196,14 +218,14 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable
+      <RNPressable
         style={twStyle("flex-1 bg-black/40")}
         onPress={onClose}
         accessibilityLabel="Close notifications"
         accessibilityRole="button"
       >
         <View style={[twStyle("pt-16 px-4"), { maxHeight: "85%" }]}>
-          <Pressable
+          <RNPressable
             style={[twStyle("rounded-2xl border border-gray-200 bg-white overflow-hidden"), { maxHeight: MAX_HEIGHT }]}
             onPress={(e) => e.stopPropagation()}
           >
@@ -232,11 +254,12 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
               </View>
             </View>
 
-            <ScrollView
-              style={twStyle("max-h-[320px]")}
-              showsVerticalScrollIndicator
-              keyboardShouldPersistTaps="handled"
-            >
+            <GestureHandlerRootView style={twStyle("max-h-[320px]")}>
+              <ScrollView
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
               {loading && !data ? (
                 <View style={twStyle("py-12 items-center")}>
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -260,31 +283,11 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                   {notifications.map((n) => {
                     const read = isNotificationRead(n);
                     return (
-                    <ReanimatedSwipeable
+                    <SwipeableNotificationRow
                       key={n.id}
-                      friction={2}
-                      overshootRight={false}
-                      rightThreshold={40}
-                      renderRightActions={() => (
-                        <View
-                          style={{
-                            width: 80,
-                            backgroundColor: "#ef4444",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <TouchableOpacity
-                            onPress={() => confirmDelete(n)}
-                            accessibilityLabel="Delete notification"
-                            accessibilityRole="button"
-                            style={{ padding: 14, alignItems: "center" }}
-                          >
-                            <Ionicons name="trash-outline" size={20} color="#fff" />
-                            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: "600", color: "#fff" }}>Delete</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      itemId={n.id}
+                      onDelete={() => confirmDelete(n)}
+                      swipeRegistry={swipeRegistry}
                     >
                       <Pressable
                         onPress={() => void handleRowPress(n)}
@@ -315,21 +318,22 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                           {!read && <View style={twStyle("h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5")} />}
                         </View>
                       </Pressable>
-                    </ReanimatedSwipeable>
+                    </SwipeableNotificationRow>
                     );
                   })}
                 </View>
               )}
-            </ScrollView>
+              </ScrollView>
+            </GestureHandlerRootView>
 
             <View style={twStyle("border-t border-gray-100 px-4 py-3 bg-gray-50/50")}>
               <TouchableOpacity onPress={handleSeeAll} style={twStyle("py-2.5 rounded-xl bg-gray-900")} activeOpacity={0.8}>
                 <Text style={twStyle("text-center font-medium text-white")}>See all notifications</Text>
               </TouchableOpacity>
             </View>
-          </Pressable>
+          </RNPressable>
         </View>
-      </Pressable>
+      </RNPressable>
     </Modal>
   );
 }

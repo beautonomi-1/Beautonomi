@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   getTotalUnreadBadgeCountMock: vi.fn(),
@@ -23,8 +23,24 @@ function stateKey(userId: string, appType: string) {
   return `${userId}:${appType}`;
 }
 
+function mockClaimRpc(args: { p_user_id: string; p_app_type: string; p_count: number }) {
+  const key = stateKey(args.p_user_id, args.p_app_type);
+  const prev = hoisted.badgeStateRows.get(key);
+  if (prev === args.p_count) {
+    return { data: { claimed: false, previous_count: prev }, error: null };
+  }
+  hoisted.badgeStateRows.set(key, args.p_count);
+  return { data: { claimed: true, previous_count: prev ?? null }, error: null };
+}
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
+    rpc: (name: string, args: { p_user_id: string; p_app_type: string; p_count: number }) => {
+      if (name === "try_claim_badge_sync_send") {
+        return Promise.resolve(mockClaimRpc(args));
+      }
+      return Promise.resolve({ data: null, error: new Error(`unexpected rpc ${name}`) });
+    },
     from: (table: string) => {
       if (table === "user_badge_sync_state") {
         return {
@@ -45,6 +61,17 @@ vi.mock("@/lib/supabase/admin", () => ({
             hoisted.badgeStateRows.set(stateKey(row.user_id, row.app_type), row.last_count);
             return { error: null };
           },
+          delete: () => ({
+            eq: (_col: string, userId: string) => ({
+              eq: (_col2: string, appType: string) =>
+                Promise.resolve({
+                  error: (() => {
+                    hoisted.badgeStateRows.delete(stateKey(userId, appType));
+                    return null;
+                  })(),
+                }),
+            }),
+          }),
         };
       }
       if (table === "user_devices") {
@@ -85,12 +112,20 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 describe("syncPushBadgeCountAllApps unified totals", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
     hoisted.getTotalUnreadBadgeCountMock.mockReset();
     hoisted.sendToUserMock.mockReset();
     hoisted.badgeStateRows.clear();
     hoisted.deviceAppTypes = ["customer", "provider"];
     hoisted.sendToUserMock.mockResolvedValue({ success: true });
+    const mod = await import("@/lib/notifications/sync-push-badge-count");
+    mod.resetSyncPushBadgeStateForTests();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("pushes per-app totals to customer and provider OneSignal apps", async () => {
@@ -99,7 +134,9 @@ describe("syncPushBadgeCountAllApps unified totals", () => {
     );
 
     const { syncPushBadgeCountAllApps } = await import("@/lib/notifications/sync-push-badge-count");
-    await syncPushBadgeCountAllApps("user-1");
+    const pending = syncPushBadgeCountAllApps("user-1");
+    await vi.advanceTimersByTimeAsync(800);
+    await pending;
 
     expect(hoisted.sendToUserMock).toHaveBeenCalledTimes(2);
     const customerCall = hoisted.sendToUserMock.mock.calls.find((c) => c[3]?.appType === "customer");

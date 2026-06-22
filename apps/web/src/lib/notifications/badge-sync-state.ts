@@ -57,3 +57,80 @@ export async function recordSyncedBadgeCount(
     console.warn("[badge-sync-state] record threw:", err);
   }
 }
+
+export type BadgeSyncClaimResult = {
+  claimed: boolean;
+  previousCount: number | null;
+};
+
+function parseClaimRpcResult(data: unknown): BadgeSyncClaimResult | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as { claimed?: unknown; previous_count?: unknown };
+  if (typeof o.claimed !== "boolean") return null;
+  const previousCount =
+    typeof o.previous_count === "number"
+      ? o.previous_count
+      : o.previous_count === null
+        ? null
+        : null;
+  return { claimed: o.claimed, previousCount };
+}
+
+/**
+ * Atomically skip redundant badge_sync sends or claim the (user, app, count)
+ * slot before calling OneSignal. Uses advisory-lock RPC when available; falls
+ * back to read/compare/upsert (race-prone) if migration 710 is not applied yet.
+ */
+export async function tryClaimBadgeSyncSend(
+  userId: string,
+  appType: OneSignalAppType,
+  count: number,
+): Promise<BadgeSyncClaimResult> {
+  try {
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin.rpc("try_claim_badge_sync_send", {
+      p_user_id: userId,
+      p_app_type: appType,
+      p_count: count,
+    });
+    const parsed = parseClaimRpcResult(data);
+    if (!error && parsed) return parsed;
+    if (error) {
+      console.warn("[badge-sync-state] claim rpc failed:", error.message);
+    }
+  } catch (err) {
+    console.warn("[badge-sync-state] claim rpc threw:", err);
+  }
+
+  const previousCount = await getLastSyncedBadgeCount(userId, appType);
+  if (previousCount === count) {
+    return { claimed: false, previousCount };
+  }
+  await recordSyncedBadgeCount(userId, appType, count);
+  return { claimed: true, previousCount };
+}
+
+/** Undo a claim when OneSignal rejected the send (best-effort). */
+export async function revertBadgeSyncClaim(
+  userId: string,
+  appType: OneSignalAppType,
+  previousCount: number | null,
+): Promise<void> {
+  try {
+    const admin = getSupabaseAdmin();
+    if (previousCount === null) {
+      const { error } = await admin
+        .from("user_badge_sync_state")
+        .delete()
+        .eq("user_id", userId)
+        .eq("app_type", appType);
+      if (error) {
+        console.warn("[badge-sync-state] revert delete failed:", error.message);
+      }
+      return;
+    }
+    await recordSyncedBadgeCount(userId, appType, previousCount);
+  } catch (err) {
+    console.warn("[badge-sync-state] revert threw:", err);
+  }
+}
