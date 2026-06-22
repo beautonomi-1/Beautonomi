@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Platform, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,7 +6,6 @@ import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
@@ -165,29 +164,10 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
 export default function SettingsScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
-  const { isAvailable, biometricType, isEnabled, enable, disable } = useBiometricAuth();
   const { themeMode, setThemeMode } = useTheme();
   const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-
-  const biometricLabel =
-    biometricType === "face" ? "Face ID" :
-    biometricType === "fingerprint" ? "Fingerprint" :
-    biometricType === "iris" ? "Iris" : "Biometric";
-
-  async function handleBiometricToggle() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      if (isEnabled) {
-        await disable();
-      } else {
-        await enable();
-      }
-    } catch {
-      Alert.alert("Error", `Could not ${isEnabled ? "disable" : "enable"} ${biometricLabel}. Please try again.`);
-    }
-  }
 
   return (
     <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
@@ -251,41 +231,6 @@ export default function SettingsScreen() {
           </View>
           );
         })}
-
-        {/* Security */}
-        {Platform.OS !== "web" && isAvailable && (
-          <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-              Security
-            </Text>
-            <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-              <View style={twStyle("min-h-[56px] flex-row items-center px-4 py-3.5")}>
-                <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
-                  <Ionicons
-                    name={biometricType === "face" ? "scan-outline" : "finger-print-outline"}
-                    size={18}
-                    color="#6366f1"
-                  />
-                </View>
-                <View style={twStyle("ml-3 flex-1")}>
-                  <Text style={twStyle("text-base font-medium text-gray-900")}>
-                    {biometricLabel} Lock
-                  </Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>
-                    Require {biometricLabel.toLowerCase()} to open the app
-                  </Text>
-                </View>
-                <Switch
-                  value={isEnabled}
-                  onValueChange={handleBiometricToggle}
-                  trackColor={{ false: "#e5e7eb", true: "#6366f1" }}
-                  thumbColor="#fff"
-                  accessibilityLabel={`Toggle ${biometricLabel} lock`}
-                />
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* Appearance */}
         <View style={twStyle("mb-4")}>

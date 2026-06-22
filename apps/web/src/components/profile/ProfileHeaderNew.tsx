@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { ProfileUser, QuickActionBadge } from "@/types/profile";
+import { isMailableEmail } from "@beautonomi/utils";
 
 interface ProfileHeaderProps {
   user: ProfileUser;
@@ -79,7 +80,7 @@ export default function ProfileHeaderNew({
     {
       type: "email",
       label: "Email",
-      verified: user.email_verified,
+      verified: !isMailableEmail(user.email) || user.email_verified,
     },
     {
       type: "photo",

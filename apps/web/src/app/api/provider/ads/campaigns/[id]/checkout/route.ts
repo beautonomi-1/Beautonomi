@@ -178,8 +178,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ""
     );
     const adsContext = paymentRedirect === "provider_inapp" ? "app" : "web";
-    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
-    const cancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
+    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
+    const cancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

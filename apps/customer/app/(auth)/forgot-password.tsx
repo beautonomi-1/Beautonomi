@@ -66,8 +66,8 @@ export default function ForgotPasswordScreen() {
     <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.white }}>
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.white }}
-      behavior={Platform.OS === "ios" ? "padding" : "padding"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
     >
       <ScrollView
         style={{ flex: 1 }}

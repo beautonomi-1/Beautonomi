@@ -420,7 +420,7 @@ export function AddressPicker({
         onPress={onClose}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={{ width: "100%", maxHeight: Platform.OS === "android" ? "92%" : "90%" }}
           keyboardVerticalOffset={Platform.OS === "ios" ? 48 : 0}
         >

@@ -1,22 +1,31 @@
 /**
- * Shows a banner when the logged-in user's email is not verified (email_confirmed_at is null).
- * Only shows for recent accounts (created within 7 days) to avoid showing when
- * email verification is disabled in Supabase. Includes "Resend verification email".
+ * Shows a banner when the logged-in user has a mailable email that is not verified.
+ * Phone-only and placeholder-email accounts are excluded.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/providers/AuthProvider";
 import { twStyle } from "@/lib/twStyle";
+import {
+  resolveMailableAccountEmail,
+  shouldShowEmailVerificationBanner,
+} from "@beautonomi/utils";
 
 const DISMISS_KEY_PREFIX = "email-verification-dismissed-";
 
 export function EmailVerificationBanner() {
-  const { user, session, isEmailVerified, resendVerificationEmail } = useAuth();
+  const { user, session, resendVerificationEmail } = useAuth();
   const [dismissed, setDismissed] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+
+  const authUser = session?.user;
+  const mailableEmail = useMemo(
+    () => resolveMailableAccountEmail(authUser?.email, user?.email),
+    [authUser?.email, user?.email],
+  );
 
   useEffect(() => {
     if (!user?.id) return;
@@ -47,11 +56,21 @@ export function EmailVerificationBanner() {
     }
   }, [resendVerificationEmail]);
 
-  if (!user || !session || isEmailVerified || dismissed) return null;
+  const shouldShow = Boolean(
+    user &&
+      session &&
+      authUser &&
+      !dismissed &&
+      mailableEmail &&
+      shouldShowEmailVerificationBanner({
+        authEmail: authUser.email,
+        profileEmail: user.email,
+        emailConfirmedAt: authUser.email_confirmed_at,
+        accountCreatedAt: user.created_at ?? authUser.created_at,
+      }),
+  );
 
-  const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0;
-  const daysSinceCreation = (Date.now() - createdAt) / (1000 * 60 * 60 * 24);
-  if (daysSinceCreation > 7) return null;
+  if (!shouldShow || !mailableEmail) return null;
 
   return (
     <View style={twStyle("border-l-4 border-amber-400 bg-amber-50 px-4 py-3")}>
@@ -59,7 +78,7 @@ export function EmailVerificationBanner() {
         <View style={twStyle("flex-1")}>
           <Text style={twStyle("text-sm font-semibold text-amber-800")}>Verify your email address</Text>
           <Text style={twStyle("mt-1 text-sm text-amber-700")} numberOfLines={2}>
-            We sent a verification email to <Text style={twStyle("font-medium")}>{user.email}</Text>. Click the link to activate your account.
+            We sent a verification email to <Text style={twStyle("font-medium")}>{mailableEmail}</Text>. Click the link to activate your account.
           </Text>
           <View style={twStyle("mt-2 flex-row items-center")}>
             <TouchableOpacity

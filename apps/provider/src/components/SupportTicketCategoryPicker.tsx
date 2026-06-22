@@ -82,7 +82,7 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: "#fff" }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
         >
           <View
             style={{

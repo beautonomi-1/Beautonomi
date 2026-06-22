@@ -1,7 +1,6 @@
 /**
- * §Provider-launch (audit 2026-04): the biometric toggle in
- * apps/provider/app/(app)/(tabs)/more/settings/index.tsx only stored an
- * enabled/disabled flag — it never actually prompted on app open or
+ * §Provider-launch (audit 2026-04): the biometric toggle in Login & security
+ * only stored an enabled/disabled flag — it never actually prompted on app open or
  * resume. Providers who thought their client lists, schedules, and
  * money flows were locked behind Face ID / fingerprint were wrong.
  *

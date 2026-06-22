@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import VerificationStatusCard from "./VerificationStatusCard";
 import { getCachedDefaultPhoneDial } from "@/lib/user-default-phone-dial";
+import { isMailableEmail } from "@beautonomi/utils";
 
 interface PersonalInfoData {
   legalName: { first: string; last: string };
@@ -199,7 +200,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           const data = await profileResponse.json();
           const profile = data.data;
           
-          setEmailVerified(profile.email_verified || false);
+          setEmailVerified(!isMailableEmail(profile.email) || Boolean(profile.email_verified));
           setPhoneVerified(profile.phone_verified || false);
           
           // Set verification status
@@ -211,7 +212,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           });
           
           let maskedEmail = '';
-          if (profile.email) {
+          if (profile.email && isMailableEmail(profile.email)) {
             const emailParts = profile.email.split('@');
             if (emailParts[0].length > 0) {
               maskedEmail = `${emailParts[0].substring(0, 1)}****@${emailParts[1] || ''}`;
@@ -236,7 +237,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               last: profile.last_name || '',
             },
             preferredName: profile.preferred_name || 'Not provided',
-            email: maskedEmail,
+            email: maskedEmail || 'Not provided',
             phone: maskedPhone || 'Not provided',
             governmentId: profile.government_id ? 'Provided' : (profile.identity_verification_status === 'pending' ? 'Pending verification' : 'Not provided'),
             address: profile.address ? {
@@ -386,7 +387,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
           const profile = reloadData.data;
           
           let maskedEmail = '';
-          if (profile.email) {
+          if (profile.email && isMailableEmail(profile.email)) {
             const emailParts = profile.email.split('@');
             if (emailParts[0].length > 0) {
               maskedEmail = `${emailParts[0].substring(0, 1)}****@${emailParts[1] || ''}`;
@@ -411,7 +412,7 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
               last: profile.last_name || '',
             },
             preferredName: profile.preferred_name || 'Not provided',
-            email: maskedEmail,
+            email: maskedEmail || 'Not provided',
             phone: maskedPhone || 'Not provided',
             governmentId: profile.government_id ? 'Provided' : (profile.identity_verification_status === 'pending' ? 'Pending verification' : 'Not provided'),
             address: profile.address ? {

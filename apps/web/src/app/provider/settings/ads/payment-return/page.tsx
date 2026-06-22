@@ -6,9 +6,23 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 
+const PROVIDER_APP_SCHEME = "provider";
+
+function appDeepLink(path: string, params?: Record<string, string>): string {
+  const q = params ? new URLSearchParams(params).toString() : "";
+  return `${PROVIDER_APP_SCHEME}://${path}${q ? `?${q}` : ""}`;
+}
+
+function isNativeAppContext(context: string): boolean {
+  return context === "app" || context === "provider_inapp";
+}
+
+type VerifyOutcome = "success" | "pending" | "failed";
+
 /**
  * Minimal return URL after Paystack for provider ads.
- * Native app: posts to `ReactNativeWebView` so the shell can close the WebView.
+ * Native app: offers a `provider://` deep link so providers are never stranded
+ * when the auth session does not auto-close (3DS / external browser edge cases).
  * Web: verifies the charge if Paystack returned a reference, then routes back to Ads.
  */
 function AdsPaymentReturnInner() {
@@ -17,15 +31,19 @@ function AdsPaymentReturnInner() {
   const success = sp.get("success") === "1";
   const cancelled = sp.get("cancelled") === "1";
   const orderId = sp.get("order_id") ?? "";
+  const campaignId = sp.get("campaign_id") ?? "";
   const context = sp.get("context") ?? "web";
   const reference = sp.get("reference") || sp.get("trxref") || "";
-  const [message, setMessage] = useState("Confirming your ads payment...");
-  const [ready, setReady] = useState(false);
-  const [headline, setHeadline] = useState("Thanks — confirming with Paystack");
+  const confirmed = sp.get("confirmed") === "1";
+  const nativeContext = isNativeAppContext(context);
 
-  // For non-success returns (cancelled / invalid / missing params) we still
-  // need to tell the native shell what happened so it can dismiss the WebView
-  // gracefully with a result card instead of leaving the provider stranded.
+  const [message, setMessage] = useState("Confirming your ads payment...");
+  const [ready, setReady] = useState(confirmed);
+  const [headline, setHeadline] = useState("Thanks — confirming with Paystack");
+  const [outcome, setOutcome] = useState<VerifyOutcome | "cancelled" | "idle">(
+    cancelled ? "cancelled" : confirmed ? "success" : "idle",
+  );
+
   useEffect(() => {
     if (success) return;
 
@@ -44,7 +62,7 @@ function AdsPaymentReturnInner() {
       }
 
       if (cancelledEffect) return;
-      if (context !== "app" && context !== "provider_inapp") return;
+      if (!nativeContext) return;
       if (typeof window === "undefined") return;
       try {
         const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
@@ -69,10 +87,10 @@ function AdsPaymentReturnInner() {
     return () => {
       cancelledEffect = true;
     };
-  }, [success, cancelled, context, orderId]);
+  }, [success, cancelled, nativeContext, orderId]);
 
   useEffect(() => {
-    if (!success) return;
+    if (!success || confirmed) return;
     let cancelled = false;
 
     const postNativeStatus = (status: "success" | "pending" | "failed", nextMessage: string) => {
@@ -91,9 +109,14 @@ function AdsPaymentReturnInner() {
       }
     };
 
-    const finish = (nextMessage: string, status: "success" | "pending" | "failed", title?: string) => {
+    const finish = (
+      nextMessage: string,
+      status: VerifyOutcome,
+      title?: string,
+    ) => {
       if (cancelled) return;
       setMessage(nextMessage);
+      setOutcome(status);
       setReady(true);
       if (title) setHeadline(title);
       postNativeStatus(status, nextMessage);
@@ -122,21 +145,19 @@ function AdsPaymentReturnInner() {
           );
           return;
         }
-        // §Provider-paystack-audit 2026-05: copy now matches the post-payment
-        // outcome card on Ads — campaigns auto-activate as soon as the webhook
-        // applies the funded budget, so we no longer instruct providers to
-        // "fund more boosts" (or activate manually) on this confirmation page.
         finish(
-          "Your campaign is being funded and will go live shortly. Returning to Ads…",
+          "Your campaign is being funded and will go live shortly.",
           "success",
           "Payment confirmed",
         );
-        if (context === "app") {
+        if (nativeContext) {
           const confirmedParams = new URLSearchParams();
           confirmedParams.set("success", "1");
           confirmedParams.set("confirmed", "1");
           if (orderId) confirmedParams.set("order_id", orderId);
-          confirmedParams.set("context", "app");
+          if (campaignId) confirmedParams.set("campaign_id", campaignId);
+          if (reference) confirmedParams.set("reference", reference);
+          confirmedParams.set("context", context);
           window.setTimeout(() => {
             if (!cancelled) {
               window.location.replace(`/provider/settings/ads/payment-return?${confirmedParams.toString()}`);
@@ -149,7 +170,6 @@ function AdsPaymentReturnInner() {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
-        // Definitive failures (wrong user, amount, tenant, missing ref, Paystack not success, etc.)
         const looksLikeHardFailure =
           msg.includes("MISSING_REFERENCE") ||
           msg.includes("Invalid verification") ||
@@ -179,7 +199,7 @@ function AdsPaymentReturnInner() {
             "Almost there",
           );
         }
-        if (context !== "app") {
+        if (!nativeContext) {
           window.setTimeout(() => {
             if (!cancelled) router.replace("/provider/settings/ads");
           }, 2200);
@@ -192,7 +212,15 @@ function AdsPaymentReturnInner() {
     return () => {
       cancelled = true;
     };
-  }, [success, orderId, context, reference, router]);
+  }, [success, orderId, campaignId, context, reference, router, confirmed, nativeContext]);
+
+  const returnToAppHref = appDeepLink("settings/ads-payment-return", {
+    ...(outcome === "success" ? { success: "1" } : {}),
+    ...(outcome === "cancelled" ? { cancelled: "1" } : {}),
+    ...(orderId ? { order_id: orderId } : {}),
+    ...(campaignId ? { campaign_id: campaignId } : {}),
+    ...(reference ? { reference } : {}),
+  });
 
   if (!success) {
     return (
@@ -207,26 +235,99 @@ function AdsPaymentReturnInner() {
         ) : (
           <p className="text-gray-700">This payment return link is invalid or incomplete.</p>
         )}
-        <Link href="/provider/settings/ads" className="mt-6 inline-block text-pink-600 underline">
-          Back to Ads
-        </Link>
+        {nativeContext ? (
+          <a
+            href={returnToAppHref}
+            className="mt-6 inline-flex items-center justify-center rounded-lg bg-pink-600 px-5 py-3 text-sm font-semibold text-white hover:bg-pink-700"
+          >
+            Return to app
+          </a>
+        ) : (
+          <Link href="/provider/settings/ads" className="mt-6 inline-block text-pink-600 underline">
+            Back to Ads
+          </Link>
+        )}
       </div>
     );
   }
 
+  const showReturnToApp = nativeContext && ready;
+  const returnCtaLabel =
+    outcome === "success"
+      ? "Return to app"
+      : outcome === "pending"
+        ? "Return to app"
+        : "Back to app";
+
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
       <h1 className="text-xl font-semibold text-gray-900">{headline}</h1>
-      <p className="mt-3 text-sm text-gray-600">
-        {message}
-      </p>
+      <p className="mt-3 text-sm text-gray-600">{message}</p>
       {!ready && <Loader2 className="mx-auto mt-6 h-5 w-5 animate-spin text-pink-600" />}
-      <Link
-        href="/provider/settings/ads"
-        className="mt-8 inline-flex items-center justify-center rounded-lg bg-pink-600 px-5 py-3 text-sm font-semibold text-white hover:bg-pink-700"
-      >
-        Open Ads & campaigns
-      </Link>
+
+      {orderId || reference ? (
+        <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left text-sm">
+          <p className="font-semibold text-gray-900">Payment summary</p>
+          {orderId ? (
+            <p className="mt-2 text-gray-600">
+              <span className="font-medium text-gray-700">Order:</span> {orderId.slice(0, 8)}…
+            </p>
+          ) : null}
+          {reference ? (
+            <p className="mt-1 text-gray-600">
+              <span className="font-medium text-gray-700">Reference:</span> {reference}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showReturnToApp ? (
+        <div
+          className={`mt-6 rounded-lg border p-4 text-sm ${
+            outcome === "failed"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : outcome === "pending"
+                ? "border-amber-200 bg-amber-50 text-amber-900"
+                : "border-green-200 bg-green-50 text-green-800"
+          }`}
+        >
+          <p className="font-medium">
+            {outcome === "failed"
+              ? "Payment not completed."
+              : outcome === "pending"
+                ? "Payment pending."
+                : "Payment complete."}
+          </p>
+          <p className="mt-1">
+            {outcome === "failed"
+              ? "Return to the app and try again from your Ads dashboard."
+              : outcome === "pending"
+                ? "Return to the app and pull to refresh in a moment."
+                : "Tap the button below to return to the app."}
+          </p>
+          <a
+            href={returnToAppHref}
+            className={`mt-3 inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white ${
+              outcome === "failed"
+                ? "bg-red-600 hover:bg-red-700"
+                : outcome === "pending"
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            {returnCtaLabel}
+          </a>
+        </div>
+      ) : null}
+
+      {!nativeContext ? (
+        <Link
+          href="/provider/settings/ads"
+          className="mt-8 inline-flex items-center justify-center rounded-lg bg-pink-600 px-5 py-3 text-sm font-semibold text-white hover:bg-pink-700"
+        >
+          Open Ads & campaigns
+        </Link>
+      ) : null}
     </div>
   );
 }

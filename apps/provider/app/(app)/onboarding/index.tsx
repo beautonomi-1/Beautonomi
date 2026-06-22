@@ -72,7 +72,7 @@ export default function OnboardingHubScreen() {
     const uid = user?.id;
     if (isComplete && uid) {
       const dismissed = await isBiometricSetupPromptDismissed(uid);
-      if (!dismissed) setBiometricPromptPending(uid);
+      if (!dismissed) await setBiometricPromptPending(uid);
     }
     router.replace("/(app)/(tabs)" as never);
   };

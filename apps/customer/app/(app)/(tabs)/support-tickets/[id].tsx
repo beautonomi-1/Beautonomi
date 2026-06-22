@@ -389,7 +389,7 @@ export default function SupportTicketDetailScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       style={styles.root}
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >

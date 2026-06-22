@@ -361,6 +361,21 @@
           "failedPickImage": "Failed to pick image",
           "failedTakePhoto": "Failed to take photo"
         }
+      },
+      "screens": {
+        "loginSecurity": {
+          "appLockTitle": "App lock",
+          "appLockSubtitle": "Require {{label}} to open Beautonomi",
+          "biometricSetupPrompt": {
+            "title": "Lock the app with {{label}}",
+            "body": "Require {{label}} to open Beautonomi Provider after you leave the app. You can change this anytime in Login & security.",
+            "enableCta": "Enable {{label}}",
+            "notNowCta": "Not now",
+            "settingsLink": "Open Login & security",
+            "notNowHint": "You can turn this on anytime in Login & security.",
+            "enabledConfirmation": "App lock enabled — you'll be asked when you return to Beautonomi."
+          }
+        }
       }
     },
     "moreTab": {
@@ -2007,12 +2022,16 @@
           "currentPasswordPlaceholder": "••••••••",
           "newPasswordPlaceholder": "At least 8 characters",
           "confirmPasswordPlaceholder": "••••••••",
+          "appLockTitle": "App lock",
+          "appLockSubtitle": "Require {{label}} to open Beautonomi",
           "biometricSetupPrompt": {
             "title": "Unlock Beautonomi faster",
             "body": "Use {{label}} to unlock the app when you return. Your session stays signed in — you won't need to enter a code each time you open the app.",
             "enableCta": "Enable {{label}}",
             "notNowCta": "Not now",
-            "settingsLink": "Open Login & security"
+            "settingsLink": "Open Login & security",
+            "notNowHint": "You can turn this on anytime in Login & security.",
+            "enabledConfirmation": "App lock enabled — you'll be asked when you return to Beautonomi."
           }
         },
         "accountNotifications": {

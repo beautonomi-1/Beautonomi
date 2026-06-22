@@ -21,6 +21,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
+import { isMailableEmail } from "@beautonomi/utils";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 type AuthSecurityState = {
@@ -307,14 +308,15 @@ export default function LoginAndSecurityScreen() {
     );
   };
 
-  const currentEmail = profile?.email ?? user?.email ?? "";
+  const rawEmail = profile?.email ?? user?.email ?? "";
+  const currentEmail = isMailableEmail(rawEmail) ? rawEmail : "";
   const currentPhone = profile?.phone ?? user?.phone ?? "";
   const parsedPhone = parsePhoneToCountryAndNational(currentPhone, getDeviceDefaultCountryDial());
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <ScreenFrame loading={loading} error={error} onRetry={load}>
@@ -333,10 +335,10 @@ export default function LoginAndSecurityScreen() {
             >
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Biometric Login</Text>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{ls("appLockTitle")}</Text>
                   {biometric.isAvailable ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-                      Use {biometricLabel} to sign in quickly
+                      {ls("appLockSubtitle", { label: biometricLabel })}
                     </Text>
                   ) : (
                     <Text style={{ fontSize: 14, color: Colors.gray[400], marginTop: 4 }}>
@@ -351,7 +353,7 @@ export default function LoginAndSecurityScreen() {
                   trackColor={{ false: Colors.gray[300], true: Colors.primary }}
                   thumbColor={Colors.white}
                   accessibilityRole="switch"
-                  accessibilityLabel="Enable biometric login"
+                  accessibilityLabel={ls("appLockTitle")}
                   accessibilityState={{ checked: biometric.isEnabled }}
                 />
               </View>

@@ -1,3 +1,5 @@
+import { isNonMailableEmail, isMailableEmail } from "@beautonomi/utils";
+
 /** Domains used for synthetic walk-in / shadow customer emails. */
 export const SHADOW_EMAIL_DOMAINS = ["@beautonomi.invalid", "@beautonomi.local"] as const;
 
@@ -14,8 +16,7 @@ export function isShadowEmail(email: string | null | undefined): boolean {
 }
 
 export function isRealCustomerEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  const trimmed = email.trim();
-  if (!trimmed.includes("@")) return false;
-  return !isShadowEmail(trimmed);
+  return isMailableEmail(email);
 }
+
+export { isMailableEmail, isNonMailableEmail };

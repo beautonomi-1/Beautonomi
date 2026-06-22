@@ -32,6 +32,7 @@ import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { navigateAfterCustomerAuth, navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 
@@ -421,6 +422,7 @@ export default function LoginScreen() {
         return;
       }
       trackLogin("phone");
+      await writeSignupPhoneHandoff(e164);
       await applyPendingSignupPreferences();
       logLoginSuccessBreadcrumb("phone_otp");
       await navigateAfterCustomerAuth(params.return_to);
@@ -640,7 +642,7 @@ export default function LoginScreen() {
   if (awaitingSignupVerification) {
     return (
       <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.white }}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={scrollContentStyle}
@@ -784,8 +786,8 @@ export default function LoginScreen() {
     >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.white }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      behavior="padding"
+      keyboardVerticalOffset={0}
     >
       <ScrollView
         style={{ flex: 1, backgroundColor: Colors.white }}

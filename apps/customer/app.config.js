@@ -166,7 +166,7 @@ const BASE_EXPO_CONFIG = {
       "expo-local-authentication",
       {
         faceIDPermission:
-          "Beautonomi uses Face ID or Touch ID so you can sign in quickly. Biometric data stays on your device and is not sent to our servers.",
+          "Beautonomi uses Face ID or Touch ID to open the app securely. Biometric data stays on your device and is not sent to our servers.",
       },
     ],
     [

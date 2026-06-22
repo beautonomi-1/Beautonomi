@@ -397,8 +397,8 @@ export default function AddressesScreen() {
       >
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: Colors.white }}
-          behavior={Platform.OS === "ios" ? "padding" : "padding"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
             <TouchableOpacity
@@ -531,8 +531,8 @@ export default function AddressesScreen() {
       >
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: Colors.white }}
-          behavior={Platform.OS === "ios" ? "padding" : "padding"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
             <TouchableOpacity

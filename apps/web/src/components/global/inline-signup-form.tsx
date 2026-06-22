@@ -27,6 +27,7 @@ import {
   verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import {
   SUPABASE_AUTH_OTP_LENGTH,
@@ -456,7 +457,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
   };
 
-  const finishOtpSignupSession = async () => {
+  const finishOtpSignupSession = async (opts?: { verifiedPhoneE164?: string }) => {
     await refreshUser();
     try {
       await fetcher.patch("/api/me/profile", {
@@ -472,6 +473,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       } catch {
         // Non-blocking
       }
+    }
+    if (opts?.verifiedPhoneE164) {
+      writeSignupPhoneHandoff(opts.verifiedPhoneE164);
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
     if (redirectContext === "provider") {
@@ -576,7 +580,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       });
       if (error) throw error;
       toast.success("Account ready!");
-      await finishOtpSignupSession();
+      await finishOtpSignupSession({ verifiedPhoneE164: sentPhoneE164Signup });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Invalid code";
       setError(msg);

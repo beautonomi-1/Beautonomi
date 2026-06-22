@@ -68,11 +68,15 @@ export default function AdsPaymentReturnScreen() {
         : "Your ad payment was confirmed. We are activating your campaign now.",
     };
     if (campaignId) query.campaign_id = campaignId;
+    const orderId = pickStr(params.order_id);
+    const reference = pickStr(params.reference) || pickStr(params.trxref);
+    if (orderId) query.order_id = orderId;
+    if (reference) query.reference = reference;
     router.replace({
       pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
       params: query,
     });
-  }, [campaignId, router]);
+  }, [campaignId, params.order_id, params.reference, params.trxref, router]);
 
   // Manual fallback so the user is never stranded if the auto-redirect stalls.
   const continueNow = useCallback(() => {
@@ -104,7 +108,10 @@ export default function AdsPaymentReturnScreen() {
       };
     }
     (async () => {
-      const verifyResult = await verifyPaystackWithRetry(reference);
+      const verifyResult = await verifyPaystackWithRetry<{
+        adsBudgetOrderId?: string;
+        campaignId?: string;
+      }>(reference);
       if (aborted) return;
       if (verifyResult.status === "success") setStatus("success");
       else if (verifyResult.status === "failed") setStatus("failed");
@@ -112,8 +119,27 @@ export default function AdsPaymentReturnScreen() {
       const delay = verifyResult.status === "success" ? 700 : 1500;
       setTimeout(() => {
         if (aborted) return;
-        if (verifyResult.status === "success") navigateSuccess();
-        else if (verifyResult.status === "failed") navigateBack("payment_failed");
+        if (verifyResult.status === "success") {
+          const resolvedCampaignId =
+            campaignId || verifyResult.data?.campaignId || undefined;
+          const resolvedOrderId =
+            pickStr(params.order_id) || verifyResult.data?.adsBudgetOrderId || undefined;
+          if (navigatedRef.current) return;
+          navigatedRef.current = true;
+          const query: Record<string, string> = {
+            title: "Payment successful",
+            body: resolvedCampaignId
+              ? "Your ad payment was confirmed. We are opening your live campaign now."
+              : "Your ad payment was confirmed. We are activating your campaign now.",
+          };
+          if (resolvedCampaignId) query.campaign_id = resolvedCampaignId;
+          if (resolvedOrderId) query.order_id = resolvedOrderId;
+          if (reference) query.reference = reference;
+          router.replace({
+            pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
+            params: query,
+          });
+        } else if (verifyResult.status === "failed") navigateBack("payment_failed");
         else navigateBack("payment_pending");
       }, delay);
     })();

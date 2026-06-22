@@ -577,7 +577,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    clearBiometricPromptPending();
+    void clearBiometricPromptPending(signedOutUserId);
     void Promise.allSettled([
       clearCustomerUserCaches(signedOutUserId),
       clearBiometricPreference(),

@@ -37,6 +37,7 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
+import { resolveMailableAccountEmail } from "@beautonomi/utils";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -456,7 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     }
 
-    clearBiometricPromptPending();
+    void clearBiometricPromptPending(signedOutUserId);
     void Promise.allSettled([
       clearBiometricPreference(),
       clearBiometricSetupPromptDismissed(signedOutUserId),
@@ -466,7 +467,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isEmailVerified = !!(session?.user as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;
 
   const resendVerificationEmail = useCallback(async () => {
-    const email = user?.email;
+    const email = resolveMailableAccountEmail(user?.email, session?.user?.email);
     if (!email) throw new Error("No email to send verification to");
     const { error } = await supabase.auth.resend({
       type: "signup",
@@ -474,7 +475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: { emailRedirectTo: getRedirectUrl() },
     });
     if (error) throw error;
-  }, [user?.email]);
+  }, [user?.email, session?.user?.email]);
 
   const resendSignupConfirmationEmail = useCallback(async (emailAddr: string) => {
     const trimmed = emailAddr.trim();

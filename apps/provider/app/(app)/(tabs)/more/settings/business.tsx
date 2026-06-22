@@ -291,9 +291,9 @@ export default function BusinessDetailsScreen() {
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Business details" onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior="padding"
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           style={twStyle("flex-1")}

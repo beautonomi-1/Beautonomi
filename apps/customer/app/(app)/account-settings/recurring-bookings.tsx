@@ -673,7 +673,7 @@ export default function RecurringBookingsScreen() {
       </Modal>
 
       <Modal visible={editOpen} animationType="slide" transparent onRequestClose={() => !savingSchedule && setEditOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <Pressable
             style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
             onPress={() => !savingSchedule && setEditOpen(false)}

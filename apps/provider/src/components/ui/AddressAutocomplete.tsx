@@ -2,7 +2,7 @@
  * AddressAutocomplete — Mapbox-powered address search (aligned with web).
  * POST /api/mapbox/geocode; parsing matches web via @beautonomi/utils.
  */
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type RefObject } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
+  type TextInputProps,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
@@ -51,6 +52,8 @@ interface AddressAutocompleteProps {
   proximity?: { latitude: number; longitude: number };
   /** Forward geocode Mapbox `types`; omit for default Mapbox mix (recommended for onboarding). */
   geocodeTypes?: string[];
+  inputRef?: RefObject<TextInput | null>;
+  onFocus?: TextInputProps["onFocus"];
 }
 
 export function AddressAutocomplete({
@@ -63,6 +66,8 @@ export function AddressAutocomplete({
   defaultCountryName,
   proximity,
   geocodeTypes,
+  inputRef,
+  onFocus,
 }: AddressAutocompleteProps) {
   const { bundle } = useConfigBundle();
   const resolvedDefaultCountry =
@@ -162,9 +167,11 @@ export function AddressAutocomplete({
       <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3")}>
         <Ionicons name="search-outline" size={18} color="#9ca3af" />
         <TextInput
+          ref={inputRef}
           style={twStyle("ml-2 min-h-[44px] flex-1 text-sm text-gray-900")}
           value={query}
           onChangeText={handleChangeText}
+          onFocus={onFocus}
           onBlur={() => {
             if (selectingRef.current) {
               selectingRef.current = false;

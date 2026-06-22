@@ -320,3 +320,124 @@ export function subscriptionFailedCopy(message?: string | null): SubscriptionSuc
       : "If you were charged, your plan will activate when the payment lands. Otherwise please try again.",
   };
 }
+
+// ─── Deep links & checkout review builders ─────────────────────────────────
+
+export type AdsCheckoutReviewData = {
+  heading: string;
+  title: string;
+  subtitle?: string;
+  lineItems: { label: string; value: string }[];
+  benefits: string[];
+  total: string;
+  confirmLabel?: string;
+};
+
+type RetryCheckoutCampaign = {
+  billing_model?: string;
+  budget?: number;
+  duration_days?: number | null;
+  pack_impressions?: number | null;
+  latest_budget_order?: { amount?: number; currency?: string | null } | null;
+};
+
+function adsModelHeading(billingModel?: string): string {
+  if (billingModel === "time_based") return "Time boost";
+  if (billingModel === "impression_pack") return "Impression pack";
+  return "CPC budget";
+}
+
+function adsModelBenefits(billingModel?: string): string[] {
+  if (billingModel === "time_based") {
+    return [
+      "Sponsored placement for the full boost period",
+      "Predictable flat price — no per-click charges",
+      "Goes live only after payment is verified",
+    ];
+  }
+  if (billingModel === "impression_pack") {
+    return [
+      "Prepaid sponsored impressions ready to deliver",
+      "Delivery starts only after payment is verified",
+      "No bidding or daily caps to manage",
+    ];
+  }
+  return [
+    "Sponsored placement in eligible category searches",
+    "You only pay as your ad earns clicks",
+    "Pause or end anytime — unspent budget stops serving",
+  ];
+}
+
+/** Build a review sheet for retrying payment on an unpaid ads draft. */
+export function buildAdsRetryCheckoutReview(
+  campaign: RetryCheckoutCampaign,
+  currency: string,
+): AdsCheckoutReviewData {
+  const amount =
+    Number(campaign.latest_budget_order?.amount ?? campaign.budget ?? 0) || 0;
+  const payCurrency = campaign.latest_budget_order?.currency?.trim() || currency;
+  const total = formatMoney(amount, payCurrency);
+  const heading = adsModelHeading(campaign.billing_model);
+  const isTime = campaign.billing_model === "time_based";
+  const isImpression = !isTime && campaign.pack_impressions != null;
+  const lineItems: { label: string; value: string }[] = [
+    { label: "Campaign type", value: heading },
+  ];
+  if (isTime && campaign.duration_days != null) {
+    const days = Number(campaign.duration_days);
+    const daysLabel = days === 1 ? "1 day" : `${days} days`;
+    lineItems.push({ label: "Boost duration", value: daysLabel });
+  }
+  if (isImpression) {
+    lineItems.push({
+      label: "Impressions",
+      value: formatCount(Number(campaign.pack_impressions)),
+    });
+  }
+  lineItems.push({ label: "Total due", value: total });
+
+  let title = `${total} ad payment`;
+  if (isTime && campaign.duration_days != null) {
+    const days = Number(campaign.duration_days);
+    title = days === 1 ? "1-day boost" : `${days}-day boost`;
+  } else if (isImpression) {
+    title = `${formatCount(Number(campaign.pack_impressions))} impressions`;
+  }
+
+  const modelForBenefits = isTime
+    ? "time_based"
+    : isImpression
+      ? "impression_pack"
+      : campaign.billing_model;
+
+  return {
+    heading: "Complete payment",
+    title,
+    subtitle: "Review the amount below before returning to secure checkout.",
+    benefits: adsModelBenefits(modelForBenefits),
+    lineItems,
+    total,
+    confirmLabel: `Pay ${total}`,
+  };
+}
+
+export type AdsPaymentReturnDeepLinkParams = {
+  success?: boolean;
+  cancelled?: boolean;
+  orderId?: string | null;
+  campaignId?: string | null;
+  reference?: string | null;
+};
+
+/** Native deep link for the ads payment-return cold-start screen (`provider://settings/ads-payment-return`). */
+export function getAdsPaymentReturnDeepLink(params: AdsPaymentReturnDeepLinkParams = {}): string {
+  const q = new URLSearchParams();
+  if (params.success) q.set("success", "1");
+  if (params.cancelled) q.set("cancelled", "1");
+  if (params.orderId) q.set("order_id", params.orderId);
+  if (params.campaignId) q.set("campaign_id", params.campaignId);
+  if (params.reference) q.set("reference", params.reference);
+  const query = q.toString();
+  return `provider://settings/ads-payment-return${query ? `?${query}` : ""}`;
+}

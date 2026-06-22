@@ -465,7 +465,7 @@ export default function ShopScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {/* Search bar */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, paddingVertical: 10, backgroundColor: "#fff", gap: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>

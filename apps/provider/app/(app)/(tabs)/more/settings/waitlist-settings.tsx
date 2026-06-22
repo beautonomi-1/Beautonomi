@@ -128,7 +128,7 @@ export default function WaitlistSettingsScreen() {
       <ScreenHeader title="Waitlist settings" onBack={() => router.back()} subtitle="Configure waitlist and waiting room" />
       <KeyboardAvoidingView
         style={twStyle("flex-1")}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={80}
       >
         <ScrollView

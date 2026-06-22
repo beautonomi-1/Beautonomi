@@ -123,6 +123,10 @@ export async function finalizeOnboardingSuccess(options: {
   const requiresCheckout = requiresCheckoutFromCompletion(data);
   const planId = data?.selected_plan_id ?? formData.selected_plan_id;
 
+  if (userId?.trim()) {
+    await setBiometricPromptPending(userId.trim());
+  }
+
   if (planId && requiresCheckout) {
     const base = (getBackendUrl() || "").replace(/\/$/, "");
     if (!base) {
@@ -156,8 +160,6 @@ export async function finalizeOnboardingSuccess(options: {
     } as never);
     return;
   }
-
-  if (userId?.trim()) setBiometricPromptPending(userId.trim());
 
   if (showSuccessAlert && data?.selected_plan_is_free && formData.selected_plan_name) {
     Alert.alert(

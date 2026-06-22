@@ -298,8 +298,8 @@ export default function SearchScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
           <TouchableOpacity

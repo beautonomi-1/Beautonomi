@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type RefObject } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,8 @@ type Props = {
   placeholder?: string;
   accessibilityLabel?: string;
   inputAccessoryViewID?: string;
+  onFocus?: TextInput["onFocus"];
+  nationalInputRef?: RefObject<TextInput | null>;
 };
 
 export function PhoneInputWithCountry({
@@ -35,6 +37,8 @@ export function PhoneInputWithCountry({
   placeholder,
   accessibilityLabel,
   inputAccessoryViewID,
+  onFocus,
+  nationalInputRef,
 }: Props) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -122,6 +126,7 @@ export function PhoneInputWithCountry({
             <Ionicons name="chevron-down" size={14} color={Colors.gray[500]} />
           </TouchableOpacity>
           <TextInput
+            ref={nationalInputRef}
             style={{
               flex: 1,
               paddingHorizontal: 16,
@@ -137,6 +142,7 @@ export function PhoneInputWithCountry({
             accessibilityLabel={resolvedA11y}
             accessibilityRole="none"
             inputAccessoryViewID={inputAccessoryViewID}
+            onFocus={onFocus}
           />
         </View>
         <Text

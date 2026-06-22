@@ -761,7 +761,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               <LoadingState />
             </View>
           ) : activeOrder ? (
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <KeyboardAvoidingView behavior="padding">
               {/* Status + payment status badges */}
               <View style={twStyle("mb-3 flex-row flex-wrap gap-2")}>
                 {(() => {

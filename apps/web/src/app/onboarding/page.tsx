@@ -23,6 +23,7 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase/auth-sms-otp";
+import { readAndClearCustomerPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Constants & Types
@@ -430,6 +431,46 @@ function Step4Phone({
   const [localVerified, setLocalVerified] = useState(alreadyVerified);
 
   useEffect(() => {
+    if (alreadyVerified) setLocalVerified(true);
+  }, [alreadyVerified]);
+
+  // Phone confirmed at signup/login — skip redundant OTP.
+  useEffect(() => {
+    if (localVerified) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (cancelled || !authUser?.phone) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null })
+          .phone_confirmed_at;
+        if (!phoneConfirmedAt) return;
+
+        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+        const formPhone = phoneE164 ? normalizeSupabaseAuthPhone(phoneE164) : "";
+        if (formPhone && authPhone !== formPhone) return;
+
+        await fetcher.post("/api/me/phone/verify", { phone: authPhone });
+        if (!cancelled) {
+          if (!formPhone) onPhoneChange(authPhone);
+          setLocalVerified(true);
+          onVerified();
+        }
+      } catch {
+        // User can verify manually.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync once when step mounts
+  }, []);
+
+  useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = window.setInterval(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => window.clearInterval(t);
@@ -445,6 +486,21 @@ function Step4Phone({
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Client not ready");
+
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
+        ?.phone_confirmed_at;
+      if (phoneConfirmedAt && authPhone === normalized) {
+        await fetcher.post("/api/me/phone/verify", { phone: normalized });
+        setLocalVerified(true);
+        onVerified();
+        toast.success("Phone number verified!");
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
       setPendingPhoneE164(normalized);
@@ -826,6 +882,12 @@ function CustomerOnboardingWizard() {
           // Phone
           if (p?.phone && !draft.phoneE164) setPhoneE164(p.phone as string);
           if (p?.phone_verified) setPhoneVerified(true);
+        }
+
+        const handoff = readAndClearCustomerPhoneHandoff();
+        if (handoff) {
+          setPhoneE164(handoff.phoneE164);
+          setPhoneVerified(true);
         }
 
         if (addressesRes.status === "fulfilled") {

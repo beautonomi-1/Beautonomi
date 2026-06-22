@@ -155,7 +155,7 @@ export default function DeactivateAccountScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <ScreenFrame loading={false} error={null}>

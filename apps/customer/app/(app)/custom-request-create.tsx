@@ -489,7 +489,7 @@ export default function CustomRequestCreateScreen() {
   return (
     <>
       <Stack.Screen options={{ title: t("customer.mobile.stackTitles.customRequest") }} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("describeHint")}</Text>
         <TextInput

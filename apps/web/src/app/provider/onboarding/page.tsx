@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -64,11 +64,12 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage, isMailableEmail } from "@beautonomi/utils";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { currencySelectLabel } from "@/lib/locale/currency";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
+import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
 
 interface GlobalCategory {
   id: string;
@@ -303,7 +304,7 @@ async function fetchProfilePrefillForOnboarding(): Promise<ProfilePrefillResult 
     const em = typeof p.email === "string" ? p.email.trim() : "";
     const ph = typeof p.phone === "string" ? p.phone.trim() : "";
     if (fn) ownerPatch.owner_name = fn;
-    if (em) ownerPatch.owner_email = em;
+    if (em && isMailableEmail(em)) ownerPatch.owner_email = em;
     const e164 = coerceOwnerPhoneToE164ForForm(ph);
     if (e164) ownerPatch.owner_phone = e164;
     return {
@@ -323,7 +324,7 @@ function mergeAccountIntoOnboardingForm(
   if (!form.owner_name?.trim() && prefill.ownerPatch.owner_name) {
     form.owner_name = prefill.ownerPatch.owner_name;
   }
-  if (!form.owner_email?.trim() && prefill.ownerPatch.owner_email) {
+  if (!form.owner_email?.trim() && prefill.ownerPatch.owner_email && isMailableEmail(prefill.ownerPatch.owner_email)) {
     form.owner_email = prefill.ownerPatch.owner_email;
   }
   if (!form.owner_phone?.trim() && prefill.ownerPatch.owner_phone) {
@@ -340,8 +341,17 @@ function mergeAccountIntoOnboardingForm(
   if (!form.phone?.trim() && form.owner_phone) {
     form.phone = form.owner_phone;
   }
-  if (!form.email?.trim() && form.owner_email) {
+  if (!form.email?.trim() && form.owner_email && isMailableEmail(form.owner_email)) {
     form.email = form.owner_email;
+  }
+}
+
+function scrubPlaceholderEmailsFromOnboardingForm(form: Partial<OnboardingData>) {
+  if (form.owner_email && !isMailableEmail(form.owner_email)) {
+    form.owner_email = "";
+  }
+  if (form.email && !isMailableEmail(form.email)) {
+    form.email = "";
   }
 }
 
@@ -495,6 +505,8 @@ export default function ProviderOnboarding() {
     if (prefill) {
       mergeAccountIntoOnboardingForm(merged, prefill);
     }
+    scrubPlaceholderEmailsFromOnboardingForm(merged);
+    applySignupPhoneHandoffToForm(merged);
 
     setFormData(merged);
     setCurrentStep(step);
@@ -1200,6 +1212,8 @@ function Step1TeamSize({
 
 
 // Step 2: Identity - Name, Email, Phone with Verification
+const PHONE_OTP_RESEND_COOLDOWN_SECS = 30;
+
 function Step2Identity({
   data,
   updateData,
@@ -1211,17 +1225,69 @@ function Step2Identity({
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
   /** E.164 used with `updateUser({ phone })` — must match `verifyOtp` phone. */
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
 
-  // Countdown timer
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [countdown]);
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // If signup already confirmed the phone in Supabase Auth, sync without asking for OTP again.
+  useEffect(() => {
+    if (data.phone_verified) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (cancelled || !authUser?.phone) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null })
+          .phone_confirmed_at;
+        if (!phoneConfirmedAt) return;
+
+        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+        const formPhone = data.owner_phone
+          ? normalizeSupabaseAuthPhone(
+              coerceOwnerPhoneToE164ForForm(data.owner_phone) || data.owner_phone,
+            )
+          : "";
+        const phonesAlign =
+          !formPhone ||
+          authPhone === formPhone ||
+          phoneNumbersMatchProfile(authUser.phone, formPhone);
+        if (!phonesAlign) return;
+
+        await fetcher.post("/api/me/phone/verify", { phone: authPhone });
+        if (!cancelled) {
+          updateData({ phone_verified: true, owner_phone: authPhone, phone: authPhone });
+        }
+      } catch {
+        // User can still verify via Send Code (fast path) or OTP.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when identity step mounts
+  }, []);
+
+  const persistPhoneVerified = async (phone: string) => {
+    await fetcher.post("/api/me/phone/verify", { phone });
+    updateData({ phone_verified: true, owner_phone: phone, phone });
+  };
+
+  const handleStartChangePhone = () => {
+    updateData({ phone_verified: false });
+    setCodeSent(false);
+    setVerificationCode("");
+    setPendingPhoneE164("");
+    setResendCooldown(0);
+  };
 
   const handleSendCode = async () => {
     const ownerE164 = coerceOwnerPhoneToE164ForForm(data.owner_phone);
@@ -1234,13 +1300,26 @@ function Step2Identity({
     try {
       setIsSendingCode(true);
       const supabase = getSupabaseClient();
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
+        ?.phone_confirmed_at;
+
+      if (phoneConfirmedAt && authPhone === normalized) {
+        await persistPhoneVerified(normalized);
+        toast.success("Phone number verified!");
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
 
       setPendingPhoneE164(normalized);
       setVerificationCode("");
       setCodeSent(true);
-      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      setResendCooldown(PHONE_OTP_RESEND_COOLDOWN_SECS);
       toast.success("Verification code sent to your phone.");
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to send verification code.";
@@ -1269,12 +1348,7 @@ function Step2Identity({
       });
       if (verifyError) throw verifyError;
 
-      await fetcher.patch("/api/me/profile", {
-        phone,
-        phone_verified: true,
-      });
-
-      updateData({ phone_verified: true, owner_phone: phone });
+      await persistPhoneVerified(phone);
       toast.success("Phone number verified!");
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Verification failed. Please try again.";
@@ -1282,6 +1356,20 @@ function Step2Identity({
       console.error("Error verifying code:", error);
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handlePhoneChange = (e164: string) => {
+    const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
+    const verifiedPhone = data.phone_verified
+      ? normalizeSupabaseAuthPhone(data.owner_phone || "")
+      : "";
+    const stillVerified = Boolean(data.phone_verified && normalized && normalized === verifiedPhone);
+    updateData({ owner_phone: e164, phone_verified: stillVerified });
+    if (!stillVerified) {
+      setCodeSent(false);
+      setVerificationCode("");
+      setPendingPhoneE164("");
     }
   };
 
@@ -1333,6 +1421,9 @@ function Step2Identity({
             className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
             required
           />
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            Used for payouts, invoices, and account notifications.
+          </p>
         </div>
 
         {/* Phone with Verification */}
@@ -1340,97 +1431,100 @@ function Step2Identity({
           <Label htmlFor="owner_phone" className="mb-2 block text-sm font-semibold text-slate-900">
             Mobile Number <span className="text-slate-400">*</span>
           </Label>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-            <div className="min-w-0 w-full lg:flex-1">
-              <PhoneInput
-                inputId="provider-onboarding-owner-phone"
-                label=""
-                value={data.owner_phone || ""}
-                onChange={(e164) => {
-                  updateData({ owner_phone: e164, phone_verified: false });
-                  setCodeSent(false);
-                  setVerificationCode("");
-                  setPendingPhoneE164("");
-                }}
-                placeholder="Phone number"
-                required
-              />
-            </div>
-            <Button
-              type="button"
-              onClick={handleSendCode}
-              disabled={!isValidOwnerPhoneE164(data.owner_phone) || isSendingCode || countdown > 0}
-              className="h-14 w-full shrink-0 rounded-xl bg-slate-900 px-6 text-white hover:bg-slate-800 disabled:opacity-50 lg:w-auto shadow-sm transition-all"
-            >
-              {isSendingCode ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : countdown > 0 ? (
-                `Resend (${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")})`
-              ) : (
-                "Send Code"
-              )}
-            </Button>
-          </div>
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            We'll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
-            {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
-            For South Africa, enter the local number only (omit +27)—for example{" "}
-            <span className="whitespace-nowrap font-medium text-slate-700">82 123 4567</span> or{" "}
-            <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
-          </p>
 
-          {/* Verification Code Input */}
-          {codeSent && (
-            <div className="mt-6 space-y-3 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6 border border-slate-100">
-              <Label
-                htmlFor="provider-onboarding-verify-otp-0"
-                className="mb-2 block text-sm font-semibold text-slate-900"
+          {data.phone_verified ? (
+            <div className="flex flex-col items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 px-5 py-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                  <Check className="h-6 w-6 text-emerald-600" aria-hidden />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-900">Phone verified</p>
+                  <p className="text-sm text-emerald-700">{data.owner_phone}</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleStartChangePhone}
+                className="h-11 rounded-xl border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
               >
-                Enter Verification Code <span className="text-slate-400">*</span>
-              </Label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <OtpDigitInput
-                  id="provider-onboarding-verify-otp"
-                  length={SUPABASE_AUTH_OTP_LENGTH}
-                  label="Phone verification code"
-                  value={verificationCode}
-                  onChange={setVerificationCode}
-                  onComplete={(code) => {
-                    if (!isVerifying && !data.phone_verified) void handleVerifyCode(code);
-                  }}
-                  disabled={isVerifying || Boolean(data.phone_verified)}
-                  autoFocus
-                  className="min-w-0 flex-1 [&>div:last-child]:!justify-start"
-                />
+                Change number
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                <div className="min-w-0 w-full lg:flex-1">
+                  <PhoneInput
+                    inputId="provider-onboarding-owner-phone"
+                    label=""
+                    value={data.owner_phone || ""}
+                    onChange={handlePhoneChange}
+                    placeholder="Phone number"
+                    required
+                  />
+                </div>
                 <Button
                   type="button"
-                  onClick={() => void handleVerifyCode()}
+                  onClick={handleSendCode}
                   disabled={
-                    !isCompleteSupabaseSmsOtp(verificationCode) ||
-                    isVerifying ||
-                    data.phone_verified
+                    !isValidOwnerPhoneE164(data.owner_phone) || isSendingCode || resendCooldown > 0
                   }
-                  className="h-14 shrink-0 rounded-xl bg-slate-900 px-8 text-white hover:bg-slate-800 disabled:opacity-50 sm:h-14 shadow-sm transition-all"
+                  className="h-14 w-full shrink-0 rounded-xl bg-slate-900 px-6 text-white hover:bg-slate-800 disabled:opacity-50 lg:w-auto shadow-sm transition-all"
                 >
-                  {isVerifying ? (
+                  {isSendingCode ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : data.phone_verified ? (
-                    <Check className="w-5 h-5" />
+                  ) : resendCooldown > 0 ? (
+                    `Resend (${resendCooldown}s)`
                   ) : (
-                    "Verify"
+                    "Send Code"
                   )}
                 </Button>
               </div>
-              {data.phone_verified && (
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm font-medium text-emerald-800">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
-                    <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}
+                ). For South Africa, enter the local number only (omit +27)—for example{" "}
+                <span className="whitespace-nowrap font-medium text-slate-700">82 123 4567</span> or{" "}
+                <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
+              </p>
+
+              {codeSent && (
+                <div className="mt-6 space-y-3 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6 border border-slate-100">
+                  <Label
+                    htmlFor="provider-onboarding-verify-otp-0"
+                    className="mb-2 block text-sm font-semibold text-slate-900"
+                  >
+                    Enter Verification Code <span className="text-slate-400">*</span>
+                  </Label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <OtpDigitInput
+                      id="provider-onboarding-verify-otp"
+                      length={SUPABASE_AUTH_OTP_LENGTH}
+                      label="Phone verification code"
+                      value={verificationCode}
+                      onChange={setVerificationCode}
+                      onComplete={(code) => {
+                        if (!isVerifying) void handleVerifyCode(code);
+                      }}
+                      disabled={isVerifying}
+                      autoFocus
+                      className="min-w-0 flex-1 [&>div:last-child]:!justify-start"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => void handleVerifyCode()}
+                      disabled={!isCompleteSupabaseSmsOtp(verificationCode) || isVerifying}
+                      className="h-14 shrink-0 rounded-xl bg-slate-900 px-8 text-white hover:bg-slate-800 disabled:opacity-50 sm:h-14 shadow-sm transition-all"
+                    >
+                      {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify"}
+                    </Button>
                   </div>
-                  Phone number verified successfully
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>

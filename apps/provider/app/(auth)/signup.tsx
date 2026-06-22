@@ -37,6 +37,7 @@ import {
   applyPendingSignupPreferences,
   persistProviderSignupSource,
 } from "@/features/auth/pending-signup-preferences";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
@@ -263,6 +264,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("phone");
+      await writeSignupPhoneHandoff(e164);
       await goToAppRoot(router, "phone_otp_signup");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
@@ -394,7 +396,7 @@ export default function SignupScreen() {
   if (awaitingSignupVerification) {
     return (
       <ScreenContainer edges={["top"]} scrollable={false} keyboardAvoiding={false} reserveTabBarSpace={false} noPadding>
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#ffffff" }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#ffffff" }} behavior="padding">
           <ScrollView style={{ flex: 1 }} contentContainerStyle={scrollContentStyle} keyboardShouldPersistTaps="handled">
             <View style={formStyle}>
               <TouchableOpacity onPress={goToLogin} style={{ marginBottom: 16 }} accessibilityRole="button" accessibilityLabel="Back to login">
@@ -469,8 +471,8 @@ export default function SignupScreen() {
     <ScreenContainer edges={["top"]} scrollable={false} keyboardAvoiding={false} reserveTabBarSpace={false} noPadding>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: "#ffffff" }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <ScrollView style={{ flex: 1, backgroundColor: "#ffffff" }} contentContainerStyle={scrollContentStyle} keyboardShouldPersistTaps="handled">
           <View style={formStyle}>

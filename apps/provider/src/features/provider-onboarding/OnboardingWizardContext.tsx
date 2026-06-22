@@ -15,6 +15,8 @@ import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { coerceOwnerPhoneToE164ForForm, phoneNumbersMatchProfile } from "./onboarding-phone";
+import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
+import { isMailableEmail } from "@beautonomi/utils";
 import {
   finalizeOnboardingSuccess,
   probeProviderProfileExists,
@@ -78,7 +80,7 @@ function mergePrefill(
   const em = typeof prefill.email === "string" ? prefill.email.trim() : "";
   const ph = typeof prefill.phone === "string" ? prefill.phone.trim() : "";
   if (!form.owner_name?.trim() && fn) form.owner_name = fn;
-  if (!form.owner_email?.trim() && em) form.owner_email = em;
+  if (!form.owner_email?.trim() && em && isMailableEmail(em)) form.owner_email = em;
   const e164 = coerceOwnerPhoneToE164ForForm(ph);
   if (!form.owner_phone?.trim() && e164) form.owner_phone = e164;
   const ownerDigits = form.owner_phone?.trim() || "";
@@ -86,7 +88,18 @@ function mergePrefill(
     form.phone_verified = true;
   }
   if (!form.phone?.trim() && form.owner_phone) form.phone = form.owner_phone;
-  if (!form.email?.trim() && form.owner_email) form.email = form.owner_email;
+  if (!form.email?.trim() && form.owner_email && isMailableEmail(form.owner_email)) {
+    form.email = form.owner_email;
+  }
+}
+
+function scrubPlaceholderEmailsFromOnboardingForm(form: Partial<OnboardingFormData>) {
+  if (form.owner_email && !isMailableEmail(form.owner_email)) {
+    form.owner_email = "";
+  }
+  if (form.email && !isMailableEmail(form.email)) {
+    form.email = "";
+  }
 }
 
 interface OnboardingWizardProviderProps {
@@ -172,6 +185,10 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         }>("/api/me/profile");
         if (!cancelled && !profileRes.error && profileRes.data) {
           mergePrefill(merged, profileRes.data);
+        }
+        if (!cancelled) {
+          scrubPlaceholderEmailsFromOnboardingForm(merged);
+          await applySignupPhoneHandoffToForm(merged);
         }
 
         const providerExists = await probeProviderProfileExists();

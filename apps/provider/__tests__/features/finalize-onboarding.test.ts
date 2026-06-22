@@ -28,11 +28,17 @@ jest.mock("@/config/public-env", () => ({
   getBackendUrl: jest.fn(() => "https://api.example.com"),
 }));
 
+const mockSetBiometricPromptPending = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/biometric-setup-prompt", () => ({
+  setBiometricPromptPending: (...args: unknown[]) => mockSetBiometricPromptPending(...args),
+}));
+
 describe("finalizeOnboardingSuccess", () => {
   const { api } = jest.requireMock<{ api: { get: jest.Mock } }>("@/lib/api-client");
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSetBiometricPromptPending.mockClear();
     api.get.mockResolvedValue({
       data: { portal: "provider", role: "provider_owner", provider_status: "active" },
       error: null,
@@ -55,6 +61,7 @@ describe("finalizeOnboardingSuccess", () => {
 
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
     expect(mockRefresh).toHaveBeenCalled();
+    expect(mockSetBiometricPromptPending).toHaveBeenCalledWith("user-1");
   });
 
   it("opens in-app browser when requires_checkout is true", async () => {
@@ -76,6 +83,7 @@ describe("finalizeOnboardingSuccess", () => {
         pathname: "/(app)/(tabs)/more/in-app-browser",
       }),
     );
+    expect(mockSetBiometricPromptPending).toHaveBeenCalledWith("user-1");
   });
 
   it("sets portal cache to provider after free plan success", async () => {
