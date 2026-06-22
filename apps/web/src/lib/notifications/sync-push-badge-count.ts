@@ -8,8 +8,8 @@ import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
 import { resolveTenantIdForPush } from "@/lib/notifications/resolve-tenant-for-push";
 import { sendToUser } from "@/lib/notifications/onesignal";
 import {
-  getLastSyncedBadgeCount,
-  recordSyncedBadgeCount,
+  revertBadgeSyncClaim,
+  tryClaimBadgeSyncSend,
 } from "@/lib/notifications/badge-sync-state";
 import { isAnyProviderPushSectionEnabled } from "@/lib/notifications/provider-notification-channels";
 import type { OneSignalAppType } from "@/lib/platform/secrets";
@@ -20,6 +20,42 @@ type SyncPushBadgeOptions = {
   /** When omitted, reads current unread count from the database. */
   unreadCount?: number;
 };
+
+/** Coalesce mark-read bursts (chat open fires conversation read + mark-related-read). */
+const ALL_APPS_DEBOUNCE_MS = 800;
+
+/** Last-resort guard when dedupe state cannot persist (missing migration / DB error). */
+const SAME_COUNT_COOLDOWN_MS = 4000;
+
+const pendingAllAppsSync = new Map<
+  string,
+  {
+    timer: ReturnType<typeof setTimeout>;
+    promise: Promise<void>;
+    resolve: () => void;
+    unreadCount?: number;
+    tenantId?: string | null | undefined;
+  }
+>();
+
+const recentSuccessfulSendAt = new Map<string, number>();
+
+function sendCooldownKey(userId: string, appType: OneSignalAppType, count: number): string {
+  return `${userId}:${appType}:${count}`;
+}
+
+function isWithinSameCountCooldown(
+  userId: string,
+  appType: OneSignalAppType,
+  count: number,
+): boolean {
+  const at = recentSuccessfulSendAt.get(sendCooldownKey(userId, appType, count));
+  return at !== undefined && Date.now() - at < SAME_COUNT_COOLDOWN_MS;
+}
+
+function markSameCountSent(userId: string, appType: OneSignalAppType, count: number): void {
+  recentSuccessfulSendAt.set(sendCooldownKey(userId, appType, count), Date.now());
+}
 
 /**
  * Whether silent badge_sync pushes are allowed for this user+app per their
@@ -94,14 +130,16 @@ export async function syncPushBadgeCount(
         ? exactIosBadgeCount(options.unreadCount)
         : exactIosBadgeCount(await getTotalUnreadBadgeCount(userId, appType));
 
-    const lastSynced = await getLastSyncedBadgeCount(userId, appType);
-    if (lastSynced === unread) return;
+    if (isWithinSameCountCooldown(userId, appType, unread)) return;
+
+    const claim = await tryClaimBadgeSyncSend(userId, appType, unread);
+    if (!claim.claimed) return;
 
     const result = await sendToUser(
       userId,
       {
-        title: "\u200b",
-        message: "\u200b",
+        title: "",
+        message: "",
         type: "badge_sync",
         data: { type: "badge_sync", silent: true, unread_count: unread },
         ios_badgeType: "SetTo",
@@ -120,19 +158,23 @@ export async function syncPushBadgeCount(
     );
 
     if (result.success) {
-      await recordSyncedBadgeCount(userId, appType, unread);
+      markSameCountSent(userId, appType, unread);
+    } else {
+      await revertBadgeSyncClaim(userId, appType, claim.previousCount);
     }
   } catch (err) {
     console.warn("[syncPushBadgeCount] failed:", err);
   }
 }
 
-/**
- * Sync exact unread count to customer + provider OneSignal apps (best-effort).
- * Omit `unreadCount` to read from the database after a read/mark-all mutation.
- * Only targets apps where the user has a registered device; skips unchanged counts.
- */
-export async function syncPushBadgeCountAllApps(
+function clearBadgeSyncCooldownForUser(userId: string): void {
+  const prefix = `${userId.trim()}:`;
+  for (const key of recentSuccessfulSendAt.keys()) {
+    if (key.startsWith(prefix)) recentSuccessfulSendAt.delete(key);
+  }
+}
+
+export async function syncPushBadgeCountAllAppsNow(
   userId: string,
   unreadCount?: number,
   tenantId?: string | null,
@@ -158,4 +200,86 @@ export async function syncPushBadgeCountAllApps(
       });
     }),
   );
+}
+
+/**
+ * Sync exact unread count to customer + provider OneSignal apps (best-effort).
+ * Omit `unreadCount` to read from the database after a read/mark-all mutation.
+ * Only targets apps where the user has a registered device; skips unchanged counts.
+ * Debounces concurrent callers so chat open (conversation read + mark-related-read)
+ * produces at most one sync burst per user.
+ */
+export async function syncPushBadgeCountAllApps(
+  userId: string,
+  unreadCount?: number,
+  tenantId?: string | null,
+): Promise<void> {
+  const key = userId.trim();
+  if (!key) return Promise.resolve();
+
+  const existing = pendingAllAppsSync.get(key);
+  if (existing) {
+    clearTimeout(existing.timer);
+    if (typeof unreadCount === "number") existing.unreadCount = unreadCount;
+    if (tenantId !== undefined) existing.tenantId = tenantId;
+    existing.timer = setTimeout(async () => {
+      pendingAllAppsSync.delete(key);
+      try {
+        await syncPushBadgeCountAllAppsNow(key, existing.unreadCount, existing.tenantId);
+      } finally {
+        existing.resolve();
+      }
+    }, ALL_APPS_DEBOUNCE_MS);
+    return existing.promise;
+  }
+
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+
+  const entry = {
+    timer: setTimeout(async () => {
+      pendingAllAppsSync.delete(key);
+      try {
+        await syncPushBadgeCountAllAppsNow(key, unreadCount, tenantId);
+      } finally {
+        resolve();
+      }
+    }, ALL_APPS_DEBOUNCE_MS),
+    promise,
+    resolve,
+    unreadCount,
+    tenantId,
+  };
+  pendingAllAppsSync.set(key, entry);
+  return promise;
+}
+
+/**
+ * Run badge sync immediately (no debounce). Use after mark-all-read so the OS
+ * badge baseline resets before the next notification arrives.
+ */
+export async function syncPushBadgeCountAllAppsImmediate(
+  userId: string,
+  unreadCount?: number,
+  tenantId?: string | null,
+): Promise<void> {
+  const key = userId.trim();
+  if (!key) return;
+
+  const pending = pendingAllAppsSync.get(key);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingAllAppsSync.delete(key);
+    pending.resolve();
+  }
+  clearBadgeSyncCooldownForUser(key);
+  await syncPushBadgeCountAllAppsNow(key, unreadCount, tenantId);
+}
+
+/** @internal Vitest-only reset for module-level debounce/cooldown maps. */
+export function resetSyncPushBadgeStateForTests(): void {
+  pendingAllAppsSync.clear();
+  recentSuccessfulSendAt.clear();
 }

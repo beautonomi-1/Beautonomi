@@ -191,12 +191,12 @@ export default function ProfileDetailsScreen() {
     <ScreenFrame loading={loading} error={error} onRetry={load} scrollable={false}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: Math.max(220, 40) }}
           keyboardShouldPersistTaps="handled"
         >
           {/* Profile questions (3+ for completion) */}

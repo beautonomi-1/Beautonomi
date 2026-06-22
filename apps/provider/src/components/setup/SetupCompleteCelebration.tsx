@@ -33,6 +33,7 @@ import Animated, {
 } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { setSetupCelebrationVisible } from "@/lib/setup-celebration-gate";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -171,19 +172,29 @@ export function SetupCompleteCelebration() {
     transform: [{ scale: cardScale.value }],
   }));
 
+  useEffect(() => {
+    setSetupCelebrationVisible(visible);
+    return () => {
+      if (visible) setSetupCelebrationVisible(false);
+    };
+  }, [visible]);
+
   const dismiss = useCallback(() => {
     setVisible(false);
+    setSetupCelebrationVisible(false);
   }, []);
 
   const handleDashboard = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setVisible(false);
+    setSetupCelebrationVisible(false);
     router.push("/(app)/(tabs)/dashboard" as never);
   }, [router]);
 
   const handleMore = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setVisible(false);
+    setSetupCelebrationVisible(false);
     router.push("/(app)/(tabs)/more/gallery" as never);
   }, [router]);
 

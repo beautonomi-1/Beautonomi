@@ -1,78 +1,70 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import { AlertCircle, X, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import {
+  resolveMailableAccountEmail,
+  shouldShowEmailVerificationBanner,
+} from "@beautonomi/utils";
 
 /**
  * EmailVerificationBanner
- * 
- * Shows a banner when user's email is not verified.
- * Smart detection: Only shows if account is recent (created within 7 days) and email_confirmed_at is null.
- * This handles both cases:
- * - If verification is ENABLED: Shows until user verifies
- * - If verification is DISABLED: User can dismiss, won't show for old accounts
+ *
+ * Shows a banner when the user has a real (mailable) email that is not yet verified.
+ * Phone-only and placeholder-email accounts are excluded.
  */
 export default function EmailVerificationBanner() {
   const { user, session, resendVerificationEmail } = useAuth();
   const [isDismissed, setIsDismissed] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  
-  // Check if banner was dismissed in localStorage
+
+  const authUser = session?.user;
+
+  const mailableEmail = useMemo(
+    () => resolveMailableAccountEmail(authUser?.email, user?.email),
+    [authUser?.email, user?.email],
+  );
+
   useEffect(() => {
     if (user?.id) {
       const dismissedKey = `email-verification-dismissed-${user.id}`;
-      const wasDismissed = localStorage.getItem(dismissedKey) === 'true';
+      const wasDismissed = localStorage.getItem(dismissedKey) === "true";
       setIsDismissed(wasDismissed);
     }
   }, [user?.id]);
 
-  // Don't show if:
-  // - No user
-  // - No session (not logged in)
-  // - User dismissed it
-  if (!user || !session || isDismissed) {
-    return null;
-  }
+  const shouldShow = Boolean(
+    user &&
+      session &&
+      authUser &&
+      !isDismissed &&
+      mailableEmail &&
+      shouldShowEmailVerificationBanner({
+        authEmail: authUser.email,
+        profileEmail: user.email,
+        emailConfirmedAt: authUser.email_confirmed_at,
+        accountCreatedAt: user.created_at ?? authUser.created_at,
+      }),
+  );
 
-  // Check email verification status from session
-  const emailConfirmedAt = session.user.email_confirmed_at;
-  if (emailConfirmedAt) {
-    // Email is verified, don't show
+  if (!shouldShow || !mailableEmail) {
     return null;
   }
-
-  // Check if account is recent (created within last 7 days)
-  // This helps distinguish between "verification required" vs "verification disabled"
-  // If email verification is disabled in Supabase, email_confirmed_at will be null
-  // but users can still log in, so we only show the banner for recent accounts
-  const accountAge = user.created_at 
-    ? (Date.now() - new Date(user.created_at).getTime()) / (1000 * 60 * 60 * 24) // days
-    : Infinity;
-  
-  // Only show for accounts created within last 7 days
-  // Older accounts likely have verification disabled or user already verified
-  // If email verification is disabled in Supabase, this banner shouldn't show at all
-  // because users can log in without verification
-  if (accountAge > 7) {
-    return null;
-  }
-  
-  // Additional check: If user has a valid session but email_confirmed_at is null,
-  // it likely means email verification is disabled in Supabase settings
-  // In that case, don't show the banner (user can use the app without verification)
-  // We can't directly check Supabase settings, but if user is logged in and can access the app,
-  // verification is likely not required
 
   const handleResend = async () => {
     try {
       setIsResending(true);
       await resendVerificationEmail();
       toast.success("Verification email sent! Please check your inbox.");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send verification email. Please try again.");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to send verification email. Please try again.";
+      toast.error(message);
     } finally {
       setIsResending(false);
     }
@@ -92,7 +84,7 @@ export default function EmailVerificationBanner() {
               </h3>
               <div className="mt-2 text-sm text-amber-700">
                 <p>
-                  We've sent a verification email to <strong>{user.email}</strong>. 
+                  We&apos;ve sent a verification email to <strong>{mailableEmail}</strong>.
                   Please check your inbox and click the verification link to activate your account.
                 </p>
               </div>
@@ -112,9 +104,8 @@ export default function EmailVerificationBanner() {
             <button
               onClick={() => {
                 setIsDismissed(true);
-                // Remember dismissal in localStorage
                 if (user?.id) {
-                  localStorage.setItem(`email-verification-dismissed-${user.id}`, 'true');
+                  localStorage.setItem(`email-verification-dismissed-${user.id}`, "true");
                 }
               }}
               className="ml-4 flex-shrink-0 text-amber-600 hover:text-amber-800"

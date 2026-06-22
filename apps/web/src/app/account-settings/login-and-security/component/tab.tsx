@@ -32,6 +32,7 @@ import {
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import {
   describeReauthOtpDestination,
+  isMailableEmail,
   maskEmailForDisplay,
   maskPhoneForDisplay,
 } from "@beautonomi/utils";
@@ -41,6 +42,11 @@ type AuthSecurityState = NonNullable<LoginAndSecurityInitial["profile"]["auth_se
 
 function maskProfileEmail(email: string): string {
   return maskEmailForDisplay(email);
+}
+
+function displayProfileEmail(email: string | null | undefined): string {
+  if (!email || !isMailableEmail(email)) return "";
+  return maskProfileEmail(email);
 }
 
 function maskProfilePhone(phone: string): string {
@@ -100,7 +106,7 @@ const LoginAccount = ({
   const [profileEmail, setProfileEmail] = useState<string>(() => {
     const e = initial?.profile?.email;
     if (!e || typeof e !== "string") return "";
-    return maskProfileEmail(e);
+    return displayProfileEmail(e);
   });
   const [profilePhone, setProfilePhone] = useState<string>(() => {
     const p = initial?.profile?.phone;
@@ -145,7 +151,7 @@ const LoginAccount = ({
         const email = data?.email;
         const phone = data?.phone;
         if (email) {
-          setProfileEmail(maskProfileEmail(email));
+          setProfileEmail(displayProfileEmail(email));
         }
         if (phone) {
           setProfilePhone(maskProfilePhone(phone));

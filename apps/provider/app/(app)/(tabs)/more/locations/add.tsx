@@ -199,9 +199,9 @@ export default function AddLocationScreen() {
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Add location" onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior="padding"
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           style={{ flex: 1 }}

@@ -130,7 +130,7 @@ export default function AutomationsCreateScreen() {
         onBack={() => router.back()}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
       >

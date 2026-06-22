@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { isNonMailableEmail } from "@beautonomi/utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolvePublicAuthPolicyForTenant } from "@/lib/config/resolve-public-auth-policy";
 import type { PublicAuthPolicy } from "@/lib/config/auth-policy-public";
@@ -13,10 +14,6 @@ export type UserAuthSecurityState = {
   password_changed_at: string | null;
   policy: PublicAuthPolicy;
 };
-
-function isPlaceholderPhoneEmail(email: string | null | undefined): boolean {
-  return Boolean(email && email.trim().toLowerCase().endsWith("@phone.local"));
-}
 
 function authUserHasStoredPassword(encryptedPassword: unknown): boolean {
   return typeof encryptedPassword === "string" && encryptedPassword.length > 0;
@@ -74,7 +71,7 @@ export async function getUserAuthSecurityState(
 ): Promise<UserAuthSecurityState> {
   const email = authUser.email?.trim() ?? "";
   const phone = authUser.phone?.trim() ?? "";
-  const emailIsPlaceholder = isPlaceholderPhoneEmail(email);
+  const emailIsPlaceholder = isNonMailableEmail(email);
   const policy = await resolvePublicAuthPolicyForTenant(userRow?.preferred_home_tenant_id ?? null);
   const hasPasswordFromAuth = await readAuthUserHasPassword(authUser.id);
 

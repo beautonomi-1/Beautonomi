@@ -65,7 +65,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.64",
+  version: "1.0.65",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -79,7 +79,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "256",
+    buildNumber: "257",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -113,7 +113,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 257,
+    versionCode: 258,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -166,7 +166,7 @@ const BASE_EXPO_CONFIG = {
       "expo-local-authentication",
       {
         faceIDPermission:
-          "Beautonomi uses Face ID or Touch ID so you can sign in quickly. Biometric data stays on your device and is not sent to our servers.",
+          "Beautonomi uses Face ID or Touch ID to open the app securely. Biometric data stays on your device and is not sent to our servers.",
       },
     ],
     [

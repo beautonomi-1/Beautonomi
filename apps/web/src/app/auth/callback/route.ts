@@ -12,6 +12,8 @@ import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-p
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { Portal } from "@/lib/auth/role";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const ALLOWED_NEXT_PREFIXES = [
   "/",
@@ -46,6 +48,29 @@ function authErrorRedirect(requestUrl: URL, message: string): NextResponse {
   loginUrl.searchParams.set("error", message);
   if (next) loginUrl.searchParams.set("next", next);
   return NextResponse.redirect(loginUrl);
+}
+
+async function resolvePortalDefaultRoute(
+  supabase: SupabaseClient,
+  userId: string,
+  portal: Portal,
+): Promise<string> {
+  let target = getDefaultRouteForPortal(portal);
+  if (portal === "admin") {
+    target = `/admin/login?next=${encodeURIComponent("/admin/dashboard")}`;
+    return target;
+  }
+  if (portal === "customer") {
+    const { data } = await supabase
+      .from("users")
+      .select("customer_onboarding_completed_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!data?.customer_onboarding_completed_at) {
+      return "/onboarding";
+    }
+  }
+  return target;
 }
 
 async function tryBootstrapPreferredHomeTenant(userId: string, request: Request): Promise<void> {
@@ -222,15 +247,12 @@ export async function GET(request: NextRequest) {
   // Superadmin is sent to /admin/login (dedicated admin entry), not directly to /admin/dashboard.
   if (!normalizedPath || normalizedPath === "/") {
     const roleResult = await getUserRoleServer(supabase);
-    if (roleResult) {
+    if (roleResult && data.user?.id) {
       const portal = getPortalForUser({
         role: roleResult.role,
         provider_status: roleResult.provider_status,
       });
-      let target = getDefaultRouteForPortal(portal);
-      if (portal === "admin") {
-        target = `/admin/login?next=${encodeURIComponent("/admin/dashboard")}`;
-      }
+      const target = await resolvePortalDefaultRoute(supabase, data.user.id, portal);
       return NextResponse.redirect(new URL(target, requestUrl.origin));
     }
   }

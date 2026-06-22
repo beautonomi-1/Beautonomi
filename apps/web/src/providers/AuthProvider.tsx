@@ -17,6 +17,7 @@ import { scheduleRetentionSyncOnSession } from "@/lib/retention/client-sync";
 import { clearFetcherCache } from "@/lib/http/fetcher";
 import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 import { signIn as signInViaProxy } from "@/lib/supabase/auth";
+import { resolveMailableAccountEmail } from "@beautonomi/utils";
 
 interface AuthContextType {
   user: User | null;
@@ -1133,20 +1134,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resendVerificationEmail = useCallback(async () => {
     if (!supabase) return;
+    const email = resolveMailableAccountEmail(session?.user?.email, user?.email);
+    if (!email) {
+      throw new Error("No email to send verification to");
+    }
     try {
       const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: user?.email || '',
+        type: "signup",
+        email,
       });
 
       if (error) {
         throw error;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error resending verification email:", error);
       throw error;
     }
-  }, [supabase, user]);
+  }, [supabase, session?.user?.email, user?.email]);
 
   return (
     <AuthContext.Provider

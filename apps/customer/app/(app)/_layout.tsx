@@ -9,6 +9,7 @@ import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
 import { BiometricSetupPrompt } from "@/components/BiometricSetupPrompt";
+import { BiometricSetupBootstrap } from "@/components/BiometricSetupBootstrap";
 import { BiometricGate } from "@/components/BiometricGate";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
@@ -233,6 +234,7 @@ export default function AppLayout() {
     <RoleGate>
       <SingularLinkHandler />
       <NativePermissionsOnboarding />
+      <BiometricSetupBootstrap />
       <BiometricSetupPrompt />
       <View style={{ flex: 1, ...(Platform.OS === "web" ? { width: "100%" } : {}) }}>
       <Stack

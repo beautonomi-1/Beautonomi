@@ -74,7 +74,7 @@ export default function NewSupportTicketScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
       <ScrollView
@@ -174,7 +174,7 @@ export default function NewSupportTicketScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 220 },
   fieldGap: { marginBottom: 16 },
   label: { marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] },
   contextRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },

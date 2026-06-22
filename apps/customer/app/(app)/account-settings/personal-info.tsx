@@ -522,7 +522,7 @@ export default function PersonalInfoScreen() {
 
       {/* Change phone modal */}
       <Modal visible={showPhoneModal} transparent animationType="fade">
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} behavior="padding">
           <Pressable style={{ flex: 1 }} onPress={() => setShowPhoneModal(false)}>
             <Pressable style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 24 }} onPress={(e) => e.stopPropagation()}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>

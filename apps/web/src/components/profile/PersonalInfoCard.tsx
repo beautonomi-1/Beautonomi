@@ -22,6 +22,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import type { ProfileUser } from "@/types/profile";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
+import { isMailableEmail } from "@beautonomi/utils";
 
 interface PersonalInfoCardProps {
   user: ProfileUser;
@@ -405,6 +406,7 @@ export default function PersonalInfoCard({
   };
 
   const formatEmail = (email: string) => {
+    if (!email || !isMailableEmail(email)) return "Not provided";
     const parts = email.split("@");
     if (parts[0].length > 0) {
       return `${parts[0].substring(0, 1)}****@${parts[1] || ""}`;
@@ -620,7 +622,7 @@ export default function PersonalInfoCard({
                 <InfoRow
                   label="Email address"
                   value={formatEmail(user.email)}
-                  verified={user.email_verified}
+                  verified={!isMailableEmail(user.email) || user.email_verified}
                   onEdit={() => openEditModal("email")}
                 />
 

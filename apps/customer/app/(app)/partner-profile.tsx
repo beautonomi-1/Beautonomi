@@ -25,7 +25,7 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -1149,8 +1149,18 @@ export default function PartnerProfileScreen() {
   const [productCategoryQuery, setProductCategoryQuery] = useState("");
   const [productPage, setProductPage] = useState(1);
 
+  const routeServiceCoords = useMemo(() => {
+    const lat = paramLat != null ? Number(paramLat) : NaN;
+    const lng = paramLng != null ? Number(paramLng) : NaN;
+    return hasValidServiceCoordinates({ latitude: lat, longitude: lng })
+      ? { latitude: lat, longitude: lng }
+      : null;
+  }, [paramLat, paramLng]);
+
   const { selectedAddress } = useSelectedAddress();
-  const { coords } = useLocation();
+  const shouldUseGps =
+    !hasValidServiceCoordinates(selectedAddress) && !hasValidServiceCoordinates(routeServiceCoords);
+  const { coords } = useLocation({ enabled: shouldUseGps });
 
   // Accept provider_id as fallback when no slug is passed (e.g. on-demand deep links).
   // The public API now resolves UUIDs in the [slug] route segment.

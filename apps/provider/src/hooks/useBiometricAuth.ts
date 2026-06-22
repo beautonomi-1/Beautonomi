@@ -101,7 +101,7 @@ export function useBiometricAuth(): BiometricAuthState {
     }
 
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Verify your identity to enable biometric login",
+      promptMessage: "Verify your identity to enable app lock",
       cancelLabel: "Cancel",
       disableDeviceFallback: false,
     });

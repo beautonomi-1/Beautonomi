@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { api } from "@/lib/api-client";
 import { useLocation } from "@/hooks/useLocation";
 import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
@@ -608,8 +608,9 @@ export default function BookScreen() {
   }, [refParam]);
 
   const { user } = useAuth();
-  const { coords } = useLocation();
   const { selectedAddress: primaryAddress } = useSelectedAddress();
+  const shouldUseGps = !hasValidServiceCoordinates(primaryAddress);
+  const { coords } = useLocation({ enabled: shouldUseGps });
   const {
     addresses: savedAddresses,
     loading: savedAddressesLoading,
@@ -2231,8 +2232,8 @@ export default function BookScreen() {
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "padding"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
         >
           <ScrollView
             style={{ flex: 1 }}

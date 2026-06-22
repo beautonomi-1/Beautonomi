@@ -19,3 +19,27 @@ export const publicEnv = {
   marketOverrideTtlHours: import.meta.env.VITE_MARKET_OVERRIDE_TTL_HOURS,
   categoryIconCacheRevision: import.meta.env.VITE_CATEGORY_ICON_CACHE_REVISION,
 } as const;
+
+/**
+ * Customer/provider-facing web app origin — never the admin SPA host (`admin.*`).
+ * Used when staff copy links meant for end users (Learning Center, help, etc.).
+ */
+export function publicSiteOrigin(): string {
+  const fromEnv = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "").trim();
+  if (fromEnv) return fromEnv;
+
+  const host = (publicEnv.globalEntryHost || publicEnv.defaultMarketHost || "").replace(/\/$/, "").trim();
+  if (host) {
+    return host.includes("://") ? host.replace(/\/$/, "") : `https://${host}`;
+  }
+
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin.replace(/\/$/, "");
+    // Avoid admin subdomain when env is unset (e.g. misconfigured prod deploy).
+    if (!/^https?:\/\/admin\./i.test(origin)) {
+      return origin;
+    }
+  }
+
+  return "";
+}

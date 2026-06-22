@@ -20,6 +20,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
+import { isMailableEmail } from "@beautonomi/utils";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 type AuthSecurityState = {
@@ -238,7 +239,8 @@ export default function SettingsLoginAndSecurityScreen() {
     );
   }, [router, signOut]);
 
-  const currentEmail = profile?.email ?? user?.email ?? "";
+  const rawEmail = profile?.email ?? user?.email ?? "";
+  const currentEmail = isMailableEmail(rawEmail) ? rawEmail : "";
   const currentPhone = profile?.phone ?? "";
   const biometricLabel =
     biometric.biometricType === "face" ? "Face ID" :
@@ -278,9 +280,9 @@ export default function SettingsLoginAndSecurityScreen() {
       <ScreenHeader title="Login & security" subtitle="Email, phone, password & sessions" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior="padding"
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           style={{ flex: 1 }}

@@ -438,9 +438,9 @@ export async function POST(request: NextRequest) {
      * serves every platform.
      */
     const adsContext = paymentRedirect === "provider_inapp" ? "app" : "web";
-    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
+    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaign.id)}&context=${adsContext}`;
 
-    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
+    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaign.id)}&context=${adsContext}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

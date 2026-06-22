@@ -2,6 +2,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { NextRequest } from "next/server";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import { resolveProfileEmailVerificationState } from "@beautonomi/utils";
 
 /**
  * GET /api/me/profile-completion
@@ -29,7 +30,6 @@ export async function GET(request: NextRequest) {
       throw new Error("User not found");
     }
 
-    const emailVerified = userData.email_verified || !!(authUser as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;
     const hasPreferredOrFullName = !!(userData.preferred_name || (userData as { full_name?: string }).full_name);
     // Phone can be in users.phone (from account settings) or in Auth (e.g. phone sign-in)
     const authPhone = (authUser as { phone?: string; user_metadata?: { phone?: string } })?.phone
@@ -54,14 +54,15 @@ export async function GET(request: NextRequest) {
 
     // Calculate completion for each item
     const isCustomer = user.role === "customer";
-    // Email from auth.users (covers OAuth, email-password and email-OTP signups)
     const authEmail =
       (authUser as { email?: string | null } | null)?.email?.trim() || null;
-    // Only gate on email verification when the account actually HAS an email to verify.
-    // Phone-only (SMS OTP) signups never set an email address; marking email as
-    // required=true for them would permanently block them at the profile-completion
-    // gate on every cold start since they can never satisfy the check.
-    const hasEmail = !!(userData.email || authEmail);
+    const profileEmail = userData.email?.trim() || null;
+    const emailVerification = resolveProfileEmailVerificationState({
+      profileEmail,
+      authEmail,
+      emailVerifiedFlag: userData.email_verified,
+      emailConfirmedAt: (authUser as { email_confirmed_at?: string | null } | null)?.email_confirmed_at,
+    });
 
     const checklistItems = [
       {
@@ -78,9 +79,8 @@ export async function GET(request: NextRequest) {
         id: "email",
         label: "Verify email",
         timeEstimate: "1 min",
-        completed: emailVerified,
-        // Only required when the account has an email address to verify.
-        required: hasEmail,
+        completed: emailVerification.verificationSatisfied,
+        required: emailVerification.verificationRequired,
       },
       {
         id: "preferred_name",

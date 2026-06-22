@@ -3,15 +3,17 @@ import {
   View,
   Text,
   Modal,
-  Pressable,
-  ScrollView,
-  TouchableOpacity,
+  Pressable as RNPressable,
   ActivityIndicator,
   StyleSheet,
   Platform,
   Alert,
 } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import {
+  GestureHandlerRootView,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -22,6 +24,10 @@ import {
 } from "@/providers/NotificationsContext";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
+import {
+  SwipeableNotificationRow,
+  useNotificationSwipeRegistry,
+} from "@/components/SwipeableNotificationRow";
 import {
   type Notification,
   formatNotificationTime,
@@ -41,7 +47,8 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount, unreadCount } = useNotifications();
+  const { refetchUnreadCount, refetchChatUnreadCount, adjustUnreadCount, replaceUnreadCount, unreadCount } = useNotifications();
+  const swipeRegistry = useNotificationSwipeRegistry();
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -97,13 +104,27 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   };
 
   const markAllRead = async () => {
+    replaceUnreadCount(0);
     try {
-      replaceUnreadCount(0);
-      await api.post("/api/me/notifications/mark-all-read");
+      const res = await api.post<{ total_unread?: number; data?: { total_unread?: number } }>(
+        "/api/me/notifications/mark-all-read",
+      );
+      if (res.error) {
+        await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
+        return;
+      }
+      const body = res.data as { total_unread?: number; data?: { total_unread?: number } } | undefined;
+      const serverNotifUnread =
+        typeof body?.total_unread === "number"
+          ? body.total_unread
+          : typeof body?.data?.total_unread === "number"
+            ? body.data.total_unread
+            : 0;
+      replaceUnreadCount(serverNotifUnread);
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      await refetchUnreadCount();
+      await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
     } catch {
-      await refetchUnreadCount();
+      await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
     }
   };
 
@@ -165,8 +186,8 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
+      <RNPressable style={styles.backdrop} onPress={onClose}>
+        <RNPressable
           style={[
             styles.card,
             {
@@ -215,49 +236,39 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
               <Text style={styles.emptyText}>No notifications yet</Text>
             </View>
           ) : (
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={true}
-            >
-              {list.map((n) => (
-                <ReanimatedSwipeable
-                  key={n.id}
-                  friction={2}
-                  overshootRight={false}
-                  rightThreshold={40}
-                  renderRightActions={() => (
-                    <View style={styles.swipeDeleteBg}>
-                      <TouchableOpacity
-                        onPress={() => confirmDelete(n)}
-                        accessibilityLabel="Delete notification"
-                        accessibilityRole="button"
-                        style={styles.swipeDeleteBtn}
-                      >
-                        <Ionicons name="trash-outline" size={22} color="#fff" />
-                        <Text style={styles.swipeDeleteLabel}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => handleItemPress(n)}
-                    style={[styles.row, !n.is_read && styles.rowUnread]}
-                    accessibilityHint="Swipe left to delete. Opens related screen."
+            <GestureHandlerRootView style={styles.scrollRoot}>
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled
+              >
+                {list.map((n) => (
+                  <SwipeableNotificationRow
+                    key={n.id}
+                    itemId={n.id}
+                    onDelete={() => confirmDelete(n)}
+                    swipeRegistry={swipeRegistry}
                   >
-                    {!n.is_read && <View style={styles.unreadDot} />}
-                    <View style={styles.rowContent}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>{n.title}</Text>
-                      <Text style={styles.rowMessage} numberOfLines={2}>{n.message}</Text>
-                      <Text style={styles.rowTime}>{formatNotificationTime(n.created_at)}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                  </TouchableOpacity>
-                </ReanimatedSwipeable>
-              ))}
-            </ScrollView>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleItemPress(n)}
+                      style={[styles.row, !n.is_read && styles.rowUnread]}
+                      accessibilityHint="Swipe left to delete. Opens related screen."
+                    >
+                      {!n.is_read && <View style={styles.unreadDot} />}
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowTitle} numberOfLines={1}>{n.title}</Text>
+                        <Text style={styles.rowMessage} numberOfLines={2}>{n.message}</Text>
+                        <Text style={styles.rowTime}>{formatNotificationTime(n.created_at)}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                    </TouchableOpacity>
+                  </SwipeableNotificationRow>
+                ))}
+              </ScrollView>
+            </GestureHandlerRootView>
           )}
 
           {/* Footer: View all */}
@@ -270,8 +281,8 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
             <Text style={styles.viewAllText}>View all notifications</Text>
             <Ionicons name="open-outline" size={18} color={Colors.primary} />
           </TouchableOpacity>
-        </Pressable>
-      </Pressable>
+        </RNPressable>
+      </RNPressable>
     </Modal>
   );
 }
@@ -317,21 +328,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.gray[500],
   },
-  swipeDeleteBg: {
-    width: 80,
-    backgroundColor: "#ef4444",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  swipeDeleteBtn: {
-    padding: 16,
-    alignItems: "center",
-  },
-  swipeDeleteLabel: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#fff",
+  scrollRoot: {
+    maxHeight: 320,
   },
   markAllRead: {
     fontSize: 14,

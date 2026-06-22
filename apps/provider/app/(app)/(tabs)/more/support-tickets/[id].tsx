@@ -375,9 +375,9 @@ export default function SupportTicketDetailScreen() {
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader title={ticket.ticket_number} onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior="padding"
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           ref={scrollViewRef}

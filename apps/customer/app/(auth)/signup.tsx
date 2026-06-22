@@ -481,7 +481,7 @@ export default function SignupScreen() {
       <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
         >
           <ScrollView
             style={{ flex: 1 }}
@@ -651,8 +651,8 @@ export default function SignupScreen() {
     >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.gray[50] }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      behavior="padding"
+      keyboardVerticalOffset={0}
     >
       <ScrollView
         style={{ flex: 1 }}

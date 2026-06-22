@@ -30,7 +30,7 @@ interface BiometricAuthState {
   isEnabled: boolean;
   /** Whether authentication is in progress */
   isAuthenticating: boolean;
-  /** Enable biometric auth for future logins */
+  /** Enable app lock for when the user returns to the app */
   enable: () => Promise<boolean>;
   /** Disable biometric auth */
   disable: () => Promise<void>;
@@ -93,7 +93,7 @@ export function useBiometricAuth(): BiometricAuthState {
     }
 
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Verify your identity to enable biometric login",
+      promptMessage: "Verify your identity to enable app lock",
       cancelLabel: "Cancel",
       disableDeviceFallback: false,
     });

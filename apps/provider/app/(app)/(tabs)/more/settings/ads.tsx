@@ -26,6 +26,7 @@ import {
   adsSuccessCopy,
   adsPendingCopy,
   adsFailedCopy,
+  buildAdsRetryCheckoutReview,
 } from "@/lib/payments/providerPaystackReturn";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -114,6 +115,12 @@ function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | 
   }
   const url = "payment_url" in data ? data.payment_url : null;
   return typeof url === "string" && url.trim() ? url : null;
+}
+
+function adsCreateOrderId(data: AdsCampaignCreateData | undefined): string | undefined {
+  if (!data || typeof data !== "object" || !("order_id" in data)) return undefined;
+  const id = data.order_id;
+  return typeof id === "string" && id.trim() ? id : undefined;
 }
 
 function isTimeBasedCampaign(campaign: Campaign | null): boolean {
@@ -468,6 +475,8 @@ export default function AdsSettingsScreen() {
   // processing overlay covers the verify + provisioning poll so the flow never
   // looks frozen — matching the customer product-order checkout.
   const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("Confirming your payment…");
+  const [processingHint, setProcessingHint] = useState<string | null>(null);
   const [reviewState, setReviewState] = useState<AdsCheckoutReview | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const reviewResolverRef = useRef<((ok: boolean) => void) | null>(null);
@@ -555,7 +564,16 @@ export default function AdsSettingsScreen() {
    * lock-step with the subscription flow so the UX doesn't drift over time.
    */
   const openAdsPaystack = useCallback(
-    async (payUrl: string, opts?: { campaignId?: string }) => {
+    async (
+      payUrl: string,
+      opts?: {
+        campaignId?: string;
+        orderId?: string;
+        amount?: number;
+        currency?: string;
+        productLabel?: string;
+      },
+    ) => {
       const returnUrl = getAdsPaystackReturnUrl();
       const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
         title: "Ad payment",
@@ -565,6 +583,10 @@ export default function AdsSettingsScreen() {
       });
 
       const campaignId = opts?.campaignId;
+      let orderId = opts?.orderId;
+      let amount = opts?.amount;
+      const payCurrency = opts?.currency ?? tenantCurrency;
+      const productLabel = opts?.productLabel;
 
       if (result?.outcome === "cancel" || result?.outcome === "closed") {
         const failed = adsFailedCopy("Payment wasn't completed.");
@@ -578,15 +600,16 @@ export default function AdsSettingsScreen() {
         return;
       }
 
-      // The Paystack sheet has closed with a success redirect; now block the UI
-      // with a processing overlay while we verify + poll provisioning so the
-      // provider never sees an ambiguous in-between state.
       setProcessing(true);
+      setProcessingMessage("Confirming your payment…");
+      setProcessingHint("We're verifying with Paystack — this usually takes a few seconds.");
       try {
-        // Cross-confirm against Paystack so we never optimistically claim a
-        // campaign is live before the bank/webhook signs off.
         const reference = extractPaystackReferenceFromUrl(result.url);
-        const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+        const verifyResult = reference ? await verifyPaystackWithRetry<{
+          adsBudgetOrderId?: string;
+          campaignId?: string;
+          type?: string;
+        }>(reference) : null;
 
         if (verifyResult?.status === "failed") {
           const failed = adsFailedCopy(verifyResult.errorMessage ?? null);
@@ -596,25 +619,47 @@ export default function AdsSettingsScreen() {
           return;
         }
 
+        if (verifyResult?.data?.adsBudgetOrderId) {
+          orderId = orderId ?? verifyResult.data.adsBudgetOrderId;
+        }
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        if (campaignId) {
-          const provisioned = await pollCampaignProvisioned(campaignId, {
+        setProcessingMessage("Activating your campaign…");
+        setProcessingHint("Funding your ad budget — almost there.");
+
+        const resolvedCampaignId = campaignId ?? verifyResult?.data?.campaignId ?? undefined;
+
+        if (resolvedCampaignId) {
+          const provisioned = await pollCampaignProvisioned(resolvedCampaignId, {
             maxAttempts: 6,
             delayMs: 1500,
           });
           if (provisioned.state === "provisioned") {
             const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
-            setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
-            // replace (not push) so the Paystack auth-session history is reset and
-            // the back gesture lands the user cleanly back in the app.
+            setPaymentOutcome({ phase: "provisioned", campaignId: resolvedCampaignId, ...copy });
+            if (amount == null && provisioned.campaign.budget) {
+              amount = Number(provisioned.campaign.budget);
+            }
+            const successParams: Record<string, string> = {
+              campaign_id: resolvedCampaignId,
+              title: copy.title,
+              body: copy.body,
+            };
+            if (orderId) successParams.order_id = orderId;
+            if (reference) successParams.reference = reference;
+            if (amount != null && Number.isFinite(amount)) {
+              successParams.amount = String(amount);
+            }
+            if (payCurrency) successParams.currency = payCurrency;
+            if (productLabel) successParams.product_label = productLabel;
             router.replace({
               pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
-              params: { campaign_id: campaignId, title: copy.title, body: copy.body },
+              params: successParams,
             });
           } else {
             const copy = adsPendingCopy();
-            setPaymentOutcome({ phase: "pending", campaignId, ...copy });
+            setPaymentOutcome({ phase: "pending", campaignId: resolvedCampaignId, ...copy });
           }
         } else {
           const copy = adsPendingCopy();
@@ -622,13 +667,13 @@ export default function AdsSettingsScreen() {
         }
 
         await loadAll();
-        // Server-side provisioning lands a beat after the webhook returns 200;
-        // a short follow-up refresh prevents transient stale cards.
         setTimeout(() => {
           void loadAll();
         }, 1500);
       } finally {
         setProcessing(false);
+        setProcessingMessage("Confirming your payment…");
+        setProcessingHint(null);
       }
     },
     [adsPaystackCheckout, loadAll, router, tenantCurrency],
@@ -799,7 +844,13 @@ export default function AdsSettingsScreen() {
       const payUrl = adsCreatePaymentUrl(data);
       if (payUrl) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await openAdsPaystack(payUrl, { campaignId: campaign?.id });
+        await openAdsPaystack(payUrl, {
+          campaignId: campaign?.id,
+          orderId: adsCreateOrderId(data),
+          amount: budgetNum,
+          currency: tenantCurrency,
+          productLabel: "CPC budget",
+        });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -857,7 +908,13 @@ export default function AdsSettingsScreen() {
         const payUrl = adsCreatePaymentUrl(data);
         if (payUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await openAdsPaystack(payUrl, { campaignId: campaign?.id });
+          await openAdsPaystack(payUrl, {
+            campaignId: campaign?.id,
+            orderId: adsCreateOrderId(data),
+            amount: pack.price_zar,
+            currency: tenantCurrency,
+            productLabel: "Impression pack",
+          });
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -951,9 +1008,17 @@ export default function AdsSettingsScreen() {
    */
   const handleRetryAdsPayment = useCallback(
     async (campaign: Campaign) => {
+      const review = buildAdsRetryCheckoutReview(campaign, tenantCurrency);
+      const confirmed = await requestAdsCheckout(review);
+      if (!confirmed) return;
+
       setUpdating(campaign.id);
       try {
-        const res = await api.post<{ payment_url?: string | null; order_id?: string; campaign_id?: string }>(
+        const res = await api.post<{
+          payment_url?: string | null;
+          order_id?: string;
+          campaign_id?: string;
+        }>(
           `/api/provider/ads/campaigns/${campaign.id}/checkout`,
           ADS_NATIVE_PAYMENT,
         );
@@ -966,15 +1031,24 @@ export default function AdsSettingsScreen() {
           Alert.alert("Error", "Paystack didn't return a payment URL. Please try again.");
           return;
         }
+        const orderId = res.data?.order_id ?? campaign.latest_budget_order?.id;
+        const amount =
+          Number(campaign.latest_budget_order?.amount ?? campaign.budget ?? 0) || undefined;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await openAdsPaystack(payUrl, { campaignId: campaign.id });
+        await openAdsPaystack(payUrl, {
+          campaignId: campaign.id,
+          orderId,
+          amount,
+          currency: campaign.latest_budget_order?.currency ?? tenantCurrency,
+          productLabel: campaignModelLabel(campaign),
+        });
       } catch (e: unknown) {
         Alert.alert("Error", getApiErrorMessage(e, "Couldn't reopen Paystack"));
       } finally {
         setUpdating(null);
       }
     },
-    [openAdsPaystack],
+    [openAdsPaystack, requestAdsCheckout, tenantCurrency],
   );
 
   /**
@@ -1375,7 +1449,13 @@ export default function AdsSettingsScreen() {
                         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
                         const payUrl = adsCreatePaymentUrl(data);
                         if (payUrl) {
-                          await openAdsPaystack(payUrl, { campaignId: campaign?.id });
+                          await openAdsPaystack(payUrl, {
+                            campaignId: campaign?.id,
+                            orderId: adsCreateOrderId(data),
+                            amount: tp.price_zar,
+                            currency: tenantCurrency,
+                            productLabel: "Time boost",
+                          });
                           return;
                         }
                         Alert.alert("Success", "Campaign created.");
@@ -1990,8 +2070,9 @@ export default function AdsSettingsScreen() {
     {adsPaystackCheckout.modal}
     <AdsCheckoutProcessingOverlay
       visible={processing}
-      message="Confirming your payment…"
-      hint="Don't close the app — we're verifying with Paystack and funding your campaign."
+      title={processingMessage.includes("Activating") ? "Almost there" : "Confirming payment"}
+      message={processingMessage}
+      hint={processingHint}
     />
     </>
   );

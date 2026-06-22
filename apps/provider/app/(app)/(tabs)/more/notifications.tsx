@@ -1,8 +1,12 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { View, Text, Alert, ActivityIndicator } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import {
+  GestureHandlerRootView,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
@@ -15,6 +19,10 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
+import {
+  SwipeableNotificationRow,
+  useNotificationSwipeRegistry,
+} from "@/components/SwipeableNotificationRow";
 import { formatTimeAgo } from "@/lib/format";
 import { navigateFromProviderNotification } from "@/lib/provider-notification-navigation";
 import { Colors } from "@/constants/colors";
@@ -131,91 +139,63 @@ function isPaymentType(type: string): boolean {
   );
 }
 
-function SwipeableNotificationItem({
+function NotificationRowContent({
   notif,
   onPress,
-  onDelete,
-  isUnread: isUnreadProp,
+  isUnread,
 }: {
   notif: Notification;
   onPress: () => void;
-  onDelete: () => void;
-  isUnread?: boolean;
+  isUnread: boolean;
 }) {
   const iconInfo = getNotificationIcon(notif.type);
-  const isUnread = isUnreadProp ?? !(notif.read_at || notif.read === true || notif.is_read === true);
 
   return (
-    <ReanimatedSwipeable
-      friction={2}
-      overshootRight={false}
-      rightThreshold={40}
-      renderRightActions={() => (
-        <View
-          style={{
-            width: 80,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#ef4444",
-          }}
-        >
-          <TouchableOpacity
-            onPress={onDelete}
-            style={{ alignItems: "center", justifyContent: "center", padding: 12 }}
-            accessibilityLabel="Delete notification"
-            accessibilityRole="button"
-          >
-            <Ionicons name="trash-outline" size={20} color="#fff" />
-            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.white }}>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+    <TouchableOpacity
+      style={[
+        { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
+        isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
+      ]}
+      onPress={onPress}
+      accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
+      accessibilityRole="button"
+      accessibilityHint="Swipe left to delete, or tap to open"
     >
-      <TouchableOpacity
-        style={[
-          { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
-          isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
-        ]}
-        onPress={onPress}
-        accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
-        accessibilityRole="button"
-        accessibilityHint="Swipe left to delete, or tap to open"
-      >
-        <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
-          <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
-        </View>
-        <View style={{ marginLeft: 12, flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <Text
-              style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
-              numberOfLines={2}
-            >
-              {notif.title}
-            </Text>
-            <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
-              {formatTimeAgo(notif.created_at)}
-            </Text>
-          </View>
-          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
-            {notif.message}
+      <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
+        <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
+      </View>
+      <View style={{ marginLeft: 12, flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <Text
+            style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
+            numberOfLines={2}
+          >
+            {notif.title}
+          </Text>
+          <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
+            {formatTimeAgo(notif.created_at)}
           </Text>
         </View>
-        {isUnread && (
-          <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
-        )}
-      </TouchableOpacity>
-    </ReanimatedSwipeable>
+        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
+          {notif.message}
+        </Text>
+      </View>
+      {isUnread && (
+        <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
+      )}
+    </TouchableOpacity>
   );
 }
 
 export default function NotificationsScreen() {
   const router = useRouter();
   useResponsive();
+  const swipeRegistry = useNotificationSwipeRegistry();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const { session } = useAuth();
-  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, notificationUnread } = useNotificationsCount();
+  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, resetNotificationUnreadBias, notificationUnread } = useNotificationsCount();
   const {
     data: rawData,
     loading,
@@ -298,9 +278,6 @@ export default function NotificationsScreen() {
 
   async function handleMarkAllRead() {
     if (!notifications || unreadCount === 0) return;
-    // §Provider-audit 2026-04 (round 2): optimistically mark-all-read so
-    // the badge and row styling update immediately; if the server call
-    // fails we surface the error and roll back.
     const previous = notifications;
     const nowIso = new Date().toISOString();
     const updated = notifications.map((n) => ({
@@ -310,15 +287,26 @@ export default function NotificationsScreen() {
     }));
     mutate(updated);
     replaceUnreadCount(0);
-    const { error } = await postAction(
+    resetNotificationUnreadBias();
+    const { error, data } = await postAction(
       "/api/provider/notifications/mark-all-read",
       {},
     );
     if (error) {
       mutate(previous);
+      resetNotificationUnreadBias();
       await refreshCount();
       Alert.alert("Error", error);
     } else {
+      const body = (data as { total_unread?: number; data?: { total_unread?: number } } | undefined) ?? {};
+      const serverNotifUnread =
+        typeof body.total_unread === "number"
+          ? body.total_unread
+          : typeof body.data?.total_unread === "number"
+            ? body.data.total_unread
+            : 0;
+      resetNotificationUnreadBias();
+      replaceUnreadCount(serverNotifUnread);
       await refreshCount();
     }
   }
@@ -389,14 +377,19 @@ export default function NotificationsScreen() {
 
   const renderNotificationItem = useCallback(
     ({ item: notif }: { item: Notification }) => (
-      <SwipeableNotificationItem
-        notif={notif}
-        isUnread={isUnread(notif)}
-        onPress={() => handleMarkRead(notif)}
+      <SwipeableNotificationRow
+        itemId={notif.id}
         onDelete={() => handleDelete(notif)}
-      />
+        swipeRegistry={swipeRegistry}
+      >
+        <NotificationRowContent
+          notif={notif}
+          isUnread={isUnread(notif)}
+          onPress={() => handleMarkRead(notif)}
+        />
+      </SwipeableNotificationRow>
     ),
-    [handleMarkRead, handleDelete],
+    [handleMarkRead, handleDelete, swipeRegistry],
   );
 
   return (
@@ -453,27 +446,31 @@ export default function NotificationsScreen() {
           }
         />
       ) : (
-        <FlashList
-          data={filteredNotifications}
-          keyExtractor={notifKeyExtractor}
-          renderItem={renderNotificationItem}
-          showsVerticalScrollIndicator={true}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          // Only auto-paginate when viewing the full unfiltered list — client-side
-          // filters operate on already-loaded rows, so paging under a filter would
-          // fetch by total offset and could skip/duplicate filtered items.
-          onEndReached={filter === "all" ? loadMore : undefined}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            filter === "all" && loadingMore ? (
-              <View style={{ paddingVertical: 16 }}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-              </View>
-            ) : null
-          }
-          contentContainerStyle={{ paddingBottom: 120 }}
-        />
+        <GestureHandlerRootView style={{ flex: 1, minHeight: 0 }}>
+          <FlashList
+            data={filteredNotifications}
+            keyExtractor={notifKeyExtractor}
+            renderItem={renderNotificationItem}
+            renderScrollComponent={ScrollView}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={true}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            // Only auto-paginate when viewing the full unfiltered list — client-side
+            // filters operate on already-loaded rows, so paging under a filter would
+            // fetch by total offset and could skip/duplicate filtered items.
+            onEndReached={filter === "all" ? loadMore : undefined}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              filter === "all" && loadingMore ? (
+                <View style={{ paddingVertical: 16 }}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                </View>
+              ) : null
+            }
+            contentContainerStyle={{ paddingBottom: 120 }}
+          />
+        </GestureHandlerRootView>
       )}
 
       </View>

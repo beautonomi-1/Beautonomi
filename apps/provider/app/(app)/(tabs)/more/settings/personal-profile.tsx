@@ -127,7 +127,7 @@ export default function PersonalProfileScreen() {
     <ScreenContainer>
       <ScreenHeader title="Personal Profile" subtitle={displayName} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
         style={{ flex: 1 }}
       >

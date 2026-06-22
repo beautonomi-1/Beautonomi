@@ -6,6 +6,8 @@ export interface AdsCheckoutProcessingOverlayProps {
   visible: boolean;
   message?: string;
   hint?: string | null;
+  /** Optional title above the message (e.g. "Confirming payment"). */
+  title?: string;
 }
 
 /**
@@ -18,6 +20,7 @@ export function AdsCheckoutProcessingOverlay({
   visible,
   message = "Confirming your payment…",
   hint,
+  title = "Please wait",
 }: AdsCheckoutProcessingOverlayProps) {
   const pulse = useRef(new Animated.Value(0.4)).current;
 
@@ -39,7 +42,7 @@ export function AdsCheckoutProcessingOverlay({
         <Animated.View style={[styles.iconWrap, { opacity: pulse }]}>
           <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
         </Animated.View>
-        <Text style={styles.title}>Please wait</Text>
+        <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
         <Text style={styles.hint}>
           {hint === null

@@ -134,7 +134,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const replaceUnreadCount = useCallback((count: number) => {
-    setUnreadCount(Math.max(0, Math.floor(count)));
+    const next = Math.max(0, Math.floor(count));
+    setUnreadCount(next);
+    lastGoodNotifRef.current = next;
   }, []);
 
   const adjustChatUnreadCount = useCallback((delta: number) => {

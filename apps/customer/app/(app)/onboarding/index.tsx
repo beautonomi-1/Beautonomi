@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Customer post-signup onboarding wizard — 6 steps.
  *
  * Step 1 — Preferred name     (required)
@@ -31,6 +31,7 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
+import { readAndClearCustomerPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
@@ -44,6 +45,7 @@ import { StaticMapImage } from "@/components/StaticMapImage";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAutoFocus } from "@/features/onboarding/useAutoFocus";
 import { useKeyboardOffset } from "@/features/onboarding/useKeyboardOffset";
+import { useScrollToFocusedInput } from "@/hooks/useScrollToFocusedInput";
 import { KeyboardDoneAccessory } from "@/features/onboarding/KeyboardDoneAccessory";
 
 const CUSTOMER_KEYBOARD_ACCESSORY = {
@@ -153,12 +155,16 @@ export default function CustomerOnboarding() {
   const { pickWithOptions, loading: pickLoading } = useImagePicker();
   const { t } = useTranslation();
   const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToFocusedInput = useScrollToFocusedInput(scrollRef);
   const preferredNameRef = useRef<TextInput>(null);
   const addressLine1Ref = useRef<TextInput>(null);
+  const addressLine2Ref = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
   const provinceRef = useRef<TextInput>(null);
   const postalCodeRef = useRef<TextInput>(null);
   const countryRef = useRef<TextInput>(null);
+  const phoneNationalRef = useRef<TextInput>(null);
   const ob = useCallback(
     (key: string, options?: Record<string, string | number>) => {
       const fullKey = `customer.mobile.screens.onboarding.${key}`;
@@ -296,6 +302,17 @@ export default function CustomerOnboarding() {
           if (p?.phone_verified) setPhoneVerified(true);
         }
 
+        const handoff = await readAndClearCustomerPhoneHandoff();
+        if (handoff) {
+          const { countryCode, national } = parsePhoneToCountryAndNational(
+            handoff.phoneE164,
+            getDeviceDefaultCountryDial()
+          );
+          setPhoneCountryCode(countryCode);
+          setPhoneNational(national);
+          setPhoneVerified(true);
+        }
+
         if (addrRes.status === "fulfilled" && !addrRes.value?.error) {
           const addrs = addrRes.value?.data;
           if (Array.isArray(addrs) && addrs.length > 0) setAlreadyHasAddress(true);
@@ -335,6 +352,50 @@ export default function CustomerOnboarding() {
     return null;
   }, [step, preferredName, phoneVerified, alreadyHasAddress, addressLine1, city, country, ob]);
 
+  /* Sync phone verified from auth when entering step 4 (phone OTP signup/login). */
+  useEffect(() => {
+    if (step !== 4 || phoneVerified || initializing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (cancelled || !authUser?.phone || !authUser.phone_confirmed_at) return;
+
+        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+        const digits = phoneNational.replace(/\D/g, "");
+        const formE164 = digits
+          ? normalizeSupabaseAuthPhone(
+              `${phoneCountryCode}${digits}`.startsWith("+")
+                ? `${phoneCountryCode}${digits}`
+                : `+${phoneCountryCode}${digits}`,
+            )
+          : "";
+        if (formE164 && authPhone !== formE164) return;
+
+        const verifyRes = await api.post("/api/me/phone/verify", { phone: authPhone });
+        if (verifyRes.error || cancelled) return;
+
+        if (!formE164) {
+          const parsed = parsePhoneToCountryAndNational(
+            authPhone,
+            getDeviceDefaultCountryDial(),
+          );
+          setPhoneCountryCode(parsed.countryCode);
+          setPhoneNational(parsed.national);
+        }
+        setPhoneVerified(true);
+      } catch {
+        /* User can verify manually. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run when entering step 4
+  }, [step, phoneVerified, initializing]);
+
   /* ── Phone OTP ── */
   const handleSendOtp = async () => {
     const digits = phoneNational.replace(/\D/g, "");
@@ -346,6 +407,21 @@ export default function CustomerOnboarding() {
     }
     setOtpSending(true);
     try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
+        ?.phone_confirmed_at;
+      if (phoneConfirmedAt && authPhone === e164) {
+        const verifyRes = await api.post("/api/me/phone/verify", { phone: e164 });
+        if (verifyRes.error) {
+          throw new Error(getApiErrorMessage(verifyRes.error, "Could not verify phone on server."));
+        }
+        setPhoneVerified(true);
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ phone: e164 });
       if (error) throw error;
       setPendingPhoneE164(e164);
@@ -543,7 +619,7 @@ export default function CustomerOnboarding() {
         return;
       }
       await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
-      if (userId) setBiometricPromptPending(userId);
+      if (userId) await setBiometricPromptPending(userId);
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {
@@ -638,16 +714,17 @@ export default function CustomerOnboarding() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={{ flex: 1 }}
-        keyboardVerticalOffset={keyboardOffset}
+        keyboardVerticalOffset={Platform.OS === "ios" ? keyboardOffset : 0}
         onLayout={onKeyboardLayout}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: SCREEN_PADDING,
-            paddingBottom: insets.bottom + 24,
+            paddingBottom: Math.max(insets.bottom + 24, 220),
           }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
@@ -684,6 +761,7 @@ export default function CustomerOnboarding() {
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
                 returnKeyType="done"
+                onFocus={scrollToFocusedInput(preferredNameRef)}
               />
               <Text style={hintStyle}>Can be a first name, nickname, or whatever you prefer.</Text>
             </View>
@@ -881,6 +959,8 @@ export default function CustomerOnboarding() {
                     }}
                     placeholder="082 123 4567"
                     inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.phone}
+                    nationalInputRef={phoneNationalRef}
+                    onFocus={scrollToFocusedInput(phoneNationalRef)}
                   />
                   <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.phone} />
                   <TouchableOpacity
@@ -1251,10 +1331,12 @@ export default function CustomerOnboarding() {
                             returnKeyType="next"
                             blurOnSubmit={false}
                             onSubmitEditing={() => cityRef.current?.focus()}
+                            onFocus={scrollToFocusedInput(addressLine1Ref)}
                           />
 
                           <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
                           <TextInput
+                            ref={addressLine2Ref}
                             value={addressLine2}
                             onChangeText={setAddressLine2}
                             placeholder="e.g. Unit 4B, Estate name"
@@ -1263,6 +1345,7 @@ export default function CustomerOnboarding() {
                             returnKeyType="next"
                             blurOnSubmit={false}
                             onSubmitEditing={() => cityRef.current?.focus()}
+                            onFocus={scrollToFocusedInput(addressLine2Ref)}
                           />
 
                           <SectionLabel required>City</SectionLabel>
@@ -1276,6 +1359,7 @@ export default function CustomerOnboarding() {
                             returnKeyType="next"
                             blurOnSubmit={false}
                             onSubmitEditing={() => provinceRef.current?.focus()}
+                            onFocus={scrollToFocusedInput(cityRef)}
                           />
 
                           <View style={{ flexDirection: "row", gap: 10 }}>
@@ -1291,6 +1375,7 @@ export default function CustomerOnboarding() {
                                 returnKeyType="next"
                                 blurOnSubmit={false}
                                 onSubmitEditing={() => postalCodeRef.current?.focus()}
+                                onFocus={scrollToFocusedInput(provinceRef)}
                               />
                             </View>
                             <View style={{ flex: 1 }}>
@@ -1304,6 +1389,7 @@ export default function CustomerOnboarding() {
                                 style={inputStyle}
                                 placeholderTextColor="#94A3B8"
                                 inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
+                                onFocus={scrollToFocusedInput(postalCodeRef)}
                               />
                               <KeyboardDoneAccessory
                                 nativeID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
@@ -1321,6 +1407,7 @@ export default function CustomerOnboarding() {
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
                             returnKeyType="done"
+                            onFocus={scrollToFocusedInput(countryRef)}
                           />
                         </View>
                       )}

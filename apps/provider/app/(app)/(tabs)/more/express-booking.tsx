@@ -1091,7 +1091,7 @@ export default function ExpressBookingScreen() {
       >
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: "#fff" }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
         >
           <View
             style={{

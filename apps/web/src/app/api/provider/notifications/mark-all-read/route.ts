@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
-import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
+import { getUnreadNotificationCount } from "@/lib/notifications/insert-notification";
+import { syncPushBadgeCountAllAppsImmediate } from "@/lib/notifications/sync-push-badge-count";
 
 /**
  * POST /api/provider/notifications/mark-all-read
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest) {
     }
 
     invalidateProviderNotificationsListCache(user.id);
-    void syncPushBadgeCountAllApps(user.id);
+    const totalUnread = await getUnreadNotificationCount(user.id);
+    void syncPushBadgeCountAllAppsImmediate(user.id);
 
-    return successResponse({ message: "All notifications marked as read" });
+    return successResponse({ message: "All notifications marked as read", total_unread: totalUnread });
   } catch (error) {
     return handleApiError(error, "Failed to mark all notifications as read");
   }

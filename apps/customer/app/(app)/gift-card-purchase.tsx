@@ -346,7 +346,7 @@ export default function GiftCardPurchaseScreen() {
         onConfirm={onConfirmSheet}
         onCancel={() => setShowConfirm(false)}
       />
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior="padding" keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
           {provider_name ? (
             <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>

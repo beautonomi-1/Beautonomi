@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useHomeData } from "@/features/home/useHomeData";
@@ -23,17 +23,7 @@ const VALID_SECTIONS = new Set(["top-rated", "sponsored", "nearest", "hottest", 
 const PAGE_SIZE = 20;
 
 function hasUsableCoords(latitude?: number | null, longitude?: number | null): boolean {
-  return (
-    latitude != null &&
-    longitude != null &&
-    Number.isFinite(latitude) &&
-    Number.isFinite(longitude) &&
-    latitude >= -90 &&
-    latitude <= 90 &&
-    longitude >= -180 &&
-    longitude <= 180 &&
-    !(latitude === 0 && longitude === 0)
-  );
+  return hasValidServiceCoordinates({ latitude, longitude });
 }
 
 function getProviders(data: ReturnType<typeof useHomeData>["data"], section: string): PublicProviderCard[] {
@@ -66,8 +56,9 @@ function getBadge(section: string): "topRated" | "sponsored" | "nearest" | "hott
 export default function MoreProvidersScreen() {
   const { section: sectionParam } = useLocalSearchParams<{ section: string }>();
   const section = (sectionParam ?? "top-rated").toLowerCase().replace(/\s+/g, "-");
-  const { coords } = useLocation();
   const { selectedAddress } = useSelectedAddress();
+  const shouldUseGps = !hasValidServiceCoordinates(selectedAddress);
+  const { coords } = useLocation({ enabled: shouldUseGps });
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;

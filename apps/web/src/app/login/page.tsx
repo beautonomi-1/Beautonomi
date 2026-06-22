@@ -30,6 +30,7 @@ import {
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
 import { isCompleteE164 } from "@/lib/phone";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { DEFAULT_PUBLIC_AUTH, finalizePublicAuth, type PublicAuthPolicy } from "@/lib/config/auth-policy-public";
 
 /**
@@ -330,6 +331,7 @@ export default function LoginPage() {
         type: "sms",
       });
       if (error) throw error;
+      writeSignupPhoneHandoff(sentPhoneE164);
       await routeAfterAuth();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Invalid code";

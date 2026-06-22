@@ -34,6 +34,7 @@ import {
   verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
@@ -979,6 +980,7 @@ export default function LoginModal({
         type: "sms",
       });
       if (verifyError) throw verifyError;
+      writeSignupPhoneHandoff(normalizeSupabaseAuthPhone(sentPhoneE164));
       if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "phone" });
       await refreshUser();
       setOpen(false);
@@ -1097,7 +1099,7 @@ export default function LoginModal({
         redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
           ? redirectUrl
           : redirectContext === "provider"
-            ? "/provider/dashboard"
+            ? "/provider/onboarding"
             : "/";
       const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
       await signInWithOAuth(provider, callbackUrl);

@@ -4264,8 +4264,7 @@ export default function BookingDetailScreen() {
             onSelectTime={setRescheduleTime}
             loading={rescheduleSlotsLoading}
             providerTimezone={rescheduleSlotsTimezone}
-            layout="wrap"
-            maxHeight={220}
+            maxHeight={420}
           />
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}

@@ -515,8 +515,8 @@ export default function ClientDetailScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           style={twStyle("flex-1")}

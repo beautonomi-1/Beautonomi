@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { usePathname, useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -27,11 +28,16 @@ import { Colors } from "@/constants/colors";
 import {
   canShowBiometricSetupPrompt,
   clearBiometricPromptPending,
+  hydrateBiometricPromptPending,
   isBiometricPromptPending,
   isBiometricSetupPromptDismissed,
   markBiometricSetupPromptDismissed,
   subscribeBiometricPromptPending,
 } from "@/lib/biometric-setup-prompt";
+import {
+  isSetupCelebrationVisible,
+  subscribeSetupCelebrationVisible,
+} from "@/lib/setup-celebration-gate";
 
 function useReduceMotion(): boolean {
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -246,6 +252,7 @@ function AnimatedBiometricIcon({
 }
 
 export function BiometricSetupPrompt() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
@@ -254,10 +261,29 @@ export function BiometricSetupPrompt() {
   const { gate } = useNativePermissionsOnboardingGate();
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [enabledConfirmation, setEnabledConfirmation] = useState(false);
   const [pendingRevision, setPendingRevision] = useState(0);
+  const [celebrationRevision, setCelebrationRevision] = useState(0);
   const reduceMotion = useReduceMotion();
 
+  const bp = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `provider.mobile.screens.loginSecurity.biometricSetupPrompt.${key}`;
+      return (options != null ? t(fullKey as never, options as never) : t(fullKey as never)) as string;
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    void hydrateBiometricPromptPending(userId);
+  }, [userId]);
+
   useEffect(() => subscribeBiometricPromptPending(() => setPendingRevision((n) => n + 1)), []);
+  useEffect(
+    () => subscribeSetupCelebrationVisible(() => setCelebrationRevision((n) => n + 1)),
+    [],
+  );
 
   const biometricLabel =
     biometric.biometricType === "face"
@@ -268,11 +294,21 @@ export function BiometricSetupPrompt() {
           ? "Iris"
           : "Biometrics";
 
-  const closePrompt = useCallback(async () => {
+  const dismissPrompt = useCallback(async () => {
     setVisible(false);
-    clearBiometricPromptPending();
+    setEnabledConfirmation(false);
+    await clearBiometricPromptPending(userId ?? undefined);
     if (userId) await markBiometricSetupPromptDismissed(userId);
   }, [userId]);
+
+  const completeAfterEnable = useCallback(async () => {
+    setEnabledConfirmation(true);
+    await clearBiometricPromptPending(userId ?? undefined);
+    setTimeout(() => {
+      setVisible(false);
+      setEnabledConfirmation(false);
+    }, 2200);
+  }, []);
 
   useEffect(() => {
     if (!userId) {
@@ -283,6 +319,9 @@ export function BiometricSetupPrompt() {
     let cancelled = false;
 
     const evaluate = async () => {
+      await hydrateBiometricPromptPending(userId);
+      if (cancelled) return;
+
       const permissionsPhase =
         gate.phase === "loading"
           ? "loading"
@@ -302,6 +341,7 @@ export function BiometricSetupPrompt() {
         pending: isBiometricPromptPending(userId),
         pathname: pathname ?? "",
         permissionsPhase,
+        blockingModalOpen: isSetupCelebrationVisible(),
       });
 
       setVisible(eligible);
@@ -318,26 +358,27 @@ export function BiometricSetupPrompt() {
     biometric.isAvailable,
     biometric.isEnabled,
     pendingRevision,
+    celebrationRevision,
   ]);
 
   const onEnable = useCallback(async () => {
     setBusy(true);
     try {
       const ok = await biometric.enable();
-      if (ok) await closePrompt();
+      if (ok) await completeAfterEnable();
     } finally {
       setBusy(false);
     }
-  }, [biometric, closePrompt]);
+  }, [biometric, completeAfterEnable]);
 
   const onNotNow = useCallback(async () => {
-    await closePrompt();
-  }, [closePrompt]);
+    await dismissPrompt();
+  }, [dismissPrompt]);
 
   const onOpenSettings = useCallback(async () => {
-    await closePrompt();
+    await dismissPrompt();
     router.push("/(app)/(tabs)/more/settings-login-and-security" as never);
-  }, [closePrompt, router]);
+  }, [dismissPrompt, router]);
 
   if (!visible) return null;
 
@@ -370,25 +411,26 @@ export function BiometricSetupPrompt() {
       <AnimatedPromptCard visible={visible} reduceMotion={reduceMotion}>
         <AnimatedBiometricIcon biometricType={biometric.biometricType ?? "unknown"} reduceMotion={reduceMotion} />
         <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 10, letterSpacing: -0.2 }}>
-          Lock the app with {biometricLabel}
+          {bp("title", { label: biometricLabel })}
         </Text>
         <Text style={{ fontSize: 15, lineHeight: 24, color: Colors.gray[600], marginBottom: 24 }}>
-          Require {biometricLabel.toLowerCase()} to open Beautonomi Provider after you leave the app. You can change
-          this anytime in Login & security.
+          {enabledConfirmation ? bp("enabledConfirmation") : bp("body", { label: biometricLabel })}
         </Text>
+        {enabledConfirmation ? null : (
+          <>
         <ScalePressable
           onPress={() => void onEnable()}
           disabled={busy}
           reduceMotion={reduceMotion}
           style={primaryButtonStyle}
           accessibilityRole="button"
-          accessibilityLabel={`Enable ${biometricLabel} lock`}
+          accessibilityLabel={bp("enableCta", { label: biometricLabel })}
         >
           {busy ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
             <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>
-              Enable {biometricLabel}
+              {bp("enableCta", { label: biometricLabel })}
             </Text>
           )}
         </ScalePressable>
@@ -398,10 +440,10 @@ export function BiometricSetupPrompt() {
           reduceMotion={reduceMotion}
           style={outlineButtonStyle}
           accessibilityRole="button"
-          accessibilityLabel="Not now"
+          accessibilityLabel={bp("notNowCta")}
         >
           <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 16 }}>
-            Not now
+            {bp("notNowCta")}
           </Text>
         </ScalePressable>
         <ScalePressable
@@ -410,12 +452,17 @@ export function BiometricSetupPrompt() {
           reduceMotion={reduceMotion}
           style={{ marginTop: 14, paddingVertical: 8, alignItems: "center" }}
           accessibilityRole="link"
-          accessibilityLabel="Open Login and security"
+          accessibilityLabel={bp("settingsLink")}
         >
           <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
-            Open Login & security
+            {bp("settingsLink")}
           </Text>
         </ScalePressable>
+        <Text style={{ marginTop: 12, textAlign: "center", fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
+          {bp("notNowHint")}
+        </Text>
+          </>
+        )}
       </AnimatedPromptCard>
     </Modal>
   );

@@ -60,9 +60,11 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingTextField } from "./OnboardingTextField";
+import { FocusAwareTextInput } from "./FocusAwareTextInput";
 import { KeyboardDoneAccessory } from "./KeyboardDoneAccessory";
+import { useOnboardingScroll } from "./OnboardingScrollContext";
 import { useAutoFocus } from "./useAutoFocus";
-import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
+import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164, phoneNumbersMatchProfile } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
 import type { BusinessType, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
 import { ServiceFormFields } from "@/features/catalogue/ServiceFormFields";
@@ -196,11 +198,58 @@ function Step2Identity() {
   const RESEND_COOLDOWN_SECS = 30;
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  const persistPhoneVerified = useCallback(async (phone: string) => {
+    const verifyRes = await api.post("/api/me/phone/verify", { phone });
+    if (verifyRes.error) {
+      throw new Error("Phone verified but could not save to profile. Please try again.");
+    }
+    updateFormData({
+      phone_verified: true,
+      owner_phone: phone,
+      phone,
+    });
+  }, [updateFormData]);
+
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (formData.phone_verified || loadingDraft) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (cancelled || !authUser?.phone) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null })
+          ?.phone_confirmed_at;
+        if (!phoneConfirmedAt) return;
+
+        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+        const formPhone = formData.owner_phone
+          ? normalizeSupabaseAuthPhone(
+              coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
+            )
+          : "";
+        const phonesAlign =
+          !formPhone ||
+          authPhone === formPhone ||
+          phoneNumbersMatchProfile(authUser.phone, formPhone);
+        if (!phonesAlign) return;
+
+        await persistPhoneVerified(authPhone);
+      } catch {
+        // User can verify manually.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingDraft, formData.phone_verified, formData.owner_phone, persistPhoneVerified]);
 
   useEffect(() => {
     if (loadingDraft || phoneFieldsSeeded.current) return;
@@ -214,12 +263,21 @@ function Step2Identity() {
     const e164 = composeE164FromNational(countryCode, national);
     const next = e164 ? normalizeSupabaseAuthPhone(e164) : "";
     if (next !== (formData.owner_phone || "")) {
-      updateFormData({ owner_phone: next, phone_verified: false });
-      setCodeSent(false);
-      setOtp("");
-      setPendingE164("");
+      const wasVerified = formData.phone_verified;
+      const verifiedPhone = wasVerified
+        ? normalizeSupabaseAuthPhone(formData.owner_phone || "")
+        : "";
+      updateFormData({
+        owner_phone: next,
+        phone_verified: Boolean(wasVerified && next && next === verifiedPhone),
+      });
+      if (!wasVerified || next !== verifiedPhone) {
+        setCodeSent(false);
+        setOtp("");
+        setPendingE164("");
+      }
     }
-  }, [countryCode, national, formData.owner_phone, updateFormData]);
+  }, [countryCode, national, formData.owner_phone, formData.phone_verified, updateFormData]);
 
   const sendCode = async () => {
     const e164 =
@@ -237,6 +295,19 @@ function Step2Identity() {
     }
     setSending(true);
     try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
+        ?.phone_confirmed_at;
+
+      if (phoneConfirmedAt && authPhone === normalized) {
+        await persistPhoneVerified(normalized);
+        Alert.alert("Verified", "Phone number verified.");
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
       setPendingE164(normalized);
@@ -266,20 +337,21 @@ function Step2Identity() {
         type: "phone_change",
       });
       if (error) throw error;
-      const patchRes = await api.patch("/api/me/profile", { phone, phone_verified: true });
-      if (patchRes.error)
-        throw new Error("Phone verified but could not save to profile. Please try again.");
-      updateFormData({
-        phone_verified: true,
-        owner_phone: phone,
-        phone: phone,
-      });
+      await persistPhoneVerified(phone);
       Alert.alert("Verified", "Phone number verified.");
     } catch (e) {
       Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
     } finally {
       setVerifying(false);
     }
+  };
+
+  const handleStartChangePhone = () => {
+    updateFormData({ phone_verified: false });
+    setCodeSent(false);
+    setOtp("");
+    setPendingE164("");
+    setResendCooldown(0);
   };
 
   return (
@@ -298,7 +370,7 @@ function Step2Identity() {
           <View style={twStyle("pl-3 pr-1")}>
             <Ionicons name="person-outline" size={18} color="#9ca3af" />
           </View>
-          <TextInput
+          <FocusAwareTextInput
             ref={nameRef}
             value={formData.owner_name || ""}
             onChangeText={(t) => updateFormData({ owner_name: t })}
@@ -327,7 +399,7 @@ function Step2Identity() {
           <View style={twStyle("pl-3 pr-1")}>
             <Ionicons name="mail-outline" size={18} color="#9ca3af" />
           </View>
-          <TextInput
+          <FocusAwareTextInput
             ref={emailRef}
             value={formData.owner_email || ""}
             onChangeText={(t) => updateFormData({ owner_email: t })}
@@ -344,15 +416,48 @@ function Step2Identity() {
             onSubmitEditing={() => phoneRef.current?.focus()}
           />
         </View>
+        <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
+          Used for payouts, invoices, and account notifications.
+        </Text>
       </View>
 
       {/* Phone */}
       <View>
         <Text style={twStyle(labelCls)}>Mobile number</Text>
-        <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
-          We verify this number with a one-time code to protect your account.
-        </Text>
-        <View style={twStyle("flex-row gap-2")}>
+        {formData.phone_verified ? (
+          <View
+            style={twStyle(
+              "mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm"
+            )}
+          >
+            <View
+              style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}
+            >
+              <Ionicons name="checkmark" size={18} color="#059669" />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>
+                Phone verified
+              </Text>
+              <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>
+                {formData.owner_phone}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleStartChangePhone}
+              accessibilityRole="button"
+              accessibilityLabel="Change phone number"
+              style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
+            >
+              <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
+              We verify this number with a one-time code to protect your account.
+            </Text>
+            <View style={twStyle("flex-row gap-2")}>
           <TouchableOpacity
             onPress={() => setCountryModal(true)}
             style={twStyle(
@@ -366,7 +471,7 @@ function Step2Identity() {
             </Text>
             <Ionicons name="chevron-down" size={14} color="#6b7280" />
           </TouchableOpacity>
-          <TextInput
+          <FocusAwareTextInput
             ref={phoneRef}
             value={national}
             onChangeText={(t) => setNational(t.replace(/[^\d\s]/g, ""))}
@@ -388,7 +493,7 @@ function Step2Identity() {
         <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
           <View style={twStyle("flex-1 bg-white p-4 pt-12")}>
             <Text style={twStyle("text-lg font-bold text-gray-900")}>Select country code</Text>
-            <TextInput
+            <FocusAwareTextInput
               value={countrySearch}
               onChangeText={setCountrySearch}
               placeholder="Search country…"
@@ -467,6 +572,8 @@ function Step2Identity() {
             </Text>
           </TouchableOpacity>
         ) : null}
+          </>
+        )}
       </View>
 
       {/* OTP entry */}
@@ -507,43 +614,6 @@ function Step2Identity() {
                 <Text style={twStyle("font-semibold text-white")}>Verify phone</Text>
               </>
             )}
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      {/* Verified state */}
-      {formData.phone_verified ? (
-        <View
-          style={twStyle(
-            "flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 mt-2 shadow-sm"
-          )}
-        >
-          <View
-            style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}
-          >
-            <Ionicons name="checkmark" size={18} color="#059669" />
-          </View>
-          <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>
-              Phone verified
-            </Text>
-            <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>
-              {formData.owner_phone}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              updateFormData({ phone_verified: false });
-              setCodeSent(false);
-              setOtp("");
-              setPendingE164("");
-              setResendCooldown(0);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Change phone number"
-            style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
-          >
-            <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -603,7 +673,7 @@ function Step3Business() {
           <View style={twStyle("pl-4 pr-2")}>
             <Ionicons name="briefcase-outline" size={20} color="#64748b" />
           </View>
-          <TextInput
+          <FocusAwareTextInput
             ref={businessNameRef}
             value={formData.business_name || ""}
             onChangeText={(t) => updateFormData({ business_name: t })}
@@ -1182,7 +1252,9 @@ function Step6Payroll() {
 
 function Step7Location() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const onboardingScroll = useOnboardingScroll();
   const { width: windowWidth } = useWindowDimensions();
+  const streetSearchRef = useRef<TextInput>(null);
   const line2Ref = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
   const countryRef = useRef<TextInput>(null);
@@ -1296,6 +1368,8 @@ function Step7Location() {
         label="Street address"
         countryCode={mapboxCountry}
         defaultCountryName={DEFAULT_COUNTRY_NAME}
+        inputRef={streetSearchRef}
+        onFocus={() => onboardingScroll?.scrollToFocusedInput(streetSearchRef)}
         proximity={
           addr.latitude && addr.longitude
             ? { latitude: addr.latitude, longitude: addr.longitude }
@@ -2118,7 +2192,7 @@ function Step10Categories() {
           {providerCategories.map((cat, index) => (
             <View key={`pcat-${index}`} style={twStyle("flex-row items-center gap-2")}>
               <View style={twStyle("flex-1")}>
-                <TextInput
+                <FocusAwareTextInput
                   value={cat.name}
                   onChangeText={(t) => renameCategory(index, t)}
                   placeholder="Category name"
@@ -2496,7 +2570,7 @@ function Step11Services() {
               </TouchableOpacity>
             </View>
           ))}
-          <TextInput
+          <FocusAwareTextInput
             ref={addonNameRef}
             value={addonName}
             onChangeText={setAddonName}
@@ -2509,7 +2583,7 @@ function Step11Services() {
             onSubmitEditing={() => addonPriceRef.current?.focus()}
           />
           <View style={twStyle("flex-row gap-3")}>
-            <TextInput
+            <FocusAwareTextInput
               ref={addonPriceRef}
               value={addonPrice}
               onChangeText={setAddonPrice}
@@ -2520,7 +2594,7 @@ function Step11Services() {
               accessibilityLabel="Add-on price"
               inputAccessoryViewID={KEYBOARD_ACCESSORY.addonPrice}
             />
-            <TextInput
+            <FocusAwareTextInput
               ref={addonDurationRef}
               value={addonDuration}
               onChangeText={setAddonDuration}
@@ -2540,7 +2614,7 @@ function Step11Services() {
             nativeID={KEYBOARD_ACCESSORY.addonDuration}
             onNext={() => addonDescriptionRef.current?.focus()}
           />
-          <TextInput
+          <FocusAwareTextInput
             ref={addonDescriptionRef}
             value={addonDescription}
             onChangeText={setAddonDescription}

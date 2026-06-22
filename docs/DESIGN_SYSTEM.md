@@ -69,7 +69,7 @@ import { Shadows } from "@/constants/colors";
 ## 4. iOS & Android polish
 
 - **Scroll:** Use `ScrollView` / `FlatList` with `contentContainerStyle` for padding; avoid layout that only works on one platform.
-- **Keyboard:** Use `KeyboardAvoidingView` with `behavior={Platform.OS === "ios" ? "padding" : undefined}` (or "height") where needed so inputs aren’t covered on iOS; test on Android as well.
+- **Keyboard:** Wrap input-heavy screens in `AppKeyboardAvoidingView` with `behavior="padding"` on **both** iOS and Android (Android 15+ edge-to-edge breaks OS `adjustResize`). Use `keyboardVerticalOffset` on iOS only when stack headers sit above the avoiding view; use `0` on Android. Prefer `KeyboardScreen` or `ScreenContainer` (`keyboardAvoiding={true}`) for standard forms. Use generous scroll `paddingBottom` (≥220) and scroll focused inputs into view on multi-field wizards.
 - **Haptics:** Use `expo-haptics` for feedback on **native only**; guard with `Platform.OS !== "web"` if you trigger haptics from shared code.
 - **Responsive layout:** Use `useResponsive()` (customer) or provider equivalent for `contentPadding` / `screenPadding` and `contentMaxWidth` so tablet and web get consistent insets and max width; avoid hardcoded `16`/`24` at screen level.
 

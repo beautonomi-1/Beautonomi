@@ -28,6 +28,7 @@ import { Colors } from "@/constants/colors";
 import {
   canShowBiometricSetupPrompt,
   clearBiometricPromptPending,
+  hydrateBiometricPromptPending,
   isBiometricPromptPending,
   isBiometricSetupPromptDismissed,
   markBiometricSetupPromptDismissed,
@@ -256,6 +257,7 @@ export function BiometricSetupPrompt() {
   const { gate } = useNativePermissionsOnboardingGate();
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [enabledConfirmation, setEnabledConfirmation] = useState(false);
   const [pendingRevision, setPendingRevision] = useState(0);
   const reduceMotion = useReduceMotion();
 
@@ -267,6 +269,11 @@ export function BiometricSetupPrompt() {
     [t],
   );
 
+  useEffect(() => {
+    if (!userId) return;
+    void hydrateBiometricPromptPending(userId);
+  }, [userId]);
+
   useEffect(() => subscribeBiometricPromptPending(() => setPendingRevision((n) => n + 1)), []);
 
   const biometricLabel =
@@ -276,11 +283,21 @@ export function BiometricSetupPrompt() {
         ? "Fingerprint"
         : "Biometrics";
 
-  const closePrompt = useCallback(async () => {
+  const dismissPrompt = useCallback(async () => {
     setVisible(false);
-    clearBiometricPromptPending();
+    setEnabledConfirmation(false);
+    await clearBiometricPromptPending(userId ?? undefined);
     if (userId) await markBiometricSetupPromptDismissed(userId);
   }, [userId]);
+
+  const completeAfterEnable = useCallback(async () => {
+    setEnabledConfirmation(true);
+    await clearBiometricPromptPending(userId ?? undefined);
+    setTimeout(() => {
+      setVisible(false);
+      setEnabledConfirmation(false);
+    }, 2200);
+  }, []);
 
   useEffect(() => {
     if (!userId) {
@@ -291,6 +308,9 @@ export function BiometricSetupPrompt() {
     let cancelled = false;
 
     const evaluate = async () => {
+      await hydrateBiometricPromptPending(userId);
+      if (cancelled) return;
+
       const permissionsPhase =
         gate.phase === "loading"
           ? "loading"
@@ -332,20 +352,20 @@ export function BiometricSetupPrompt() {
     setBusy(true);
     try {
       const ok = await biometric.enable();
-      if (ok) await closePrompt();
+      if (ok) await completeAfterEnable();
     } finally {
       setBusy(false);
     }
-  }, [biometric, closePrompt]);
+  }, [biometric, completeAfterEnable]);
 
   const onNotNow = useCallback(async () => {
-    await closePrompt();
-  }, [closePrompt]);
+    await dismissPrompt();
+  }, [dismissPrompt]);
 
   const onOpenSettings = useCallback(async () => {
-    await closePrompt();
+    await dismissPrompt();
     router.push("/(app)/account-settings/login-and-security" as never);
-  }, [closePrompt, router]);
+  }, [dismissPrompt, router]);
 
   if (!visible) return null;
 
@@ -381,8 +401,10 @@ export function BiometricSetupPrompt() {
           {bp("title")}
         </Text>
         <Text style={{ fontSize: 15, lineHeight: 24, color: Colors.gray[600], marginBottom: 24 }}>
-          {bp("body", { label: biometricLabel })}
+          {enabledConfirmation ? bp("enabledConfirmation") : bp("body", { label: biometricLabel })}
         </Text>
+        {enabledConfirmation ? null : (
+          <>
         <ScalePressable
           onPress={() => void onEnable()}
           disabled={busy}
@@ -423,6 +445,11 @@ export function BiometricSetupPrompt() {
             {bp("settingsLink")}
           </Text>
         </ScalePressable>
+        <Text style={{ marginTop: 12, textAlign: "center", fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
+          {bp("notNowHint")}
+        </Text>
+          </>
+        )}
       </AnimatedPromptCard>
     </Modal>
   );

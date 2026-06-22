@@ -3636,7 +3636,7 @@ export default function NewBookingScreen() {
           visible={showTimePicker}
           onClose={() => setShowTimePicker(false)}
           title="Select Time"
-          snapHeight="half"
+          snapHeight="auto"
         >
           <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
             <Text style={twStyle("text-xs leading-5 text-blue-800")}>
@@ -3657,7 +3657,6 @@ export default function NewBookingScreen() {
             onSelectTime={handleSelectTimeSlot}
             loading={availableSlotsLoading}
             providerTimezone={schedulingTimezone}
-            layout="grid"
           />
         </BottomSheet>
 

@@ -13,6 +13,17 @@ export {
   userHasPassword,
 } from "./auth/sensitive-action-ui";
 export {
+  isMailableEmail,
+  isNonMailableEmail,
+  NON_MAILABLE_EMAIL_DOMAINS,
+} from "./auth/mailable-email";
+export {
+  resolveMailableAccountEmail,
+  resolveProfileEmailVerificationState,
+  shouldShowEmailVerificationBanner,
+  type ProfileEmailVerificationState,
+} from "./auth/email-verification-prompt";
+export {
   coerceSelectedDate,
   formatBusinessDayYYYYMMDD,
   formatDate,

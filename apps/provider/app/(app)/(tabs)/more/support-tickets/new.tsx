@@ -117,8 +117,8 @@ export default function NewSupportTicketScreen() {
       <ScreenHeader title="New support ticket" onBack={() => router.back()} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           style={{ flex: 1 }}

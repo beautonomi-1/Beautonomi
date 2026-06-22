@@ -26,7 +26,7 @@ import { PROFILE_SUMMARY_CACHE_KEY_PREFIX } from "@/lib/cache-keys";
 import { haptic } from "@/lib/haptics";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useTranslation } from "@beautonomi/i18n";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, resolveProfileEmailVerificationState } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 
@@ -247,7 +247,12 @@ export default function ProfileScreen() {
       : (user.user_metadata?.picture as { data?: { url?: string } } | undefined)?.data?.url) ??
     null;
   const hasAvatar = !!avatarUrl;
-  const emailVerified = !!user.email_confirmed_at;
+  const emailVerification = resolveProfileEmailVerificationState({
+    authEmail: user.email,
+    emailConfirmedAt: user.email_confirmed_at,
+  });
+  const emailVerified = emailVerification.verificationSatisfied;
+  const emailVerificationRequired = emailVerification.verificationRequired;
   const phoneVerified = !!user.phone_confirmed_at;
   const isVerified = profileData?.verified ?? false;
   const completionPct = profileData?.completion ?? 0;
@@ -409,7 +414,7 @@ export default function ProfileScreen() {
               icon="mail-outline"
               label="Email"
               verified={emailVerified}
-              required
+              required={emailVerificationRequired}
             />
           </View>
           <View style={{ marginRight: 12 }}>

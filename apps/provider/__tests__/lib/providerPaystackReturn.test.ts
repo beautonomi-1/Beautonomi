@@ -10,6 +10,8 @@ import {
   matchesSubscriptionPaystackReturnUrl,
   getAdsPaystackReturnUrl,
   getSubscriptionPaystackReturnUrl,
+  getAdsPaymentReturnDeepLink,
+  buildAdsRetryCheckoutReview,
   adsSuccessCopy,
   subscriptionSuccessCopy,
 } from "@/lib/payments/providerPaystackReturn";
@@ -60,10 +62,82 @@ describe("matchesAdsPaystackReturnUrl", () => {
     ).toBe(true);
   });
 
+  it("matches HTTPS bridge with reference query param", () => {
+    expect(
+      matchesAdsPaystackReturnUrl(
+        "https://app.beautonomi.com/provider/settings/ads/payment-return?success=1&reference=pay_ref_123",
+        { success: true },
+      ),
+    ).toBe(true);
+  });
+
   it("does not match unrelated URLs", () => {
     expect(
       matchesAdsPaystackReturnUrl("https://app.beautonomi.com/checkout/success?reference=xyz"),
     ).toBe(false);
+  });
+});
+
+describe("getAdsPaymentReturnDeepLink", () => {
+  it("builds provider:// deep link with success params", () => {
+    expect(
+      getAdsPaymentReturnDeepLink({
+        success: true,
+        orderId: "ord-1",
+        campaignId: "camp-1",
+        reference: "ref-abc",
+      }),
+    ).toBe(
+      "provider://settings/ads-payment-return?success=1&order_id=ord-1&campaign_id=camp-1&reference=ref-abc",
+    );
+  });
+
+  it("builds cancelled deep link", () => {
+    expect(getAdsPaymentReturnDeepLink({ cancelled: true, orderId: "ord-2" })).toBe(
+      "provider://settings/ads-payment-return?cancelled=1&order_id=ord-2",
+    );
+  });
+});
+
+describe("buildAdsRetryCheckoutReview", () => {
+  it("formats time-based retry review with duration and total", () => {
+    const review = buildAdsRetryCheckoutReview(
+      {
+        billing_model: "time_based",
+        duration_days: 7,
+        latest_budget_order: { amount: 199, currency: "ZAR" },
+      },
+      "ZAR",
+    );
+    expect(review.heading).toBe("Complete payment");
+    expect(review.title).toBe("7-day boost");
+    expect(review.lineItems.some((i) => i.label === "Boost duration")).toBe(true);
+    expect(review.confirmLabel).toContain("199");
+  });
+
+  it("formats impression pack retry review", () => {
+    const review = buildAdsRetryCheckoutReview(
+      {
+        billing_model: "impression_pack",
+        pack_impressions: 2500,
+        budget: 150,
+      },
+      "ZAR",
+    );
+    expect(review.lineItems.some((i) => i.label === "Impressions")).toBe(true);
+    expect(review.benefits.length).toBeGreaterThan(0);
+  });
+
+  it("detects impression packs via pack_impressions even without billing_model", () => {
+    const review = buildAdsRetryCheckoutReview(
+      {
+        pack_impressions: 1200,
+        budget: 99,
+      },
+      "ZAR",
+    );
+    expect(review.lineItems.some((i) => i.label === "Impressions")).toBe(true);
+    expect(review.title).toContain("1");
   });
 });
 

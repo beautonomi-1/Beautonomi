@@ -446,9 +446,9 @@ export default function ServiceFormScreen() {
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
       >
         <ScrollView
           style={twStyle("flex-1")}

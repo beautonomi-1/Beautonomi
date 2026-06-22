@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
+import { resolveProfileEmailVerificationState } from "@beautonomi/utils";
 
 /**
  * GET /api/me/profile-bundle
@@ -169,9 +170,12 @@ export async function GET(request: NextRequest) {
     };
 
     // ── Completion (same logic as /api/me/profile-completion) ─────────────────
-    const emailVerified =
-      (userData as any).email_verified ||
-      !!(authUser as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;
+    const emailVerification = resolveProfileEmailVerificationState({
+      profileEmail: (userData as { email?: string | null }).email,
+      authEmail: authUser?.email,
+      emailVerifiedFlag: (userData as { email_verified?: boolean }).email_verified,
+      emailConfirmedAt: (authUser as { email_confirmed_at?: string } | undefined)?.email_confirmed_at,
+    });
     const hasPreferredOrFullName = !!((userData as any).preferred_name || (userData as any).full_name);
     const authPhone =
       (authUser as { phone?: string; user_metadata?: { phone?: string } })?.phone ||
@@ -186,7 +190,7 @@ export async function GET(request: NextRequest) {
     const completionItems = [
       { id: "name", label: "Add your name", completed: hasPreferredOrFullName, weight: 15 },
       { id: "photo", label: "Add a profile photo", completed: hasPhoto, weight: 15 },
-      { id: "email", label: "Verify your email", completed: emailVerified, weight: 15 },
+      { id: "email", label: "Verify your email", completed: emailVerification.verificationSatisfied, weight: 15 },
       { id: "phone", label: "Add your phone number", completed: hasPhone, weight: 15 },
       { id: "address", label: "Add your address", completed: hasAddress, weight: 10 },
       { id: "about", label: "Write a short bio", completed: hasAbout, weight: 10 },

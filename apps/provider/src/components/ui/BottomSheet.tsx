@@ -151,7 +151,7 @@ export function BottomSheet({
               justifyContent: "flex-end",
               paddingBottom: Platform.OS === "android" ? androidKeyboardInset : 0
             }}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior="padding"
             keyboardVerticalOffset={0}
           >
             {/* Animated sheet - explicit opaque background for form content */}

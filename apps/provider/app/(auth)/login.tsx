@@ -38,6 +38,7 @@ import {
   applyPendingSignupPreferences,
   persistProviderSignupSource,
 } from "@/features/auth/pending-signup-preferences";
+import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 
 const PRIMARY = Colors.primary;
 
@@ -321,6 +322,7 @@ export default function LoginScreen() {
         setFormError(error.message);
         return;
       }
+      await writeSignupPhoneHandoff(e164);
       await applyPendingSignupPreferences();
       await goToAppRoot(router, "phone_otp");
     } catch (e: unknown) {
@@ -509,7 +511,7 @@ export default function LoginScreen() {
       <ScreenContainer edges={["top"]} scrollable={false} keyboardAvoiding={false} reserveTabBarSpace={false} noPadding>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: "#ffffff" }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
         >
           <ScrollView
             style={{ flex: 1, backgroundColor: "#ffffff" }}
@@ -648,8 +650,8 @@ export default function LoginScreen() {
     >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: "#ffffff" }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      behavior="padding"
+      keyboardVerticalOffset={0}
     >
       <ScrollView
         style={{ flex: 1, backgroundColor: "#ffffff" }}

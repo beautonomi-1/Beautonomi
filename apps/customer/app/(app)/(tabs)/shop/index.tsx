@@ -18,7 +18,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { useLocation } from "@/hooks/useLocation";
-import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 
 const PRIMARY = Colors.primary;
 
@@ -73,7 +73,8 @@ export default function ShopScreen() {
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { selectedAddress } = useSelectedAddress();
-  const { coords } = useLocation();
+  const shouldUseGps = !hasValidServiceCoordinates(selectedAddress);
+  const { coords } = useLocation({ enabled: shouldUseGps });
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
   const cart = useCart();
@@ -464,7 +465,7 @@ export default function ShopScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {/* Search bar */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, paddingVertical: 10, backgroundColor: "#fff", gap: 8, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>

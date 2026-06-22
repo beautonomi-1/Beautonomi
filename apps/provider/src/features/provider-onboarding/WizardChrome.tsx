@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +13,7 @@ import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingStepBody } from "./WizardSteps";
 import { validateStep } from "./validation";
 import { useKeyboardOffset } from "./useKeyboardOffset";
+import { OnboardingScrollProvider } from "./OnboardingScrollContext";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -44,6 +46,7 @@ function getMilestoneProgress(stepId: number): number {
 
 export function WizardChrome() {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
   const {
     goBack,
@@ -110,9 +113,9 @@ export function WizardChrome() {
         subtitle={stepMeta?.description}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={keyboardOffset}
+        keyboardVerticalOffset={Platform.OS === "ios" ? keyboardOffset : 0}
         onLayout={onKeyboardLayout}
       >
         {/* ── Progress zone ─────────────────────────────────────────────── */}
@@ -206,70 +209,67 @@ export function WizardChrome() {
           </View>
         </View>
 
-        {/* ── Step content ──────────────────────────────────────────────── */}
-        <ScrollView
-          style={twStyle("flex-1")}
-          contentContainerStyle={[
-            twStyle("px-5 pt-4"),
-            { paddingBottom: 16 + Math.max(insets.bottom, 8) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-          showsVerticalScrollIndicator={false}
-        >
-          <OnboardingStepBody />
-        </ScrollView>
+        <OnboardingScrollProvider scrollRef={scrollRef}>
+          {/* ── Step content + actions (scroll together so inputs stay above keyboard) ── */}
+          <ScrollView
+            ref={scrollRef}
+            style={twStyle("flex-1")}
+            contentContainerStyle={[
+              twStyle("px-5 pt-4"),
+              { paddingBottom: Math.max(insets.bottom + 24, 220) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            showsVerticalScrollIndicator={false}
+          >
+            <OnboardingStepBody />
 
-        {/* ── Footer ───────────────────────────────────────────────────── */}
-        <View
-          style={[
-            twStyle("border-t border-slate-100 bg-white px-5 pt-4"),
-            { paddingBottom: Math.max(insets.bottom, 12) + 12 },
-          ]}
-        >
-          <View style={twStyle("flex-row gap-3")}>
-            {canSkipCurrent && !isLast ? (
-              <TouchableOpacity
-                onPress={skipForward}
-                style={twStyle(
-                  "flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300",
-                )}
-                accessibilityRole="button"
-                accessibilityLabel="Skip this step"
-              >
-                <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>Skip for now</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={isLast ? submit : goNext}
-              disabled={isSubmitting}
-              style={[
-                twStyle(
-                  `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
-                ),
-                { backgroundColor: Colors.primary, opacity: isSubmitting ? 0.7 : 1 },
-                !isSubmitting ? Shadows.cardSmall : undefined,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={isLast ? "Submit setup" : "Next step"}
-            >
-              {isSubmitting ? (
-                <>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={twStyle("text-[16px] font-semibold text-white")}>{submitBusyLabel}</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={twStyle("text-[16px] font-bold text-white")}>
-                    {submitLabel}
-                  </Text>
-                  {!isLast ? <Ionicons name="arrow-forward" size={20} color="#fff" /> : null}
-                  {isLast ? <Ionicons name="rocket-outline" size={20} color="#fff" /> : null}
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
+            <View style={twStyle("mt-8 gap-3 border-t border-slate-100 pt-6")}>
+              <View style={twStyle("flex-row gap-3")}>
+                {canSkipCurrent && !isLast ? (
+                  <TouchableOpacity
+                    onPress={skipForward}
+                    style={twStyle(
+                      "flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300",
+                    )}
+                    accessibilityRole="button"
+                    accessibilityLabel="Skip this step"
+                  >
+                    <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>Skip for now</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={isLast ? submit : goNext}
+                  disabled={isSubmitting}
+                  style={[
+                    twStyle(
+                      `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
+                    ),
+                    { backgroundColor: Colors.primary, opacity: isSubmitting ? 0.7 : 1 },
+                    !isSubmitting ? Shadows.cardSmall : undefined,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={isLast ? "Submit setup" : "Next step"}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={twStyle("text-[16px] font-semibold text-white")}>{submitBusyLabel}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={twStyle("text-[16px] font-bold text-white")}>
+                        {submitLabel}
+                      </Text>
+                      {!isLast ? <Ionicons name="arrow-forward" size={20} color="#fff" /> : null}
+                      {isLast ? <Ionicons name="rocket-outline" size={20} color="#fff" /> : null}
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </OnboardingScrollProvider>
       </KeyboardAvoidingView>
     </ScreenContainer>
   );
