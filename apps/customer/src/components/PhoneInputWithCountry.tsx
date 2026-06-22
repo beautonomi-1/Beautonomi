@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  type TextInputProps,
   TouchableOpacity,
   Modal,
   Pressable,
@@ -24,7 +25,7 @@ type Props = {
   placeholder?: string;
   accessibilityLabel?: string;
   inputAccessoryViewID?: string;
-  onFocus?: TextInput["onFocus"];
+  onFocus?: TextInputProps["onFocus"];
   nationalInputRef?: RefObject<TextInput | null>;
 };
 
