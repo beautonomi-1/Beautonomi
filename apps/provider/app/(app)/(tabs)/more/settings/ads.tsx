@@ -476,7 +476,7 @@ export default function AdsSettingsScreen() {
   // looks frozen — matching the customer product-order checkout.
   const [processing, setProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState("Confirming your payment…");
-  const [processingHint, setProcessingHint] = useState<string | null>(undefined);
+  const [processingHint, setProcessingHint] = useState<string | null>(null);
   const [reviewState, setReviewState] = useState<AdsCheckoutReview | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const reviewResolverRef = useRef<((ok: boolean) => void) | null>(null);

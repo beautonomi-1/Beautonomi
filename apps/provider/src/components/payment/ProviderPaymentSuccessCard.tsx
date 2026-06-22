@@ -1,4 +1,5 @@
-import { View, Text, type ComponentProps } from "react-native";
+import { type ComponentProps } from "react";
+import { View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
 
