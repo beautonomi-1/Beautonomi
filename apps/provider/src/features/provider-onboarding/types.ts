@@ -105,6 +105,7 @@ export interface OnboardingFormData {
   team_size?: TeamSize;
   owner_name: string;
   owner_email: string;
+  email_verified: boolean;
   owner_phone: string;
   phone_verified: boolean;
   business_name: string;

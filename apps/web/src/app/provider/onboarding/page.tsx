@@ -60,6 +60,7 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/switch";
@@ -108,6 +109,7 @@ interface OnboardingData {
   // Step 2: Identity (Owner Info)
   owner_name: string;
   owner_email: string;
+  email_verified: boolean;
   /** E.164 for Supabase / DB, e.g. +27821234567 (leading 0 stripped with +27). */
   owner_phone: string;
   phone_verified: boolean;
@@ -284,6 +286,7 @@ function phoneNumbersMatchProfile(profilePhone: string, formPhone: string): bool
 type ProfilePrefillResult = {
   ownerPatch: Partial<Pick<OnboardingData, "owner_name" | "owner_email" | "owner_phone">>;
   phoneVerifiedInDb: boolean;
+  emailVerifiedInDb: boolean;
   rawProfilePhone: string | null;
 };
 
@@ -293,6 +296,7 @@ async function fetchProfilePrefillForOnboarding(): Promise<ProfilePrefillResult 
       data: {
         full_name?: string | null;
         email?: string | null;
+        email_verified?: boolean | null;
         phone?: string | null;
         phone_verified?: boolean | null;
       } | null;
@@ -310,6 +314,7 @@ async function fetchProfilePrefillForOnboarding(): Promise<ProfilePrefillResult 
     return {
       ownerPatch,
       phoneVerifiedInDb: Boolean(p.phone_verified),
+      emailVerifiedInDb: Boolean(p.email_verified),
       rawProfilePhone: ph || null,
     };
   } catch {
@@ -338,6 +343,15 @@ function mergeAccountIntoOnboardingForm(
   ) {
     form.phone_verified = true;
   }
+  if (
+    prefill.emailVerifiedInDb &&
+    form.owner_email &&
+    isMailableEmail(form.owner_email) &&
+    prefill.ownerPatch.owner_email &&
+    form.owner_email.trim().toLowerCase() === prefill.ownerPatch.owner_email.trim().toLowerCase()
+  ) {
+    form.email_verified = true;
+  }
   if (!form.phone?.trim() && form.owner_phone) {
     form.phone = form.owner_phone;
   }
@@ -349,6 +363,7 @@ function mergeAccountIntoOnboardingForm(
 function scrubPlaceholderEmailsFromOnboardingForm(form: Partial<OnboardingData>) {
   if (form.owner_email && !isMailableEmail(form.owner_email)) {
     form.owner_email = "";
+    form.email_verified = false;
   }
   if (form.email && !isMailableEmail(form.email)) {
     form.email = "";
@@ -359,6 +374,7 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
   team_size: undefined,
   owner_name: "",
   owner_email: "",
+  email_verified: false,
   owner_phone: "",
   phone_verified: false,
   business_name: "",
@@ -443,10 +459,22 @@ export default function ProviderOnboarding() {
     loadDraft();
   }, []);
 
-  // Auto-save draft when form data changes
+  // Auto-save draft when form data changes. Save once the user has made any
+  // meaningful progress — identity (name/email/phone or a verified flag),
+  // team size, or business/address — so verification state survives a refresh
+  // even before the business-details step.
   useEffect(() => {
     const saveTimer = setTimeout(() => {
-      if (formData.business_name || formData.address) {
+      const hasProgress =
+        formData.business_name ||
+        formData.address ||
+        formData.owner_name?.trim() ||
+        formData.owner_email?.trim() ||
+        formData.owner_phone?.trim() ||
+        formData.email_verified ||
+        formData.phone_verified ||
+        formData.team_size;
+      if (hasProgress) {
         saveDraft();
       }
     }, 2000); // Debounce: save 2 seconds after last change
@@ -577,9 +605,10 @@ export default function ProviderOnboarding() {
       case 2: // Identity
         if (!formData.owner_name?.trim()) errors.push("Your name is required");
         if (!formData.owner_email?.trim()) errors.push("Email is required");
-        if (formData.owner_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.owner_email)) {
+        if (formData.owner_email && !isMailableEmail(formData.owner_email)) {
           errors.push("Invalid email address");
         }
+        if (!formData.email_verified) errors.push("Please verify your email address");
         if (!isValidOwnerPhoneE164(formData.owner_phone)) errors.push("Phone number is required");
         if (!formData.phone_verified) errors.push("Please verify your phone number");
         break;
@@ -800,6 +829,10 @@ export default function ProviderOnboarding() {
         avatar_url: safeAvatar || null,
         gallery: safeGallery,
         years_in_business: formData.years_in_business || null,
+        // VAT registration (Step 4): the server uses these to set is_vat_registered,
+        // vat_number, and derive tax_rate_percent (15% when VAT registered).
+        is_vat_registered: formData.is_vat_registered ?? null,
+        vat_number: formData.is_vat_registered === true ? formData.vat_number || null : null,
         accepts_custom_requests: formData.accepts_custom_requests ?? true,
         response_rate: formData.response_rate || 100,
         response_time_hours: formData.response_time_hours || 1,
@@ -1211,7 +1244,7 @@ function Step1TeamSize({
 }
 
 
-// Step 2: Identity - Name, Email, Phone with Verification
+// Step 2: Identity - Name, Email (with OTP), Phone (with OTP)
 const PHONE_OTP_RESEND_COOLDOWN_SECS = 30;
 
 function Step2Identity({
@@ -1221,61 +1254,88 @@ function Step2Identity({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const [isSendingCode, setIsSendingCode] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  // ── Phone OTP state ────────────────────────────────────────────────────────
+  const [isSendingPhoneCode, setIsSendingPhoneCode] = useState(false);
+  const [isVerifyingPhone, setIsVerifyingPhone] = useState(false);
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState("");
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [phoneResendCooldown, setPhoneResendCooldown] = useState(0);
   /** E.164 used with `updateUser({ phone })` — must match `verifyOtp` phone. */
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setTimeout(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
-    return () => clearTimeout(timer);
-  }, [resendCooldown]);
+  // ── Email OTP state ────────────────────────────────────────────────────────
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
+  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+  const [emailVerificationCode, setEmailVerificationCode] = useState("");
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+  /** Email used with `updateUser({ email })` — must match `verifyOtp` email. */
+  const [pendingEmail, setPendingEmail] = useState("");
 
-  // If signup already confirmed the phone in Supabase Auth, sync without asking for OTP again.
+  // ── Cooldown timers ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (data.phone_verified) return;
+    if (phoneResendCooldown <= 0) return;
+    const timer = setTimeout(() => setPhoneResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearTimeout(timer);
+  }, [phoneResendCooldown]);
+
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const timer = setTimeout(() => setEmailResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearTimeout(timer);
+  }, [emailResendCooldown]);
+
+  // ── Auto-detect already-confirmed contacts on mount ───────────────────────
+  // Run once: if signup already confirmed the phone/email in Supabase Auth,
+  // sync without asking for an OTP again.
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const supabase = getSupabaseClient();
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
-        if (cancelled || !authUser?.phone) return;
-        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null })
-          .phone_confirmed_at;
-        if (!phoneConfirmedAt) return;
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (cancelled || !authUser) return;
 
-        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
-        const formPhone = data.owner_phone
-          ? normalizeSupabaseAuthPhone(
-              coerceOwnerPhoneToE164ForForm(data.owner_phone) || data.owner_phone,
-            )
-          : "";
-        const phonesAlign =
-          !formPhone ||
-          authPhone === formPhone ||
-          phoneNumbersMatchProfile(authUser.phone, formPhone);
-        if (!phonesAlign) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null }).phone_confirmed_at;
+        const emailConfirmedAt = authUser.email_confirmed_at;
 
-        await fetcher.post("/api/me/phone/verify", { phone: authPhone });
-        if (!cancelled) {
-          updateData({ phone_verified: true, owner_phone: authPhone, phone: authPhone });
+        // Auto-verify phone if it was already confirmed at signup
+        if (!data.phone_verified && authUser.phone && phoneConfirmedAt) {
+          const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+          const formPhone = data.owner_phone
+            ? normalizeSupabaseAuthPhone(coerceOwnerPhoneToE164ForForm(data.owner_phone) || data.owner_phone)
+            : "";
+          const phonesAlign = !formPhone || authPhone === formPhone || phoneNumbersMatchProfile(authUser.phone, formPhone);
+          if (phonesAlign && !cancelled) {
+            try {
+              await fetcher.post("/api/me/phone/verify", { phone: authPhone });
+              if (!cancelled) updateData({ phone_verified: true, owner_phone: authPhone, phone: authPhone });
+            } catch { /* User can verify manually */ }
+          }
+        }
+
+        // Auto-verify email if it was already confirmed (email/Google/Apple signups)
+        if (!data.email_verified && authUser.email && emailConfirmedAt && isMailableEmail(authUser.email)) {
+          const authEmail = authUser.email.trim();
+          const formEmail = data.owner_email?.trim() || "";
+          // Accept if form email is empty (we'll seed it) or matches the auth email
+          const emailsAlign = !formEmail || formEmail.toLowerCase() === authEmail.toLowerCase();
+          if (emailsAlign && !cancelled) {
+            try {
+              await fetcher.post("/api/me/email/verify", { email: authEmail });
+              if (!cancelled) updateData({ email_verified: true, owner_email: authEmail, email: authEmail });
+            } catch { /* User can verify manually */ }
+          }
         }
       } catch {
-        // User can still verify via Send Code (fast path) or OTP.
+        // Non-fatal — user can verify manually
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when identity step mounts
   }, []);
 
+  // ── Phone helpers ──────────────────────────────────────────────────────────
   const persistPhoneVerified = async (phone: string) => {
     await fetcher.post("/api/me/phone/verify", { phone });
     updateData({ phone_verified: true, owner_phone: phone, phone });
@@ -1283,29 +1343,25 @@ function Step2Identity({
 
   const handleStartChangePhone = () => {
     updateData({ phone_verified: false });
-    setCodeSent(false);
-    setVerificationCode("");
+    setPhoneCodeSent(false);
+    setPhoneVerificationCode("");
     setPendingPhoneE164("");
-    setResendCooldown(0);
+    setPhoneResendCooldown(0);
   };
 
-  const handleSendCode = async () => {
+  const handleSendPhoneCode = async () => {
     const ownerE164 = coerceOwnerPhoneToE164ForForm(data.owner_phone);
     if (!ownerE164) {
       toast.error("Please enter a valid phone number first");
       return;
     }
-
     const normalized = normalizeSupabaseAuthPhone(ownerE164);
     try {
-      setIsSendingCode(true);
+      setIsSendingPhoneCode(true);
       const supabase = getSupabaseClient();
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
       const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
-      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
-        ?.phone_confirmed_at;
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)?.phone_confirmed_at;
 
       if (phoneConfirmedAt && authPhone === normalized) {
         await persistPhoneVerified(normalized);
@@ -1317,59 +1373,136 @@ function Step2Identity({
       if (error) throw error;
 
       setPendingPhoneE164(normalized);
-      setVerificationCode("");
-      setCodeSent(true);
-      setResendCooldown(PHONE_OTP_RESEND_COOLDOWN_SECS);
+      setPhoneVerificationCode("");
+      setPhoneCodeSent(true);
+      setPhoneResendCooldown(PHONE_OTP_RESEND_COOLDOWN_SECS);
       toast.success("Verification code sent to your phone.");
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to send verification code.";
       toast.error(msg);
-      console.error("Error sending code:", error);
     } finally {
-      setIsSendingCode(false);
+      setIsSendingPhoneCode(false);
     }
   };
 
-  const handleVerifyCode = async (codeOverride?: string) => {
-    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? verificationCode);
+  const handleVerifyPhoneCode = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? phoneVerificationCode);
     if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
       toast.error(`Please enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS.`);
       return;
     }
-
     try {
-      setIsVerifying(true);
+      setIsVerifyingPhone(true);
       const supabase = getSupabaseClient();
       const phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        phone,
-        token,
-        type: "phone_change",
-      });
+      const { error: verifyError } = await supabase.auth.verifyOtp({ phone, token, type: "phone_change" });
       if (verifyError) throw verifyError;
-
       await persistPhoneVerified(phone);
       toast.success("Phone number verified!");
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Verification failed. Please try again.";
       toast.error(msg);
-      console.error("Error verifying code:", error);
     } finally {
-      setIsVerifying(false);
+      setIsVerifyingPhone(false);
     }
   };
 
   const handlePhoneChange = (e164: string) => {
     const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
-    const verifiedPhone = data.phone_verified
-      ? normalizeSupabaseAuthPhone(data.owner_phone || "")
-      : "";
+    const verifiedPhone = data.phone_verified ? normalizeSupabaseAuthPhone(data.owner_phone || "") : "";
     const stillVerified = Boolean(data.phone_verified && normalized && normalized === verifiedPhone);
     updateData({ owner_phone: e164, phone_verified: stillVerified });
     if (!stillVerified) {
-      setCodeSent(false);
-      setVerificationCode("");
+      setPhoneCodeSent(false);
+      setPhoneVerificationCode("");
       setPendingPhoneE164("");
+    }
+  };
+
+  // ── Email helpers ──────────────────────────────────────────────────────────
+  const persistEmailVerified = async (email: string) => {
+    await fetcher.post("/api/me/email/verify", { email });
+    updateData({ email_verified: true, owner_email: email, email });
+  };
+
+  const handleStartChangeEmail = () => {
+    updateData({ email_verified: false });
+    setEmailCodeSent(false);
+    setEmailVerificationCode("");
+    setPendingEmail("");
+    setEmailResendCooldown(0);
+  };
+
+  const handleSendEmailCode = async () => {
+    const trimmedEmail = data.owner_email?.trim() || "";
+    if (!trimmedEmail || !isMailableEmail(trimmedEmail)) {
+      toast.error("Please enter a valid email address first");
+      return;
+    }
+    try {
+      setIsSendingEmailCode(true);
+      const supabase = getSupabaseClient();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const confirmedEmail = authUser?.email?.trim() || "";
+      const emailConfirmedAt = authUser?.email_confirmed_at;
+
+      // No-op: email already confirmed in auth and matches what the user typed
+      if (emailConfirmedAt && confirmedEmail.toLowerCase() === trimmedEmail.toLowerCase()) {
+        await persistEmailVerified(confirmedEmail);
+        toast.success("Email verified!");
+        return;
+      }
+
+      // Send OTP to the new email via updateUser (no emailRedirectTo — numeric code only)
+      const { error } = await supabase.auth.updateUser({ email: trimmedEmail });
+      if (error) throw error;
+
+      setPendingEmail(trimmedEmail);
+      setEmailVerificationCode("");
+      setEmailCodeSent(true);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+      toast.success(`A ${SUPABASE_AUTH_OTP_LENGTH}-digit code was sent to ${trimmedEmail}.`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to send email code.";
+      toast.error(msg);
+    } finally {
+      setIsSendingEmailCode(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailVerificationCode);
+    if (!pendingEmail || !isCompleteSupabaseSmsOtp(token)) {
+      toast.error(`Please enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email.`);
+      return;
+    }
+    try {
+      setIsVerifyingEmail(true);
+      const supabase = getSupabaseClient();
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: pendingEmail,
+        token,
+        type: "email_change",
+      });
+      if (verifyError) throw verifyError;
+      await persistEmailVerified(pendingEmail);
+      toast.success("Email verified!");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Verification failed. Please try again.";
+      toast.error(msg);
+    } finally {
+      setIsVerifyingEmail(false);
+    }
+  };
+
+  const handleEmailInputChange = (newEmail: string) => {
+    const verifiedEmail = data.email_verified ? (data.owner_email || "").trim().toLowerCase() : "";
+    const stillVerified = Boolean(data.email_verified && newEmail.trim().toLowerCase() === verifiedEmail);
+    updateData({ owner_email: newEmail, email_verified: stillVerified });
+    if (!stillVerified) {
+      setEmailCodeSent(false);
+      setEmailVerificationCode("");
+      setPendingEmail("");
     }
   };
 
@@ -1385,7 +1518,7 @@ function Step2Identity({
               Owner and contact details
             </h4>
             <p className="mt-1 text-sm leading-relaxed text-slate-600">
-              We use this for verification and to reach you about bookings and payouts.
+              We verify both your email and mobile number to protect your account.
             </p>
           </div>
         </div>
@@ -1407,26 +1540,109 @@ function Step2Identity({
           />
         </div>
 
-        {/* Email */}
+        {/* Email with OTP verification */}
         <div>
-          <Label htmlFor="owner_email" className="mb-2 block text-sm font-semibold text-slate-900">
+          <Label className="mb-2 block text-sm font-semibold text-slate-900">
             Email Address <span className="text-slate-400">*</span>
           </Label>
-          <Input
-            id="owner_email"
-            type="email"
-            value={data.owner_email || ""}
-            onChange={(e) => updateData({ owner_email: e.target.value })}
-            placeholder="your.email@example.com"
-            className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
-            required
-          />
-          <p className="mt-2 text-xs leading-relaxed text-slate-500">
-            Used for payouts, invoices, and account notifications.
-          </p>
+
+          {data.email_verified ? (
+            <div className="flex flex-col items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 px-5 py-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                  <Check className="h-6 w-6 text-emerald-600" aria-hidden />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-900">Email verified</p>
+                  <p className="text-sm text-emerald-700">{data.owner_email}</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleStartChangeEmail}
+                className="h-11 rounded-xl border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
+              >
+                Change email
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                <div className="min-w-0 w-full lg:flex-1">
+                  <Input
+                    id="owner_email"
+                    type="email"
+                    value={data.owner_email || ""}
+                    onChange={(e) => handleEmailInputChange(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleSendEmailCode}
+                  disabled={
+                    !isMailableEmail(data.owner_email) || isSendingEmailCode || emailResendCooldown > 0
+                  }
+                  className="h-14 w-full shrink-0 rounded-xl bg-slate-900 px-6 text-white hover:bg-slate-800 disabled:opacity-50 lg:w-auto shadow-sm transition-all"
+                >
+                  {isSendingEmailCode ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : emailResendCooldown > 0 ? (
+                    `Resend (${emailResendCooldown}s)`
+                  ) : emailCodeSent ? (
+                    "Resend Code"
+                  ) : (
+                    "Send Code"
+                  )}
+                </Button>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit code. Used for payouts,
+                invoices, and account notifications.
+              </p>
+
+              {emailCodeSent && (
+                <div className="mt-6 space-y-3 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6 border border-slate-100">
+                  <Label
+                    htmlFor="provider-onboarding-email-otp-0"
+                    className="mb-2 block text-sm font-semibold text-slate-900"
+                  >
+                    Enter Email Code <span className="text-slate-400">*</span>
+                  </Label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <OtpDigitInput
+                      id="provider-onboarding-email-otp"
+                      length={SUPABASE_AUTH_OTP_LENGTH}
+                      label="Email verification code"
+                      value={emailVerificationCode}
+                      onChange={setEmailVerificationCode}
+                      onComplete={(code) => {
+                        if (!isVerifyingEmail) void handleVerifyEmailCode(code);
+                      }}
+                      disabled={isVerifyingEmail}
+                      autoFocus
+                      className="min-w-0 flex-1 [&>div:last-child]:!justify-start"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => void handleVerifyEmailCode()}
+                      disabled={!isCompleteSupabaseSmsOtp(emailVerificationCode) || isVerifyingEmail}
+                      className="h-14 shrink-0 rounded-xl bg-slate-900 px-8 text-white hover:bg-slate-800 disabled:opacity-50 sm:h-14 shadow-sm transition-all"
+                    >
+                      {isVerifyingEmail ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Phone with Verification */}
+        {/* Phone with OTP verification */}
         <div>
           <Label htmlFor="owner_phone" className="mb-2 block text-sm font-semibold text-slate-900">
             Mobile Number <span className="text-slate-400">*</span>
@@ -1467,16 +1683,18 @@ function Step2Identity({
                 </div>
                 <Button
                   type="button"
-                  onClick={handleSendCode}
+                  onClick={handleSendPhoneCode}
                   disabled={
-                    !isValidOwnerPhoneE164(data.owner_phone) || isSendingCode || resendCooldown > 0
+                    !isValidOwnerPhoneE164(data.owner_phone) || isSendingPhoneCode || phoneResendCooldown > 0
                   }
                   className="h-14 w-full shrink-0 rounded-xl bg-slate-900 px-6 text-white hover:bg-slate-800 disabled:opacity-50 lg:w-auto shadow-sm transition-all"
                 >
-                  {isSendingCode ? (
+                  {isSendingPhoneCode ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : resendCooldown > 0 ? (
-                    `Resend (${resendCooldown}s)`
+                  ) : phoneResendCooldown > 0 ? (
+                    `Resend (${phoneResendCooldown}s)`
+                  ) : phoneCodeSent ? (
+                    "Resend Code"
                   ) : (
                     "Send Code"
                   )}
@@ -1491,35 +1709,35 @@ function Step2Identity({
                 <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
               </p>
 
-              {codeSent && (
+              {phoneCodeSent && (
                 <div className="mt-6 space-y-3 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6 border border-slate-100">
                   <Label
                     htmlFor="provider-onboarding-verify-otp-0"
                     className="mb-2 block text-sm font-semibold text-slate-900"
                   >
-                    Enter Verification Code <span className="text-slate-400">*</span>
+                    Enter Phone Code <span className="text-slate-400">*</span>
                   </Label>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <OtpDigitInput
                       id="provider-onboarding-verify-otp"
                       length={SUPABASE_AUTH_OTP_LENGTH}
                       label="Phone verification code"
-                      value={verificationCode}
-                      onChange={setVerificationCode}
+                      value={phoneVerificationCode}
+                      onChange={setPhoneVerificationCode}
                       onComplete={(code) => {
-                        if (!isVerifying) void handleVerifyCode(code);
+                        if (!isVerifyingPhone) void handleVerifyPhoneCode(code);
                       }}
-                      disabled={isVerifying}
+                      disabled={isVerifyingPhone}
                       autoFocus
                       className="min-w-0 flex-1 [&>div:last-child]:!justify-start"
                     />
                     <Button
                       type="button"
-                      onClick={() => void handleVerifyCode()}
-                      disabled={!isCompleteSupabaseSmsOtp(verificationCode) || isVerifying}
+                      onClick={() => void handleVerifyPhoneCode()}
+                      disabled={!isCompleteSupabaseSmsOtp(phoneVerificationCode) || isVerifyingPhone}
                       className="h-14 shrink-0 rounded-xl bg-slate-900 px-8 text-white hover:bg-slate-800 disabled:opacity-50 sm:h-14 shadow-sm transition-all"
                     >
-                      {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify"}
+                      {isVerifyingPhone ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify"}
                     </Button>
                   </div>
                 </div>

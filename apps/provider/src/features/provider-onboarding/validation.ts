@@ -14,9 +14,7 @@ export function validateStep(
     case 2:
       if (!formData.owner_name?.trim()) errors.push("Your name is required");
       if (!formData.owner_email?.trim()) errors.push("Email is required");
-      if (formData.owner_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.owner_email)) {
-        errors.push("Invalid email address");
-      }
+      if (!formData.email_verified) errors.push("Please verify your email address");
       if (!isValidOwnerPhoneE164(formData.owner_phone)) errors.push("Phone number is required");
       if (!formData.phone_verified) errors.push("Please verify your phone number");
       break;

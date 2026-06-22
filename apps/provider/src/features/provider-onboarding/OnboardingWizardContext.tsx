@@ -72,6 +72,7 @@ function mergePrefill(
   prefill: {
     full_name?: string | null;
     email?: string | null;
+    email_verified?: boolean | null;
     phone?: string | null;
     phone_verified?: boolean | null;
   }
@@ -87,6 +88,15 @@ function mergePrefill(
   if (Boolean(prefill.phone_verified) && ownerDigits && phoneNumbersMatchProfile(ph, ownerDigits)) {
     form.phone_verified = true;
   }
+  if (
+    Boolean(prefill.email_verified) &&
+    form.owner_email &&
+    isMailableEmail(form.owner_email) &&
+    em &&
+    form.owner_email.trim().toLowerCase() === em.trim().toLowerCase()
+  ) {
+    form.email_verified = true;
+  }
   if (!form.phone?.trim() && form.owner_phone) form.phone = form.owner_phone;
   if (!form.email?.trim() && form.owner_email && isMailableEmail(form.owner_email)) {
     form.email = form.owner_email;
@@ -96,6 +106,7 @@ function mergePrefill(
 function scrubPlaceholderEmailsFromOnboardingForm(form: Partial<OnboardingFormData>) {
   if (form.owner_email && !isMailableEmail(form.owner_email)) {
     form.owner_email = "";
+    form.email_verified = false;
   }
   if (form.email && !isMailableEmail(form.email)) {
     form.email = "";
@@ -180,6 +191,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         const profileRes = await api.get<{
           full_name?: string | null;
           email?: string | null;
+          email_verified?: boolean | null;
           phone?: string | null;
           phone_verified?: boolean | null;
         }>("/api/me/profile");
@@ -265,7 +277,19 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
     if (loadingDraft) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      if (formData.business_name || formData.address?.line1) {
+      // Save once the user has made any meaningful progress — identity (name/email/
+      // phone or a verified flag), team size, or business/address — so verification
+      // state survives an app restart even before the business-details step.
+      const hasProgress =
+        formData.business_name ||
+        formData.address?.line1 ||
+        formData.owner_name?.trim() ||
+        formData.owner_email?.trim() ||
+        formData.owner_phone?.trim() ||
+        formData.email_verified ||
+        formData.phone_verified ||
+        formData.team_size;
+      if (hasProgress) {
         void persistDraft(formData, currentStep);
       }
     }, 2000);

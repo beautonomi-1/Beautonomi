@@ -572,15 +572,46 @@ export async function POST(request: NextRequest) {
     if (owner_name && owner_name.trim()) {
       userUpdates.full_name = owner_name.trim();
     }
-    // Update phone if provided and verified
+
+    // Read Supabase Auth's own confirmation state — the source of truth for verification.
+    // NEVER blindly trust the client-submitted owner_phone/owner_email as "verified";
+    // only mark a contact verified when Supabase Auth has actually confirmed that exact
+    // value (set via verifyOtp during Step 2). This prevents a direct POST from spoofing
+    // verification, while preserving any flags the /api/me/*/verify routes already wrote.
+    const {
+      data: { user: authUser },
+    } = await _supabase.auth.getUser();
+    const authPhoneConfirmedAt =
+      (authUser as { phone_confirmed_at?: string | null } | null)?.phone_confirmed_at ?? null;
+    const authEmailConfirmedAt = authUser?.email_confirmed_at ?? null;
+    const authPhoneDigits = authUser?.phone ? authUser.phone.replace(/\D/g, "") : "";
+    const authEmailLower = authUser?.email?.trim().toLowerCase() ?? "";
+
+    // Update phone if provided; mark verified only when Auth confirms this exact number.
     if (owner_phone && owner_phone.trim()) {
-      userUpdates.phone = owner_phone.trim();
-      userUpdates.phone_verified = true;
-      userUpdates.phone_verified_at = new Date().toISOString();
+      const normalizedPhone = owner_phone.trim();
+      userUpdates.phone = normalizedPhone;
+      const submittedPhoneDigits = normalizedPhone.replace(/\D/g, "");
+      if (
+        authPhoneConfirmedAt &&
+        authPhoneDigits &&
+        submittedPhoneDigits === authPhoneDigits
+      ) {
+        userUpdates.phone_verified = true;
+        userUpdates.phone_verified_at = new Date().toISOString();
+      }
     }
-    // Update email if provided
+    // Update email if provided; mark verified only when Auth confirms this exact address.
     if (owner_email && owner_email.trim()) {
-      userUpdates.email = owner_email.trim();
+      const normalizedEmail = owner_email.trim();
+      userUpdates.email = normalizedEmail;
+      if (
+        authEmailConfirmedAt &&
+        authEmailLower &&
+        normalizedEmail.toLowerCase() === authEmailLower
+      ) {
+        userUpdates.email_verified = true;
+      }
     }
 
     if (Object.keys(userUpdates).length > 0) {

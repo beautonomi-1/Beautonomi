@@ -1202,6 +1202,22 @@ export default function BookingDetailScreen() {
     }
   }, [data?.scheduled_at, showReschedule]);
 
+  // Keep the selected reschedule time valid for the date currently in view.
+  // Changing the date refetches slots; the previously chosen wall-clock time is
+  // preserved when it is still an open slot on the new date (so moving e.g.
+  // Mon 14:00 → Tue keeps 14:00 if free), but cleared when it is no longer
+  // offered or is held/unavailable. Without this, a stale time would keep the
+  // "Confirm reschedule" button enabled and let the provider attempt a slot the
+  // grid never showed as open. Guarded on `loading` so the debounced/stale
+  // window between date change and fresh slots does not falsely clear it.
+  useEffect(() => {
+    if (!showReschedule || rescheduleSlotsLoading || !rescheduleTime) return;
+    const match = rescheduleTimeRows.find((row) => row.time === rescheduleTime);
+    if (!match || !match.available) {
+      setRescheduleTime("");
+    }
+  }, [showReschedule, rescheduleSlotsLoading, rescheduleTimeRows, rescheduleTime]);
+
   const listActionOpenedRef = useRef(false);
   useEffect(() => {
     if (!data || listActionOpenedRef.current) return;
@@ -4251,27 +4267,39 @@ export default function BookingDetailScreen() {
         visible={showReschedule}
         onClose={() => setShowReschedule(false)}
         title="Reschedule"
-      >
-        <View>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Date</Text>
-          <View style={twStyle("mb-3")}>
-            <BookingDateStrip selectedDate={rescheduleDate} onSelectDate={setRescheduleDate} />
-          </View>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Time</Text>
-          <BookingTimeSlotGrid
-            rows={rescheduleTimeRows}
-            selectedTime={rescheduleTime}
-            onSelectTime={setRescheduleTime}
-            loading={rescheduleSlotsLoading}
-            providerTimezone={rescheduleSlotsTimezone}
-            maxHeight={420}
-          />
+        subtitle={rescheduleTime ? `New time: ${rescheduleTime}` : "Select a date and time below"}
+        snapHeight="full"
+        footer={
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
             onPress={handleReschedule}
             loading={rescheduling}
             disabled={!rescheduleTime}
             fullWidth
+            size="lg"
+            variant="brand"
+          />
+        }
+      >
+        <View>
+          {/* Compact hint — same style as new-booking picker */}
+          <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
+            <Ionicons name="information-circle-outline" size={14} color="#1d4ed8" style={{ marginRight: 6 }} />
+            <Text style={twStyle("flex-1 text-xs leading-4 text-blue-800")}>
+              Held customer checkout slots appear unavailable until the hold expires.
+            </Text>
+          </View>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Date</Text>
+          <View style={twStyle("mb-4")}>
+            <BookingDateStrip selectedDate={rescheduleDate} onSelectDate={setRescheduleDate} />
+          </View>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Time</Text>
+          <BookingTimeSlotGrid
+            rows={rescheduleTimeRows}
+            selectedTime={rescheduleTime}
+            onSelectTime={setRescheduleTime}
+            loading={rescheduleSlotsLoading}
+            providerTimezone={rescheduleSlotsTimezone}
           />
         </View>
       </BottomSheet>

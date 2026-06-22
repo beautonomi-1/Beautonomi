@@ -910,6 +910,10 @@
     },
     "chatScreen": {
       "messagePlaceholder": "Message...",
+      "conversationActionsTitle": "Conversation actions",
+      "conversationActionsA11y": "Conversation actions",
+      "pinConversation": "Pin chat",
+      "unpinConversation": "Unpin chat",
       "replyToMessage": "Reply",
       "replyingToYou": "You",
       "cancelReply": "Cancel reply",

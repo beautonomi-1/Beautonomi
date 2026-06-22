@@ -888,6 +888,16 @@ function CustomerOnboardingWizard() {
         if (handoff) {
           setPhoneE164(handoff.phoneE164);
           setPhoneVerified(true);
+          // The phone was confirmed via SMS OTP at login, but nothing has written
+          // users.phone_verified yet. Sync it now so the profile-completion gate
+          // doesn't keep prompting the user to re-verify a verified phone.
+          void fetcher
+            .post("/api/me/phone/verify", {
+              phone: normalizeSupabaseAuthPhone(handoff.phoneE164),
+            })
+            .catch(() => {
+              // Non-blocking — Step 4 auto-detect / manual verify will recover.
+            });
         }
 
         if (addressesRes.status === "fulfilled") {

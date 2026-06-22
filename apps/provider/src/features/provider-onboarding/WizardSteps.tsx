@@ -26,6 +26,7 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import {
   COUNTRY_CODES,
@@ -37,6 +38,7 @@ import {
 import {
   appendFormDataFileNative,
   countryFilterIso2FromStorage,
+  isMailableEmail,
   resolveGlobalCategoryIconUri,
 } from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
@@ -178,6 +180,8 @@ function Step1TeamSize() {
 
 // ─── Step 2: Identity ────────────────────────────────────────────────────────
 
+const KEYBOARD_ACCESSORY_EMAIL = "step2-email-done";
+
 function Step2Identity() {
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
   const nameRef = useRef<TextInput>(null);
@@ -185,122 +189,146 @@ function Step2Identity() {
   const phoneRef = useRef<TextInput>(null);
   useAutoFocus(nameRef);
   const deviceDial = getDeviceDefaultCountryDial();
+
+  // ── Phone local state (keyboard-safe: only commit to context on blur) ──────
   const [countryCode, setCountryCode] = useState("+27");
   const [national, setNational] = useState("");
   const phoneFieldsSeeded = useRef(false);
+  // Tracks last E.164 we committed to context, to avoid spurious OTP resets.
+  const lastCommittedE164 = useRef("");
   const [countryModal, setCountryModal] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
-  const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [pendingE164, setPendingE164] = useState("");
-  const RESEND_COOLDOWN_SECS = 30;
-  const [resendCooldown, setResendCooldown] = useState(0);
 
+  // ── Phone OTP state ─────────────────────────────────────────────────────────
+  const [sendingPhone, setSendingPhone] = useState(false);
+  const [verifyingPhone, setVerifyingPhone] = useState(false);
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [pendingPhoneE164, setPendingPhoneE164] = useState("");
+  const [phoneResendCooldown, setPhoneResendCooldown] = useState(0);
+
+  // ── Email OTP state ─────────────────────────────────────────────────────────
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailOtp, setEmailOtp] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+
+  // ── Cooldown timers ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (phoneResendCooldown <= 0) return;
+    const t = setTimeout(() => setPhoneResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearTimeout(t);
+  }, [phoneResendCooldown]);
+
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const t = setTimeout(() => setEmailResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearTimeout(t);
+  }, [emailResendCooldown]);
+
+  // ── Persist phone helpers ────────────────────────────────────────────────────
   const persistPhoneVerified = useCallback(async (phone: string) => {
-    const verifyRes = await api.post("/api/me/phone/verify", { phone });
-    if (verifyRes.error) {
-      throw new Error("Phone verified but could not save to profile. Please try again.");
-    }
-    updateFormData({
-      phone_verified: true,
-      owner_phone: phone,
-      phone,
-    });
+    const res = await api.post("/api/me/phone/verify", { phone });
+    if (res.error) throw new Error("Phone verified but could not save. Please try again.");
+    updateFormData({ phone_verified: true, owner_phone: phone, phone });
   }, [updateFormData]);
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setTimeout(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
-    return () => clearTimeout(t);
-  }, [resendCooldown]);
+  const persistEmailVerified = useCallback(async (email: string) => {
+    const res = await api.post("/api/me/email/verify", { email });
+    if (res.error) throw new Error("Email verified but could not save. Please try again.");
+    updateFormData({ email_verified: true, owner_email: email, email });
+  }, [updateFormData]);
 
+  // ── Auto-detect already-confirmed contacts (run once after draft loads) ──────
   useEffect(() => {
-    if (formData.phone_verified || loadingDraft) return;
+    if (loadingDraft) return;
     let cancelled = false;
     (async () => {
       try {
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
-        if (cancelled || !authUser?.phone) return;
-        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null })
-          ?.phone_confirmed_at;
-        if (!phoneConfirmedAt) return;
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (cancelled || !authUser) return;
 
-        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
-        const formPhone = formData.owner_phone
-          ? normalizeSupabaseAuthPhone(
-              coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
-            )
-          : "";
-        const phonesAlign =
-          !formPhone ||
-          authPhone === formPhone ||
-          phoneNumbersMatchProfile(authUser.phone, formPhone);
-        if (!phonesAlign) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null }).phone_confirmed_at;
+        const emailConfirmedAt = authUser.email_confirmed_at;
 
-        await persistPhoneVerified(authPhone);
+        // Auto-verify phone if already confirmed at signup
+        if (!formData.phone_verified && authUser.phone && phoneConfirmedAt) {
+          const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+          const formPhone = formData.owner_phone
+            ? normalizeSupabaseAuthPhone(coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone)
+            : "";
+          const phonesAlign = !formPhone || authPhone === formPhone || phoneNumbersMatchProfile(authUser.phone, formPhone);
+          if (phonesAlign && !cancelled) {
+            try { await persistPhoneVerified(authPhone); } catch { /* verify manually */ }
+          }
+        }
+
+        // Auto-verify email if already confirmed (email/Google/Apple signups)
+        if (!formData.email_verified && authUser.email && emailConfirmedAt && isMailableEmail(authUser.email)) {
+          const authEmail = authUser.email.trim();
+          const formEmail = formData.owner_email?.trim() || "";
+          const emailsAlign = !formEmail || formEmail.toLowerCase() === authEmail.toLowerCase();
+          if (emailsAlign && !cancelled) {
+            try { await persistEmailVerified(authEmail); } catch { /* verify manually */ }
+          }
+        }
       } catch {
-        // User can verify manually.
+        // Non-fatal — user verifies manually
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadingDraft, formData.phone_verified, formData.owner_phone, persistPhoneVerified]);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once after draft loads
+  }, [loadingDraft]);
 
+  // ── Seed phone local fields from draft (once) ────────────────────────────────
   useEffect(() => {
     if (loadingDraft || phoneFieldsSeeded.current) return;
     phoneFieldsSeeded.current = true;
     const sp = splitPhoneForNationalInput(formData.owner_phone || "", deviceDial);
     setCountryCode(sp.countryCode);
     setNational(sp.nationalDisplay);
+    lastCommittedE164.current = formData.owner_phone
+      ? normalizeSupabaseAuthPhone(coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone)
+      : "";
   }, [loadingDraft, formData.owner_phone, deviceDial]);
 
-  useEffect(() => {
+  // ── Commit phone to context on blur (NOT per-keystroke) ─────────────────────
+  const commitPhoneToContext = useCallback(() => {
     const e164 = composeE164FromNational(countryCode, national);
     const next = e164 ? normalizeSupabaseAuthPhone(e164) : "";
-    if (next !== (formData.owner_phone || "")) {
-      const wasVerified = formData.phone_verified;
-      const verifiedPhone = wasVerified
-        ? normalizeSupabaseAuthPhone(formData.owner_phone || "")
-        : "";
-      updateFormData({
-        owner_phone: next,
-        phone_verified: Boolean(wasVerified && next && next === verifiedPhone),
-      });
-      if (!wasVerified || next !== verifiedPhone) {
-        setCodeSent(false);
-        setOtp("");
-        setPendingE164("");
-      }
+    if (next === lastCommittedE164.current) return; // no change
+    lastCommittedE164.current = next;
+    const wasVerified = formData.phone_verified;
+    const verifiedPhone = wasVerified ? normalizeSupabaseAuthPhone(formData.owner_phone || "") : "";
+    const stillVerified = Boolean(wasVerified && next && next === verifiedPhone);
+    updateFormData({ owner_phone: next, phone_verified: stillVerified });
+    if (!stillVerified) {
+      setPhoneCodeSent(false);
+      setPhoneOtp("");
+      setPendingPhoneE164("");
     }
-  }, [countryCode, national, formData.owner_phone, formData.phone_verified, updateFormData]);
+  }, [countryCode, national, formData.phone_verified, formData.owner_phone, updateFormData]);
 
-  const sendCode = async () => {
-    const e164 =
-      coerceOwnerPhoneToE164ForForm(formData.owner_phone) ||
-      composeE164FromNational(countryCode, national);
+  // ── Phone OTP actions ────────────────────────────────────────────────────────
+  const sendPhoneCode = async () => {
+    // Commit any pending national digits first
+    commitPhoneToContext();
+    const e164 = composeE164FromNational(countryCode, national);
     const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
     if (!normalized || !isValidOwnerPhoneE164(normalized)) {
       Alert.alert("Phone", "Enter a valid mobile number.");
       return;
     }
     const err = validateNationalPhoneDigits(national, countryCode);
-    if (err) {
-      Alert.alert("Phone", err);
-      return;
-    }
-    setSending(true);
+    if (err) { Alert.alert("Phone", err); return; }
+
+    setSendingPhone(true);
     try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
       const authPhone = authUser?.phone ? normalizeSupabaseAuthPhone(authUser.phone) : "";
-      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)
-        ?.phone_confirmed_at;
+      const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null } | null)?.phone_confirmed_at;
 
       if (phoneConfirmedAt && authPhone === normalized) {
         await persistPhoneVerified(normalized);
@@ -310,48 +338,117 @@ function Step2Identity() {
 
       const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
-      setPendingE164(normalized);
-      setOtp("");
-      setCodeSent(true);
-      setResendCooldown(RESEND_COOLDOWN_SECS);
+      setPendingPhoneE164(normalized);
+      setPhoneOtp("");
+      setPhoneCodeSent(true);
+      setPhoneResendCooldown(30);
       Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to your phone.`);
     } catch (e) {
       Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
     } finally {
-      setSending(false);
+      setSendingPhone(false);
     }
   };
 
-  const verify = async (codeOverride?: string) => {
-    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otp);
-    if (!pendingE164 || !isCompleteSupabaseSmsOtp(token)) {
+  const verifyPhoneCode = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? phoneOtp);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
       Alert.alert("Code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from SMS.`);
       return;
     }
-    setVerifying(true);
+    setVerifyingPhone(true);
     try {
-      const phone = normalizeSupabaseAuthPhone(pendingE164);
-      const { error } = await supabase.auth.verifyOtp({
-        phone,
-        token,
-        type: "phone_change",
-      });
+      const phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
+      const { error } = await supabase.auth.verifyOtp({ phone, token, type: "phone_change" });
       if (error) throw error;
       await persistPhoneVerified(phone);
       Alert.alert("Verified", "Phone number verified.");
     } catch (e) {
       Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
     } finally {
-      setVerifying(false);
+      setVerifyingPhone(false);
     }
   };
 
   const handleStartChangePhone = () => {
     updateFormData({ phone_verified: false });
-    setCodeSent(false);
-    setOtp("");
-    setPendingE164("");
-    setResendCooldown(0);
+    setPhoneCodeSent(false);
+    setPhoneOtp("");
+    setPendingPhoneE164("");
+    setPhoneResendCooldown(0);
+  };
+
+  // ── Email OTP actions ────────────────────────────────────────────────────────
+  const sendEmailCode = async () => {
+    const trimmedEmail = formData.owner_email?.trim() || "";
+    if (!trimmedEmail || !isMailableEmail(trimmedEmail)) {
+      Alert.alert("Email", "Enter a valid email address first.");
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const confirmedEmail = authUser?.email?.trim() || "";
+      const emailConfirmedAt = authUser?.email_confirmed_at;
+
+      // No-op: email already confirmed in auth and matches what the user typed
+      if (emailConfirmedAt && confirmedEmail.toLowerCase() === trimmedEmail.toLowerCase()) {
+        await persistEmailVerified(confirmedEmail);
+        Alert.alert("Verified", "Email address verified.");
+        return;
+      }
+
+      // Send OTP to the new email via updateUser (no emailRedirectTo — numeric code only)
+      const { error } = await supabase.auth.updateUser({ email: trimmedEmail });
+      if (error) throw error;
+      setPendingEmail(trimmedEmail);
+      setEmailOtp("");
+      setEmailCodeSent(true);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+      Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to ${trimmedEmail}.`);
+    } catch (e) {
+      Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const verifyEmailCode = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtp);
+    if (!pendingEmail || !isCompleteSupabaseSmsOtp(token)) {
+      Alert.alert("Code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email.`);
+      return;
+    }
+    setVerifyingEmail(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email: pendingEmail, token, type: "email_change" });
+      if (error) throw error;
+      await persistEmailVerified(pendingEmail);
+      Alert.alert("Verified", "Email address verified.");
+    } catch (e) {
+      Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
+  const handleEmailChange = (t: string) => {
+    const verifiedEmail = formData.email_verified ? (formData.owner_email || "").trim().toLowerCase() : "";
+    const stillVerified = Boolean(formData.email_verified && t.trim().toLowerCase() === verifiedEmail);
+    updateFormData({ owner_email: t, email_verified: stillVerified });
+    if (!stillVerified) {
+      setEmailCodeSent(false);
+      setEmailOtp("");
+      setPendingEmail("");
+    }
+  };
+
+  const handleStartChangeEmail = () => {
+    updateFormData({ email_verified: false });
+    setEmailCodeSent(false);
+    setEmailOtp("");
+    setPendingEmail("");
+    setEmailResendCooldown(0);
   };
 
   return (
@@ -362,11 +459,7 @@ function Step2Identity() {
         <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
           The name clients see on your profile and bookings.
         </Text>
-        <View
-          style={twStyle(
-            "flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white"
-          )}
-        >
+        <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
           <View style={twStyle("pl-3 pr-1")}>
             <Ionicons name="person-outline" size={18} color="#9ca3af" />
           </View>
@@ -378,7 +471,6 @@ function Step2Identity() {
             placeholderTextColor="#9ca3af"
             style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
             accessibilityLabel="Full name"
-            accessibilityHint="The name clients see on your profile and bookings"
             textContentType="name"
             autoComplete="name"
             returnKeyType="next"
@@ -388,60 +480,125 @@ function Step2Identity() {
         </View>
       </View>
 
-      {/* Email */}
+      {/* Email with OTP */}
       <View>
         <Text style={twStyle(labelCls)}>Email</Text>
-        <View
-          style={twStyle(
-            "flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white"
-          )}
-        >
-          <View style={twStyle("pl-3 pr-1")}>
-            <Ionicons name="mail-outline" size={18} color="#9ca3af" />
-          </View>
-          <FocusAwareTextInput
-            ref={emailRef}
-            value={formData.owner_email || ""}
-            onChangeText={(t) => updateFormData({ owner_email: t })}
-            placeholder="you@example.com"
-            placeholderTextColor="#9ca3af"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
-            accessibilityLabel="Email"
-            textContentType="emailAddress"
-            autoComplete="email"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => phoneRef.current?.focus()}
-          />
-        </View>
-        <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
-          Used for payouts, invoices, and account notifications.
-        </Text>
-      </View>
-
-      {/* Phone */}
-      <View>
-        <Text style={twStyle(labelCls)}>Mobile number</Text>
-        {formData.phone_verified ? (
-          <View
-            style={twStyle(
-              "mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm"
-            )}
-          >
-            <View
-              style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}
-            >
+        {formData.email_verified ? (
+          <View style={twStyle("mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm")}>
+            <View style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}>
               <Ionicons name="checkmark" size={18} color="#059669" />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>
-                Phone verified
+              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>Email verified</Text>
+              <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>{formData.owner_email}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleStartChangeEmail}
+              accessibilityRole="button"
+              accessibilityLabel="Change email address"
+              style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
+            >
+              <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
+              We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to verify your email.
+            </Text>
+            <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
+              <View style={twStyle("pl-3 pr-1")}>
+                <Ionicons name="mail-outline" size={18} color="#9ca3af" />
+              </View>
+              <FocusAwareTextInput
+                ref={emailRef}
+                value={formData.owner_email || ""}
+                onChangeText={handleEmailChange}
+                placeholder="you@example.com"
+                placeholderTextColor="#9ca3af"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={twStyle("flex-1 py-3.5 text-base text-gray-900")}
+                accessibilityLabel="Email address"
+                textContentType="emailAddress"
+                autoComplete="email"
+                returnKeyType="done"
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_EMAIL}
+                onSubmitEditing={() => emailRef.current?.blur()}
+              />
+              <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY_EMAIL} />
+            </View>
+            <TouchableOpacity
+              onPress={sendEmailCode}
+              disabled={sendingEmail || emailResendCooldown > 0 || !isMailableEmail(formData.owner_email)}
+              style={twStyle(
+                `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sendingEmail || emailResendCooldown > 0 || !isMailableEmail(formData.owner_email) ? "bg-gray-200" : "bg-primary"}`
+              )}
+              accessibilityRole="button"
+              accessibilityLabel={emailCodeSent ? "Resend email verification code" : "Send email verification code"}
+              accessibilityState={{ disabled: sendingEmail || emailResendCooldown > 0 }}
+            >
+              <Ionicons
+                name={emailCodeSent ? "refresh-outline" : "send-outline"}
+                size={16}
+                color={sendingEmail || emailResendCooldown > 0 ? "#6b7280" : "#fff"}
+              />
+              <Text style={twStyle(`font-semibold ${sendingEmail || emailResendCooldown > 0 ? "text-gray-600" : "text-white"}`)}>
+                {sendingEmail ? "Sending…" : emailResendCooldown > 0 ? `Resend in ${emailResendCooldown}s` : emailCodeSent ? "Resend code" : "Send verification code"}
               </Text>
-              <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>
-                {formData.owner_phone}
-              </Text>
+            </TouchableOpacity>
+
+            {emailCodeSent && (
+              <View style={twStyle("mt-3 gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
+                <View style={twStyle("flex-row items-center gap-2")}>
+                  <Ionicons name="mail-open-outline" size={16} color={Colors.primary} />
+                  <Text style={twStyle("text-sm font-semibold text-primary")}>Enter email code</Text>
+                </View>
+                <OtpDigitRow
+                  value={emailOtp}
+                  onChange={setEmailOtp}
+                  onComplete={(code) => { if (!verifyingEmail) void verifyEmailCode(code); }}
+                  disabled={verifyingEmail}
+                  autoFocus
+                  accessibilityLabelPrefix="Email verification"
+                />
+                <TouchableOpacity
+                  onPress={() => void verifyEmailCode()}
+                  disabled={verifyingEmail}
+                  style={[
+                    twStyle("flex-row items-center justify-center gap-2 rounded-xl py-3.5"),
+                    { backgroundColor: Colors.primary, opacity: verifyingEmail ? 0.7 : 1 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Verify email"
+                  accessibilityState={{ disabled: verifyingEmail }}
+                >
+                  {verifyingEmail ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-outline" size={16} color="#fff" />
+                      <Text style={twStyle("font-semibold text-white")}>Verify email</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Phone with OTP */}
+      <View>
+        <Text style={twStyle(labelCls)}>Mobile number</Text>
+        {formData.phone_verified ? (
+          <View style={twStyle("mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm")}>
+            <View style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}>
+              <Ionicons name="checkmark" size={18} color="#059669" />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>Phone verified</Text>
+              <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>{formData.owner_phone}</Text>
             </View>
             <TouchableOpacity
               onPress={handleStartChangePhone}
@@ -458,172 +615,148 @@ function Step2Identity() {
               We verify this number with a one-time code to protect your account.
             </Text>
             <View style={twStyle("flex-row gap-2")}>
-          <TouchableOpacity
-            onPress={() => setCountryModal(true)}
-            style={twStyle(
-              "flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5"
-            )}
-            accessibilityRole="button"
-            accessibilityLabel="Change country code"
-          >
-            <Text style={twStyle("font-medium text-gray-800")}>
-              {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color="#6b7280" />
-          </TouchableOpacity>
-          <FocusAwareTextInput
-            ref={phoneRef}
-            value={national}
-            onChangeText={(t) => setNational(t.replace(/[^\d\s]/g, ""))}
-            placeholder="82 123 4567"
-            placeholderTextColor="#9ca3af"
-            keyboardType="phone-pad"
-            style={twStyle(`${inputCls} flex-1`)}
-            accessibilityLabel="Mobile number"
-            accessibilityHint="We verify this number with a one-time code"
-            textContentType="telephoneNumber"
-            autoComplete="tel"
-            returnKeyType="done"
-            inputAccessoryViewID={KEYBOARD_ACCESSORY.phone}
-            onSubmitEditing={() => phoneRef.current?.blur()}
-          />
-          <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.phone} />
-        </View>
+              <TouchableOpacity
+                onPress={() => setCountryModal(true)}
+                style={twStyle("flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Change country code"
+              >
+                <Text style={twStyle("font-medium text-gray-800")}>
+                  {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#6b7280" />
+              </TouchableOpacity>
+              <FocusAwareTextInput
+                ref={phoneRef}
+                value={national}
+                onChangeText={(t) => setNational(t.replace(/[^\d\s]/g, ""))}
+                onBlur={commitPhoneToContext}
+                placeholder="82 123 4567"
+                placeholderTextColor="#9ca3af"
+                keyboardType="phone-pad"
+                style={twStyle(`${inputCls} flex-1`)}
+                accessibilityLabel="Mobile number"
+                accessibilityHint="We verify this number with a one-time code"
+                textContentType="telephoneNumber"
+                autoComplete="tel"
+                returnKeyType="done"
+                inputAccessoryViewID={KEYBOARD_ACCESSORY.phone}
+                onSubmitEditing={() => { commitPhoneToContext(); phoneRef.current?.blur(); }}
+              />
+              <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.phone} />
+            </View>
 
-        <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
-          <View style={twStyle("flex-1 bg-white p-4 pt-12")}>
-            <Text style={twStyle("text-lg font-bold text-gray-900")}>Select country code</Text>
-            <FocusAwareTextInput
-              value={countrySearch}
-              onChangeText={setCountrySearch}
-              placeholder="Search country…"
-              style={twStyle(
-                "mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base"
-              )}
-              accessibilityLabel="Search country code"
-              returnKeyType="search"
-            />
-            <FlatList<CountryCodeOption>
-              {...verticalFlatListPerf}
-              data={COUNTRY_CODES.filter(
-                (c: CountryCodeOption) =>
-                  !countrySearch.trim() ||
-                  c.label.toLowerCase().includes(countrySearch.toLowerCase()) ||
-                  c.code.replace(/\D/g, "").includes(countrySearch.replace(/\D/g, ""))
-              )}
-              keyExtractor={(c: CountryCodeOption) => c.code}
-              style={twStyle("mt-3 flex-1")}
-              renderItem={({ item: c }: { item: CountryCodeOption }) => (
+            <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
+              <View style={twStyle("flex-1 bg-white p-4 pt-12")}>
+                <Text style={twStyle("text-lg font-bold text-gray-900")}>Select country code</Text>
+                <FocusAwareTextInput
+                  value={countrySearch}
+                  onChangeText={setCountrySearch}
+                  placeholder="Search country…"
+                  style={twStyle("mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base")}
+                  accessibilityLabel="Search country code"
+                  returnKeyType="search"
+                />
+                <FlatList<CountryCodeOption>
+                  {...verticalFlatListPerf}
+                  data={COUNTRY_CODES.filter(
+                    (c: CountryCodeOption) =>
+                      !countrySearch.trim() ||
+                      c.label.toLowerCase().includes(countrySearch.toLowerCase()) ||
+                      c.code.replace(/\D/g, "").includes(countrySearch.replace(/\D/g, ""))
+                  )}
+                  keyExtractor={(c: CountryCodeOption) => c.code}
+                  style={twStyle("mt-3 flex-1")}
+                  renderItem={({ item: c }: { item: CountryCodeOption }) => (
+                    <TouchableOpacity
+                      style={twStyle("flex-row items-center gap-3 border-b border-gray-100 py-3")}
+                      onPress={() => {
+                        setCountryCode(c.code);
+                        setCountryModal(false);
+                        setCountrySearch("");
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use country code ${c.label} ${c.code}`}
+                    >
+                      <Text style={twStyle("text-xl")}>{c.flag}</Text>
+                      <Text style={twStyle("flex-1 text-base text-gray-900")}>{c.label}</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-500")}>{c.code}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
                 <TouchableOpacity
-                  style={twStyle("flex-row items-center gap-3 border-b border-gray-100 py-3")}
-                  onPress={() => {
-                    setCountryCode(c.code);
-                    setCountryModal(false);
-                    setCountrySearch("");
-                  }}
+                  onPress={() => setCountryModal(false)}
+                  style={twStyle("items-center rounded-2xl bg-gray-100 py-3.5")}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use country code ${c.label} ${c.code}`}
+                  accessibilityLabel="Close country code picker"
                 >
-                  <Text style={twStyle("text-xl")}>{c.flag}</Text>
-                  <Text style={twStyle("flex-1 text-base text-gray-900")}>{c.label}</Text>
-                  <Text style={twStyle("text-sm font-medium text-gray-500")}>{c.code}</Text>
+                  <Text style={twStyle("font-semibold text-gray-700")}>Close</Text>
                 </TouchableOpacity>
-              )}
-            />
-            <TouchableOpacity
-              onPress={() => setCountryModal(false)}
-              style={twStyle("items-center rounded-2xl bg-gray-100 py-3.5")}
-              accessibilityRole="button"
-              accessibilityLabel="Close country code picker"
-            >
-              <Text style={twStyle("font-semibold text-gray-700")}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
+              </View>
+            </Modal>
 
-        {!formData.phone_verified ? (
-          <TouchableOpacity
-            onPress={sendCode}
-            disabled={sending || resendCooldown > 0}
-            style={twStyle(
-              `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sending || resendCooldown > 0 ? "bg-gray-200" : "bg-primary"}`
-            )}
-            accessibilityRole="button"
-            accessibilityLabel={codeSent ? "Resend verification code" : "Send verification code"}
-            accessibilityState={{ disabled: sending || resendCooldown > 0 }}
-          >
-            <Ionicons
-              name={codeSent ? "refresh-outline" : "send-outline"}
-              size={16}
-              color={sending || resendCooldown > 0 ? "#6b7280" : "#fff"}
-            />
-            <Text
+            <TouchableOpacity
+              onPress={sendPhoneCode}
+              disabled={sendingPhone || phoneResendCooldown > 0}
               style={twStyle(
-                `font-semibold ${sending || resendCooldown > 0 ? "text-gray-600" : "text-white"}`
+                `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sendingPhone || phoneResendCooldown > 0 ? "bg-gray-200" : "bg-primary"}`
               )}
+              accessibilityRole="button"
+              accessibilityLabel={phoneCodeSent ? "Resend phone verification code" : "Send phone verification code"}
+              accessibilityState={{ disabled: sendingPhone || phoneResendCooldown > 0 }}
             >
-              {sending
-                ? "Sending…"
-                : resendCooldown > 0
-                  ? `Resend in ${resendCooldown}s`
-                  : codeSent
-                    ? "Resend code"
-                    : "Send verification code"}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
+              <Ionicons
+                name={phoneCodeSent ? "refresh-outline" : "send-outline"}
+                size={16}
+                color={sendingPhone || phoneResendCooldown > 0 ? "#6b7280" : "#fff"}
+              />
+              <Text style={twStyle(`font-semibold ${sendingPhone || phoneResendCooldown > 0 ? "text-gray-600" : "text-white"}`)}>
+                {sendingPhone ? "Sending…" : phoneResendCooldown > 0 ? `Resend in ${phoneResendCooldown}s` : phoneCodeSent ? "Resend code" : "Send verification code"}
+              </Text>
+            </TouchableOpacity>
+
+            {phoneCodeSent && (
+              <View style={twStyle("mt-3 gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
+                <View style={twStyle("flex-row items-center gap-2")}>
+                  <Ionicons name="lock-closed-outline" size={16} color={Colors.primary} />
+                  <Text style={twStyle("text-sm font-semibold text-primary")}>Enter phone code</Text>
+                </View>
+                <OtpDigitRow
+                  value={phoneOtp}
+                  onChange={setPhoneOtp}
+                  onComplete={(code) => { if (!verifyingPhone) void verifyPhoneCode(code); }}
+                  disabled={verifyingPhone}
+                  autoFocus
+                  accessibilityLabelPrefix="Phone verification"
+                />
+                <TouchableOpacity
+                  onPress={() => void verifyPhoneCode()}
+                  disabled={verifyingPhone}
+                  style={[
+                    twStyle("flex-row items-center justify-center gap-2 rounded-xl py-3.5"),
+                    { backgroundColor: Colors.primary, opacity: verifyingPhone ? 0.7 : 1 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Verify phone"
+                  accessibilityState={{ disabled: verifyingPhone }}
+                >
+                  {verifyingPhone ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-outline" size={16} color="#fff" />
+                      <Text style={twStyle("font-semibold text-white")}>Verify phone</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </>
         )}
       </View>
 
-      {/* OTP entry */}
-      {codeSent && !formData.phone_verified ? (
-        <View style={twStyle("gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
-          <View style={twStyle("flex-row items-center gap-2")}>
-            <Ionicons name="lock-closed-outline" size={16} color={Colors.primary} />
-            <Text style={twStyle("text-sm font-semibold text-primary")}>
-              Enter verification code
-            </Text>
-          </View>
-          <OtpDigitRow
-            value={otp}
-            onChange={setOtp}
-            onComplete={(code) => {
-              if (!verifying) void verify(code);
-            }}
-            disabled={verifying}
-            autoFocus
-            accessibilityLabelPrefix="Phone verification"
-          />
-          <TouchableOpacity
-            onPress={() => void verify()}
-            disabled={verifying}
-            style={[
-              twStyle("flex-row items-center justify-center gap-2 rounded-xl py-3.5"),
-              { backgroundColor: Colors.primary, opacity: verifying ? 0.7 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Verify phone"
-            accessibilityState={{ disabled: verifying }}
-          >
-            {verifying ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-outline" size={16} color="#fff" />
-                <Text style={twStyle("font-semibold text-white")}>Verify phone</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       {/* Identity verification hint */}
-      <View
-        style={twStyle(
-          "flex-row gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm mt-2"
-        )}
-      >
+      <View style={twStyle("flex-row gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm mt-2")}>
         <Ionicons name="shield-checkmark-outline" size={20} color="#64748b" />
         <Text style={twStyle("flex-1 text-[14px] leading-5 text-slate-600")}>
           After setup, you can complete full identity verification (ID document) to earn the
@@ -3109,11 +3242,11 @@ function Step13Review() {
         />
         <ReviewRow
           icon="mail-outline"
-          iconBg="#f0f9ff"
-          iconColor="#0284c7"
+          iconBg={formData.email_verified ? "#f0fdf4" : "#fffbeb"}
+          iconColor={formData.email_verified ? "#16a34a" : "#d97706"}
           label="Email"
           value={formData.owner_email || "—"}
-          ok={!!formData.owner_email}
+          ok={formData.email_verified}
         />
         <ReviewRow
           icon="phone-portrait-outline"

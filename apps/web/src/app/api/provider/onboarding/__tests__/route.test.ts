@@ -175,7 +175,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-1", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-uk");
     mockFetchScopedSingle.mockResolvedValue({
       data: {
@@ -406,7 +408,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-2", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockFetchScopedSingle.mockResolvedValue({
       data: {
@@ -683,7 +687,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-paid", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
 
     const paidPlanId = "33333333-3333-4333-8333-333333333333";
@@ -861,7 +867,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-free", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
 
     const freePlanId = "44444444-4444-4444-8444-444444444444";
@@ -1047,7 +1055,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-idempotent-free", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
 
     const freePlanId = "44444444-4444-4444-8444-444444444444";
@@ -1146,7 +1156,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-idempotent-paid", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
 
     const paidPlanId = "33333333-3333-4333-8333-333333333333";
@@ -1230,7 +1242,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-idempotent-paid-done", role: "provider_owner" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
 
     const paidPlanId = "33333333-3333-4333-8333-333333333333";
@@ -1317,7 +1331,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-travel-tiered", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockFetchScopedSingle.mockResolvedValue({
       data: {
@@ -1510,7 +1526,9 @@ describe("POST /api/provider/onboarding", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-autogen", role: "customer" },
     });
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockFetchScopedSingle.mockResolvedValue({
       data: {

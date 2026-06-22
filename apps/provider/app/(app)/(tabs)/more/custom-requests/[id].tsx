@@ -22,6 +22,8 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
+import type { BookingSlotRow } from "@/lib/booking-date-time-helpers";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
@@ -115,9 +117,6 @@ function timeKey(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function labelDate(date: Date): string {
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
 
 function formatDateTimeSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
@@ -179,16 +178,6 @@ export default function CustomRequestDetailScreen() {
   const [offerDetailData, setOfferDetailData] = useState<CrOfferDetail | null>(null);
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);
-  const dateOptions = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Array.from({ length: 14 }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      return d;
-    });
-  }, []);
-
   const isAtHome = request?.location_type === "at_home";
   const defaultDuration = request?.duration_minutes ?? 60;
   const requestCurrency = request?.currency ?? tenantCurrency;
@@ -229,10 +218,12 @@ export default function CustomRequestDetailScreen() {
   const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, {
     enabled: slotsUrl.length > 0,
   });
-  const slotRows = useMemo(() => {
-    if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) return slotsData.slot_grid;
+  const slotRows = useMemo<BookingSlotRow[]>(() => {
+    if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) {
+      return slotsData.slot_grid.map((row) => ({ time: row.time, available: row.available !== false }));
+    }
     if (Array.isArray(slotsData?.slots)) return slotsData.slots.map((time) => ({ time, available: true }));
-    return [] as AvailableSlotRow[];
+    return [];
   }, [slotsData]);
 
   useEffect(() => {
@@ -706,59 +697,38 @@ export default function CustomRequestDetailScreen() {
               </>
             )}
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Proposed date and time</Text>
-            <Text style={twStyle("mb-1 text-xs text-gray-500")}>
+            <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>Proposed date and time</Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
               Choose a real availability-engine slot so the customer can pay for a time you can honour.
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2")}>
-              <View style={twStyle("flex-row")}>
-                {dateOptions.map((d) => {
+            {/* Date strip — 14-day window matches the offer flow */}
+            <View style={twStyle("mb-3")}>
+              <BookingDateStrip
+                selectedDate={scheduledAt}
+                onSelectDate={(d) => {
                   const key = dateKey(d);
-                  const active = key === selectedDateKey;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      onPress={() => {
-                        const iso = buildZonedIsoForWallClock(key, selectedTimeKey, slotsData?.provider_timezone ?? providerTz);
-                        const next = new Date(iso);
-                        if (Number.isFinite(next.getTime())) setScheduledAt(next);
-                      }}
-                      style={[twStyle(`rounded-2xl border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
-                    >
-                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-700"}`)}>
-                        {labelDate(d)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-            <View style={twStyle("mb-3 flex-row flex-wrap")}>
-              {slotsLoading ? (
-                <Text style={twStyle("text-xs text-gray-500")}>Loading available times...</Text>
-              ) : slotRows.length === 0 ? (
-                <Text style={twStyle("text-xs text-amber-700")}>No available slots for this date. Try another day, staff member, or duration.</Text>
-              ) : (
-                slotRows.slice(0, 30).map((slot) => {
-                  const time = slot.time.slice(0, 5);
-                  const available = slot.available !== false;
-                  const active = selectedTimeKey === time;
-                  return (
-                    <TouchableOpacity
-                      key={slot.time}
-                      disabled={!available}
-                      onPress={() => {
-                        const iso = buildZonedIsoForWallClock(selectedDateKey, time, slotsData?.provider_timezone ?? providerTz);
-                        const next = new Date(iso);
-                        if (Number.isFinite(next.getTime())) setScheduledAt(next);
-                      }}
-                      style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-emerald-700 bg-emerald-600" : available ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-100"}`), { marginRight: 8, marginBottom: 8, opacity: available ? 1 : 0.45 }]}
-                    >
-                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : available ? "text-emerald-700" : "text-gray-400"}`)}>{time}</Text>
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+                  const iso = buildZonedIsoForWallClock(key, selectedTimeKey, slotsData?.provider_timezone ?? providerTz);
+                  const next = new Date(iso);
+                  if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                }}
+                rangeDays={14}
+              />
+            </View>
+            {/* Slot grid — no truncation, period-grouped, consistent with all other booking flows */}
+            <View style={twStyle("mb-3")}>
+              <BookingTimeSlotGrid
+                rows={slotRows}
+                selectedTime={selectedTimeKey}
+                onSelectTime={(time) => {
+                  const iso = buildZonedIsoForWallClock(selectedDateKey, time, slotsData?.provider_timezone ?? providerTz);
+                  const next = new Date(iso);
+                  if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                }}
+                loading={slotsLoading}
+                providerTimezone={slotsData?.provider_timezone ?? null}
+                showNextAvailable
+                showLegend
+              />
             </View>
 
             {isAtHome && (

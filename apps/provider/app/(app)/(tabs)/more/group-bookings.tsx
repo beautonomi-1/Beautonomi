@@ -36,6 +36,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
@@ -3900,56 +3901,15 @@ export default function GroupBookingsScreen() {
             })}
           </ScrollView>
           <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
-            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot</Text>
-              {editSlotsLoading ? <ActivityIndicator size="small" color="#059669" /> : null}
-            </View>
-            {editSlotRows.length > 0 ? (
-              <View style={twStyle("flex-row flex-wrap")}>
-                {editSlotRows.map((slot) => {
-                  const isActive = editForm.time === slot.time;
-                  return (
-                    <TouchableOpacity
-                      key={`edit-slot-${slot.time}`}
-                      disabled={!slot.available}
-                      onPress={() => setEditForm((p) => ({ ...p, time: slot.time }))}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: isActive, disabled: !slot.available }}
-                      accessibilityLabel={slot.available ? slot.time : `${slot.time} – unavailable`}
-                      style={[
-                        twStyle(
-                          `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
-                            isActive
-                              ? "border-emerald-600 bg-emerald-600"
-                              : slot.available
-                                ? "border-emerald-200 bg-white"
-                                : "border-gray-100 bg-gray-50"
-                          }`
-                        ),
-                      ]}
-                    >
-                      <Text
-                        style={twStyle(
-                          `text-xs font-semibold ${
-                            isActive
-                              ? "text-white"
-                              : slot.available
-                                ? "text-emerald-700"
-                                : "text-gray-300"
-                          }`
-                        )}
-                      >
-                        {slot.time}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={twStyle("text-xs text-gray-500")}>
-                No available slots for this date with current duration/staff.
-              </Text>
-            )}
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Time slot</Text>
+            <BookingTimeSlotGrid
+              rows={editSlotRows}
+              selectedTime={editForm.time}
+              onSelectTime={(time) => setEditForm((p) => ({ ...p, time }))}
+              loading={editSlotsLoading}
+              showLegend
+              showNextAvailable
+            />
           </View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
@@ -4896,58 +4856,15 @@ export default function GroupBookingsScreen() {
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}
             onLayout={(e) => registerCreateSection("time", e.nativeEvent.layout.y)}
           >
-            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot *</Text>
-              {createSlotsLoading ? <ActivityIndicator size="small" color="#059669" /> : null}
-            </View>
-            {createSlotRows.length > 0 ? (
-              <View style={twStyle("flex-row flex-wrap")}>
-                {createSlotRows.map((slot) => {
-                  const isActive = createForm.time === slot.time;
-                  return (
-                    <TouchableOpacity
-                      key={`create-slot-${slot.time}`}
-                      disabled={!slot.available}
-                      onPress={() => setCreateForm((p) => ({ ...p, time: slot.time }))}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: isActive, disabled: !slot.available }}
-                      accessibilityLabel={slot.available ? slot.time : `${slot.time} – unavailable`}
-                      style={[
-                        twStyle(
-                          `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
-                            isActive
-                              ? "border-emerald-600 bg-emerald-600"
-                              : slot.available
-                                ? "border-emerald-200 bg-white"
-                                : "border-gray-100 bg-gray-50"
-                          }`
-                        ),
-                      ]}
-                    >
-                      <Text
-                        style={twStyle(
-                          `text-xs font-semibold ${
-                            isActive
-                              ? "text-white"
-                              : slot.available
-                                ? "text-emerald-700"
-                                : "text-gray-300"
-                          }`
-                        )}
-                      >
-                        {slot.time}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={twStyle("text-xs text-gray-500")}>
-                {createSlotsLoading
-                  ? "Loading available times…"
-                  : "No available slots for this date with current selection."}
-              </Text>
-            )}
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Time slot *</Text>
+            <BookingTimeSlotGrid
+              rows={createSlotRows}
+              selectedTime={createForm.time}
+              onSelectTime={(time) => setCreateForm((p) => ({ ...p, time }))}
+              loading={createSlotsLoading}
+              showLegend
+              showNextAvailable
+            />
           </View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>

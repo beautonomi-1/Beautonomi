@@ -378,12 +378,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectTo: string;
           skipBrowserRedirect: true;
           scopes?: string;
+          queryParams?: Record<string, string>;
         } = {
           redirectTo,
           skipBrowserRedirect: true,
         };
         if (provider === "apple") {
           oauthOptions.scopes = "name email";
+        }
+        if (provider === "google") {
+          // Show the account chooser so the user picks which Google account/email to use.
+          oauthOptions.queryParams = {
+            access_type: "offline",
+            prompt: "select_account consent",
+          };
         }
 
         const { data, error } = await supabase.auth.signInWithOAuth({
