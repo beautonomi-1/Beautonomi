@@ -990,6 +990,12 @@ async function sendOneSignalNotification(
     // check OneSignal delivery stats for this send and re-enqueue critical
     // notifications that reached nobody. Kept inside the jsonb payload so we
     // don't need a notification_logs schema change.
+    //
+    // Badge-sync payloads are ephemeral: they carry no visible content and are
+    // superseded by the next send. Attaching _reconcile would make the cron
+    // re-deliver a stale badge count, which is the root cause of the reconcile
+    // feedback loop. Skip it for any silent/badge-only push.
+    const isBadgeSync = isBadgeSyncPayload(payload);
     const reconcileUserIds =
       payload._reconcileUserIds && payload._reconcileUserIds.length > 0
         ? payload._reconcileUserIds
@@ -1000,16 +1006,20 @@ async function sendOneSignalNotification(
         : null;
     const sentLogPayload = {
       ...payload,
-      _reconcile: {
-        app_type: appType ?? null,
-        tenant_id: options?.tenantId ?? null,
-        user_ids: reconcileUserIds,
-        template_key: resolvePushTemplateKey(reconcileData),
-        group_id: payload.collapse_id ?? null,
-        title: payload.headings?.en ?? null,
-        message: payload.contents?.en ?? null,
-        url: payload.url ?? null,
-      },
+      ...(!isBadgeSync
+        ? {
+            _reconcile: {
+              app_type: appType ?? null,
+              tenant_id: options?.tenantId ?? null,
+              user_ids: reconcileUserIds,
+              template_key: resolvePushTemplateKey(reconcileData),
+              group_id: payload.collapse_id ?? null,
+              title: payload.headings?.en ?? null,
+              message: payload.contents?.en ?? null,
+              url: payload.url ?? null,
+            },
+          }
+        : {}),
       ...(responseData.warnings != null ? { onesignal_warnings: responseData.warnings } : {}),
     };
     await logNotification({

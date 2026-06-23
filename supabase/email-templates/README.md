@@ -44,7 +44,29 @@ Email/password signup uses `auth.signUp` and Supabase delivers the **Confirm sig
 
 Editing only the Magic Link template will **not** fix the signup screen — the password signup flow reads the **Confirm signup** template, not Magic Link.
 
+## Change Email Address (onboarding Step 2)
+
+Providers who sign up via phone (and some Google/Apple OAuth users) arrive at Step 2 without a confirmed email. Step 2 uses `supabase.auth.updateUser({ email })` + `verifyOtp({ type: "email_change" })` to verify the email as a 6-digit numeric code — **not** a magic link.
+
+### What to change in the Supabase dashboard
+
+1. Open **Authentication → Email Templates → Change Email Address**.
+2. Include **`{{ .Token }}`** prominently (e.g. "Your code is: **{{ .Token }}**"). Without it, the email only contains a link and the in-app OTP box will appear but never receive a valid code.
+3. Optionally keep `{{ .ConfirmationURL }}` as a secondary "Or tap this link" line — the `/auth/callback?token_hash=...&type=email` handler still works as a silent fallback.
+4. Set **Secure email change OFF** (Authentication → Settings): when enabled, Supabase also emails the **old** address, which is a `@beautonomi.local` placeholder for phone-signup providers that can never receive mail — this would permanently block the flow.
+5. Confirm **Google provider** scopes include `email profile openid` (the default) so the real Google email is always returned in the identity.
+
+### Which template covers which flow
+
+| Flow | Supabase template | Token placeholder | Verify call |
+|------|-------------------|-------------------|-------------|
+| Email/password signup | **Confirm signup** | `{{ .Token }}` (OTP) or `{{ .ConfirmationURL }}` (link) | `verifyOtp({ email, token, type: "signup" })` |
+| Passwordless email sign-in | **Magic Link** | `{{ .Token }}` (OTP) or `{{ .ConfirmationURL }}` (link) | `verifyOtp({ email, token, type: "email" })` |
+| Password reset | **Reset password** | `{{ .Token }}` (OTP) or `{{ .ConfirmationURL }}` (link) | `verifyOtp({ email, token, type: "recovery" })` |
+| Onboarding email change (Step 2) | **Change Email Address** | `{{ .Token }}` (OTP) + optional `{{ .ConfirmationURL }}` | `verifyOtp({ email, token, type: "email_change" })` |
+
 ## Files in this folder
 
 - `magic-link-otp.example.html` — example body for the **Magic Link** template (passwordless email sign-in).
 - `confirm-signup-otp.example.html` — example body for the **Confirm signup** template (email/password signup verification).
+- `change-email-otp.example.html` — example body for the **Change Email Address** template (onboarding Step 2 email OTP).

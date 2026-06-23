@@ -12,6 +12,7 @@ import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-p
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isMailableEmail, isNonMailableEmail } from "@beautonomi/utils";
 import type { Portal } from "@/lib/auth/role";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -149,7 +150,8 @@ export async function GET(request: NextRequest) {
     await trySyncAuthMetadata(data.user.id, data.user);
   }
 
-  // Update user profile with OAuth metadata if available
+  // Update user profile with OAuth metadata if available, and self-heal any
+  // placeholder emails that were written before the real OAuth email was available.
   if (data.user) {
     try {
       const userMetadata = data.user.user_metadata || {};
@@ -157,7 +159,52 @@ export async function GET(request: NextRequest) {
         full_name?: string;
         avatar_url?: string;
         phone?: string;
+        email?: string;
+        email_verified?: boolean;
       } = {};
+
+      // Resolve the real email from the auth user. For OAuth providers, the authoritative
+      // email is in data.user.email (after GoTrue propagates the identity email).
+      // As a second source, check the provider identity's identity_data.email.
+      let realEmail: string | undefined = data.user.email?.trim() || undefined;
+      if (!realEmail || !isMailableEmail(realEmail)) {
+        // Walk provider identities for a mailable email
+        const identities = (data.user as { identities?: { identity_data?: { email?: string } }[] }).identities ?? [];
+        for (const identity of identities) {
+          const ie = identity.identity_data?.email?.trim();
+          if (ie && isMailableEmail(ie)) {
+            realEmail = ie;
+            break;
+          }
+        }
+      }
+      // Also check user_metadata.email (some providers put it there)
+      if ((!realEmail || !isMailableEmail(realEmail)) && isMailableEmail(userMetadata.email as string)) {
+        realEmail = (userMetadata.email as string).trim();
+      }
+
+      // Self-heal: if public.users.email is currently a placeholder, replace it with the real email.
+      if (realEmail && isMailableEmail(realEmail)) {
+        const admin = getSupabaseAdmin();
+        const { data: existingRow } = await admin
+          .from("users")
+          .select("email, email_verified")
+          .eq("id", data.user.id)
+          .maybeSingle();
+
+        if (existingRow && isNonMailableEmail(existingRow.email)) {
+          updateData.email = realEmail;
+          // If the auth layer already confirmed the email (OAuth providers confirm it instantly),
+          // mark it as verified in the public row too.
+          if (data.user.email_confirmed_at) {
+            updateData.email_verified = true;
+          }
+          console.log("[auth/callback] Self-healing placeholder email for user", data.user.id, "->", realEmail);
+        } else if (existingRow && !existingRow.email_verified && data.user.email_confirmed_at && isMailableEmail(existingRow.email)) {
+          // Email is already correct but verified flag may be stale — sync it.
+          updateData.email_verified = true;
+        }
+      }
 
       // Extract name from OAuth metadata (different providers use different fields)
       const name =
@@ -201,20 +248,20 @@ export async function GET(request: NextRequest) {
 
       // Update user profile if we have any data to update
       if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabase
+        const admin = getSupabaseAdmin();
+        const { error: updateError } = await admin
           .from("users")
           .update(updateData)
           .eq("id", data.user.id);
 
         if (updateError) {
-          console.error("Error updating user profile with OAuth data:", updateError);
-          // Don't fail the auth flow if profile update fails
+          console.error("[auth/callback] Error updating user profile with OAuth data:", updateError);
         } else {
-          console.log("Successfully updated user profile with OAuth data:", updateData);
+          console.log("[auth/callback] Updated user profile with OAuth data:", Object.keys(updateData));
         }
       }
     } catch (profileError) {
-      console.error("Error processing OAuth profile data:", profileError);
+      console.error("[auth/callback] Error processing OAuth profile data:", profileError);
       // Don't fail the auth flow if profile update fails
     }
   }

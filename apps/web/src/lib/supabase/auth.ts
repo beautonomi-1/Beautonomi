@@ -343,7 +343,9 @@ export async function signInWithOAuth(
   if (provider === 'google') {
     options.queryParams = {
       access_type: 'offline',
-      prompt: 'consent',
+      // 'select_account' shows the account chooser so the user picks which Google
+      // account / email they want to use. 'consent' re-scopes if needed.
+      prompt: 'select_account consent',
     };
   }
   if (provider === 'apple') {

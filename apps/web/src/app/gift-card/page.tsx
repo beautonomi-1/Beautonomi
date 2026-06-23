@@ -6,7 +6,7 @@ import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 export const metadata: Metadata = {
   title: "Gift Cards",
   description:
-    "Buy and send Beautonomi gift cards for beauty services and experiences.",
+    "Send a Beautonomi gift card in minutes. Beautiful designs, a personal message, and credit that never expires — redeemable on any beauty and wellness service.",
   alternates: {
     canonical: "/gift-card",
     languages: getHreflangAlternateUrls("/gift-card"),

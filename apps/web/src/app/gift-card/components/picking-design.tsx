@@ -1,6 +1,9 @@
 "use client";
-import { useState } from "react";
+
 import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { DEFAULT_GIFT_CARD_DESIGNS, type GiftCardDesign } from "./default-designs";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -15,20 +18,21 @@ interface PickingDesignsProps {
 }
 
 export default function PickingDesigns({ content }: PickingDesignsProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // Prefer CMS-managed designs, fall back to the on-brand defaults so the
+  // gallery is always populated with polished artwork.
+  let designs: GiftCardDesign[] = DEFAULT_GIFT_CARD_DESIGNS;
 
-  // Get designs from CMS only - no fallback images
-  let designs: Array<{ id: number; src: string; alt: string }> = [];
-
-  // If CMS has designs_list (JSON), use it
   if (content?.designs_list?.content_type === "json") {
     try {
       const parsedDesigns = JSON.parse(content.designs_list.content);
       if (Array.isArray(parsedDesigns) && parsedDesigns.length > 0) {
         designs = parsedDesigns.map((d: any, index: number) => ({
           id: index + 1,
+          slug: d.slug || `design-${index + 1}`,
           src: d.image_url || d.src || "",
           alt: d.alt || d.title || `Design ${index + 1}`,
+          title: d.title || d.name || d.alt || `Design ${index + 1}`,
+          tagline: d.tagline || d.description || "",
         }));
       }
     } catch (e) {
@@ -36,161 +40,85 @@ export default function PickingDesigns({ content }: PickingDesignsProps) {
     }
   }
 
-  // If no designs from CMS, show placeholder message
-  const hasDesigns = designs.length > 0;
-
-  const slidesToShow = 1;
-  const duplicatedDesigns = hasDesigns ? [
-    ...designs.slice(-slidesToShow),
-    ...designs,
-    ...designs.slice(1, slidesToShow),
-  ] : [];
-
-  const handlePrev = () => {
-    if (!hasDesigns) return;
-    setCurrentIndex((prevIndex) =>
-      prevIndex > 0 ? prevIndex - 1 : designs.length -1
-    );
-  };
-
-  const handleNext = () => {
-    if (!hasDesigns) return;
-    setCurrentIndex((prevIndex) =>
-      prevIndex < duplicatedDesigns.length - slidesToShow ? prevIndex + 1 : 0
-    );
-  };
-
-  // Get title and empty state message from CMS or use defaults
   const sectionTitle = content?.picking_designs_title?.content || "Pick your design";
-  const emptyStateTitle = content?.designs_empty_state_title?.content || "Gift Card Designs";
-  const emptyStateMessage = content?.designs_empty_state_message?.content || "Gift card designs will be available here. Check back soon!";
+  const sectionSubtitle =
+    content?.picking_designs_subtitle?.content ||
+    "A design for every moment — customise the message and amount at checkout.";
+  const purchaseUrl = content?.purchase_url?.content || "/gift-card/purchase";
 
   return (
-    <div className="pb-20 md:pb-24 lg:pb-28">
+    <section className="pb-20 md:pb-24 lg:pb-28">
       <div className="container">
-        <h1 className="text-center lg:text-start mb-10 lg:mb-8 text-[22px] md:text-[32px] font-normal text-secondary">
-          {sectionTitle}
-        </h1>
-        {hasDesigns ? (
-          <div className="">
-            <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-6">
-              {designs.map((design) => (
-                <div key={design.id} className="rounded-xl overflow-hidden relative aspect-[4/3]">
-                  {design.src ? (
-                    <Image
-                      src={design.src}
-                      alt={design.alt}
-                      fill
-                      className="object-cover rounded-xl"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="w-full h-[300px] rounded-xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center">
-                      <div className="text-center text-white">
-                        <div className="text-4xl mb-2">🎨</div>
-                        <div className="text-lg font-semibold">{design.alt}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="block md:hidden overflow-hidden">
-              <div
-                className="flex gap-4 transition-transform duration-500 ease-in-out"
-                style={{
-                  transform: `translateX(-${currentIndex * (10 / slidesToShow)}%)`,
-                  width: `${(100 * duplicatedDesigns.length) / slidesToShow}%`,
-                }}
-              >
-                {duplicatedDesigns.map((design, index) => (
-                  <div
-                    key={index}
-                    className="w-full h-auto mb-6 lg:mb-20"
-                  >
-                    {design.src ? (
-                      <img
-                        src={design.src}
-                        alt={design.alt}
-                        className="rounded-xl object-cover w-full h-[300px]"
-                      />
-                    ) : (
-                      <div className="w-full h-[300px] rounded-xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center">
-                        <div className="text-center text-white">
-                          <div className="text-4xl mb-2">🎨</div>
-                          <div className="text-lg font-semibold">{design.alt}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex md:hidden gap-4 justify-center w-full">
-              <button
-                onClick={handlePrev}
-                className="ml-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
-              >
-                <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
-              </button>
-              <button
-                onClick={handleNext}
-                className="mr-2 bg-white border h-8 w-8 rounded-full flex items-center justify-center"
-              >
-                <ChevronRightIcon className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
+        <div className="mb-10 flex flex-col gap-4 md:mb-12 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-[28px] text-secondary md:text-[40px]">{sectionTitle}</h2>
+            <p className="mt-3 max-w-xl text-sm text-secondary/60 md:text-base">{sectionSubtitle}</p>
           </div>
-        ) : (
-          <div className="text-center py-12">
-            <div className="max-w-md mx-auto">
-              <div className="w-full h-[400px] rounded-xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center mb-6">
-                <div className="text-center text-white">
-                  <div className="text-6xl mb-4">🎨</div>
-                  <div className="text-2xl font-bold">{emptyStateTitle}</div>
-                </div>
-              </div>
-              <p className="text-gray-600 text-sm">
-                {emptyStateMessage}
-              </p>
+          <Link
+            href={purchaseUrl}
+            className="hidden items-center gap-2 text-sm font-medium text-secondary underline-offset-4 hover:underline md:inline-flex"
+          >
+            See all designs
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {/* Desktop grid */}
+        <div className="hidden gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
+          {designs.map((design) => (
+            <DesignCard key={design.id} design={design} purchaseUrl={purchaseUrl} />
+          ))}
+        </div>
+
+        {/* Mobile scroll-snap carousel */}
+        <div className="-mx-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-8 pb-4 scrollbar-hide md:hidden">
+          {designs.map((design) => (
+            <div key={design.id} className="w-[78%] flex-none snap-center first:ml-0">
+              <DesignCard design={design} purchaseUrl={purchaseUrl} />
             </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DesignCard({ design, purchaseUrl }: { design: GiftCardDesign; purchaseUrl: string }) {
+  const href = design.slug
+    ? `${purchaseUrl}${purchaseUrl.includes("?") ? "&" : "?"}template_id=${encodeURIComponent(design.slug)}`
+    : purchaseUrl;
+
+  return (
+    <Link
+      href={href}
+      className="group block rounded-[20px] outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
+      aria-label={`Choose the ${design.title} gift card design`}
+    >
+      <div className="gift-sheen relative aspect-[3/2] overflow-hidden rounded-[20px] shadow-md ring-1 ring-black/5 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-xl">
+        {design.src ? (
+          <Image
+            src={design.src}
+            alt={design.alt}
+            fill
+            className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+            sizes="(max-width: 768px) 78vw, (max-width: 1024px) 50vw, 33vw"
+            unoptimized
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077]">
+            <span className="text-lg font-semibold text-white">{design.title}</span>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
+      <div className="mt-4 flex items-center justify-between">
+        <div>
+          <p className="font-medium text-secondary">{design.title}</p>
+          {design.tagline ? <p className="text-sm text-secondary/55">{design.tagline}</p> : null}
+        </div>
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/5 text-secondary transition-colors group-hover:bg-primary group-hover:text-white">
+          <ArrowRight className="h-4 w-4" />
+        </span>
+      </div>
+    </Link>
   );
 }

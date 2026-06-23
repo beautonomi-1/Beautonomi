@@ -5,6 +5,7 @@ export const DEFAULT_COUNTRY_NAME = "South Africa";
 export const INITIAL_FORM: OnboardingFormData = {
   owner_name: "",
   owner_email: "",
+  email_verified: false,
   owner_phone: "",
   phone_verified: false,
   business_name: "",
@@ -40,7 +41,7 @@ export const INITIAL_FORM: OnboardingFormData = {
 
 export const STEPS: OnboardingStepMeta[] = [
   { id: 1, title: "Team size", description: "Tell us about your team" },
-  { id: 2, title: "Your identity", description: "Name, email, and verified phone" },
+  { id: 2, title: "Your identity", description: "Name, verified email, and verified phone" },
   { id: 3, title: "Business details", description: "How customers see your business" },
   { id: 4, title: "Payment setup", description: "Card machine & VAT" },
   { id: 5, title: "Current software", description: "Optional — previous booking system" },

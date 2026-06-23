@@ -219,7 +219,7 @@ export function WizardChrome() {
               { paddingBottom: Math.max(insets.bottom + 24, 220) },
             ]}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            keyboardDismissMode="none"
             showsVerticalScrollIndicator={false}
           >
             <OnboardingStepBody />

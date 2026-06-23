@@ -45,7 +45,14 @@ const MAX_REENQUEUE = 200;
  * burning send legs on tombstones. Re-registration on next app launch restores
  * an active device immediately, so this is safe.
  */
-const STALE_DEVICE_DAYS = 90;
+const STALE_DEVICE_DAYS = 21;
+/**
+ * When computing how many devices should receive a notification, only count
+ * devices active within this window. Stale/dead devices are not expected to
+ * receive anything and must not inflate the "expected" denominator — otherwise
+ * maxDelivered is permanently < expected (the root cause of the retry loop).
+ */
+const REACHABLE_DEVICE_DAYS = 21;
 
 type ReconcileMeta = {
   app_type: OneSignalAppType | null;
@@ -79,12 +86,30 @@ function parseReconcileMeta(payload: unknown): ReconcileMeta | null {
   const userIds = Array.isArray(m.user_ids)
     ? m.user_ids.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
     : [];
+
+  // Stabilize the group_id across re-enqueue generations: when a reconciled
+  // re-send was enqueued it carries `data._original_reconcile_group_id` pointing
+  // back to the original collapse_id. Prefer that over the new collapse_id
+  // written by the re-send, so dedupeKey stays constant across generations and
+  // the idempotency guard in enqueueNotification remains effective.
+  const payloadData = (payload as Record<string, unknown>).data;
+  const origGroupIdFromData =
+    payloadData && typeof payloadData === "object" && !Array.isArray(payloadData)
+      ? (payloadData as Record<string, unknown>)._original_reconcile_group_id
+      : undefined;
+  const stableGroupId =
+    typeof origGroupIdFromData === "string" && origGroupIdFromData.trim()
+      ? origGroupIdFromData.trim()
+      : typeof m.group_id === "string" && m.group_id.trim()
+        ? m.group_id.trim()
+        : null;
+
   return {
     app_type: appType,
     tenant_id: typeof m.tenant_id === "string" && m.tenant_id.trim() ? m.tenant_id.trim() : null,
     user_ids: userIds,
     template_key: typeof m.template_key === "string" ? m.template_key : null,
-    group_id: typeof m.group_id === "string" && m.group_id.trim() ? m.group_id.trim() : null,
+    group_id: stableGroupId,
     title: typeof m.title === "string" ? m.title : null,
     message: typeof m.message === "string" ? m.message : null,
     url: typeof m.url === "string" ? m.url : null,
@@ -189,6 +214,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    const reachableCutoff = new Date(now - REACHABLE_DEVICE_DAYS * 24 * 60 * 60_000).toISOString();
+
     // Build groups of must-deliver push sends keyed by collapse group (dual legs) or log id.
     const groupMap = new Map<string, LogGroup>();
     for (const log of logs ?? []) {
@@ -199,6 +226,15 @@ export async function GET(request: NextRequest) {
       if (!meta) continue;
       if (!meta.template_key || !isMustDeliverPushTemplate(meta.template_key)) continue;
       if (meta.user_ids.length === 0) continue;
+
+      // §break-loop: A reconciled re-send must never itself be re-reconciled.
+      // Without this guard, each re-delivery produces a new notification_logs row
+      // that the cron picks up, creating an infinite re-enqueue cycle.
+      const logPayloadData =
+        log.payload && typeof log.payload === "object" && !Array.isArray(log.payload)
+          ? ((log.payload as Record<string, unknown>).data as Record<string, unknown> | null | undefined)
+          : null;
+      if (logPayloadData?.reconciled === true) continue;
       const notificationId = notificationIdOf(log.provider_response);
       if (!notificationId) continue;
 
@@ -241,12 +277,18 @@ export async function GET(request: NextRequest) {
       }
       if (!allStatsOk || !allProcessed) continue;
 
+      // §fix-device-math: Only count devices active within REACHABLE_DEVICE_DAYS.
+      // Stale/uninstalled devices inflate the expected count and make
+      // maxDelivered permanently < expected, which is the second compounding
+      // bug in the reconcile loop. A single delivered device also satisfies a
+      // single-user group — we only need at least one device to have received it.
       let deviceCountByUser = new Map<string, number>();
       for (const uid of group.userIds) {
         let deviceQuery = supabase
           .from("user_devices")
           .select("user_id")
-          .eq("user_id", uid);
+          .eq("user_id", uid)
+          .gte("last_seen", reachableCutoff);
         if (group.meta.app_type) deviceQuery = deviceQuery.eq("app_type", group.meta.app_type);
         const { data: userDevices } = await deviceQuery;
         const count = (userDevices ?? []).filter(
@@ -260,7 +302,10 @@ export async function GET(request: NextRequest) {
           ? (() => {
               const uid = group.userIds[0];
               const expected = deviceCountByUser.get(uid) ?? 0;
-              return expected > 0 && maxDelivered < expected;
+              // Any delivery to at least 1 device counts as success for a single-
+              // user group. The old `maxDelivered < expected` check incorrectly
+              // required delivery to ALL registered devices (even stale ones).
+              return expected > 0 && maxDelivered === 0;
             })()
           : maxDelivered === 0;
 
@@ -279,7 +324,15 @@ export async function GET(request: NextRequest) {
             title: group.meta.title ?? "",
             message: group.meta.message ?? "",
             ...(group.meta.url ? { url: group.meta.url } : {}),
-            data: { template_key: group.meta.template_key ?? "notification", reconciled: true },
+            data: {
+              template_key: group.meta.template_key ?? "notification",
+              reconciled: true,
+              // §stable-group: carry the original group_id so that if this
+              // re-sent notification is somehow scanned again, parseReconcileMeta
+              // maps it back to the same groupKey and the dedupeKey below never
+              // changes across re-enqueue generations.
+              _original_reconcile_group_id: group.groupKey,
+            },
           },
           dedupeKey: `reconcile:push:${group.groupKey}:${uid}`,
           pushAppType: group.meta.app_type ?? undefined,

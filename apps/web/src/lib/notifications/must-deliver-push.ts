@@ -1,6 +1,16 @@
 import { templateKeyToPreferenceSection } from "@/lib/notifications/customer-notification-channels";
 
 /**
+ * Ephemeral / silent template keys that must NOT participate in durable retry
+ * or reconcile. badge_sync is a best-effort OS-badge update: it carries no
+ * visible content, is superseded by the next send, and re-delivering a stale
+ * count is both useless and the root cause of the reconcile feedback loop.
+ */
+export const NON_RECONCILABLE_PUSH_TEMPLATE_KEYS = new Set<string>([
+  "badge_sync",
+]);
+
+/**
  * Explicit marketing / promotional template keys. These are the only pushes
  * that respect customer preference gating and quiet hours, and they are
  * excluded from durable retry + reconcile re-delivery.
@@ -72,8 +82,14 @@ export function isMarketingPushTemplate(templateKey: string): boolean {
 /**
  * Transactional / lifecycle pushes that must reach the device: bypass
  * preference + quiet-hours gating and participate in retry + reconcile.
+ *
+ * Explicitly excludes ephemeral/silent templates (badge_sync) that must never
+ * enter the durable retry + reconcile cycle — re-delivering a stale badge
+ * count is the root cause of the reconcile feedback loop.
  */
 export function isMustDeliverPushTemplate(templateKey: string): boolean {
+  const key = templateKey.trim().toLowerCase();
+  if (NON_RECONCILABLE_PUSH_TEMPLATE_KEYS.has(key)) return false;
   return !isMarketingPushTemplate(templateKey);
 }
 

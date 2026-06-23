@@ -3636,20 +3636,27 @@ export default function NewBookingScreen() {
           visible={showTimePicker}
           onClose={() => setShowTimePicker(false)}
           title="Select Time"
-          snapHeight="auto"
+          subtitle={selectedTime ? `Currently: ${selectedTime}` : "Tap a slot to confirm"}
+          snapHeight="full"
         >
-          <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
-            <Text style={twStyle("text-xs leading-5 text-blue-800")}>
-              Provider-created bookings save immediately. Countdown timers only apply to customer checkout holds; held checkout slots show here as unavailable.
+          {/* Compact inline note — one line instead of a paragraph so slots get more room */}
+          <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
+            <Ionicons name="information-circle-outline" size={14} color="#1d4ed8" style={{ marginRight: 6 }} />
+            <Text style={twStyle("flex-1 text-xs leading-4 text-blue-800")}>
+              Slots with a customer hold appear unavailable until the hold expires.
             </Text>
           </View>
           {slotAutoSnapMessage ? (
-            <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
-              <Text style={twStyle("text-xs text-amber-800")}>{slotAutoSnapMessage}</Text>
+            <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+              <Ionicons name="alert-circle-outline" size={14} color="#d97706" style={{ marginRight: 6 }} />
+              <Text style={twStyle("flex-1 text-xs text-amber-800")}>{slotAutoSnapMessage}</Text>
             </View>
           ) : null}
           {needsServiceFirstForScheduling ? (
-            <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
+            <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-amber-100 bg-amber-50 px-3 py-2")}>
+              <Ionicons name="alert-circle-outline" size={14} color="#d97706" style={{ marginRight: 6 }} />
+              <Text style={twStyle("flex-1 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
+            </View>
           ) : null}
           <BookingTimeSlotGrid
             rows={timePickerRows}

@@ -311,6 +311,16 @@ export default function CustomerOnboarding() {
           setPhoneCountryCode(countryCode);
           setPhoneNational(national);
           setPhoneVerified(true);
+          // The phone was confirmed via SMS OTP at login, but nothing has written
+          // public.users.phone_verified yet. Sync it now so the profile-completion
+          // gate doesn't keep prompting the user to re-verify a verified phone.
+          try {
+            await api.post("/api/me/phone/verify", {
+              phone: normalizeSupabaseAuthPhone(handoff.phoneE164),
+            });
+          } catch {
+            // Non-blocking — step 4 auto-detect / manual verify will recover.
+          }
         }
 
         if (addrRes.status === "fulfilled" && !addrRes.value?.error) {
