@@ -964,6 +964,7 @@ export default function LoginScreen() {
               }}
               disabled={loading}
               autoFocus
+              smsAutofill
               accessibilityLabelPrefix="Login verification code"
             />
 

@@ -43,7 +43,7 @@ interface SubscriptionPlan {
 interface ProviderSubscription {
   id: string;
   plan_id: string;
-  status: "active" | "expired" | "cancelled" | "past_due" | "trial" | "inactive";
+  status: "active" | "expired" | "cancelled" | "past_due" | "inactive";
   started_at?: string;
   expires_at?: string;
   cancelled_at?: string | null;
@@ -136,7 +136,6 @@ function planUpgradeButtonLabel(
   if (same && subscriptionNeedsReactivation(sub) && (plan.is_free || planDisplayPrice(plan) === 0)) {
     return "Reactivate free plan";
   }
-  if (sub?.status === "trial") return "Upgrade from trial";
   if (plan.is_free || planDisplayPrice(plan) === 0) return "Activate free plan";
   return "Continue with this plan";
 }
@@ -683,11 +682,6 @@ export default function SubscriptionPage() {
                             Cancelling at period end
                           </Badge>
                         )}
-                        {subscription.status === "trial" && (
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                            Trial
-                          </Badge>
-                        )}
                         {subscription.status === "past_due" && (
                           <Badge variant="secondary" className="bg-red-100 text-red-800">
                             Past Due
@@ -1146,7 +1140,7 @@ function UpgradeDialog({
         <DialogHeader>
           <DialogTitle>Upgrade Your Subscription</DialogTitle>
           <DialogDescription>
-            Choose a plan to continue using Beautonomi after your free trial
+            Choose a plan to keep using Beautonomi's paid features.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

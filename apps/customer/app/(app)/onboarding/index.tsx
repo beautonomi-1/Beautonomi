@@ -1052,6 +1052,7 @@ export default function CustomerOnboarding() {
                             void handleVerifyOtp(code);
                         }}
                         disabled={otpVerifying || phoneVerified}
+                        smsAutofill
                       />
                       <TouchableOpacity
                         onPress={() => void handleVerifyOtp()}

@@ -134,6 +134,31 @@ export default function PaymentsScreen() {
     void load();
   }, [load]);
 
+  const removeGiftCard = (id: string) => {
+    Alert.alert(
+      t("customer.paymentsScreen.removeGiftCardTitle"),
+      t("customer.paymentsScreen.removeGiftCardConfirm"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("customer.paymentsScreen.remove"),
+          style: "destructive",
+          onPress: async () => {
+            const res = await api.delete<any>(`/api/me/gift-cards/${id}`);
+            if (res.error) {
+              Alert.alert(
+                t("common.error"),
+                res.error.message ?? t("customer.paymentsScreen.couldNotRemoveGiftCard")
+              );
+            } else {
+              setGiftCards((prev) => prev.filter((g) => g.id !== id));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const removeMethod = async (id: string) => {
     Alert.alert(
       t("customer.paymentsScreen.removeCardTitle"),
@@ -429,6 +454,7 @@ export default function PaymentsScreen() {
                         params: g.code ? { giftCode: String(g.code) } : {},
                       })
                     }
+                    onRemove={() => removeGiftCard(g.id)}
                   />
                 ))}
           </View>

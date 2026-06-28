@@ -31,10 +31,12 @@ export function GiftCardRow({
   card,
   fallbackCurrency,
   onRedeemToWallet,
+  onRemove,
 }: {
   card: GiftCardLike;
   fallbackCurrency: string;
   onRedeemToWallet?: (card: GiftCardLike) => void;
+  onRemove?: (card: GiftCardLike) => void;
 }) {
   const { t } = useTranslation();
   const [revealed, setRevealed] = useState(false);
@@ -45,7 +47,11 @@ export function GiftCardRow({
   const balanceLabel = formatMoney(balanceNum, currency);
   const code = (card.code ?? "").trim();
   const expiry = formatExpiry(card.expires_at);
-  const isRedeemable = balanceNum > 0;
+  const isExpired = Boolean(
+    card.expires_at && new Date(card.expires_at).getTime() < Date.now()
+  );
+  const isRedeemable = balanceNum > 0 && !isExpired;
+  const canRemove = !isRedeemable; // show Remove when used (R0) or expired
 
   const handleCopy = async () => {
     await copyGiftCardCode(code, () => {
@@ -213,6 +219,29 @@ export function GiftCardRow({
               <Ionicons name="wallet-outline" size={16} color={Colors.white} />
               <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "700", color: Colors.white }}>
                 {t("customer.paymentsScreen.giftCardRedeem", "To wallet")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {canRemove && onRemove ? (
+            <TouchableOpacity
+              onPress={() => onRemove(card)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#FCA5A5",
+                borderRadius: 10,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("customer.paymentsScreen.removeGiftCardA11y", "Remove gift card from wallet") as string}
+            >
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
+              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: "#DC2626" }}>
+                {t("customer.paymentsScreen.remove", "Remove")}
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  Platform,
 } from "react-native";
 import { useRouter, useNavigation, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -169,20 +168,6 @@ export default function SupportTicketsListScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerLeft: () => (
-        <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace("/(app)/help" as never);
-          }}
-          hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-          style={{ marginLeft: Platform.OS === "ios" ? 8 : 4, padding: 4 }}
-        >
-          <Ionicons name="chevron-back" size={26} color={Colors.primary} />
-        </TouchableOpacity>
-      ),
       headerRight: () => (
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}

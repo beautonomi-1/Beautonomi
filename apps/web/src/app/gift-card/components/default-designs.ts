@@ -12,10 +12,13 @@ export interface GiftCardDesign {
  * gift-card CMS has not been configured yet so the marketing page always feels
  * complete and premium instead of showing empty placeholders.
  */
+// Slugs match the canonical marketplace template ids (gc-birthday, gc-thankyou, …)
+// so that clicking a design on the marketing page pre-selects the correct card
+// on the purchase page via ?template_id=<slug>.
 export const DEFAULT_GIFT_CARD_DESIGNS: GiftCardDesign[] = [
   {
     id: 1,
-    slug: "birthday",
+    slug: "gc-birthday",
     src: "/images/gift-cards/birthday.svg",
     alt: "Beautonomi birthday gift card",
     title: "Happy Birthday",
@@ -23,7 +26,7 @@ export const DEFAULT_GIFT_CARD_DESIGNS: GiftCardDesign[] = [
   },
   {
     id: 2,
-    slug: "thankyou",
+    slug: "gc-thankyou",
     src: "/images/gift-cards/thankyou.svg",
     alt: "Beautonomi thank you gift card",
     title: "Thank You",
@@ -31,7 +34,7 @@ export const DEFAULT_GIFT_CARD_DESIGNS: GiftCardDesign[] = [
   },
   {
     id: 3,
-    slug: "selfcare",
+    slug: "gc-selfcare",
     src: "/images/gift-cards/selfcare.svg",
     alt: "Beautonomi self-care gift card",
     title: "Self-Care Day",
@@ -39,7 +42,7 @@ export const DEFAULT_GIFT_CARD_DESIGNS: GiftCardDesign[] = [
   },
   {
     id: 4,
-    slug: "holiday",
+    slug: "gc-holiday",
     src: "/images/gift-cards/holiday.svg",
     alt: "Beautonomi holiday gift card",
     title: "Holiday Special",
@@ -47,7 +50,7 @@ export const DEFAULT_GIFT_CARD_DESIGNS: GiftCardDesign[] = [
   },
   {
     id: 5,
-    slug: "custom",
+    slug: "gc-custom",
     src: "/images/gift-cards/custom.svg",
     alt: "Beautonomi custom amount gift card",
     title: "Any Occasion",

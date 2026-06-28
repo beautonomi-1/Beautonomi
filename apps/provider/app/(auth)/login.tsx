@@ -825,6 +825,7 @@ export default function LoginScreen() {
                   }}
                   disabled={loading}
                   autoFocus
+                  smsAutofill
                   accessibilityLabelPrefix="Login verification code"
                 />
                 <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8, marginBottom: 8 }}>

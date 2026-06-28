@@ -587,7 +587,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
             {useMergedPlans && (
               <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
                 Public <Link className="text-[#FF0077] underline font-medium" href="/pricing">/pricing</Link>{" "}
-                hero line (e.g. free trial wording) is{" "}
+                hero line (e.g. tagline or value proposition) is{" "}
                 <strong>not</strong> driven by these rows — edit{" "}
                 <Link className="text-[#FF0077] underline font-medium" href="/admin/content">
                   Admin → Content

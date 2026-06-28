@@ -407,7 +407,7 @@ export default function HomeScreen() {
     trackHomeView();
   }, []);
   const { user } = useAuth();
-  const { totalUnread } = useNotifications();
+  const { unreadCount } = useNotifications();
   const { selectedAddress, setSelectedAddress, isLoading: selectedAddressLoading } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
   const shouldUseGps = !selectedAddressLoading && !hasValidServiceCoordinates(selectedAddress);
@@ -671,7 +671,7 @@ export default function HomeScreen() {
               style={styles.navIconBtn}
             >
               <Ionicons name="notifications-outline" size={22} color="#374151" />
-              {totalUnread > 0 ? (
+              {unreadCount > 0 ? (
                 <View
                   style={{
                     position: "absolute",
@@ -687,7 +687,7 @@ export default function HomeScreen() {
                   }}
                 >
                   <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
-                    {totalUnread > 99 ? "99+" : totalUnread}
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </Text>
                 </View>
               ) : null}

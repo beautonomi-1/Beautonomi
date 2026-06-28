@@ -1,0 +1,48 @@
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+
+group = "expo.modules.smsuserconsent"
+version = "1.0.0"
+
+// Resolve SDK versions from the host app's rootProject ext (set by Expo /
+// expo-build-properties), falling back to safe defaults when absent.
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+// Standard Expo module toolchain (provides Kotlin + core dependency wiring).
+apply from: project(":expo-modules-core").file("ExpoModulesCorePlugin.gradle")
+applyKotlinExpoModulesCorePlugin()
+
+android {
+  namespace "expo.modules.smsuserconsent"
+  compileSdk safeExtGet("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdk safeExtGet("minSdkVersion", 24)
+    targetSdk safeExtGet("targetSdkVersion", 35)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  implementation project(":expo-modules-core")
+  // SmsRetriever / SMS User Consent API (com.google.android.gms.auth.api.phone.*).
+  // NOTE: this is play-services-auth-api-phone, NOT play-services-auth — the
+  // SmsRetriever classes only ship in the api-phone artifact. CommonStatusCodes /
+  // Status come transitively via play-services-base.
+  implementation "com.google.android.gms:play-services-auth-api-phone:18.2.0"
+}

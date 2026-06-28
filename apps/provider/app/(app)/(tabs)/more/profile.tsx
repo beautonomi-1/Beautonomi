@@ -991,6 +991,7 @@ export default function ProfileScreen() {
               }}
               disabled={saving}
               autoFocus
+              smsAutofill
               accessibilityLabelPrefix="Phone change verification code"
             />
           </View>

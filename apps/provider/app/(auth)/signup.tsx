@@ -594,6 +594,7 @@ export default function SignupScreen() {
                       }}
                       disabled={loading}
                       autoFocus
+                      smsAutofill
                       accessibilityLabelPrefix="Signup verification code"
                     />
                     <TouchableOpacity onPress={() => void handleResendPhoneOtp()} disabled={smsResendCooldown > 0 || resendingSms || loading} style={{ alignSelf: "flex-end", marginTop: 8, marginBottom: 12 }}>

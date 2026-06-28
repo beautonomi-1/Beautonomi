@@ -19,7 +19,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
-import { publicEnv } from "@/config/publicEnv";
+import { publicSiteOrigin } from "@/config/publicEnv";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { isBlankHtmlContent } from "@/lib/pricingFeatureHtml";
 import { getFreePlanFeatures, normalizeFeatures, type PlanFeaturesMap } from "@beautonomi/subscription-features";
@@ -111,17 +111,8 @@ export function PlansListPage() {
   const plansMeta = Array.isArray(q.data) ? null : q.data?.meta ?? null;
   const pricingOnlyRows: PricingOnlyApiRow[] = Array.isArray(q.data) ? [] : (q.data?.pricing_only ?? []);
 
-  const webPlansEditorUrl = (() => {
-    const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
-    if (base) return `${base}/admin/plans`;
-    if (typeof window !== "undefined" && window.location.origin) {
-      return `${window.location.origin.replace(/\/$/, "")}/admin/plans`;
-    }
-    const host = (publicEnv.defaultMarketHost || "").replace(/\/$/, "").trim();
-    if (!host) return "";
-    const withScheme = host.includes("://") ? host : `https://${host}`;
-    return `${withScheme}/admin/plans`;
-  })();
+  const webOrigin = publicSiteOrigin();
+  const webPlansEditorUrl = webOrigin ? `${webOrigin}/admin/plans` : "";
 
   const [showCreate, setShowCreate] = useState(false);
   const [nName, setNName] = useState("");
@@ -497,12 +488,6 @@ export function PlansListPage() {
             </a>
             . Use this SPA for quick edits; use that page for the full dialog UI.
           </p>
-          {!publicEnv.siteUrl && !publicEnv.appUrl ? (
-            <p className="mt-1 text-xs text-indigo-800">
-              Using the current admin origin because <code className="rounded bg-indigo-100 px-1">VITE_SITE_URL</code> /{" "}
-              <code className="rounded bg-indigo-100 px-1">VITE_APP_URL</code> is not set.
-            </p>
-          ) : null}
         </AdminPanel>
       ) : (
         <AdminPanel className="border-amber-200 bg-amber-50/80">

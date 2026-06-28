@@ -26,7 +26,7 @@ export default function GiftCardPageClient({ content }: GiftCardPageClientProps)
       <FeatureCards content={content} />
       <Banner content={content} />
       <div className="pb-16 md:pb-24">
-        <FAQ applyBgPrimary={false} />
+        <FAQ applyBgPrimary={false} category="gift-card" />
       </div>
     </div>
   );

@@ -65,7 +65,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.66",
+  version: "1.0.67",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -79,7 +79,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "258",
+    buildNumber: "259",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -113,7 +113,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 259,
+    versionCode: 260,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

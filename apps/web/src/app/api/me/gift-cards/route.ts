@@ -75,7 +75,23 @@ export async function GET(request: NextRequest) {
       return successResponse({ gift_cards: [] });
     }
 
-    const ids = Array.from(giftCardIds);
+    // Filter out cards this user has explicitly hidden ("removed from wallet").
+    // Uses supabaseAdmin so it can read the table regardless of RLS caller context.
+    const { data: hiddenRows } = await supabaseAdmin
+      .from("user_gift_card_hides")
+      .select("gift_card_id")
+      .eq("user_id", user.id);
+
+    const hiddenIds = new Set<string>(
+      (hiddenRows || []).map((r) => r.gift_card_id as string).filter(Boolean)
+    );
+
+    const ids = Array.from(giftCardIds).filter((id) => !hiddenIds.has(id));
+
+    if (ids.length === 0) {
+      return successResponse({ gift_cards: [] });
+    }
+
     // Admin client to keep visibility of buyer-issued bulk siblings consistent with 1b.
     const { data: giftCards, error } = await supabaseAdmin
       .from("gift_cards")

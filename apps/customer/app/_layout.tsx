@@ -2,6 +2,7 @@ import "../global.css";
 import "@/lib/i18n";
 import React, { useEffect, useState } from "react";
 import { Platform, Text, TouchableOpacity, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -146,7 +147,7 @@ function RootLayout() {
   };
   return (
     <ErrorBoundary>
-      <View style={rootStyle}>
+      <GestureHandlerRootView style={rootStyle}>
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <KeyboardRootProvider>
           <MarketHostBootstrap />
@@ -171,7 +172,7 @@ function RootLayout() {
           </ThemeProvider>
           </KeyboardRootProvider>
         </SafeAreaProvider>
-      </View>
+      </GestureHandlerRootView>
     </ErrorBoundary>
   );
 }

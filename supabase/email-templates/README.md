@@ -65,6 +65,25 @@ Providers who sign up via phone (and some Google/Apple OAuth users) arrive at St
 | Password reset | **Reset password** | `{{ .Token }}` (OTP) or `{{ .ConfirmationURL }}` (link) | `verifyOtp({ email, token, type: "recovery" })` |
 | Onboarding email change (Step 2) | **Change Email Address** | `{{ .Token }}` (OTP) + optional `{{ .ConfirmationURL }}` | `verifyOtp({ email, token, type: "email_change" })` |
 
+## Android OTP autofill — SMS template constraint
+
+Beautonomi uses the **Android SMS User Consent API** (not SMS Retriever) for OTP autofill on Android. This is important because:
+
+- **SMS Retriever** requires an 11-char app-hash appended to every SMS body (e.g. `FA+9qCX9VSu`). Because Supabase GoTrue sends the SMS through a single shared template, the hash would differ between debug, preview, and production builds, making reliable autofill impossible.
+- **SMS User Consent** requires **no hash and no `READ_SMS`/`RECEIVE_SMS` permission**. The OS shows a one-tap consent dialog whenever *any* SMS containing digits arrives while the listener is active. The user taps "Yes" and the code fills in automatically.
+
+**Consequence for the SMS template:** keep the auth SMS body short and focused on the code. The current template works perfectly:
+
+```
+Your OTP code is {{ .Code }}
+```
+
+Do **not** append an app-hash (`<#> … hash`) to the auth SMS template — it is unnecessary with User Consent and would require per-build template changes for SMS Retriever.
+
+Do **not** prefix the message with marketing copy or URLs. A long or noisy SMS body still works technically, but makes the consent dialog harder for users to parse quickly.
+
+The template is configured in **Supabase Dashboard → Authentication → Providers → Phone → SMS Message**. The value in `platform_settings.settings.auth.sms_message_template` is a documentation/sync mirror only — no runtime code reads it to send auth SMS.
+
 ## Files in this folder
 
 - `magic-link-otp.example.html` — example body for the **Magic Link** template (passwordless email sign-in).

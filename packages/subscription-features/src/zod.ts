@@ -17,7 +17,7 @@ function fieldZodSchema(field: (typeof FEATURE_REGISTRY)[number]["fields"][numbe
 }
 
 /** Zod schema for subscription_plans.features — one optional object per registry category. */
-export function buildFeaturesZodSchema(): z.ZodType<Record<string, Record<string, unknown>>> {
+export function buildFeaturesZodSchema() {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const category of FEATURE_REGISTRY) {
     const fieldShape: Record<string, z.ZodTypeAny> = {};

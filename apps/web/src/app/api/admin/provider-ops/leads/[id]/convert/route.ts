@@ -10,6 +10,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
 import crypto from "crypto";
 
 function getPublicSiteBaseUrl(request: NextRequest): string {
@@ -301,7 +302,8 @@ async function handleInviteConversion(
   }
 
   const inviteToken = crypto.randomUUID();
-  const sentTo = email?.trim() ? email.trim() : phone!.trim();
+  // Prefer email for self-service onboarding; fall back to SMS when phone-only.
+  const channel: "email" | "sms" = email?.trim() ? "email" : "sms";
 
   const { error: upErr } = await supabase
     .from("provider_leads")
@@ -316,14 +318,20 @@ async function handleInviteConversion(
   const baseUrl = getPublicSiteBaseUrl(request);
   const inviteLink = `${baseUrl}/provider/onboarding?invite=${inviteToken}`;
 
-  const { error: actErr } = await supabase.from("provider_lead_activities").insert({
-    lead_id: lead.id as string,
-    activity_type: "note",
-    description: "Onboarding invite sent",
-    metadata: { note: "Onboarding invite sent" },
-    performed_by: adminUser.id,
+  const delivery = await sendOnboardingInvite({
+    supabase,
+    tenantId,
+    lead: {
+      id: lead.id as string,
+      email: lead.email as string | null,
+      phone_e164: lead.phone_e164 as string | null,
+      contact_person_name: lead.contact_person_name as string | null,
+      business_name: lead.business_name as string | null,
+    },
+    inviteLink,
+    channel,
+    performedBy: adminUser.id,
   });
-  if (actErr) throw actErr;
 
   void writeAuditLog({
     actor_user_id: adminUser.id,
@@ -334,14 +342,18 @@ async function handleInviteConversion(
     module: "provider_ops",
     risk_level: "medium",
     retention_tier: "operational",
-    metadata: { method: "invite" },
+    metadata: { method: "invite", channel, delivered: delivery.delivered },
     ...extractRequestMeta(request),
   });
 
   return successResponse({
     data: {
       invite_link: inviteLink,
-      sent_to: sentTo,
+      sent_to: delivery.sent_to,
+      channel: delivery.channel,
+      delivered: delivery.delivered,
+      delivery_error: delivery.delivery_error,
+      app_links: delivery.app_links,
     },
   });
 }

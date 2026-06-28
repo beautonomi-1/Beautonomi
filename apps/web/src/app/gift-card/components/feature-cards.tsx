@@ -27,7 +27,7 @@ export default function FeatureCards({ content }: FeatureCardsProps) {
     {
       title: "Easy to send",
       description:
-        "Arrives within minutes via text or email — and we'll confirm the moment it's received.",
+        "Delivered to the recipient by email within minutes, and it appears in their Beautonomi account automatically.",
     },
     {
       title: "Never expires",

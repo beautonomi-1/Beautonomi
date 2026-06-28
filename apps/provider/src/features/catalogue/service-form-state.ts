@@ -115,7 +115,26 @@ export const FALLBACK_TAX_RATE_OPTIONS: RefDataOption[] = [
   { value: "15", label: "15% VAT" },
 ];
 
-export const FALLBACK_DURATION_OPTIONS: RefDataOption[] = [{ value: "60", label: "60 min" }];
+export const FALLBACK_DURATION_OPTIONS: RefDataOption[] = [
+  { value: "5", label: "5 minutes" },
+  { value: "10", label: "10 minutes" },
+  { value: "15", label: "15 minutes" },
+  { value: "20", label: "20 minutes" },
+  { value: "30", label: "30 minutes" },
+  { value: "45", label: "45 minutes" },
+  { value: "60", label: "1 hour" },
+  { value: "75", label: "1 hour 15 minutes" },
+  { value: "90", label: "1 hour 30 minutes" },
+  { value: "105", label: "1 hour 45 minutes" },
+  { value: "120", label: "2 hours" },
+  { value: "150", label: "2 hours 30 minutes" },
+  { value: "180", label: "3 hours" },
+  { value: "210", label: "3 hours 30 minutes" },
+  { value: "240", label: "4 hours" },
+  { value: "300", label: "5 hours" },
+  { value: "360", label: "6 hours" },
+  { value: "480", label: "8 hours" },
+];
 export const FALLBACK_PRICE_TYPE_OPTIONS: RefDataOption[] = [{ value: "fixed", label: "Fixed" }];
 export const FALLBACK_EXTRA_TIME_OPTIONS: RefDataOption[] = [{ value: "15", label: "15 min" }];
 export const FALLBACK_ADDON_CATEGORY_OPTIONS: RefDataOption[] = [{ value: "general", label: "General" }];

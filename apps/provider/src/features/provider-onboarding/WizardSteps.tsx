@@ -60,6 +60,7 @@ import {
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
+import { useApi } from "@/hooks/useApi";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingTextField } from "./OnboardingTextField";
 import { FocusAwareTextInput } from "./FocusAwareTextInput";
@@ -83,6 +84,7 @@ import {
   FALLBACK_TAX_RATE_OPTIONS,
   type ServiceFormState,
 } from "@/features/catalogue/service-form-state";
+import type { RefDataOption } from "@/features/catalogue/types";
 
 const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
@@ -727,6 +729,7 @@ function Step2Identity() {
                   onComplete={(code) => { if (!verifyingPhone) void verifyPhoneCode(code); }}
                   disabled={verifyingPhone}
                   autoFocus
+                  smsAutofill
                   accessibilityLabelPrefix="Phone verification"
                 />
                 <TouchableOpacity
@@ -1668,6 +1671,10 @@ function Step8Photos() {
   const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
     { thumb: false, avatar: false, gallery: false }
   );
+  // Local (file://) URIs of just-picked images so the preview appears instantly
+  // while the upload to storage is still in flight. Cleared once the remote URL
+  // lands (preview prefers the remote URL) or if the upload fails.
+  const [localPreview, setLocalPreview] = useState<{ thumb?: string; avatar?: string }>({});
   const [galleryProgress, setGalleryProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
@@ -1740,6 +1747,10 @@ function Step8Photos() {
     }
     if (validAssets.length === 0) return;
 
+    if (!isGallery) {
+      setLocalPreview((p) => ({ ...p, [kind]: validAssets[0].uri }));
+    }
+
     setUploading((p) => ({ ...p, [kind]: true }));
     try {
       if (!isGallery) {
@@ -1750,11 +1761,13 @@ function Step8Photos() {
           a.fileName || `img-${Date.now()}.jpg`,
         );
         if (!url) {
+          setLocalPreview((p) => ({ ...p, [kind]: undefined }));
           Alert.alert("Upload failed", "Couldn't upload the photo. Please try again.");
           return;
         }
         if (kind === "thumb") updateFormData({ thumbnail_url: url });
         else updateFormData({ avatar_url: url });
+        setLocalPreview((p) => ({ ...p, [kind]: undefined }));
       } else {
         // §provider-onboarding-photos 2026-05: previous parallel `Promise.all`
         // over up to 10 multi-MB images was unreliable on mobile networks and
@@ -1820,19 +1833,30 @@ function Step8Photos() {
     title: string,
     subtitle: string,
     url: string | undefined
-  ) => (
+  ) => {
+    const previewUrl = url || localPreview[kind];
+    return (
     <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}>
       <View style={twStyle("flex-row items-center gap-4")}>
         <View
           style={twStyle(
-            `h-20 w-20 items-center justify-center overflow-hidden rounded-[1.25rem] ${url ? "" : "border-2 border-dashed border-slate-200 bg-slate-50"}`
+            `h-20 w-20 items-center justify-center overflow-hidden rounded-[1.25rem] ${previewUrl ? "" : "border-2 border-dashed border-slate-200 bg-slate-50"}`
           )}
         >
-          {url ? (
-            <Image source={{ uri: url }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+          {previewUrl ? (
+            <Image source={{ uri: previewUrl }} style={{ width: 80, height: 80 }} resizeMode="cover" />
           ) : (
             <Ionicons name="image-outline" size={26} color="#94a3b8" />
           )}
+          {previewUrl && uploading[kind] ? (
+            <View
+              style={twStyle(
+                "absolute inset-0 items-center justify-center bg-black/30"
+              )}
+            >
+              <ActivityIndicator color="#fff" size="small" />
+            </View>
+          ) : null}
         </View>
         <View style={twStyle("flex-1")}>
           <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{title}</Text>
@@ -1875,6 +1899,7 @@ function Step8Photos() {
             onPress={() => {
               if (kind === "thumb") updateFormData({ thumbnail_url: undefined });
               else updateFormData({ avatar_url: undefined });
+              setLocalPreview((p) => ({ ...p, [kind]: undefined }));
             }}
             style={twStyle(
               "items-center justify-center rounded-full border border-rose-100 bg-rose-50 px-5 transition-all duration-300"
@@ -1887,7 +1912,8 @@ function Step8Photos() {
         ) : null}
       </View>
     </View>
-  );
+    );
+  };
 
   return (
     <View style={twStyle("gap-4")}>
@@ -2372,13 +2398,16 @@ function Step10Categories() {
 
 // ─── Step 11: Services ───────────────────────────────────────────────────────
 
-const ONBOARDING_REF_DATA = {
+const ONBOARDING_FALLBACK_REF_DATA = {
   availability: FALLBACK_AVAILABILITY_OPTIONS,
   tax_rate: FALLBACK_TAX_RATE_OPTIONS,
   duration: FALLBACK_DURATION_OPTIONS,
   price_type: FALLBACK_PRICE_TYPE_OPTIONS,
   extra_time: FALLBACK_EXTRA_TIME_OPTIONS,
 };
+
+const ONBOARDING_REF_DATA_ENDPOINT =
+  "/api/provider/reference-data?type=availability,tax_rate,duration,price_type,extra_time";
 
 function categoryNameFromForm(form: ServiceFormState, categories: { id: string; name: string }[]) {
   const match = categories.find((c) => c.id === form.categoryId);
@@ -2389,6 +2418,33 @@ function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
   const tenantCurrency = getTenantDefaultCurrency();
   const services = formData.services || [];
+
+  // Pull the tenant-configured reference data (durations, extra time, etc.) so
+  // the onboarding service form offers the same options as the main catalogue
+  // editor. Falls back to a rich static list if the request fails/offline.
+  const { data: refDataRaw } = useApi<Record<string, RefDataOption[]> | unknown>(
+    ONBOARDING_REF_DATA_ENDPOINT,
+  );
+  const refData = useMemo(() => {
+    const ref =
+      refDataRaw && typeof refDataRaw === "object" && !Array.isArray(refDataRaw)
+        ? (refDataRaw as Record<string, RefDataOption[]>)
+        : {};
+    return {
+      availability: ref.availability?.length
+        ? ref.availability
+        : ONBOARDING_FALLBACK_REF_DATA.availability,
+      tax_rate: ref.tax_rate?.length ? ref.tax_rate : ONBOARDING_FALLBACK_REF_DATA.tax_rate,
+      duration: ref.duration?.length ? ref.duration : ONBOARDING_FALLBACK_REF_DATA.duration,
+      price_type: ref.price_type?.length
+        ? ref.price_type
+        : ONBOARDING_FALLBACK_REF_DATA.price_type,
+      extra_time: ref.extra_time?.length
+        ? ref.extra_time
+        : ONBOARDING_FALLBACK_REF_DATA.extra_time,
+    };
+  }, [refDataRaw]);
+
   const selectedCategoryIds = useMemo(
     () => formData.global_category_ids || [],
     [formData.global_category_ids],
@@ -2668,7 +2724,7 @@ function Step11Services() {
             value={form}
             onChange={setForm}
             categories={wizardCategories}
-            refData={ONBOARDING_REF_DATA}
+            refData={refData}
             businessType={formData.business_type}
             showServiceType={false}
             showTeam={false}
