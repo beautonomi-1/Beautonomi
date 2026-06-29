@@ -54,6 +54,9 @@ const ACTIVITY_ICON_MAP: Record<string, typeof MessageSquare> = {
   stage_changed: TrendingUp,
   call: Phone,
   email: Mail,
+  email_sent: Mail,
+  sms_sent: Send,
+  whatsapp_sent: MessageCircle,
   meeting: Calendar,
   default: MessageSquare,
 };
@@ -65,6 +68,9 @@ const ACTIVITY_COLOR_MAP: Record<string, { bg: string; text: string }> = {
   stage_changed: { bg: "bg-purple-100", text: "text-purple-600" },
   call: { bg: "bg-green-100", text: "text-green-600" },
   email: { bg: "bg-amber-100", text: "text-amber-600" },
+  email_sent: { bg: "bg-amber-100", text: "text-amber-600" },
+  sms_sent: { bg: "bg-indigo-100", text: "text-indigo-600" },
+  whatsapp_sent: { bg: "bg-green-100", text: "text-green-600" },
   meeting: { bg: "bg-pink-100", text: "text-pink-600" },
   default: { bg: "bg-gray-100", text: "text-gray-500" },
 };
@@ -98,7 +104,13 @@ export function ProviderOpsLeadDetailPage() {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteChannel, setInviteChannel] = useState<"email" | "sms">("email");
-  const [inviteResult, setInviteResult] = useState<{ invite_link: string; sent_to: string } | null>(null);
+  const [inviteResult, setInviteResult] = useState<{
+    invite_link: string;
+    sent_to: string;
+    channel?: string;
+    delivered?: boolean;
+    delivery_error?: string | null;
+  } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState({
@@ -209,9 +221,16 @@ export function ProviderOpsLeadDetailPage() {
           setInviteResult({
             invite_link: String(data.invite_link),
             sent_to: String(data.sent_to || ""),
+            channel: data.channel ? String(data.channel) : undefined,
+            delivered: Boolean(data.delivered),
+            delivery_error: data.delivery_error ? String(data.delivery_error) : null,
           });
         }
-        adminToast.success("Onboarding invite sent");
+        if (data?.delivered) {
+          adminToast.success(`Onboarding invite sent via ${data.channel || "message"}`);
+        } else {
+          adminToast.info("Invite link generated — copy and send it manually");
+        }
       }
     },
     onError: (e: Error) => adminToast.error(`Conversion failed: ${e.message}`),
@@ -231,10 +250,17 @@ export function ProviderOpsLeadDetailPage() {
         setInviteResult({
           invite_link: String(data.invite_link),
           sent_to: String(data.sent_to || ""),
+          channel: data.channel ? String(data.channel) : undefined,
+          delivered: Boolean(data.delivered),
+          delivery_error: data.delivery_error ? String(data.delivery_error) : null,
         });
       }
       setShowInviteModal(false);
-      adminToast.success("Onboarding invite link generated");
+      if (data?.delivered) {
+        adminToast.success(`Onboarding invite sent via ${data.channel || "message"}`);
+      } else {
+        adminToast.info("Invite link generated — copy and send it manually");
+      }
     },
     onError: (e: Error) => adminToast.error(`Failed to send invite: ${e.message}`),
   });
@@ -477,26 +503,40 @@ export function ProviderOpsLeadDetailPage() {
 
       {/* Invite result banner */}
       {inviteResult && (
-        <AdminPanel className="!border-green-200 !bg-green-50/50">
+        <AdminPanel className={inviteResult.delivered ? "!border-green-200 !bg-green-50/50" : "!border-amber-200 !bg-amber-50/50"}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-green-800">
-                <Link2 className="h-4 w-4 shrink-0" /> Onboarding Invite Sent
+              <h3 className={cn("flex items-center gap-2 text-sm font-semibold", inviteResult.delivered ? "text-green-800" : "text-amber-800")}>
+                <Link2 className="h-4 w-4 shrink-0" />
+                {inviteResult.delivered
+                  ? `Onboarding Invite Sent${inviteResult.channel ? ` via ${inviteResult.channel}` : ""}`
+                  : "Onboarding Invite Link Ready"}
               </h3>
-              <p className="mt-1 text-xs text-green-700">Sent to: {inviteResult.sent_to}</p>
+              {inviteResult.delivered ? (
+                <p className="mt-1 text-xs text-green-700">
+                  Sent to {inviteResult.sent_to}. Includes the onboarding link and the Provider app download links.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-700">
+                  {inviteResult.delivery_error
+                    ? `Auto-send unavailable: ${inviteResult.delivery_error} `
+                    : ""}
+                  Copy the link below and send it to {inviteResult.sent_to || "the lead"} manually.
+                </p>
+              )}
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <code className="block max-w-full overflow-x-auto rounded bg-green-100 px-2 py-1 text-xs text-green-800 break-all">{inviteResult.invite_link}</code>
+                <code className={cn("block max-w-full overflow-x-auto rounded px-2 py-1 text-xs break-all", inviteResult.delivered ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800")}>{inviteResult.invite_link}</code>
                 <button
                   type="button"
                   onClick={() => void handleCopyLink(inviteResult.invite_link)}
-                  className="inline-flex items-center justify-center gap-1 self-start rounded-lg border border-green-300 bg-white px-3 py-2 text-xs text-green-700 touch-manipulation hover:bg-green-50 sm:self-center"
+                  className={cn("inline-flex items-center justify-center gap-1 self-start rounded-lg border bg-white px-3 py-2 text-xs touch-manipulation sm:self-center", inviteResult.delivered ? "border-green-300 text-green-700 hover:bg-green-50" : "border-amber-300 text-amber-700 hover:bg-amber-50")}
                 >
                   {copiedLink ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                   {copiedLink ? "Copied" : "Copy"}
                 </button>
               </div>
             </div>
-            <button type="button" onClick={() => setInviteResult(null)} className="text-xs text-green-600 hover:text-green-800">Dismiss</button>
+            <button type="button" onClick={() => setInviteResult(null)} className={cn("text-xs", inviteResult.delivered ? "text-green-600 hover:text-green-800" : "text-amber-600 hover:text-amber-800")}>Dismiss</button>
           </div>
         </AdminPanel>
       )}
@@ -957,7 +997,9 @@ export function ProviderOpsLeadDetailPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            This will generate a unique onboarding link and record the activity.
+            This sends the lead a unique onboarding link plus the Provider app download
+            links over the selected channel. If that channel isn&apos;t configured, the link
+            is still generated for you to copy and send manually.
           </p>
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-500">Send via</label>

@@ -218,6 +218,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <RNPressable
         style={twStyle("flex-1 bg-black/40")}
         onPress={onClose}
@@ -254,7 +255,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
               </View>
             </View>
 
-            <GestureHandlerRootView style={twStyle("max-h-[320px]")}>
+            <View style={twStyle("max-h-[320px]")}>
               <ScrollView
                 showsVerticalScrollIndicator
                 keyboardShouldPersistTaps="handled"
@@ -324,7 +325,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                 </View>
               )}
               </ScrollView>
-            </GestureHandlerRootView>
+            </View>
 
             <View style={twStyle("border-t border-gray-100 px-4 py-3 bg-gray-50/50")}>
               <TouchableOpacity onPress={handleSeeAll} style={twStyle("py-2.5 rounded-xl bg-gray-900")} activeOpacity={0.8}>
@@ -334,6 +335,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
           </RNPressable>
         </View>
       </RNPressable>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

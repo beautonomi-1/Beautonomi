@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.66",
+  "version": "1.0.67",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -27,6 +27,7 @@
   "dependencies": {
     "@beautonomi/analytics": "workspace:*",
     "@beautonomi/api": "workspace:*",
+    "@beautonomi/expo-sms-user-consent": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/types": "workspace:*",

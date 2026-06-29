@@ -319,7 +319,6 @@ export async function PUT(request: NextRequest) {
         400
       );
     }
-    const msg = (error instanceof Error) ? error.message : 'Failed to update subscription plan';
-    return handleApiError(error, msg);
+    return handleApiError(error, 'Failed to update subscription plan');
   }
 }

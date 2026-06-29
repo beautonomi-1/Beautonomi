@@ -10,6 +10,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
 import crypto from "crypto";
 
 function getPublicSiteBaseUrl(request: NextRequest): string {
@@ -95,8 +96,20 @@ export async function POST(
     const baseUrl = getPublicSiteBaseUrl(request);
     const inviteLink = `${baseUrl}/provider/onboarding?invite=${inviteToken}`;
 
-    const sentTo =
-      channel === "email" ? email!.trim() : phone!.trim();
+    const delivery = await sendOnboardingInvite({
+      supabase,
+      tenantId,
+      lead: {
+        id,
+        email: lead.email as string | null,
+        phone_e164: lead.phone_e164 as string | null,
+        contact_person_name: lead.contact_person_name as string | null,
+        business_name: lead.business_name as string | null,
+      },
+      inviteLink,
+      channel,
+      performedBy: adminUser.id,
+    });
 
     void writeAuditLog({
       actor_user_id: adminUser.id,
@@ -107,14 +120,23 @@ export async function POST(
       module: "provider_ops",
       risk_level: "medium",
       retention_tier: "operational",
-      metadata: { channel, sent_to: sentTo, reused_token: Boolean(existingToken) },
+      metadata: {
+        channel,
+        sent_to: delivery.sent_to,
+        reused_token: Boolean(existingToken),
+        delivered: delivery.delivered,
+      },
       ...extractRequestMeta(request),
     });
 
     return successResponse({
       data: {
         invite_link: inviteLink,
-        sent_to: sentTo,
+        sent_to: delivery.sent_to,
+        channel: delivery.channel,
+        delivered: delivery.delivered,
+        delivery_error: delivery.delivery_error,
+        app_links: delivery.app_links,
       },
     });
   } catch (error) {

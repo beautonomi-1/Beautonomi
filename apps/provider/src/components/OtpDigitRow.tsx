@@ -11,6 +11,10 @@ import {
   SUPABASE_AUTH_SMS_OTP_LENGTH,
   normalizeSupabaseSmsOtpToken,
 } from "@/lib/supabase-sms-otp";
+import {
+  startSmsListener,
+  cancelSmsListener,
+} from "@beautonomi/expo-sms-user-consent";
 
 const DIGIT = /^\d$/;
 
@@ -24,10 +28,24 @@ export interface OtpDigitRowProps {
   autoFocus?: boolean;
   accessibilityLabelPrefix?: string;
   gap?: number;
+  /**
+   * Android SMS User Consent autofill.
+   *
+   * Set `true` only on screens that trigger a **phone / SMS** OTP (phone login,
+   * phone change, onboarding phone verify). Do NOT set it on email-OTP or
+   * signup-email screens — it would pop an OS consent dialog unrelated to the
+   * incoming email code and confuse the user.
+   *
+   * On iOS the `textContentType="oneTimeCode"` prop already handles QuickType
+   * autofill natively; `smsAutofill` has no effect on iOS.
+   * On web this is always a no-op.
+   */
+  smsAutofill?: boolean;
 }
 
 /**
  * One-digit-per-box OTP row (parity with web `OtpDigitInput` and customer app).
+ * Supports Android SMS User Consent API autofill when `smsAutofill` is true.
  */
 export function OtpDigitRow({
   length = SUPABASE_AUTH_SMS_OTP_LENGTH,
@@ -38,6 +56,7 @@ export function OtpDigitRow({
   autoFocus = false,
   accessibilityLabelPrefix = "Verification code",
   gap = 8,
+  smsAutofill = false,
 }: OtpDigitRowProps) {
   const inputsRef = useRef<(TextInput | null)[]>([]);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
@@ -106,6 +125,39 @@ export function OtpDigitRow({
     [cells, commit, curDigits, disabled, focusAt],
   );
 
+  // Stable ref so the SMS effect doesn't re-run when commit changes.
+  const commitRef = useRef(commit);
+  useEffect(() => { commitRef.current = commit; }, [commit]);
+
+  // Android SMS User Consent API: start listening when this component mounts
+  // on a phone-OTP screen. When the user taps "Yes" in the OS consent dialog,
+  // the full SMS body arrives and we extract the code with the same digit
+  // normalization used for paste/keyboard input.
+  useEffect(() => {
+    if (!smsAutofill || Platform.OS !== "android") return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const smsBody = await startSmsListener();
+        if (cancelled || !smsBody) return;
+        const digits = smsBody.replace(/\D/g, "").slice(0, length);
+        if (digits.length >= length) {
+          commitRef.current(digits);
+        }
+      } catch {
+        // SMS listener unavailable (Expo Go, simulator, no Play Services) — silent.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      cancelSmsListener();
+    };
+  // Restart only if the expected code length or the autofill flag changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smsAutofill, length]);
+
   return (
     <View
       style={{
@@ -154,7 +206,10 @@ export function OtpDigitRow({
             ? { textContentType: "oneTimeCode" as const }
             : {})}
           {...(index === 0 && Platform.OS === "android"
-            ? { autoComplete: "sms-otp" as const }
+            ? {
+                autoComplete: "sms-otp" as const,
+                importantForAutofill: "yes" as const,
+              }
             : {})}
         />
       ))}

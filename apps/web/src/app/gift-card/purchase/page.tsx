@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -46,6 +46,9 @@ export default function GiftCardPurchasePage() {
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
+  // Always-current ref to submit so the post-login effect never calls a stale closure.
+  const submitRef = useRef<() => Promise<void>>(async () => {});
   const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -58,6 +61,17 @@ export default function GiftCardPurchasePage() {
     }
   }, [searchParams]);
 
+  // After a successful login from the modal, auto-continue to payment so the
+  // user doesn't have to click "Continue to payment" a second time.
+  // submitRef always points to the latest submit closure so there is no
+  // stale-state risk even though submit is not in the dependency array.
+  useEffect(() => {
+    if (pendingSubmit && user && !authLoading) {
+      setPendingSubmit(false);
+      void submitRef.current();
+    }
+  }, [pendingSubmit, user, authLoading]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -68,8 +82,13 @@ export default function GiftCardPurchasePage() {
         if (cancelled) return;
         const nextTemplates = unwrapTemplatesPayload(raw);
         setTemplates(nextTemplates);
+        const param = searchParams.get("template_id") ?? "";
+        // Tolerant matching: exact id → gc-<param> → <param without gc-> → category → first.
         const initialTemplate =
-          nextTemplates.find((t) => t.id === searchParams.get("template_id")) ||
+          (param && nextTemplates.find((t) => t.id === param)) ||
+          (param && nextTemplates.find((t) => t.id === `gc-${param}`)) ||
+          (param && nextTemplates.find((t) => t.id === param.replace(/^gc-/, ""))) ||
+          (param && nextTemplates.find((t) => t.category === param)) ||
           nextTemplates[0] ||
           null;
         setSelectedTemplateId(initialTemplate?.id ?? null);
@@ -106,6 +125,7 @@ export default function GiftCardPurchasePage() {
   const submit = async () => {
     if (authLoading) return;
     if (!user) {
+      setPendingSubmit(true);
       setIsLoginModalOpen(true);
       return;
     }
@@ -161,6 +181,10 @@ export default function GiftCardPurchasePage() {
     }
   };
   
+  // Keep the ref pointing at the latest submit closure on every render so the
+  // post-login effect never calls stale state.
+  submitRef.current = submit;
+
   const totalAmount = Number(amount) * Number(quantity) || 0;
 
   if (!flagsLoading && !giftCardsEnabled) {
@@ -396,7 +420,10 @@ export default function GiftCardPurchasePage() {
         setOpen={setIsLoginModalOpen}
         initialMode="login"
         redirectContext="customer"
-        onAuthSuccess={() => setIsLoginModalOpen(false)}
+        onAuthSuccess={() => {
+          setIsLoginModalOpen(false);
+          // pendingSubmit stays true; the effect above fires submit once user is set.
+        }}
       />
     </div>
   );

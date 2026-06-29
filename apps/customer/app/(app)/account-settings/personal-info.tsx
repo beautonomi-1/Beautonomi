@@ -593,6 +593,7 @@ export default function PersonalInfoScreen() {
                       }}
                       disabled={phoneVerifying}
                       autoFocus
+                      smsAutofill
                       accessibilityLabelPrefix={pi("otpA11yPrefix")}
                     />
                   </View>

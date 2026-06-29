@@ -1,11 +1,15 @@
 /**
- * GET /api/me/gift-cards — multi-card / bulk visibility regression.
+ * GET /api/me/gift-cards — multi-card / bulk visibility regression + per-user hides.
  *
- * Before the fix this endpoint only returned `gift_card_orders.gift_card_id`
+ * Before the bulk fix this endpoint only returned `gift_card_orders.gift_card_id`
  * (the FIRST card issued for a bulk order). Buyers who paid for 5 cards saw
  * 1 card on the success page and in account settings. The webhook stores the
  * remaining cards with `metadata.order_id = <order id>`, so this test pins
  * the contract: cards 2..N must be returned alongside the FK-linked first card.
+ *
+ * The per-user "Remove from wallet" feature adds a `user_gift_card_hides` table;
+ * the list route must exclude this user's hidden ids, and DELETE /[id] must only
+ * hide cards the user legitimately holds.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -30,6 +34,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
+// Audit logging is fire-and-forget; stub it so the DELETE route doesn't touch a real client.
+vi.mock("@/lib/audit/audit", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+  extractRequestMeta: vi.fn(() => ({ ip_address: null, user_agent: null })),
+}));
+
 function ordersChain(orders: Array<{ id?: string; gift_card_id?: string | null }>) {
   return {
     select: vi.fn(() => ({
@@ -41,6 +51,15 @@ function ordersChain(orders: Array<{ id?: string; gift_card_id?: string | null }
 }
 
 function redemptionsChain(rows: Array<{ gift_card_id: string }>) {
+  return {
+    select: vi.fn(() => ({
+      eq: vi.fn().mockResolvedValue({ data: rows, error: null }),
+    })),
+  };
+}
+
+/** Admin `user_gift_card_hides` select chain: .select("gift_card_id").eq("user_id", x) */
+function hidesChain(rows: Array<{ gift_card_id: string }>) {
   return {
     select: vi.fn(() => ({
       eq: vi.fn().mockResolvedValue({ data: rows, error: null }),
@@ -70,10 +89,11 @@ describe("GET /api/me/gift-cards", () => {
       }),
     });
 
-    // Admin side: bulk siblings via metadata.order_id, recipient_email scan, final fetch
+    // Admin side: bulk siblings via metadata.order_id, recipient_email scan, hides, final fetch
     const orCalls: string[] = [];
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === "user_gift_card_hides") return hidesChain([]);
         if (table !== "gift_cards") throw new Error(`Unexpected admin table ${table}`);
         return {
           select: vi.fn((cols: string) => {
@@ -143,29 +163,32 @@ describe("GET /api/me/gift-cards", () => {
     });
 
     mockGetSupabaseAdmin.mockReturnValue({
-      from: vi.fn(() => ({
-        select: vi.fn((cols: string) => {
-          if (cols === "id") {
-            return { or: vi.fn().mockResolvedValue({ data: [{ id: "card-9" }], error: null }) };
-          }
-          if (cols === "id, metadata") {
-            return {
-              eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
-            };
-          }
-          if (cols === "*") {
-            return {
-              in: vi.fn(() => ({
-                order: vi.fn().mockResolvedValue({
-                  data: [{ id: "card-9", code: "ZZZ", balance: 100, currency: "ZAR" }],
-                  error: null,
-                }),
-              })),
-            };
-          }
-          throw new Error(`Unexpected select(${cols})`);
-        }),
-      })),
+      from: vi.fn((table: string) => {
+        if (table === "user_gift_card_hides") return hidesChain([]);
+        return {
+          select: vi.fn((cols: string) => {
+            if (cols === "id") {
+              return { or: vi.fn().mockResolvedValue({ data: [{ id: "card-9" }], error: null }) };
+            }
+            if (cols === "id, metadata") {
+              return {
+                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+              };
+            }
+            if (cols === "*") {
+              return {
+                in: vi.fn(() => ({
+                  order: vi.fn().mockResolvedValue({
+                    data: [{ id: "card-9", code: "ZZZ", balance: 100, currency: "ZAR" }],
+                    error: null,
+                  }),
+                })),
+              };
+            }
+            throw new Error(`Unexpected select(${cols})`);
+          }),
+        };
+      }),
     });
 
     const { GET } = await import("../route");
@@ -187,11 +210,14 @@ describe("GET /api/me/gift-cards", () => {
     });
 
     mockGetSupabaseAdmin.mockReturnValue({
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
-        })),
-      })),
+      from: vi.fn((table: string) => {
+        if (table === "user_gift_card_hides") return hidesChain([]);
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+          })),
+        };
+      }),
     });
 
     const { GET } = await import("../route");
@@ -200,5 +226,201 @@ describe("GET /api/me/gift-cards", () => {
 
     expect(res.status).toBe(200);
     expect(body.data.gift_cards).toEqual([]);
+  });
+
+  it("excludes cards the user has hidden from their wallet", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_card_orders") {
+          return ordersChain([{ id: "order-1", gift_card_id: "card-1" }]);
+        }
+        if (table === "gift_card_redemptions") {
+          return redemptionsChain([{ gift_card_id: "card-2" }]);
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    });
+
+    const inIds: string[][] = [];
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "user_gift_card_hides") {
+          // card-2 is hidden by this user
+          return hidesChain([{ gift_card_id: "card-2" }]);
+        }
+        return {
+          select: vi.fn((cols: string) => {
+            if (cols === "id") {
+              return { or: vi.fn().mockResolvedValue({ data: [{ id: "card-1" }], error: null }) };
+            }
+            if (cols === "id, metadata") {
+              return {
+                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+              };
+            }
+            if (cols === "*") {
+              return {
+                in: vi.fn((_col: string, ids: string[]) => {
+                  inIds.push(ids);
+                  return {
+                    order: vi.fn().mockResolvedValue({
+                      data: ids.map((id) => ({ id, code: id, balance: 100, currency: "ZAR" })),
+                      error: null,
+                    }),
+                  };
+                }),
+              };
+            }
+            throw new Error(`Unexpected select(${cols})`);
+          }),
+        };
+      }),
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/me/gift-cards"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    // The hidden card-2 must not reach the final `.in(...)` fetch.
+    expect(inIds[0]).not.toContain("card-2");
+    expect(inIds[0]).toContain("card-1");
+    const ids = (body.data.gift_cards as Array<{ id: string }>).map((c) => c.id);
+    expect(ids).not.toContain("card-2");
+  });
+});
+
+describe("DELETE /api/me/gift-cards/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "buyer-1", email: "buyer@example.com", role: "customer" },
+    });
+  });
+
+  function params(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it("hides a card the user purchased and returns 200", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_card_orders") {
+          return ordersChain([{ id: "order-1", gift_card_id: "card-1" }]);
+        }
+        throw new Error(`Unexpected server table ${table}`);
+      }),
+    });
+
+    const upsertArgs: any[] = [];
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_cards") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({
+                  data: { id: "card-1", metadata: {} },
+                  error: null,
+                }),
+              })),
+            })),
+          };
+        }
+        if (table === "user_gift_card_hides") {
+          return {
+            upsert: vi.fn((row: any, opts: any) => {
+              upsertArgs.push({ row, opts });
+              return Promise.resolve({ error: null });
+            }),
+          };
+        }
+        throw new Error(`Unexpected admin table ${table}`);
+      }),
+    });
+
+    const { DELETE } = await import("../[id]/route");
+    const res = await DELETE(
+      new NextRequest("http://localhost/api/me/gift-cards/card-1", { method: "DELETE" }),
+      params("card-1"),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.hidden).toBe(true);
+    expect(upsertArgs[0].row).toEqual({ user_id: "buyer-1", gift_card_id: "card-1" });
+  });
+
+  it("rejects hiding a card the user does not hold with 403", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_card_orders") return ordersChain([]);
+        if (table === "gift_card_redemptions") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected server table ${table}`);
+      }),
+    });
+
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_cards") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({
+                  // Card exists but recipient_email belongs to someone else.
+                  data: { id: "other-card", metadata: { recipient_email: "stranger@example.com" } },
+                  error: null,
+                }),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected admin table ${table}`);
+      }),
+    });
+
+    const { DELETE } = await import("../[id]/route");
+    const res = await DELETE(
+      new NextRequest("http://localhost/api/me/gift-cards/other-card", { method: "DELETE" }),
+      params("other-card"),
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when the gift card does not exist", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn(() => ordersChain([])),
+    });
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_cards") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected admin table ${table}`);
+      }),
+    });
+
+    const { DELETE } = await import("../[id]/route");
+    const res = await DELETE(
+      new NextRequest("http://localhost/api/me/gift-cards/missing", { method: "DELETE" }),
+      params("missing"),
+    );
+
+    expect(res.status).toBe(404);
   });
 });

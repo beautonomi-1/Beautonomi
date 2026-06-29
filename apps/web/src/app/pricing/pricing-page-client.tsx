@@ -44,7 +44,7 @@ type ProviderPlanContext = {
   rank: number;
   /** Whether the current plan is the free tier — lets us match the free card even if it isn't FK-linked. */
   isFree: boolean;
-  /** Whether the current plan is live (active/trial) — gates the "Current plan" label. */
+  /** Whether the current plan is live (active) — gates the "Current plan" label. */
   active: boolean;
 };
 
@@ -105,7 +105,7 @@ export default function PricingPageClient({
           planId,
           rank: Number.isFinite(rawRank) ? rawRank : 0,
           isFree,
-          active: sub.status === "active" || sub.status === "trial",
+          active: sub.status === "active",
         });
       } catch {
         // Non-fatal: fall back to the public acquisition CTA.

@@ -167,7 +167,7 @@ function OrderSummaryCard({
       {!isFree && (
         <>
           <p className="mt-4 text-xs text-gray-500 text-center">
-            14-day free trial. Cancel anytime.
+            Cancel anytime.
           </p>
           <p className="mt-1 text-xs text-gray-400 text-center">
             You&apos;ll be redirected to Paystack to complete payment securely.

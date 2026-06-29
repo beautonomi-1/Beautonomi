@@ -138,6 +138,7 @@ export function ProviderOpsTrackerDetailPage() {
     .map(([step, value]) => ({ step: Number(step), ...value }))
     .sort((a, b) => a.step - b.step);
   const canSubmit = !provider && !!draft && Boolean(draftData.business_name);
+  const lifecycleBadge = deriveLifecycleBadge(provider, draft);
 
   return (
     <div className="space-y-6">
@@ -147,10 +148,12 @@ export function ProviderOpsTrackerDetailPage() {
         title={name}
         description={
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+            <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium", lifecycleBadge.cls)}>
+              {lifecycleBadge.label}
+            </span>
             {user.email ? <span>{user.email}</span> : null}
             {user.phone ? <span>{user.phone}</span> : null}
             {user.created_at ? <span>Signed up {new Date(user.created_at).toLocaleDateString()}</span> : null}
-            {provider ? <span>Provider: {provider.status || "created"}</span> : null}
           </div>
         }
         actions={
@@ -230,9 +233,27 @@ export function ProviderOpsTrackerDetailPage() {
             </AdminPanel>
           )}
 
-          {!draft && (
+          {!draft && provider && (
+            <AdminPanel className="!border-green-200 !bg-green-50/40">
+              <h3 className="mb-2 text-sm font-semibold text-green-800">Onboarding complete</h3>
+              <p className="text-sm text-green-700">
+                {name} finished onboarding and a provider account was created
+                {provider.status ? ` (status: ${provider.status.replace(/_/g, " ")})` : ""}.
+                There is no in-progress onboarding draft associated with this provider
+                (drafts are cleared once onboarding is submitted).
+              </p>
+              <p className="mt-2 text-xs text-green-600">
+                Use the Provider Account panel to open the lifecycle or admin provider view.
+              </p>
+            </AdminPanel>
+          )}
+
+          {!draft && !provider && (
             <AdminPanel>
-              <p className="text-sm text-gray-600">No onboarding draft exists for this provider user yet.</p>
+              <p className="text-sm text-gray-600">
+                This user has signed up but hasn&apos;t started the onboarding wizard yet —
+                no draft has been saved.
+              </p>
             </AdminPanel>
           )}
         </div>
@@ -298,6 +319,26 @@ export function ProviderOpsTrackerDetailPage() {
       </div>
     </div>
   );
+}
+
+/** At-a-glance onboarding lifecycle badge derived from provider + draft state. */
+function deriveLifecycleBadge(
+  provider: TrackerProvider | null,
+  draft: TrackerDraft | null,
+): { label: string; cls: string } {
+  if (provider) {
+    const status = provider.status ?? "";
+    if (status === "active") return { label: "Active", cls: "bg-green-100 text-green-700" };
+    if (status === "pending_approval")
+      return { label: "Pending approval", cls: "bg-amber-100 text-amber-700" };
+    if (status === "suspended") return { label: "Suspended", cls: "bg-red-100 text-red-700" };
+    return {
+      label: status ? status.replace(/_/g, " ") : "Provider created",
+      cls: "bg-teal-100 text-teal-700",
+    };
+  }
+  if (draft) return { label: "In progress", cls: "bg-blue-100 text-blue-700" };
+  return { label: "Not started", cls: "bg-gray-100 text-gray-600" };
 }
 
 function StatusRow({ label, value }: { label: string; value: string }) {

@@ -52,6 +52,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -104,6 +105,8 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   };
 
   const markAllRead = async () => {
+    if (markingRead) return;
+    setMarkingRead(true);
     replaceUnreadCount(0);
     try {
       const res = await api.post<{ total_unread?: number; data?: { total_unread?: number } }>(
@@ -111,6 +114,10 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
       );
       if (res.error) {
         await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
+        Alert.alert(
+          t("common.error"),
+          res.error.message || t("customer.mobile.components.notificationsDropdown.markAllReadError"),
+        );
         return;
       }
       const body = res.data as { total_unread?: number; data?: { total_unread?: number } } | undefined;
@@ -125,6 +132,12 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
       await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
     } catch {
       await Promise.all([refetchUnreadCount(), refetchChatUnreadCount()]);
+      Alert.alert(
+        t("common.error"),
+        t("customer.mobile.components.notificationsDropdown.markAllReadError"),
+      );
+    } finally {
+      setMarkingRead(false);
     }
   };
 
@@ -186,8 +199,12 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
       statusBarTranslucent
       onRequestClose={onClose}
     >
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <RNPressable style={styles.backdrop} onPress={onClose}>
-        <RNPressable
+        {/* Plain View stops touch propagation to the backdrop without consuming
+            child taps — fixes Android nested-Pressable interception so the
+            "Mark all read" and "View all" buttons receive taps correctly. */}
+        <View
           style={[
             styles.card,
             {
@@ -195,7 +212,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
               paddingBottom: Math.max(16, insets.bottom),
             },
           ]}
-          onPress={(e) => e.stopPropagation()}
+          onStartShouldSetResponder={() => true}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -207,12 +224,18 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
               <TouchableOpacity
                 onPress={() => {
                   haptic.selection();
-                  markAllRead();
+                  void markAllRead();
                 }}
+                disabled={markingRead}
                 hitSlop={12}
                 accessibilityLabel="Mark all as read"
+                style={{ opacity: markingRead ? 0.5 : 1 }}
               >
-                <Text style={styles.markAllRead}>Mark all read</Text>
+                {markingRead ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Text style={styles.markAllRead}>Mark all read</Text>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -236,7 +259,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
               <Text style={styles.emptyText}>No notifications yet</Text>
             </View>
           ) : (
-            <GestureHandlerRootView style={styles.scrollRoot}>
+            <View style={styles.scrollRoot}>
               <ScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
@@ -268,7 +291,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
                   </SwipeableNotificationRow>
                 ))}
               </ScrollView>
-            </GestureHandlerRootView>
+            </View>
           )}
 
           {/* Footer: View all */}
@@ -281,8 +304,9 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
             <Text style={styles.viewAllText}>View all notifications</Text>
             <Ionicons name="open-outline" size={18} color={Colors.primary} />
           </TouchableOpacity>
-        </RNPressable>
+        </View>
       </RNPressable>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

@@ -472,6 +472,7 @@ export default function LoginAndSecurityScreen() {
                     }}
                     disabled={phoneVerifying}
                     autoFocus
+                    smsAutofill
                     accessibilityLabelPrefix="Phone change verification code"
                   />
                   <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>

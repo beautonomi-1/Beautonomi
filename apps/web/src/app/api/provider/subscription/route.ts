@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     const hasCleanActivePaidPlan =
       !currentPlanIsFree &&
-      (sub.status === "active" || sub.status === "trial") &&
+      sub.status === "active" &&
       !sub.paystack_sync_pending;
     const effectiveOrder = hasCleanActivePaidPlan && order?.plan_id === sub.plan_id ? null : order;
 

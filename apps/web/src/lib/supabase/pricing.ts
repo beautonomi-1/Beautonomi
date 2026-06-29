@@ -154,13 +154,13 @@ export async function getPricingPageContent(): Promise<PricingPageContent> {
     console.error('Error fetching pricing page content:', error);
     return {
       heroTitle: 'Simple, transparent pricing',
-      heroDescription: 'Choose the plan that\'s right for your business. All plans include a 14-day free trial.',
+      heroDescription: 'Choose the plan that\'s right for your business. Start free, upgrade anytime.',
     };
   }
 
   const content: PricingPageContent = {
     heroTitle: 'Simple, transparent pricing',
-    heroDescription: 'Choose the plan that\'s right for your business. All plans include a 14-day free trial.',
+    heroDescription: 'Choose the plan that\'s right for your business. Start free, upgrade anytime.',
   };
 
   data?.forEach((item) => {

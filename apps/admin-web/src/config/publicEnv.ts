@@ -35,10 +35,11 @@ export function publicSiteOrigin(): string {
 
   if (typeof window !== "undefined") {
     const origin = window.location.origin.replace(/\/$/, "");
-    // Avoid admin subdomain when env is unset (e.g. misconfigured prod deploy).
-    if (!/^https?:\/\/admin\./i.test(origin)) {
-      return origin;
+    // When running on admin.<domain>, derive the public origin by stripping the subdomain.
+    if (/^(https?:\/\/)admin\./i.test(origin)) {
+      return origin.replace(/^(https?:\/\/)admin\./i, "$1");
     }
+    return origin;
   }
 
   return "";

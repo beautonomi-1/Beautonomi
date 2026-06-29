@@ -1030,6 +1030,10 @@
       "removeCardConfirm": "Are you sure?",
       "remove": "Remove",
       "couldNotRemoveCard": "Could not remove card. Please try again.",
+      "removeGiftCardTitle": "Remove gift card",
+      "removeGiftCardConfirm": "Remove this gift card from your wallet? This won't affect your balance history.",
+      "couldNotRemoveGiftCard": "Could not remove gift card. Please try again.",
+      "removeGiftCardA11y": "Remove gift card from wallet",
       "couldNotStartVerification": "Could not start card verification.",
       "couldNotAddCard": "Could not add card.",
       "methodsHeading": "Payment methods",
@@ -1101,7 +1105,8 @@
         "notificationsDropdown": {
           "deleteError": "Could not delete notification.",
           "deleteConfirmTitle": "Delete notification?",
-          "deleteConfirmBody": "This removes it from your list."
+          "deleteConfirmBody": "This removes it from your list.",
+          "markAllReadError": "Could not mark all notifications as read. Please try again."
         },
         "imagePicker": {
           "profilePhotoTitle": "Profile photo",
