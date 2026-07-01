@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
     const page = Math.max(Number(searchParams.get("page") ?? 1), 1);
     const offset = (page - 1) * limit;
 
-    // finance_transactions for this user's membership payments (membership_sale rows have user_id in metadata)
+    // @tenant-hint: finance_transactions is read with getSupabaseAdmin but is strictly
+    // scoped to the authenticated caller via `.contains("metadata", { user_id: user.id })`
+    // below — membership_sale rows carry the purchaser's user_id in metadata. A user can
+    // only ever see their own membership payments, so no cross-tenant leakage is possible.
     const { data: ftRows, error } = await supabase
       .from("finance_transactions")
       .select("id, provider_id, transaction_type, amount, fees, net, description, metadata, created_at")
