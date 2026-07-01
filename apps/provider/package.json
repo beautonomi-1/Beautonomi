@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.67",
+  "version": "1.0.68",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -41,6 +41,7 @@
     "@react-navigation/native": "^7.1.8",
     "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
+    "@sumsub/react-native-mobilesdk-module": "^1.44.1",
     "@supabase/supabase-js": "^2.104.1",
     "base64-arraybuffer": "^1.0.2",
     "date-fns": "^4.1.0",

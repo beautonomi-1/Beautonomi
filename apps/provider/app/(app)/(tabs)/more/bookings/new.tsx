@@ -3458,11 +3458,11 @@ export default function NewBookingScreen() {
                         <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{form.description}</Text>
                       ) : null}
                       {(form.fields || []).map((field) => {
+                        // Supported field_type values enforced by DB CHECK:
+                        // 'text' | 'checkbox' | 'signature' | 'date'
                         const val = providerFormResponses[form.id]?.[field.id];
                         const isCheckbox = field.field_type === "checkbox";
                         const isDate = field.field_type === "date";
-                        const isNumber = field.field_type === "number";
-                        const isMultiline = field.field_type === "textarea" || field.field_type === "long_text";
                         return (
                           <View key={field.id} style={twStyle("mt-3")}>
                             <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>
@@ -3480,9 +3480,7 @@ export default function NewBookingScreen() {
                               </View>
                             ) : (
                               <TextInput
-                                style={twStyle(
-                                  `rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base text-gray-900 ${isMultiline ? "min-h-[72px]" : ""}`,
-                                )}
+                                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base text-gray-900")}
                                 placeholder={
                                   field.field_type === "signature"
                                     ? "Type name to sign"
@@ -3493,9 +3491,7 @@ export default function NewBookingScreen() {
                                 placeholderTextColor="#9ca3af"
                                 value={val === undefined || val === null ? "" : String(val)}
                                 onChangeText={(t) => setProviderFormField(form.id, field.id, t)}
-                                keyboardType={isNumber ? "decimal-pad" : isDate ? "numbers-and-punctuation" : "default"}
-                                multiline={isMultiline}
-                                textAlignVertical={isMultiline ? "top" : "center"}
+                                keyboardType={isDate ? "numbers-and-punctuation" : "default"}
                                 accessibilityLabel={field.name}
                               />
                             )}

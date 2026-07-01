@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 2) Salon/provider memberships (user_memberships + membership_plans + providers)
+    //    Include active AND past_due (past_due with grace still confers benefits).
     const { data: umRows, error: umError } = await (supabase
       .from("user_memberships") as any)
       .select(
@@ -112,12 +113,18 @@ export async function GET(request: NextRequest) {
         status,
         started_at,
         expires_at,
+        auto_renew,
+        payment_method_id,
+        next_billing_at,
+        last_payment_at,
+        renewal_failure_count,
+        past_due_since,
         plan:membership_plans(id, name, description, price_monthly, currency, discount_percent),
         provider:providers(id, business_name, slug, tenant_id)
       `
       )
       .eq("user_id", user.id)
-      .eq("status", "active")
+      .in("status", ["active", "past_due"])
       .order("expires_at", { ascending: false, nullsFirst: false });
 
     const provider_memberships: {
@@ -131,21 +138,56 @@ export async function GET(request: NextRequest) {
       discount_percent: number;
       price_monthly: number;
       currency: string;
+      status: string;
       expires_at: string | null;
       started_at: string;
+      auto_renew: boolean;
+      next_billing_at: string | null;
+      last_payment_at: string | null;
+      past_due_since: string | null;
+      card: { last4: string; brand: string; exp: string } | null;
     }[] = [];
 
+    // Collect payment_method_ids to fetch card info in one go.
+    const pmIdSet = new Set<string>();
     if (!umError && umRows && Array.isArray(umRows)) {
+      for (const row of umRows as any[]) {
+        if (row.payment_method_id) pmIdSet.add(row.payment_method_id);
+      }
+    }
+
+    const cardMap = new Map<string, { last4: string; brand: string; exp: string }>();
+    if (pmIdSet.size > 0) {
+      const { data: pmRows } = await (supabase.from("payment_methods") as any)
+        .select("id, last_four, card_brand, expiry_month, expiry_year")
+        .in("id", [...pmIdSet])
+        .eq("is_active", true);
+      for (const pm of (pmRows ?? []) as any[]) {
+        cardMap.set(pm.id, {
+          last4: pm.last_four ?? "••••",
+          brand: pm.card_brand ?? "card",
+          exp: `${String(pm.expiry_month ?? "").padStart(2, "0")}/${pm.expiry_year ?? ""}`,
+        });
+      }
+    }
+
+    if (!umError && umRows && Array.isArray(umRows)) {
+      // Only auto-expire truly stale `active` rows (expired term, no dunning state).
+      // `past_due` rows must NOT be expired here — the renewal cron owns that transition
+      // and enforces the grace window. Expiring past_due rows from a GET would bypass
+      // grace and break discounts + dunning UI for customers still in the retry window.
       const staleUserMembershipIds: string[] = [];
       for (const row of umRows as any[]) {
         const plan = row.plan;
         const provider = row.provider;
-        const rowIsActive = isNotExpired(row?.expires_at ?? null);
-        if (!rowIsActive && row?.id) {
+        const rowStatus: string = row?.status ?? "active";
+
+        if (rowStatus === "active" && !isNotExpired(row?.expires_at ?? null) && row?.id) {
           staleUserMembershipIds.push(row.id);
           continue;
         }
-        // Include all of the customer's active salon memberships. Do not gate on
+
+        // Include all of the customer's active/past_due salon memberships. Do not gate on
         // request tenant_id — tenant resolution (headers/subdomain) can differ from
         // the provider row's tenant and would incorrectly hide valid subscriptions.
         if (plan && provider) {
@@ -160,8 +202,14 @@ export async function GET(request: NextRequest) {
             discount_percent: Number(plan.discount_percent ?? 0),
             price_monthly: Number(plan.price_monthly ?? 0),
             currency: plan.currency || lastResortCurrency,
+            status: rowStatus,
             expires_at: row.expires_at ?? null,
             started_at: row.started_at || new Date().toISOString(),
+            auto_renew: row.auto_renew === true,
+            next_billing_at: row.next_billing_at ?? null,
+            last_payment_at: row.last_payment_at ?? null,
+            past_due_since: row.past_due_since ?? null,
+            card: row.payment_method_id ? (cardMap.get(row.payment_method_id) ?? null) : null,
           });
         }
       }

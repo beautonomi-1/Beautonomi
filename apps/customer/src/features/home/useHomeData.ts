@@ -13,9 +13,9 @@ import {
 } from "@/lib/provider-availability";
 
 /** Skip silent focus-refresh if data was fetched within this window. */
-const FOCUS_REFRESH_TTL_MS = 45_000;
+const FOCUS_REFRESH_TTL_MS = 20_000;
 /** Reuse category results briefly for instant revisits; always revalidates in background. */
-const HOME_CACHE_TTL_MS = 60_000;
+const HOME_CACHE_TTL_MS = 30_000;
 const MAX_CACHE_ENTRIES = 32;
 
 function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {

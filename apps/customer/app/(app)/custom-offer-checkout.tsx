@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
@@ -124,9 +124,10 @@ export default function CustomOfferCheckoutScreen() {
     rows: PaymentSuccessSummaryRow[];
   } | null>(null);
 
-  const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
+  const { cards: savedCards, defaultCard, refresh: refreshSavedCards, remove: removeSavedCard } = useSavedCards(!!user);
   const [useNewCard, setUseNewCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [removingCardId, setRemovingCardId] = useState<string | null>(null);
   const [saveCard, setSaveCard] = useState(true);
   const [useWallet, setUseWallet] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
@@ -166,6 +167,30 @@ export default function CustomOfferCheckoutScreen() {
       setUseNewCard(false);
     }
   }, [savedCards.length, defaultCard?.id, selectedCardId]);
+
+  // Refresh saved cards every time this screen comes back into focus (e.g. after
+  // navigating to /account-settings/payments to delete a card).
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSavedCards();
+    }, [refreshSavedCards])
+  );
+
+  // If the currently selected card was deleted on another screen, fall back to
+  // the default/first remaining card, or switch to new-card mode.
+  useEffect(() => {
+    if (!selectedCardId) return;
+    if (!savedCards.some((c) => c.id === selectedCardId)) {
+      const fallback = savedCards.find((c) => c.is_default) || savedCards[0] || null;
+      if (fallback) {
+        setSelectedCardId(fallback.id);
+        setUseNewCard(false);
+      } else {
+        setSelectedCardId(null);
+        setUseNewCard(true);
+      }
+    }
+  }, [savedCards, selectedCardId]);
 
   const loadOffer = useCallback(async () => {
     if (!offerId) {
@@ -360,12 +385,34 @@ export default function CustomOfferCheckoutScreen() {
 
         if (pr.outcome === "cancel") {
           setProcessingPayment(false);
+          // Reset server state so a retry gets a fresh Paystack session.
+          await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
+          await loadOffer();
           setPayError("You cancelled the payment. Tap Pay to try again.");
           return;
         }
 
         if (pr.outcome === "closed") {
           setProcessingPayment(false);
+          // The window closed — we don't know yet whether payment succeeded.
+          // Check the offer status first; if it moved to 'paid' the webhook
+          // already handled it. If still 'payment_pending', reset so retry works.
+          const checkRes = await api.get<{ status?: string; booking_id?: string | null }>(
+            `/api/me/custom-offers/${offerId}`
+          ).catch(() => null);
+          const latestStatus = checkRes?.data?.status;
+          const latestBookingId = (checkRes?.data as { booking_id?: string | null } | null)?.booking_id ?? null;
+          if (latestStatus === "paid" && latestBookingId) {
+            // Payment succeeded in the background — navigate to the booking.
+            haptic.success();
+            setSuccessOverlay({ rows: buildOfferSuccessRows() });
+            setTimeout(() => {
+              router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
+            }, 2200);
+            return;
+          }
+          await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
+          await loadOffer();
           setPayError(
             "The payment window closed before we could confirm. If you completed payment, your booking will appear in a moment — otherwise tap Pay to try again."
           );
@@ -414,6 +461,10 @@ export default function CustomOfferCheckoutScreen() {
         }
       } catch (e) {
         setProcessingPayment(false);
+        // Best-effort reset in case the error occurred after the server already
+        // set the offer to payment_pending but before Paystack opened/finished.
+        await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
+        await loadOffer().catch(() => {});
         const msg = e instanceof Error ? e.message : "Payment failed";
         setPayError(msg);
         Alert.alert("Error", msg);
@@ -424,6 +475,7 @@ export default function CustomOfferCheckoutScreen() {
       offer?.request?.service_name,
       pollForBooking,
       refreshSavedCards,
+      loadOffer,
       router,
       paystackHostedCheckout,
     ]
@@ -988,6 +1040,59 @@ export default function CustomOfferCheckoutScreen() {
                       DEFAULT
                     </Text>
                   ) : null}
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Alert.alert(
+                        "Remove this card?",
+                        "It will be removed from your saved cards.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Remove",
+                            style: "destructive",
+                            onPress: async () => {
+                              setRemovingCardId(c.id);
+                              const ok = await removeSavedCard(c.id);
+                              setRemovingCardId(null);
+                              if (!ok) {
+                                Alert.alert("Error", "Could not remove card. Please try again.");
+                                return;
+                              }
+                              if (selectedCardId === c.id) {
+                                const remaining = savedCards.filter((sc) => sc.id !== c.id);
+                                const fallback =
+                                  remaining.find((sc) => sc.is_default) || remaining[0] || null;
+                                if (fallback) {
+                                  setSelectedCardId(fallback.id);
+                                  setUseNewCard(false);
+                                } else {
+                                  setSelectedCardId(null);
+                                  setUseNewCard(true);
+                                }
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                    disabled={removingCardId === c.id}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      paddingVertical: 4,
+                      paddingHorizontal: 6,
+                      marginLeft: 6,
+                      opacity: removingCardId === c.id ? 0.4 : 1,
+                    }}
+                    accessibilityLabel={`Remove card ending in ${c.last4 ?? "****"}`}
+                    accessibilityRole="button"
+                  >
+                    {removingCardId === c.id ? (
+                      <ActivityIndicator size="small" color="#9CA3AF" />
+                    ) : (
+                      <Ionicons name="trash-outline" size={17} color="#9CA3AF" />
+                    )}
+                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })}

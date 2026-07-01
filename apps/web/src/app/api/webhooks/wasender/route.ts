@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // Signature verification (optional if secret not configured)
+    // Signature verification is MANDATORY. If no enabled config row or no webhook_secret
+    // is configured, reject with 503 rather than processing an unsigned payload.
     const { data: cfgRow } = await supabase
       .from("wasender_integration_config")
       .select("webhook_secret")
@@ -35,19 +36,32 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const webhookSecret = (cfgRow as any)?.webhook_secret;
+    const webhookSecret = (cfgRow as any)?.webhook_secret as string | undefined;
 
-    if (webhookSecret) {
-      const signature = request.headers.get("x-wasender-signature") || request.headers.get("x-hub-signature-256") || "";
-      const expected = crypto
-        .createHmac("sha256", webhookSecret)
-        .update(rawBody)
-        .digest("hex");
+    if (!cfgRow || !webhookSecret) {
+      // No enabled integration config — either Wasender is not set up for this tenant or
+      // the webhook_secret has been cleared. Reject to prevent unsigned payload processing.
+      return NextResponse.json(
+        { error: "Wasender webhook not configured" },
+        { status: 503 },
+      );
+    }
 
-      const sigValue = signature.replace("sha256=", "");
-      if (!crypto.timingSafeEqual(Buffer.from(sigValue || "x"), Buffer.from(expected))) {
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
+    const signature = request.headers.get("x-wasender-signature") || request.headers.get("x-hub-signature-256") || "";
+    const expected = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    // Normalise to bare hex before comparing so `sha256=<hex>` and bare `<hex>` both work.
+    const sigValue = signature.replace(/^sha256=/i, "");
+
+    // Both buffers must be the same length before timingSafeEqual to avoid a crash.
+    const sigBuf = Buffer.from(sigValue.length === expected.length * 2 || sigValue.length === expected.length ? sigValue : "", "hex");
+    const expectedBuf = Buffer.from(expected, "hex");
+
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     const eventType = payload.event || payload.type || "";

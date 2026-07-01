@@ -9,7 +9,7 @@ import {
   normalizePhoneForWasender,
   resolveSessionMessagingBearer,
 } from "@/lib/whatsapp/wasender-client";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 
 const CACHE_TTL_DAYS = 7;
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     if (!phoneE164) return errorResponse("phone_e164 is required", "VALIDATION_ERROR", 400);
 
-    const rl = checkRateLimit(tenantId, "whatsapp-verify");
+    const rl = await checkAdminExportRateLimit(tenantId, "whatsapp-verify");
     if (!rl.allowed) {
       return errorResponse(
         `Rate limited. Try again in ${rl.retryAfter ?? 60}s`,

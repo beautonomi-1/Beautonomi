@@ -48,7 +48,13 @@ export async function GET(request: NextRequest) {
       apply: (q) => q.eq("environment", environment),
       orderBy: { column: "updated_at", ascending: false },
     });
-    return successResponse(toSafeSumsubRow(scoped.data as Record<string, any> | null));
+    const row = scoped.data as (Record<string, any> & { tenant_id?: string | null }) | null;
+    const isGlobal = !row?.tenant_id;
+    return successResponse({
+      ...toSafeSumsubRow(row),
+      _scope: isGlobal ? "global" : "tenant",
+      _tenant_id: row?.tenant_id ?? null,
+    });
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch Sumsub config");
   }

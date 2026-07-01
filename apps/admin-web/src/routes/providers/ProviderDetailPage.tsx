@@ -182,6 +182,13 @@ export function ProviderDetailPage() {
   const [showDeduct, setShowDeduct] = useState(false);
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
   const [showYocoSupport, setShowYocoSupport] = useState(false);
+  const [txType, setTxType] = useState("all");
+  const [txStart, setTxStart] = useState("");
+  const [txEnd, setTxEnd] = useState("");
+  const [txTypeDraft, setTxTypeDraft] = useState("all");
+  const [txStartDraft, setTxStartDraft] = useState("");
+  const [txEndDraft, setTxEndDraft] = useState("");
+  const [txPage, setTxPage] = useState(1);
   const [yocoSupportForm, setYocoSupportForm] = useState({
     environment: "live" as "live" | "sandbox",
     is_enabled: true,
@@ -220,6 +227,28 @@ export function ProviderDetailPage() {
         { timeoutMs: 30_000 }
       ),
     enabled: allowed && !!providerCanonicalId,
+  });
+
+  const txQs = new URLSearchParams({ page: String(txPage), limit: "50" });
+  if (txType && txType !== "all") txQs.set("type", txType);
+  if (txStart) txQs.set("start_date", txStart);
+  if (txEnd) txQs.set("end_date", txEnd);
+  const txQsString = txQs.toString();
+
+  type TxSummaryRow = { gross: number; fees: number; commission: number; net: number; refunds: number; payouts: number };
+  type TxLedgerRow = { id: string; transaction_type: string; amount: number; fees: number; commission: number; net: number; created_at?: string; booking?: { id: string; booking_number?: string } | null };
+  type TxLedgerMeta = { page: number; limit: number; total: number; has_more: boolean };
+  type TxLedgerResponse = { data: TxLedgerRow[]; summary: TxSummaryRow | null; meta: TxLedgerMeta };
+
+  const txQ = useQuery({
+    queryKey: adminQueryKeys.providers.transactions(providerCanonicalId, txQsString),
+    queryFn: () =>
+      adminApi.getJson<TxLedgerResponse>(
+        `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/transactions?${txQsString}`,
+        { timeoutMs: 60_000 }
+      ),
+    enabled: allowed && !!providerCanonicalId,
+    placeholderData: (prev) => prev,
   });
 
   const deductPointsMutation = useMutation({
@@ -1496,6 +1525,151 @@ export function ProviderDetailPage() {
           })()
         ) : (
           <p className="mt-4 text-sm text-gray-500">No gamification data available.</p>
+        )}
+      </AdminPanel>
+
+      {/* Finance Transactions */}
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+        <p className="mt-0.5 text-sm text-gray-500">Finance ledger: payments, earnings, fees, refunds, tips, payouts.</p>
+
+        {txQ.data?.summary && (
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {(
+              [
+                { label: "Gross", value: txQ.data.summary.gross },
+                { label: "Fees", value: txQ.data.summary.fees },
+                { label: "Commission", value: txQ.data.summary.commission },
+                { label: "Net earnings", value: txQ.data.summary.net },
+                { label: "Refunds", value: txQ.data.summary.refunds },
+                { label: "Payouts", value: txQ.data.summary.payouts },
+              ] as { label: string; value: number }[]
+            ).map(({ label, value }) => (
+              <div key={label} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">
+                  {new Intl.NumberFormat(undefined, { style: "currency", currency: "ZAR", maximumFractionDigits: 2 }).format(value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="mt-4 flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Type</label>
+            <select
+              value={txTypeDraft}
+              onChange={(e) => setTxTypeDraft(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="all">All types</option>
+              <option value="payment">Payments</option>
+              <option value="earnings">Earnings</option>
+              <option value="fee">Fees</option>
+              <option value="refund">Refunds</option>
+              <option value="payout">Payouts</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">From</label>
+            <input type="date" value={txStartDraft} onChange={(e) => setTxStartDraft(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">To</label>
+            <input type="date" value={txEndDraft} onChange={(e) => setTxEndDraft(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          <button
+            type="button"
+            onClick={() => { setTxType(txTypeDraft); setTxStart(txStartDraft); setTxEnd(txEndDraft); setTxPage(1); }}
+            className={adminToolbarButtonClass(txQ.isFetching)}
+            disabled={txQ.isFetching}
+          >
+            {txQ.isFetching ? "Loading…" : "Apply"}
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
+          {txQ.isLoading ? (
+            <p className="p-6 text-sm text-gray-400 text-center">Loading transactions…</p>
+          ) : (txQ.data?.data ?? []).length === 0 ? (
+            <p className="p-6 text-sm text-gray-500 text-center">No transactions found for this period.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-right">Net</th>
+                  <th className="px-4 py-3 text-left">Booking</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(txQ.data?.data ?? []).map((row) => {
+                  const label: Record<string, string> = {
+                    payment: "Payment", wallet_payment: "Wallet", gift_card_payment: "Gift card",
+                    provider_earnings: "Earnings", tip: "Tip", travel_fee: "Travel fee",
+                    cancellation_fee: "Cancellation", platform_fee: "Platform fee",
+                    service_fee: "Service fee", commission: "Commission",
+                    refund: "Refund", payout: "Payout",
+                  };
+                  const cur = new Intl.NumberFormat(undefined, { style: "currency", currency: "ZAR", maximumFractionDigits: 2 }).format;
+                  return (
+                    <tr key={row.id} className="hover:bg-gray-50/60">
+                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
+                        {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                          {label[row.transaction_type] ?? row.transaction_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium">{cur(row.amount)}</td>
+                      <td className={`px-4 py-3 text-right tabular-nums font-semibold ${row.net < 0 ? "text-red-600" : "text-green-700"}`}>
+                        {cur(row.net)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                        {row.booking?.booking_number ?? (row.booking?.id ? `…${row.booking.id.slice(-6)}` : "—")}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {((txQ.data?.meta?.total ?? 0) > (txQ.data?.meta?.limit ?? 50)) && (
+          <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
+            <span>
+              Showing {((txPage - 1) * (txQ.data?.meta?.limit ?? 50)) + 1}–
+              {Math.min(txPage * (txQ.data?.meta?.limit ?? 50), txQ.data?.meta?.total ?? 0)} of {txQ.data?.meta?.total ?? 0}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={txPage <= 1 || txQ.isFetching}
+                onClick={() => setTxPage((p) => p - 1)}
+                className={adminToolbarButtonClass(txPage <= 1 || txQ.isFetching)}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={!txQ.data?.meta?.has_more || txQ.isFetching}
+                onClick={() => setTxPage((p) => p + 1)}
+                className={adminToolbarButtonClass(!txQ.data?.meta?.has_more || txQ.isFetching)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </AdminPanel>
     </div>

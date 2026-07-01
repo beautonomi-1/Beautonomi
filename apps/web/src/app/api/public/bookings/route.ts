@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { normalizePublicStaffIdForDatabase } from "@beautonomi/utils";
+import { normalizePublicStaffIdForDatabase, getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       // changing the client-facing shape.
       let stage: "preflight" | "idempotency" | "captcha" | "validate_input" | "auth"
         | "tenant_resolve" | "market_check" | "ensure_profile" | "reschedule_cancel"
-        | "stale_pending_cancel" | "validate_booking" | "create_booking" | "persist_forms"
+        | "stale_pending_cancel" | "validate_forms" | "validate_booking" | "create_booking" | "persist_forms"
         | "consume_hold" | "process_payment" | "post_effects" | "idempotency_cache" = "preflight";
       try {
         // §Customer-launch (audit 2026-04): previously called without the
@@ -350,6 +350,37 @@ export async function POST(request: NextRequest) {
                 ),
               ),
             );
+          }
+        }
+
+        stage = "validate_forms";
+        // 2.8. Server-side required provider-form validation.
+        // Clients enforce this on-screen but a server backstop ensures the
+        // constraint cannot be bypassed (e.g. via direct API calls or stale
+        // client code). We load active forms with service_role so there is no
+        // RLS restriction on the public endpoint.
+        {
+          const formResponses = validatedDraft.provider_form_responses ?? {};
+          if (draft.provider_id) {
+            const { data: activeForms } = await supabaseAdmin
+              .from("provider_forms")
+              .select("id, title, is_required, provider_form_fields(id, name, field_type, is_required)")
+              .eq("provider_id", draft.provider_id)
+              .eq("is_active", true);
+
+            const formsWithFields = ((activeForms as Array<{
+              id: string; title: string; is_required: boolean;
+              provider_form_fields: Array<{ id: string; name: string; field_type: string; is_required: boolean }>;
+            }> | null) ?? []).map((f) => ({ ...f, fields: f.provider_form_fields }));
+
+            const missing = getMissingRequiredProviderFormField(formsWithFields, formResponses);
+            if (missing) {
+              return errorResponse(
+                `Please complete the required form: "${missing.formTitle}" (${missing.fieldName}).`,
+                "PROVIDER_FORM_REQUIRED",
+                400,
+              );
+            }
           }
         }
 

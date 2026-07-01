@@ -490,10 +490,25 @@ export async function GET(request: NextRequest) {
           );
         }
         await processSuccessfulPayment(verifiedChargeData, admin);
+
+        // `finalizeCustomOfferPayment` (run inside processSuccessfulPayment)
+        // creates the booking and stamps `custom_offers.booking_id`. Re-read it
+        // so the client can deep-link straight to the finalized booking instead
+        // of dropping the customer on the bookings list. Null when finalize is
+        // still pending / failed — the client then falls back to the tab.
+        const { data: paidOffer } = await admin
+          .from("custom_offers")
+          .select("booking_id")
+          .eq("id", offerId)
+          .maybeSingle();
+        const finalizedBookingId =
+          (paidOffer as { booking_id?: string | null } | null)?.booking_id ?? null;
+
         return successResponse({
           status: "success",
           type: "custom_offer",
           customOfferId: offerId,
+          bookingId: finalizedBookingId,
           message: "Payment verified successfully",
         });
       }

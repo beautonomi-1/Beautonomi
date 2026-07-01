@@ -1503,6 +1503,7 @@ export function ReportDetailPage() {
               providers: "/api/admin/export/providers",
               customers: "/api/admin/export/users",
               bookings: "/api/admin/export/bookings",
+              "gift-cards": "/api/admin/export/gift-cards",
               "yoco-reconciliation": "/api/admin/export/transactions",
             };
             const endpoint = EXPORT_ENDPOINTS[reportKey] ?? "/api/admin/export/analytics";

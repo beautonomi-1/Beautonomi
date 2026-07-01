@@ -22,6 +22,7 @@ import {
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
+import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
@@ -29,7 +30,7 @@ import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 const chargeSavedCardSchema = z
   .object({
     payment_method_id: z.string().uuid(),
-    /** Ignored when metadata includes product_order_id or booking id — server derives amount. */
+    /** Ignored when metadata includes product_order_id, booking_id, or additional_charge_id — server derives amount. */
     amount: z.number().positive().optional(),
     currency: z.string().optional(),
     email: z.string().email(),
@@ -44,16 +45,19 @@ const chargeSavedCardSchema = z
       (typeof m.bookingId === "string" && String(m.bookingId).trim().length > 0);
     const hasGiftCardOrder =
       typeof m.gift_card_order_id === "string" && String(m.gift_card_order_id).trim().length > 0;
+    const hasAdditionalCharge =
+      typeof m.additional_charge_id === "string" && String(m.additional_charge_id).trim().length > 0;
     if (
       !hasProductOrder &&
       !hasBooking &&
       !hasGiftCardOrder &&
+      !hasAdditionalCharge &&
       (val.amount == null || val.amount <= 0)
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "amount is required unless charging for a product order, booking, or gift card order",
+          "amount is required unless charging for a product order, booking, additional charge, or gift card order",
         path: ["amount"],
       });
     }
@@ -145,6 +149,10 @@ export async function POST(request: NextRequest) {
       typeof meta.wallet_topup_id === "string" && meta.wallet_topup_id.trim()
         ? meta.wallet_topup_id.trim()
         : null;
+    const additionalChargeIdFromMeta =
+      typeof meta.additional_charge_id === "string" && meta.additional_charge_id.trim()
+        ? meta.additional_charge_id.trim()
+        : null;
 
     if (productOrderIdFromMeta) {
       const { data: poRow, error: poErr } = await (supabase.from("product_orders") as any)
@@ -163,6 +171,55 @@ export async function POST(request: NextRequest) {
       }
       if (poRow.customer_id !== user.id) {
         return errorResponse("You do not have permission to charge this order", "FORBIDDEN", 403);
+      }
+    }
+
+    // Additional-charge card-on-file path: requires approved status (customer consented).
+    let additionalChargeBookingId: string | null = null;
+    if (additionalChargeIdFromMeta && !productOrderIdFromMeta) {
+      const { data: acRow } = await (supabase.from("additional_charges") as any)
+        .select("id, booking_id, status, amount, currency")
+        .eq("id", additionalChargeIdFromMeta)
+        .maybeSingle();
+      if (!acRow) {
+        return notFoundResponse("Additional charge not found");
+      }
+      const acStatus = String((acRow as { status?: string }).status ?? "").toLowerCase();
+      if (acStatus === "paid") {
+        return errorResponse("This additional charge has already been paid", "ALREADY_PAID", 400);
+      }
+      if (acStatus === "rejected") {
+        return errorResponse("This additional charge has been rejected", "CHARGE_REJECTED", 400);
+      }
+      if (acStatus !== "approved") {
+        return errorResponse(
+          "Card-on-file charge requires the customer to approve this charge first. Status must be 'approved'.",
+          "APPROVAL_REQUIRED",
+          400
+        );
+      }
+      additionalChargeBookingId = (acRow as { booking_id?: string }).booking_id ?? null;
+      if (!additionalChargeBookingId) {
+        return errorResponse("Additional charge has no associated booking", "INVALID_CHARGE", 400);
+      }
+      // Verify booking belongs to this customer
+      const { data: acBooking } = await supabase
+        .from("bookings")
+        .select("id, customer_id, tenant_id")
+        .eq("id", additionalChargeBookingId)
+        .maybeSingle();
+      if (!acBooking) {
+        return notFoundResponse("Booking not found for this additional charge");
+      }
+      if ((acBooking as { customer_id?: string }).customer_id !== user.id) {
+        return errorResponse("You do not have permission to pay this charge", "FORBIDDEN", 403);
+      }
+      if (!resourceTenantMatchesHostTenant(tenantId, (acBooking as { tenant_id?: string | null }).tenant_id)) {
+        return errorResponse(
+          "This booking belongs to a different market.",
+          "TENANT_MISMATCH",
+          403
+        );
       }
     }
 
@@ -234,6 +291,17 @@ export async function POST(request: NextRequest) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
       amountInSmallestUnit = resolved.amountSmallestUnit;
+    } else if (additionalChargeIdFromMeta && additionalChargeBookingId) {
+      // Derive amount directly from the charge row (server is the source of truth).
+      const { data: acAmountRow } = await (supabase.from("additional_charges") as any)
+        .select("amount")
+        .eq("id", additionalChargeIdFromMeta)
+        .maybeSingle();
+      const acAmount = Number((acAmountRow as { amount?: number } | null)?.amount ?? 0);
+      if (!Number.isFinite(acAmount) || acAmount <= 0) {
+        return errorResponse("Invalid additional charge amount", "INVALID_CHARGE", 400);
+      }
+      amountInSmallestUnit = convertToSmallestUnit(acAmount);
     } else if (giftCardOrderIdFromMeta && !productOrderIdFromMeta) {
       const { data: gcoAmount } = await (supabase.from("gift_card_orders") as any)
         .select("total_amount")
@@ -262,12 +330,18 @@ export async function POST(request: NextRequest) {
     const chargeReference = generateTransactionReference(
       productOrderIdFromMeta
         ? "order"
-        : bookingIdFromMeta
-          ? "booking"
-          : giftCardOrderIdFromMeta
-            ? "giftcard"
-            : "savedcard",
-      productOrderIdFromMeta ?? bookingIdFromMeta ?? giftCardOrderIdFromMeta ?? user.id
+        : additionalChargeIdFromMeta
+          ? "charge"
+          : bookingIdFromMeta
+            ? "booking"
+            : giftCardOrderIdFromMeta
+              ? "giftcard"
+              : "savedcard",
+      productOrderIdFromMeta ??
+        additionalChargeIdFromMeta ??
+        bookingIdFromMeta ??
+        giftCardOrderIdFromMeta ??
+        user.id
     );
 
     const chargeResult = await chargeAuthorization(
@@ -292,6 +366,25 @@ export async function POST(request: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // Additional-charge card-on-file: settle commission + earnings accounting.
+    if (additionalChargeIdFromMeta && additionalChargeBookingId) {
+      const chargeData = chargeResult.data as { reference?: string; amount?: number; id?: number };
+      try {
+        await settleAdditionalChargePlatformHeld(supabaseAdmin, {
+          reference: String(chargeData.reference ?? chargeReference),
+          amountSmallestUnit:
+            typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+          feesSmallestUnit: 0,
+          bookingId: additionalChargeBookingId,
+          chargeId: additionalChargeIdFromMeta,
+          paystackTransactionId: chargeData.id ?? null,
+          customerId: user.id,
+        });
+      } catch (settleErr) {
+        console.error("[charge-saved-card] additional charge settlement failed:", settleErr);
+      }
+    }
 
     if (productOrderIdFromMeta && chargeResult.data?.reference) {
       try {
@@ -318,7 +411,9 @@ export async function POST(request: NextRequest) {
     // Sync the booking's payment status/totals when a booking_id is present.
     // Record the canonical booking_payments row first so DB triggers have
     // payment truth before lifecycle sync runs.
-    if (bookingIdFromMeta) {
+    // Skip when settling an additional charge — settleAdditionalChargePlatformHeld
+    // already wrote the booking_payments row and the finance ledger.
+    if (bookingIdFromMeta && !additionalChargeIdFromMeta) {
       const chargeData = chargeResult.data as {
         id?: number;
         reference?: string;

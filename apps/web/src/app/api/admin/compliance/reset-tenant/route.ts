@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
     // clutter the compliance log.
     let complianceAuditId: string | null = null;
     let complianceAuditError: string | null = null;
+    let complianceAuditDegraded = false;
     if (!dry_run) {
       const auditInsert = await insertCompliancePurgeAuditLog(admin, {
         actor_user_id: actor.id,
@@ -217,6 +218,7 @@ export async function POST(request: NextRequest) {
       });
       if (auditInsert.ok === true) {
         complianceAuditId = auditInsert.id;
+        complianceAuditDegraded = auditInsert.degraded === true;
       } else {
         complianceAuditError = auditInsert.error;
       }
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest) {
             0,
           ),
           compliance_audit_row: complianceAuditId
-            ? { id: complianceAuditId }
+            ? { id: complianceAuditId, degraded: complianceAuditDegraded || undefined }
             : { error: complianceAuditError },
         },
       });
@@ -247,6 +249,7 @@ export async function POST(request: NextRequest) {
       dry_run,
       compliance_audit_id: complianceAuditId,
       compliance_audit_write_error: complianceAuditError,
+      compliance_audit_degraded: complianceAuditDegraded || null,
       report,
       counts: result.counts,
       totals: {

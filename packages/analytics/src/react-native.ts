@@ -187,7 +187,18 @@ export function bootEngagement(userId: string, deviceId?: string): void {
   try {
     const plugin = getPlugin();
     if (typeof plugin.boot === "function") {
-      plugin.boot(userId, deviceId ?? "");
+      // Boot with the Amplitude device id so Guides & Surveys share the same
+      // identity as Analytics (CDP-aligned cross-device targeting). Fall back to
+      // an empty string only if the SDK has not assigned one yet.
+      let resolvedDeviceId = deviceId;
+      if (!resolvedDeviceId) {
+        try {
+          resolvedDeviceId = amplitude.getDeviceId();
+        } catch {
+          resolvedDeviceId = undefined;
+        }
+      }
+      plugin.boot(userId, resolvedDeviceId ?? "");
       lastBootedEngagementUserId = userId;
     }
   } catch (err) {

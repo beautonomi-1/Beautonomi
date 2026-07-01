@@ -84,8 +84,23 @@ type WalletTxResponse = {
   meta?: { page: number; limit: number; total: number; has_more: boolean };
 };
 
+type ProviderFinanceSummary = {
+  provider_id: string;
+  provider_name?: string | null;
+  gross: number;
+  fees: number;
+  commission: number;
+  net: number;
+  refunds: number;
+  completed_payouts: number;
+  available_payout: number;
+  pending_payouts: number;
+};
+
 type UserDetail = Record<string, unknown> & {
-  stats?: Record<string, unknown>;
+  stats?: Record<string, unknown> & {
+    provider_finance_summary?: ProviderFinanceSummary | null;
+  };
   addresses?: Record<string, unknown>[];
   payment_methods?: Record<string, unknown>[];
   wallet?: Record<string, unknown> | null;
@@ -96,6 +111,10 @@ type UserDetail = Record<string, unknown> & {
   claimed_at?: string | null;
   last_sign_in_at?: string | null;
   last_active_at?: string | null;
+  phone?: string | null;
+  preferred_name?: string | null;
+  handle?: string | null;
+  full_name?: string | null;
   verification?: {
     email_verified?: boolean;
     phone_verified?: boolean;
@@ -110,6 +129,49 @@ function str(v: unknown): string {
 
 function bool(v: unknown): boolean {
   return v === true;
+}
+
+function fmt(n: number, currency = "ZAR"): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(n);
+}
+
+function ProviderFinanceSummaryCard({ summary }: { summary: ProviderFinanceSummary }) {
+  const tiles = [
+    { label: "Gross revenue", value: fmt(summary.gross), hint: "Total charged to customers" },
+    { label: "Platform fees", value: fmt(summary.fees + summary.commission), hint: "Fees + commission deducted by platform" },
+    { label: "Net earnings", value: fmt(summary.net), hint: "Gross minus platform fees" },
+    { label: "Refunds issued", value: fmt(summary.refunds), hint: "Total refunded to customers" },
+    { label: "Completed payouts", value: fmt(summary.completed_payouts), hint: "Already transferred to provider bank" },
+    { label: "Available to pay out", value: fmt(summary.available_payout), hint: "Ready to be withdrawn now" },
+    { label: "Pending payouts", value: fmt(summary.pending_payouts), hint: "Payout requests in progress" },
+  ];
+  return (
+    <AdminPanel>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Provider finance summary</h2>
+          {summary.provider_name ? (
+            <p className="mt-0.5 text-sm text-gray-500">{summary.provider_name} — all-time</p>
+          ) : null}
+        </div>
+        <Link
+          to={adminSpaTo(`/admin/providers/${encodeURIComponent(summary.provider_id)}`)}
+          className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+        >
+          View provider transactions →
+        </Link>
+      </div>
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {tiles.map(({ label, value, hint }) => (
+          <div key={label} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+            <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</dt>
+            <dd className="mt-1 text-xl font-semibold tabular-nums text-gray-900">{value}</dd>
+            {hint ? <p className="mt-1 text-xs text-gray-400">{hint}</p> : null}
+          </div>
+        ))}
+      </dl>
+    </AdminPanel>
+  );
 }
 
 function formatSavedAddress(a: Record<string, unknown>): string {
@@ -388,6 +450,22 @@ export function UserDetailPage() {
               <dt className="text-gray-500">Role</dt>
               <dd className="font-medium">{role || "—"}</dd>
             </div>
+            {(data.preferred_name || data.handle) ? (
+              <>
+                {data.preferred_name ? (
+                  <div>
+                    <dt className="text-gray-500">Preferred name</dt>
+                    <dd>{str(data.preferred_name)}</dd>
+                  </div>
+                ) : null}
+                {data.handle ? (
+                  <div>
+                    <dt className="text-gray-500">Handle</dt>
+                    <dd className="font-mono text-xs">@{str(data.handle)}</dd>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             <div>
               <dt className="text-gray-500">Phone</dt>
               <dd>{str(data.phone) || "—"}</dd>
@@ -511,7 +589,7 @@ export function UserDetailPage() {
               <p className="text-gray-500">No stats for this role.</p>
             ) : (
               Object.entries(stats)
-                .filter(([, v]) => v !== null && typeof v !== "object")
+                .filter(([k, v]) => k !== "provider_finance_summary" && v !== null && typeof v !== "object")
                 .map(([k, v]) => (
                   <div key={k}>
                     <dt className="text-gray-500">{k.replace(/_/g, " ")}</dt>
@@ -522,6 +600,12 @@ export function UserDetailPage() {
           </dl>
         </AdminPanel>
       </div>
+
+      {stats.provider_finance_summary ? (
+        <ProviderFinanceSummaryCard
+          summary={stats.provider_finance_summary as ProviderFinanceSummary}
+        />
+      ) : null}
 
       {role === "customer" ? (
         <AdminPanel>

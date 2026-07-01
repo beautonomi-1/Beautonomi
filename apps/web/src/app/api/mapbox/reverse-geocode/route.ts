@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import {
   isMapboxNotConfiguredError,
   mapboxNotConfiguredResponse,
 } from "@/lib/mapbox/mapbox-config-errors";
+import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
 const reverseGeocodeSchema = z.object({
@@ -17,7 +19,11 @@ const reverseGeocodeSchema = z.object({
  * Body: { longitude, latitude }. Returns single Mapbox feature (place_name, center, text, context?)
  * for client alignment (e.g. customer app AddressPicker).
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const validationResult = reverseGeocodeSchema.safeParse(body);
@@ -71,3 +77,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

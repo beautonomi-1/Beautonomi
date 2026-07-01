@@ -25,7 +25,7 @@ import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 
-type SubStatus = "all" | "active" | "cancelled" | "expired";
+type SubStatus = "all" | "active" | "cancelled" | "expired" | "past_due";
 
 interface SubscriberRow {
   subscription: {
@@ -35,6 +35,10 @@ interface SubscriberRow {
     started_at: string | null;
     expires_at: string | null;
     cancelled_at: string | null;
+    auto_renew?: boolean;
+    next_billing_at?: string | null;
+    last_payment_at?: string | null;
+    past_due_since?: string | null;
     entitlement_active?: boolean;
   };
   user: {
@@ -60,15 +64,33 @@ interface SubscribersResponse {
 const STATUS_CHIPS: { label: string; value: SubStatus }[] = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
+  { label: "Past due", value: "past_due" },
   { label: "Cancelled", value: "cancelled" },
   { label: "Expired", value: "expired" },
 ];
 
 function statusLabel(s: string): string {
   if (s === "active") return "Active";
+  if (s === "past_due") return "Past due";
   if (s === "cancelled") return "Cancelled";
   if (s === "expired") return "Expired";
   return s;
+}
+
+function statusColor(s: string): string {
+  if (s === "active") return "#059669";
+  if (s === "past_due") return "#DC2626";
+  if (s === "cancelled") return "#6B7280";
+  if (s === "expired") return "#6B7280";
+  return "#6B7280";
+}
+
+function statusBgColor(s: string): string {
+  if (s === "active") return "#D1FAE5";
+  if (s === "past_due") return "#FEE2E2";
+  if (s === "cancelled") return "#F3F4F6";
+  if (s === "expired") return "#F3F4F6";
+  return "#F3F4F6";
 }
 
 function addDaysIso(days: number): string {
@@ -259,12 +281,11 @@ export default function MembershipSubscribersScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item }: { item: SubscriberRow }) => {
             const st = item.subscription.status;
-            const activeColor =
-              st === "active" ? "#16a34a" : st === "cancelled" ? "#b45309" : Colors.gray[500];
+            const isPastDue = st === "past_due";
             return (
               <TouchableOpacity
                 style={twStyle(
-                  `rounded-xl border bg-white p-4 ${st === "active" ? "border-green-100" : "border-gray-100"}`,
+                  `rounded-xl border bg-white p-4 ${isPastDue ? "border-red-200" : st === "active" ? "border-green-100" : "border-gray-100"}`,
                 )}
                 onPress={() => openManage(item)}
                 activeOpacity={0.75}
@@ -289,14 +310,35 @@ export default function MembershipSubscribersScreen() {
                   <View
                     style={[
                       twStyle("rounded-full px-2 py-0.5"),
-                      { backgroundColor: st === "active" ? "#dcfce7" : "#f3f4f6" },
+                      { backgroundColor: statusBgColor(st) },
                     ]}
                   >
-                    <Text style={[twStyle("text-[10px] font-bold"), { color: activeColor }]}>
+                    <Text style={[twStyle("text-[10px] font-bold"), { color: statusColor(st) }]}>
                       {statusLabel(st)}
                     </Text>
                   </View>
                 </View>
+                {/* Recurring billing info */}
+                {(item.subscription.auto_renew || item.subscription.next_billing_at || item.subscription.last_payment_at) && (
+                  <View style={twStyle("mt-2 flex-row flex-wrap gap-x-3")}>
+                    {item.subscription.auto_renew && (
+                      <Text style={twStyle("text-xs text-green-700")}>Auto-renews</Text>
+                    )}
+                    {!item.subscription.auto_renew && st === "active" && (
+                      <Text style={twStyle("text-xs text-gray-400")}>Auto-renew off</Text>
+                    )}
+                    {item.subscription.next_billing_at && (
+                      <Text style={twStyle("text-xs text-gray-500")}>
+                        Next billing: {formatDate(item.subscription.next_billing_at)}
+                      </Text>
+                    )}
+                    {item.subscription.last_payment_at && (
+                      <Text style={twStyle("text-xs text-gray-400")}>
+                        Last paid: {formatDate(item.subscription.last_payment_at)}
+                      </Text>
+                    )}
+                  </View>
+                )}
                 <View style={twStyle("mt-2 flex-row flex-wrap")}>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     Started {formatDate(item.subscription.started_at)}

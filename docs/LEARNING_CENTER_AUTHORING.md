@@ -89,6 +89,105 @@ The body field is a raw HTML textarea. Paste the marker snippet directly:
 
 Use idempotent `UPDATE ... WHERE body NOT LIKE '%data-learn-mockup="..."%'` when injecting markers in SQL migrations. See `698_learning_center_mockups_and_accuracy.sql`, `699_learning_center_mockup_coverage.sql` (platform guides), `700_learning_center_full_content_refresh.sql` (conceptual overviews + gap articles), and `701_learning_center_internal_training_and_admin_search.sql` (internal runbooks + admin search RPC).
 
+## Internal section runbook template
+
+All internal platform-training runbooks follow this standard structure. Use it when writing a new section runbook or updating an existing one.
+
+```
+1. Purpose          — one paragraph on why this section exists
+2. Who uses it      — role mapping (all admin / specific roles / superadmin-only)
+3. Pages in this section — bullet list: name, URL, superadmin note where relevant
+4. Step-by-step tasks    — numbered end-to-end task walkthroughs
+5. Managing & configuration — ongoing admin responsibilities and config options
+6. Common issues & gotchas — known pitfalls and edge cases
+7. Escalation       — who to contact and when
+8. Reference for replies — public /learn article links to share with users
+```
+
+Mark any page or feature that is superadmin-only with **[Superadmin]** in the text.
+
+### Internal categories added by migration 719
+
+The following internal categories (`visibility='internal'`) align to the admin nav groups in `apps/admin-web/src/config/nav.ts`:
+
+| Category slug | Nav group | Key runbook slug |
+|---|---|---|
+| `admin-overview-ops` | Overview | `admin-overview-runbook` |
+| `support-desk-ops` | Support | `support-desk-runbook` |
+| `provider-ops-hub-ops` | Provider Ops Hub | `provider-ops-hub-runbook` |
+| `providers-bookings-ops` | Providers & operations | `providers-bookings-runbook` |
+| `finance-payouts-ops` | Finance | `finance-payouts-runbook` |
+| `users-trust-ops` | Users & trust | `users-trust-runbook` |
+| `content-catalog-ops` | Content & catalog | `content-catalog-runbook` |
+| `ecommerce-ops` | E-commerce | `ecommerce-runbook` |
+| `marketing-comms-ops` | Marketing & comms | `marketing-comms-runbook` |
+| `integrations-dev-ops` | Integrations & dev | `integrations-dev-runbook` |
+| `platform-operations-ops` | Operations | `platform-operations-runbook` |
+| `platform-config-ops` | Platform config | `platform-config-runbook` |
+
+The existing six ops categories (`moderation-safety-ops`, `verification-ops`, `disputes-refund-ops`, `expansion-playbook`, `incident-response`, `billing-ops`) are unchanged.
+
+A master overview article (`superadmin-operate-platform-overview`) in `admin-overview-ops` links to every section runbook.
+
+## Training paths (`learning_training_paths`)
+
+Training paths are ordered curricula stored in the `learning_training_paths` table (added in migration 720).
+
+### Schema
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `slug` | text UNIQUE | URL-safe identifier, e.g. `new-support-agent` |
+| `title` | text | Display title |
+| `role` | text | Role label, e.g. `support`, `finance`, `superadmin` |
+| `description` | text | Short description shown in the KB Training paths tab |
+| `sort_order` | integer | Display order (ascending) |
+| `article_slugs` | text[] | **Ordered** list of `learning_articles.slug` values |
+
+### Seeded paths (migration 720)
+
+| Path slug | Role | Steps (key articles) |
+|---|---|---|
+| `new-support-agent` | support | Master overview → Support desk → Disputes/refunds → Providers/bookings |
+| `provider-ops-specialist` | provider_ops | Master overview → Provider Ops Hub → Verification → Expansion playbook |
+| `finance-payouts-operator` | finance | Master overview → Finance runbook → Billing ops → Disputes/refunds |
+| `trust-safety-reviewer` | trust | Master overview → Users/trust → Verification → Moderation → Incident response |
+| `content-marketing-manager` | content_marketing | Master overview → Authoring guide → Content/catalog → Marketing/comms |
+| `superadmin-full-platform` | superadmin | All section runbooks in nav order (19 articles) |
+
+### Adding or reordering a path
+
+1. Write a SQL migration or run directly on the DB:
+
+```sql
+-- Add a new article to an existing path at position 3
+UPDATE public.learning_training_paths
+SET article_slugs = article_slugs[1:2] || ARRAY['new-article-slug'] || article_slugs[3:],
+    updated_at = NOW()
+WHERE slug = 'new-support-agent';
+```
+
+2. Or create a new path:
+
+```sql
+INSERT INTO public.learning_training_paths (slug, title, role, description, sort_order, article_slugs)
+VALUES (
+  'my-new-path',
+  'My New Path',
+  'my_role',
+  'Short description.',
+  7,
+  ARRAY['superadmin-operate-platform-overview', 'my-runbook-slug', 'another-slug']
+);
+```
+
+### KB reader rendering
+
+- **Training paths tab** (`/admin/knowledge-base`) — cards per path with role badge, description, step count, and a "Start" button linking to the first article with `?path=<slug>`.
+- **Article page** — when `?path=<slug>` is in the URL, a purple banner shows the path name + step number + prev/next navigation. A bottom strip also shows prev/next.
+- The sticky table of contents (right sidebar on xl screens) is built from `h2`/`h3` headings by `buildToc()` in `apps/admin-web/src/lib/learning.ts`.
+
 ## Internal training & intelligent support
 
 Internal articles (`is_internal = true`) are runbooks for the support/ops team. They are **excluded** from the public `/learn` site and only readable inside the admin SPA.

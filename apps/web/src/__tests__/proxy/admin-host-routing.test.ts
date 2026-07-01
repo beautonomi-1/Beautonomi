@@ -62,22 +62,30 @@ describe("proxy admin host routing", () => {
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
   });
 
-  it("keeps the dedicated admin login public and noindexed", async () => {
+  it("serves the admin login through the SPA shell, noindexed, without server auth", async () => {
+    // Post-cutover: ADMIN_SPA_ROUTING defaults to SPA, so /admin/login is
+    // rewritten to the Vite SPA shell which renders the login screen client-side.
     const response = await proxy(request("/admin/login"));
 
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://admin.beautonomi.com/admin/index.html",
+    );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     expect(supabaseMocks.getUser).not.toHaveBeenCalled();
   });
 
-  it("preserves the existing unauthenticated admin redirect", async () => {
+  it("serves unauthenticated admin pages via the SPA shell (client-side auth)", async () => {
+    // Post-cutover: /admin/* rewrites to the SPA shell (HTTP 200). The shell holds
+    // no sensitive data; the SPA performs the auth redirect client-side, and all
+    // /api/admin/* data endpoints remain server-protected by requireAdminSection.
     const response = await proxy(request("/admin/dashboard"));
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "https://admin.beautonomi.com/admin/login?next=%2Fadmin%2Fdashboard",
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://admin.beautonomi.com/admin/index.html",
     );
-    expect(supabaseMocks.getUser).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    // No server-side auth check — the SPA bootstrap handles it.
+    expect(supabaseMocks.getUser).not.toHaveBeenCalled();
   });
 
   it("passes admin API requests through existing API handling", async () => {

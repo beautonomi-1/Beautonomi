@@ -53,4 +53,55 @@ describe("isSalonMembershipEntitledForDiscount", () => {
       }),
     ).toBe(false);
   });
+
+  // ── past_due grace window ────────────────────────────────────────────────
+  it("returns true for past_due within 3-day grace window", () => {
+    const recentPastDue = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      isSalonMembershipEntitledForDiscount({
+        status: "past_due",
+        expires_at: future,
+        planIsActive: true,
+        past_due_since: recentPastDue,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for past_due after grace window expired", () => {
+    const oldPastDue = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      isSalonMembershipEntitledForDiscount({
+        status: "past_due",
+        expires_at: future,
+        planIsActive: true,
+        past_due_since: oldPastDue,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for past_due when past_due_since is null", () => {
+    expect(
+      isSalonMembershipEntitledForDiscount({
+        status: "past_due",
+        expires_at: null,
+        planIsActive: true,
+        past_due_since: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for past_due when term has expired regardless of grace", () => {
+    const recentPastDue = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+    const past = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      isSalonMembershipEntitledForDiscount({
+        status: "past_due",
+        expires_at: past,
+        planIsActive: true,
+        past_due_since: recentPastDue,
+      }),
+    ).toBe(false);
+  });
 });

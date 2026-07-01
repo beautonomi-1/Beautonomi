@@ -10,6 +10,7 @@ import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { APP_URL, getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { setActiveBookingId } from "@/lib/active-screen-context";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
@@ -44,7 +45,11 @@ import {
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
-import { matchesExpoReturnUrl } from "@/lib/paystack-webview-utils";
+import {
+  matchesExpoReturnUrl,
+  isCancelledPaystackUrl,
+} from "@/lib/paystack-webview-utils";
+import { useSavedCards } from "@/hooks/useSavedCards";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
 
@@ -157,6 +162,7 @@ export default function BookingDetailScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
+  const { defaultCard: defaultSavedCard } = useSavedCards();
   const { t } = useTranslation();
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const bd = useCallback(
@@ -194,6 +200,8 @@ export default function BookingDetailScreen() {
   const [additionalChargePayLoadingId, setAdditionalChargePayLoadingId] = useState<string | null>(
     null,
   );
+  const [additionalChargeApproveLoadingId, setAdditionalChargeApproveLoadingId] = useState<string | null>(null);
+  const [additionalChargeCardLoadingId, setAdditionalChargeCardLoadingId] = useState<string | null>(null);
   const [additionalPayUseWallet, setAdditionalPayUseWallet] = useState(false);
   const [additionalPayGiftCode, setAdditionalPayGiftCode] = useState("");
   const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
@@ -357,6 +365,14 @@ export default function BookingDetailScreen() {
         .post("/api/me/notifications/mark-related-read", { booking_id: id })
         .then(() => emitNotificationBadgeRefresh())
         .catch(() => {});
+    }, [id]),
+  );
+
+  // Track active booking so NotificationBannerListener suppresses redundant banners.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) setActiveBookingId(id);
+      return () => setActiveBookingId(null);
     }, [id]),
   );
 
@@ -725,7 +741,7 @@ export default function BookingDetailScreen() {
         wallet_amount_applied?: number;
         gift_card_amount_applied?: number;
       }>(`/api/me/bookings/${id}/pay-remaining`, {
-        callback_url: ExpoLinking.createURL("booking-detail"),
+        callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
         use_wallet: payRemainingUseWallet,
         ...(payRemainingGiftCode.trim()
           ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
@@ -752,7 +768,7 @@ export default function BookingDetailScreen() {
         return;
       }
 
-      // Native: in-app Paystack WebView intercepts the web `payment-callback` return URL, then we poll.
+      // Native: open Paystack in an in-app browser; intercept the deep-link return.
       if (Platform.OS === "web") {
         try {
           window.open(url, "_blank", "noopener,noreferrer");
@@ -760,33 +776,13 @@ export default function BookingDetailScreen() {
           Linking.openURL(url).catch(() => {});
         }
       } else {
-        const appBase = (APP_URL ?? "").replace(/\/$/, "");
-        const returnUrl = ExpoLinking.createURL("booking-detail");
+        const returnUrl = ExpoLinking.createURL("book/paystack");
         await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay remaining balance",
           returnUrl,
-          matchSuccess: (rawUrl) => {
-            try {
-              if (!rawUrl.startsWith("http")) return false;
-              const u = new URL(rawUrl);
-              if (u.searchParams.get("cancelled") === "1") return false;
-              if (!appBase || !u.href.startsWith(appBase)) return false;
-              return (
-                u.pathname.includes("/account-settings/bookings/") &&
-                u.pathname.endsWith("/payment-callback") &&
-                u.searchParams.get("pay_remaining") === "1"
-              );
-            } catch {
-              return false;
-            }
-          },
-          matchCancel: (rawUrl) => {
-            try {
-              return new URL(rawUrl).searchParams.get("cancelled") === "1";
-            } catch {
-              return false;
-            }
-          },
+          matchSuccess: (rawUrl) =>
+            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+          matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
       }
 
@@ -1397,7 +1393,7 @@ export default function BookingDetailScreen() {
         authorization_url?: string;
         fully_settled?: boolean;
       }>(`/api/me/bookings/${id}/additional-charges/${chargeId}/pay`, {
-        callback_url: ExpoLinking.createURL("booking-detail"),
+        callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
         use_wallet: additionalPayUseWallet,
         ...(additionalPayGiftCode.trim()
           ? { gift_card_code: additionalPayGiftCode.trim().toUpperCase() }
@@ -1420,26 +1416,13 @@ export default function BookingDetailScreen() {
       if (Platform.OS === "web") {
         window.open(url, "_blank", "noopener,noreferrer");
       } else {
-        const returnUrl = ExpoLinking.createURL("booking-detail");
+        const returnUrl = ExpoLinking.createURL("book/paystack");
         await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay additional charge",
           returnUrl,
-          matchSuccess: (rawUrl) => {
-            try {
-              if (!rawUrl.startsWith("http")) return matchesExpoReturnUrl(rawUrl, returnUrl);
-              const u = new URL(rawUrl);
-              return u.searchParams.get("charge_id") === chargeId || rawUrl.includes("payment-callback");
-            } catch {
-              return false;
-            }
-          },
-          matchCancel: (rawUrl) => {
-            try {
-              return new URL(rawUrl).searchParams.get("cancelled") === "1";
-            } catch {
-              return false;
-            }
-          },
+          matchSuccess: (rawUrl) =>
+            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+          matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
       }
       await load();
@@ -1447,6 +1430,59 @@ export default function BookingDetailScreen() {
       Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not pay additional charge."));
     } finally {
       setAdditionalChargePayLoadingId(null);
+    }
+  };
+
+  const handleApproveRejectCharge = async (chargeId: string, approved: boolean) => {
+    if (!id || !booking) return;
+    haptic.light();
+    setAdditionalChargeApproveLoadingId(chargeId);
+    try {
+      const res = await api.post<{ message?: string }>(
+        `/api/me/bookings/${id}/approve-payment`,
+        { charge_id: chargeId, approved }
+      );
+      if (res.error) {
+        Alert.alert(errTitle, getApiErrorMessage(res.error, `Could not ${approved ? "approve" : "reject"} this charge.`));
+        return;
+      }
+      haptic.success();
+      await load({ silent: true });
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, `Could not ${approved ? "approve" : "reject"} this charge.`));
+    } finally {
+      setAdditionalChargeApproveLoadingId(null);
+    }
+  };
+
+  const handlePayAdditionalChargeWithCardOnFile = async (chargeId: string, savedPaymentMethodId: string, email: string) => {
+    if (!id || !booking) return;
+    haptic.light();
+    setAdditionalChargeCardLoadingId(chargeId);
+    try {
+      const res = await api.post<{ reference?: string; status?: string }>(
+        `/api/payments/charge-saved-card`,
+        {
+          payment_method_id: savedPaymentMethodId,
+          email,
+          metadata: {
+            booking_id: id,
+            additional_charge_id: chargeId,
+            payment_type: "additional_charge",
+          },
+        }
+      );
+      if (res.error) {
+        Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not charge your saved card."));
+        return;
+      }
+      haptic.success();
+      Alert.alert("Payment Successful", "Your additional charge was paid with your saved card.");
+      await load({ silent: true });
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not charge your saved card."));
+    } finally {
+      setAdditionalChargeCardLoadingId(null);
     }
   };
 
@@ -1522,64 +1558,117 @@ export default function BookingDetailScreen() {
             })
           : null}
         {charges.map((c: any, idx: number) => {
-          const unpaid = c.status === "pending" || c.status === "approved";
+          const isPending = c.status === "pending";
+          const isApproved = c.status === "approved";
+          const unpaid = isPending || isApproved;
           const cur = (c.currency as string | undefined) || booking.currency;
           const statusRaw = typeof c.status === "string" ? c.status : "";
           const statusLabel = statusRaw.replace(/_/g, " ");
+          const chargeLoadingThis = additionalChargePayLoadingId === String(c.id);
+          const approveLoadingThis = additionalChargeApproveLoadingId === String(c.id);
+          const cardLoadingThis = additionalChargeCardLoadingId === String(c.id);
+          const anyLoading = chargeLoadingThis || approveLoadingThis || cardLoadingThis;
           return (
             <View
               key={String(c.id ?? idx)}
               style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
                 paddingVertical: 8,
                 borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
                 borderBottomColor: Colors.gray[100],
               }}
             >
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
-                <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
-                  {cur} {Number(c.amount || 0).toFixed(2)}
-                </Text>
-                {c.paid_at ? (
-                  <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Paid on {new Date(c.paid_at).toLocaleDateString()}</Text>
-                ) : null}
-              </View>
-              {unpaid ? (
-                <TouchableOpacity
-                  onPress={() => void handlePayAdditionalCharge(String(c.id), Number(c.amount || 0))}
-                  disabled={additionalChargePayLoadingId === String(c.id)}
-                  style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, minWidth: 56, alignItems: "center" }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pay additional charge"
-                >
-                  {additionalChargePayLoadingId === String(c.id) ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <View
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
-                  }}
-                >
-                  <Text
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                  <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
+                    {cur} {Number(c.amount || 0).toFixed(2)}
+                  </Text>
+                  {c.paid_at ? (
+                    <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Paid on {new Date(c.paid_at).toLocaleDateString()}</Text>
+                  ) : null}
+                </View>
+                {!unpaid && (
+                  <View
                     style={{
-                      fontSize: 12,
-                      fontWeight: "600",
-                      textTransform: "capitalize",
-                      color: c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
                     }}
                   >
-                    {statusLabel || "—"}
-                  </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        textTransform: "capitalize",
+                        color: c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
+                      }}
+                    >
+                      {statusLabel || "—"}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {unpaid && (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {isPending && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => void handleApproveRejectCharge(String(c.id), true)}
+                        disabled={anyLoading}
+                        style={{ flex: 1, borderWidth: 1, borderColor: Colors.primary, borderRadius: 8, paddingVertical: 8, alignItems: "center" }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Approve additional charge"
+                      >
+                        {approveLoadingThis ? (
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Approve</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => void handleApproveRejectCharge(String(c.id), false)}
+                        disabled={anyLoading}
+                        style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 8, paddingVertical: 8, alignItems: "center", opacity: anyLoading ? 0.4 : 1 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reject additional charge"
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600] }}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => void handlePayAdditionalCharge(String(c.id), Number(c.amount || 0))}
+                    disabled={anyLoading}
+                    style={{ backgroundColor: Colors.primary, paddingVertical: 10, borderRadius: 8, alignItems: "center" }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Pay additional charge"
+                  >
+                    {chargeLoadingThis ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>
+                        {isPending ? "Pay now (skips approval)" : "Pay now"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  {isApproved && defaultSavedCard && user?.email && (
+                    <TouchableOpacity
+                      onPress={() => void handlePayAdditionalChargeWithCardOnFile(String(c.id), defaultSavedCard.id, user.email!)}
+                      disabled={anyLoading}
+                      style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Pay with saved card"
+                    >
+                      {cardLoadingThis ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                          Pay with saved card ···· {defaultSavedCard.last4 ?? ""}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>

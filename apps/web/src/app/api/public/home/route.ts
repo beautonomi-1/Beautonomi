@@ -1741,7 +1741,15 @@ export async function GET(request: Request) {
     };
       },
       [cacheKey],
-      { revalidate: 60, tags: ["public-home", "public-providers"] }
+      {
+        revalidate: 60,
+        tags: [
+          "public-home",
+          "public-providers",
+          `public-home-${tenantId}`,
+          `public-providers-${tenantId}`,
+        ],
+      }
     )();
 
     // Post-process: ranking, distance radius filter, sponsored ads (gated by module config)
@@ -1913,7 +1921,11 @@ export async function GET(request: Request) {
     }
 
     const response = NextResponse.json({ ...result, data: withHomeSectionAliases(data) });
-    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    // s-maxage=60 with stale-while-revalidate=60 keeps CDN edge warm (max 2-min
+    // staleness) while avoiding serving purged/suspended providers for too long.
+    // Vary: host partitions the CDN cache by tenant so cross-tenant data never leaks.
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=60');
+    response.headers.set('Vary', 'host');
     return response;
   } catch (error: any) {
     const err = error instanceof Error ? error : new Error(String(error));
@@ -1931,9 +1943,9 @@ export async function GET(request: Request) {
       error: null,
     }, { status: 200 }); // Return 200 with empty data instead of 500
     
-    // Cache error responses for shorter time
+    // Cache error responses for shorter time; Vary: host keeps tenant isolation.
     errorResponse.headers.set('Cache-Control', 'public, s-maxage=10, stale-while-revalidate=30');
-    
+    errorResponse.headers.set('Vary', 'host');
     return errorResponse;
   }
 }

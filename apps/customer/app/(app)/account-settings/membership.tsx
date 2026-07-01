@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, Alert, ScrollView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, Alert, ScrollView, Platform, Switch, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -8,6 +8,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useTranslation } from "@beautonomi/i18n";
+import { Ionicons } from "@expo/vector-icons";
 
 type ProviderMembership = {
   id: string;
@@ -20,8 +21,14 @@ type ProviderMembership = {
   discount_percent: number;
   price_monthly: number;
   currency: string;
+  status: string;
   expires_at: string | null;
   started_at: string;
+  auto_renew: boolean;
+  next_billing_at: string | null;
+  last_payment_at: string | null;
+  past_due_since: string | null;
+  card: { last4: string; brand: string; exp: string } | null;
 };
 
 function formatDateSafe(value: unknown): string {
@@ -29,6 +36,12 @@ function formatDateSafe(value: unknown): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   return parsed.toLocaleDateString();
+}
+
+function cardLabel(card: { last4: string; brand: string; exp: string } | null): string {
+  if (!card) return "";
+  const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
+  return `${brand} •••• ${card.last4}  exp. ${card.exp}`;
 }
 
 export default function MembershipScreen() {
@@ -48,6 +61,7 @@ export default function MembershipScreen() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancellingSalonId, setCancellingSalonId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,6 +157,30 @@ export default function MembershipScreen() {
     );
   };
 
+  const toggleAutoRenew = async (membership: ProviderMembership, newValue: boolean) => {
+    if (newValue && !membership.card) {
+      Alert.alert("No payment card", "Please add a payment card in Payment Methods before enabling auto-renew.");
+      return;
+    }
+    setTogglingId(membership.id);
+    try {
+      const res = await api.post<{ success?: boolean; auto_renew?: boolean; message?: string; code?: string }>(
+        "/api/me/membership/auto-renew",
+        { membership_id: membership.id, auto_renew: newValue },
+      );
+      if (res.error || !res.data?.success) {
+        const msg = res.data?.message ?? getApiErrorMessage(res.error, "Failed to update auto-renew");
+        Alert.alert("Error", msg);
+      } else {
+        await load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to update auto-renew"));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const hasMembership = data?.has_membership && data?.membership;
   const membership = data?.membership;
   const benefits = data?.benefits ?? [];
@@ -217,63 +255,120 @@ export default function MembershipScreen() {
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
               Your active memberships with providers. You get the listed discount on bookings at each salon.
             </Text>
-            {providerMemberships.map((pm) => (
-              <View
-                key={pm.id}
-                style={{
-                  backgroundColor: Colors.white,
-                  borderRadius: 16,
-                  padding: 16,
-                  marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: Colors.gray[100],
-                }}
-              >
-                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{pm.provider_name}</Text>
-                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[800], marginTop: 4 }}>{pm.plan_name}</Text>
-                {pm.plan_description ? (
-                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }} numberOfLines={2}>{pm.plan_description}</Text>
-                ) : null}
-                <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8, gap: 12 }}>
-                  {pm.discount_percent > 0 && (
-                    <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{pm.discount_percent}% off services</Text>
-                  )}
-                  {pm.expires_at && (
-                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                      Expires {formatDateSafe(pm.expires_at)}
-                    </Text>
-                  )}
-                </View>
-                {pm.provider_slug && (
-                  <TouchableOpacity
-                    onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: pm.provider_slug } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View ${pm.provider_name}`}
-                    style={{ marginTop: 8 }}
-                  >
-                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>View provider →</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={() => cancelSalonMembership(pm)}
-                  disabled={cancellingSalonId === pm.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cancel ${pm.plan_name} membership with ${pm.provider_name}`}
+            {providerMemberships.map((pm) => {
+              const isPastDue = pm.status === "past_due";
+              const cardBorderColor = isPastDue ? "#EF4444" : Colors.gray[100];
+
+              return (
+                <View
+                  key={pm.id}
                   style={{
-                    marginTop: 12,
-                    paddingVertical: 10,
-                    borderWidth: 1,
-                    borderColor: "#EF4444",
-                    borderRadius: 12,
-                    alignItems: "center",
+                    backgroundColor: Colors.white,
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 12,
+                    borderWidth: isPastDue ? 1.5 : 1,
+                    borderColor: cardBorderColor,
                   }}
                 >
-                  <Text style={{ color: "#DC2626", fontWeight: "500" }}>
-                    {cancellingSalonId === pm.id ? "Cancelling..." : "Cancel salon membership"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+                  {/* Dunning banner */}
+                  {isPastDue && (
+                    <View style={{ backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                      <Ionicons name="alert-circle-outline" size={18} color="#DC2626" style={{ marginTop: 1 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: "600", color: "#DC2626", fontSize: 13 }}>{mem("dunningBannerTitle")}</Text>
+                        <Text style={{ color: "#DC2626", fontSize: 13, marginTop: 2 }}>{mem("dunningBannerBody", { planName: pm.plan_name })}</Text>
+                        <Text style={{ color: "#DC2626", fontSize: 12, marginTop: 2 }}>{mem("gracePeriodNote")}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{pm.provider_name}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[800], marginTop: 4 }}>{pm.plan_name}</Text>
+                  {pm.plan_description ? (
+                    <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }} numberOfLines={2}>{pm.plan_description}</Text>
+                  ) : null}
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8, gap: 12 }}>
+                    {pm.discount_percent > 0 && (
+                      <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{pm.discount_percent}% off services</Text>
+                    )}
+                    {pm.auto_renew && pm.next_billing_at ? (
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                        {mem("renewsLabel")} {formatDateSafe(pm.next_billing_at)}
+                      </Text>
+                    ) : pm.expires_at ? (
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                        {mem("expiresLabel")} {formatDateSafe(pm.expires_at)}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* Auto-renew toggle */}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{mem("autoRenewLabel")}</Text>
+                    {togglingId === pm.id ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Switch
+                        value={pm.auto_renew}
+                        onValueChange={(v) => toggleAutoRenew(pm, v)}
+                        trackColor={{ false: Colors.gray[300], true: Colors.primary }}
+                        thumbColor={Colors.white}
+                      />
+                    )}
+                  </View>
+
+                  {/* Card info */}
+                  {pm.card && (
+                    <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="card-outline" size={16} color={Colors.gray[500]} />
+                      <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{cardLabel(pm.card)}</Text>
+                    </View>
+                  )}
+
+                  {/* Billing history link */}
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: "/(app)/account-settings/membership-billing-history", params: { membership_id: pm.id, provider_name: pm.provider_name } })}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("billingHistoryTitle")} →</Text>
+                  </TouchableOpacity>
+
+                  {pm.provider_slug && (
+                    <TouchableOpacity
+                      onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: pm.provider_slug } })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View ${pm.provider_name}`}
+                      style={{ marginTop: 4 }}
+                    >
+                      <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>View provider →</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {pm.status !== "cancelled" && (
+                    <TouchableOpacity
+                      onPress={() => cancelSalonMembership(pm)}
+                      disabled={cancellingSalonId === pm.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel ${pm.plan_name} membership with ${pm.provider_name}`}
+                      style={{
+                        marginTop: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderColor: "#EF4444",
+                        borderRadius: 12,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ color: "#DC2626", fontWeight: "500" }}>
+                        {cancellingSalonId === pm.id ? "Cancelling..." : "Cancel salon membership"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
 

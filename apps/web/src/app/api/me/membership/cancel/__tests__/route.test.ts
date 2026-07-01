@@ -62,7 +62,7 @@ describe("POST /api/me/membership/cancel", () => {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
+                in: vi.fn(() => ({
                   maybeSingle: vi.fn(async () => ({
                     data: {
                       id: "membership-1",
@@ -123,7 +123,7 @@ describe("POST /api/me/membership/cancel", () => {
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({
+              in: vi.fn(() => ({
                 maybeSingle: vi.fn(async () => ({ data: null, error: null })),
               })),
             })),

@@ -9,6 +9,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { setActiveChatConversationId } from "@/lib/active-screen-context";
 import { useNotifications } from "@/providers/NotificationsContext";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
@@ -240,6 +241,15 @@ export default function ChatScreen() {
   const providerId = params.provider_id;
   const providerName = params.provider_name;
   const bookingIdParam = params.booking_id;
+
+  // Track which conversation is active so NotificationBannerListener can suppress banners.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) setActiveChatConversationId(id);
+      return () => setActiveChatConversationId(null);
+    }, [id]),
+  );
+
   const { user, loading: authLoading, refreshSession } = useAuth();
   const { adjustChatUnreadCount } = useNotifications();
   const [messages, setMessages] = useState<Message[]>([]);

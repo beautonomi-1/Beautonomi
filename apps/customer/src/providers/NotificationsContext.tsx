@@ -15,20 +15,67 @@ import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
-/** Extra callbacks when `notifications` rows change — avoids a second postgres_changes channel (Supabase rejects duplicate bindings after subscribe). */
-const notificationsRealtimeListeners = new Set<() => void>();
+/**
+ * Shape of a raw notifications table row forwarded on INSERT.
+ * Kept loose (`unknown`) for fields we don't need to parse here.
+ */
+export type NewNotificationRow = {
+  id?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  is_read?: boolean;
+  created_at?: string;
+  data?: Record<string, unknown>;
+  link?: string;
+  action_url?: string;
+};
 
-export function registerNotificationsRealtimeCallback(fn: () => void): () => void {
+/** Extra callbacks when `notifications` rows change — avoids a second postgres_changes channel (Supabase rejects duplicate bindings after subscribe). */
+const notificationsRealtimeListeners = new Set<(row?: NewNotificationRow) => void>();
+
+export function registerNotificationsRealtimeCallback(fn: (row?: NewNotificationRow) => void): () => void {
   notificationsRealtimeListeners.add(fn);
   return () => {
     notificationsRealtimeListeners.delete(fn);
   };
 }
 
-function notifyNotificationsRealtimeListeners() {
+function notifyNotificationsRealtimeListeners(row?: NewNotificationRow) {
   notificationsRealtimeListeners.forEach((fn) => {
     try {
-      fn();
+      fn(row);
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
+
+/**
+ * Shape forwarded on conversations unread increase.
+ * Fields mirror the raw `conversations` table columns delivered by realtime.
+ */
+export type ConversationUnreadEvent = {
+  conversation_id: string;
+  unread_count_customer: number;
+  /** Latest message preview (conversations.last_message_preview). */
+  last_message_preview?: string;
+};
+
+/** Callbacks fired when a conversation's unread count for the customer increases. */
+const conversationUnreadListeners = new Set<(event: ConversationUnreadEvent) => void>();
+
+export function registerConversationUnreadCallback(fn: (event: ConversationUnreadEvent) => void): () => void {
+  conversationUnreadListeners.add(fn);
+  return () => {
+    conversationUnreadListeners.delete(fn);
+  };
+}
+
+function notifyConversationUnreadListeners(event: ConversationUnreadEvent) {
+  conversationUnreadListeners.forEach((fn) => {
+    try {
+      fn(event);
     } catch {
       // ignore listener errors
     }
@@ -84,6 +131,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const chatRealtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGoodNotifRef = useRef(0);
   const lastGoodChatRef = useRef(0);
+  /** Tracks previous unread_count_customer per conversation to detect increases. */
+  const conversationPrevUnreadRef = useRef<Record<string, number>>({});
 
   const refetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -261,12 +310,22 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => {
+        (payload) => {
+          // Forward INSERT payloads immediately (before badge debounce) so
+          // NotificationBannerListener can show a foreground banner right away.
+          const insertedRow =
+            payload.eventType === "INSERT"
+              ? (payload.new as NewNotificationRow)
+              : undefined;
+          if (insertedRow) {
+            notifyNotificationsRealtimeListeners(insertedRow);
+          }
           if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
           realtimeDebounceRef.current = setTimeout(() => {
             realtimeDebounceRef.current = null;
             void refetchNotificationsRef.current();
-            notifyNotificationsRealtimeListeners();
+            // Notify without a row on non-INSERT events so list screens refresh.
+            if (!insertedRow) notifyNotificationsRealtimeListeners();
           }, REALTIME_REFETCH_DEBOUNCE_MS);
         }
       )
@@ -291,7 +350,28 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations", filter: `customer_id=eq.${user.id}` },
-        () => {
+        (payload) => {
+          // Fire the conversation unread callback when unread count increases.
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            const row = payload.new as {
+              id?: string;
+              unread_count_customer?: number;
+              last_message_preview?: string;
+            };
+            const convId = row.id ?? "";
+            const newCount = row.unread_count_customer ?? 0;
+            const prevCount = conversationPrevUnreadRef.current[convId] ?? 0;
+            if (convId && newCount > prevCount) {
+              conversationPrevUnreadRef.current[convId] = newCount;
+              notifyConversationUnreadListeners({
+                conversation_id: convId,
+                unread_count_customer: newCount,
+                last_message_preview: row.last_message_preview,
+              });
+            } else if (convId) {
+              conversationPrevUnreadRef.current[convId] = newCount;
+            }
+          }
           if (chatRealtimeDebounceRef.current) clearTimeout(chatRealtimeDebounceRef.current);
           chatRealtimeDebounceRef.current = setTimeout(() => {
             chatRealtimeDebounceRef.current = null;

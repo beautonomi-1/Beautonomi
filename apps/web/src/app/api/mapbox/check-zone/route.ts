@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
 const checkZoneSchema = z.object({
@@ -26,7 +28,11 @@ const checkZoneSchema = z.object({
  * Response shape (unchanged for existing callers; new optional fields added):
  *   { in_zone, zones, platform_in_zone, platform_zones }
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const validationResult = checkZoneSchema.safeParse(body);
@@ -222,3 +228,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

@@ -236,6 +236,22 @@ For each scenario, verify:
   changes to finance_transactions, payout helpers, report APIs, or finance
   CSVs.
 
+---
+
+## Automated Drift Detection
+
+The nightly CI workflow `.github/workflows/finance-drift.yml` runs `scripts/prod/audit-finance-ledger.mjs` at **02:00 UTC** every day using `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` GitHub secrets.
+
+**What it checks (via `finance_audit_run` RPC — migration `724`):**
+1. `duplicate_source_payment_rows` — duplicate `source_payment_id` per `transaction_type` in `finance_transactions`.
+2. `completed_refunds_without_ledger` — `booking_refunds` with `status = 'completed'` but no matching `finance_transactions` row.
+
+**On failure:** The workflow automatically opens a GitHub issue labelled `finance / alert / p1` with a link to the failing run. Assign to the Payments lead for same-day remediation.
+
+**Manual trigger:** Go to **Actions → Finance Ledger Drift Check (Nightly)** → **Run workflow** to run on demand against prod or a staging URL override.
+
+---
+
 ## Surfaces touched in this audit
 
 UI / receipt fixes (Finance-truth 2026-05 final pass):

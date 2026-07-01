@@ -41,9 +41,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { CustomFieldDefinition } from "@/components/custom-fields/CustomFieldsForm";
 import { NATIVE_STORE } from "@/lib/store/native-app-store";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck } from "@beautonomi/i18n";
+import type { CancellationPolicyView } from "@beautonomi/i18n";
 import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
-import { lineHasHouseCallAdjustment } from "@beautonomi/utils";
+import { getMissingRequiredProviderFormField, lineHasHouseCallAdjustment } from "@beautonomi/utils";
 
 interface ProviderFormField {
   id: string;
@@ -124,20 +125,27 @@ interface HoldData {
   cancellation_policy?: HoldCancellationPolicy | null;
 }
 
-/** Require explicit ack when the policy has material terms the customer needs to understand. */
+/** Maps the hold API's snake_case HoldCancellationPolicy to the canonical CancellationPolicyView. */
+function holdPolicyToView(policy: HoldCancellationPolicy | null | undefined): CancellationPolicyView | null {
+  if (!policy) return null;
+  return {
+    cancellationWindowHours: policy.cancellation_window_hours,
+    graceWindowMinutes: policy.grace_window_minutes,
+    lateRefundPercentage: policy.late_refund_percentage,
+    noShowFeeEnabled: policy.no_show_fee_enabled,
+    noShowFeeAmount: policy.no_show_fee_amount,
+    currency: policy.currency,
+    policyText: policy.policy_text,
+  };
+}
+
+/**
+ * Require explicit ack when the policy has material terms the customer needs to understand.
+ * Delegates to the shared cancellationRequiresAck from @beautonomi/i18n.
+ * policy_text is intentionally NOT used here — it caused spurious ack gates for all bookings.
+ */
 function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | null | undefined): boolean {
-  if (!policy) return false;
-  const windowHrs = policy.cancellation_window_hours;
-  const graceMin = policy.grace_window_minutes;
-  const noShowFee =
-    policy.no_show_fee_enabled && policy.no_show_fee_amount != null && Number(policy.no_show_fee_amount) > 0;
-  const latePct = policy.late_refund_percentage;
-  // Require ack when: there's a cancellation window, a grace period, a no-show fee, or a non-full-refund policy.
-  // policy_text is NOT used here — it's often a duplicate of the structured fields and including it caused
-  // the ack checkbox to appear for all bookings even when no real policy was configured.
-  const showLateLine =
-    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct)) && Number(latePct) < 100;
-  return !!(windowHrs || noShowFee || (graceMin != null && graceMin > 0) || showLateLine);
+  return cancellationRequiresAck(holdPolicyToView(policy));
 }
 
 function generateConsumeIdempotencyKey(): string {
@@ -958,15 +966,11 @@ function BookContinueContent() {
       return;
     }
 
-    for (const form of providerForms) {
-      if (!form.is_required) continue;
-      for (const field of form.fields || []) {
-        if (!field.is_required) continue;
-        const val = providerFormValues[form.id]?.[field.id];
-        if (val === undefined || val === null || String(val).trim() === "") {
-          setValidationError(`Please complete the required form: "${form.title}" (${field.name}).`);
-          return;
-        }
+    {
+      const missing = getMissingRequiredProviderFormField(providerForms, providerFormValues);
+      if (missing) {
+        setValidationError(`Please complete the required form: "${missing.formTitle}" (${missing.fieldName}).`);
+        return;
       }
     }
 
@@ -1813,68 +1817,49 @@ function BookContinueContent() {
             </div>
           )}
 
-          {cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && hold.cancellation_policy && (
-            <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
-              <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
-                Cancellation policy
-              </h2>
-              <ul className="text-sm space-y-2 list-disc pl-5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                {hold.cancellation_policy.grace_window_minutes != null && hold.cancellation_policy.grace_window_minutes > 0 && (
-                  <li>
-                    Free cancellation within {hold.cancellation_policy.grace_window_minutes} minutes of booking (grace period).
-                  </li>
-                )}
-                {hold.cancellation_policy.cancellation_window_hours != null &&
-                  hold.cancellation_policy.cancellation_window_hours > 0 && (
-                    <li>
-                      Free cancellation up to {hold.cancellation_policy.cancellation_window_hours}{" "}
-                      {hold.cancellation_policy.cancellation_window_hours === 1 ? "hour" : "hours"} before your appointment.
+          {cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && hold.cancellation_policy && (() => {
+            const policyContent = buildCancellationPolicyLines(holdPolicyToView(hold.cancellation_policy), {
+              t,
+              formatCurrency: (amount, cur) => formatCurrency(amount, cur || currency),
+            });
+            return (
+              <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
+                <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                  <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
+                  {t("checkout.cancellationPolicy")}
+                </h2>
+                <ul className="text-sm space-y-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                  {policyContent.lines.map((line) => (
+                    <li key={line.id} className="flex items-start gap-2">
+                      <span className={`mt-0.5 shrink-0 ${line.tone === "good" ? "text-green-500" : "text-amber-500"}`}>
+                        {line.tone === "good" ? "✓" : "⚠"}
+                      </span>
+                      <span>{line.text}</span>
                     </li>
-                  )}
-                {hold.cancellation_policy.late_refund_percentage != null &&
-                  !Number.isNaN(Number(hold.cancellation_policy.late_refund_percentage)) &&
-                  Number(hold.cancellation_policy.late_refund_percentage) < 100 && (() => {
-                    const pct = Math.round(Number(hold.cancellation_policy.late_refund_percentage));
-                    const hrs = hold.cancellation_policy.cancellation_window_hours;
-                    const hrsLabel = hrs != null && hrs > 0
-                      ? `Within ${hrs} ${hrs === 1 ? "hour" : "hours"}`
-                      : "Cancellation";
-                    return (
-                      <li>
-                        {hrsLabel}: {pct <= 0 ? "no refund" : `${pct}% refund`}.
-                      </li>
-                    );
-                  })()}
-                {hold.cancellation_policy.no_show_fee_enabled &&
-                  hold.cancellation_policy.no_show_fee_amount != null &&
-                  Number(hold.cancellation_policy.no_show_fee_amount) > 0 && (
-                    <li>
-                      No-show fee:{" "}
-                      {formatCurrency(
-                        Number(hold.cancellation_policy.no_show_fee_amount),
-                        hold.cancellation_policy.currency || currency
-                      )}
-                      .
-                    </li>
-                  )}
-              </ul>
-              <p className="text-xs opacity-60 pt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                This policy is enforced automatically at the time of cancellation.
-              </p>
-              <div className="flex items-start gap-3 pt-2">
-                <Checkbox
-                  id="cancellation-policy-ack"
-                  checked={cancellationPolicyAccepted}
-                  onCheckedChange={(c) => setCancellationPolicyAccepted(c === true)}
-                  className="mt-1"
-                />
-                <Label htmlFor="cancellation-policy-ack" className="text-sm cursor-pointer leading-snug" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  I understand the cancellation terms and any fees above.
-                </Label>
+                  ))}
+                </ul>
+                <div className="pt-1 space-y-1 border-t" style={{ borderColor: BOOKING_BORDER }}>
+                  <p className="text-xs opacity-60" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                    {policyContent.footerText}
+                  </p>
+                  <p className="text-xs opacity-60" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                    {policyContent.storeCreditNote}
+                  </p>
+                </div>
+                <div className="flex items-start gap-3 pt-2">
+                  <Checkbox
+                    id="cancellation-policy-ack"
+                    checked={cancellationPolicyAccepted}
+                    onCheckedChange={(c) => setCancellationPolicyAccepted(c === true)}
+                    className="mt-1"
+                  />
+                  <Label htmlFor="cancellation-policy-ack" className="text-sm cursor-pointer leading-snug" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                    {policyContent.ackText}
+                  </Label>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Payment</h2>

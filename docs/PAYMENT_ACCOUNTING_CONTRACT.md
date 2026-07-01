@@ -98,3 +98,22 @@ These three figures are deliberately different and must not be conflated in UI c
 UI surfaces must label these distinctly (e.g. "Revenue earned" vs "Available to withdraw") so a provider never reads recognized revenue as withdrawable cash.
 
 `providers.total_earnings` is denormalized historical payout information and must not be presented as payoutable balance.
+
+---
+
+## Additional Charge Settlement Matrix
+
+Additional charges on existing bookings can be settled via multiple tenders. The accounting rule is based on **who holds the money**, not on the booking source.
+
+| Tender | Accounting path | Payout-eligible? |
+|---|---|---|
+| Paystack online (redirect/checkout) | `handleAdditionalChargeSuccess` in webhook | Yes |
+| Paystack card-on-file (`charge-saved-card` with `additional_charge_id`) | `settleAdditionalChargePlatformHeld` | Yes |
+| Paystack Terminal (terminal allocation with `entity_type: "additional_charge"`) | `settleAdditionalChargePlatformHeld` | Yes |
+| Cash / manual card / Yoco (provider marks paid) | `record_walk_in_additional_charge_payment` RPC | No |
+
+All platform-held paths write `additional_charge_payment` (commission) + `provider_earnings` (provider share) into `finance_transactions`. The idempotency guard is the unique `payment_transactions(provider, reference)` constraint — any path that re-runs with the same reference returns early (`alreadySettled: true`) without double-writing ledger rows.
+
+### Consent rule
+
+Card-on-file charges for additional (variable, after-the-fact) amounts require explicit customer approval before the platform can charge. The customer must set the charge status to `approved` via `POST /api/me/bookings/[id]/approve-payment` before `charge-saved-card` will proceed. This is enforced server-side; the client cannot bypass it.

@@ -138,6 +138,27 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
 
+  // ── Membership dunning / billing events ─────────────────────────────────
+  if (
+    nType === "membership_payment_failed" ||
+    nType === "membership_card_expired" ||
+    nType === "membership_expired" ||
+    nType === "membership_activated" ||
+    nType === "membership_renewal_success" ||
+    dataType === "membership_payment_failed" ||
+    dataType === "membership_card_expired" ||
+    dataType === "membership_expired" ||
+    dataType === "membership_activated" ||
+    templateKey === "membership_payment_failed" ||
+    templateKey === "membership_card_expired" ||
+    templateKey === "membership_expired" ||
+    templateKey === "membership_activated" ||
+    link.includes("/account-settings/membership")
+  ) {
+    router.push("/(app)/account-settings/membership" as never);
+    return;
+  }
+
   // ── Membership win-back (provider invited a cancelled member to rejoin) ──
   if (
     nType === "membership_win_back" ||

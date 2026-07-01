@@ -17,6 +17,7 @@ import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-avail
 import { bookingProductLineSchema } from "@/lib/public-booking/booking-draft-schema";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+import { getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import { z } from "zod";
 
 const consumeBodySchema = z.object({
@@ -384,6 +385,33 @@ export async function POST(
       }
     }
 
+    // Validate required provider forms before building the draft / forwarding.
+    // This gives an early 400 without consuming the hold and without a
+    // round-trip to /api/public/bookings.
+    {
+      const formResponses = providerFormResponses ?? {};
+      const { data: activeForms } = await adminSupabase
+        .from("provider_forms")
+        .select("id, title, is_required, provider_form_fields(id, name, field_type, is_required)")
+        .eq("provider_id", hold.provider_id)
+        .eq("is_active", true);
+
+      const formsWithFields = ((activeForms as Array<{
+        id: string; title: string; is_required: boolean;
+        provider_form_fields: Array<{ id: string; name: string; field_type: string; is_required: boolean }>;
+      }> | null) ?? []).map((f) => ({ ...f, fields: f.provider_form_fields }));
+
+      const missing = getMissingRequiredProviderFormField(formsWithFields, formResponses);
+      if (missing) {
+        await releaseHold();
+        return errorResponse(
+          `Please complete the required form: "${missing.formTitle}" (${missing.fieldName}).`,
+          "PROVIDER_FORM_REQUIRED",
+          400,
+        );
+      }
+    }
+
     // Build booking draft from hold snapshot
     const snapshot = hold.booking_services_snapshot as Array<{
       offering_id: string;
@@ -504,6 +532,14 @@ export async function POST(
     const resourceIds = resourceIdsFromBody ?? resourceIdsFromHold;
     if (resourceIds && resourceIds.length > 0) {
       draft.resource_ids = resourceIds;
+    }
+
+    // Forward provider form responses so the downstream /api/public/bookings
+    // server-side required-form validation sees them (otherwise it would
+    // reject bookings for providers with required forms). They are also
+    // persisted there via the `persist_forms` stage.
+    if (providerFormResponses && Object.keys(providerFormResponses).length > 0) {
+      draft.provider_form_responses = providerFormResponses;
     }
 
     if (

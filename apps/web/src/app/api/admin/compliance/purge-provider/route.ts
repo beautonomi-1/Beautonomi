@@ -219,17 +219,20 @@ export async function POST(request: NextRequest) {
       metadata: {
         purged_user_ids: result.purged_user_ids,
         compliance_audit_row:
-          auditInsert.ok === true ? { id: auditInsert.id } : { error: auditInsert.error },
+          auditInsert.ok === true
+            ? { id: auditInsert.id, degraded: auditInsert.degraded || undefined }
+            : { error: auditInsert.error },
       },
     });
 
-    invalidatePublicProviderCache();
+    invalidatePublicProviderCache(tenantId);
 
     return successResponse({
       provider_id,
       purged_user_ids: result.purged_user_ids,
       compliance_audit_id: auditInsert.ok === true ? auditInsert.id : null,
       compliance_audit_write_error: auditInsert.ok === true ? null : auditInsert.error,
+      compliance_audit_degraded: auditInsert.ok === true ? (auditInsert.degraded ?? null) : null,
       report,
     });
   } catch (error) {

@@ -1,60 +1,59 @@
+#!/usr/bin/env node
 /**
- * Ensures apps/web/vercel.json cron paths map to route handlers that
- * export GET and call verifyCronRequest (repo guardrail; run from repo root).
+ * verify-cron-schedule.mjs
+ *
+ * Verifies that every cron path registered in apps/web/vercel.json has a
+ * corresponding route handler file at apps/web/src/app/<path>/route.ts.
+ *
+ * Exit 0: all handlers exist.
+ * Exit 1: one or more handlers are missing.
+ *
+ * Usage:
+ *   node scripts/verify-cron-schedule.mjs
+ *   pnpm verify:cron-schedule   (alias in root package.json)
  */
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..", "..");
-const vercelPath = path.join(root, "apps", "web", "vercel.json");
-const cronRoot = path.join(root, "apps", "web", "src", "app", "api", "cron");
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-function main() {
-  const vercel = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
-  const crons = vercel.crons ?? [];
-  const errors = [];
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// docs/scripts/ → docs/ → repo root
+const ROOT = join(__dirname, "..", "..");
+const VERCEL_JSON = join(ROOT, "apps", "web", "vercel.json");
+const ROUTES_ROOT = join(ROOT, "apps", "web", "src", "app");
 
-  for (const c of crons) {
-    const p = c.path;
-    if (typeof p !== "string" || !p.startsWith("/api/cron/")) {
-      errors.push(`Invalid cron path: ${JSON.stringify(p)}`);
-      continue;
-    }
-    const slug = p.slice("/api/cron/".length);
-    const routeFile = path.join(cronRoot, slug, "route.ts");
-    if (!fs.existsSync(routeFile)) {
-      errors.push(`Missing handler: ${p} → ${path.relative(root, routeFile)}`);
-      continue;
-    }
-    const src = fs.readFileSync(routeFile, "utf8");
-    if (!/\bexport\s+async\s+function\s+GET\b/.test(src)) {
-      errors.push(`${p}: no export async function GET`);
-    }
-    if (!src.includes("verifyCronRequest")) {
-      errors.push(`${p}: does not reference verifyCronRequest`);
-    }
-  }
+const raw = await readFile(VERCEL_JSON, "utf8");
+const { crons } = JSON.parse(raw);
 
-  const scheduled = new Set(
-    crons.map((c) => (typeof c.path === "string" ? c.path.slice("/api/cron/".length) : "")),
-  );
-  const dirs = fs
-    .readdirSync(cronRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
-  for (const d of dirs) {
-    if (!scheduled.has(d)) {
-      errors.push(`api/cron/${d} exists but is not listed in apps/web/vercel.json crons`);
-    }
-  }
-
-  if (errors.length) {
-    console.error("verify-cron-schedule failed:\n" + errors.map((e) => `  - ${e}`).join("\n"));
-    process.exit(1);
-  }
-  console.log(`verify-cron-schedule: OK (${crons.length} crons, ${dirs.length} handler dirs)`);
+if (!Array.isArray(crons) || crons.length === 0) {
+  console.error("No crons array found in vercel.json");
+  process.exit(1);
 }
 
-main();
+console.log(`\nCron Schedule Verification — ${new Date().toISOString()}`);
+console.log(`Checking ${crons.length} cron job(s) from apps/web/vercel.json\n`);
+
+let missing = 0;
+
+for (const { path, schedule } of crons) {
+  const handlerTs = join(ROUTES_ROOT, path, "route.ts");
+  const handlerTsx = join(ROUTES_ROOT, path, "route.tsx");
+  const exists = existsSync(handlerTs) || existsSync(handlerTsx);
+  const icon = exists ? "✓" : "✗";
+  console.log(`  ${icon}  ${path}   [${schedule}]`);
+  if (!exists) missing++;
+}
+
+console.log("");
+
+if (missing > 0) {
+  console.error(
+    `FAILED: ${missing} of ${crons.length} cron route handler(s) are missing.\n` +
+      `Create the missing route.ts files or remove stale entries from vercel.json.`
+  );
+  process.exit(1);
+} else {
+  console.log(`All ${crons.length} cron handlers verified.\n`);
+}

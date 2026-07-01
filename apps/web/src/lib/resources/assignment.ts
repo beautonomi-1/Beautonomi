@@ -56,10 +56,13 @@ export async function checkResourceAvailability(
       .eq('resource_id', resourceId)
       .lt('scheduled_start_at', endAt.toISOString())
       .gt('scheduled_end_at', startAt.toISOString())
-      // Must mirror the status filter in `lock_booking_resources_for_update`
-      // (migration 454) so availability checks and the DB-level lock agree on
-      // which bookings count as still occupying the slot.
-      .not('bookings.status', 'in', '("cancelled","no_show","failed")')
+      // Must mirror the canonical status filter in
+      // `lock_booking_resources_for_update` (migration 475) so availability
+      // checks and the DB-level lock agree on which bookings still occupy the
+      // slot. NOTE: 'failed' is NOT a `booking_status` enum value — including it
+      // as a literal raises 22P02 against the enum column (see migration 475),
+      // so the filter must list only cancelled + no_show.
+      .not('bookings.status', 'in', '("cancelled","no_show")')
       .neq('booking_id', excludeBookingId || '00000000-0000-0000-0000-000000000000');
 
     if (error) {

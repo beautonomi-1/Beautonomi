@@ -642,6 +642,10 @@ export default function BookingDetailScreen() {
   const appointmentProductOrders = appointmentProductOrdersData?.orders ?? [];
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
+  const [resourceAssignLoading, setResourceAssignLoading] = useState(false);
+  const [selectedResourceId, setSelectedResourceId] = useState<string>("");
+  const [availableResources, setAvailableResources] = useState<{ id: string; name: string; resource_group_name?: string | null }[]>([]);
+  const [showResourcePicker, setShowResourcePicker] = useState(false);
   const [collectingProductOrderId, setCollectingProductOrderId] = useState<string | null>(null);
   const [preparingFulfillment, setPreparingFulfillment] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -937,11 +941,19 @@ export default function BookingDetailScreen() {
   }, [bookingIdStr]);
 
   // Additional charges (fetch when booking loaded)
-  const { data: additionalChargesData, refresh: refreshCharges } = useApi<{ charges: AdditionalCharge[] }>(
+  const { data: additionalChargesData, refresh: refreshCharges } = useApi<{
+    charges: AdditionalCharge[];
+    settlementPlan?: {
+      recommendedAction: "customer_pay" | "charge_card_on_file" | "collect_in_person";
+      availableActions: string[];
+      cardOnFileRequiresApproval: boolean;
+    };
+  }>(
     `/api/provider/bookings/${id}/additional-charges`,
     { enabled: !!id }
   );
   const additionalCharges: AdditionalCharge[] = additionalChargesData?.charges ?? [];
+  const settlementPlan = additionalChargesData?.settlementPlan ?? null;
 
   const { data: bookingResourcesData, refresh: refreshResources } = useApi<{ resources: BookingResourceRow[] }>(
     `/api/provider/bookings/${id}/resources`,
@@ -953,6 +965,55 @@ export default function BookingDetailScreen() {
     await Promise.all([refresh(), refreshCharges(), refreshResources()]);
     setLastLiveUpdateAt(Date.now());
   }, [refresh, refreshCharges, refreshResources]);
+
+  const loadAvailableResources = useCallback(async () => {
+    // GET /api/provider/resources returns { data: Resource[] } where each
+    // resource exposes `group_name` (not `resource_group_name`).
+    const res = await api.get<{ id: string; name: string; group_name?: string | null }[]>("/api/provider/resources");
+    const list = (res as any)?.data ?? [];
+    setAvailableResources(
+      Array.isArray(list)
+        ? list.map((r: any) => ({ id: r.id, name: r.name, resource_group_name: r.group_name ?? null }))
+        : [],
+    );
+  }, []);
+
+  const handleAssignResource = useCallback(async (resourceId: string) => {
+    if (!id || !resourceId) return;
+    setResourceAssignLoading(true);
+    const res = await api.post(`/api/provider/bookings/${id}/resources`, { resource_id: resourceId });
+    setResourceAssignLoading(false);
+    if (res.error) {
+      const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? "Failed to assign resource";
+      Alert.alert("Error", msg.toLowerCase().includes("not available") ? "This resource is not available at this time." : msg);
+      return;
+    }
+    setSelectedResourceId("");
+    setShowResourcePicker(false);
+    await refreshResources();
+  }, [id, refreshResources]);
+
+  const handleRemoveResource = useCallback(async (resourceId: string) => {
+    if (!id) return;
+    Alert.alert("Remove resource", "Remove this resource from the booking?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          setResourceAssignLoading(true);
+          const res = await api.delete(`/api/provider/bookings/${id}/resources/${resourceId}`);
+          setResourceAssignLoading(false);
+          if (res.error) {
+            const msg = typeof res.error === "string" ? res.error : (res.error as any)?.message ?? "Failed to remove resource";
+            Alert.alert("Error", msg);
+            return;
+          }
+          await refreshResources();
+        },
+      },
+    ]);
+  }, [id, refreshResources]);
 
   const refreshBookingDetailRef = useRef(refreshBookingDetail);
   refreshBookingDetailRef.current = refreshBookingDetail;
@@ -3952,6 +4013,18 @@ export default function BookingDetailScreen() {
         {additionalCharges.length > 0 && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Additional charges</Text>
+            {settlementPlan && (
+              <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 mb-3")}>
+                <Text style={twStyle("text-xs text-blue-800")}>
+                  <Text style={twStyle("font-semibold")}>Recommended: </Text>
+                  {settlementPlan.recommendedAction === "charge_card_on_file"
+                    ? "Charge card on file (customer approves first)"
+                    : settlementPlan.recommendedAction === "customer_pay"
+                    ? "Send to customer — they pay in-app"
+                    : "Collect in person (cash, card, or terminal)"}
+                </Text>
+              </View>
+            )}
             {additionalCharges.map((c) => (
               <View key={c.id} style={twStyle("rounded-lg border border-gray-100 bg-gray-50 p-3 mb-2")}>
                 <View style={twStyle("flex-row items-center justify-between")}>
@@ -4158,17 +4231,99 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
-        {bookingResources.length > 0 && (
+        {/* Resources: show assigned + allow assign/remove when user can edit */}
+        {(bookingResources.length > 0 || canEditAppointments) && (
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Resources</Text>
-            {bookingResources.map((r) => (
-              <View key={r.id} style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2 mb-2")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>{r.resource_name}</Text>
-                {r.resource_group_name ? (
-                  <Text style={twStyle("text-xs text-gray-500")}>{r.resource_group_name}</Text>
-                ) : null}
-              </View>
-            ))}
+            <View style={twStyle("flex-row items-center justify-between mb-2")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Resources</Text>
+              {canEditAppointments && (
+                <TouchableOpacity
+                  onPress={() => {
+                    loadAvailableResources();
+                    setShowResourcePicker(true);
+                  }}
+                >
+                  <Text style={twStyle("text-sm font-medium text-primary")}>+ Assign</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {bookingResources.length === 0 ? (
+              <Text style={twStyle("text-sm text-gray-400")}>No resources assigned</Text>
+            ) : (
+              bookingResources.map((r) => (
+                <View key={r.id} style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 mb-2")}>
+                  <View style={twStyle("flex-1 min-w-0")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{r.resource_name}</Text>
+                    {r.resource_group_name ? (
+                      <Text style={twStyle("text-xs text-gray-500")}>{r.resource_group_name}</Text>
+                    ) : null}
+                  </View>
+                  {canEditAppointments && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveResource(r.resource_id)}
+                      disabled={resourceAssignLoading}
+                      style={twStyle("ml-3 p-1")}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))
+            )}
+            {/* Resource picker modal */}
+            <Modal
+              visible={showResourcePicker}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowResourcePicker(false)}
+            >
+              <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setShowResourcePicker(false)}>
+                <Pressable style={twStyle("bg-white rounded-t-2xl p-5")} onPress={() => {}}>
+                  <Text style={twStyle("text-base font-semibold text-gray-900 mb-3")}>Assign resource</Text>
+                  {availableResources.filter((r) => !bookingResources.some((br) => br.resource_id === r.id)).length === 0 ? (
+                    <Text style={twStyle("text-sm text-gray-500 mb-4")}>All resources are already assigned or none configured.</Text>
+                  ) : (
+                    availableResources
+                      .filter((r) => !bookingResources.some((br) => br.resource_id === r.id))
+                      .map((r) => (
+                        <TouchableOpacity
+                          key={r.id}
+                          style={[
+                            twStyle("flex-row items-center rounded-xl border px-3 py-3 mb-2"),
+                            { borderColor: selectedResourceId === r.id ? Colors.primary : "#e5e7eb", backgroundColor: selectedResourceId === r.id ? "#faf5ff" : "#fff" },
+                          ]}
+                          onPress={() => setSelectedResourceId(r.id)}
+                        >
+                          <View style={twStyle("flex-1")}>
+                            <Text style={twStyle("text-sm font-medium text-gray-900")}>{r.name}</Text>
+                            {r.resource_group_name ? <Text style={twStyle("text-xs text-gray-500")}>{r.resource_group_name}</Text> : null}
+                          </View>
+                          {selectedResourceId === r.id && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                        </TouchableOpacity>
+                      ))
+                  )}
+                  <View style={twStyle("flex-row gap-3 mt-2")}>
+                    <TouchableOpacity
+                      style={twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center")}
+                      onPress={() => { setShowResourcePicker(false); setSelectedResourceId(""); }}
+                    >
+                      <Text style={twStyle("text-sm font-medium text-gray-700")}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[twStyle("flex-1 rounded-xl py-3 items-center"), { backgroundColor: selectedResourceId ? Colors.primary : "#d1d5db" }]}
+                      onPress={() => handleAssignResource(selectedResourceId)}
+                      disabled={!selectedResourceId || resourceAssignLoading}
+                    >
+                      {resourceAssignLoading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={twStyle("text-sm font-medium text-white")}>Assign</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
           </View>
         )}
 

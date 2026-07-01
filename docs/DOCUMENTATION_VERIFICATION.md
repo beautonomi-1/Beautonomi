@@ -1,6 +1,6 @@
 # Documentation verification
 
-Short record of checks run against the codebase to ensure docs are accurate. Last verification: 2025-03.
+Short record of checks run against the codebase to ensure docs are accurate. Last verification: **2026-07-01** (Enterprise Go-Live Hardening pass).
 
 ---
 
@@ -22,7 +22,27 @@ Short record of checks run against the codebase to ensure docs are accurate. Las
 
 ---
 
+## 2026-07-01 Refresh (Enterprise Go-Live Hardening)
+
+### Additions verified
+
+- **`docs/audits/cron-systems-audit.md`** — Regenerated from `apps/web/vercel.json` (38 entries, up from stale 14-entry version). All paths verified against route handlers via `pnpm verify:cron-schedule`.
+- **`docs/MANUAL_FINANCE_VALIDATION.md`** — Refreshed with automated drift detection section referencing `.github/workflows/finance-drift.yml` and `supabase/migrations/724_finance_audit_run_rpc.sql`.
+- **`docs/SCALE_SLO_GATES.md`** — k6 runbook section added, referencing `.github/workflows/load-test.yml` and `tooling/load-test/` scripts.
+- **`docs/platform/admin-spa/ADMIN_CUTOVER_EXECUTION_REPORT.md`** — Updated to reflect SPA as default; legacy Next.js admin pages removed.
+
+### Automated verification script
+
+`docs/scripts/verify-documentation.mjs` — checks file path references in key doc files. Run with `node docs/scripts/verify-documentation.mjs`.
+
+### Cron schedule CI check
+
+`pnpm verify:cron-schedule` (`docs/scripts/verify-cron-schedule.mjs`) — validates all 38 cron paths in `vercel.json` have corresponding `route.ts` handlers. Runs in the `test` CI job.
+
+---
+
 ## Recommendations
 
 - **My tickets UI** – API is ready; adding a "My tickets" page (web) or screen (provider app) that calls `GET /api/me/support-tickets` and shows ticket number in submit success would complete the support-ticket flow described in GAPS_AND_IMPROVEMENTS.
 - **Periodic re-check** – Re-run verification when adding or removing major routes/APIs or after large doc consolidations. Focus on: API route existence, account-settings and more-menu route lists, and "See also" / related-doc links.
+- **Cron audit cadence** — Re-run `pnpm verify:cron-schedule` and update `docs/audits/cron-systems-audit.md` whenever a cron handler is added or removed.

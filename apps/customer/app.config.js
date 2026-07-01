@@ -31,6 +31,14 @@ const pushUsesProduction = appEnv === "production" || appEnv === "preview";
 const oneSignalMode = pushUsesProduction ? "production" : "development";
 const apsEnvironment = pushUsesProduction ? "production" : "development";
 
+// Amplitude Guides & Surveys preview deep-link scheme (e.g. amp-abcdef123456).
+// Value comes from Amplitude → Settings → Projects → your project → URL scheme (mobile).
+// Only needed to PREVIEW unpublished guides/surveys on device; published content works without it.
+const amplitudeUrlScheme =
+  envFromFile.EXPO_PUBLIC_AMPLITUDE_URL_SCHEME ||
+  process.env.EXPO_PUBLIC_AMPLITUDE_URL_SCHEME ||
+  "";
+
 const easBuildProfile = process.env.EAS_BUILD_PROFILE;
 if (
   (easBuildProfile === "production" || easBuildProfile === "preview") &&
@@ -65,7 +73,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.67",
+  version: "1.0.68",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -79,16 +87,34 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "259",
+    buildNumber: "260",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
         "Beautonomi can add your appointment to your calendar when you choose Save to calendar.",
+      // Sumsub identity verification requires camera access for document capture
+      // and liveness checks, and microphone access for liveness video recording.
+      NSCameraUsageDescription:
+        "Beautonomi uses the camera for identity verification and profile photos.",
+      NSMicrophoneUsageDescription:
+        "Beautonomi uses the microphone during identity verification to record your liveness video.",
       ITSAppUsesNonExemptEncryption: false,
       // WrongAppScreen: Linking.canOpenURL("provider://") needs the scheme here
       // (iOS blocks undeclared schemes). Must match plugin `scheme` and
       // apps/provider `scheme` + android.package com.beautonomi.partner.
       LSApplicationQueriesSchemes: ["provider"],
+      // Amplitude Guides & Surveys preview deep links (amp-xxxx://). Dedicated URL
+      // type so it never collides with expo-router; handleEngagementURL consumes it.
+      ...(amplitudeUrlScheme
+        ? {
+            CFBundleURLTypes: [
+              {
+                CFBundleURLName: "AmplitudeURLScheme",
+                CFBundleURLSchemes: [amplitudeUrlScheme],
+              },
+            ],
+          }
+        : {}),
     },
     entitlements: {
       "aps-environment": apsEnvironment,
@@ -112,8 +138,12 @@ const BASE_EXPO_CONFIG = {
     permissions: [
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
+      // Sumsub identity verification: camera for document capture + liveness,
+      // RECORD_AUDIO for liveness video recording.
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 260,
+    versionCode: 261,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -133,6 +163,16 @@ const BASE_EXPO_CONFIG = {
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },
+      // Amplitude Guides & Surveys preview deep links (amp-xxxx://).
+      ...(amplitudeUrlScheme
+        ? [
+            {
+              action: "VIEW",
+              data: [{ scheme: amplitudeUrlScheme }],
+              category: ["BROWSABLE", "DEFAULT"],
+            },
+          ]
+        : []),
     ],
   },
   web: {
@@ -151,6 +191,8 @@ const BASE_EXPO_CONFIG = {
         ios: {
           deploymentTarget: "15.1",
           privacyManifestAggregationEnabled: true,
+          // Sumsub native SDK: IdensicMobileSDK spec comes from the Sumsub Specs repo.
+          iosPodfileSourceRepos: ["https://github.com/SumSubstance/Specs.git"],
         },
         android: {
           minSdkVersion: 24,
@@ -158,6 +200,8 @@ const BASE_EXPO_CONFIG = {
           targetSdkVersion: 35,
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
+          // Sumsub native SDK: Android AAR lives in the Sumsub Maven repo.
+          extraMavenRepos: ["https://maven.sumsub.com/repository/maven-public/"],
         },
       },
     ],
@@ -198,6 +242,16 @@ const BASE_EXPO_CONFIG = {
           "Allow Beautonomi to access your photos for your profile, reviews, and sharing images.",
         cameraPermission:
           "Allow Beautonomi to use the camera for your profile, reviews, and sharing photos.",
+      },
+    ],
+    [
+      "expo-camera",
+      {
+        cameraPermission:
+          "Beautonomi uses the camera for identity verification and profile photos.",
+        microphonePermission:
+          "Beautonomi uses the microphone during identity verification to record your liveness video.",
+        recordAudioAndroid: true,
       },
     ],
     [

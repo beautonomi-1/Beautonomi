@@ -19,7 +19,6 @@ export async function GET(
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
-    // Fetch bookings for the user - check both user_id and customer_id columns
     const { data: bookings, error: bookingsError } = await supabase
       .from("bookings")
       .select(`
@@ -33,7 +32,7 @@ export async function GET(
         service_id
       `)
       .eq("tenant_id", tenantId)
-      .or(`customer_id.eq.${id},user_id.eq.${id}`)
+      .eq("customer_id", id)
       .order("created_at", { ascending: false })
       .limit(100);
 

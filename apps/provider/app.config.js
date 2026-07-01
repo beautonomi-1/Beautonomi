@@ -28,6 +28,14 @@ const pushUsesProduction = appEnv === "production" || appEnv === "preview";
 const oneSignalMode = pushUsesProduction ? "production" : "development";
 const apsEnvironment = pushUsesProduction ? "production" : "development";
 
+// Amplitude Guides & Surveys preview deep-link scheme (e.g. amp-abcdef123456).
+// Value comes from Amplitude → Settings → Projects → your project → URL scheme (mobile).
+// Only needed to PREVIEW unpublished guides/surveys on device; published content works without it.
+const amplitudeUrlScheme =
+  envFromFile.EXPO_PUBLIC_AMPLITUDE_URL_SCHEME ||
+  process.env.EXPO_PUBLIC_AMPLITUDE_URL_SCHEME ||
+  "";
+
 const easBuildProfile = process.env.EAS_BUILD_PROFILE;
 if (
   (easBuildProfile === "production" || easBuildProfile === "preview") &&
@@ -60,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.67",
+  version: "1.0.68",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -76,6 +84,9 @@ const BASE_EXPO_CONFIG = {
         ios: {
           deploymentTarget: "15.1",
           privacyManifestAggregationEnabled: true,
+          // Sumsub native SDK: IdensicMobileSDK spec comes from the Sumsub Specs repo.
+          // The JS module's podspec declares the dependency; we just need the source.
+          iosPodfileSourceRepos: ["https://github.com/SumSubstance/Specs.git"],
         },
         android: {
           minSdkVersion: 24,
@@ -83,6 +94,8 @@ const BASE_EXPO_CONFIG = {
           targetSdkVersion: 35,
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
+          // Sumsub native SDK: Android AAR lives in the Sumsub Maven repo.
+          extraMavenRepos: ["https://maven.sumsub.com/repository/maven-public/"],
         },
       },
     ],
@@ -133,7 +146,9 @@ const BASE_EXPO_CONFIG = {
       {
         cameraPermission:
           "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, and to scan arrival QR codes.",
-        recordAudioAndroid: false,
+        // Enable microphone access on Android so the Sumsub liveness check can
+        // record video (and for future in-app video features).
+        recordAudioAndroid: true,
       },
     ],
     [
@@ -163,15 +178,29 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "259",
+    buildNumber: "260",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription:
+        "Beautonomi Provider uses the camera for identity verification, profile photos, catalogue images, and scanning QR codes.",
       NSMicrophoneUsageDescription:
         "Beautonomi Provider may use the microphone when you choose to record a video for posts, messages, or work documentation.",
       // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
       // Must match plugin `scheme` and apps/customer `scheme` + package com.beautonomi.
       LSApplicationQueriesSchemes: ["customer"],
+      // Amplitude Guides & Surveys preview deep links (amp-xxxx://). Dedicated URL
+      // type so it never collides with expo-router; handleEngagementURL consumes it.
+      ...(amplitudeUrlScheme
+        ? {
+            CFBundleURLTypes: [
+              {
+                CFBundleURLName: "AmplitudeURLScheme",
+                CFBundleURLSchemes: [amplitudeUrlScheme],
+              },
+            ],
+          }
+        : {}),
     },
     entitlements: {
       "aps-environment": apsEnvironment,
@@ -197,7 +226,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 260,
+    versionCode: 261,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -213,6 +242,16 @@ const BASE_EXPO_CONFIG = {
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },
+      // Amplitude Guides & Surveys preview deep links (amp-xxxx://).
+      ...(amplitudeUrlScheme
+        ? [
+            {
+              action: "VIEW",
+              data: [{ scheme: amplitudeUrlScheme }],
+              category: ["BROWSABLE", "DEFAULT"],
+            },
+          ]
+        : []),
     ],
   },
   web: {

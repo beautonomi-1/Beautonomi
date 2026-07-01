@@ -7,7 +7,8 @@
  * onboarding identity step (`onboarding/verify-identity.tsx`) so behavior stays
  * identical in both places.
  *
- * When SumSub is configured -> launches the embed URL in an in-app browser.
+ * When SumSub is configured -> launches the native Sumsub SDK flow (camera +
+ * liveness in-process, no WebView or external browser).
  * When SumSub is NOT configured -> manual document-upload form that posts to
  * /api/me/verification (same flow used by the customer identity screen).
  */
@@ -21,7 +22,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -29,8 +30,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { appendFormDataFileNative } from "@beautonomi/utils";
-import { getWebProviderBaseUrl } from "@/lib/web-url";
-import { pushInAppBrowser } from "@/lib/in-app-web";
+import { launchSumsub } from "@/lib/sumsub/launchSumsub";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -84,7 +84,6 @@ export interface ProviderVerificationPanelProps {
 }
 
 export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange }: ProviderVerificationPanelProps) {
-  const router = useRouter();
   const { bundle } = useConfigBundle();
   const [refreshing, setRefreshing] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -135,27 +134,39 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLaunching(true);
     try {
-      const res = await api.get<{ access_token: string; refresh_token?: string }>(
-        `/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`
-      );
-      const access_token = res.data?.access_token;
-      const refresh_token = res.data?.refresh_token;
-      if (!access_token) {
+      const result = await launchSumsub({
+        env,
+        onStatusChanged: (status) => {
+          // Eagerly refresh status after any terminal event so the UI updates
+          // without waiting for the next webhook delivery.
+          const terminalStatuses = new Set([
+            "Approved",
+            "FinallyRejected",
+            "TemporarilyDeclined",
+            "ActionCompleted",
+          ]);
+          if (terminalStatuses.has(status)) {
+            refresh();
+          }
+        },
+      });
+
+      if (!result.ok) {
         Alert.alert(
           "Automated verification unavailable",
           "Please use the manual document upload below to submit your ID for review."
         );
-        return;
+      } else {
+        // Always refresh after the flow closes so status badge reflects the
+        // latest state (SDK may close before webhook arrives).
+        refresh();
       }
-      const baseUrl = getWebProviderBaseUrl().replace(/\/$/, "");
-      const hash = `token=${encodeURIComponent(access_token)}${refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""}`;
-      pushInAppBrowser(router, `${baseUrl}/provider/verification/embed#${hash}`, "Verification");
     } catch {
       Alert.alert("Error", "Could not start verification. Please use the manual upload below.");
     } finally {
       setLaunching(false);
     }
-  }, [env, router]);
+  }, [env, refresh]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -285,13 +296,13 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
               variant="secondary"
               onPress={openVerificationFlow}
               fullWidth
-              icon="open-outline"
+              icon="shield-checkmark-outline"
               iconPosition="right"
               loading={launching}
               disabled={launching}
             />
             <Text style={twStyle("mt-3 text-center text-sm text-gray-500")}>
-              Opens the verification flow in-app.
+              Powered by Sumsub · runs fully in-app.
             </Text>
           </View>
         )}

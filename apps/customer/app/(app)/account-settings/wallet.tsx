@@ -8,10 +8,13 @@ import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { safeWarn } from "@/lib/payments/safeLog";
+import {
+  matchesExpoReturnUrl,
+  isCancelledPaystackUrl,
+} from "@/lib/paystack-webview-utils";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { APP_URL } from "@/config/public-env";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -168,7 +171,7 @@ export default function WalletScreen() {
     setToppingUp(true);
     setTopupStatus(t("customer.walletScreen.statusStarting", "Starting secure payment…") as string);
     try {
-      const returnUrl = ExpoLinking.createURL("account-settings/wallet");
+      const returnUrl = ExpoLinking.createURL("wallet-return");
       const res = await api.post<{
         payment_url?: string;
         topup_id?: string;
@@ -215,34 +218,12 @@ export default function WalletScreen() {
           return;
         }
         setTopupStatus(t("customer.walletScreen.statusCheckout", "Complete payment in the secure window…") as string);
-        const appBase = (APP_URL ?? "").replace(/\/$/, "");
         const outcome = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
           title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
           returnUrl,
-          matchSuccess: (rawUrl) => {
-            try {
-              // Mobile callback is the customer:// deep link; web preview is the
-              // https success page. Accept either as a success signal.
-              if (returnUrl && rawUrl.startsWith(returnUrl) && rawUrl.includes("payment_type=wallet_topup")) {
-                return !rawUrl.includes("topup_cancelled=1") && !rawUrl.includes("cancelled=1");
-              }
-              if (!rawUrl.startsWith("http") || !appBase) return false;
-              const u = new URL(rawUrl);
-              if (!u.href.startsWith(appBase)) return false;
-              if (u.searchParams.get("cancelled") === "1") return false;
-              return u.pathname.includes("/checkout/success") && u.searchParams.get("payment_type") === "wallet_topup";
-            } catch {
-              return false;
-            }
-          },
-          matchCancel: (rawUrl) => {
-            try {
-              const u = new URL(rawUrl);
-              return u.searchParams.get("topup_cancelled") === "1" || u.searchParams.get("cancelled") === "1";
-            } catch {
-              return false;
-            }
-          },
+          matchSuccess: (rawUrl) =>
+            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+          matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
         cancelled = outcome?.outcome === "cancel";
       }

@@ -133,8 +133,19 @@ export default function PartnerMemberships({
               <div className="text-sm text-gray-600">
                 {safeDiscountPct(p.discount_percent)}% off services
               </div>
+              {/* Recurring consent disclosure */}
+              {activePlanId !== p.id && (
+                <p className="text-xs text-gray-400 mt-3">
+                  Auto-renews monthly at {p.currency ?? ""} {safeMoney(p.price_monthly ?? p.price)}. Cancel anytime from your account.
+                </p>
+              )}
+              {activePlanId === p.id && (
+                <p className="text-xs text-green-600 mt-3 font-medium">
+                  ✓ Active — auto-renews monthly
+                </p>
+              )}
               <Button
-                className="mt-4 w-full bg-gray-900 text-white"
+                className="mt-3 w-full bg-gray-900 text-white"
                 onClick={() => buy(p.id)}
                 disabled={authLoading || isBuying === p.id || activePlanId === p.id}
               >
@@ -144,7 +155,7 @@ export default function PartnerMemberships({
                     ? "Redirecting..."
                     : activePlanId === p.id
                       ? "Your current plan"
-                      : "Buy membership"}
+                      : "Subscribe"}
               </Button>
             </div>
           ))}

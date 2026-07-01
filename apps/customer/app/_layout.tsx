@@ -30,6 +30,7 @@ import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBoot
 import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 import { ImageCropperProvider } from "@/components/image-crop";
 import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
+import { InAppBannerProvider } from "@/providers/InAppBannerProvider";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -160,7 +161,9 @@ function RootLayout() {
               <SelectedAddressProvider>
                 <AnalyticsProvider>
                   <ConfigBundleProvider>
-                    <ThemedApp />
+                    <InAppBannerProvider>
+                      <ThemedApp />
+                    </InAppBannerProvider>
                   </ConfigBundleProvider>
                 </AnalyticsProvider>
               </SelectedAddressProvider>

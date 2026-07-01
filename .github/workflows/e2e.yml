@@ -1,16 +1,23 @@
-name: E2E (Preview)
+name: E2E (Preview + Staging)
 
 on:
   deployment_status:
 
 jobs:
   booking-happy-path:
-    # Only run against successful Vercel Preview deployments.
+    # Run against successful Vercel Preview deployments (skippable — no seed) AND
+    # against Staging deployments (non-skippable — always seeds a test provider).
     if: >-
       github.event.deployment_status.state == 'success' &&
-      github.event.deployment_status.environment == 'Preview'
+      (
+        github.event.deployment_status.environment == 'Preview' ||
+        github.event.deployment_status.environment == 'Staging' ||
+        github.event.deployment_status.environment == 'staging'
+      )
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      IS_STAGING: ${{ contains(github.event.deployment_status.environment, 'taging') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,20 +27,48 @@ jobs:
           cache: pnpm
       - name: Install deps
         run: pnpm install --frozen-lockfile
+
+      # Seed the staging test provider (only for Staging environment).
+      # Outputs E2E_PROVIDER_SLUG which overrides the secret on staging runs.
+      - name: Seed staging provider (Staging only)
+        if: ${{ env.IS_STAGING == 'true' }}
+        id: seed
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # Seed is idempotent (upserts). Capture stdout (slug) in one run.
+          SLUG=$(node scripts/e2e/seed-staging.mjs)
+          echo "provider_slug=${SLUG}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve provider slug
+        id: slug
+        run: |
+          # Use seeded slug on staging; fall back to repo secret on preview.
+          SLUG="${{ steps.seed.outputs.provider_slug }}"
+          if [ -z "$SLUG" ]; then
+            SLUG="${{ secrets.E2E_PROVIDER_SLUG }}"
+          fi
+          echo "value=$SLUG" >> "$GITHUB_OUTPUT"
+
       - name: Setup Playwright Chromium
         uses: ./.github/actions/setup-playwright-chromium
         with:
           package-filter: web
+
       - name: Run booking happy-path
         working-directory: apps/web
         env:
           PLAYWRIGHT_BASE_URL: ${{ github.event.deployment_status.environment_url }}
-          E2E_PROVIDER_SLUG: ${{ secrets.E2E_PROVIDER_SLUG }}
+          E2E_PROVIDER_SLUG: ${{ steps.slug.outputs.value }}
+          # On staging, the test is non-skippable (slug is always set by seed step).
+          E2E_NON_SKIPPABLE: ${{ env.IS_STAGING }}
         run: pnpm exec playwright test e2e/booking-happy-path.spec.ts
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_id }}
           path: apps/web/playwright-report
           retention-days: 7

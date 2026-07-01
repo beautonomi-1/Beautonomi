@@ -162,7 +162,7 @@ The provider and customer apps use `@amplitude/plugin-engagement-react-native` w
 
 - **Development build required:** Use a development or preview build (`eas build --profile development` or `preview`) so the engagement native module is linked. Expo Go does not include custom native modules.
 - **iOS:** After adding or updating the engagement plugin, run `cd ios && pod install` if you use a bare workflow or prebuild.
-- **Preview deep links:** To preview guides/surveys on device, add the Amplitude URL scheme from your [Amplitude project settings](https://amplitude.com/docs/guides-and-surveys/guides-and-surveys-rn-sdk#setting-up-preview-in-xcode-ios) to each app (e.g. in `app.json` under `expo.ios` / `expo.android` or in the native projects). See `docs/analytics/AMPLITUDE_SURVEYS_GUIDES_PLATFORMS.md`.
+- **Preview deep links:** To preview **unpublished** guides/surveys on device, set `EXPO_PUBLIC_AMPLITUDE_URL_SCHEME` (from your [Amplitude project settings](https://amplitude.com/docs/guides-and-surveys/guides-and-surveys-rn-sdk#setting-up-preview-in-xcode-ios) → URL scheme (mobile)) in the app env and rebuild — `app.config.js` then registers the iOS `CFBundleURLTypes` entry and Android intent-filter automatically. Published content does not need this. See `docs/analytics/AMPLITUDE_SURVEYS_GUIDES_PLATFORMS.md`.
 
 ## Step 4: Build
 

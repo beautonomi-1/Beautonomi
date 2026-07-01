@@ -220,7 +220,9 @@ export async function POST(request: NextRequest) {
       metadata: {
         email: snapshot.email,
         compliance_audit_row:
-          auditInsert.ok === true ? { id: auditInsert.id } : { error: auditInsert.error },
+          auditInsert.ok === true
+            ? { id: auditInsert.id, degraded: auditInsert.degraded || undefined }
+            : { error: auditInsert.error },
       },
     });
 
@@ -228,6 +230,7 @@ export async function POST(request: NextRequest) {
       purged_user_id: user_id,
       compliance_audit_id: auditInsert.ok === true ? auditInsert.id : null,
       compliance_audit_write_error: auditInsert.ok === true ? null : auditInsert.error,
+      compliance_audit_degraded: auditInsert.ok === true ? (auditInsert.degraded ?? null) : null,
       report,
     });
   } catch (error) {

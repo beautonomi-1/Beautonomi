@@ -35,7 +35,7 @@ import {
   invalidateProviderBookingsReadCache,
   setCachedProviderBookingsList,
 } from "@/lib/bookings/provider-bookings-read-cache";
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { computeCatalogPackageServiceDiscount, getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
@@ -941,6 +941,32 @@ async function handleCreateProviderBooking(request: NextRequest) {
           `You've reached your monthly booking limit (${bookingAccess.maxBookingsPerMonth}). Please upgrade your plan to create more bookings.`,
           "LIMIT_REACHED",
           403
+        );
+      }
+    }
+
+    // Validate required provider forms when responses are provided.
+    // Provider-created walk-ins may legitimately omit forms, so we only
+    // validate when at least one response was actually submitted — matching
+    // the same rule enforced for customer-facing paths.
+    if (providerFormResponses && Object.keys(providerFormResponses).length > 0) {
+      const { data: activeForms } = await supabaseAdmin
+        .from("provider_forms")
+        .select("id, title, is_required, provider_form_fields(id, name, field_type, is_required)")
+        .eq("provider_id", providerId)
+        .eq("is_active", true);
+
+      const formsWithFields = ((activeForms as Array<{
+        id: string; title: string; is_required: boolean;
+        provider_form_fields: Array<{ id: string; name: string; field_type: string; is_required: boolean }>;
+      }> | null) ?? []).map((f) => ({ ...f, fields: f.provider_form_fields }));
+
+      const missing = getMissingRequiredProviderFormField(formsWithFields, providerFormResponses as Record<string, Record<string, string | number | boolean | null>>);
+      if (missing) {
+        return errorResponse(
+          `Please complete the required form: "${missing.formTitle}" (${missing.fieldName}).`,
+          "PROVIDER_FORM_REQUIRED",
+          400,
         );
       }
     }

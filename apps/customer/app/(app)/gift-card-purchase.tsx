@@ -141,7 +141,7 @@ export default function GiftCardPurchaseScreen() {
           if (giftMessage.trim()) body.message = giftMessage.trim();
         }
         if (Platform.OS !== "web") {
-          body.callback_url = ExpoLinking.createURL("account-settings/payments");
+          body.callback_url = ExpoLinking.createURL("gift-card-return");
         }
         const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
           "/api/public/gift-cards/purchase",
@@ -208,7 +208,7 @@ export default function GiftCardPurchaseScreen() {
 
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
         if (Platform.OS !== "web") {
-          const returnUrl = ExpoLinking.createURL("account-settings/payments");
+          const returnUrl = ExpoLinking.createURL("gift-card-return");
           // Important: close blocking overlay before opening Paystack WebView.
           // Concurrent RN modals can prevent checkout from appearing.
           setProcessingPayment(false);

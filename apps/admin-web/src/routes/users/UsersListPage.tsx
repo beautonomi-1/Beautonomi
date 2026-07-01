@@ -5,6 +5,7 @@ import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -168,6 +169,7 @@ export function UsersListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [purgeUser, setPurgeUser] = useState<{ id: string; email: string } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [createForm, setCreateForm] = useState({
     email: "",
     password: "",
@@ -294,6 +296,27 @@ export function UsersListPage() {
 
   const pageIds = useMemo(() => new Set(rows.map((r) => str(r.id)).filter(Boolean)), [rows]);
   const allPageSelected = pageIds.size > 0 && [...pageIds].every((id) => selectedIds.has(id));
+
+  async function handleExportCsv() {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const p = new URLSearchParams();
+      if (search) p.set("search", search);
+      if (role) p.set("role", role);
+      if (signupSource) p.set("signup_source", signupSource);
+      if (isShadow) p.set("is_shadow", isShadow);
+      const qs = p.toString();
+      await downloadAdminBlob(
+        `/api/admin/export/users${qs ? `?${qs}` : ""}`,
+        `users-export-${new Date().toISOString().split("T")[0]}.csv`,
+      );
+    } catch {
+      adminToast.error("Export failed — please try again");
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   async function runBulk(action: "activate" | "deactivate" | "delete") {
     const user_ids = [...selectedIds];
@@ -494,11 +517,21 @@ export function UsersListPage() {
             </select>
           </label>
         </div>
-        {meta ? (
-          <p className="mt-3 text-sm text-gray-600">
-            Page {meta.page} of {Math.max(1, Math.ceil(meta.total / meta.limit))} · {meta.total} users
-          </p>
-        ) : null}
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(isExporting)}
+            disabled={isExporting}
+            onClick={() => void handleExportCsv()}
+          >
+            {isExporting ? "Preparing CSV…" : "Download CSV"}
+          </button>
+          {meta ? (
+            <p className="text-sm text-gray-600">
+              Page {meta.page} of {Math.max(1, Math.ceil(meta.total / meta.limit))} · {meta.total} users
+            </p>
+          ) : null}
+        </div>
         {meta?.shadow_stats ? (
           <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-3">
             <button

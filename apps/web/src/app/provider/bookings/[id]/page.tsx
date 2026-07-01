@@ -58,6 +58,7 @@ import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import ProviderLocationTracker from "@/components/provider/ProviderLocationTracker";
 import { QRCodeDisplay } from "@/components/provider-portal/QRCodeDisplay";
+import ResourceAssignmentPanel from "@/components/provider-portal/ResourceAssignmentPanel";
 import { ArrivalQrScanDialog } from "@/components/provider/ArrivalQrScanDialog";
 import type { QRCodeData } from "@/lib/qr/generator";
 import {
@@ -133,6 +134,12 @@ export default function ProviderBookingDetail() {
 
   const [booking, setBooking] = useState<ProviderBookingDetail | null>(null);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
+  const [settlementPlan, setSettlementPlan] = useState<{
+    recommendedAction: string;
+    availableActions: string[];
+    cardOnFileRequiresApproval: boolean;
+  } | null>(null);
+  const [sendingChargeNotify, setSendingChargeNotify] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -244,10 +251,13 @@ export default function ProviderBookingDetail() {
 
   const loadAdditionalCharges = useCallback(async () => {
     try {
-      const response = await fetcher.get<{ data: { charges: AdditionalCharge[] } }>(
+      const response = await fetcher.get<{ data: { charges: AdditionalCharge[]; settlementPlan?: { recommendedAction: string; availableActions: string[]; cardOnFileRequiresApproval: boolean } } }>(
         `/api/provider/bookings/${bookingId}/additional-charges`
       );
       setAdditionalCharges(response.data.charges || []);
+      if (response.data.settlementPlan) {
+        setSettlementPlan(response.data.settlementPlan);
+      }
     } catch (err) {
       console.error("Error loading additional charges:", err);
     }
@@ -475,6 +485,21 @@ export default function ProviderBookingDetail() {
       toast.error(err instanceof FetchError ? err.message : "Failed to send additional charge");
     } finally {
       setIsRequestingCharge(false);
+    }
+  };
+
+  const handleSendChargeToClient = async (chargeId: string) => {
+    try {
+      setSendingChargeNotify(chargeId);
+      await fetcher.post(
+        `/api/provider/bookings/${bookingId}/additional-charges/${chargeId}/notify`,
+        {}
+      );
+      toast.success("Payment reminder sent to customer");
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to send reminder");
+    } finally {
+      setSendingChargeNotify(null);
     }
   };
 
@@ -1946,6 +1971,18 @@ export default function ProviderBookingDetail() {
           </div>
         )}
 
+        {/* Resource Assignments */}
+        {bookingId && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
+            <ResourceAssignmentPanel
+              bookingId={bookingId}
+              bookingDate={booking.scheduled_at ? new Date(booking.scheduled_at) : new Date()}
+              bookingTime={booking.scheduled_at ? new Date(booking.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+              onUpdate={loadBooking}
+            />
+          </div>
+        )}
+
         {/* Payment Summary */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
@@ -2077,6 +2114,17 @@ export default function ProviderBookingDetail() {
             </Button>
           </div>
 
+          {settlementPlan && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              <span className="font-medium">Recommended: </span>
+              {settlementPlan.recommendedAction === "charge_card_on_file"
+                ? "Charge card on file (customer must approve first)"
+                : settlementPlan.recommendedAction === "customer_pay"
+                ? "Send to customer — they pay in-app or online"
+                : "Collect in person (cash, card, or Paystack Terminal)"}
+            </div>
+          )}
+
           {additionalCharges.length === 0 ? (
             <p className="text-sm text-gray-600">No additional charges for this booking.</p>
           ) : (
@@ -2118,25 +2166,35 @@ export default function ProviderBookingDetail() {
                           : 'bg-gray-100 text-gray-800'
                       }`}
                     >
-                      {c.status}
+                      {c.status === 'approved' ? 'approved (awaiting payment)' : c.status}
                     </span>
                   </div>
                   {(c.status === 'pending' || c.status === 'approved') && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <p className="text-xs text-gray-600 mb-2">
-                        Customer can pay online, or mark as paid if you received payment in person:
+                        Send a reminder to the customer, or mark as paid if you received payment in person:
                       </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setChargeMarkPaidId(c.id);
-                          setChargeMarkPaidMethod("card");
-                        }}
-                        disabled={markingChargePaid}
-                      >
-                        Mark as Paid (Walk-in/In-Salon)
-                      </Button>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSendChargeToClient(c.id)}
+                          disabled={sendingChargeNotify === c.id}
+                        >
+                          {sendingChargeNotify === c.id ? "Sending…" : "Send to client"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setChargeMarkPaidId(c.id);
+                            setChargeMarkPaidMethod("card");
+                          }}
+                          disabled={markingChargePaid}
+                        >
+                          Mark as Paid (Walk-in/In-Salon)
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2144,7 +2202,7 @@ export default function ProviderBookingDetail() {
             </div>
           )}
 
-          {["in_progress", "completed"].includes(booking.status) && (
+          {["confirmed", "in_progress", "completed"].includes(booking.status) && (
             <div className="mt-6 border-t pt-4">
               <h3 className="font-semibold mb-2">Send additional charge</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

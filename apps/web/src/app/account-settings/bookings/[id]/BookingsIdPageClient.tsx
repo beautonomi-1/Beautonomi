@@ -70,6 +70,7 @@ export default function BookingDetailPage() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [isPayingOutstanding, setIsPayingOutstanding] = useState(false);
+  const [chargeApproveLoadingId, setChargeApproveLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -128,6 +129,25 @@ export default function BookingDetailPage() {
   const handleCompletionWriteReview = () => {
     dismissCompletionModal(true);
     router.push(`/account-settings/bookings/${bookingId}/review`);
+  };
+
+  const handleApproveRejectCharge = async (chargeId: string, approved: boolean) => {
+    if (!bookingId) return;
+    setChargeApproveLoadingId(chargeId);
+    try {
+      await fetcher.post(`/api/me/bookings/${bookingId}/approve-payment`, {
+        charge_id: chargeId,
+        approved,
+      });
+      toast.success(approved ? "Charge approved" : "Charge rejected");
+      // Refresh booking to reflect new charge status
+      const response = await fetcher.get<{ data: BookingDetail }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
+      setBooking(response.data);
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : `Failed to ${approved ? "approve" : "reject"} charge`);
+    } finally {
+      setChargeApproveLoadingId(null);
+    }
   };
 
   const handleCancel = async () => {
@@ -605,7 +625,35 @@ export default function BookingDetailPage() {
                     {charge.status}
                   </span>
                 </div>
-                {(charge.status === 'pending' || charge.status === 'approved') && (
+                {charge.status === 'pending' && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleApproveRejectCharge(charge.id, true)}
+                      disabled={chargeApproveLoadingId === charge.id}
+                    >
+                      {chargeApproveLoadingId === charge.id ? "Approving…" : "Approve"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleApproveRejectCharge(charge.id, false)}
+                      disabled={chargeApproveLoadingId === charge.id}
+                      className="border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)}
+                      className="bg-gradient-to-r from-primary to-primary-hover text-white"
+                    >
+                      Pay Now
+                    </Button>
+                  </div>
+                )}
+                {charge.status === 'approved' && (
                   <Button
                     onClick={() => router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)}
                     className="mt-2 w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white"

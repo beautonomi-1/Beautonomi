@@ -6,8 +6,10 @@ import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { z } from "zod";
-import { writeAuditLog, extractRequestMeta, computeChangedFields } from "@/lib/audit/audit";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -63,19 +65,17 @@ export async function GET(
       .maybeSingle();
 
     if (userRow.role === "customer") {
-      const bookingOr = `customer_id.eq.${id},user_id.eq.${id}`;
-
       const { count: bookingCount } = await supabase
         .from("bookings")
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
-        .or(bookingOr);
+        .eq("customer_id", id);
 
       const { data: bookings } = await supabase
         .from("bookings")
         .select("total_amount")
         .eq("tenant_id", tenantId)
-        .or(bookingOr)
+        .eq("customer_id", id)
         .in("status", ["completed", "confirmed"]);
 
       const totalSpent = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
@@ -84,7 +84,7 @@ export async function GET(
         .from("bookings")
         .select("scheduled_at")
         .eq("tenant_id", tenantId)
-        .or(bookingOr)
+        .eq("customer_id", id)
         .order("scheduled_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -127,13 +127,67 @@ export async function GET(
         .limit(25);
       recent_product_orders = recentPo ?? [];
     } else if (userRow.role === "provider_owner") {
-      const { count: providerCount } = await supabase
+      const { data: ownedProviders, count: providerCount } = await supabase
         .from("providers")
-        .select("*", { count: "exact", head: true })
+        .select("id, business_name", { count: "exact" })
         .eq("user_id", id)
         .eq("tenant_id", tenantId);
 
       stats.provider_count = providerCount || 0;
+
+      // Build a compact finance summary for the primary owned provider.
+      let provider_finance_summary: Record<string, unknown> | null = null;
+      const primaryProvider = (ownedProviders ?? [])[0] as { id: string; business_name?: string } | undefined;
+      if (primaryProvider?.id) {
+        try {
+          const now = new Date();
+          const allTime = "1970-01-01T00:00:00.000Z";
+          const ledger = await fetchFinanceLedgerRowsForTenant(
+            admin,
+            tenantId,
+            { start: allTime, end: now.toISOString() },
+            { restrictProviderIds: [primaryProvider.id] },
+          );
+          let gross = 0;
+          let fees = 0;
+          let commission = 0;
+          let net = 0;
+          let refunds = 0;
+          let completedPayouts = 0;
+          for (const row of ledger) {
+            const type = String(row.transaction_type ?? "");
+            const amount = Number(row.amount ?? 0);
+            const rowNet = Number(row.net ?? row.amount ?? 0);
+            if (type === "payment" || type === "provider_earnings" || type === "tip" || type === "travel_fee" || type === "cancellation_fee") {
+              gross += amount;
+              fees += Number(row.fees ?? 0);
+              commission += Number(row.commission ?? 0);
+              net += rowNet;
+            } else if (type === "refund") {
+              refunds += Math.abs(rowNet);
+            } else if (type === "payout") {
+              completedPayouts += Math.abs(rowNet);
+            }
+          }
+          const payoutData = await getAvailablePayoutBalance(admin, primaryProvider.id, { tenantId });
+          provider_finance_summary = {
+            provider_id: primaryProvider.id,
+            provider_name: primaryProvider.business_name ?? null,
+            gross,
+            fees,
+            commission,
+            net,
+            refunds,
+            completed_payouts: completedPayouts,
+            available_payout: payoutData.availableBalance,
+            pending_payouts: payoutData.pendingPayoutsSum,
+          };
+        } catch (finErr) {
+          console.warn("[admin/users/:id] provider finance summary failed:", finErr);
+        }
+      }
+
+      Object.assign(stats, { provider_finance_summary });
     }
 
     const { data: supportTicketsRaw } = await admin
@@ -155,6 +209,7 @@ export async function GET(
     let last_sign_in_at: string | null = null;
     let email_verified = Boolean((userData as { email_verified?: boolean }).email_verified);
     let phone_verified = Boolean((userData as { phone_verified?: boolean }).phone_verified);
+    let auth_phone: string | null = null;
     try {
       const { data: authRow } = await admin.auth.admin.getUserById(id);
       const authUser = authRow?.user;
@@ -162,11 +217,21 @@ export async function GET(
         last_sign_in_at = authUser.last_sign_in_at ?? null;
         email_verified = email_verified || Boolean(authUser.email_confirmed_at);
         phone_verified = phone_verified || Boolean(authUser.phone_confirmed_at);
+        // Capture phone from auth — for OTP/phone-login users it may only exist here.
+        auth_phone =
+          (authUser as unknown as { phone?: string }).phone ||
+          (authUser.user_metadata as { phone?: string } | undefined)?.phone ||
+          null;
         await syncUserAuthMetadataToPublicProfile(admin, id, authUser);
       }
     } catch (authErr) {
       console.warn("[admin/users/:id] auth metadata lookup failed:", authErr);
     }
+
+    // Resolved phone: prefer public.users column (authoritative after verification),
+    // fall back to auth.users phone for OTP-signup users who haven't synced yet.
+    const resolved_phone =
+      (userData as { phone?: string | null }).phone || auth_phone || null;
 
     const last_login_at =
       typeof (userData as { last_login_at?: string | null }).last_login_at === "string"
@@ -179,6 +244,8 @@ export async function GET(
 
     return successResponse({
       ...sanitizeUserForAdmin(userData as Record<string, unknown>),
+      // Resolved phone: public.users first, then auth.users fallback.
+      phone: resolved_phone,
       last_sign_in_at,
       last_active_at,
       verification: {

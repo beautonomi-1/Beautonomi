@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 
 /**
  * Mark provider onboarding lifecycle complete when the provider becomes active
  * (auto-approve or admin approval). Keeps `onboarding_state` and tracking
  * `wizard_status` in sync with marketplace-ready status.
+ *
+ * Busts the public discovery feed cache immediately so the newly-active
+ * provider appears on the home feed without waiting for TTL expiry.
  */
 export async function markProviderOnboardingLifecycleComplete(
   supabase: SupabaseClient,
@@ -41,4 +45,8 @@ export async function markProviderOnboardingLifecycleComplete(
   if (trackErr) {
     console.error("[markProviderOnboardingLifecycleComplete] tracking upsert:", trackErr);
   }
+
+  // Bust the public discovery feed so the newly-active provider appears immediately
+  // on both the web home page and the customer app Home tab.
+  invalidatePublicProviderCache(params.tenantId);
 }

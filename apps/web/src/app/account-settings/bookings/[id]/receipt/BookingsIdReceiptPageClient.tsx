@@ -53,6 +53,12 @@ interface Receipt {
     quantity: number;
     price: number;
     total: number;
+    /** Per-line VAT snapshot stamped at booking creation (rate + inclusive flag). */
+    tax_snapshot?: {
+      rate?: number | null;
+      is_inclusive?: boolean | null;
+      name?: string | null;
+    } | null;
   }>;
   addons?: Array<{
     name: string;
@@ -358,17 +364,28 @@ export default function ReceiptPage() {
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Items</h3>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {receipt.services.map((service, index) => (
-                    <div key={index} className="flex items-start justify-between gap-4 px-5 py-4">
-                      <div>
-                        <p className="font-medium text-slate-950">{service.name}</p>
-                        <p className="text-sm text-slate-500">
-                          Quantity: {service.quantity} × {formatCurrency(service.price)}
-                        </p>
+                  {receipt.services.map((service, index) => {
+                    const ts = service.tax_snapshot;
+                    const taxRate = ts?.rate != null ? Number(ts.rate) : null;
+                    const taxRateDisplay =
+                      taxRate != null && taxRate > 0
+                        ? `VAT ${taxRate <= 1 ? `${(taxRate * 100).toFixed(0)}%` : `${taxRate}%`}${ts?.is_inclusive ? " incl." : ""}`
+                        : null;
+                    return (
+                      <div key={index} className="flex items-start justify-between gap-4 px-5 py-4">
+                        <div>
+                          <p className="font-medium text-slate-950">{service.name}</p>
+                          <p className="text-sm text-slate-500">
+                            Quantity: {service.quantity} × {formatCurrency(service.price)}
+                          </p>
+                          {taxRateDisplay && (
+                            <p className="text-xs text-slate-400">{taxRateDisplay}</p>
+                          )}
+                        </div>
+                        <p className="font-semibold text-slate-950">{formatCurrency(service.total)}</p>
                       </div>
-                      <p className="font-semibold text-slate-950">{formatCurrency(service.total)}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {(receipt.addons ?? []).map((addon, index) => (
                     <div key={`addon-${index}`} className="flex items-start justify-between gap-4 px-5 py-4">
                       <div>

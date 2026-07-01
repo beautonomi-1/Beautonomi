@@ -18,7 +18,7 @@
 | **Gitignore** | [`apps/web/.gitignore`](../../apps/web/.gitignore): ignore generated `public/admin/`. |
 | **`turbo.json`** | Pass-through env: `ADMIN_SPA_ROUTING`, `SKIP_ADMIN_SPA_SYNC`. |
 
-**Not done in this PR (operational):** Setting **`ADMIN_SPA_ROUTING=spa`** on any live Vercel environment — that remains a **human / Platform** flip after staging validation.
+**2026-07-01 hardening update:** `ADMIN_SPA_ROUTING` now defaults to `spa` (no env var needed). Legacy Next.js admin pages (`apps/web/src/app/admin/**`) and components (`apps/web/src/components/admin/`) have been **permanently deleted**. Set `ADMIN_SPA_ROUTING=legacy` only as an emergency rollback (requires restoring the deleted files from git history).
 
 ---
 

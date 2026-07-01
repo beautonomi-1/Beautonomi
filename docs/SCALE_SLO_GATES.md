@@ -79,3 +79,48 @@ This document defines hard go/no-go criteria for high-scale production readiness
 - Webhook idempotency and reconciliation status output
 - Mobile crash-free and key-flow pass report
 - Signed release checklist with named approvers
+
+---
+
+## k6 Load Test Runbook
+
+### Workflow
+
+The gated `workflow_dispatch` load test workflow lives at `.github/workflows/load-test.yml`.
+
+**Trigger via GitHub UI:**
+1. Go to **Actions → Load Test (k6)** → **Run workflow**
+2. Fill in:
+   - `base_url`: e.g. `https://staging.beautonomi.com`
+   - `suite`: `booking-flow` | `auth-burst` | `provider-calendar` | `webhook-storm` | `soak-mixed` | `all`
+   - Optionally override `k6_vus` and `k6_duration`
+3. Click **Run workflow**
+
+The workflow is **not** triggered on push/PR — it is intentionally manual to avoid accidental load against staging.
+
+### Required GitHub Secrets
+
+| Secret | Purpose |
+|---|---|
+| `LOAD_TEST_AUTH_TOKEN` | Customer JWT for booking-flow, auth-burst, soak-mixed suites |
+| `LOAD_TEST_PROVIDER_AUTH_TOKEN` | Provider JWT for provider-calendar suite |
+| `LOAD_TEST_PAYSTACK_SECRET_KEY` | Paystack secret for webhook-storm suite (use test-mode key) |
+
+Generate a test-user JWT via the Supabase dashboard or `service_role` RPC; rotate after each release cycle.
+
+### Recommended Execution Order (Pre-Launch Gate)
+
+1. `auth-burst` — validates auth/session resilience under spike
+2. `provider-calendar` — validates provider read path under sustained pressure
+3. `booking-flow` — validates the core booking transaction path (p95 <= 1.2 s)
+4. `webhook-storm` — validates Paystack webhook processing resilience
+5. `soak-mixed` — 60+ minutes steady-state mixed traffic
+
+All suites must pass their built-in thresholds (see `tooling/load-test/README.md`) before marking `Tier-1 API Latency` and `Error Budget` gates as GO.
+
+### Interpreting Results
+
+- k6 exits non-zero when any threshold is breached — the CI step will fail and block the workflow.
+- Summary JSON and HTML artifacts are uploaded under `k6-results-<run-id>` for archival.
+- Compare p95/p99 latencies against Tier-1 gate values in the table above.
+- A `CONDITIONAL` result (Tier-1 pass, Tier-2 fail) still requires a named waiver owner and mitigation date before cut-over.

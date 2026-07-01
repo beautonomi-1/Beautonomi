@@ -8,6 +8,7 @@ const baseSteps = [
   ["pnpm", ["run", "typecheck"]],
   ["pnpm", ["run", "lint"]],
   ["pnpm", ["run", "test"]],
+  ["node", ["apps/web/scripts/check-security-env.mjs"]],
   ["node", ["scripts/prod/readiness-check.mjs"]],
   ["node", ["scripts/prod/verify-observability-gates.mjs"]],
 ];

@@ -3,7 +3,8 @@
 import { Lock, Shield, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck } from "@beautonomi/i18n";
+import type { CancellationPolicyView } from "@beautonomi/i18n";
 import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
 import { lineHasHouseCallAdjustment } from "@beautonomi/utils";
 import { Label } from "@/components/ui/label";
@@ -27,7 +28,10 @@ interface CancellationPolicy {
   hours_before_cutoff?: number;
   grace_window_minutes?: number;
   late_cancellation_type?: "no_refund" | "partial_refund" | "full_refund";
+  /** Output name from the hold API. */
   late_refund_percentage?: number;
+  /** Raw DB column returned by /api/public/cancellation-policy — the primary late-refund driver. */
+  refund_percentage?: number;
   fee_amount?: number;
   fee_type?: "fixed" | "percentage";
   no_show_fee_enabled?: boolean;
@@ -78,24 +82,39 @@ export function StepReview({
   const isAtHome = data.venueType === "at_home";
   const policyAccepted = data.policyAccepted === true;
   const hasDateTime = data.selectedDate != null && data.selectedSlot != null;
-  const hours = cancellationPolicy?.hours_before_cutoff ?? 24;
-  const graceMin = cancellationPolicy?.grace_window_minutes;
-  const lateType = cancellationPolicy?.late_cancellation_type ?? "no_refund";
-  const latePct = cancellationPolicy?.late_refund_percentage;
-  // Prefer explicit refund percentage when available, otherwise derive from type
-  const effectiveLatePct =
-    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct))
-      ? Number(latePct)
-      : lateType === "full_refund"
-        ? 100
-        : lateType === "partial_refund"
-          ? 50
-          : 0;
-  const noShowFeeEnabled =
-    cancellationPolicy?.no_show_fee_enabled &&
-    cancellationPolicy?.no_show_fee_amount != null &&
-    (cancellationPolicy.no_show_fee_amount ?? 0) > 0;
-  const policyCurrency = cancellationPolicy?.currency ?? currency;
+
+  // Map the cancellation-policy API shape (hours_before_cutoff, late_cancellation_type) to
+  // the canonical CancellationPolicyView used by the shared builder.
+  const policyView: CancellationPolicyView | null = cancellationPolicy
+    ? (() => {
+        // Prefer explicit refund percentage (refund_percentage is the raw DB field / enforcement driver;
+        // late_refund_percentage is the hold-API output name), otherwise derive from the coarse type.
+        const latePct = cancellationPolicy.late_refund_percentage ?? cancellationPolicy.refund_percentage;
+        const lateType = cancellationPolicy.late_cancellation_type ?? "no_refund";
+        const effectiveLatePct =
+          latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct))
+            ? Number(latePct)
+            : lateType === "full_refund"
+              ? 100
+              : lateType === "partial_refund"
+                ? 50
+                : 0;
+        return {
+          cancellationWindowHours: cancellationPolicy.hours_before_cutoff,
+          graceWindowMinutes: cancellationPolicy.grace_window_minutes,
+          lateRefundPercentage: effectiveLatePct,
+          noShowFeeEnabled: cancellationPolicy.no_show_fee_enabled,
+          noShowFeeAmount: cancellationPolicy.no_show_fee_amount,
+          currency: cancellationPolicy.currency ?? currency,
+          policyText: cancellationPolicy.policy_text,
+        } satisfies CancellationPolicyView;
+      })()
+    : null;
+
+  const policyContent = buildCancellationPolicyLines(policyView, {
+    t,
+    formatCurrency: (amount, cur) => formatCurrency(amount, cur || currency),
+  });
 
   const whenStr =
     data.selectedDate && data.selectedSlot
@@ -254,76 +273,66 @@ export function StepReview({
       </div>
 
       {/* Cancellation policy with Shield iconography */}
-      <div
-        className="rounded-3xl p-5 space-y-3 border"
-        style={{
-          borderColor: BOOKING_BORDER,
-          background: "rgba(255,255,255,0.85)",
-          backdropFilter: "blur(16px) saturate(180%)",
-        }}
-      >
-        <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          <Shield className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
-          Cancellation policy
-        </h3>
-        <ul className="space-y-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          {graceMin != null && graceMin > 0 && (
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-green-500 shrink-0">✓</span>
-              <span>Cancel within {graceMin} min of booking for free.</span>
-            </li>
-          )}
-          <li className="flex items-start gap-2">
-            <span className="mt-0.5 text-green-500 shrink-0">✓</span>
-            <span>Free cancellation up to {hours} {hours === 1 ? "hour" : "hours"} before your appointment.</span>
-          </li>
-          {effectiveLatePct < 100 && (
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
-              <span>
-                {effectiveLatePct <= 0
-                  ? `Within ${hours} ${hours === 1 ? "hour" : "hours"}: no refund will be issued.`
-                  : `Within ${hours} ${hours === 1 ? "hour" : "hours"}: ${effectiveLatePct}% refund.`}
-              </span>
-            </li>
-          )}
-          {noShowFeeEnabled && (
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
-              <span>No-show fee of {formatCurrency(cancellationPolicy!.no_show_fee_amount!, policyCurrency)} applies.</span>
-            </li>
-          )}
-        </ul>
-        <p className="text-xs flex items-center gap-1" style={{ color: BOOKING_TEXT_SECONDARY, borderTop: `1px solid ${BOOKING_BORDER}`, paddingTop: "8px", marginTop: "4px" }}>
-          <Lock className="h-3 w-3 shrink-0" />
-          This policy is enforced automatically at the time of cancellation.
-        </p>
-        <div className="flex items-start gap-3 pt-2">
-          <Checkbox
-            id="accept-policy"
-            checked={policyAccepted}
-            onCheckedChange={(checked) => onPolicyAcceptedChange(checked === true)}
-            className="mt-0.5 h-5 w-5 rounded-md border-2 shrink-0"
-            style={
-              policyAccepted
-                ? { backgroundColor: BOOKING_ACCENT, borderColor: BOOKING_ACCENT, color: "#fff" }
-                : { borderColor: BOOKING_BORDER }
-            }
-          />
-          <Label
-            htmlFor="accept-policy"
-            className="text-sm font-medium cursor-pointer leading-tight"
-            style={{ color: BOOKING_TEXT_PRIMARY }}
+      {policyContent.lines.length > 0 && (
+        <div
+          className="rounded-3xl p-5 space-y-3 border"
+          style={{
+            borderColor: BOOKING_BORDER,
+            background: "rgba(255,255,255,0.85)",
+            backdropFilter: "blur(16px) saturate(180%)",
+          }}
+        >
+          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
+            <Shield className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
+            {t("checkout.cancellationPolicy")}
+          </h3>
+          <ul className="space-y-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+            {policyContent.lines.map((line) => (
+              <li key={line.id} className="flex items-start gap-2">
+                <span className={`mt-0.5 shrink-0 ${line.tone === "good" ? "text-green-500" : "text-amber-500"}`}>
+                  {line.tone === "good" ? "✓" : "⚠"}
+                </span>
+                <span>{line.text}</span>
+              </li>
+            ))}
+          </ul>
+          <div
+            className="text-xs space-y-1"
+            style={{ color: BOOKING_TEXT_SECONDARY, borderTop: `1px solid ${BOOKING_BORDER}`, paddingTop: "8px", marginTop: "4px" }}
           >
-            I understand and accept the cancellation policy above.
-          </Label>
+            <p className="flex items-center gap-1">
+              <Lock className="h-3 w-3 shrink-0" />
+              {policyContent.footerText}
+            </p>
+            <p className="opacity-75">{policyContent.storeCreditNote}</p>
+          </div>
+          <div className="flex items-start gap-3 pt-2">
+            <Checkbox
+              id="accept-policy"
+              checked={policyAccepted}
+              onCheckedChange={(checked) => onPolicyAcceptedChange(checked === true)}
+              className="mt-0.5 h-5 w-5 rounded-md border-2 shrink-0"
+              style={
+                policyAccepted
+                  ? { backgroundColor: BOOKING_ACCENT, borderColor: BOOKING_ACCENT, color: "#fff" }
+                  : { borderColor: BOOKING_BORDER }
+              }
+            />
+            <Label
+              htmlFor="accept-policy"
+              className="text-sm font-medium cursor-pointer leading-tight"
+              style={{ color: BOOKING_TEXT_PRIMARY }}
+            >
+              {policyContent.ackText}
+            </Label>
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         type="button"
         onClick={onConfirm}
-        disabled={isCreatingHold || !policyAccepted || !hasDateTime}
+        disabled={isCreatingHold || (policyContent.requiresAck && !policyAccepted) || !hasDateTime}
         className={cn(
           "w-full rounded-2xl h-14 font-semibold text-white transition-all touch-manipulation flex items-center justify-center gap-2 disabled:opacity-70 disabled:active:scale-100",
           MIN_TAP,

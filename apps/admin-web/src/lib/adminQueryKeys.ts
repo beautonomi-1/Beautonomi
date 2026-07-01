@@ -47,6 +47,8 @@ export const adminQueryKeys = {
     detail: (id: string) => [...adminQueryKeys.providers.all(), "detail", id] as const,
     payoutAccounts: (providerId: string) =>
       [...adminQueryKeys.providers.all(), "payout-accounts", providerId] as const,
+    transactions: (providerId: string, qs: string) =>
+      [...adminQueryKeys.providers.all(), "transactions", providerId, qs] as const,
   },
 
   staff: (q: string) => [...adminQueryKeys.root, "staff", q] as const,
@@ -139,6 +141,7 @@ export const adminQueryKeys = {
     readerModal: (slug: string, isInternal: boolean) =>
       [...adminQueryKeys.root, "knowledge-base", "reader-modal", slug, isInternal ? "internal" : "public"] as const,
     search: (signature: string) => [...adminQueryKeys.root, "knowledge-base", "search", signature] as const,
+    trainingPaths: () => [...adminQueryKeys.root, "knowledge-base", "training-paths"] as const,
   },
 
   addons: (q: string) => [...adminQueryKeys.root, "addons", q] as const,
