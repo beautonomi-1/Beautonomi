@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     const type = searchParams.get("type"); // payment, refund, payout, fee
+    const providerIdFilter = searchParams.get("provider_id") ?? null;
 
     const nowISO = new Date().toISOString();
     const defaultStart = new Date();
@@ -59,13 +60,17 @@ export async function GET(request: NextRequest) {
     const rangeEnd = endDate || nowISO;
     const transactionTypes = financeTransactionTypesForFilter(type);
 
+    const restrictProviderIds = providerIdFilter ? [providerIdFilter] : undefined;
+
     let merged: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
     try {
       merged = await fetchFinanceLedgerExportRowsForTenant(
         supabase,
         tenantId,
         { start: rangeStart, end: rangeEnd },
-        transactionTypes ? { transactionTypes } : { transactionType: type && type !== "all" ? type : null }
+        transactionTypes
+          ? { transactionTypes, restrictProviderIds }
+          : { transactionType: type && type !== "all" ? type : null, restrictProviderIds }
       );
     } catch (err) {
       console.error("Error fetching transactions:", err);

@@ -2635,6 +2635,60 @@ export async function notifyMembershipActivated(
 }
 
 /**
+ * Notify membership payment failed (dunning).
+ */
+export async function notifyMembershipPaymentFailed(
+  userId: string,
+  membershipName: string,
+  providerName: string,
+  channels?: NotificationChannel[]
+) {
+  return await dispatchTemplateNotification(
+    "membership_payment_failed",
+    [userId],
+    { membership_name: membershipName, provider_name: providerName },
+    channels,
+    { appType: "customer" }
+  );
+}
+
+/**
+ * Notify membership expired (grace exhausted).
+ */
+export async function notifyMembershipExpired(
+  userId: string,
+  membershipName: string,
+  providerName: string,
+  channels?: NotificationChannel[]
+) {
+  return await dispatchTemplateNotification(
+    "membership_expired",
+    [userId],
+    { membership_name: membershipName, provider_name: providerName },
+    channels,
+    { appType: "customer" }
+  );
+}
+
+/**
+ * Notify membership card expired — customer needs to update card.
+ */
+export async function notifyMembershipCardExpired(
+  userId: string,
+  membershipName: string,
+  providerName: string,
+  channels?: NotificationChannel[]
+) {
+  return await dispatchTemplateNotification(
+    "membership_card_expired",
+    [userId],
+    { membership_name: membershipName, provider_name: providerName },
+    channels,
+    { appType: "customer" }
+  );
+}
+
+/**
  * Notify a cancelled member that their provider invited them to rejoin.
  */
 export async function notifyMembershipWinBack(

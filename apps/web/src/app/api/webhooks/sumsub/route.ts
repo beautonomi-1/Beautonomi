@@ -85,8 +85,22 @@ export async function POST(request: NextRequest) {
       console.error("Sumsub webhook secret not configured — rejecting request");
       return NextResponse.json({ error: "Webhook secret not configured" }, { status: 503 });
     }
-    const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
-    const sigToCheck = signature.startsWith("sha256=") ? signature.slice(7) : signature;
+
+    // Respect the algorithm declared by Sumsub in X-Payload-Digest-Alg so the
+    // integration survives a dashboard switch from SHA256 (default) to SHA512.
+    const algHeader = (
+      request.headers.get("x-payload-digest-alg") ?? "HMAC_SHA256_HEX"
+    ).toUpperCase();
+    const ALG_MAP: Record<string, string> = {
+      HMAC_SHA256_HEX: "sha256",
+      HMAC_SHA512_HEX: "sha512",
+      HMAC_SHA1_HEX: "sha1",
+    };
+    const hashAlg = ALG_MAP[algHeader] ?? "sha256";
+
+    const expected = createHmac(hashAlg, secret).update(rawBody).digest("hex");
+    // Strip optional "sha256=" / "sha512=" prefix that some Sumsub environments emit.
+    const sigToCheck = signature.replace(/^sha\d+=/, "");
     const sigBuf = Buffer.from(sigToCheck, "hex");
     const expectedBuf = Buffer.from(expected, "hex");
     if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
@@ -94,6 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = unverifiedPayload as {
+      type?: string;
       applicantId?: string;
       externalUserId?: string;
       reviewStatus?: string;
@@ -104,6 +119,23 @@ export async function POST(request: NextRequest) {
         rejectLabels?: string[];
       };
     };
+
+    // Only review-result events carry a meaningful reviewAnswer/reviewStatus.
+    // Ack lifecycle events (applicantCreated, applicantPending, applicantOnHold,
+    // applicantWorkflowCompleted, etc.) with 200 immediately so they don't
+    // trigger spurious "needs review" Slack alerts or overwrite DB status.
+    const REVIEW_TYPES = new Set([
+      "applicantReviewed",
+      "applicantWorkflowCompleted",
+      // Legacy/alias spellings Sumsub has emitted in some environments
+      "APPLICANT_REVIEWED",
+      "APPLICANT_WORKFLOW_COMPLETED",
+    ]);
+    const eventType = payload.type ?? "";
+    if (eventType && !REVIEW_TYPES.has(eventType)) {
+      // Non-review event — ack silently without touching DB.
+      return NextResponse.json({ ok: true });
+    }
 
     const applicantId = payload.applicantId;
     const externalUserId = payload.externalUserId ?? "";

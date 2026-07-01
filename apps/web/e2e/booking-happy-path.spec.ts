@@ -9,14 +9,23 @@ import { test, expect } from "@playwright/test";
  *  3. Open the calendar step
  *  4. Get to a checkout / payment step without 500-ing
  *
- * Gate: requires `E2E_PROVIDER_SLUG` env var (set per environment to a
- * provider with at least one bookable offering + published availability).
- * If absent, the test is skipped so Preview deployments without a seed
- * provider don't fail the workflow.
+ * Gate: requires `E2E_PROVIDER_SLUG` env var.
+ *
+ * Skip behaviour:
+ *   - If `E2E_NON_SKIPPABLE=true` (set by CI on seeded Staging deployments),
+ *     missing slug is a hard failure — the seed step must have run.
+ *   - Otherwise (Preview deployments without a seed provider), the test is
+ *     skipped gracefully so it doesn't block preview deploys.
  */
 test.describe("booking happy path", () => {
   test.beforeEach(({ }, testInfo) => {
     if (!process.env.E2E_PROVIDER_SLUG) {
+      if (process.env.E2E_NON_SKIPPABLE === "true") {
+        throw new Error(
+          "E2E_PROVIDER_SLUG is not set but E2E_NON_SKIPPABLE=true. " +
+          "The seed-staging step must have failed — check the CI logs."
+        );
+      }
       testInfo.skip(true, "E2E_PROVIDER_SLUG is not set — skipping booking happy-path.");
     }
   });

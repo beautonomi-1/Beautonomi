@@ -1,6 +1,6 @@
 export type { Database, Json } from "./database";
 export type { ApiError, ApiResponse } from "./api";
-export type { UserRole, PaginatedResponse } from "./domain";
+export type { UserRole, PaginatedResponse, CancellationPolicyView } from "./domain";
 export type {
   ParityPlatform,
   FeatureFlag,

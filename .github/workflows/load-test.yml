@@ -1,0 +1,143 @@
+name: Load Test (k6)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Target base URL (e.g. https://staging.beautonomi.com)"
+        required: true
+        default: "https://staging.beautonomi.com"
+      suite:
+        description: "Test suite to run"
+        required: true
+        default: "booking-flow"
+        type: choice
+        options:
+          - booking-flow
+          - auth-burst
+          - provider-calendar
+          - webhook-storm
+          - soak-mixed
+          - all
+      k6_vus:
+        description: "Override VUs (leave blank for script default)"
+        required: false
+        default: ""
+      k6_duration:
+        description: "Override duration e.g. 5m (leave blank for script default)"
+        required: false
+        default: ""
+
+# Only one load test at a time against the same base URL.
+concurrency:
+  group: load-test-${{ github.event.inputs.base_url }}
+  cancel-in-progress: false
+
+jobs:
+  k6-load-test:
+    name: k6 — ${{ github.event.inputs.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq && sudo apt-get install -y k6
+
+      - name: Validate target reachable
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ github.event.inputs.base_url }}/api/public/home" || true)
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::Target URL ${{ github.event.inputs.base_url }} is not reachable (curl error). Aborting."
+            exit 1
+          fi
+          echo "Target returned HTTP $STATUS — proceeding."
+
+      - name: Set k6 env overrides
+        id: k6_env
+        run: |
+          EXTRA_ARGS=""
+          if [ -n "${{ github.event.inputs.k6_vus }}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --vus ${{ github.event.inputs.k6_vus }}"
+          fi
+          if [ -n "${{ github.event.inputs.k6_duration }}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --duration ${{ github.event.inputs.k6_duration }}"
+          fi
+          echo "extra_args=$EXTRA_ARGS" >> "$GITHUB_OUTPUT"
+
+      - name: Run booking-flow
+        if: ${{ github.event.inputs.suite == 'booking-flow' || github.event.inputs.suite == 'all' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          k6 run ${{ steps.k6_env.outputs.extra_args }} \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-booking-flow.js
+
+      - name: Run auth-burst
+        if: ${{ github.event.inputs.suite == 'auth-burst' || github.event.inputs.suite == 'all' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          k6 run ${{ steps.k6_env.outputs.extra_args }} \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-auth-burst.js
+
+      - name: Run provider-calendar
+        if: ${{ github.event.inputs.suite == 'provider-calendar' || github.event.inputs.suite == 'all' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_PROVIDER_AUTH_TOKEN }}
+        run: |
+          k6 run ${{ steps.k6_env.outputs.extra_args }} \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-provider-calendar.js
+
+      - name: Run webhook-storm
+        if: ${{ github.event.inputs.suite == 'webhook-storm' || github.event.inputs.suite == 'all' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          PAYSTACK_SECRET_KEY: ${{ secrets.LOAD_TEST_PAYSTACK_SECRET_KEY }}
+        run: |
+          k6 run ${{ steps.k6_env.outputs.extra_args }} \
+            -e BASE_URL="$BASE_URL" \
+            -e PAYSTACK_SECRET_KEY="$PAYSTACK_SECRET_KEY" \
+            tooling/load-test/k6-webhook-storm.js
+
+      # soak-mixed is intentionally excluded from 'all': 60+ min run is a dedicated gate,
+      # not part of the standard pre-launch burst suite.
+      - name: Run soak-mixed
+        if: ${{ github.event.inputs.suite == 'soak-mixed' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          k6 run ${{ steps.k6_env.outputs.extra_args }} \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-soak-mixed.js
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: |
+            k6-summary*.json
+            k6-summary*.html
+          if-no-files-found: ignore

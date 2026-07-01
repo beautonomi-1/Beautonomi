@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
@@ -29,7 +29,7 @@ function financeTransactionTypesForFilter(type: string | null): string[] | null 
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const { allowed, retryAfter } = checkRateLimit(user.id, "export:finance");
+    const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:finance");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,

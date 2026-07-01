@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "approve" || action === "suspend" || action === "reject") {
-      invalidatePublicProviderCache();
+      invalidatePublicProviderCache(tenantId);
     }
 
     // Log audit trail

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 
 /**
  * GET /api/admin/export/audit-logs
@@ -12,7 +12,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
-    const { allowed, retryAfter } = checkRateLimit(user.id, "export:audit-logs");
+    const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:audit-logs");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,

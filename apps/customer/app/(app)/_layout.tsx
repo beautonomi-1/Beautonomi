@@ -22,6 +22,7 @@ import {
   setAuthFlowTags,
 } from "@/lib/sentry";
 import { useTranslation } from "@beautonomi/i18n";
+import { NotificationBannerListener } from "@/components/NotificationBannerListener";
 
 const CUSTOMER_SCHEME = "customer://";
 const REFERRAL_REF_KEY = "referral_ref";
@@ -232,6 +233,7 @@ export default function AppLayout() {
     <BiometricGate>
     <AccountStatusGuard>
     <RoleGate>
+      <NotificationBannerListener />
       <SingularLinkHandler />
       <NativePermissionsOnboarding />
       <BiometricSetupBootstrap />

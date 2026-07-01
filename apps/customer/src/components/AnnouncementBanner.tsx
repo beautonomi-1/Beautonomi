@@ -10,6 +10,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import {
+  registerNotificationsRealtimeCallback,
+  type NewNotificationRow,
+} from "@/providers/NotificationsContext";
 
 type NotifRow = {
   id: string;
@@ -79,6 +83,17 @@ export function AnnouncementBanner() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Refresh live when a new admin_broadcast notification is inserted.
+  useEffect(() => {
+    return registerNotificationsRealtimeCallback((row?: NewNotificationRow) => {
+      if (!row) return;
+      const type = (row.type ?? "").toLowerCase();
+      if (type === "admin_broadcast") {
+        void load();
+      }
+    });
   }, [load]);
 
   const accent = useMemo(() => {

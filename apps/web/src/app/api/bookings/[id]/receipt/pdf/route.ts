@@ -176,12 +176,25 @@ export async function GET(
     };
     const platformFeePercent = formatPercent(receipt.platform_fee_percentage ?? receipt.service_fee_percentage);
     const platformFeeLabel = platformFeePercent ? `Platform fee (${platformFeePercent}%)` : "Platform fee";
+    function vatLabel(ts: { rate?: number | null; is_inclusive?: boolean | null } | null | undefined): string | undefined {
+      if (!ts || ts.rate == null) return undefined;
+      const rate = Number(ts.rate);
+      if (!Number.isFinite(rate) || rate <= 0) return undefined;
+      const pct = rate <= 1 ? `${(rate * 100).toFixed(0)}%` : `${rate}%`;
+      return `VAT ${pct}${ts.is_inclusive ? " incl." : ""}`;
+    }
+
     const items = [
-      ...(receipt.services || []).map((s) => ({
-        name: s.name || "Service",
-        quantity: Number(s.quantity || 1),
-        total: Number(s.total || 0),
-      })),
+      ...(receipt.services || []).map((s) => {
+        const sAny = s as typeof s & { tax_snapshot?: { rate?: number | null; is_inclusive?: boolean | null } | null };
+        const vat = vatLabel(sAny.tax_snapshot);
+        return {
+          name: s.name || "Service",
+          quantity: Number(s.quantity || 1),
+          total: Number(s.total || 0),
+          vat,
+        };
+      }),
       ...(receipt.addons || []).map((a) => ({
         name: `Add-on: ${a.name || "Add-on"}`,
         quantity: Number(a.quantity || 1),
@@ -227,11 +240,15 @@ export async function GET(
 
     drawPdfLineItems(
       doc,
-      items.map((item) => ({
-        description: item.name,
-        detail: `Quantity ${item.quantity}`,
-        amount: moneyPdf(item.total, currency),
-      })),
+      items.map((item) => {
+        const i = item as typeof item & { vat?: string };
+        const detail = i.vat ? `Qty ${item.quantity} · ${i.vat}` : `Quantity ${item.quantity}`;
+        return {
+          description: item.name,
+          detail,
+          amount: moneyPdf(item.total, currency),
+        };
+      }),
       { title: "Items" },
     );
 

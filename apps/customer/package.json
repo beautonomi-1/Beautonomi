@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.67",
+  "version": "1.0.68",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -41,12 +41,14 @@
     "@react-navigation/native": "^7.1.8",
     "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
+    "@sumsub/react-native-mobilesdk-module": "^1.44.1",
     "@supabase/supabase-js": "^2.104.1",
     "expo": "~54.0.35",
     "expo-auth-session": "^7.0.11",
     "expo-av": "~16.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-calendar": "~15.0.8",
+    "expo-camera": "~17.0.10",
     "expo-clipboard": "^8.0.8",
     "expo-constants": "^18.0.13",
     "expo-dev-client": "~6.0.21",

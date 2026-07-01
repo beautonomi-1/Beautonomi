@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import {
   isMapboxNotConfiguredError,
   mapboxNotConfiguredGeocodeResponse,
 } from "@/lib/mapbox/mapbox-config-errors";
+import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
 const geocodeSchema = z.object({
@@ -25,7 +27,11 @@ const geocodeSchema = z.object({
  * Geocode an address to coordinates. Response shape aligned with Mapbox Geocoding API:
  * { data: Array<{ place_name, center [lng,lat], text, context? }> } for client (e.g. customer app AddressPicker).
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const validationResult = geocodeSchema.safeParse(body);
@@ -79,3 +85,4 @@ export async function POST(request: Request) {
     }, { status: 502 });
   }
 }
+

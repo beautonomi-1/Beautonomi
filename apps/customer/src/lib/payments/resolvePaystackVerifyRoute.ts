@@ -10,7 +10,9 @@
  *  - `{ data: { status, type: "membership_order", membershipOrderId } }`
  *  - `{ data: { status, type: "ads_budget_order", adsBudgetOrderId, campaignId } }`
  *  - `{ data: { status, type: "provider_subscription_order", subscriptionOrderId, ... } }`
- *  - `{ data: { status, type: "custom_offer", customOfferId } }`
+ *  - `{ data: { status, type: "custom_offer", customOfferId, bookingId } }`
+ *    (bookingId is present once the offer has finalized into a booking; the
+ *    bookingId branch below takes precedence and routes to booking-detail)
  *  - `{ data: { status, type: "card_verification" } }`
  *  - Booking (no `type` field): `{ data: { status, bookingId, payment_status } }`
  *

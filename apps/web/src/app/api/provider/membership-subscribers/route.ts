@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     let q = (admin as any)
       .from("user_memberships")
       .select(
-        "id, user_id, plan_id, status, started_at, expires_at, cancelled_at, metadata, updated_at",
+        "id, user_id, plan_id, status, started_at, expires_at, cancelled_at, auto_renew, next_billing_at, last_payment_at, past_due_since, metadata, updated_at",
       )
       .order("started_at", { ascending: false });
 
@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
         status: row.status,
         expires_at: row.expires_at,
         planIsActive: plan?.is_active ?? undefined,
+        past_due_since: row.past_due_since ?? null,
       });
       return {
       subscription: {
@@ -122,6 +123,10 @@ export async function GET(request: NextRequest) {
         started_at: row.started_at,
         expires_at: row.expires_at,
         cancelled_at: row.cancelled_at,
+        auto_renew: row.auto_renew ?? false,
+        next_billing_at: row.next_billing_at ?? null,
+        last_payment_at: row.last_payment_at ?? null,
+        past_due_since: row.past_due_since ?? null,
         metadata: row.metadata,
         updated_at: row.updated_at,
         entitlement_active,

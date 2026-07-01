@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import Image from "next/image";
-import { Sparkles, X, Upload } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -759,13 +759,11 @@ export default function CustomOfferModal({
           {/* Image Upload (optional) */}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Inspiration Images (optional)</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-              <div className="flex flex-col items-center justify-center gap-2">
-                <Upload className="w-8 h-8 text-gray-400" />
-                <p className="text-sm text-gray-500">Image upload coming soon</p>
-                <p className="text-xs text-gray-400">Max 6 images</p>
-              </div>
-            </div>
+            {/*
+              Image upload placeholder hidden — no upload API wired yet.
+              Re-enable when /api/me/uploads (or equivalent) is available and
+              the storage bucket policy is configured.
+            */}
             {imageUrls.length > 0 && (
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {imageUrls.map((url, index) => (

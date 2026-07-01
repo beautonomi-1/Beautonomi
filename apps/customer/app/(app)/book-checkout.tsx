@@ -12,7 +12,8 @@ import { getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
 import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck } from "@beautonomi/i18n";
+import type { CancellationPolicyView } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
@@ -33,6 +34,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
   formatMoney,
   getHoldTimeRemaining,
+  getMissingRequiredProviderFormField,
   percentOf,
   serverNowToClockOffsetMs,
   lineHasHouseCallAdjustment,
@@ -302,23 +304,26 @@ function CountdownBar({
 }
 
 /** True when the hold exposes any cancellation / fee / window — same visibility gate as <CancellationPolicy />. */
+/** Maps the hold API's snake_case cancellation_policy to the canonical CancellationPolicyView. */
+function holdPolicyToView(
+  policy: HoldData["cancellation_policy"] | null | undefined
+): CancellationPolicyView | null {
+  if (!policy) return null;
+  return {
+    cancellationWindowHours: policy.cancellation_window_hours,
+    graceWindowMinutes: policy.grace_window_minutes,
+    lateRefundPercentage: policy.late_refund_percentage,
+    noShowFeeEnabled: policy.no_show_fee_enabled,
+    noShowFeeAmount: policy.no_show_fee_amount,
+    currency: policy.currency,
+    policyText: policy.policy_text,
+  };
+}
+
 function cancellationPolicyRequiresCustomerAck(
   policy: HoldData["cancellation_policy"] | null | undefined
 ): boolean {
-  if (!policy) return false;
-  const windowHrs = policy.cancellation_window_hours;
-  const graceMin = policy.grace_window_minutes;
-  const noShowFee =
-    policy.no_show_fee_enabled &&
-    policy.no_show_fee_amount != null &&
-    policy.no_show_fee_amount > 0;
-  const latePct = policy.late_refund_percentage;
-  const showLateLine =
-    latePct !== undefined &&
-    latePct !== null &&
-    !Number.isNaN(Number(latePct)) &&
-    Number(latePct) < 100;
-  return !!(windowHrs || noShowFee || (graceMin != null && graceMin > 0) || showLateLine);
+  return cancellationRequiresAck(holdPolicyToView(policy));
 }
 
 /* ─── Cancellation Policy Section ─── */
@@ -333,38 +338,13 @@ function CancellationPolicy({
   contentPadding: number;
   t: (key: string, opts?: Record<string, string | number>) => string;
 }) {
-  if (!policy) return null;
-  const windowHrs = policy.cancellation_window_hours;
-  const graceMin = policy.grace_window_minutes;
-  const noShowFee =
-    policy.no_show_fee_enabled &&
-    policy.no_show_fee_amount != null &&
-    policy.no_show_fee_amount > 0;
-  const latePct = policy.late_refund_percentage;
-  const showLateLine =
-    latePct !== undefined &&
-    latePct !== null &&
-    !Number.isNaN(Number(latePct)) &&
-    Number(latePct) < 100;
+  const view = holdPolicyToView(policy);
+  const content = buildCancellationPolicyLines(view, {
+    t,
+    formatCurrency: (amount, cur) => formatCurrency(amount, cur || currency),
+  });
 
-  // Visibility guard — nothing meaningful to show
-  if (
-    !windowHrs &&
-    !noShowFee &&
-    !(graceMin != null && graceMin > 0) &&
-    !showLateLine
-  ) {
-    return null;
-  }
-
-  const cur = policy.currency || currency;
-  // Human-readable window for late-cancellation lines
-  const windowLabel =
-    windowHrs != null && windowHrs > 0
-      ? windowHrs === 1
-        ? `1 ${t("checkout.hour")}`
-        : `${windowHrs} ${t("checkout.hours")}`
-      : null;
+  if (!view || content.lines.length === 0) return null;
 
   return (
     <View
@@ -388,88 +368,30 @@ function CancellationPolicy({
           {t("checkout.cancellationPolicy")}
         </Text>
       </View>
-      {graceMin != null && graceMin > 0 && (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
+
+      {content.lines.map((line) => (
+        <View key={line.id} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
           <Ionicons
-            name="checkmark-circle-outline"
+            name={line.tone === "good" ? "checkmark-circle-outline" : "alert-circle-outline"}
             size={16}
-            color={Colors.success}
+            color={line.tone === "good" ? Colors.success : Colors.warning}
             style={{ marginTop: 1, marginRight: 8 }}
           />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            {t("checkout.graceCancellation", { count: graceMin })}
+            {line.text}
           </Text>
         </View>
-      )}
-      {windowHrs != null && windowHrs > 0 && (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={16}
-            color={Colors.success}
-            style={{ marginTop: 1, marginRight: 8 }}
-          />
-          <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            {t("checkout.freeCancellation", {
-              count: windowHrs,
-              hourWord: windowHrs === 1 ? t("checkout.hour") : t("checkout.hours"),
-            })}
+      ))}
+
+      <View style={{ marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB", gap: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
+          <Text style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 16, flex: 1 }}>
+            {content.footerText}
           </Text>
         </View>
-      )}
-      {showLateLine ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={16}
-            color={Colors.warning}
-            style={{ marginTop: 1, marginRight: 8 }}
-          />
-          <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            {(() => {
-              const pct = Math.round(Number(latePct));
-              const hrs = windowHrs;
-              const hourWord = hrs === 1 ? t("checkout.hour") : t("checkout.hours");
-              // When there's a free-cancellation window: show "Within X hours: …"
-              if (hrs != null && hrs > 0) {
-                return pct <= 0
-                  ? t("checkout.lateCancellationWithinWindowNoRefund", {
-                      hours: hrs,
-                      hourWord,
-                    })
-                  : t("checkout.lateCancellationWithinWindowRefund", {
-                      hours: hrs,
-                      hourWord,
-                      percent: pct,
-                    });
-              }
-              // No free window: show whether refund applies at all
-              return pct <= 0
-                ? t("checkout.noRefundOnCancellation")
-                : t("checkout.lateCancellationRefund", { percent: pct });
-            })()}
-          </Text>
-        </View>
-      ) : null}
-      {noShowFee ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={16}
-            color={Colors.warning}
-            style={{ marginTop: 1, marginRight: 8 }}
-          />
-          <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            {t("checkout.noShowFeeApplies", {
-              amount: formatCurrency(policy.no_show_fee_amount!, cur),
-            })}
-          </Text>
-        </View>
-      ) : null}
-      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
-        <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
         <Text style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 16 }}>
-          {t("checkout.policyEnforcedAutomatically")}
+          {content.storeCreditNote}
         </Text>
       </View>
     </View>
@@ -2362,19 +2284,16 @@ export default function BookCheckoutScreen() {
       setError(t("checkout.requiredDetailsMissing"));
       return;
     }
-    for (const form of providerForms) {
-      for (const field of form.fields || []) {
-        if (!field.is_required) continue;
-        const val = providerFormValues[form.id]?.[field.id];
-        if (val === undefined || val === null || String(val).trim() === "") {
-          setError(
-            t("checkout.providerFormFieldRequired", {
-              formTitle: form.title,
-              fieldName: field.name,
-            })
-          );
-          return;
-        }
+    {
+      const missing = getMissingRequiredProviderFormField(providerForms, providerFormValues);
+      if (missing) {
+        setError(
+          t("checkout.providerFormFieldRequired", {
+            formTitle: missing.formTitle,
+            fieldName: missing.fieldName,
+          })
+        );
+        return;
       }
     }
 

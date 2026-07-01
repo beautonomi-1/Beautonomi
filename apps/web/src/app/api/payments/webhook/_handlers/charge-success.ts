@@ -261,7 +261,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       return;
     }
     if (metadata?.membership_order_id) {
-      await handleMembershipOrderSuccess({ reference, metadata, amount, fees }, supabase);
+      await handleMembershipOrderSuccess({ reference, metadata, amount, fees, authorization, customer }, supabase);
       return;
     }
     if (metadata?.provider_subscription_order_id) {
@@ -2151,7 +2151,14 @@ async function handleGiftCardOrderFailed(
 // ─── Membership Order ────────────────────────────────────────────────────────
 
 async function handleMembershipOrderSuccess(
-  payload: { reference: string; metadata: any; amount?: number; fees?: number },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount?: number;
+    fees?: number;
+    authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string } | null;
+    customer?: { email?: string } | null;
+  },
   supabase: SupabaseClient,
 ) {
   const { metadata } = payload;
@@ -2207,9 +2214,7 @@ async function handleMembershipOrderSuccess(
     typeof payload.fees === "number"
       ? convertFromSmallestUnit(payload.fees)
       : 0;
-  const netAmount = Math.max(0, grossAmount - feeAmount);
-
-  const membershipFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+  const membershipFinanceTenantIdHint = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
     provider_id: providerId,
   });
@@ -2235,6 +2240,55 @@ async function handleMembershipOrderSuccess(
   const startedAt =
     hasFutureActiveTerm && existing?.started_at ? existing.started_at : now.toISOString();
 
+  // Persist the Paystack authorization so renewals can be charged automatically.
+  let savedPaymentMethodId: string | null = null;
+  let savedAuthCode: string | null = null;
+  const authorization = payload.authorization;
+  const customerEmail = payload.customer?.email ?? null;
+  const enableAutoRenew = metadata?.enable_auto_renew === true || metadata?.save_card === true;
+  if (
+    enableAutoRenew &&
+    authorization?.authorization_code &&
+    authorization?.reusable === true &&
+    customerEmail &&
+    orderData.user_id
+  ) {
+    try {
+      savedPaymentMethodId = await savePaystackAuthorization({
+        userId: orderData.user_id,
+        email: customerEmail,
+        authorizationCode: authorization.authorization_code,
+        lastFour: authorization.last4 ?? "0000",
+        expiryMonth: parseInt(authorization.exp_month ?? "12", 10),
+        expiryYear: parseInt(authorization.exp_year ?? "2099", 10),
+        cardBrand: authorization.brand ?? authorization.card_type ?? "unknown",
+        isDefault: false,
+        supabase,
+      });
+      savedAuthCode = authorization.authorization_code;
+    } catch (saveCardErr) {
+      console.error("[membership] savePaystackAuthorization failed:", saveCardErr);
+    }
+  }
+
+  const recurringFields: Record<string, unknown> = {};
+  if (savedPaymentMethodId) {
+    recurringFields.auto_renew = true;
+    recurringFields.payment_method_id = savedPaymentMethodId;
+    recurringFields.paystack_authorization_code = savedAuthCode;
+    recurringFields.next_billing_at = expiresAt.toISOString();
+    recurringFields.last_payment_at = now.toISOString();
+    recurringFields.renewal_failure_count = 0;
+    recurringFields.past_due_since = null;
+    recurringFields.recurring_consent_at = now.toISOString();
+    recurringFields.billing_period = "monthly";
+  } else {
+    // Card not reusable — keep whatever was already set; reset failure count on successful manual re-purchase.
+    recurringFields.last_payment_at = now.toISOString();
+    recurringFields.renewal_failure_count = 0;
+    recurringFields.past_due_since = null;
+  }
+
   await supabase.from("user_memberships").upsert(
     {
       user_id: orderData.user_id,
@@ -2245,6 +2299,7 @@ async function handleMembershipOrderSuccess(
       expires_at: expiresAt.toISOString(),
       metadata: { source: "purchase", membership_order_id: orderId, attribution },
       updated_at: new Date().toISOString(),
+      ...recurringFields,
     },
     { onConflict: "user_id,provider_id" },
   );
@@ -2254,72 +2309,37 @@ async function handleMembershipOrderSuccess(
     .update({ status: "paid", updated_at: new Date().toISOString() })
     .eq("id", orderId);
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
+  // Idempotent ledger: one payment_transactions + two finance_transactions per reference.
+  // Use `membership_renewal` kind when this charge originated from the auto-billing cron.
+  const isAutoRenewal = metadata?.kind === "membership_renewal" || metadata?.source === "auto_renewal";
+  const { recordMembershipPayment } = await import("@/lib/memberships/membership-payment");
+  await recordMembershipPayment({
+    supabase,
     reference: payload.reference,
-    amount: grossAmount,
-    fees: feeAmount,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "membership_order",
-      membership_order_id: orderId,
-      plan_id: orderData.plan_id,
-      provider_id: orderData.provider_id,
-      attribution,
-    },
-    created_at: new Date().toISOString(),
+    orderId,
+    userId: orderData.user_id,
+    providerId,
+    planId: orderData.plan_id ?? "",
+    grossAmount,
+    feeAmount,
+    kind: isAutoRenewal ? "membership_renewal" : "membership_order",
+    tenantIdHint: membershipFinanceTenantIdHint,
   });
 
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: membershipFinanceTenantId,
-    transaction_type: "membership_sale",
-    amount: grossAmount,
-    fees: feeAmount,
-    commission: 0,
-    net: 0,
-    description: `Membership sale (gross)`,
-    created_at: new Date().toISOString(),
-  });
-
-  if (providerId) {
-    await supabase.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: membershipFinanceTenantId,
-      transaction_type: "provider_earnings",
-      amount: grossAmount,
-      fees: feeAmount,
-      commission: 0,
-      net: netAmount,
-      description: `Provider earnings from membership sale`,
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
-    await sendToUser(
-      orderData.user_id,
-      {
-        title: "Membership Activated",
-        message: "Your membership has been activated.",
-        data: {
-          type: "membership_activated",
-          provider_id: orderData.provider_id,
-          plan_id: orderData.plan_id,
-        },
-        url: `/account-settings`,
-      },
-      ["push"],
-      { appType: "customer" }
-    );
-  } catch (e) {
-    console.error("Membership activation notification failed:", e);
+  // Only send "Membership activated" on the initial purchase, not on every auto-renewal.
+  if (!isAutoRenewal) {
+    try {
+      const { notifyMembershipActivated } = await import("@/lib/notifications/notification-service");
+      const { data: planForNotif } = await (supabase.from("membership_plans") as any)
+        .select("name, description")
+        .eq("id", orderData.plan_id)
+        .maybeSingle();
+      const planName = (planForNotif as { name?: string } | null)?.name ?? "Membership";
+      const benefits = (planForNotif as { description?: string } | null)?.description ?? "exclusive member benefits";
+      await notifyMembershipActivated(orderData.user_id, planName, benefits, ["push"]);
+    } catch (e) {
+      console.error("Membership activation notification failed:", e);
+    }
   }
 }
 

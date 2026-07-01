@@ -4,7 +4,7 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 
 function escapeLike(value: string): string {
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
     if (!user) return unauthorizedResponse("Authentication required");
 
-    const { allowed, retryAfter } = checkRateLimit(user.id, "export:provider-leads");
+    const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:provider-leads");
     if (!allowed) {
       return NextResponse.json(
         { data: null, error: { message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`, code: "RATE_LIMIT_EXCEEDED" } },

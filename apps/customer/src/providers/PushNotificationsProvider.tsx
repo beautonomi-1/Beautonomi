@@ -440,10 +440,20 @@ function usePushRegistration() {
             );
           });
 
-          // Show in the shade while open; re-sync bell + app-icon badge from server (single source of truth).
+          // Re-sync badge from server (single source of truth). While the app is
+          // active, suppress the OS banner so the in-app banner (driven by the
+          // notifications realtime INSERT) owns foreground UX — users never see
+          // both an OS banner and the in-app banner for the same event.
+          // Background/killed-app pushes are unaffected (AppState won't be "active").
           OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
             const data = (event.notification.additionalData ?? {}) as Record<string, unknown>;
             if (isBadgeSyncPushData(data)) {
+              event.preventDefault();
+              emitNotificationBadgeRefresh();
+              return;
+            }
+            if (AppState.currentState === "active") {
+              // In-app banner (realtime-driven) owns foreground display.
               event.preventDefault();
               emitNotificationBadgeRefresh();
               return;

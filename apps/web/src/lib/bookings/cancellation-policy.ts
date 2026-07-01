@@ -133,14 +133,14 @@ export async function getCancellationPolicy(
     return generalPolicy as CancellationPolicy;
   }
 
-  // No policy found - return default
+  // No policy found - return canonical default (24h cutoff, 15min grace, non-refundable late cancel)
   return {
     id: '',
     provider_id: providerId,
     location_type: null,
     hours_before_cutoff: 24,
     grace_window_minutes: 15,
-    policy_text: 'Cancellations must be made at least 24 hours before your appointment.',
+    policy_text: 'Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.',
     late_cancellation_type: 'no_refund',
     is_active: true,
     refund_percentage: 0,

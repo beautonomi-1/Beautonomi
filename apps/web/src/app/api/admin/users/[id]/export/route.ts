@@ -34,7 +34,7 @@ export async function GET(
       .from("bookings")
       .select("*")
       .eq("tenant_id", tenantId)
-      .or(`customer_id.eq.${id},user_id.eq.${id}`);
+      .eq("customer_id", id);
 
     const csvRows: string[] = [];
     csvRows.push("User Data");

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
-import { Shield, Lock, AlertTriangle, ExternalLink, Mail, Phone } from "lucide-react";
+import { Shield, AlertTriangle, ExternalLink, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -783,43 +783,11 @@ const LoginAccount = ({
           </div>
         </TabsContent>
 
-        {/* Login Requests Tab */}
-        <TabsContent value="step2">
-          <div
-            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <Lock className="w-6 h-6 text-primary" />
-              <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Login Requests</h2>
-            </div>
-            <div className="text-center py-12">
-              <Lock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600 font-light mb-2">This feature is coming soon.</p>
-              <p className="text-sm text-gray-500">
-                View and manage login requests from new devices and locations.
-              </p>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Shared Access Tab */}
-        <TabsContent value="step3">
-          <div
-            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <Shield className="w-6 h-6 text-primary" />
-              <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Shared Access</h2>
-            </div>
-            <div className="text-center py-12">
-              <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600 font-light mb-2">This feature is coming soon.</p>
-              <p className="text-sm text-gray-500">
-                Manage shared access to your account with trusted family members or assistants.
-              </p>
-            </div>
-          </div>
-        </TabsContent>
+        {/*
+          Login Requests (step2) and Shared Access (step3) placeholders removed.
+          No backing tables/APIs exist for these features. They will be implemented
+          as proper features when the API layer is ready.
+        */}
       </Tabs>
 
       {/* Change Email Dialog */}

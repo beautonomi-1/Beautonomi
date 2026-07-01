@@ -243,6 +243,14 @@ export {
   shouldShowCancelledMembershipBadge,
 } from "./membership/cancelledMembershipBadge";
 export {
+  getMissingRequiredProviderFormField,
+  providerFormsComplete,
+  type MissingProviderFormField,
+  type ProviderFormFieldLike,
+  type ProviderFormLike,
+  type ProviderFormResponses as ProviderFormResponsesMap,
+} from "./booking/providerFormValidation";
+export {
   catalogHasAnyAtHomePriceAdjustment,
   computeAtHomeLinePrice,
   hasAtHomePriceAdjustment,

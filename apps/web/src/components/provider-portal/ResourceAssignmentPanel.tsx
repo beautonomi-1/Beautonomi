@@ -19,8 +19,9 @@ interface Resource {
   id: string;
   name: string;
   description?: string;
-  resource_group_id?: string;
-  resource_group_name?: string;
+  group_id?: string;
+  // GET /api/provider/resources exposes the group name as `group_name`.
+  group_name?: string | null;
   capacity?: number;
 }
 
@@ -148,7 +149,7 @@ export default function ResourceAssignmentPanel({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleRemoveResource(resource.id)}
+                    onClick={() => handleRemoveResource(resource.resource_id)}
                     className="text-red-600 hover:text-red-700"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -172,9 +173,9 @@ export default function ResourceAssignmentPanel({
                   {unassignedResources.map((resource) => (
                     <SelectItem key={resource.id} value={resource.id}>
                       {resource.name}
-                      {resource.resource_group_name && (
+                      {resource.group_name && (
                         <span className="text-gray-500 ml-2">
-                          ({resource.resource_group_name})
+                          ({resource.group_name})
                         </span>
                       )}
                     </SelectItem>

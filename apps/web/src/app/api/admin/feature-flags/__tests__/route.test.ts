@@ -142,4 +142,62 @@ describe("POST /api/admin/feature-flags", () => {
     expect(body.data).toBeDefined();
     expect(body.data.feature_key).toBe("test_flag");
   });
+
+  it("persists advanced targeting fields (rollout/platforms/roles/env/min version) on create", async () => {
+    const insertSpy = vi.fn().mockReturnThis();
+    const mockSupabase = createMockSupabaseClient();
+    mockSupabase.from.mockReturnValue({
+      insert: insertSpy,
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({
+        data: { id: "flag-2", feature_key: "targeted_flag", feature_name: "Targeted", enabled: true },
+        error: null,
+      }),
+    });
+    mockGetSupabaseAdmin.mockReturnValue(mockSupabase);
+
+    const { POST } = await import("../route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost/api/admin/feature-flags",
+      body: {
+        feature_key: "targeted_flag",
+        feature_name: "Targeted",
+        enabled: true,
+        rollout_percent: 25,
+        platforms_allowed: ["web", " provider "],
+        roles_allowed: ["customer"],
+        environments_allowed: ["production"],
+        min_app_version: " 1.4.0 ",
+      },
+    });
+    const res = await POST(req as NextRequest);
+    expect(res.status).toBe(201);
+
+    const inserted = insertSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.rollout_percent).toBe(25);
+    expect(inserted.platforms_allowed).toEqual(["web", "provider"]);
+    expect(inserted.roles_allowed).toEqual(["customer"]);
+    expect(inserted.environments_allowed).toEqual(["production"]);
+    expect(inserted.min_app_version).toBe("1.4.0");
+  });
+
+  it("returns 400 when rollout_percent is out of range", async () => {
+    const { POST } = await import("../route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost/api/admin/feature-flags",
+      body: {
+        feature_key: "bad_rollout",
+        feature_name: "Bad Rollout",
+        rollout_percent: 250,
+      },
+    });
+    const res = await POST(req as NextRequest);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.data).toBeNull();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
 });

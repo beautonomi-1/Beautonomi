@@ -5,7 +5,7 @@ import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supab
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 
 /**
  * GET /api/admin/export/analytics
@@ -15,7 +15,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
-    const { allowed, retryAfter } = checkRateLimit(user.id, "export:analytics");
+    const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:analytics");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,

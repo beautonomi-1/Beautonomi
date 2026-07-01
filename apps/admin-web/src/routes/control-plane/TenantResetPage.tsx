@@ -31,6 +31,8 @@ type ResetResponse = {
   dry_run: boolean;
   compliance_audit_id: string | null;
   compliance_audit_write_error: string | null;
+  /** True when the audit row was written but without purge_after_at (schema drift). Apply migration 723 to resolve. */
+  compliance_audit_degraded: boolean | null;
   counts: Record<string, CountEntry>;
   totals: { tables: number; rows: number };
   report?: unknown;
@@ -371,6 +373,11 @@ export function TenantResetPage() {
           {liveReport?.compliance_audit_write_error ? (
             <p className="text-xs text-red-700">
               Audit row write failed: {liveReport.compliance_audit_write_error}
+            </p>
+          ) : null}
+          {liveReport?.compliance_audit_degraded ? (
+            <p className="text-xs text-amber-700">
+              Audit row written without retention date (schema drift — apply migration 723 to resolve).
             </p>
           ) : null}
         </AdminPanel>

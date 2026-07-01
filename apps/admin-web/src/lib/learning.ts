@@ -143,6 +143,89 @@ function placeholderHtml(id: string, caption: string): string {
 </div>`;
 }
 
+// ─── Training paths ───────────────────────────────────────────────────────────
+
+export type KbTrainingPathStep = {
+  step: number;
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  audience: KbAudience;
+  is_internal: boolean;
+  status: string;
+  content_type: string | null;
+};
+
+export type KbTrainingPath = {
+  id: string;
+  slug: string;
+  title: string;
+  role: string;
+  description: string | null;
+  sort_order: number;
+  steps: KbTrainingPathStep[];
+  created_at: string;
+  updated_at: string;
+};
+
+// ─── Table of contents ────────────────────────────────────────────────────────
+
+export type TocEntry = {
+  level: 2 | 3;
+  id: string;
+  text: string;
+};
+
+/**
+ * Parse h2/h3 headings out of article HTML and return a table-of-contents list.
+ * IDs are slugified heading text (spaces → hyphens, lowercased).
+ */
+export function buildToc(html: string): TocEntry[] {
+  if (!html) return [];
+  const entries: TocEntry[] = [];
+  const re = /<h([23])[^>]*>(.*?)<\/h[23]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    const level = Number(match[1]) as 2 | 3;
+    const rawText = match[2].replace(/<[^>]+>/g, "");
+    const text = rawText.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+    const id = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-");
+    entries.push({ level, id, text });
+  }
+  return entries;
+}
+
+/**
+ * Inject `id` attributes on h2/h3 tags so anchor links from the ToC work.
+ * Must be applied AFTER renderKbHtml (or to the same html string).
+ */
+export function injectHeadingIds(html: string): string {
+  if (!html) return "";
+  return html.replace(/<h([23])([^>]*)>(.*?)<\/h[23]>/gi, (_m, lvl, attrs, inner) => {
+    const text = inner.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+    const id = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-");
+    if (/\bid=/.test(attrs)) return `<h${lvl}${attrs}>${inner}</h${lvl}>`;
+    return `<h${lvl}${attrs} id="${id}">${inner}</h${lvl}>`;
+  });
+}
+
+/**
+ * Estimate reading time in minutes (200 wpm average).
+ */
+export function estimateReadMinutes(html: string): number {
+  const words = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+}
+
 /**
  * Replace `data-learn-mockup` markers with placeholder cards for the admin reader.
  * Handles the canonical `mockup` then `caption` order plus any caption-less leftovers.

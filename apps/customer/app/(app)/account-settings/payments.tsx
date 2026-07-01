@@ -188,7 +188,7 @@ export default function PaymentsScreen() {
     setAddingCard(true);
     const countBefore = methods.length;
     try {
-      const callbackUrl = ExpoLinking.createURL("account-settings/payments");
+      const callbackUrl = ExpoLinking.createURL("payments-return");
       const res = await api.post<{
         authorization_url?: string;
         reference?: string;

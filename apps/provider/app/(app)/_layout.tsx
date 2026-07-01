@@ -8,8 +8,8 @@
  *   NOT on transient network failures or web API config issues (which would cause a login loop).
  */
 import { Fragment, useEffect, useMemo, useRef } from "react";
-import { View, Linking, Platform } from "react-native";
-import { Redirect, Stack, useRouter } from "expo-router";
+import { View } from "react-native";
+import { Redirect, Stack } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { RoleGate } from "@/components/RoleGate";
@@ -36,26 +36,8 @@ import {
   setAuthFlowTags,
 } from "@/lib/sentry";
 
-const SUBSCRIPTION_SUCCESS_DEEP_LINK = "provider://subscription/success";
-const ADS_SETTINGS_DEEP_LINK = "provider://settings/ads";
-const ADS_PAYMENT_RETURN_DEEP_LINK_PREFIX = "provider://settings/ads-payment-return";
-
-function parseProviderDeepLinkQuery(url: string): Record<string, string> {
-  try {
-    const parsed = new URL(url);
-    const params: Record<string, string> = {};
-    parsed.searchParams.forEach((value, key) => {
-      params[key] = value;
-    });
-    return params;
-  } catch {
-    return {};
-  }
-}
-
 export default function AppLayout() {
   const { session, loading } = useAuth();
-  const router = useRouter();
   const sentryAppReadyLogged = useRef<string | null>(null);
   const stackScreenOptions = useMemo(
     () => ({
@@ -65,31 +47,6 @@ export default function AppLayout() {
     }),
     [],
   );
-
-  // Deep link: open native subscription screen (e.g. after payment in browser, if user taps Return to app)
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    const handleUrl = (url: string) => {
-      if (url === SUBSCRIPTION_SUCCESS_DEEP_LINK || url.startsWith(SUBSCRIPTION_SUCCESS_DEEP_LINK + "?")) {
-        router.replace("/(app)/(tabs)/more/settings/subscription" as never);
-      } else if (
-        url === ADS_PAYMENT_RETURN_DEEP_LINK_PREFIX ||
-        url.startsWith(ADS_PAYMENT_RETURN_DEEP_LINK_PREFIX + "?")
-      ) {
-        router.replace({
-          pathname: "/(app)/(tabs)/more/settings/ads-payment-return",
-          params: parseProviderDeepLinkQuery(url),
-        } as never);
-      } else if (url === ADS_SETTINGS_DEEP_LINK || url.startsWith(ADS_SETTINGS_DEEP_LINK + "?")) {
-        router.replace("/(app)/(tabs)/more/settings/ads" as never);
-      }
-    };
-    Linking.getInitialURL().then((url) => {
-      if (url) handleUrl(url);
-    }).catch(() => {});
-    const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
-    return () => sub.remove();
-  }, [router]);
 
   useEffect(() => {
     if (!__DEV__) return;

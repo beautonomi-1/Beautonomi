@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const { allowed, retryAfter } = checkRateLimit(user.id, "export:users");
+    const { allowed, retryAfter } = await checkAdminExportRateLimit(user.id, "export:users");
     if (!allowed) {
       return NextResponse.json(
         {

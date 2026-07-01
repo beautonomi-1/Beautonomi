@@ -115,3 +115,11 @@ export function initI18n(lng: string = "en") {
 
 export { i18n, useTranslation };
 export type { TFunction } from "i18next";
+
+export type {
+  CancellationPolicyView,
+  CancellationPolicyLine,
+  CancellationPolicyContent,
+  PolicyLineTone,
+} from "./cancellation";
+export { buildCancellationPolicyLines, cancellationRequiresAck } from "./cancellation";

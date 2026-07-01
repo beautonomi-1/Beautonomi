@@ -1491,9 +1491,12 @@ export default function PartnerProfileScreen() {
     const unit = Number.isFinite(plan.price) ? plan.price : 0;
     const price = `${plan.currency} ${unit.toFixed(0)}`;
 
+    const recurringConsent = pp("recurringConsentBody", { price }) as string;
+    const bodyWithConsent = `${pp("joinMembershipBody", { price, interval: plan.interval })}\n\n${recurringConsent}`;
+
     Alert.alert(
       pp("joinMembershipTitle", { planName: plan.name }),
-      pp("joinMembershipBody", { price, interval: plan.interval }),
+      bodyWithConsent,
       [
         { text: t("common.cancel"), style: "cancel" },
         {

@@ -10,6 +10,7 @@ import {
   CustomFieldsForm,
   type CustomFieldDefinition,
 } from "@/components/custom-fields/CustomFieldsForm";
+import { getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import type { BookingState } from "../booking-flow";
 
 /**
@@ -165,18 +166,7 @@ export default function StepForms({
       const v = customFieldValues[def.name];
       if (v === undefined || v === null || String(v).trim() === "") return true;
     }
-    for (const form of providerForms) {
-      for (const field of form.fields || []) {
-        if (!(field.is_required || form.is_required)) continue;
-        const v = providerFormValues[form.id]?.[field.id];
-        if (field.field_type === "checkbox") {
-          if (!v) return true;
-        } else if (v === undefined || v === null || String(v).trim() === "") {
-          return true;
-        }
-      }
-    }
-    return false;
+    return getMissingRequiredProviderFormField(providerForms, providerFormValues) !== null;
   }, [customDefs, providerForms, providerFormValues, customFieldValues]);
 
   useEffect(() => {

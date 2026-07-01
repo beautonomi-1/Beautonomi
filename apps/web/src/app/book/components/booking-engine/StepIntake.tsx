@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { BookingData, ClientIntake, ProviderFormResponses, CustomFieldValues } from "../../types/booking-engine";
+import { getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import {
   BOOKING_ACCENT,
   BOOKING_EDGE,
@@ -95,20 +96,8 @@ export function StepIntake({
     validEmail &&
     isCompleteE164(c.phone);
 
-  // Validate required provider form fields
-  let providerFormsValid = true;
-  for (const form of providerForms) {
-    if (!form.is_required) continue;
-    for (const field of form.fields || []) {
-      if (!field.is_required) continue;
-      const val = providerFormValues[form.id]?.[field.id];
-      if (val === undefined || val === null || String(val).trim() === "") {
-        providerFormsValid = false;
-        break;
-      }
-    }
-    if (!providerFormsValid) break;
-  }
+  // Validate required provider form fields (field required if field.is_required || form.is_required)
+  const providerFormsValid = getMissingRequiredProviderFormField(providerForms, providerFormValues) === null;
 
   // Validate required booking custom fields (by name)
   const requiredCustomNames = bookingCustomDefinitions.filter((d) => d.is_required).map((d) => d.name);

@@ -2,7 +2,8 @@
  * Identity verification screen.
  *
  * When SumSub is configured (sumsub_available === true):
- *   → Launches the SumSub Web SDK inside a device browser via a signed embed URL.
+ *   → Launches the native Sumsub SDK flow (camera + liveness in-process,
+ *     no WebView or external browser).
  *
  * When SumSub is not yet configured (sumsub_available === false):
  *   → Shows a manual document-upload form (POST /api/me/verification).
@@ -33,9 +34,9 @@ import { RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { getBackendUrl } from "@/config/public-env";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
+import { launchSumsub } from "@/lib/sumsub/launchSumsub";
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: "license", labelKey: "docTypeLicense" },
@@ -167,34 +168,35 @@ export default function IdentityVerificationScreen() {
     haptic.light();
     setLaunching(true);
     try {
-      const res = await api.get<{ access_token: string; refresh_token?: string }>(
-        `/api/me/verification/sumsub/token?environment=${encodeURIComponent(env)}`
-      );
-      if (res.error) {
-        Alert.alert(errTitle, res.error.message || iv("startError"));
-        return;
+      const result = await launchSumsub({
+        env,
+        onStatusChanged: (status) => {
+          // Eagerly refresh status on terminal events so the UI reflects the
+          // outcome without waiting for the webhook to arrive.
+          const terminalStatuses = new Set([
+            "Approved",
+            "FinallyRejected",
+            "TemporarilyDeclined",
+            "ActionCompleted",
+          ]);
+          if (terminalStatuses.has(status)) {
+            void load({ silent: true });
+          }
+        },
+      });
+
+      if (!result.ok) {
+        Alert.alert(errTitle, iv("startError"));
+      } else {
+        // Refresh regardless — the flow may have completed successfully.
+        void load({ silent: true });
       }
-      const access_token = res.data?.access_token;
-      const refresh_token = (res.data as any)?.refresh_token;
-      if (!access_token) {
-        Alert.alert(iv("tokenMissingTitle"), iv("tokenMissingBody"));
-        return;
-      }
-      const base = getBackendUrl().replace(/\/$/, "");
-      if (!base) {
-        Alert.alert(iv("appUrlMissingTitle"), iv("appUrlMissingBody"));
-        return;
-      }
-      const hash = `token=${encodeURIComponent(access_token)}${
-        refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""
-      }`;
-      await Linking.openURL(`${base}/account-settings/verification/embed#${hash}`);
     } catch {
       Alert.alert(errTitle, iv("startVerificationFailed"));
     } finally {
       setLaunching(false);
     }
-  }, [env, errTitle, iv]);
+  }, [env, errTitle, iv, load]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -546,7 +548,6 @@ export default function IdentityVerificationScreen() {
                 <>
                   <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
                   <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{iv("verifyInstantly")}</Text>
-                  <Ionicons name="open-outline" size={16} color="#fff" />
                 </>
               )}
             </TouchableOpacity>

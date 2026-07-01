@@ -9,6 +9,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
+import { cancellationRequiresAck } from "@beautonomi/i18n";
 import { toast } from "sonner";
 import { Loader2, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -311,9 +313,17 @@ interface ProviderForm {
 }
 
 interface CancellationPolicy {
-  policy_text?: string;
+  policy_text?: string | null;
   hours_before_cutoff?: number;
+  grace_window_minutes?: number;
   late_cancellation_type?: "no_refund" | "partial_refund" | "full_refund";
+  late_refund_percentage?: number;
+  refund_percentage?: number;
+  fee_amount?: number;
+  fee_type?: "fixed" | "percentage";
+  no_show_fee_enabled?: boolean;
+  no_show_fee_amount?: number;
+  currency?: string;
 }
 
 interface OnlineBookingFlowNewProps {
@@ -1029,16 +1039,20 @@ export default function OnlineBookingFlowNew({
         if (data && data.length > 0) setCancellationPolicy(data[0]);
         else
           setCancellationPolicy({
-            policy_text: "Cancellations must be made at least 24 hours before your appointment. Cancellations made within 24 hours may be subject to a cancellation fee.",
+            policy_text: "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
             hours_before_cutoff: 24,
+            grace_window_minutes: 15,
             late_cancellation_type: "no_refund",
+            refund_percentage: 0,
           });
       })
       .catch(() =>
         setCancellationPolicy({
-          policy_text: "Cancellations must be made at least 24 hours before your appointment.",
+          policy_text: "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
           hours_before_cutoff: 24,
+          grace_window_minutes: 15,
           late_cancellation_type: "no_refund",
+          refund_percentage: 0,
         })
       );
   }, [provider.id, bookingData.venueType, step]);
@@ -1326,7 +1340,27 @@ export default function OnlineBookingFlowNew({
       toast.error("Please choose a date and time to continue.");
       return;
     }
-    if (bookingData.policyAccepted !== true) {
+    // Only require explicit acceptance when the policy has material terms to acknowledge.
+    // Matches StepReview's gate (cancellationRequiresAck) so the confirm flow stays consistent.
+    const requiresPolicyAck = cancellationRequiresAck(
+      cancellationPolicy
+        ? {
+            cancellationWindowHours: cancellationPolicy.hours_before_cutoff,
+            graceWindowMinutes: cancellationPolicy.grace_window_minutes,
+            lateRefundPercentage:
+              cancellationPolicy.late_refund_percentage ??
+              cancellationPolicy.refund_percentage ??
+              (cancellationPolicy.late_cancellation_type === "full_refund"
+                ? 100
+                : cancellationPolicy.late_cancellation_type === "partial_refund"
+                  ? 50
+                  : 0),
+            noShowFeeEnabled: cancellationPolicy.no_show_fee_enabled,
+            noShowFeeAmount: cancellationPolicy.no_show_fee_amount,
+          }
+        : null
+    );
+    if (requiresPolicyAck && bookingData.policyAccepted !== true) {
       toast.error("Please accept the cancellation policy to continue.");
       return;
     }
@@ -1523,10 +1557,13 @@ export default function OnlineBookingFlowNew({
           setGateOpen(true);
         }
       } else {
-        toast.error("Failed to secure slot");
+        toast.error(getUserFacingMessage("SLOT_UNAVAILABLE", null, "Failed to secure slot. Please try another time."));
       }
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Failed to secure slot");
+      const msg = e instanceof FetchError
+        ? getUserFacingMessage(extractErrorCode(e), e.message, "Failed to secure slot")
+        : "Failed to secure slot. Please try again.";
+      toast.error(msg);
     } finally {
       setCreatingHold(false);
     }

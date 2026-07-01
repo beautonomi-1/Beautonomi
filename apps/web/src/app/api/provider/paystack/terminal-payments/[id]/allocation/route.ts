@@ -17,6 +17,8 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
+import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
+import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 
 const allocationSchema = z.discriminatedUnion("action", [
   z.object({
@@ -183,6 +185,49 @@ export async function POST(
       await notifyProductOrderPaidIfTransitioned(admin as any, body.entity_id, {
         transitionedToPaid: payRecord.transitionedToPaid,
       });
+    }
+
+    if (body.entity_type === "additional_charge") {
+      const { data: acRow } = await (admin.from("additional_charges") as any)
+        .select("id, booking_id, status, amount")
+        .eq("id", body.entity_id)
+        .maybeSingle();
+      if (!acRow) {
+        return errorResponse("Additional charge not found for this provider.", "TARGET_NOT_FOUND", 404);
+      }
+      // Validate the charge's booking belongs to this provider
+      const acBookingId = (acRow as { booking_id?: string }).booking_id ?? null;
+      if (!acBookingId) {
+        return errorResponse("Additional charge has no associated booking.", "TARGET_NOT_FOUND", 404);
+      }
+      const { data: acBooking } = await admin
+        .from("bookings")
+        .select("id, customer_id, provider_id")
+        .eq("id", acBookingId)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (!acBooking) {
+        return errorResponse("Booking target not found for this provider.", "TARGET_NOT_FOUND", 404);
+      }
+      const customerId = (acBooking as { customer_id?: string }).customer_id ?? "";
+      try {
+        await settleAdditionalChargePlatformHeld(admin, {
+          reference: payment.paystack_reference,
+          amountSmallestUnit: convertToSmallestUnit(requestedAmount),
+          feesSmallestUnit: convertToSmallestUnit(Number(payment.gateway_fee_amount ?? 0)),
+          bookingId: acBookingId,
+          chargeId: body.entity_id,
+          paystackTransactionId: payment.paystack_transaction_id ?? null,
+          customerId,
+        });
+      } catch (acSettleErr) {
+        return errorResponse(
+          "Failed to settle additional charge via terminal.",
+          "SETTLEMENT_ERROR",
+          500,
+          acSettleErr instanceof Error ? acSettleErr.message : String(acSettleErr),
+        );
+      }
     }
 
     if (body.entity_type === "sale") {

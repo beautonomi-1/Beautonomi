@@ -106,7 +106,7 @@ export async function PATCH(
       }
     }
 
-    invalidatePublicProviderCache();
+    invalidatePublicProviderCache(tenantId);
 
     await writeAuditLog({
       actor_user_id: user.id,

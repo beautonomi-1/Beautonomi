@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
 const routeSchema = z.object({
@@ -24,7 +26,11 @@ const routeSchema = z.object({
  * 
  * Calculate route between waypoints
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const validationResult = routeSchema.safeParse(body);
@@ -73,3 +79,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

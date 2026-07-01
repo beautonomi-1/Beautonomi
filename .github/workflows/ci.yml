@@ -362,5 +362,8 @@ jobs:
       - name: Run multi-tenant audits (strict tenant hints)
         run: pnpm audit:multi-tenant:strict
 
+      - name: Verify cron schedule (all 38 handlers exist)
+        run: pnpm verify:cron-schedule
+
       - name: Run tests
         run: pnpm test

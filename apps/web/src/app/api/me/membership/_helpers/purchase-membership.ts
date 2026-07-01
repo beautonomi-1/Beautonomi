@@ -209,6 +209,10 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
         plan_id: planData.id,
         attribution,
         cancel_action: membershipCancelAction,
+        // Save card so we can auto-charge renewals via chargeAuthorization.
+        save_card: true,
+        set_as_default: false,
+        enable_auto_renew: true,
       },
       tenantId: input.tenantId,
     });

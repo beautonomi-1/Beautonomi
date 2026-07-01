@@ -34,7 +34,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { fetcher } from "@/lib/http/fetcher";
-import { useTranslation } from "@beautonomi/i18n";
+import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
+import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck } from "@beautonomi/i18n";
+import type { CancellationPolicyView } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
 import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -245,12 +247,53 @@ export default function StepPayment({
   const [isChargingCard, setIsChargingCard] = useState(false);
   const { t } = useTranslation();
   const [cancellationPolicy, setCancellationPolicy] = useState<{
-    policy_text: string;
-    hours_before_cutoff: number;
-    late_cancellation_type: string;
+    policy_text?: string | null;
+    hours_before_cutoff?: number;
+    late_cancellation_type?: string;
+    grace_window_minutes?: number;
+    late_refund_percentage?: number;
+    refund_percentage?: number;
+    fee_amount?: number;
+    fee_type?: "fixed" | "percentage";
+    no_show_fee_enabled?: boolean;
+    no_show_fee_amount?: number;
+    currency?: string;
   } | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [removingCardId, setRemovingCardId] = useState<string | null>(null);
+
+  // Map cancellation policy API response (snake_case) to canonical CancellationPolicyView
+  const cancellationPolicyView: CancellationPolicyView | null = cancellationPolicy
+    ? (() => {
+        // Prefer explicit refund percentage (refund_percentage is the raw DB field / enforcement driver;
+        // late_refund_percentage is the hold-API output name), otherwise derive from the coarse type.
+        const latePct = cancellationPolicy.late_refund_percentage ?? cancellationPolicy.refund_percentage;
+        const lateType = cancellationPolicy.late_cancellation_type ?? "no_refund";
+        const effectiveLatePct =
+          latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct))
+            ? Number(latePct)
+            : lateType === "full_refund"
+              ? 100
+              : lateType === "partial_refund"
+                ? 50
+                : 0;
+        return {
+          cancellationWindowHours: cancellationPolicy.hours_before_cutoff,
+          graceWindowMinutes: cancellationPolicy.grace_window_minutes,
+          lateRefundPercentage: effectiveLatePct,
+          noShowFeeEnabled: cancellationPolicy.no_show_fee_enabled,
+          noShowFeeAmount: cancellationPolicy.no_show_fee_amount,
+          currency: cancellationPolicy.currency,
+          policyText: cancellationPolicy.policy_text,
+        } satisfies CancellationPolicyView;
+      })()
+    : null;
+
+  const cancellationPolicyContent = buildCancellationPolicyLines(cancellationPolicyView, {
+    t,
+    formatCurrency: (amount, cur) => formatCurrency(amount, cur || "ZAR"),
+  });
+  const cancellationRequiresAckForPolicy = cancellationRequiresAck(cancellationPolicyView);
   const [packageEntitlements, setPackageEntitlements] = useState<
     Array<{
       id: string;
@@ -494,12 +537,14 @@ export default function StepPayment({
         }
       } catch (error) {
         console.error("Error fetching cancellation policy:", error);
-        // Set a default policy if fetch fails
+        // Set a default policy if fetch fails (canonical default: 24h cutoff, no refund on late cancel)
         setCancellationPolicy({
           policy_text:
-            "Cancellations must be made at least 24 hours before your appointment. Cancellations made within 24 hours may be subject to a cancellation fee.",
+            "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
           hours_before_cutoff: 24,
+          grace_window_minutes: 15,
           late_cancellation_type: "no_refund",
+          late_refund_percentage: 0,
         });
       }
     };
@@ -1012,8 +1057,8 @@ export default function StepPayment({
       }
     }
 
-    if (cancellationPolicy && !acceptedCancellationPolicy) {
-      toast.error("Please accept the cancellation policy to continue");
+    if (cancellationRequiresAckForPolicy && !acceptedCancellationPolicy) {
+      toast.error(t("checkout.acceptCancellationPolicyRequired"));
       return;
     }
 
@@ -1125,7 +1170,13 @@ export default function StepPayment({
           return;
         }
 
-        toast.error(error.message || "Failed to create booking. Please try again.");
+        toast.error(
+          getUserFacingMessage(
+            extractErrorCode(error),
+            error.message,
+            "Failed to create booking. Please try again.",
+          ),
+        );
         return;
       }
 
@@ -1244,7 +1295,11 @@ export default function StepPayment({
         toast.info("Booking draft created. You can retry payment from your bookings page.");
       }
     } catch (error: any) {
-      const errorMessage = error.message || "Payment initialization failed";
+      const errorMessage = getUserFacingMessage(
+        extractErrorCode(error),
+        error.message,
+        "Payment initialization failed. Please try again.",
+      );
       toast.error(errorMessage);
 
       // If booking draft was created but payment failed, provide retry option
@@ -2213,7 +2268,7 @@ export default function StepPayment({
       </div>
 
       {/* Cancellation Policy Acceptance */}
-      {cancellationPolicy && (
+      {cancellationRequiresAckForPolicy && cancellationPolicy && (
         <div
           className={cn(
             "rounded-xl p-5 border-2 transition-all",
@@ -2222,15 +2277,38 @@ export default function StepPayment({
               : "border-amber-400 bg-amber-50/90 shadow-md ring-2 ring-amber-300/70"
           )}
         >
-          <div className="flex items-start gap-3 mb-3">
+          <div className="flex items-start gap-3 mb-4">
             <div className="rounded-full bg-primary/15 p-2 shrink-0">
               <Shield className="w-6 h-6 text-primary" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900 text-base mb-1">Cancellation Policy</h3>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {cancellationPolicy.policy_text}
-              </p>
+              <h3 className="font-semibold text-gray-900 text-base mb-2">
+                {t("checkout.cancellationPolicy")}
+              </h3>
+              {/* Structured policy lines from the shared builder */}
+              <ul className="text-sm space-y-1.5 text-gray-700">
+                {cancellationPolicyContent.lines.map((line) => (
+                  <li key={line.id} className="flex items-start gap-2">
+                    <span className={`mt-0.5 shrink-0 font-bold ${line.tone === "good" ? "text-green-600" : "text-amber-600"}`}>
+                      {line.tone === "good" ? "✓" : "⚠"}
+                    </span>
+                    <span>{line.text}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* Provider-configured free text shown as a secondary, muted note (structured lines above are authoritative) */}
+              {cancellationPolicy.policy_text && (
+                <p className="text-xs text-gray-500 italic leading-relaxed mt-2">
+                  {cancellationPolicy.policy_text}
+                </p>
+              )}
+              <div className="mt-3 pt-2 border-t border-gray-200 space-y-1">
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <Lock className="w-3 h-3 shrink-0" />
+                  {cancellationPolicyContent.footerText}
+                </p>
+                <p className="text-xs text-gray-500">{cancellationPolicyContent.storeCreditNote}</p>
+              </div>
             </div>
           </div>
           <div
@@ -2254,15 +2332,7 @@ export default function StepPayment({
               htmlFor="accept-cancellation-policy"
               className="text-sm sm:text-base font-medium text-gray-900 cursor-pointer leading-snug"
             >
-              I understand and accept the cancellation policy. I acknowledge that cancellations made
-              within {cancellationPolicy.hours_before_cutoff} hours of my appointment may result in
-              a{" "}
-              {cancellationPolicy.late_cancellation_type === "no_refund"
-                ? "no refund"
-                : cancellationPolicy.late_cancellation_type === "partial_refund"
-                  ? "partial refund"
-                  : "full refund"}
-              .
+              {cancellationPolicyContent.ackText}
             </Label>
           </div>
           {!acceptedCancellationPolicy && (
@@ -2271,7 +2341,7 @@ export default function StepPayment({
                 className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse"
                 aria-hidden
               />
-              Check the box above to continue to payment
+              {t("checkout.acceptCancellationPolicyRequired")}
             </p>
           )}
         </div>
@@ -2363,7 +2433,7 @@ export default function StepPayment({
                 !holdExpiresAt ||
                 !bookingState.clientInfo ||
                 giftCardOnlyUnderfunded ||
-                (cancellationPolicy != null && !acceptedCancellationPolicy)
+                (cancellationRequiresAckForPolicy && !acceptedCancellationPolicy)
               }
               className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 touch-target flex items-center justify-center gap-2"
             >

@@ -100,7 +100,10 @@ function corsHeaders(origin: string | null) {
 }
 
 function adminSpaRoutingEnabled(): boolean {
-  return (process.env.ADMIN_SPA_ROUTING || '').toLowerCase() === 'spa';
+  // Default is SPA. Set ADMIN_SPA_ROUTING=legacy to fall back to the Next.js admin pages
+  // (only needed as an emergency rollback; legacy pages will be removed in a subsequent release).
+  const val = (process.env.ADMIN_SPA_ROUTING || 'spa').toLowerCase();
+  return val !== 'legacy';
 }
 
 function isAdminSpaBundledAsset(pathname: string): boolean {
@@ -198,9 +201,12 @@ export async function proxy(request: NextRequest) {
     }
 
     /**
-     * Controlled admin cutover (Tier B — `ADMIN_SPA_ROUTING=spa` on deploy).
-     * Serves the Vite SPA from `public/admin/` and bypasses legacy `app/admin/**` + proxy auth for HTML navigations.
-     * Static chunks under `/admin/assets/` must not hit the admin role gate (see ADMIN_CUTOVER_READINESS_REPORT).
+     * Admin SPA rewrite — default for all /admin paths.
+     * Serves the Vite SPA build from `public/admin/index.html`.
+     * Legacy Next.js admin pages have been deleted; SPA is canonical.
+     * Set ADMIN_SPA_ROUTING=legacy only as an emergency rollback and redeploy the legacy pages.
+     * Static asset chunks under `/admin/assets/` bypass the role gate so the browser can load them
+     * before authentication (they contain no sensitive data, just JS/CSS bundles).
      */
     if (adminSpaRoutingEnabled() && (pathname === '/admin' || pathname.startsWith('/admin/'))) {
       if (isAdminSpaBundledAsset(pathname)) {

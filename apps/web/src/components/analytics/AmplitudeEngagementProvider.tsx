@@ -36,7 +36,18 @@ export default function AmplitudeEngagementProvider({ children }: { children: Re
   const pluginAttached = useRef(false);
 
   useEffect(() => {
-    if (!isInitialized || !config?.api_key_public || (!config.surveys_enabled && !config.guides_enabled)) {
+    // When the Amplitude SDK is torn down and re-initialized (e.g. anonymous →
+    // signed-in flips Session Replay policy via hardResetAmplitudeBrowser), the
+    // engagement plugin must be re-added to the fresh instance. Clear the guards
+    // so the next initialized pass re-attaches it (amplitude.add is idempotent by
+    // plugin name, so a redundant add on a surviving instance is a safe no-op).
+    if (!isInitialized) {
+      pluginAttached.current = false;
+      engagementPluginRegistered = false;
+      return;
+    }
+
+    if (!config?.api_key_public || (!config.surveys_enabled && !config.guides_enabled)) {
       return;
     }
 

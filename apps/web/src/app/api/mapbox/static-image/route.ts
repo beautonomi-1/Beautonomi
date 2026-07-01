@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMapboxAccessToken } from "@/lib/platform/secrets";
+import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 
 const MAX_DIM = 800;
 const MIN_DIM = 1;
@@ -57,7 +59,11 @@ function buildStaticImageUrl(params: {
  * Proxies Mapbox Static Images API using the server-side token so native apps
  * can show previews when only the secret token is configured (no public token).
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const url = new URL(request.url);
     const lat = parseFiniteNumber(url.searchParams.get("lat"));
@@ -117,3 +123,4 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
+

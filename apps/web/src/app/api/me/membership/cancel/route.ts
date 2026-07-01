@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
         )
         .eq("id", providerMembershipId)
         .eq("user_id", user.id)
-        .eq("status", "active")
+        .in("status", ["active", "past_due"])
         .maybeSingle();
 
       const provider = Array.isArray(activeSalon?.provider)
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       const { error: salonUpdateError } = await (supabase.from("user_memberships") as any)
         .update({
           status: "cancelled",
+          auto_renew: false,
           cancelled_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })

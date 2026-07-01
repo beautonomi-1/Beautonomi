@@ -11,6 +11,7 @@ export function CpIntegrationSumsubPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [resolvedScope, setResolvedScope] = useState<{ scope: "global" | "tenant"; tenantId: string | null } | null>(null);
   const [form, setForm] = useState({
     enabled: false,
     level_name: "",
@@ -41,6 +42,10 @@ export function CpIntegrationSumsubPage() {
           secret_key: Boolean((d as { secret_key_set?: boolean }).secret_key_set),
           webhook: Boolean((d as { webhook_secret_set?: boolean }).webhook_secret_set),
         });
+        const ds = d as { _scope?: string; _tenant_id?: string | null };
+        if (ds._scope === "global" || ds._scope === "tenant") {
+          setResolvedScope({ scope: ds._scope, tenantId: ds._tenant_id ?? null });
+        }
       } catch (e) {
         if (!c) setMsg(e instanceof Error ? e.message : "Load failed");
       } finally {
@@ -104,6 +109,27 @@ export function CpIntegrationSumsubPage() {
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>
         </AdminPanel>
+      ) : null}
+      {!loading && resolvedScope ? (
+        <div
+          className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
+            resolvedScope.scope === "tenant"
+              ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+              : "border-gray-200 bg-gray-50 text-gray-700"
+          }`}
+        >
+          <span className="font-medium">
+            {resolvedScope.scope === "tenant" ? "Tenant override" : "Global default"}
+          </span>
+          {resolvedScope.scope === "tenant" && resolvedScope.tenantId ? (
+            <span className="font-mono text-xs text-indigo-600">{resolvedScope.tenantId}</span>
+          ) : null}
+          <span className="text-gray-400">
+            {resolvedScope.scope === "tenant"
+              ? "— editing the per-tenant override; the global default is not affected."
+              : "— editing the global default; tenant-specific overrides take precedence for their tenants."}
+          </span>
+        </div>
       ) : null}
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>

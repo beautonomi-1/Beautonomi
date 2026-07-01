@@ -758,8 +758,9 @@ export async function GET(request: Request) {
       error: null,
     });
     
-    // Cache search results for 30 seconds
+    // Cache search results for 30 seconds; Vary: host prevents cross-tenant leakage on CDN.
     response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    response.headers.set('Vary', 'host');
     
     return response;
   } catch (error) {

@@ -1,17 +1,37 @@
 /**
  * Whether a salon `user_memberships` row qualifies for membership pricing,
  * matching `validate-booking.ts` membership discount logic:
- * - status must be `active`
+ * - status must be `active` OR `past_due` within the dunning grace window
  * - `expires_at` must be absent or in the future
  * - the linked plan must not be deactivated (`is_active !== false`)
+ *
+ * During the 3-day grace period after a payment failure (`past_due`) the
+ * customer retains their membership benefits. Once the grace window closes
+ * (or the term expires) the row is transitioned to `expired` by the cron
+ * and entitlement drops naturally.
  */
+
+const PAST_DUE_GRACE_DAYS = 3;
 
 export function isSalonMembershipEntitledForDiscount(params: {
   status: string;
   expires_at: string | null | undefined;
   planIsActive: boolean | null | undefined;
+  past_due_since?: string | null | undefined;
 }): boolean {
-  if (params.status !== "active") return false;
+  const isActive = params.status === "active";
+  const isPastDue = params.status === "past_due";
+
+  if (!isActive && !isPastDue) return false;
+
+  // For past_due rows only grant entitlement within the grace window.
+  if (isPastDue) {
+    if (!params.past_due_since) return false;
+    const pastDueSince = new Date(params.past_due_since).getTime();
+    const graceEnd = pastDueSince + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+    if (Date.now() > graceEnd) return false;
+  }
+
   const exp = params.expires_at;
   if (exp) {
     const t = new Date(exp).getTime();
@@ -62,7 +82,7 @@ export async function resolveMembershipDiscount(params: {
     // Salon membership (per-provider): take the most recent qualifying row.
     const { data: membership } = await params.supabase
       .from("user_memberships")
-      .select("status, expires_at, plan:membership_plans(id, provider_id, discount_percent, is_active, name)")
+      .select("status, expires_at, past_due_since, plan:membership_plans(id, provider_id, discount_percent, is_active, name)")
       .eq("user_id", params.customerId)
       .eq("provider_id", params.providerId)
       .maybeSingle();
@@ -75,6 +95,7 @@ export async function resolveMembershipDiscount(params: {
         status: membership?.status ?? "",
         expires_at: membership?.expires_at ?? null,
         planIsActive: membership?.plan?.is_active,
+        past_due_since: membership?.past_due_since ?? null,
       });
 
     if (entitled && membership?.plan) {
