@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";
 // createEmbedRefreshToken defaults to type="provider" — no change needed
 import { getSumsubAccessToken } from "@/lib/verification/sumsub-token";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 
 function parseEnv(s: string | null): string {
   const ENVS = ["production", "staging", "development"];
@@ -40,6 +41,16 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
+
+    // Gate: Sumsub must be enabled (flag + credentials).
+    const policy = await resolveVerificationPolicy(provider.tenant_id ?? null, environment);
+    if (!policy.sumsubEnabled) {
+      return errorResponse(
+        "Automated verification is not available. Please upload your document manually.",
+        "SUMSUB_DISABLED",
+        403,
+      );
+    }
 
     const { token, applicantId, levelName } = await getSumsubAccessToken(
       provider.id,

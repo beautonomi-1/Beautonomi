@@ -44,10 +44,11 @@ describe("proxy admin host routing", () => {
     vi.clearAllMocks();
   });
 
-  it("rewrites the admin host root to the existing admin app", async () => {
+  it("redirects the admin host root to /admin", async () => {
     const response = await proxy(request("/"));
 
-    expect(response.headers.get("x-middleware-rewrite")).toBe(
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
       "https://admin.beautonomi.com/admin",
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");

@@ -1,0 +1,164 @@
+/**
+ * Verification Policy Resolver
+ *
+ * Single source of truth for whether Sumsub and/or manual verification are
+ * available, and whether they are required for providers to go live or request
+ * payouts.  All verification API routes and the config bundle go through this
+ * helper so toggling a feature flag immediately affects the whole system.
+ *
+ * Effective Sumsub availability = flag(verification.sumsub.enabled) AND
+ * credentials present in sumsub_integration_config.
+ *
+ * Effective manual availability = flag(verification.manual.enabled).
+ *
+ * Defaults are intentionally permissive (both enabled, nothing required) so
+ * existing deployments without the flags in the DB behave identically to
+ * before this migration.
+ */
+
+import { checkMultipleFeaturesServer } from "@/lib/server/feature-flags";
+import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+
+export type VerificationMode = "off" | "manual" | "sumsub" | "both";
+
+export interface VerificationPolicy {
+  /** Sumsub flag is on AND credentials are present. */
+  sumsubEnabled: boolean;
+  /** Manual upload flag is on. */
+  manualEnabled: boolean;
+  /** Derived mode from the two booleans. */
+  mode: VerificationMode;
+  /** provider_verification flag: identity verification is required for providers to complete setup/go-live. */
+  requiredForProviders: boolean;
+  /** verification.sumsub.required_for_payouts flag: identity verification must be approved before a payout can be requested. */
+  requiredForPayouts: boolean;
+}
+
+function deriveMode(sumsub: boolean, manual: boolean): VerificationMode {
+  if (sumsub && manual) return "both";
+  if (sumsub) return "sumsub";
+  if (manual) return "manual";
+  return "off";
+}
+
+/**
+ * Resolve the verification policy for a given tenant and environment.
+ *
+ * Always falls back to permissive defaults on any error so a misconfigured
+ * flag DB row does not accidentally lock users out of verification.
+ */
+export async function resolveVerificationPolicy(
+  tenantId: string | null | undefined,
+  environment = "production",
+): Promise<VerificationPolicy> {
+  try {
+    const [flags, sumsubConfig] = await Promise.all([
+      checkMultipleFeaturesServer(
+        [
+          FEATURE_FLAG_KEYS.VERIFICATION_SUMSUB,
+          FEATURE_FLAG_KEYS.VERIFICATION_MANUAL,
+          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS,
+          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS,
+        ],
+        tenantId,
+      ),
+      resolveSumsubConfig(
+        environment,
+        tenantId,
+        "enabled, app_token_secret, secret_key_secret",
+      ),
+    ]);
+
+    const hasCredentials = Boolean(
+      sumsubConfig?.app_token_secret && sumsubConfig?.secret_key_secret,
+    );
+
+    // When verification.sumsub.enabled is not found in the DB (returns false),
+    // fall back to the sumsub_integration_config.enabled field so existing
+    // deployments that haven't run the migration yet still work.
+    const sumsubFlagOn = flags[FEATURE_FLAG_KEYS.VERIFICATION_SUMSUB];
+    const legacySumsubEnabled = Boolean(sumsubConfig?.enabled);
+    // Use flag if any row exists for the key, else fall back to legacy config.
+    const sumsubEnabled = (sumsubFlagOn || legacySumsubEnabled) && hasCredentials;
+
+    // Manual defaults to true if the flag row doesn't exist yet (preserves current behaviour).
+    const manualEnabled = flags[FEATURE_FLAG_KEYS.VERIFICATION_MANUAL] !== false
+      ? (flags[FEATURE_FLAG_KEYS.VERIFICATION_MANUAL] ?? true)
+      : false;
+
+    const requiredForProviders = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS] === true;
+    const requiredForPayouts = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS] === true;
+
+    return {
+      sumsubEnabled,
+      manualEnabled,
+      mode: deriveMode(sumsubEnabled, manualEnabled),
+      requiredForProviders,
+      requiredForPayouts,
+    };
+  } catch (err) {
+    console.warn("[resolveVerificationPolicy] error, using permissive defaults:", err);
+    return {
+      sumsubEnabled: false,
+      manualEnabled: true,
+      mode: "manual",
+      requiredForProviders: false,
+      requiredForPayouts: false,
+    };
+  }
+}
+
+/**
+ * Returns true if the provider's identity verification is in an approved state
+ * via any path: Sumsub webhook, manual admin review, or direct admin toggle.
+ */
+export async function isProviderVerificationApproved(
+  providerId: string,
+): Promise<boolean> {
+  try {
+    const supabase = getSupabaseAdmin();
+
+    const [{ data: kycRow }, { data: providerRow }] = await Promise.all([
+      supabase
+        .from("provider_verification_status")
+        .select("status")
+        .eq("provider_id", providerId)
+        .maybeSingle(),
+      supabase
+        .from("providers")
+        .select("is_verified, user_id")
+        .eq("id", providerId)
+        .maybeSingle(),
+    ]);
+
+    if ((providerRow as { is_verified?: boolean | null } | null)?.is_verified === true) {
+      return true;
+    }
+    if ((kycRow as { status?: string | null } | null)?.status === "approved") {
+      return true;
+    }
+
+    const ownerUserId = (providerRow as { user_id?: string | null } | null)?.user_id;
+    if (ownerUserId) {
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("identity_verified, identity_verification_status")
+        .eq("id", ownerUserId)
+        .maybeSingle();
+      if (
+        (userRow as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
+        (userRow as { identity_verification_status?: string | null } | null)
+          ?.identity_verification_status === "approved"
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (err) {
+    console.warn("[isProviderVerificationApproved] error, defaulting to false:", err);
+    return false;
+  }
+}

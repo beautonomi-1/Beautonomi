@@ -14,6 +14,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminApi } from "@/lib/adminClient";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type GroupBookingRow = {
   id: string;
@@ -67,10 +68,6 @@ function fmtDate(value: string | null) {
   return d.toLocaleString();
 }
 
-function money(value: number | null | undefined) {
-  return `R ${Number(value ?? 0).toFixed(2)}`;
-}
-
 function pillClass(status: string) {
   switch (status) {
     case "completed":
@@ -93,15 +90,23 @@ function pillClass(status: string) {
 
 function statusLabel(status: string): string {
   switch (status) {
-    case "pending": return "Pending";
-    case "confirmed": return "Confirmed";
-    case "booked": return "Booked";
-    case "started": return "In progress";
-    case "in_progress": return "In progress";
-    case "completed": return "Completed";
-    case "cancelled": return "Cancelled";
-    case "waiting": return "Waiting";
-    default: return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
+    case "pending":
+      return "Pending";
+    case "confirmed":
+      return "Confirmed";
+    case "booked":
+      return "Booked";
+    case "started":
+    case "in_progress":
+      return "In progress";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    case "waiting":
+      return "Waiting";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
   }
 }
 
@@ -124,38 +129,50 @@ export function GroupBookingsPage() {
     "Providers & operations access is required for group bookings."
   );
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0); // 0-indexed (API uses page=0)
 
   const listQuery = useQuery({
-    queryKey: ["admin", "group-bookings", status, search],
+    queryKey: ["admin", "group-bookings", statusFilter, search, page],
     enabled: allowed,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(LIMIT));
-      params.set("page", "0");
-      if (status !== "all") params.set("status", status);
+      params.set("page", String(page));
+      if (statusFilter !== "all") params.set("status", statusFilter);
       if (search.trim()) params.set("search", search.trim());
-      return adminApi.getJson<GroupBookingsPayload>(`/api/admin/group-bookings?${params.toString()}`);
+      return adminApi.getJson<GroupBookingsPayload>(
+        `/api/admin/group-bookings?${params.toString()}`
+      );
     },
   });
 
   const rows = useMemo(() => listQuery.data?.group_bookings ?? [], [listQuery.data]);
+  const total = listQuery.data?.total ?? 0;
+  const totalPages = Math.ceil(total / LIMIT);
   const selected = selectedId ?? rows[0]?.id ?? null;
 
   const detailQuery = useQuery({
     queryKey: ["admin", "group-bookings", selected],
     enabled: allowed && Boolean(selected),
-    queryFn: () => adminApi.getJson<GroupBookingDetail>(`/api/admin/group-bookings/${selected}`),
+    queryFn: () =>
+      adminApi.getJson<GroupBookingDetail>(`/api/admin/group-bookings/${selected}`),
   });
 
   const actionMutation = useMutation({
-    mutationFn: async (payload: { id: string; action: "start_service" | "complete_service" | "cancel" }) => {
+    mutationFn: async (payload: {
+      id: string;
+      action: "start_service" | "complete_service" | "cancel";
+    }) => {
       if (payload.action === "cancel") {
         await adminApi.deleteJson(`/api/admin/group-bookings/${payload.id}`);
       } else {
-        await adminApi.postJson(`/api/admin/group-bookings/${payload.id}?action=${payload.action}`, {});
+        await adminApi.postJson(
+          `/api/admin/group-bookings/${payload.id}?action=${payload.action}`,
+          {}
+        );
       }
     },
     onSuccess: async () => {
@@ -165,11 +182,27 @@ export function GroupBookingsPage() {
     onError: (e: Error) => adminToast.error(e.message),
   });
 
+  // Reset to first page when filters change
+  function handleStatusChange(val: string) {
+    setStatusFilter(val);
+    setPage(0);
+    setSelectedId(null);
+  }
+
+  function handleSearchChange(val: string) {
+    setSearch(val);
+    setPage(0);
+    setSelectedId(null);
+  }
+
   if (denied) return denied;
   if (listQuery.isLoading) {
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Group bookings" description="Manage group sessions across providers" />
+        <AdminPageHeader
+          title="Group bookings"
+          description="Manage group sessions across providers"
+        />
         <AdminPanel>
           <AdminPageSkeleton rows={6} />
         </AdminPanel>
@@ -180,7 +213,10 @@ export function GroupBookingsPage() {
     if (isAdminApiAuthFailure(listQuery.error)) return <PermissionDenied />;
     return (
       <AdminPanel>
-        <AdminRetryBlock message={listQuery.error.message} onRetry={() => void listQuery.refetch()} />
+        <AdminRetryBlock
+          message={listQuery.error.message}
+          onRetry={() => void listQuery.refetch()}
+        />
       </AdminPanel>
     );
   }
@@ -196,13 +232,13 @@ export function GroupBookingsPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search ref or title"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:max-w-sm"
           />
           <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            value={statusFilter}
+            onChange={(e) => handleStatusChange(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
             {[
@@ -220,11 +256,19 @@ export function GroupBookingsPage() {
             ))}
           </select>
         </div>
+        {total > 0 && (
+          <p className="mt-3 text-sm text-gray-500 tabular-nums">
+            {total} total · page {page + 1} of {Math.max(1, totalPages)}
+          </p>
+        )}
       </AdminPanel>
 
       {rows.length === 0 ? (
         <AdminPanel>
-          <EmptyState title="No group bookings found" description="Try clearing filters or search terms." />
+          <EmptyState
+            title="No group bookings found"
+            description="Try clearing filters or search terms."
+          />
         </AdminPanel>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -245,24 +289,35 @@ export function GroupBookingsPage() {
                   {rows.map((row) => (
                     <tr
                       key={row.id}
-                      className={row.id === selected ? "bg-pink-50/70" : "hover:bg-gray-50"}
+                      className={`cursor-pointer ${row.id === selected ? "bg-pink-50/70" : "hover:bg-gray-50"}`}
                       onClick={() => setSelectedId(row.id)}
                     >
                       <td className="px-4 py-3">
-                        <button className="text-left font-medium text-gray-900" type="button">
+                        <button
+                          className="text-left font-medium text-gray-900"
+                          type="button"
+                        >
                           {row.title}
                         </button>
                         <div className="text-xs text-gray-500">{row.ref_number}</div>
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{row.provider_name ?? "Provider"}</td>
-                      <td className="px-4 py-3 text-gray-700">{fmtDate(row.scheduled_at)}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {row.provider_name ?? "Provider"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {fmtDate(row.scheduled_at)}
+                      </td>
                       <td className="px-4 py-3 text-gray-700">
                         {row.participant_count}
                         {row.max_participants ? ` / ${row.max_participants}` : ""}
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{money(row.total_price)}</td>
+                      <td className="px-4 py-3 tabular-nums text-gray-700">
+                        {formatAdminCurrency(row.total_price)}
+                      </td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${pillClass(row.status)}`}>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${pillClass(row.status)}`}
+                        >
                           {statusLabel(row.status)}
                         </span>
                       </td>
@@ -271,31 +326,73 @@ export function GroupBookingsPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+                <span className="text-sm text-gray-500">
+                  Page {page + 1} of {totalPages} · {total} total
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={page <= 0}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </AdminPanel>
 
+          {/* Detail panel */}
           <AdminPanel>
             {!selected ? (
-              <EmptyState title="Select a group booking" description="Choose a row to inspect participants." />
+              <EmptyState
+                title="Select a group booking"
+                description="Choose a row to inspect participants."
+              />
             ) : detailQuery.isLoading ? (
               <AdminPageSkeleton rows={5} />
             ) : detailQuery.error ? (
-              <AdminRetryBlock message={detailQuery.error.message} onRetry={() => void detailQuery.refetch()} />
+              <AdminRetryBlock
+                message={detailQuery.error.message}
+                onRetry={() => void detailQuery.refetch()}
+              />
             ) : detailQuery.data ? (
               <div className="space-y-5">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Selected group</div>
-                  <h2 className="mt-1 text-lg font-semibold text-gray-900">{detailQuery.data.title}</h2>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Selected group
+                  </div>
+                  <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                    {detailQuery.data.title}
+                  </h2>
                   <p className="text-sm text-gray-500">{detailQuery.data.ref_number}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-gray-50 p-3">
                     <div className="text-xs text-gray-500">Provider</div>
-                    <div className="font-medium text-gray-900">{detailQuery.data.provider_name ?? "Provider"}</div>
+                    <div className="font-medium text-gray-900">
+                      {detailQuery.data.provider_name ?? "Provider"}
+                    </div>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3">
                     <div className="text-xs text-gray-500">Status</div>
-                    <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${pillClass(detailQuery.data.status)}`}>
+                    <div
+                      className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${pillClass(detailQuery.data.status)}`}
+                    >
                       {statusLabel(detailQuery.data.status)}
                     </div>
                   </div>
@@ -307,24 +404,35 @@ export function GroupBookingsPage() {
                         ? ` / ${detailQuery.data.max_participants}`
                         : ""}
                       {detailQuery.data.max_participants &&
-                        detailQuery.data.participant_count >= detailQuery.data.max_participants && (
-                          <span className="ml-1 text-xs font-normal text-red-600">Full</span>
+                        detailQuery.data.participant_count >=
+                          detailQuery.data.max_participants && (
+                          <span className="ml-1 text-xs font-normal text-red-600">
+                            Full
+                          </span>
                         )}
                     </div>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3">
                     <div className="text-xs text-gray-500">Total</div>
-                    <div className="font-medium text-gray-900">{money(detailQuery.data.total_price)}</div>
+                    <div className="font-medium tabular-nums text-gray-900">
+                      {formatAdminCurrency(detailQuery.data.total_price)}
+                    </div>
                   </div>
                 </div>
 
+                {/* Action buttons */}
                 <div className="flex flex-wrap gap-2">
                   {canStart(detailQuery.data.status) && (
                     <button
                       type="button"
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
                       disabled={actionMutation.isPending}
-                      onClick={() => actionMutation.mutate({ id: detailQuery.data!.id, action: "start_service" })}
+                      onClick={() =>
+                        actionMutation.mutate({
+                          id: detailQuery.data!.id,
+                          action: "start_service",
+                        })
+                      }
                     >
                       Start
                     </button>
@@ -334,7 +442,12 @@ export function GroupBookingsPage() {
                       type="button"
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
                       disabled={actionMutation.isPending}
-                      onClick={() => actionMutation.mutate({ id: detailQuery.data!.id, action: "complete_service" })}
+                      onClick={() =>
+                        actionMutation.mutate({
+                          id: detailQuery.data!.id,
+                          action: "complete_service",
+                        })
+                      }
                     >
                       Complete
                     </button>
@@ -345,8 +458,15 @@ export function GroupBookingsPage() {
                       className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 disabled:opacity-50"
                       disabled={actionMutation.isPending}
                       onClick={() => {
-                        if (window.confirm("Cancel this group booking and child bookings?")) {
-                          actionMutation.mutate({ id: detailQuery.data!.id, action: "cancel" });
+                        if (
+                          window.confirm(
+                            "Cancel this group booking and all child bookings?"
+                          )
+                        ) {
+                          actionMutation.mutate({
+                            id: detailQuery.data!.id,
+                            action: "cancel",
+                          });
                         }
                       }}
                     >
@@ -355,14 +475,22 @@ export function GroupBookingsPage() {
                   )}
                 </div>
 
+                {/* Participants */}
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold text-gray-900">Participants</h3>
+                  <h3 className="mb-2 text-sm font-semibold text-gray-900">
+                    Participants
+                  </h3>
                   {(detailQuery.data.participants ?? []).length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">No participants linked yet.</p>
+                    <p className="italic text-sm text-gray-400">
+                      No participants linked yet.
+                    </p>
                   ) : (
                     <div className="space-y-2">
                       {(detailQuery.data.participants ?? []).map((p) => (
-                        <div key={p.id} className="rounded-lg border border-gray-200 p-3 text-sm">
+                        <div
+                          key={p.id}
+                          className="rounded-lg border border-gray-200 p-3 text-sm"
+                        >
                           <div className="flex items-center gap-1.5 font-medium text-gray-900">
                             {p.participant_name}
                             {p.is_primary_contact && (
@@ -371,7 +499,9 @@ export function GroupBookingsPage() {
                               </span>
                             )}
                           </div>
-                          <div className="text-gray-500">{p.service_name} · {money(p.price)}</div>
+                          <div className="text-gray-500">
+                            {p.service_name} · {formatAdminCurrency(p.price)}
+                          </div>
                           <div className="text-xs text-gray-500">
                             {p.checked_in_at
                               ? `Checked in ${new Date(p.checked_in_at).toLocaleTimeString()}`
@@ -384,7 +514,7 @@ export function GroupBookingsPage() {
                           {p.booking_id && (
                             <Link
                               to={adminSpaTo(`/admin/bookings/${p.booking_id}`)}
-                              className="mt-2 inline-block text-xs font-medium text-pink-700"
+                              className="mt-2 inline-block text-xs font-medium text-pink-700 hover:underline"
                             >
                               Open child booking →
                             </Link>

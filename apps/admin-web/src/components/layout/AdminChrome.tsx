@@ -16,6 +16,8 @@ import { cn } from "@/lib/cn";
 import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { AdminBreadcrumbs } from "@/components/ui/AdminBreadcrumbs";
+import { AdminBreadcrumbProvider } from "@/providers/AdminBreadcrumbProvider";
 
 export function AdminChrome() {
   const qc = useQueryClient();
@@ -195,9 +197,11 @@ export function AdminChrome() {
       ...g,
       items: g.items.filter((item) => {
         if (item.superadminOnly && !bootstrap?.isSuperadmin) return false;
-        return true;
+        // Each nav item carries its own RBAC section; filter individually so
+        // groups can span multiple sections without hiding the whole group.
+        return canAccess(item.section);
       }),
-    })).filter((g) => g.items.length > 0 && canAccess(g.section));
+    })).filter((g) => g.items.length > 0);
   }, [bootstrap, canAccess]);
 
   const navCounts = navCountsQuery.data ?? {};
@@ -257,6 +261,13 @@ export function AdminChrome() {
                   const count = navCounts[item.href] ?? 0;
                   return (
                     <li key={item.href}>
+                      {item.subheader && !sidebarCollapsed ? (
+                        <div className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400/80">
+                          {item.subheader}
+                        </div>
+                      ) : item.subheader && sidebarCollapsed ? (
+                        <div className="my-1.5 mx-1 border-t border-gray-100" />
+                      ) : null}
                       <NavLink
                         to={adminSpaTo(item.href)}
                         className={({ isActive }: NavLinkRenderProps) =>
@@ -569,15 +580,18 @@ export function AdminChrome() {
                 <p className="text-center text-sm text-gray-500">Loading team permissions…</p>
               </div>
             ) : (
-              <Suspense
-                fallback={
-                  <div className="space-y-4" aria-busy="true" aria-label="Loading page">
-                    <AdminPageSkeleton rows={8} />
-                  </div>
-                }
-              >
-                <Outlet />
-              </Suspense>
+              <AdminBreadcrumbProvider>
+                <AdminBreadcrumbs />
+                <Suspense
+                  fallback={
+                    <div className="space-y-4" aria-busy="true" aria-label="Loading page">
+                      <AdminPageSkeleton rows={8} />
+                    </div>
+                  }
+                >
+                  <Outlet />
+                </Suspense>
+              </AdminBreadcrumbProvider>
             )}
           </div>
         </main>

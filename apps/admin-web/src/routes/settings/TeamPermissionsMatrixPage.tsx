@@ -6,6 +6,7 @@ import {
   ALL_SECTIONS,
   SECTION_LABELS,
   ALL_ADMIN_ROLES,
+  ADMIN_SECTION_ROLES,
   ROLE_LABELS,
 } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -73,9 +74,13 @@ export function TeamPermissionsMatrixPage() {
         sectionRoles,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, savedRoles) => {
       setSaveMsg("Saved.");
       setIsDirty(false);
+      // Re-seed the draft from the exact payload we persisted (superadmin
+      // force-included) so local state matches the server without waiting for
+      // the refetch to settle.
+      setDraft(cloneMatrix(savedRoles));
       adminToast.success("Team permissions saved");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.sectionPermissions() });
     },
@@ -87,7 +92,21 @@ export function TeamPermissionsMatrixPage() {
 
   const roles = useMemo(() => ALL_ADMIN_ROLES, []);
 
+  // Warn before leaving with unsaved changes (refresh / tab close).
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
   function toggle(section: AdminSection, role: UserRole) {
+    // Superadmin always has full access (canAccessSection short-circuits on
+    // superadmin), so the column is locked on and not user-editable.
+    if (role === "superadmin") return;
     setDraft((d) => {
       if (!d) return d;
       const cur = d[section] ?? [];
@@ -97,6 +116,29 @@ export function TeamPermissionsMatrixPage() {
     });
     setIsDirty(true);
     setSaveMsg(null);
+  }
+
+  function discard() {
+    if (!matrix) return;
+    setDraft(cloneMatrix(matrix));
+    setIsDirty(false);
+    setSaveMsg(null);
+  }
+
+  /**
+   * Build the save payload. Superadmin is always implied at runtime, so we
+   * persist it in every section to keep stored data consistent with the
+   * effective access model (avoids a stored matrix that looks like superadmin
+   * was removed).
+   */
+  function buildSavePayload(d: Record<AdminSection, UserRole[]>): Record<AdminSection, UserRole[]> {
+    const out = {} as Record<AdminSection, UserRole[]>;
+    for (const section of ALL_SECTIONS) {
+      const set = new Set<UserRole>(d[section] ?? []);
+      set.add("superadmin");
+      out[section] = [...set];
+    }
+    return out;
   }
 
   if (denied) return denied;
@@ -136,20 +178,36 @@ export function TeamPermissionsMatrixPage() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          className={adminToolbarButtonClass(!draft || save.isPending)}
-          disabled={!draft || save.isPending}
+          className={adminToolbarButtonClass(!draft || !isDirty || save.isPending)}
+          disabled={!draft || !isDirty || save.isPending}
           onClick={() => {
             if (!draft) return;
             setSaveMsg(null);
-            void save.mutate(draft);
+            void save.mutate(buildSavePayload(draft));
           }}
         >
           {save.isPending ? "Saving…" : "Save changes"}
         </button>
         {isDirty && !save.isPending && (
-          <span className="text-sm text-amber-600 font-medium">Unsaved changes</span>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            onClick={discard}
+          >
+            Discard changes
+          </button>
+        )}
+        {isDirty && !save.isPending && (
+          <span className="text-sm font-medium text-amber-600">Unsaved changes</span>
         )}
         {saveMsg ? <span className="text-sm text-gray-600">{saveMsg}</span> : null}
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs leading-relaxed text-gray-600">
+        <span className="font-medium text-gray-800">Superadmin</span> always has full
+        access and cannot be unassigned. A section with no roles selected becomes{" "}
+        <span className="font-medium">superadmin-only</span>. Cells outlined in amber differ
+        from the built-in defaults.
       </div>
       <AdminPanel className="overflow-x-auto">
         <AdminDataTable>
@@ -167,17 +225,28 @@ export function TeamPermissionsMatrixPage() {
             {ALL_SECTIONS.map((section) => (
               <tr key={section}>
                 <AdminTd className="sticky left-0 z-10 bg-white font-medium">{SECTION_LABELS[section]}</AdminTd>
-                {roles.map((role) => (
-                  <AdminTd key={role} className="text-center">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300"
-                      checked={(draft?.[section] ?? []).includes(role)}
-                      onChange={() => toggle(section, role)}
-                      aria-label={`${SECTION_LABELS[section]} — ${roleLabel(role)}`}
-                    />
-                  </AdminTd>
-                ))}
+                {roles.map((role) => {
+                  const isSuper = role === "superadmin";
+                  const checked = isSuper || (draft?.[section] ?? []).includes(role);
+                  const defaultHas = (ADMIN_SECTION_ROLES[section] ?? []).includes(role);
+                  const differsFromDefault = !isSuper && checked !== defaultHas;
+                  return (
+                    <AdminTd
+                      key={role}
+                      className={`text-center ${differsFromDefault ? "bg-amber-50 ring-1 ring-inset ring-amber-300" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        checked={checked}
+                        disabled={isSuper}
+                        title={isSuper ? "Superadmin always has full access" : undefined}
+                        onChange={() => toggle(section, role)}
+                        aria-label={`${SECTION_LABELS[section]} — ${roleLabel(role)}${isSuper ? " (always on)" : ""}`}
+                      />
+                    </AdminTd>
+                  );
+                })}
               </tr>
             ))}
           </AdminTableBody>

@@ -116,6 +116,36 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error;
 
+    // Keep verification.sumsub.enabled feature flag in sync with the integration enabled field,
+    // so the policy resolver (which now reads the flag) stays consistent with the admin toggle.
+    try {
+      const flagTenantId = scopeTenantId;
+      const supabaseForFlag = getSupabaseAdmin();
+      const { data: existingFlag } = await supabaseForFlag
+        .from("feature_flags")
+        .select("id")
+        .eq("feature_key", "verification.sumsub.enabled")
+        .filter("tenant_id", flagTenantId == null ? "is" : "eq", flagTenantId == null ? "null" : flagTenantId)
+        .maybeSingle();
+      if (existingFlag?.id) {
+        await supabaseForFlag
+          .from("feature_flags")
+          .update({ enabled: payload.enabled, updated_at: new Date().toISOString() })
+          .eq("id", existingFlag.id);
+      } else {
+        await supabaseForFlag.from("feature_flags").insert({
+          feature_key: "verification.sumsub.enabled",
+          feature_name: "Sumsub verification",
+          description: "Synced from Control plane → Integrations → Sumsub",
+          enabled: payload.enabled,
+          category: "control_plane",
+          tenant_id: flagTenantId,
+        });
+      }
+    } catch (flagSyncErr) {
+      console.warn("[sumsub PUT] flag sync failed (non-fatal):", flagSyncErr);
+    }
+
     await writeConfigChangeLog({
       changedBy: user.id,
       area: "integration",

@@ -77,8 +77,8 @@ export function CpFeatureFlagsPage() {
     <div className="space-y-6">
       <CpBack />
       <AdminPageHeader
-        title="Feature flags (control plane)"
-        description="Preview resolver and read-only list. Edit rollouts on Feature flags under Platform config."
+        title="Feature Flag Resolver"
+        description="Environment-level resolver: preview exactly which flags are active for a given user, role, platform, and environment. Read-only — to create or toggle flags, go to Feature Flags under Platform &amp; Access."
       />
       {err ? (
         <AdminPanel>

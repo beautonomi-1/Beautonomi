@@ -24,7 +24,11 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
-import { buildSupportTicketsSearchParams, supportTicketsPageSize } from "@/lib/buildSupportTicketsSearchParams";
+import {
+  buildSupportTicketsSearchParams,
+  supportTicketsPageSize,
+  SUPPORT_TICKET_SAVED_VIEWS,
+} from "@/lib/buildSupportTicketsSearchParams";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
@@ -33,6 +37,16 @@ import { Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
 import { cn } from "@/lib/cn";
+
+type AttentionState =
+  | "awaiting_agent"
+  | "unassigned_new"
+  | "first_response_overdue"
+  | "sla_breached"
+  | "sla_at_risk"
+  | "waiting_customer"
+  | "assigned_idle"
+  | "resolved";
 
 interface SupportTicket {
   id: string;
@@ -48,14 +62,70 @@ interface SupportTicket {
   support_context_label?: string | null;
   csat_score?: number | null;
   sla_resolution_due_at?: string | null;
+  first_response_due_at?: string | null;
   user: { id: string; email: string; full_name: string | null } | null;
   provider: { id: string; business_name: string } | null;
   assigned_user: { id: string; email: string; full_name: string | null } | null;
   has_unread_staff_reply?: boolean;
   last_message_from?: "customer" | "staff" | null;
   last_message_at?: string | null;
+  // Computed by server (migration 726 + attention helper)
+  needs_agent_response?: boolean | null;
+  attention_state?: AttentionState | null;
+  sla_state?: "none" | "ok" | "at_risk" | "breached" | null;
+  agent_unread?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Returns badge JSX for the attention state returned by the server. */
+function AttentionBadge({ ticket }: { ticket: SupportTicket }) {
+  const state = ticket.attention_state;
+  if (!state || state === "assigned_idle" || state === "resolved") return null;
+
+  if (state === "first_response_overdue") {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+        First reply overdue
+      </span>
+    );
+  }
+  if (state === "sla_breached") {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+        SLA overdue
+      </span>
+    );
+  }
+  if (state === "awaiting_agent") {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+        Awaiting reply
+      </span>
+    );
+  }
+  if (state === "unassigned_new") {
+    return (
+      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+        Unassigned
+      </span>
+    );
+  }
+  if (state === "sla_at_risk") {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+        Due soon
+      </span>
+    );
+  }
+  if (state === "waiting_customer") {
+    return (
+      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+        Waiting on customer
+      </span>
+    );
+  }
+  return null;
 }
 
 function isSlaBreached(ticket: SupportTicket): boolean {
@@ -102,22 +172,22 @@ function SupportTicketCard({
         isSelected
           ? "border-gray-900 bg-gray-50 ring-2 ring-gray-900/15"
           : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
+        ticket.agent_unread && "border-l-4 border-l-red-400",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {ticket.agent_unread ? (
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Unread" />
+            ) : null}
             <span className="font-mono text-xs font-medium text-gray-500">{ticket.ticket_number}</span>
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium capitalize text-gray-700">
               {ticket.requester_type || (ticket.provider ? "provider" : "customer")}
             </span>
-            {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
-                Support replied
-              </span>
-            ) : null}
+            <AttentionBadge ticket={ticket} />
           </div>
-          <p className="mt-1 line-clamp-2 font-semibold text-gray-900">{ticket.subject}</p>
+          <p className={cn("mt-1 line-clamp-2 text-gray-900", ticket.agent_unread ? "font-bold" : "font-semibold")}>{ticket.subject}</p>
           <p className="mt-1 text-xs text-gray-500">
             {ticket.category ? labelForSupportTicketCategory(ticket.category) : "Uncategorized"}
           </p>
@@ -259,10 +329,14 @@ export function SupportTicketsPage() {
   const priorityFilter = searchParams.get("priority") ?? "all";
   const categoryFilter = searchParams.get("category") ?? "all";
   const assignFilter = searchParams.get("assign") ?? "all";
-  const sortFilter = searchParams.get("sort") ?? "updated_desc";
+  const sortFilter = searchParams.get("sort") ?? "smart";
   const slaOverdueFilter = searchParams.get("sla_overdue") === "1";
+  const needsResponseFilter = searchParams.get("needs_response") === "1";
+  const slaStateFilter = searchParams.get("sla_state") ?? "";
+  const firstResponseOverdueFilter = searchParams.get("first_response_overdue") === "1";
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
+  const savedViewId = searchParams.get("saved_view") ?? "needs_response";
   const isTableView = viewFilter === "table";
   const isCardsView = !isTableView;
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
@@ -281,8 +355,11 @@ export function SupportTicketsPage() {
             priority: "all",
             category: "all",
             assign: "all",
-            sort: "updated_desc",
+            sort: "smart",
             sla_overdue: "all",
+            needs_response: "0",
+            sla_state: "",
+            first_response_overdue: "0",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
@@ -307,6 +384,9 @@ export function SupportTicketsPage() {
         staffUserId: bootstrap?.userId,
         sort: sortFilter,
         slaOverdue: slaOverdueFilter,
+        needsResponse: needsResponseFilter,
+        slaState: slaStateFilter,
+        firstResponseOverdue: firstResponseOverdueFilter,
       }),
     [
       pageIndex,
@@ -317,6 +397,9 @@ export function SupportTicketsPage() {
       qFromUrl,
       bootstrap?.userId,
       sortFilter,
+      needsResponseFilter,
+      slaStateFilter,
+      firstResponseOverdueFilter,
       slaOverdueFilter,
     ]
   );
@@ -395,6 +478,43 @@ export function SupportTicketsPage() {
     );
   };
 
+  const applySavedView = useCallback(
+    (viewId: string) => {
+      const view = SUPPORT_TICKET_SAVED_VIEWS.find((v) => v.id === viewId);
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("saved_view", viewId);
+          n.set("page", "1");
+          // Reset all filter-relevant params first
+          n.delete("status");
+          n.delete("priority");
+          n.delete("category");
+          n.delete("assign");
+          n.delete("sort");
+          n.delete("sla_overdue");
+          n.delete("needs_response");
+          n.delete("sla_state");
+          n.delete("first_response_overdue");
+          if (view) {
+            const p = view.params;
+            if (p.status && p.status !== "all") n.set("status", p.status);
+            if (p.priority && p.priority !== "all") n.set("priority", p.priority);
+            if (p.assign && p.assign !== "all") n.set("assign", p.assign);
+            if (p.sort && p.sort !== "smart") n.set("sort", p.sort);
+            if (p.slaOverdue) n.set("sla_overdue", "1");
+            if (p.needsResponse) n.set("needs_response", "1");
+            if (p.slaState) n.set("sla_state", p.slaState);
+            if (p.firstResponseOverdue) n.set("first_response_overdue", "1");
+          }
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const setView = (next: "cards" | "table") => {
     setSearchParams(
       (prev) => {
@@ -437,8 +557,11 @@ export function SupportTicketsPage() {
     priorityFilter !== "all" ||
     categoryFilter !== "all" ||
     assignFilter !== "all" ||
-    sortFilter !== "updated_desc" ||
-    slaOverdueFilter;
+    sortFilter !== "smart" ||
+    slaOverdueFilter ||
+    needsResponseFilter ||
+    !!slaStateFilter ||
+    firstResponseOverdueFilter;
 
   return (
     <div className="space-y-6 px-2 sm:px-0">
@@ -515,6 +638,25 @@ export function SupportTicketsPage() {
           </div>
         </div>
       </AdminModal>
+
+      {/* Saved-view chips */}
+      <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
+        {SUPPORT_TICKET_SAVED_VIEWS.map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            onClick={() => applySavedView(view.id)}
+            className={cn(
+              "inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              savedViewId === view.id
+                ? "bg-gray-900 text-white shadow-sm"
+                : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300",
+            )}
+          >
+            {view.label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
@@ -616,6 +758,7 @@ export function SupportTicketsPage() {
               onChange={(e) => setFilter("sort", e.target.value)}
               className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
             >
+              <option value="smart">Sort: Smart (attention first)</option>
               <option value="updated_desc">Sort: Last updated</option>
               <option value="created_desc">Sort: Newest</option>
               <option value="sla_asc">Sort: SLA due (soonest)</option>
@@ -710,10 +853,18 @@ export function SupportTicketsPage() {
                   <AdminTd className="font-mono text-xs">{ticket.ticket_number}</AdminTd>
                   <AdminTd>
                     <div className="max-w-xs">
-                      <p className="truncate font-medium">{ticket.subject}</p>
-                      {ticket.category ? (
-                        <p className="text-xs text-gray-500">{labelForSupportTicketCategory(ticket.category)}</p>
-                      ) : null}
+                      <div className="flex items-center gap-1.5">
+                        {ticket.agent_unread ? (
+                          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Unread" />
+                        ) : null}
+                        <p className={cn("truncate", ticket.agent_unread ? "font-bold" : "font-medium")}>{ticket.subject}</p>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {ticket.category ? (
+                          <span className="text-xs text-gray-500">{labelForSupportTicketCategory(ticket.category)}</span>
+                        ) : null}
+                        <AttentionBadge ticket={ticket} />
+                      </div>
                     </div>
                   </AdminTd>
                   <AdminTd>

@@ -6,6 +6,7 @@ import { buildSeoRequestFromHeaders } from "@/lib/seo/build-seo-request";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { buildLocationHubSitemapEntries } from "@/lib/seo/location-sitemap-helpers";
+import { isAdminHostRequest } from "@/lib/seo/admin-host";
 
 /**
  * Request-time sitemap: each host lists its own absolute URLs.
@@ -48,6 +49,8 @@ async function resolveProviderTenantScope(): Promise<ProviderTenantScope> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  if (await isAdminHostRequest()) return [];
+
   const baseUrl = await getPublicSiteOriginFromHeaders();
   const providerScope = await resolveProviderTenantScope();
 

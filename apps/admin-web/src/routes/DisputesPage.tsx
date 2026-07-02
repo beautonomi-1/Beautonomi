@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -8,6 +8,8 @@ import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
+import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -41,7 +43,34 @@ interface Dispute {
   booking: DisputeBooking;
 }
 
+interface DisputeStatistics {
+  total: number;
+  open: number;
+  resolved: number;
+  closed: number;
+  by_opener: { customer: number; provider: number; admin: number };
+  by_resolution: { refund_full: number; refund_partial: number; deny: number };
+}
+
+interface DisputesPayload {
+  disputes: Dispute[];
+  pagination: { page: number; limit: number; total: number; total_pages: number };
+  statistics: DisputeStatistics;
+}
+
 const LIMIT = 50;
+
+const STATUS_BADGE: Record<string, string> = {
+  open: "bg-red-100 text-red-800",
+  resolved: "bg-green-100 text-green-800",
+  closed: "bg-gray-100 text-gray-600",
+};
+
+const RESOLUTION_LABEL: Record<string, string> = {
+  refund_full: "Full refund",
+  refund_partial: "Partial refund",
+  deny: "Denied",
+};
 
 export function DisputesPage() {
   useAdminDocumentTitle("Disputes");
@@ -51,112 +80,122 @@ export function DisputesPage() {
   );
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
-  const page = Math.max(0, parseInt(sp.get("page") || "0", 10) || 0);
-  const statusFilter = sp.get("status") || "all";
-  const tab = sp.get("tab") || "all";
 
-  const [searchQuery, setSearchQuery] = useState(sp.get("q") || "");
+  // Server-driven filter state (persisted to URL)
+  const statusFilter = sp.get("status") || "all";
+  const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
+  const urlSearch = sp.get("q") || "";
+
+  // Local search input — debounced before updating URL
+  const [searchInput, setSearchInput] = useState(urlSearch);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const n = new URLSearchParams(sp);
+      if (searchInput.trim()) n.set("q", searchInput.trim());
+      else n.delete("q");
+      n.set("page", "1");
+      setSp(n, { replace: true });
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Modal state
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolution, setResolution] = useState<"refund_full" | "refund_partial" | "deny">("deny");
   const [refundAmount, setRefundAmount] = useState("");
   const [notes, setNotes] = useState("");
-  const deferredSearch = useDeferredValue(searchQuery);
 
-  // Persist search query to URL after a short debounce
-  useEffect(() => {
-    const t = setTimeout(() => updateSp({ q: searchQuery || null, page: null }), 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  const [closeId, setCloseId] = useState<string | null>(null);
+
+  const queryKey = adminQueryKeys.disputes.list({ statusFilter, page });
 
   const q = useQuery({
-    queryKey: adminQueryKeys.disputes.list({ statusFilter, page }),
+    queryKey,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       params.set("limit", String(LIMIT));
-      params.set("offset", String(page * LIMIT));
-      const qs = params.toString();
-      return adminApi.getJson<{ disputes: Dispute[]; total?: number }>(`/api/admin/disputes${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
+      params.set("page", String(page));
+      if (urlSearch) params.set("search", urlSearch);
+      return adminApi.getJson<DisputesPayload>(
+        `/api/admin/disputes?${params.toString()}`,
+        { timeoutMs: 60_000 }
+      );
     },
     enabled: allowed,
   });
 
   const disputes = q.data?.disputes ?? [];
-  const total = q.data?.total ?? disputes.length;
-  const totalPages = Math.ceil(total / LIMIT);
+  const pag = q.data?.pagination;
+  const stats = q.data?.statistics;
+  const selected = resolveId ? disputes.find((d) => d.id === resolveId) : null;
+  const closeTarget = closeId ? disputes.find((d) => d.id === closeId) : null;
 
   function updateSp(updates: Record<string, string | null>) {
     const n = new URLSearchParams(sp);
     for (const [k, v] of Object.entries(updates)) {
-      if (v === null || v === "" || v === "0" || v === "all") n.delete(k);
+      if (v === null || v === "") n.delete(k);
       else n.set(k, v);
     }
     setSp(n, { replace: true });
   }
 
   function setPage(next: number) {
-    updateSp({ page: next === 0 ? null : String(next) });
+    updateSp({ page: next <= 1 ? null : String(next) });
   }
 
   function setStatusFilter(val: string) {
     updateSp({ status: val === "all" ? null : val, page: null });
   }
 
-  function setTab(val: string) {
-    updateSp({ tab: val === "all" ? null : val });
-  }
-
-  const filtered = useMemo(() => {
-    const sq = deferredSearch.toLowerCase();
-    if (!sq) return disputes;
-    return disputes.filter(
-      (d) =>
-        (d.booking?.booking_number ?? "").toLowerCase().includes(sq) ||
-        (d.booking?.customer?.full_name ?? "").toLowerCase().includes(sq) ||
-        (d.booking?.customer?.email ?? "").toLowerCase().includes(sq) ||
-        (d.booking?.provider?.business_name ?? "").toLowerCase().includes(sq) ||
-        (d.reason ?? "").toLowerCase().includes(sq)
-    );
-  }, [disputes, deferredSearch]);
-
-  const grouped = useMemo(
-    () => ({
-      all: filtered,
-      open: filtered.filter((d) => d.status === "open"),
-      resolved: filtered.filter((d) => d.status === "resolved"),
-      closed: filtered.filter((d) => d.status === "closed"),
-    }),
-    [filtered]
-  );
-
-  const visible = grouped[tab as keyof typeof grouped] ?? grouped.all;
-  const selected = resolveId ? disputes.find((d) => d.id === resolveId) : null;
-
   const resolveMutation = useMutation({
     mutationFn: async () => {
-      if (!selected) return;
+      if (!selected) return null;
       const body: Record<string, unknown> = {
         status: "resolved",
         resolution,
         notes: notes || null,
       };
-      if (resolution === "refund_full" && selected.booking?.total_amount != null) {
-        body.refund_amount = selected.booking.total_amount;
+      if (resolution === "refund_full") {
+        body.refund_amount = selected.booking?.total_amount ?? null;
       } else if (resolution === "refund_partial") {
         const amount = parseFloat(refundAmount);
-        if (!Number.isNaN(amount)) body.refund_amount = amount;
+        if (!Number.isNaN(amount) && amount > 0) body.refund_amount = amount;
       }
-      await adminApi.patchJson(`/api/admin/disputes/${selected.id}`, body);
+      return adminApi.patchJson<{
+        provider_balance_warning?: string | null;
+      }>(`/api/admin/disputes/${selected.id}`, body);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.disputes.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
       setResolveId(null);
       setNotes("");
       setRefundAmount("");
       adminToast.success("Dispute resolved");
+      if (data && "provider_balance_warning" in data && data.provider_balance_warning) {
+        adminToast.warning(data.provider_balance_warning);
+      }
     },
     onError: (e: Error) => adminToast.error(`Failed to resolve dispute: ${e.message}`),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: async () => {
+      if (!closeTarget) return;
+      return adminApi.patchJson(`/api/admin/disputes/${closeTarget.id}`, {
+        status: "closed",
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.disputes.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      setCloseId(null);
+      adminToast.success("Dispute closed");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to close dispute: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -184,98 +223,206 @@ export function DisputesPage() {
     );
   }
 
+  // Tab counts from server statistics (accurate across all pages)
+  const tabCounts = useMemo(
+    () => ({
+      all: stats?.total ?? 0,
+      open: stats?.open ?? 0,
+      resolved: stats?.resolved ?? 0,
+      closed: stats?.closed ?? 0,
+    }),
+    [stats]
+  );
+
+  const tabs = [
+    ["all", "All"],
+    ["open", "Open"],
+    ["resolved", "Resolved"],
+    ["closed", "Closed"],
+  ] as const;
+
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Disputes" description="Manage booking disputes (moderation workflow)" />
+      <AdminPageHeader
+        title="Disputes"
+        description="Manage booking disputes. Resolving with a refund credits the customer's wallet immediately."
+      />
+
+      {/* Statistics banner */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {([
+            ["Open", stats.open, "text-red-600"],
+            ["Resolved", stats.resolved, "text-green-700"],
+            ["Closed", stats.closed, "text-gray-600"],
+            ["Total", stats.total, "text-gray-900"],
+          ] as const).map(([label, value, cls]) => (
+            <AdminPanel key={label} className="!p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                {label}
+              </p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums ${cls}`}>
+                {value}
+              </p>
+            </AdminPanel>
+          ))}
+        </div>
+      )}
 
       <AdminPanel>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-          <input
-            type="search"
-            placeholder="Search booking, customer, provider, reason…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="all">All (API filter)</option>
-            <option value="open">Open</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
-          </select>
-        </div>
+        <AdminListToolbar
+          searchValue={searchInput}
+          onSearchChange={setSearchInput}
+          searchPlaceholder="Search booking, customer, provider, reason…"
+          hasActiveFilters={statusFilter !== "all"}
+          onClearFilters={() => setStatusFilter("all")}
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              value: statusFilter,
+              onChange: setStatusFilter,
+              options: [
+                { value: "all", label: "All statuses" },
+                { value: "open", label: "Open" },
+                { value: "resolved", label: "Resolved" },
+                { value: "closed", label: "Closed" },
+              ],
+            },
+          ]}
+          className="mb-4"
+        />
 
+        {/* Tabs — driven by server statistics for accuracy */}
         <div className="mb-4 flex flex-wrap gap-2">
-          {(
-            [
-              ["all", "All"],
-              ["open", "Open"],
-              ["resolved", "Resolved"],
-              ["closed", "Closed"],
-            ] as const
-          ).map(([key, label]) => (
-            <button key={key} type="button" className={adminTabButtonClass(tab === key)} onClick={() => setTab(key)}>
-              {label} ({(grouped[key as keyof typeof grouped] ?? []).length})
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={adminTabButtonClass(statusFilter === key)}
+              onClick={() => setStatusFilter(key)}
+            >
+              {label}{" "}
+              <span className="ml-1 tabular-nums text-xs opacity-70">
+                ({tabCounts[key]})
+              </span>
             </button>
           ))}
         </div>
 
-        {visible.length === 0 ? (
+        {pag && (
+          <p className="mb-3 text-sm text-gray-500">
+            Page {pag.page} of {Math.max(1, pag.total_pages)} · {pag.total} total
+          </p>
+        )}
+
+        {disputes.length === 0 ? (
           <EmptyState title="No disputes" description="Nothing matches these filters." />
         ) : (
           <ul className="space-y-4">
-            {visible.map((d) => (
+            {disputes.map((d) => (
               <li key={d.id} className="rounded-xl border border-gray-200 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
                   <div className="min-w-0 flex-1 space-y-2 text-sm">
+                    {/* Status badges */}
                     <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium">{d.status}</span>
-                      <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">by {d.opened_by}</span>
-                      {d.resolution ? (
-                        <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">{d.resolution}</span>
-                      ) : null}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[d.status] ?? "bg-gray-100 text-gray-600"}`}
+                      >
+                        {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+                      </span>
+                      <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+                        Opened by {d.opened_by}
+                      </span>
+                      {d.resolution && (
+                        <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+                          {RESOLUTION_LABEL[d.resolution] ?? d.resolution}
+                        </span>
+                      )}
                     </div>
+
+                    {/* Reason + description */}
                     <p className="font-semibold text-gray-900">{d.reason}</p>
-                    {d.description ? <p className="text-gray-600">{d.description}</p> : null}
+                    {d.description && (
+                      <p className="text-gray-600">{d.description}</p>
+                    )}
+
+                    {/* Booking info */}
                     <p className="text-gray-600">
-                      Booking <strong>{d.booking?.booking_number}</strong> · {d.booking?.customer?.full_name || d.booking?.customer?.email} ·{" "}
-                      {d.booking?.provider?.business_name} · ${d.booking?.total_amount?.toFixed(2)}
+                      Booking{" "}
+                      <strong>{d.booking?.booking_number}</strong>
+                      {" · "}
+                      {d.booking?.customer?.full_name || d.booking?.customer?.email}
+                      {" · "}
+                      {d.booking?.provider?.business_name}
+                      {" · "}
+                      <span className="font-medium">
+                        {formatAdminCurrency(d.booking?.total_amount ?? 0)}
+                      </span>
                     </p>
-                    {d.notes ? (
-                      <p className="rounded border border-gray-100 bg-gray-50 p-2 text-xs text-gray-700">Notes: {d.notes}</p>
-                    ) : null}
+
+                    {/* Refund recorded */}
+                    {d.refund_amount != null && (
+                      <p className="text-sm text-gray-700">
+                        Refund issued:{" "}
+                        <span className="font-semibold text-green-700">
+                          {formatAdminCurrency(d.refund_amount)}
+                        </span>
+                      </p>
+                    )}
+
+                    {/* Notes */}
+                    {d.notes && (
+                      <p className="rounded border border-gray-100 bg-gray-50 p-2 text-xs text-gray-700">
+                        Notes: {d.notes}
+                      </p>
+                    )}
                   </div>
-                  {d.status === "open" ? (
-                    <button
-                      type="button"
-                      className="h-fit shrink-0 rounded-lg bg-gray-900 px-3 py-2 text-sm text-white"
-                      onClick={() => {
-                        setResolveId(d.id);
-                        setResolution("deny");
-                        setRefundAmount("");
-                        setNotes("");
-                      }}
-                    >
-                      Resolve
-                    </button>
-                  ) : null}
+
+                  {/* Actions */}
+                  <div className="flex shrink-0 flex-wrap items-start gap-2 sm:flex-col">
+                    {d.status === "open" && (
+                      <button
+                        type="button"
+                        className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700"
+                        onClick={() => {
+                          setResolveId(d.id);
+                          setResolution("deny");
+                          setRefundAmount("");
+                          setNotes("");
+                        }}
+                      >
+                        Resolve
+                      </button>
+                    )}
+                    {d.status !== "closed" && (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setCloseId(d.id)}
+                      >
+                        Close
+                      </button>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
         )}
-        {totalPages > 1 && (
+
+        {/* Pagination */}
+        {pag && pag.total_pages > 1 && (
           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-            <span className="text-sm text-gray-500">Page {page + 1} of {totalPages} · {total} total</span>
+            <span className="text-sm text-gray-500">
+              Page {pag.page} of {pag.total_pages} · {pag.total} total
+            </span>
             <div className="flex gap-2">
               <button
                 type="button"
                 className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
-                disabled={page <= 0}
+                disabled={page <= 1}
                 onClick={() => setPage(page - 1)}
               >
                 Previous
@@ -283,7 +430,7 @@ export function DisputesPage() {
               <button
                 type="button"
                 className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
-                disabled={page >= totalPages - 1}
+                disabled={page >= pag.total_pages}
                 onClick={() => setPage(page + 1)}
               >
                 Next
@@ -293,14 +440,23 @@ export function DisputesPage() {
         )}
       </AdminPanel>
 
+      {/* Resolve dispute modal */}
       <AdminModal
         open={!!selected}
         onClose={() => setResolveId(null)}
         title="Resolve dispute"
-        description={selected ? `Booking ${selected.booking?.booking_number ?? ""}` : undefined}
+        description={
+          selected
+            ? `Booking ${selected.booking?.booking_number ?? ""} — ${selected.reason}`
+            : undefined
+        }
         footer={
           <>
-            <button type="button" className="rounded border border-gray-300 px-3 py-2 text-sm" onClick={() => setResolveId(null)}>
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+              onClick={() => setResolveId(null)}
+            >
               Cancel
             </button>
             <button
@@ -309,39 +465,115 @@ export function DisputesPage() {
               disabled={resolveMutation.isPending}
               onClick={() => resolveMutation.mutate()}
             >
-              Submit
+              {resolveMutation.isPending ? "Resolving…" : "Confirm resolve"}
             </button>
           </>
         }
       >
-        <label className="block text-sm">
-          Resolution
-          <select
-            value={resolution}
-            onChange={(e) => setResolution(e.target.value as typeof resolution)}
-            className="mt-1 w-full rounded border border-gray-300 p-2"
-          >
-            <option value="deny">Deny</option>
-            <option value="refund_full">Full refund</option>
-            <option value="refund_partial">Partial refund</option>
-          </select>
-        </label>
-        {resolution === "refund_partial" ? (
-          <label className="mt-3 block text-sm">
-            Refund amount
-            <input
-              type="number"
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 p-2"
+        <div className="space-y-4">
+          {selected && (
+            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+              <p>
+                <span className="font-medium">Customer:</span>{" "}
+                {selected.booking?.customer?.full_name ||
+                  selected.booking?.customer?.email}
+              </p>
+              <p>
+                <span className="font-medium">Provider:</span>{" "}
+                {selected.booking?.provider?.business_name}
+              </p>
+              <p>
+                <span className="font-medium">Booking total:</span>{" "}
+                {formatAdminCurrency(selected.booking?.total_amount ?? 0)}
+              </p>
+            </div>
+          )}
+
+          <label className="block text-sm font-medium text-gray-700">
+            Resolution
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value as typeof resolution)}
+              className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+            >
+              <option value="deny">Deny — no refund</option>
+              <option value="refund_full">Full refund (wallet credit)</option>
+              <option value="refund_partial">Partial refund (wallet credit)</option>
+            </select>
+          </label>
+
+          {resolution === "refund_partial" && (
+            <label className="block text-sm font-medium text-gray-700">
+              Refund amount (ZAR)
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder="e.g. 150.00"
+                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+              />
+            </label>
+          )}
+
+          {(resolution === "refund_full" || resolution === "refund_partial") && (
+            <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+              The customer&apos;s wallet will be credited immediately. They can
+              apply the balance to their next booking or request a payout.
+            </p>
+          )}
+
+          <label className="block text-sm font-medium text-gray-700">
+            Internal notes
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Add context for the resolution…"
+              className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
             />
           </label>
-        ) : null}
-        <label className="mt-3 block text-sm">
-          Notes
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="mt-1 w-full rounded border border-gray-300 p-2" />
-        </label>
-        <AdminMutationAlert errors={[resolveMutation.error]} />
+
+          <AdminMutationAlert errors={[resolveMutation.error]} />
+        </div>
+      </AdminModal>
+
+      {/* Close dispute confirmation modal */}
+      <AdminModal
+        open={!!closeTarget}
+        onClose={() => setCloseId(null)}
+        title="Close dispute"
+        description={
+          closeTarget
+            ? `Close dispute for booking ${closeTarget.booking?.booking_number ?? ""}?`
+            : undefined
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+              onClick={() => setCloseId(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={closeMutation.isPending}
+              onClick={() => closeMutation.mutate()}
+            >
+              {closeMutation.isPending ? "Closing…" : "Close dispute"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Closing marks this dispute as resolved without any moderation action. No
+          refund will be issued. This cannot be re-opened.
+        </p>
+        <AdminMutationAlert errors={[closeMutation.error]} />
       </AdminModal>
     </div>
   );

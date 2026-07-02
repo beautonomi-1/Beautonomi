@@ -8,6 +8,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -275,6 +276,7 @@ export function BookingDetailPage() {
   });
 
   const booking = q.data;
+  useAdminBreadcrumbLeaf(booking?.booking_number ? `#${booking.booking_number}` : undefined);
 
   const saveMutation = useMutation({
     mutationFn: (body: Partial<BookingDetail>) => adminApi.patchJson<BookingDetail>(`/api/admin/bookings/${bookingId}`, body),

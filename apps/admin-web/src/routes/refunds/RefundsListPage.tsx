@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -22,6 +23,8 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminModal } from "@/components/admin/AdminModal";
+import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 
 type RefundStatistics = {
   total_transactions?: number;
@@ -43,13 +46,20 @@ type RefundsPayload = {
   statistics?: RefundStatistics;
 };
 
-function unwrapBookingCustomer(booking: unknown): { full_name?: string | null; email?: string | null } | null {
+function unwrapBookingCustomer(
+  booking: unknown
+): { full_name?: string | null; email?: string | null } | null {
   if (!booking || typeof booking !== "object") return null;
   const b = booking as { customer?: unknown };
   const c = b.customer;
   if (!c) return null;
   if (Array.isArray(c)) return (c[0] as { full_name?: string; email?: string }) ?? null;
   return c as { full_name?: string; email?: string };
+}
+
+function parseAmount(val: unknown): number {
+  const n = parseFloat(String(val ?? "0"));
+  return Number.isFinite(n) ? n : 0;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -86,20 +96,34 @@ export function RefundsListPage() {
       p.set("page", String(page));
       p.set("limit", "25");
       if (status !== "all") p.set("status", status);
-      return adminApi.getJson<RefundsPayload>(`/api/admin/refunds?${p}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<RefundsPayload>(`/api/admin/refunds?${p}`, {
+        timeoutMs: 60_000,
+      });
     },
     enabled: allowed,
   });
 
   const processRefund = useMutation({
-    mutationFn: async ({ id, amount, reason, notes }: { id: string; amount: number; reason: string; notes: string }) => {
-      return adminApi.postJson(`/api/admin/refunds/${id}`, {
+    mutationFn: async ({
+      id,
+      amount,
+      reason,
+      notes,
+    }: {
+      id: string;
+      amount: number;
+      reason: string;
+      notes: string;
+    }) => {
+      return adminApi.postJson<{
+        provider_balance_warning?: string | null;
+      }>(`/api/admin/refunds/${id}`, {
         refund_amount: amount,
         refund_reason: reason,
         notes: notes.trim() || undefined,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.refunds(filters) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
       setProcessId(null);
@@ -108,6 +132,9 @@ export function RefundsListPage() {
       setRefundReason("");
       setRefundNotes("");
       adminToast.success("Refund processed successfully");
+      if (data && "provider_balance_warning" in data && data.provider_balance_warning) {
+        adminToast.warning(data.provider_balance_warning);
+      }
     },
     onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
@@ -155,7 +182,14 @@ export function RefundsListPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const tabs = ["all", "success", "pending", "failed", "refunded", "partially_refunded"] as const;
+  const tabs = [
+    "all",
+    "success",
+    "pending",
+    "failed",
+    "refunded",
+    "partially_refunded",
+  ] as const;
 
   const totalListed = stats?.total_transactions ?? stats?.total ?? 0;
   const totalRefundedAmt = stats?.total_refunded_amount ?? stats?.total_refunded ?? 0;
@@ -170,19 +204,15 @@ export function RefundsListPage() {
         title="Refunds"
         description={
           <span className="block max-w-3xl text-sm font-normal leading-relaxed text-gray-600">
-            <strong>Data source:</strong> rows from <code className="rounded bg-gray-100 px-1">payment_transactions</code> for this
-            tenant (booking-linked payments and eligible gateway rows). Rows with status{" "}
-            <code className="rounded bg-gray-100 px-1">success</code> are usually <strong>successful card/wallet captures</strong>, not
-            “refund completed” — use the <strong>Refund issued</strong> column and{" "}
-            <code className="rounded bg-gray-100 px-1">rows_with_refund_recorded</code> for money credited back.
-            <br />
-            <strong>Processing:</strong> “Process refund” (pending rows) runs{" "}
-            <code className="rounded bg-gray-100 px-1">POST /api/admin/refunds/[id]</code>, which credits the customer via{" "}
-            <code className="rounded bg-gray-100 px-1">wallet_credit_admin</code> (store credit in their Beautonomi wallet).
-            <br />
-            <strong>Bank payout:</strong> the customer app wallet page supports balance and top-ups; there is no self-service “withdraw
-            refund to bank” API in this repo. Balance is intended for future bookings; bank payouts would be a manual/support or future
-            product flow — push copy may still say “request a payout” as an aspiration.
+            <strong>Data source:</strong> rows from{" "}
+            <code className="rounded bg-gray-100 px-1">payment_transactions</code> for
+            this tenant. Rows with status{" "}
+            <code className="rounded bg-gray-100 px-1">success</code> are successful
+            card/wallet captures — use <strong>Refund issued</strong> column and{" "}
+            <code className="rounded bg-gray-100 px-1">rows_with_refund_recorded</code>{" "}
+            for money credited back.{" "}
+            <strong>Processing</strong> a refund credits the customer&apos;s wallet
+            (store credit for future bookings).
           </span>
         }
       />
@@ -192,26 +222,46 @@ export function RefundsListPage() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <AdminPanel className="!p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Transactions listed</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{totalListed}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Transactions listed
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {totalListed}
+              </p>
             </AdminPanel>
             <AdminPanel className="!p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total refunded (wallet)</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{totalRefundedAmt}</p>
-              <p className="mt-1 text-[11px] text-gray-500">Sum of refund_amount where recorded</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Total refunded (wallet)
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {formatAdminCurrency(parseAmount(totalRefundedAmt))}
+              </p>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Sum of refund_amount where recorded
+              </p>
             </AdminPanel>
             <AdminPanel className="!p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Rows with refund recorded</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{rowsWithRefund}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Rows with refund recorded
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {rowsWithRefund}
+              </p>
             </AdminPanel>
             <AdminPanel className="!p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Avg refund (recorded rows)</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{avgRecorded}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Avg refund (recorded rows)
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {formatAdminCurrency(parseAmount(avgRecorded))}
+              </p>
             </AdminPanel>
           </div>
-          {Object.keys(byStatus).length > 0 ? (
+          {Object.keys(byStatus).length > 0 && (
             <AdminPanel className="!p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">By payment/refund status</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                By payment/refund status
+              </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Object.entries(byStatus).map(([k, n]) => (
                   <span
@@ -224,7 +274,7 @@ export function RefundsListPage() {
                 ))}
               </div>
             </AdminPanel>
-          ) : null}
+          )}
         </div>
       )}
 
@@ -247,6 +297,7 @@ export function RefundsListPage() {
           </p>
         ) : null}
       </AdminPanel>
+
       {rows.length === 0 ? (
         <EmptyState title="No refund rows" />
       ) : (
@@ -255,7 +306,7 @@ export function RefundsListPage() {
             <tr>
               <AdminTh>Type</AdminTh>
               <AdminTh>Status</AdminTh>
-              <AdminTh>Payment / txn</AdminTh>
+              <AdminTh>Payment amount</AdminTh>
               <AdminTh>Refund issued</AdminTh>
               <AdminTh>Booking</AdminTh>
               <AdminTh>Customer</AdminTh>
@@ -267,10 +318,14 @@ export function RefundsListPage() {
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
-              const booking = row.booking as { booking_number?: string } | null | undefined;
+              const booking = row.booking as
+                | { booking_number?: string }
+                | null
+                | undefined;
               const customer = unwrapBookingCustomer(row.booking);
               const statusStr = String(row.status ?? "pending");
-              const badgeClass = STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
+              const badgeClass =
+                STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
               const isPending = statusStr === "pending";
               const isExpanded = expandedId === id;
 
@@ -280,64 +335,103 @@ export function RefundsListPage() {
                     className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                   >
-                    <AdminTd className="font-mono text-xs text-gray-700">{String(row.transaction_type ?? "—")}</AdminTd>
+                    <AdminTd className="font-mono text-xs text-gray-700">
+                      {String(row.transaction_type ?? "—")}
+                    </AdminTd>
                     <AdminTd>
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
+                      >
                         {statusStr}
                       </span>
                     </AdminTd>
-                    <AdminTd className="tabular-nums">{String(row.amount ?? "")}</AdminTd>
-                    <AdminTd className="tabular-nums">{row.refund_amount != null && String(row.refund_amount) !== "" ? String(row.refund_amount) : "—"}</AdminTd>
-                    <AdminTd className="text-xs">{String(booking?.booking_number ?? "—")}</AdminTd>
+                    <AdminTd className="tabular-nums">
+                      {formatAdminCurrency(parseAmount(row.amount))}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums">
+                      {row.refund_amount != null &&
+                      String(row.refund_amount) !== "" &&
+                      parseAmount(row.refund_amount) > 0
+                        ? formatAdminCurrency(parseAmount(row.refund_amount))
+                        : "—"}
+                    </AdminTd>
+                    <AdminTd className="text-xs">
+                      {String(booking?.booking_number ?? "—")}
+                    </AdminTd>
                     <AdminTd className="text-xs">
                       {customer?.full_name || customer?.email || "—"}
                     </AdminTd>
-                    <AdminTd className="text-xs text-gray-500 whitespace-nowrap">
-                      {row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : ""}
+                    <AdminTd className="whitespace-nowrap text-xs text-gray-500">
+                      {row.created_at
+                        ? new Date(String(row.created_at)).toLocaleDateString()
+                        : ""}
                     </AdminTd>
                     <AdminTd>
                       {isPending && (
                         <button
                           type="button"
                           className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
-                          onClick={(e) => { e.stopPropagation(); openProcessRefund(row); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProcessRefund(row);
+                          }}
                         >
                           Process
                         </button>
                       )}
                     </AdminTd>
                   </tr>
+
                   {isExpanded && (
                     <tr key={`${id}-detail`}>
-                      <td colSpan={8} className="bg-gray-50 px-4 py-3 border-t border-gray-100">
+                      <td
+                        colSpan={8}
+                        className="border-t border-gray-100 bg-gray-50 px-4 py-3"
+                      >
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <p className="text-xs text-gray-500">Transaction ID: <span className="font-mono">{id}</span></p>
-                            {Boolean(row.transaction_type) ? (
-                              <p className="text-xs text-gray-500">Type: {String(row.transaction_type)}</p>
-                            ) : null}
-                            {Boolean(row.provider_name) ? (
-                              <p className="text-xs text-gray-500">Provider: {String(row.provider_name)}</p>
-                            ) : null}
-                            {Boolean(row.refund_reason) ? (
+                            <p className="text-xs text-gray-500">
+                              Transaction ID:{" "}
+                              <span className="font-mono">{id}</span>
+                            </p>
+                            {Boolean(row.transaction_type) && (
+                              <p className="text-xs text-gray-500">
+                                Type: {String(row.transaction_type)}
+                              </p>
+                            )}
+                            {Boolean(row.provider_name) && (
+                              <p className="text-xs text-gray-500">
+                                Provider: {String(row.provider_name)}
+                              </p>
+                            )}
+                            {Boolean(row.refund_reason) && (
                               <div className="mt-2">
-                                <p className="font-medium text-gray-700 text-xs">Refund reason</p>
-                                <p className="text-gray-600 text-xs">{String(row.refund_reason)}</p>
+                                <p className="text-xs font-medium text-gray-700">
+                                  Refund reason
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {String(row.refund_reason)}
+                                </p>
                               </div>
-                            ) : null}
+                            )}
                           </div>
                           <div>
-                            {Boolean(row.notes) ? (
+                            {Boolean(row.notes) && (
                               <div>
-                                <p className="font-medium text-gray-700 text-xs">Notes</p>
-                                <p className="text-gray-600 text-xs">{String(row.notes)}</p>
+                                <p className="text-xs font-medium text-gray-700">
+                                  Notes
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {String(row.notes)}
+                                </p>
                               </div>
-                            ) : null}
-                            {Boolean(row.processed_at) ? (
-                              <p className="text-xs text-gray-400 mt-1">
-                                Processed: {new Date(String(row.processed_at)).toLocaleString()}
+                            )}
+                            {Boolean(row.processed_at) && (
+                              <p className="mt-1 text-xs text-gray-400">
+                                Processed:{" "}
+                                {new Date(String(row.processed_at)).toLocaleString()}
                               </p>
-                            ) : null}
+                            )}
                           </div>
                         </div>
                       </td>
@@ -350,86 +444,94 @@ export function RefundsListPage() {
         </AdminDataTable>
       )}
 
-      {/* Process refund dialog */}
-      {processId && processRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Process Refund</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Original amount: <span className="font-semibold">{String(processRow.amount ?? "")}</span>
-              {Boolean(processRow.booking) ? (
-                <span className="ml-2">· Booking: {String((processRow.booking as any)?.booking_number ?? "")}</span>
-              ) : null}
-            </p>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Refund amount *
-                <input
-                  type="number"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)}
-                  step="0.01"
-                  min="0"
-                />
-              </label>
-              <label className="block text-sm font-medium text-gray-700">
-                Reason *
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Reason for refund..."
-                />
-              </label>
-              <label className="block text-sm font-medium text-gray-700">
-                Notes (optional)
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[60px]"
-                  value={refundNotes}
-                  onChange={(e) => setRefundNotes(e.target.value)}
-                  placeholder="Additional notes..."
-                />
-              </label>
-            </div>
-
-            {processRefund.error && (
-              <p className="mt-2 text-sm text-red-600">
-                {(processRefund.error as Error).message || "Failed to process refund"}
-              </p>
-            )}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-                onClick={() => { setProcessId(null); setProcessRow(null); }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-                disabled={processRefund.isPending || !refundAmount || !refundReason.trim()}
-                onClick={() => {
-                  const amount = parseFloat(refundAmount);
-                  if (!amount || amount <= 0) return;
-                  processRefund.mutate({
-                    id: processId,
-                    amount,
-                    reason: refundReason.trim(),
-                    notes: refundNotes,
-                  });
-                }}
-              >
-                {processRefund.isPending ? "Processing..." : "Process Refund"}
-              </button>
-            </div>
-          </div>
+      {/* Process refund — uses AdminModal for a11y */}
+      <AdminModal
+        open={Boolean(processId && processRow)}
+        onClose={() => {
+          setProcessId(null);
+          setProcessRow(null);
+        }}
+        title="Process refund"
+        description={
+          processRow
+            ? `Original amount: ${formatAdminCurrency(parseAmount(processRow.amount))}${
+                processRow.booking
+                  ? ` · Booking ${String((processRow.booking as Record<string, unknown>)?.booking_number ?? "")}`
+                  : ""
+              }`
+            : undefined
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+              onClick={() => {
+                setProcessId(null);
+                setProcessRow(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={
+                processRefund.isPending || !refundAmount || !refundReason.trim()
+              }
+              onClick={() => {
+                if (!processId) return;
+                const amount = parseFloat(refundAmount);
+                if (!amount || amount <= 0) return;
+                processRefund.mutate({
+                  id: processId,
+                  amount,
+                  reason: refundReason.trim(),
+                  notes: refundNotes,
+                });
+              }}
+            >
+              {processRefund.isPending ? "Processing…" : "Process refund"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-gray-700">
+            Refund amount (ZAR) *
+            <input
+              type="number"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              step="0.01"
+              min="0.01"
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Reason *
+            <input
+              type="text"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              placeholder="Reason for refund…"
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Notes (optional)
+            <textarea
+              className="mt-1 min-h-[60px] w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={refundNotes}
+              onChange={(e) => setRefundNotes(e.target.value)}
+              placeholder="Additional notes…"
+            />
+          </label>
+          <AdminMutationAlert errors={[processRefund.error]} />
         </div>
-      )}
+      </AdminModal>
 
+      {/* Pagination */}
       {pag && pag.total_pages > 1 ? (
         <div className="flex gap-2">
           <button

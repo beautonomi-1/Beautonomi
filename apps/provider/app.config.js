@@ -84,9 +84,6 @@ const BASE_EXPO_CONFIG = {
         ios: {
           deploymentTarget: "15.1",
           privacyManifestAggregationEnabled: true,
-          // Sumsub native SDK: IdensicMobileSDK spec comes from the Sumsub Specs repo.
-          // The JS module's podspec declares the dependency; we just need the source.
-          iosPodfileSourceRepos: ["https://github.com/SumSubstance/Specs.git"],
         },
         android: {
           minSdkVersion: 24,
@@ -99,6 +96,14 @@ const BASE_EXPO_CONFIG = {
         },
       },
     ],
+    // Sumsub native SDK: prepends CocoaPods source declarations to the generated
+    // Podfile so `pod install` can resolve IdensicMobileSDK from the SumSubstance
+    // Specs repo. iosPodfileSourceRepos is not a real expo-build-properties option.
+    "../../tooling/expo-plugins/withPodfileSources",
+    // Resolves the Android manifest merger conflict: expo-dev-launcher declares
+    // com.google.mlkit.vision.DEPENDENCIES=barcode_ui while idensic-mobile-sdk
+    // declares =face; we write the union value with tools:replace to settle it.
+    "../../tooling/expo-plugins/withMlKitVisionDependencies",
     "../../tooling/expo-plugins/withGradleWrapperResilience",
     // Prevents Android from destroying the React Native activity (and triggering
     // an ANR) when the device locale, font scale, or time settings change.
@@ -185,7 +190,7 @@ const BASE_EXPO_CONFIG = {
       NSCameraUsageDescription:
         "Beautonomi Provider uses the camera for identity verification, profile photos, catalogue images, and scanning QR codes.",
       NSMicrophoneUsageDescription:
-        "Beautonomi Provider may use the microphone when you choose to record a video for posts, messages, or work documentation.",
+        "Beautonomi Provider uses the microphone during identity verification to record your liveness video, and when you choose to record a video for posts, messages, or work documentation.",
       // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
       // Must match plugin `scheme` and apps/customer `scheme` + package com.beautonomi.
       LSApplicationQueriesSchemes: ["customer"],

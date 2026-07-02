@@ -264,6 +264,9 @@ export const UserDetailPage = lazy(() =>
 export const LoyaltyRulesPage = lazy(() =>
   import("@/routes/marketing/LoyaltyRulesPage").then((m) => ({ default: m.LoyaltyRulesPage }))
 );
+export const GamificationHubPage = lazy(() =>
+  import("@/routes/marketing/GamificationHubPage").then((m) => ({ default: m.GamificationHubPage }))
+);
 export const GamificationPointRulesPage = lazy(() =>
   import("@/routes/marketing/GamificationPointRulesPage").then((m) => ({ default: m.GamificationPointRulesPage }))
 );

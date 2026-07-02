@@ -30,6 +30,8 @@ type VerificationStatus = {
   status: string;
   can_submit_verification?: boolean;
   sumsub_available: boolean;
+  manual_available?: boolean;
+  verification_mode?: string;
   submissions?: VerificationSubmission[];
 };
 
@@ -113,6 +115,9 @@ export default function IdentityVerificationPageClient() {
   const submissions = data?.submissions ?? [];
   const cardStatus = statusForCard(data?.status ?? "none", Boolean(data?.verified), submissions.length > 0);
   const latestRejection = submissions.find((s) => s.rejection_reason)?.rejection_reason;
+  const sumsubAvailable = data?.sumsub_available ?? false;
+  const manualAvailable = data?.manual_available !== false; // default true for backwards compat
+  const verificationOff = data?.verification_mode === "off";
 
   const openSumsub = async () => {
     setLaunchingSumsub(true);
@@ -227,7 +232,7 @@ export default function IdentityVerificationPageClient() {
             }}
           />
 
-          {canSubmit && data?.sumsub_available ? (
+          {canSubmit && sumsubAvailable ? (
             <Card>
               <CardContent className="p-5">
                 <p className="font-medium text-gray-900 mb-1">Verify instantly</p>
@@ -247,7 +252,16 @@ export default function IdentityVerificationPageClient() {
             </Card>
           ) : null}
 
-          {canSubmit ? (
+          {verificationOff ? (
+            <Card className="border-gray-200 bg-gray-50">
+              <CardContent className="p-5">
+                <p className="font-medium text-gray-700">Verification not available</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Identity verification is currently unavailable. Please contact support if you need assistance.
+                </p>
+              </CardContent>
+            </Card>
+          ) : canSubmit && manualAvailable ? (
             <Card id="verification-upload">
               <CardContent className="p-5">
                 <h2 className="font-semibold text-gray-900 mb-1">Upload ID manually</h2>

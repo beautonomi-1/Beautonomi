@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
 import {
   notifySupportStaffInboxActivity,
   notifySupportTicketCreated,
@@ -74,7 +74,10 @@ export async function createProviderSupportTicket(
   if (createdAt) {
     await admin
       .from("support_tickets")
-      .update({ sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, priority) })
+      .update({
+        sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, priority),
+        first_response_due_at: computeFirstResponseDueIso(createdAt, priority),
+      })
       .eq("id", ticketRow.id);
   }
 

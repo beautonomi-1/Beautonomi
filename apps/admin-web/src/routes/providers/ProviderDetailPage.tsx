@@ -8,6 +8,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -206,6 +207,10 @@ export function ProviderDetailPage() {
       adminApi.getJson<ProviderDetail>(`/api/admin/providers/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
   });
+
+  useAdminBreadcrumbLeaf(
+    typeof q.data?.business_name === "string" ? q.data.business_name : undefined,
+  );
 
   const providerCanonicalId = q.data?.id != null ? str(q.data.id) : "";
 

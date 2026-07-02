@@ -18,6 +18,10 @@ function createQueryBuilder(result: QueryResult) {
     eq: vi.fn().mockReturnThis(),
     is: vi.fn().mockReturnThis(),
     or: vi.fn().mockReturnThis(),
+    lt: vi.fn().mockReturnThis(),
+    gt: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
     range: vi.fn().mockResolvedValue(result),
   };
 }
@@ -81,10 +85,10 @@ describe("GET /api/admin/support-tickets", () => {
     expect(builder.range).toHaveBeenCalledWith(40, 59);
   });
 
-  it("returns tickets and total from count query", async () => {
+  it("returns tickets enriched with attention fields and total from count query", async () => {
     const rows = [
-      { id: "t1", ticket_number: "SUP-1", subject: "Help", status: "open", priority: "medium" },
-      { id: "t2", ticket_number: "SUP-2", subject: "Issue", status: "open", priority: "high" },
+      { id: "t1", ticket_number: "SUP-1", subject: "Help", status: "open", priority: "medium", last_message_from: "customer" },
+      { id: "t2", ticket_number: "SUP-2", subject: "Issue", status: "open", priority: "high", last_message_from: "staff" },
     ];
     const result: QueryResult = { data: rows, error: null, count: 53 };
     const builder = createQueryBuilder(result);
@@ -103,9 +107,64 @@ describe("GET /api/admin/support-tickets", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    expect(body.tickets).toEqual(rows);
+    // Each ticket now has server-computed attention fields.
+    expect(body.tickets).toHaveLength(2);
+    expect(body.tickets[0]).toMatchObject({ id: "t1", attention_state: expect.any(String), sla_state: expect.any(String), agent_unread: expect.any(Boolean) });
     expect(body.total).toBe(53);
     expect(body.limit).toBe(25);
     expect(body.offset).toBe(25);
+  });
+
+  it("applies smart sort (four chained order calls) by default", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: {},
+    });
+
+    await GET(req as NextRequest);
+    // Smart sort = 4 order() calls
+    expect(builder.order).toHaveBeenCalledWith("needs_agent_response", { ascending: false });
+    expect(builder.order).toHaveBeenCalledWith("priority_rank", { ascending: true });
+    expect(builder.order).toHaveBeenCalledWith("sla_resolution_due_at", { ascending: true, nullsFirst: false });
+    expect(builder.order).toHaveBeenCalledWith("last_message_at", { ascending: true, nullsFirst: false });
+  });
+
+  it("applies needs_response filter", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { needs_response: "1" },
+    });
+
+    await GET(req as NextRequest);
+    expect(builder.eq).toHaveBeenCalledWith("needs_agent_response", true);
+  });
+
+  it("applies first_response_overdue filter", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { first_response_overdue: "1" },
+    });
+
+    await GET(req as NextRequest);
+    expect(builder.lt).toHaveBeenCalledWith("first_response_due_at", expect.any(String));
+    expect(builder.is).toHaveBeenCalledWith("first_staff_reply_at", null);
   });
 });

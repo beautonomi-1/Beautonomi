@@ -10,6 +10,7 @@ import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
 import { locationHasOperatingHours } from "@/lib/provider/location-operating-hours";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 
 export interface SetupStatusStep {
   id: string;
@@ -284,6 +285,10 @@ export async function GET(request: NextRequest) {
       kycStatus === "approved" ||
       (provider as { is_verified?: boolean | null }).is_verified === true;
 
+    // Resolve verification policy to determine if identity is a required step.
+    const providerTenantId = (provider as { tenant_id?: string | null }).tenant_id ?? tenantId;
+    const verificationPolicy = await resolveVerificationPolicy(providerTenantId);
+
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin
       .from("user_profiles")
@@ -448,7 +453,7 @@ export async function GET(request: NextRequest) {
         description:
           "Verify your identity to earn the 'Verified' marketplace badge and increase customer trust",
         completed: isIdentityVerified,
-        required: false,
+        required: verificationPolicy.requiredForProviders,
         link: "/provider/settings/verification",
       },
     ];

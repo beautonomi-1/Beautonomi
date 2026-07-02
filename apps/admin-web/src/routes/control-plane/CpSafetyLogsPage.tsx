@@ -18,6 +18,8 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { cn } from "@/lib/cn";
 
@@ -184,7 +186,9 @@ export function CpSafetyLogsPage() {
       </div>
 
       {listQuery.isLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <AdminPanel>
+          <AdminPageSkeleton rows={6} />
+        </AdminPanel>
       ) : listQuery.isError ? (
         <AdminRetryBlock
           message={listQuery.error instanceof Error ? listQuery.error.message : "Could not load safety logs"}
@@ -221,7 +225,10 @@ export function CpSafetyLogsPage() {
           </div>
 
           {rows.length === 0 ? (
-            <p className="text-sm text-gray-500">No events for these filters.</p>
+            <EmptyState
+              title="No safety events"
+              description="No panic, check-in, or escalation events match the current filters. Try widening the time range or clearing the status filter."
+            />
           ) : (
             <AdminDataTable>
               <AdminTableHead>

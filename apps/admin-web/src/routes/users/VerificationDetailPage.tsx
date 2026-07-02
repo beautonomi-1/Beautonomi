@@ -6,6 +6,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -74,6 +75,8 @@ export function VerificationDetailPage() {
     queryFn: () => adminApi.getJson<VerificationDetail>(`/api/admin/verifications/${id}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
   });
+
+  useAdminBreadcrumbLeaf(q.data?.user?.full_name ?? q.data?.user?.email ?? undefined);
 
   const review = useMutation({
     mutationFn: async (body: { status: "approved" | "rejected"; rejection_reason?: string | null }) => {

@@ -59,22 +59,46 @@ export async function GET(request: NextRequest) {
         .in("status", ["pending", "processing"])
         .eq("providers.tenant_id", tenantId),
       (async () => {
+        // Count only actionable tickets (needs_agent_response = true) rather than all
+        // open+in_progress — this is the "badge you must clear" number that
+        // tells agents how much work is waiting for them.
         if (isSuperadmin || user.role === "support_agent") {
-          const { count } = await supabase
-            .from("support_tickets")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["open", "in_progress"]);
-          return { count: count ?? 0 };
+          const [actionableResult, slaBreachedResult] = await Promise.all([
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .eq("needs_agent_response", true),
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .lt("sla_resolution_due_at", new Date().toISOString())
+              .not("status", "in", '("resolved","closed")'),
+          ]);
+          return {
+            count: actionableResult.count ?? 0,
+            sla_breached: slaBreachedResult.count ?? 0,
+          };
         }
         if (tenantProviderIds.length > 0) {
-          const { count } = await supabase
-            .from("support_tickets")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["open", "in_progress"])
-            .in("provider_id", tenantProviderIds);
-          return { count: count ?? 0 };
+          const [actionableResult, slaBreachedResult] = await Promise.all([
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .eq("needs_agent_response", true)
+              .in("provider_id", tenantProviderIds),
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .lt("sla_resolution_due_at", new Date().toISOString())
+              .not("status", "in", '("resolved","closed")')
+              .in("provider_id", tenantProviderIds),
+          ]);
+          return {
+            count: actionableResult.count ?? 0,
+            sla_breached: slaBreachedResult.count ?? 0,
+          };
         }
-        return { count: 0 };
+        return { count: 0, sla_breached: 0 };
       })(),
       (async () => {
         const { count: bookingPending } = await supabase
@@ -230,6 +254,7 @@ export async function GET(request: NextRequest) {
       "/admin/verifications": verificationsResult.count ?? 0,
       "/admin/payouts": payoutsResult.count ?? 0,
       "/admin/support-tickets": supportTicketsResult.count ?? 0,
+      "/admin/support-tickets/sla-breached": (supportTicketsResult as { sla_breached?: number }).sla_breached ?? 0,
       "/admin/refunds": refundsResult.count ?? 0,
       "/admin/disputes": disputesResult.count ?? 0,
       "/admin/providers": providersPendingResult.count ?? 0,

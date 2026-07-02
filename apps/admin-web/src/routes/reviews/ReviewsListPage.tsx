@@ -39,11 +39,57 @@ function formatReviewStaffRatingCell(value: unknown): string {
   }
 }
 
+type RatingDistribution = { 5: number; 4: number; 3: number; 2: number; 1: number };
+
+type ReviewStatistics = {
+  total?: number;
+  visible?: number;
+  hidden?: number;
+  flagged?: number;
+  average_rating?: string | number;
+  rating_distribution?: RatingDistribution;
+};
+
 type ReviewsPayload = {
   reviews: Record<string, unknown>[];
   pagination: { page: number; limit: number; total: number; total_pages: number };
-  statistics: Record<string, unknown>;
+  statistics: ReviewStatistics;
 };
+
+const STAR_BAR_MAX_WIDTH = 120; // px — used for the rating distribution bar
+
+function RatingDistributionBar({
+  distribution,
+  total,
+}: {
+  distribution: RatingDistribution;
+  total: number;
+}) {
+  const stars = [5, 4, 3, 2, 1] as const;
+  return (
+    <div className="space-y-1">
+      {stars.map((star) => {
+        const count = distribution[star] ?? 0;
+        const pct = total > 0 ? (count / total) * 100 : 0;
+        return (
+          <div key={star} className="flex items-center gap-2 text-xs">
+            <span className="w-5 tabular-nums text-right text-gray-500">{star}★</span>
+            <div
+              className="h-2 rounded-full bg-gray-200"
+              style={{ width: STAR_BAR_MAX_WIDTH }}
+            >
+              <div
+                className="h-2 rounded-full bg-amber-400"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="w-6 tabular-nums text-gray-600">{count}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ReviewsListPage() {
   const qc = useQueryClient();
@@ -52,6 +98,8 @@ export function ReviewsListPage() {
     "Providers & operations access is required."
   );
   const [sp, setSp] = useSearchParams();
+
+  // Reviews list filters
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const status = sp.get("status") || "all";
   const providerId = sp.get("provider_id")?.trim() || "";
@@ -59,8 +107,15 @@ export function ReviewsListPage() {
   const search = sp.get("search")?.trim() || "";
   const [searchInput, setSearchInput] = useState(search);
   const [flagModal, setFlagModal] = useState<{ id: string; reason: string } | null>(null);
+
+  // Provider-client-ratings has its own independent page state
+  const [pcrPage, setPcrPage] = useState(1);
+
   const qk = useMemo(
-    () => adminQueryKeys.reviews(`p=${page}|s=${status}|pv=${providerId}|cu=${customerId}|q=${search}`),
+    () =>
+      adminQueryKeys.reviews(
+        `p=${page}|s=${status}|pv=${providerId}|cu=${customerId}|q=${search}`
+      ),
     [page, status, providerId, customerId, search]
   );
 
@@ -74,19 +129,23 @@ export function ReviewsListPage() {
       if (providerId) p.set("provider_id", providerId);
       if (customerId) p.set("customer_id", customerId);
       if (search) p.set("search", search);
-      return adminApi.getJson<ReviewsPayload>(`/api/admin/reviews?${p}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<ReviewsPayload>(`/api/admin/reviews?${p}`, {
+        timeoutMs: 60_000,
+      });
     },
     enabled: allowed,
   });
 
   const pcrQ = useQuery({
-    queryKey: adminQueryKeys.providerClientRatings(page, 25),
+    queryKey: adminQueryKeys.providerClientRatings(pcrPage, 25),
     queryFn: () =>
       adminApi.getJson<{
         reviews?: unknown;
         ratings: Record<string, unknown>[];
         pagination: { page: number; limit: number; total: number; total_pages: number };
-      }>(`/api/admin/provider-client-ratings?page=${page}&limit=25`, { timeoutMs: 60_000 }),
+      }>(`/api/admin/provider-client-ratings?page=${pcrPage}&limit=25`, {
+        timeoutMs: 60_000,
+      }),
     enabled: allowed,
   });
 
@@ -97,8 +156,13 @@ export function ReviewsListPage() {
   const stats = q.data?.statistics;
 
   const moderateReview = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Record<string, unknown> }) =>
-      adminApi.patchJson(`/api/admin/reviews/${id}`, updates),
+    mutationFn: ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: Record<string, unknown>;
+    }) => adminApi.patchJson(`/api/admin/reviews/${id}`, updates),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
       if ("is_flagged" in vars.updates) {
@@ -159,34 +223,54 @@ export function ReviewsListPage() {
   }
 
   const tabs = ["all", "visible", "hidden", "flagged"] as const;
+  const ratingDist = stats?.rating_distribution;
+  const statsTotal = stats?.total ?? 0;
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Reviews & ratings"
-        description="Written reviews (`reviews`): customer→provider (`rating`), optional provider→customer text ratings (`customer_rating`), staff stars. Booking-only provider→customer stars live in Provider→customer (booking ratings) below (`provider_client_ratings`)."
+        description="Written reviews (customer→provider rating, optional provider→customer text). Booking-only provider→customer stars live in the Provider→customer section below."
       />
+
+      {/* Summary + Rating distribution */}
       {stats ? (
         <AdminPanel>
           <h2 className="text-sm font-semibold text-gray-900">Summary</h2>
-          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <dt className="text-gray-500">Total reviews</dt>
               <dd className="font-medium tabular-nums">{String(stats.total ?? "—")}</dd>
             </div>
             <div>
               <dt className="text-gray-500">Average (customer→provider)</dt>
-              <dd className="font-medium tabular-nums">{String(stats.average_rating ?? "—")}</dd>
+              <dd className="font-medium tabular-nums">
+                {String(stats.average_rating ?? "—")}
+                {stats.average_rating ? " ★" : ""}
+              </dd>
             </div>
             <div>
               <dt className="text-gray-500">Visible / hidden / flagged</dt>
               <dd className="font-medium">
-                {String(stats.visible ?? "—")} / {String(stats.hidden ?? "—")} / {String(stats.flagged ?? "—")}
+                {String(stats.visible ?? "—")} / {String(stats.hidden ?? "—")} /{" "}
+                {String(stats.flagged ?? "—")}
               </dd>
             </div>
           </dl>
+          {ratingDist && statsTotal > 0 && (
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Rating distribution
+              </p>
+              <RatingDistributionBar
+                distribution={ratingDist}
+                total={statsTotal}
+              />
+            </div>
+          )}
         </AdminPanel>
       ) : null}
+
       <AdminPanel>
         <div className="mb-4 flex gap-2">
           <input
@@ -219,11 +303,16 @@ export function ReviewsListPage() {
         </div>
         {search && (
           <p className="mt-2 text-sm text-gray-500">
-            Search: <strong>"{search}"</strong>{" "}
+            Search: <strong>&quot;{search}&quot;</strong>{" "}
             <button
               type="button"
               className="text-primary underline"
-              onClick={() => { setSearchInput(""); const n = new URLSearchParams(sp); n.delete("search"); setSp(n, { replace: true }); }}
+              onClick={() => {
+                setSearchInput("");
+                const n = new URLSearchParams(sp);
+                n.delete("search");
+                setSp(n, { replace: true });
+              }}
             >
               Clear
             </button>
@@ -235,16 +324,22 @@ export function ReviewsListPage() {
             {providerId ? (
               <>
                 {" "}
-                · provider <span className="font-mono text-xs">{providerId}</span>
+                · provider{" "}
+                <span className="font-mono text-xs">{providerId}</span>
               </>
             ) : null}
             {customerId ? (
               <>
                 {" "}
-                · customer <span className="font-mono text-xs">{customerId}</span>
+                · customer{" "}
+                <span className="font-mono text-xs">{customerId}</span>
               </>
             ) : null}
-            <button type="button" className="ml-2 text-primary underline" onClick={clearEntityFilters}>
+            <button
+              type="button"
+              className="ml-2 text-primary underline"
+              onClick={clearEntityFilters}
+            >
               Clear
             </button>
           </p>
@@ -255,6 +350,7 @@ export function ReviewsListPage() {
           </p>
         ) : null}
       </AdminPanel>
+
       {rows.length === 0 ? (
         <EmptyState title="No reviews" />
       ) : (
@@ -274,17 +370,32 @@ export function ReviewsListPage() {
           <AdminTableBody>
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
-              const prov = row.provider as { id?: string; business_name?: string } | undefined;
-              const cust = row.customer as { id?: string; full_name?: string; email?: string } | undefined;
+              const prov = row.provider as
+                | { id?: string; business_name?: string }
+                | undefined;
+              const cust = row.customer as
+                | { id?: string; full_name?: string; email?: string }
+                | undefined;
               return (
                 <tr key={String(row.id ?? "")}>
-                  <AdminTd className="tabular-nums font-medium">{String(row.rating ?? "—")}</AdminTd>
-                  <AdminTd className="tabular-nums">{String(row.customer_rating ?? "—")}</AdminTd>
-                  <AdminTd className="tabular-nums">{formatReviewStaffRatingCell(row.staff_rating)}</AdminTd>
-                  <AdminTd className="max-w-xs truncate text-xs">{String(row.comment ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums font-medium">
+                    {String(row.rating ?? "—")}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums">
+                    {String(row.customer_rating ?? "—")}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums">
+                    {formatReviewStaffRatingCell(row.staff_rating)}
+                  </AdminTd>
+                  <AdminTd className="max-w-xs truncate text-xs">
+                    {String(row.comment ?? "")}
+                  </AdminTd>
                   <AdminTd className="text-xs">
                     {prov?.id ? (
-                      <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${prov.id}`)}>
+                      <Link
+                        className="text-primary underline"
+                        to={adminSpaTo(`/admin/providers/${prov.id}`)}
+                      >
                         {String(prov.business_name ?? prov.id)}
                       </Link>
                     ) : (
@@ -293,7 +404,10 @@ export function ReviewsListPage() {
                   </AdminTd>
                   <AdminTd className="text-xs">
                     {cust?.id ? (
-                      <Link className="text-primary underline" to={adminSpaTo(`/admin/users/${cust.id}`)}>
+                      <Link
+                        className="text-primary underline"
+                        to={adminSpaTo(`/admin/users/${cust.id}`)}
+                      >
                         {String(cust.full_name ?? cust.email ?? cust.id)}
                       </Link>
                     ) : (
@@ -301,9 +415,13 @@ export function ReviewsListPage() {
                     )}
                   </AdminTd>
                   <AdminTd>
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row.is_visible ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
-                    }`}>
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        row.is_visible
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
                       {row.is_visible ? "visible" : "hidden"}
                     </span>
                     {Boolean(row.is_flagged) ? (
@@ -319,7 +437,12 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-gray-500 px-2 py-1 text-xs text-white hover:bg-gray-600 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_visible: false } })}
+                          onClick={() =>
+                            moderateReview.mutate({
+                              id: String(row.id),
+                              updates: { is_visible: false },
+                            })
+                          }
                         >
                           Hide
                         </button>
@@ -328,7 +451,12 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_visible: true } })}
+                          onClick={() =>
+                            moderateReview.mutate({
+                              id: String(row.id),
+                              updates: { is_visible: true },
+                            })
+                          }
                         >
                           Show
                         </button>
@@ -338,7 +466,9 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() => setFlagModal({ id: String(row.id), reason: "" })}
+                          onClick={() =>
+                            setFlagModal({ id: String(row.id), reason: "" })
+                          }
                         >
                           Flag
                         </button>
@@ -347,7 +477,15 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_flagged: false, flagged_reason: null } })}
+                          onClick={() =>
+                            moderateReview.mutate({
+                              id: String(row.id),
+                              updates: {
+                                is_flagged: false,
+                                flagged_reason: null,
+                              },
+                            })
+                          }
                         >
                           Unflag
                         </button>
@@ -360,6 +498,7 @@ export function ReviewsListPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
       {pag && pag.total_pages > 1 ? (
         <div className="flex gap-2">
           <button
@@ -381,23 +520,35 @@ export function ReviewsListPage() {
         </div>
       ) : null}
 
+      {/* Provider → customer (booking ratings) — independent pagination */}
       <AdminPanel>
-        <h2 className="text-sm font-semibold text-gray-900">Provider→customer (booking ratings)</h2>
+        <h2 className="text-sm font-semibold text-gray-900">
+          Provider→customer (booking ratings)
+        </h2>
         <p className="mt-1 text-xs text-gray-500">
-          Stored in <span className="font-mono">provider_client_ratings</span> when a provider rates a customer after a completed booking — separate from the written-review row in{" "}
-          <span className="font-mono">reviews</span>.
+          Stored in{" "}
+          <span className="font-mono">provider_client_ratings</span> when a
+          provider rates a customer after a completed booking — separate from the
+          written-review row in <span className="font-mono">reviews</span>.
         </p>
         {pcrQ.isLoading ? (
           <p className="mt-3 text-sm text-gray-500">Loading booking ratings…</p>
         ) : pcrQ.error ? (
-          <p className="mt-3 text-sm text-red-600">{pcrQ.error instanceof Error ? pcrQ.error.message : "Failed to load"}</p>
+          <p className="mt-3 text-sm text-red-600">
+            {pcrQ.error instanceof Error
+              ? pcrQ.error.message
+              : "Failed to load"}
+          </p>
         ) : pcrRows.length === 0 ? (
-          <p className="mt-3 text-sm text-gray-500">No provider→customer booking ratings in this tenant.</p>
+          <p className="mt-3 text-sm text-gray-500">
+            No provider→customer booking ratings in this tenant.
+          </p>
         ) : (
           <>
             {pcrPag ? (
               <p className="mt-3 text-sm text-gray-600">
-                Page {pcrPag.page} of {Math.max(1, pcrPag.total_pages)} · {pcrPag.total} total
+                Page {pcrPag.page} of {Math.max(1, pcrPag.total_pages)} ·{" "}
+                {pcrPag.total} total
               </p>
             ) : null}
             <AdminDataTable className="mt-3">
@@ -414,16 +565,29 @@ export function ReviewsListPage() {
               <AdminTableBody>
                 {pcrRows.map((raw) => {
                   const row = raw as Record<string, unknown>;
-                  const prov = row.provider as { id?: string; business_name?: string } | undefined;
-                  const cust = row.customer as { id?: string; full_name?: string; email?: string } | undefined;
-                  const book = row.booking as { id?: string; booking_number?: string } | undefined;
+                  const prov = row.provider as
+                    | { id?: string; business_name?: string }
+                    | undefined;
+                  const cust = row.customer as
+                    | { id?: string; full_name?: string; email?: string }
+                    | undefined;
+                  const book = row.booking as
+                    | { id?: string; booking_number?: string }
+                    | undefined;
                   return (
                     <tr key={String(row.id ?? "")}>
-                      <AdminTd className="tabular-nums font-medium">{String(row.rating ?? "—")}</AdminTd>
-                      <AdminTd className="max-w-xs truncate text-xs">{String(row.comment ?? "")}</AdminTd>
+                      <AdminTd className="tabular-nums font-medium">
+                        {String(row.rating ?? "—")}
+                      </AdminTd>
+                      <AdminTd className="max-w-xs truncate text-xs">
+                        {String(row.comment ?? "")}
+                      </AdminTd>
                       <AdminTd className="text-xs">
                         {prov?.id ? (
-                          <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${prov.id}`)}>
+                          <Link
+                            className="text-primary underline"
+                            to={adminSpaTo(`/admin/providers/${prov.id}`)}
+                          >
                             {String(prov.business_name ?? prov.id)}
                           </Link>
                         ) : (
@@ -432,16 +596,22 @@ export function ReviewsListPage() {
                       </AdminTd>
                       <AdminTd className="text-xs">
                         {cust?.id ? (
-                          <Link className="text-primary underline" to={adminSpaTo(`/admin/users/${cust.id}`)}>
+                          <Link
+                            className="text-primary underline"
+                            to={adminSpaTo(`/admin/users/${cust.id}`)}
+                          >
                             {String(cust.full_name ?? cust.email ?? cust.id)}
                           </Link>
                         ) : (
                           String(cust?.full_name ?? cust?.email ?? "")
                         )}
                       </AdminTd>
-                      <AdminTd className="text-xs font-mono">
+                      <AdminTd className="font-mono text-xs">
                         {book?.id ? (
-                          <Link className="text-primary underline" to={adminSpaTo(`/admin/bookings/${book.id}`)}>
+                          <Link
+                            className="text-primary underline"
+                            to={adminSpaTo(`/admin/bookings/${book.id}`)}
+                          >
                             {String(book.booking_number ?? book.id)}
                           </Link>
                         ) : (
@@ -449,18 +619,42 @@ export function ReviewsListPage() {
                         )}
                       </AdminTd>
                       <AdminTd className="text-xs text-gray-600">
-                        {row.created_at ? new Date(String(row.created_at)).toLocaleString() : "—"}
+                        {row.created_at
+                          ? new Date(String(row.created_at)).toLocaleString()
+                          : "—"}
                       </AdminTd>
                     </tr>
                   );
                 })}
               </AdminTableBody>
             </AdminDataTable>
+
+            {/* Independent PCR pagination */}
+            {pcrPag && pcrPag.total_pages > 1 && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                  disabled={pcrPage <= 1}
+                  onClick={() => setPcrPage((p) => p - 1)}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                  disabled={pcrPage >= pcrPag.total_pages}
+                  onClick={() => setPcrPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </>
         )}
       </AdminPanel>
 
-      {/* Flag review modal — replaces native prompt() */}
+      {/* Flag review modal */}
       {flagModal && (
         <AdminModal
           open
@@ -483,7 +677,11 @@ export function ReviewsListPage() {
                 onClick={() => {
                   moderateReview.mutate({
                     id: flagModal.id,
-                    updates: { is_flagged: true, is_visible: false, flagged_reason: flagModal.reason || null },
+                    updates: {
+                      is_flagged: true,
+                      is_visible: false,
+                      flagged_reason: flagModal.reason || null,
+                    },
                   });
                   setFlagModal(null);
                 }}
@@ -494,13 +692,17 @@ export function ReviewsListPage() {
           }
         >
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Reason (optional)</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">
+              Reason (optional)
+            </label>
             <textarea
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
               rows={3}
               placeholder="Describe why this review is being flagged…"
               value={flagModal.reason}
-              onChange={(e) => setFlagModal((f) => f ? { ...f, reason: e.target.value } : f)}
+              onChange={(e) =>
+                setFlagModal((f) => (f ? { ...f, reason: e.target.value } : f))
+              }
             />
           </div>
         </AdminModal>

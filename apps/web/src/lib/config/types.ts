@@ -138,6 +138,14 @@ export interface SafeSumsubModuleConfig {
   level_name?: string | null;
 }
 
+export interface SafeVerificationPolicy {
+  mode: "off" | "manual" | "sumsub" | "both";
+  sumsub_enabled: boolean;
+  manual_enabled: boolean;
+  required_for_providers: boolean;
+  required_for_payouts: boolean;
+}
+
 export interface SafeAuraModuleConfig {
   enabled: boolean;
 }
@@ -171,6 +179,13 @@ export interface PublicConfigBundle {
     aura: SafeAuraModuleConfig;
     safety: SafeSafetyModuleConfig;
   };
+  /**
+   * Tenant-aware verification policy snapshot.
+   * Clients should treat the per-request API (sumsub_available / manual_available
+   * from /api/me/verification) as authoritative; this bundle field is provided
+   * so cold-start screens can avoid an extra roundtrip.
+   */
+  verification: SafeVerificationPolicy;
 }
 
 export interface GetPublicConfigBundleParams {

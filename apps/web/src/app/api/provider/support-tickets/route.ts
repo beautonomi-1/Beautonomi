@@ -15,7 +15,7 @@ import {
   resolveSupportTicketStaffRecipients,
 } from "@/lib/notifications/notification-service";
 import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
-import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
 import {
   PROVIDER_SUPPORT_TICKET_LIST_SELECT,
   withUnreadSupportFlag,
@@ -114,7 +114,10 @@ export async function POST(request: NextRequest) {
     if (createdAt) {
       await admin
         .from("support_tickets")
-        .update({ sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, validated.priority) })
+        .update({
+          sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, validated.priority),
+          first_response_due_at: computeFirstResponseDueIso(createdAt, validated.priority),
+        })
         .eq("id", ticket.id);
     }
 

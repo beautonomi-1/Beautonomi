@@ -60,6 +60,8 @@ interface VerificationStatus {
   status: string;
   submitted_at?: string;
   sumsub_available: boolean;
+  manual_available?: boolean;
+  verification_mode?: string;
   can_submit_verification?: boolean;
   submissions?: VerificationSubmission[];
   manual_verification?: {
@@ -121,6 +123,8 @@ export default function IdentityVerificationScreen() {
         status: (d?.status as string) ?? "none",
         submitted_at: d?.submitted_at as string | undefined,
         sumsub_available: Boolean(d?.sumsub_available),
+        manual_available: d?.manual_available !== false,
+        verification_mode: (d?.verification_mode as string) ?? undefined,
         can_submit_verification: Boolean(d?.can_submit_verification),
         submissions: Array.isArray(d?.submissions)
           ? (d.submissions as VerificationSubmission[])
@@ -266,9 +270,6 @@ export default function IdentityVerificationScreen() {
   const isVerified = statusData?.verified;
   const canSubmit = statusData?.can_submit_verification ?? false;
   const submissions = statusData?.submissions ?? [];
-  // Only show "under review" when actual submission records are in a blocking state.
-  // Do NOT fire on statusData.status alone — the users table column can be stale
-  // (e.g. 'pending' with no user_verifications rows) after a failed submission.
   const isUnderReview =
     submissions.some((s) =>
       ["pending", "in_progress", "submitted", "under_review"].includes(s.status),
@@ -278,6 +279,8 @@ export default function IdentityVerificationScreen() {
         statusData.manual_verification.status,
       ));
   const sumsubAvailable = statusData?.sumsub_available ?? false;
+  const manualAvailable = statusData?.manual_available !== false;
+  const verificationOff = statusData?.verification_mode === "off";
 
   const statusLabel = useCallback(
     (s: string) => {
@@ -561,8 +564,8 @@ export default function IdentityVerificationScreen() {
           </View>
         )}
 
-        {/* Info banner when SumSub not available */}
-        {canSubmit && !sumsubAvailable && (
+        {/* Info banner when SumSub not available and manual is on */}
+        {canSubmit && !sumsubAvailable && manualAvailable && !verificationOff && (
           <View
             style={{
               backgroundColor: "#EFF6FF",
@@ -578,8 +581,27 @@ export default function IdentityVerificationScreen() {
           </View>
         )}
 
+        {/* Verification off banner */}
+        {canSubmit && verificationOff && (
+          <View
+            style={{
+              backgroundColor: Colors.gray[50],
+              borderRadius: RADIUS_CARD,
+              padding: 16,
+              marginBottom: 20,
+              flexDirection: "row",
+              gap: 10,
+            }}
+          >
+            <Ionicons name="ban-outline" size={20} color={Colors.gray[400]} />
+            <Text style={{ flex: 1, fontSize: 13, color: Colors.gray[600], lineHeight: 19 }}>
+              Identity verification is currently unavailable. Contact support if you need assistance.
+            </Text>
+          </View>
+        )}
+
         {/* Manual upload form */}
-        {canSubmit && (
+        {canSubmit && manualAvailable && !verificationOff && (
           <>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("documentType")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 8 }}>
