@@ -331,6 +331,7 @@ path,class,note
 /api/admin/support-ticket-assignees,U,"needs tenant review"
 /api/admin/support-tickets/[id]/messages,T,"review: likely tenant-scoped ops"
 /api/admin/support-tickets/[id]/notes,T,"review: likely tenant-scoped ops"
+/api/admin/support-tickets/[id]/seen,T,"staff seen stamp (last_staff_view_at); mirrors /api/me/support-tickets/[id]/seen"
 /api/admin/support-tickets/[id],T,"review: likely tenant-scoped ops"
 /api/admin/support-tickets/[id]/upload,T,"review: likely tenant-scoped ops"
 /api/admin/support-tickets,T,"review: likely tenant-scoped ops"
