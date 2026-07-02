@@ -5,7 +5,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
-import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -287,10 +287,8 @@ export async function GET(request: NextRequest) {
       wTotal = 0;
     }
 
-    // ecommerce_platform_fees is NOT double-counted: product order fees are in platform_take_net.
-    // Wallet topups are custodial cash inflows (liability), not recognized platform revenue.
-    const sumPlatformRecognizedRevenue = (p: typeof total) =>
-      p.platform_take_net + p.subscription_net + p.ads_net + p.service_fee_revenue;
+    // §Phase 9: use canonical helpers instead of inline sum
+    const sumPlatformRecognizedRevenue = (p: typeof total) => platformRevenueNetFromAggregate(p);
     const platformNetTotal = sumPlatformRecognizedRevenue(total);
     const thisMonthPlatformNet = sumPlatformRecognizedRevenue(thisMonth);
     const lastMonthPlatformNet = sumPlatformRecognizedRevenue(lastMonth);
@@ -351,7 +349,7 @@ export async function GET(request: NextRequest) {
       platform_net_total: platformNetTotal,
       platform_commission_gross_total: total.platform_commission_gross,
       platform_refund_impact_total: total.platform_refund_impact,
-      gateway_fees_total: total.gateway_fees_services,
+      gateway_fees_total: gatewayFeesTotalFromAggregate(total),
       subscription_net_total: total.subscription_net,
       subscription_gateway_fees_total: total.subscription_gateway_fees,
       ads_net_total: total.ads_net,

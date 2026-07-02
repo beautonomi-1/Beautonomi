@@ -7,6 +7,8 @@ import {
   fetchFinanceLedgerExportRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
+import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,19 +65,23 @@ export async function GET(request: NextRequest) {
 
     const providerIds = (providers || []).map((p: { id: string }) => p.id);
 
-    // Bookings in period (count + revenue via completed bookings)
-    const { data: bookings } = providerIds.length > 0
-      ? await supabase
-          .from('bookings')
-          .select('provider_id, scheduled_at, total_amount, status')
-          .eq('tenant_id', tenantId)
-          .in('provider_id', providerIds)
-          .gte('scheduled_at', startISO)
-          .lte('scheduled_at', endISO)
-      : { data: [] };
+    type BookingRow = { provider_id: string; total_amount?: number; status: string };
+    // Paginate to avoid 1000-row cap silently undercounting high-volume providers.
+    const bookings = providerIds.length > 0
+      ? await fetchAllLedgerPages<BookingRow>(
+          supabase
+            .from('bookings')
+            .select('provider_id, scheduled_at, total_amount, status')
+            .eq('tenant_id', tenantId)
+            .in('provider_id', providerIds)
+            .gte('scheduled_at', startISO)
+            .lte('scheduled_at', endISO),
+          MAX_BOOKINGS_FOR_REPORT,
+        )
+      : [];
 
     const bookingsByProvider: Record<string, { count: number; revenue: number }> = {};
-    (bookings || []).forEach((b: { provider_id: string; total_amount?: number; status: string }) => {
+    bookings.forEach((b) => {
       const id = b.provider_id;
       if (!bookingsByProvider[id]) bookingsByProvider[id] = { count: 0, revenue: 0 };
       bookingsByProvider[id].count += 1;

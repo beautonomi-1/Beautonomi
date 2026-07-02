@@ -5,6 +5,7 @@ import { differenceInCalendarDays } from "date-fns";
 import { getDayInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
+import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import {
   CHANNEL_BASIS_NOTE,
   computeBookingChannelBreakdown,
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
-    const { fromDate, toDate } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
+    const { fromDate, toDate } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30, maxDays: MAX_REPORT_DAYS });
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")
@@ -35,10 +36,28 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString());
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    const { data: bookings } = await bookingsQuery;
+
+    let exactCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
+    if (locationId) exactCountQuery = exactCountQuery.eq("location_id", locationId);
+
+    const [{ data: bookings, error: bookingsError }, { count: exactBookingCount }] = await Promise.all([
+      bookingsQuery.order("scheduled_at", { ascending: false }).limit(MAX_BOOKINGS_FOR_REPORT),
+      exactCountQuery,
+    ]);
+
+    if (bookingsError) {
+      return handleApiError(new Error("Failed to fetch bookings"), "BOOKINGS_FETCH_ERROR", 500);
+    }
 
     const all = bookings || [];
-    const total = all.length;
+    const sampleSize = all.length;
+    const total = exactBookingCount ?? sampleSize;
+    const sampleTruncated = total > sampleSize;
 
     const statusCounts = new Map<string, number>();
     const dayOfWeekCounts = new Map<string, number>();
@@ -57,9 +76,8 @@ export async function GET(request: NextRequest) {
       if (b.status === "completed") completedCount++;
       else if (b.status === "cancelled") {
         cancelledCount++;
-        if (b.cancellation_reason) {
-          cancelReasons.set(b.cancellation_reason, (cancelReasons.get(b.cancellation_reason) ?? 0) + 1);
-        }
+        const reason = b.cancellation_reason || "No reason provided";
+        cancelReasons.set(reason, (cancelReasons.get(reason) ?? 0) + 1);
       } else if (b.status === "no_show") noShowCount++;
     });
 
@@ -80,9 +98,11 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       total_bookings: total,
+      sample_size: sampleSize,
+      sample_truncated: sampleTruncated,
       by_status: Array.from(statusCounts.entries()).map(([status, count]) => ({ status, count })),
       by_day_of_week: DAY_NAMES.map((day) => ({ day, count: dayOfWeekCounts.get(day) ?? 0 })),
-      completion_rate: total > 0 ? (completedCount / total) * 100 : 0,
+      completion_rate: sampleSize > 0 ? (completedCount / sampleSize) * 100 : 0,
       cancellation_count: cancelledCount,
       no_show_count: noShowCount,
       avg_per_day: total / daysDiff,
@@ -92,7 +112,11 @@ export async function GET(request: NextRequest) {
       channel_breakdown,
       channelBasisNote: CHANNEL_BASIS_NOTE,
       basisNote:
-        "Counts use bookings.scheduled_at in the selected range. Channel revenue uses recognized provider revenue net of refund clawbacks per booking (see channelBasisNote).",
+        "Counts use bookings.scheduled_at in the selected range." +
+        (sampleTruncated
+          ? ` Status/channel breakdowns are based on the most recent ${sampleSize} of ${total} appointments; total count is exact.`
+          : "") +
+        " Channel revenue uses recognized provider revenue net of refund clawbacks per booking (see channelBasisNote).",
       reportBasis: "Appointment date window; all statuses included unless filtered in detail reports.",
     });
   } catch (error) {

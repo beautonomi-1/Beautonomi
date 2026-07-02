@@ -52,6 +52,7 @@ import {
 import { ProviderGalleryImage } from "@beautonomi/ui/native";
 import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
@@ -2987,91 +2988,79 @@ export default function PartnerProfileScreen() {
       </View>
 
       {/* ═══ Report Provider Modal ═══ */}
-      <Modal visible={reportModalVisible} transparent animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setReportModalVisible(false)}>
-          <Pressable style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 34 }} onPress={(e) => e.stopPropagation()}>
-            {/* Handle */}
-            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
-            </View>
-            <View style={{ paddingHorizontal: contentPadding, paddingBottom: 16 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827" }}>{pp("reportModalTitle")}</Text>
-                <TouchableOpacity onPress={() => setReportModalVisible(false)} hitSlop={12}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
+      <BottomSheet
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        title={pp("reportModalTitle")}
+        snapHeight="auto"
+      >
+        <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>{pp("reportModalLead")}</Text>
 
-              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>{pp("reportModalLead")}</Text>
-
-              {/* Reason chips */}
-              <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
-                {reportReasons.map((reason) => {
-                  const active = reportReason === reason;
-                  return (
-                    <TouchableOpacity
-                      key={reason}
-                      onPress={() => { haptic.light(); setReportReason(reason); }}
-                      style={{
-                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                        borderWidth: 1.5,
-                        borderColor: active ? "#EF4444" : "#E5E7EB",
-                        backgroundColor: active ? "#FEF2F2" : "#fff",
-                        marginRight: 8,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: active ? "600" : "400", color: active ? "#B91C1C" : "#374151" }}>
-                        {reason}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Description */}
-              <TextInput
-                placeholder={t("customer.mobile.screens.partnerProfileReportPlaceholder")}
-                placeholderTextColor="#9CA3AF"
-                value={reportDescription}
-                onChangeText={setReportDescription}
-                multiline
-                numberOfLines={4}
-                maxLength={2000}
-                style={{
-                  borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12,
-                  padding: 14, fontSize: 14, color: "#111827", textAlignVertical: "top",
-                  minHeight: 100, marginBottom: 8,
-                }}
-              />
-              <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "right", marginBottom: 16 }}>
-                {reportDescription.length}/2000
-              </Text>
-
-              {/* Submit */}
+        {/* Reason chips */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
+          {reportReasons.map((reason) => {
+            const active = reportReason === reason;
+            return (
               <TouchableOpacity
-                onPress={handleSubmitReport}
-                disabled={reportSubmitting || !reportReason || !reportDescription.trim()}
+                key={reason}
+                onPress={() => { haptic.light(); setReportReason(reason); }}
                 style={{
-                  backgroundColor: (!reportReason || !reportDescription.trim()) ? "#D1D5DB" : "#EF4444",
-                  borderRadius: 12, paddingVertical: 14, alignItems: "center",
-                  flexDirection: "row", justifyContent: "center",
-                  opacity: reportSubmitting ? 0.7 : 1,
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                  borderWidth: 1.5,
+                  borderColor: active ? "#EF4444" : "#E5E7EB",
+                  backgroundColor: active ? "#FEF2F2" : "#fff",
+                  marginRight: 8,
+                  marginBottom: 8,
                 }}
               >
-                {reportSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{pp("submitReportCta")}</Text>
-                  </>
-                )}
+                <Text style={{ fontSize: 13, fontWeight: active ? "600" : "400", color: active ? "#B91C1C" : "#374151" }}>
+                  {reason}
+                </Text>
               </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+            );
+          })}
+        </View>
+
+        {/* Description */}
+        <TextInput
+          placeholder={t("customer.mobile.screens.partnerProfileReportPlaceholder")}
+          placeholderTextColor="#9CA3AF"
+          value={reportDescription}
+          onChangeText={setReportDescription}
+          multiline
+          numberOfLines={4}
+          maxLength={2000}
+          style={{
+            borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12,
+            padding: 14, fontSize: 14, color: "#111827", textAlignVertical: "top",
+            minHeight: 100, marginBottom: 8,
+          }}
+        />
+        <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "right", marginBottom: 16 }}>
+          {reportDescription.length}/2000
+        </Text>
+
+        {/* Submit */}
+        <TouchableOpacity
+          onPress={handleSubmitReport}
+          disabled={reportSubmitting || !reportReason || !reportDescription.trim()}
+          style={{
+            backgroundColor: (!reportReason || !reportDescription.trim()) ? "#D1D5DB" : "#EF4444",
+            borderRadius: 12, paddingVertical: 14, alignItems: "center",
+            flexDirection: "row", justifyContent: "center",
+            opacity: reportSubmitting ? 0.7 : 1,
+          }}
+        >
+          {reportSubmitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{pp("submitReportCta")}</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </BottomSheet>
       {membershipPaystackCheckout.modal}
     </>
   );

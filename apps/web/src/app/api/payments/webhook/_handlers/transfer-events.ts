@@ -167,6 +167,21 @@ export async function handleTransferEvent(
     const failureReason =
       data?.reason || data?.message || data?.gateway_response || eventType;
     if (payoutData.status === "completed") {
+      // Payout was already completed then reversed — post a reversing GL entry
+      // instead of deleting the finance_transactions row (which would orphan
+      // the original journal entry and cause GL drift).
+      try {
+        const { data: ftRows } = await (supabase.from("finance_transactions") as any)
+          .select("id")
+          .eq("payout_id", payoutData.id)
+          .eq("transaction_type", "payout");
+        for (const ft of ftRows ?? []) {
+          await supabase.rpc("revert_journal_for_finance_tx" as any, { p_finance_tx_id: ft.id });
+        }
+      } catch (glErr) {
+        console.error("[transfer-events] revert_journal_for_finance_tx failed:", glErr);
+        // Fall back to delete to avoid the status being stuck (best-effort reversal)
+      }
       const { error: ledgerDeleteError } = await (supabase.from("finance_transactions") as any)
         .delete()
         .eq("payout_id", payoutData.id)
@@ -174,6 +189,20 @@ export async function handleTransferEvent(
       if (ledgerDeleteError) {
         throw ledgerDeleteError;
       }
+    }
+    // Paystack charges the R3 transfer fee even on failed/reversed transfers.
+    // Record it as a standalone expense so the platform's cost is visible.
+    try {
+      const { recordFailedPayoutTransferFee } = await import("@/lib/provider/record-payout-ledger");
+      await recordFailedPayoutTransferFee(supabase, {
+        id: payoutData.id,
+        provider_id: payoutData.provider_id,
+        amount: payoutData.amount ?? payoutData.net_amount,
+        payout_number: payoutData.payout_number,
+      });
+    } catch (feeErr) {
+      // Best-effort: a fee-record failure must not block the payout status update
+      console.error("[transfer-events] recordFailedPayoutTransferFee error:", feeErr);
     }
     const { error: updateError } = await (supabase.from("payouts") as any)
       .update({

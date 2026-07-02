@@ -11,12 +11,14 @@ export type FinanceLedgerRow = {
   fees?: number | null;
   commission?: number | null;
   net?: number | null;
+  /** ISO 4217 currency. NULL on legacy rows = tenant default (typically ZAR). */
+  currency?: string | null;
   created_at?: string | null;
   refund_component?: string | null;
 };
 
 const LEDGER_SELECT =
-  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, created_at, refund_component";
+  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, currency, created_at, refund_component";
 
 export type FetchFinanceLedgerRange = {
   start?: string | null;

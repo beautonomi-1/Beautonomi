@@ -18,7 +18,7 @@ export const REVENUE_GLOSSARY = {
     label: "Ledger net",
     short: "Net of platform commission",
     definition:
-      "The net amount posted to your ledger after platform commission and gateway fees, summed across booking-linked transactions in the period.",
+      "The net amount posted to your ledger after platform commission deduction, summed across booking-linked transactions in the period.",
   },
   netAfterRefunds: {
     label: "Net after refunds",

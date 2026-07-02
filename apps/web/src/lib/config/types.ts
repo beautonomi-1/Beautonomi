@@ -144,6 +144,7 @@ export interface SafeVerificationPolicy {
   manual_enabled: boolean;
   required_for_providers: boolean;
   required_for_payouts: boolean;
+  required_for_customers: boolean;
 }
 
 export interface SafeAuraModuleConfig {

@@ -34,6 +34,8 @@ export interface VerificationPolicy {
   requiredForProviders: boolean;
   /** verification.sumsub.required_for_payouts flag: identity verification must be approved before a payout can be requested. */
   requiredForPayouts: boolean;
+  /** verification.required_for_customers flag: identity verification is required before a customer's first booking. */
+  requiredForCustomers: boolean;
 }
 
 function deriveMode(sumsub: boolean, manual: boolean): VerificationMode {
@@ -61,6 +63,7 @@ export async function resolveVerificationPolicy(
           FEATURE_FLAG_KEYS.VERIFICATION_MANUAL,
           FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS,
           FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS,
+          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_CUSTOMERS,
         ],
         tenantId,
       ),
@@ -90,6 +93,7 @@ export async function resolveVerificationPolicy(
 
     const requiredForProviders = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS] === true;
     const requiredForPayouts = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS] === true;
+    const requiredForCustomers = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_CUSTOMERS] === true;
 
     return {
       sumsubEnabled,
@@ -97,6 +101,7 @@ export async function resolveVerificationPolicy(
       mode: deriveMode(sumsubEnabled, manualEnabled),
       requiredForProviders,
       requiredForPayouts,
+      requiredForCustomers,
     };
   } catch (err) {
     console.warn("[resolveVerificationPolicy] error, using permissive defaults:", err);
@@ -106,7 +111,33 @@ export async function resolveVerificationPolicy(
       mode: "manual",
       requiredForProviders: false,
       requiredForPayouts: false,
+      requiredForCustomers: false,
     };
+  }
+}
+
+/**
+ * Returns true if the customer's identity verification is approved via any
+ * path: Sumsub webhook or manual admin review (users.identity_verified /
+ * users.identity_verification_status).
+ */
+export async function isCustomerVerificationApproved(
+  userId: string,
+): Promise<boolean> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+      .from("users")
+      .select("identity_verified, identity_verification_status")
+      .eq("id", userId)
+      .maybeSingle();
+    return (
+      (data as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
+      (data as { identity_verification_status?: string | null } | null)?.identity_verification_status === "approved"
+    );
+  } catch (err) {
+    console.warn("[isCustomerVerificationApproved] error, defaulting to false:", err);
+    return false;
   }
 }
 

@@ -236,7 +236,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       return;
     }
     if (metadata?.wallet_topup_id) {
-      await applyWalletTopupFromSuccessfulPaystackCharge({ reference, metadata, amount }, supabase);
+      await applyWalletTopupFromSuccessfulPaystackCharge({ reference, metadata, amount, fees }, supabase);
       return;
     }
     if (metadata?.marketing_credit_topup === true || metadata?.marketing_credit_topup === "true") {
@@ -257,7 +257,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       return;
     }
     if (metadata?.gift_card_order_id) {
-      await handleGiftCardOrderSuccess({ reference, metadata, amount }, supabase);
+      await handleGiftCardOrderSuccess({ reference, metadata, amount, fees }, supabase);
       return;
     }
     if (metadata?.membership_order_id) {
@@ -1826,10 +1826,10 @@ async function handleWalletTopupFailed(
 // ─── Gift Card Order ─────────────────────────────────────────────────────────
 
 async function handleGiftCardOrderSuccess(
-  payload: { reference: string; metadata: any; amount: any },
+  payload: { reference: string; metadata: any; amount: any; fees?: any },
   supabase: SupabaseClient,
 ) {
-  const { reference, metadata, amount: _amount } = payload;
+  const { reference, metadata, amount: _amount, fees: _fees } = payload;
   const orderId = metadata.gift_card_order_id as string;
 
   const { data: order } = await supabase.from("gift_card_orders")
@@ -1909,7 +1909,7 @@ async function handleGiftCardOrderSuccess(
     booking_id: null,
     reference,
     amount: totalAmount,
-    fees: 0,
+    fees: convertFromSmallestUnit(_fees || 0),
     net_amount: totalAmount,
     status: "success",
     provider: "paystack",
@@ -2063,7 +2063,7 @@ async function handleGiftCardOrderSuccess(
     tenant_id: giftOrderFinanceTenantId,
     transaction_type: "gift_card_sale",
     amount: totalAmount,
-    fees: 0,
+    fees: convertFromSmallestUnit(_fees || 0),
     commission: 0,
     net: totalAmount,
     description: `Platform gift card sale (${quantity} card${quantity > 1 ? "s" : ""}) - liability until redemption`,

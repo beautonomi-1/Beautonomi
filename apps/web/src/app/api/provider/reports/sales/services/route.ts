@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings with services (simplified query to avoid deep nesting)
+    // Get all bookings with services in window (all statuses — mirrors Sales Summary allocation)
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
@@ -54,8 +54,7 @@ export async function GET(request: NextRequest) {
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .eq("status", "completed");
+      .lte("scheduled_at", toDate.toISOString());
 
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
@@ -99,18 +98,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get provider revenue from finance_transactions (actual earnings - consistent with other reports)
-    const ledgerOpts = {
-      transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
-      timezone: reportContext.timezone,
-    };
-    const { revenueByBooking } = await getProviderRevenue(
+    // Use net-after-refunds recognized revenue per booking — same basis as Sales Summary
+    const revenueByBooking = await getProviderNetAfterRefundsByBooking(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId ?? null,
-      ledgerOpts,
     );
 
     /** Unique bookings per category (a multi-service booking counts once per category it touches). */
@@ -211,26 +205,25 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Summary metrics — completed bookings in period (each booking counted once)
+    // Summary metrics — all bookings in period (each booking once, all statuses)
     const totalServices = servicePerformance.length;
-    const completedBookingsInPeriod = bookings?.length ?? 0;
+    const bookingsInPeriod = bookings?.length ?? 0;
     const totalRevenue = servicePerformance.reduce((sum, s) => sum + s.revenue, 0);
     const averageServiceRevenue = totalServices > 0 ? totalRevenue / totalServices : 0;
 
     return successResponse({
       totalServices,
-      /** Completed appointments in range (each booking once). */
-      totalBookings: completedBookingsInPeriod,
+      /** All appointments in range (each booking once, all statuses). */
+      totalBookings: bookingsInPeriod,
       totalRevenue,
       averageServiceRevenue,
       topServices: servicePerformance.slice(0, 10),
       categoryPerformance,
       allServices: servicePerformance,
-      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
       basisNote:
-        "Ledger net per completed appointment is split across service lines by each line’s share of the booking’s catalogue subtotal. Uses finance_transactions net for provider_earnings, travel_fee, and tip in the selected period (recognition date). Cash or terminal-only settlements may have no ledger rows.",
+        "Recognized provider revenue net of refund clawbacks per booking (same basis as Sales Summary), split across service lines by each line's share of the booking catalogue subtotal. Includes all booking statuses by scheduled date. Cash or terminal-only settlements may have no ledger rows.",
       reportBasis:
-        "Completed bookings by scheduled date; ledger net allocated by line price share (matches Sales Summary). Includes provider earnings, travel fees, and tips.",
+        "All bookings by scheduled date (all statuses); ledger net allocated by line price share. Uses recognized net-after-refunds revenue — matches Sales Summary appointment ledger sub-total.",
     });
   } catch (error) {
     return handleApiError(error, "SERVICE_PERFORMANCE_ERROR", 500);

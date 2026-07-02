@@ -369,13 +369,13 @@ export async function POST(request: NextRequest) {
 
     // Additional-charge card-on-file: settle commission + earnings accounting.
     if (additionalChargeIdFromMeta && additionalChargeBookingId) {
-      const chargeData = chargeResult.data as { reference?: string; amount?: number; id?: number };
+      const chargeData = chargeResult.data as { reference?: string; amount?: number; fees?: number; id?: number };
       try {
         await settleAdditionalChargePlatformHeld(supabaseAdmin, {
           reference: String(chargeData.reference ?? chargeReference),
           amountSmallestUnit:
             typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
-          feesSmallestUnit: 0,
+          feesSmallestUnit: typeof chargeData.fees === "number" ? chargeData.fees : 0,
           bookingId: additionalChargeBookingId,
           chargeId: additionalChargeIdFromMeta,
           paystackTransactionId: chargeData.id ?? null,
@@ -388,12 +388,13 @@ export async function POST(request: NextRequest) {
 
     if (productOrderIdFromMeta && chargeResult.data?.reference) {
       try {
+        const chargeData = chargeResult.data as { reference?: string; fees?: number };
         const payRecord = await recordProductOrderPayment({
           supabase: supabaseAdmin,
           productOrderId: productOrderIdFromMeta,
-          reference: String(chargeResult.data.reference),
+          reference: String(chargeData.reference),
           amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
-          feesMajor: 0,
+          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0),
           source: "paystack_verify",
           provider: "paystack",
         });

@@ -7,7 +7,7 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
-import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 
 type ProviderRow = {
   id: string;
@@ -43,11 +43,18 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Use UTC boundaries so revenue periods align with finance-summary, analytics,
+    // and all other surfaces that bucket by UTC. Local-time boundaries (getFullYear,
+    // getMonth, getDate) would shift by the tenant's UTC offset and produce different
+    // totals for UTC+2 tenants (e.g. SA).
+    const utcY = now.getUTCFullYear();
+    const utcM = now.getUTCMonth();
+    const utcD = now.getUTCDate();
+    const startOfToday = new Date(Date.UTC(utcY, utcM, utcD, 0, 0, 0, 0));
+    // ISO week starts on Monday (day 1); adjust Sunday (0) to 7 so Math.floor works.
+    const dowUtc = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+    const startOfWeek = new Date(Date.UTC(utcY, utcM, utcD - (dowUtc - 1), 0, 0, 0, 0));
+    const startOfMonth = new Date(Date.UTC(utcY, utcM, 1, 0, 0, 0, 0));
 
     // Get overview counts
     const [
@@ -92,25 +99,16 @@ export async function GET(request: NextRequest) {
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'completed'),
     ]);
 
-    // Net customer cash from ledger: payments + additional charges − refunds (uses `net`, matches `/api/admin/analytics` revenue series).
+    // §Phase 9: was summing `net` on payment/charge/refund rows only (= R0 when no commission).
+    // Now fetches ALL ledger rows for the period and uses platformRevenueNetFromAggregate.
     const getRevenue = async (startISO: string, endISO?: string) => {
       try {
         const rows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
           start: startISO,
           end: endISO ?? null,
-        }, {
-          transactionTypes: ["payment", "additional_charge_payment", "refund"],
         });
-        return rows.reduce((sum, r) => {
-          const t = r.transaction_type ?? "";
-          // Skip parallel discount/tender refund contras; only cash legs reduce net cash.
-          if (t === "refund" && !isCashRefundComponent(r.refund_component)) return sum;
-          const delta =
-            t === "refund"
-              ? -Math.abs(Number(r.net ?? r.amount ?? 0))
-              : Math.abs(Number(r.net ?? r.amount ?? 0));
-          return sum + delta;
-        }, 0);
+        const agg = aggregateFinanceLedgerRows(rows);
+        return platformRevenueNetFromAggregate(agg);
       } catch (err) {
         console.error("Error calculating revenue:", err);
         return 0;

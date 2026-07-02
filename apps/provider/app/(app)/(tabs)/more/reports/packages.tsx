@@ -39,9 +39,9 @@ interface PackageStats {
 
 const PERIOD_FILTERS = [
   { label: "All Time", value: "all" },
-  { label: "This Month", value: "month" },
-  { label: "This Quarter", value: "quarter" },
-  { label: "This Year", value: "year" },
+  { label: "Last 30 days", value: "month" },
+  { label: "Last 90 days", value: "quarter" },
+  { label: "Last 365 days", value: "year" },
 ];
 
 export default function PackageReportScreen() {

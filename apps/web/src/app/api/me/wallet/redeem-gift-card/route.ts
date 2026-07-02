@@ -164,6 +164,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // §Phase 11 giftcard-liability-fixes: on gift-card→wallet redemption the
+    // wallet LIABILITY (GL 2300) also increases. Post a wallet_topup row with
+    // fees=0 so the GL shadow trigger records DR Cash(0) / CR 2300 Wallet liability.
+    // We use amount=redeemAmount so GL 2300 is credited correctly. The matching
+    // DR is implicitly the gift-card liability reduction above (2400 debit).
+    const nowIso = new Date().toISOString();
+    const { error: walletLiabilityError } = await supabaseAdmin.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: null,
+      tenant_id: walletTenantId,
+      transaction_type: "wallet_topup",
+      amount: redeemAmount,
+      fees: 0,
+      commission: 0,
+      net: redeemAmount,
+      description: `Wallet liability increase from gift card ${codeUpper} redemption`,
+      metadata: { source: "gift_card_redemption", gift_card_id: giftCard.id },
+      created_at: nowIso,
+    });
+    if (walletLiabilityError) {
+      console.error(
+        "[redeem-gift-card] Failed to record wallet_topup liability increase:",
+        walletLiabilityError,
+      );
+    }
+
     return successResponse({
       amount: redeemAmount,
       currency: userCurrency,

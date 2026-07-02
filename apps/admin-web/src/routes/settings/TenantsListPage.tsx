@@ -22,12 +22,14 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 
+type Lifecycle = "active" | "sandbox" | "suspended" | "disabled";
+
 type TenantRow = {
   id: string;
   slug: string;
   name: string;
   region_code: string;
-  lifecycle: "active" | "sandbox" | "suspended";
+  lifecycle: Lifecycle;
   default_currency: string;
   default_language: string;
   default_timezone: string;
@@ -40,6 +42,7 @@ const LIFECYCLE_BADGE: Record<string, string> = {
   active: "bg-green-100 text-green-800",
   sandbox: "bg-blue-100 text-blue-800",
   suspended: "bg-red-100 text-red-800",
+  disabled: "bg-gray-200 text-gray-700",
 };
 
 function defaultCreate() {
@@ -47,7 +50,7 @@ function defaultCreate() {
     slug: "",
     name: "",
     region_code: "ZA",
-    lifecycle: "active" as "active" | "sandbox" | "suspended",
+    lifecycle: "active" as Lifecycle,
     default_currency: "ZAR",
     default_language: "en",
     default_timezone: "Africa/Johannesburg",
@@ -229,6 +232,7 @@ export function TenantsListPage() {
               <AdminTh>Name</AdminTh>
               <AdminTh>Region</AdminTh>
               <AdminTh>Currency</AdminTh>
+              <AdminTh>Language</AdminTh>
               <AdminTh>Timezone</AdminTh>
               <AdminTh>Lifecycle</AdminTh>
               <AdminTh>Active</AdminTh>
@@ -242,6 +246,7 @@ export function TenantsListPage() {
                 <AdminTd className="font-medium">{t.name}</AdminTd>
                 <AdminTd>{t.region_code}</AdminTd>
                 <AdminTd>{t.default_currency}</AdminTd>
+                <AdminTd className="uppercase">{t.default_language}</AdminTd>
                 <AdminTd className="text-xs">{t.default_timezone}</AdminTd>
                 <AdminTd>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${LIFECYCLE_BADGE[t.lifecycle] ?? "bg-gray-100 text-gray-600"}`}>
@@ -300,7 +305,7 @@ type FormFields = {
   slug?: string;
   name: string;
   region_code: string;
-  lifecycle: "active" | "sandbox" | "suspended";
+  lifecycle: Lifecycle;
   default_currency: string;
   default_language: string;
   default_timezone: string;
@@ -392,6 +397,7 @@ function TenantForm({
             <option value="active">Active</option>
             <option value="sandbox">Sandbox</option>
             <option value="suspended">Suspended</option>
+            <option value="disabled">Disabled</option>
           </select>
         </div>
       </div>

@@ -9,8 +9,9 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
-import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
+import { eachUtcDay } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,14 +78,8 @@ export async function GET(request: NextRequest) {
           grouped[date] = (grouped[date] || 0) + 1;
         });
         const result: Array<{ date: string; count: number }> = [];
-        const current = new Date(startDate);
-        while (current <= now) {
-          const dateStr = current.toISOString().split("T")[0];
-          result.push({
-            date: dateStr,
-            count: grouped[dateStr] || 0,
-          });
-          current.setDate(current.getDate() + 1);
+        for (const dateStr of eachUtcDay(startDate, now)) {
+          result.push({ date: dateStr, count: grouped[dateStr] || 0 });
         }
         return result;
       }
@@ -96,70 +91,50 @@ export async function GET(request: NextRequest) {
         return [];
       }
 
-      const grouped: Record<string, number> = {};
+      const grouped2: Record<string, number> = {};
       type RowWithDate = Record<string, unknown>;
       ((data || []) as unknown as RowWithDate[]).forEach((item: RowWithDate) => {
         const date = new Date(String(item[dateField] ?? "")).toISOString().split("T")[0];
-        grouped[date] = (grouped[date] || 0) + 1;
+        grouped2[date] = (grouped2[date] || 0) + 1;
       });
 
-      const result: Array<{ date: string; count: number }> = [];
-      const current = new Date(startDate);
-      while (current <= now) {
-        const dateStr = current.toISOString().split("T")[0];
-        result.push({
-          date: dateStr,
-          count: grouped[dateStr] || 0,
-        });
-        current.setDate(current.getDate() + 1);
+      const result2: Array<{ date: string; count: number }> = [];
+      for (const dateStr of eachUtcDay(startDate, now)) {
+        result2.push({ date: dateStr, count: grouped2[dateStr] || 0 });
       }
 
-      return result;
+      return result2;
     };
 
-    // Get revenue time series
+    // Get platform revenue time series using the canonical formula
+    // §Phase 9: was summing `net` on payment/charge/refund rows only (= commission base = 0
+    // when no commission is charged). Now fetches ALL ledger rows, runs the full reducer,
+    // and emits platformRevenueNetFromAggregate per day — matching the Finance summary.
     const getRevenueTimeSeries = async () => {
       let data: Awaited<ReturnType<typeof fetchFinanceLedgerRowsForTenant>> = [];
       try {
         data = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
           start: startDate.toISOString(),
           end: now.toISOString(),
-        }, {
-          transactionTypes: ['payment', 'additional_charge_payment', 'refund'],
         });
       } catch (e) {
         console.error('Error fetching revenue:', e);
         return [];
       }
 
-      const grouped: Record<string, number> = {};
-      type RevenueRow = {
-        created_at?: string;
-        net?: number;
-        transaction_type?: string;
-        refund_component?: string | null;
-      };
-      (data || []).forEach((item: RevenueRow) => {
-        // Refunds post one row per economic component plus parallel discount/tender
-        // contras. For a net-revenue series, only the cash legs reduce revenue; the
-        // parallel non-cash rows are excluded to avoid double-deducting.
-        if (item.transaction_type === 'refund' && !isCashRefundComponent(item.refund_component)) {
-          return;
-        }
+      // Bucket by day, then aggregate each day with the canonical module.
+      const byDay: Record<string, typeof data> = {};
+      data.forEach((item) => {
         const date = new Date(item.created_at ?? "").toISOString().split('T')[0];
-        const amount = item.transaction_type === 'refund' ? -Math.abs(item.net ?? 0) : Math.abs(item.net ?? 0);
-        grouped[date] = (grouped[date] || 0) + amount;
+        if (!byDay[date]) byDay[date] = [];
+        byDay[date].push(item);
       });
 
       const result: Array<{ date: string; revenue: number }> = [];
-      const current = new Date(startDate);
-      while (current <= now) {
-        const dateStr = current.toISOString().split('T')[0];
-        result.push({
-          date: dateStr,
-          revenue: grouped[dateStr] || 0,
-        });
-        current.setDate(current.getDate() + 1);
+      for (const dateStr of eachUtcDay(startDate, now)) {
+        const dayRows = byDay[dateStr] ?? [];
+        const agg = aggregateFinanceLedgerRows(dayRows);
+        result.push({ date: dateStr, revenue: platformRevenueNetFromAggregate(agg) });
       }
 
       return result;

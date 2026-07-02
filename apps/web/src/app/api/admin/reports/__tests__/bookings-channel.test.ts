@@ -55,7 +55,11 @@ beforeEach(() => {
           select: () => ({
             eq: () => ({
               gte: () => ({
-                lte: async () => ({ data: bookings, error: null }),
+                lte: () => ({
+                  order: () => ({
+                    range: async () => ({ data: bookings, error: null }),
+                  }),
+                }),
               }),
             }),
           }),

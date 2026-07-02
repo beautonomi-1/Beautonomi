@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
@@ -57,20 +59,24 @@ export async function GET(request: NextRequest) {
 
     const customerIds = (customers || []).map((c: { id: string }) => c.id);
 
-    // Bookings in period by customer
-    const { data: bookings } = customerIds.length > 0
-      ? await supabase
-          .from('bookings')
-          .select('id, customer_id, scheduled_at, total_amount, status')
-          .eq('tenant_id', tenantId)
-          .in('customer_id', customerIds)
-          .in('status', ['confirmed', 'completed'])
-          .gte('scheduled_at', startISO)
-          .lte('scheduled_at', endISO)
-      : { data: [] };
+    type BookingRow = { customer_id: string; total_amount?: number; status: string; scheduled_at?: string };
+    // Paginate across PostgREST 1000-row cap so high-volume periods are not silently undercounted.
+    const bookings = customerIds.length > 0
+      ? await fetchAllLedgerPages<BookingRow>(
+          supabase
+            .from('bookings')
+            .select('id, customer_id, scheduled_at, total_amount, status')
+            .eq('tenant_id', tenantId)
+            .in('customer_id', customerIds)
+            .in('status', ['confirmed', 'completed'])
+            .gte('scheduled_at', startISO)
+            .lte('scheduled_at', endISO),
+          MAX_BOOKINGS_FOR_REPORT,
+        )
+      : [];
 
     const bookingsByCustomer: Record<string, { count: number; total_amount: number; last_booking_at?: string }> = {};
-    (bookings || []).forEach((b: { customer_id: string; total_amount?: number; status: string; scheduled_at?: string }) => {
+    bookings.forEach((b) => {
       const id = b.customer_id;
       if (!bookingsByCustomer[id]) bookingsByCustomer[id] = { count: 0, total_amount: 0 };
       bookingsByCustomer[id].count += 1;

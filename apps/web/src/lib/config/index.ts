@@ -447,6 +447,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     manual_enabled: verificationPolicyBundle.manualEnabled,
     required_for_providers: verificationPolicyBundle.requiredForProviders,
     required_for_payouts: verificationPolicyBundle.requiredForPayouts,
+    required_for_customers: verificationPolicyBundle.requiredForCustomers,
   };
 
   const flagsWithCalV2: Record<string, ResolvedFlag> = {

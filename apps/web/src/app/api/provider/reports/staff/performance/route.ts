@@ -144,13 +144,14 @@ export async function GET(request: NextRequest) {
 
       const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
-      // Calculate total hours worked
+      // Calculate total hours worked — only count service lines assigned to THIS staff
       let totalHours = 0;
       staffBookings.forEach((booking: any) => {
         if (!booking.booking_services || !Array.isArray(booking.booking_services)) {
           return;
         }
         booking.booking_services.forEach((service: any) => {
+          if (service.staff_id !== staff.id) return;
           if (service.actual_start_at && service.actual_end_at) {
             const start = new Date(service.actual_start_at);
             const end = new Date(service.actual_end_at);

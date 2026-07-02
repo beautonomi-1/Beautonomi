@@ -7,6 +7,25 @@ export const MAX_BOOKINGS_FOR_REPORT = 10000;
 export const MAX_FINANCE_TRANSACTIONS = 50000;
 
 /**
+ * Iterate over each UTC calendar day in [start, end] inclusive, yielding the ISO date string
+ * (YYYY-MM-DD) for each day. Uses UTC to avoid DST jumps that would skip or double-count days.
+ *
+ * @example
+ * for (const day of eachUtcDay(startDate, endDate)) {
+ *   series.push({ date: day, value: byDay[day] ?? 0 });
+ * }
+ */
+export function* eachUtcDay(start: Date, end: Date): Generator<string> {
+  // Clone so we don't mutate the caller's Date
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const endDay = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  while (cursor.getTime() <= endDay) {
+    yield cursor.toISOString().split('T')[0];
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+}
+
+/**
  * Accounting / reporting (provider-facing)
  *
  * - "Recognized revenue" headline (dashboard, business overview, payment summary net):

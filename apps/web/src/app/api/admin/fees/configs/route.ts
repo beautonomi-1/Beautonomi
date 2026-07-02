@@ -79,6 +79,14 @@ export async function POST(request: NextRequest) {
       effective_from,
       effective_until,
       description,
+      // §Phase 8: new fields from migration 727
+      payment_method,
+      region,
+      fixed_fee_waiver_below,
+      vat_rate,
+      fee_is_vat_exclusive,
+      max_fee_amount,
+      fee_scope,
     } = body;
 
     // Validate required fields
@@ -117,6 +125,14 @@ export async function POST(request: NextRequest) {
         effective_from: effective_from || new Date().toISOString(),
         effective_until: effective_until || null,
         description,
+        // Phase 8 fields
+        payment_method: payment_method || "*",
+        region: region || "local",
+        fixed_fee_waiver_below: fixed_fee_waiver_below ?? null,
+        vat_rate: vat_rate || 0,
+        fee_is_vat_exclusive: fee_is_vat_exclusive !== false,
+        max_fee_amount: max_fee_amount ?? null,
+        fee_scope: fee_scope || "transaction",
         created_by: user.id,
         updated_by: user.id,
       })

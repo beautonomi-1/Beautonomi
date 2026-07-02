@@ -49,8 +49,8 @@ interface GiftCardStats {
 
 const PERIOD_FILTERS = [
   { label: "All Time", value: "all" },
-  { label: "This Month", value: "month" },
-  { label: "This Week", value: "week" },
+  { label: "Last 30 days", value: "month" },
+  { label: "Last 7 days", value: "week" },
   { label: "Today", value: "today" },
 ];
 
@@ -84,9 +84,9 @@ export default function GiftCardReportScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const rows = cards.map(
       (c) =>
-        `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${formatCurrency(c.remaining_value)},${c.status},${formatDate(c.purchased_at)},${c.redeemed_at ?? c.captured_at ?? ""}`
+        `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${c.status},${formatDate(c.purchased_at)},${c.redeemed_at ?? c.captured_at ?? ""}`
     );
-    const csv = `Code,Purchaser,Recipient,Value,Remaining,Status,Purchased,Capture\n${rows.join("\n")}`;
+    const csv = `Code,Purchaser,Recipient,Redemption amount,Status,Purchased,Capture\n${rows.join("\n")}`;
     try {
       await Share.share({ message: csv, title: "Gift Card Report" });
     } catch {}

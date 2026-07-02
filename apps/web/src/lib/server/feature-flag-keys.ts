@@ -61,6 +61,12 @@ export const FEATURE_FLAG_KEYS = {
    * has approved identity verification.
    */
   VERIFICATION_REQUIRED_FOR_PAYOUTS: "verification.sumsub.required_for_payouts",
+
+  /**
+   * When enabled, a customer must have approved identity verification before
+   * their FIRST booking is created. Subsequent bookings are not re-checked.
+   */
+  VERIFICATION_REQUIRED_FOR_CUSTOMERS: "verification.required_for_customers",
 } as const;
 
 export type PaymentRelatedFeatureKey =

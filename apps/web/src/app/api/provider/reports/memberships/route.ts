@@ -37,7 +37,12 @@ export async function GET(request: NextRequest) {
       .from("finance_transactions")
       .select("transaction_type, amount, net, created_at, booking_id, product_order_id, description")
       .eq("provider_id", providerId)
-      .in("transaction_type", ["membership_sale", "provider_earnings", "membership_discount"])
+      .in("transaction_type", [
+        "membership_sale",
+        "membership_provider_earnings",
+        "provider_earnings",
+        "membership_discount",
+      ])
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString())
       .order("created_at", { ascending: true });
@@ -63,7 +68,10 @@ export async function GET(request: NextRequest) {
         existing.gross += amount;
         existing.count += 1;
         salesByDay.set(date, existing);
-      } else if (isMembershipProviderEarnings(row)) {
+      } else if (
+        row.transaction_type === "membership_provider_earnings" ||
+        isMembershipProviderEarnings(row)
+      ) {
         recognizedEarnings += net;
       } else if (row.transaction_type === "membership_discount") {
         memberDiscounts += Math.abs(net);
@@ -79,7 +87,7 @@ export async function GET(request: NextRequest) {
     const reportBasis =
       `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
       `Gross sales use membership_sale.amount (deferred liability — not additive with recognized earnings). ` +
-      `Recognized earnings are paired provider_earnings rows from membership purchases. ` +
+      `Recognized earnings are membership_provider_earnings rows (post-migration 731) or legacy provider_earnings rows without a booking/order link (pre-migration). ` +
       `Member discounts are contra-revenue membership_discount ledger rows. ` +
       `Active subscribers are current user_memberships with status=active (not period-scoped).`;
 

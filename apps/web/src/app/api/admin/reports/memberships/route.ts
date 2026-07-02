@@ -20,21 +20,30 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "30d";
+    const startDateParam = searchParams.get("start_date");
+    const endDateParam = searchParams.get("end_date");
 
     const now = new Date();
     let startDate: Date;
-    switch (period) {
-      case "7d":
-        startDate = subDays(now, 7);
-        break;
-      case "90d":
-        startDate = subDays(now, 90);
-        break;
-      case "1y":
-        startDate = subDays(now, 365);
-        break;
-      default:
-        startDate = subDays(now, 30);
+    let endDate: Date = now;
+
+    if (startDateParam && endDateParam) {
+      startDate = new Date(startDateParam);
+      endDate = new Date(endDateParam);
+    } else {
+      switch (period) {
+        case "7d":
+          startDate = subDays(now, 7);
+          break;
+        case "90d":
+          startDate = subDays(now, 90);
+          break;
+        case "1y":
+          startDate = subDays(now, 365);
+          break;
+        default:
+          startDate = subDays(now, 30);
+      }
     }
 
     let salesTransactions: Awaited<ReturnType<typeof fetchFinanceLedgerRowsForTenant>> = [];
@@ -43,14 +52,14 @@ export async function GET(request: NextRequest) {
       salesTransactions = await fetchFinanceLedgerRowsForTenant(
         supabase,
         tenantId,
-        { start: startDate.toISOString(), end: now.toISOString() },
+        { start: startDate.toISOString(), end: endDate.toISOString() },
         { transactionType: "membership_sale" },
       );
       earningsTransactions = await fetchFinanceLedgerRowsForTenant(
         supabase,
         tenantId,
-        { start: startDate.toISOString(), end: now.toISOString() },
-        { transactionType: "provider_earnings" },
+        { start: startDate.toISOString(), end: endDate.toISOString() },
+        { transactionType: "membership_provider_earnings" },
       );
     } catch (e) {
       console.error("[reports/memberships] ledger fetch failed", e);
@@ -66,7 +75,7 @@ export async function GET(request: NextRequest) {
       .eq("tenant_id", tenantId)
       .eq("status", "paid")
       .gte("created_at", startDate.toISOString())
-      .lte("created_at", now.toISOString());
+      .lte("created_at", endDate.toISOString());
 
     const { data: tenantProviders } = await supabase
       .from("providers")

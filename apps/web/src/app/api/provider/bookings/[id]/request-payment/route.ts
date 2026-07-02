@@ -191,6 +191,7 @@ export async function POST(
           remaining_balance: `${newCharge.currency} ${remainingBalance.toFixed(2)}`,
           booking_number: bookingData.booking_number || bookingData.ref_number || "",
           booking_id: id,
+          charge_id: newCharge.id,
         },
         ["push", "email"],
         // In-app bell row inserted manually above; skip template auto-insert.

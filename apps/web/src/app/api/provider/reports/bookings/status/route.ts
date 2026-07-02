@@ -8,7 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue, getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
-import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 /** Display order for known lifecycle statuses; unknown DB values sort last alphabetically. */
@@ -74,11 +74,24 @@ export async function GET(request: NextRequest) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
 
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
+    let exactCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
+    if (locationId) exactCountQuery = exactCountQuery.eq("location_id", locationId);
+
+    const [{ data: bookings, error: bookingsError }, { count: exactBookingCount }] = await Promise.all([
+      bookingsQuery.limit(MAX_BOOKINGS_FOR_REPORT),
+      exactCountQuery,
+    ]);
 
     if (bookingsError) {
       return handleApiError(new Error("Failed to fetch bookings"), "BOOKINGS_FETCH_ERROR", 500);
     }
+
+    const sampleTruncated = (bookings?.length ?? 0) < (exactBookingCount ?? 0);
 
     const ledgerOpts = {
       transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
@@ -123,7 +136,8 @@ export async function GET(request: NextRequest) {
       revenueByStatus.set(statusKey, (revenueByStatus.get(statusKey) || 0) + bookingRev);
     }
 
-    const totalBookings = bookings?.length ?? 0;
+    const sampleSize = bookings?.length ?? 0;
+    const totalBookings = exactBookingCount ?? sampleSize;
 
     const completed = countByStatus.get("completed") ?? 0;
     const cancelled = countByStatus.get("cancelled") ?? 0;
@@ -151,6 +165,8 @@ export async function GET(request: NextRequest) {
     return successResponse({
       statusBreakdown,
       totalBookings,
+      sampleSize,
+      sampleTruncated,
       completionRate,
       cancellationRate,
       noShowRate,

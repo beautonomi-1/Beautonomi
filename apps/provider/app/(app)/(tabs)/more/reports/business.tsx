@@ -254,17 +254,29 @@ export default function BusinessReportScreen() {
       ) : null}
 
       {/* Revenue */}
-      <SectionHeader title="Recognized revenue" />
+      <SectionHeader title="Revenue" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Recognized revenue"
+            title="Gross recognized"
             value={formatCurrency(r?.revenue.total ?? 0)}
+            subtitle="Before refund clawbacks"
             icon="cash-outline"
             iconColor="#22c55e"
             iconBg="bg-green-50"
             compact
           />
+          {overview?.netRevenue != null ? (
+            <StatCard
+              title="Net of refunds"
+              value={formatCurrency(overview.netRevenue)}
+              subtitle="After refund clawbacks"
+              icon="shield-checkmark-outline"
+              iconColor="#0d9488"
+              iconBg="bg-teal-50"
+              compact
+            />
+          ) : null}
           <StatCard
             title="Vs prior window"
             value={`${(r?.revenue.growth_percentage ?? 0) >= 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`}

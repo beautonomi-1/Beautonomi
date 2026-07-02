@@ -9,6 +9,13 @@ import {
  * Matches GET /api/admin/finance/summary aggregation (booking GMV, platform take, subscriptions, ads).
  */
 export type FinanceLedgerAggregate = {
+  /**
+   * Currency of the aggregated rows. 'ZAR' when all rows share the same
+   * currency (or have null currency). 'MIXED' signals that rows from
+   * multiple currencies were summed — callers should NOT display MIXED
+   * aggregates as a single monetary figure.
+   */
+  currency: string;
   service_collected_gross: number;
   service_collected_net: number;
   gateway_fees_services: number;
@@ -77,6 +84,17 @@ export type FinanceLedgerAggregate = {
   additional_charge_gross: number;
   /** Net impact from controlled manual finance adjustments. */
   manual_adjustments_net: number;
+  /**
+   * Gateway fees on non-booking platform-held flows: gift_card_sale + wallet_topup.
+   * Zero until Phase 2 fee-capture fix lands; the field exists so canonical helpers
+   * and downstream surfaces don't break before that migration.
+   */
+  other_gateway_fees: number;
+  /**
+   * Paystack R3 transfer fee recorded on payout rows (fees column).
+   * Zero until Phase 4 payout-transfer-fee fix lands.
+   */
+  payout_transfer_fees: number;
 };
 
 type Row = Pick<
@@ -112,7 +130,18 @@ function isProviderEarningsRefundRow(r: Row): boolean {
 export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLedgerAggregate {
   const tx = rows as Row[];
 
+  // Detect currency: collect all distinct non-null currencies in this row set.
+  const currencies = new Set<string>(
+    rows.map((r) => (r as FinanceLedgerRow).currency).filter((c): c is string => Boolean(c))
+  );
+  const detectedCurrency =
+    currencies.size === 0 ? "ZAR"      // all legacy rows → default ZAR
+    : currencies.size === 1 ? [...currencies][0]
+    : "MIXED";                          // cross-currency: caller must not sum
+
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
+  const otherGatewayFees = sumFees(tx, ["gift_card_sale", "wallet_topup"]);
+  const payoutTransferFees = sumFees(tx, ["payout"]);
 
   const bookingPlatformFees = tx
     .filter((r) =>
@@ -184,7 +213,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const cancellationFeesRetained = sum(tx, ["cancellation_fee"], "net");
   const walkInAdditionalCharges = sum(tx, ["walk_in_additional_charge"], "net");
   const providerRecognizedRevenueGross =
-    sum(tx, ["provider_earnings"], "net") +
+    sum(tx, ["provider_earnings", "membership_provider_earnings"], "net") +
     sum(tx, ["tip"], "net") +
     sum(tx, ["travel_fee"], "net") +
     cancellationFeesRetained +
@@ -214,18 +243,29 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const platformTakeNet = platformCommissionNet - gatewayFeesServices + manualAdjustmentsNet;
 
+  // Phase 11 (ASC 606/IFRS 15): subscription_net / ads_net / marketing_credit_net
+  // count RECOGNIZED amounts (recognition rows). Legacy cash-basis rows (net > 0)
+  // are included via fallback: on pre-Phase-11 rows, provider_subscription_payment.net
+  // holds the full amount (no separate recognition rows), so summing both types
+  // double-counts only if both types exist for the same payment — which they
+  // shouldn't (new payments have net=0 on the cash row and a separate recognition row).
   const subscriptionNet =
+    sum(tx, ["subscription_recognition"], "net") +
+    // Legacy fallback: old payment rows whose net > 0 (no recognition rows issued yet)
     sum(tx, ["provider_subscription_payment"], "net") +
     sum(tx, ["provider_subscription_refund"], "net");
   const subscriptionGatewayFees = sumFees(tx, ["provider_subscription_payment"]);
   const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
 
   const adsNet =
-    sum(tx, ["provider_ads_payment"], "net") + sum(tx, ["provider_ads_refund"], "net");
+    sum(tx, ["ads_recognition"], "net") +
+    sum(tx, ["provider_ads_payment"], "net") +
+    sum(tx, ["provider_ads_refund"], "net");
   const adsGatewayFees = sumFees(tx, ["provider_ads_payment"]);
   const adsGross = adsNet + adsGatewayFees;
 
   const marketingCreditNet =
+    sum(tx, ["marketing_credit_recognition"], "net") +
     sum(tx, ["provider_marketing_credit_topup"], "net") +
     sum(tx, ["provider_marketing_credit_refund"], "net");
   const marketingCreditGatewayFees = sumFees(tx, ["provider_marketing_credit_topup"]);
@@ -234,6 +274,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const payoutsPaidTotal = sum(tx, ["payout"], "net");
 
   return {
+    currency: detectedCurrency,
     service_collected_gross: serviceCollectedGross,
     service_collected_net: serviceCollectedNet,
     gateway_fees_services: gatewayFeesServices,
@@ -253,7 +294,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     marketing_credit_net: marketingCreditNet,
     marketing_credit_gateway_fees: marketingCreditGatewayFees,
     marketing_credit_gross: marketingCreditGross,
-    provider_earnings_net: sum(tx, ["provider_earnings"], "net"),
+    provider_earnings_net: sum(tx, ["provider_earnings", "membership_provider_earnings"], "net"),
     gift_card_sales: sum(tx, ["gift_card_sale"], "amount"),
     membership_sales: sum(tx, ["membership_sale"], "amount"),
     refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0),
@@ -277,5 +318,57 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     provider_recognized_revenue_gross: providerRecognizedRevenueGross,
     additional_charge_gross: additionalChargeGross,
     manual_adjustments_net: manualAdjustmentsNet,
+    other_gateway_fees: otherGatewayFees,
+    payout_transfer_fees: payoutTransferFees,
   };
+}
+
+// ─── Canonical formula helpers (Phase 1) ────────────────────────────────────
+//
+// These are the ONLY place the platform-revenue and gateway-fee formulas live.
+// Every reporting surface (Analytics, Gods Eye, Finance summary, Dashboard,
+// Revenue report) must import and call these rather than re-deriving inline.
+//
+// Formula invariant:
+//   platformRevenueNet = platform_take_net + subscription_net + ads_net
+//                      + marketing_credit_net + service_fee_revenue
+//
+//   platform_take_net itself = commission_net − gateway_fees_services + manual_adjustments_net
+//   ∴ a net-negative result (e.g. R16 fee − R17.70 gateway = −R1.70) is correct and expected.
+//
+//   gatewayFeesTotal = all Paystack fees absorbed by the platform across every flow
+//                    (booking payments + add-on charges + subscriptions + ads + marketing credits
+//                     + gift-card sales + wallet topups + payout transfer fees)
+//
+// After Phase 11 (ASC 606/IFRS 15), subscription_net/ads_net/marketing_credit_net will
+// represent *recognized* (post-deferral) amounts rather than cash collected. The helper
+// signatures are unchanged — only the inputs change.
+
+/**
+ * Canonical platform revenue (net). Use this on every admin surface instead of
+ * inline sums. Includes customer-paid platform fees (`service_fee_revenue`).
+ */
+export function platformRevenueNetFromAggregate(a: FinanceLedgerAggregate): number {
+  return (
+    a.platform_take_net +
+    a.subscription_net +
+    a.ads_net +
+    a.marketing_credit_net +
+    a.service_fee_revenue
+  );
+}
+
+/**
+ * Total gateway fees absorbed by the platform across every platform-held flow.
+ * This is the full cost side used for reconciliation and P&L.
+ */
+export function gatewayFeesTotalFromAggregate(a: FinanceLedgerAggregate): number {
+  return (
+    a.gateway_fees_services +
+    a.subscription_gateway_fees +
+    a.ads_gateway_fees +
+    a.marketing_credit_gateway_fees +
+    a.other_gateway_fees +
+    a.payout_transfer_fees
+  );
 }

@@ -49,7 +49,7 @@ export async function getSumsubAccessToken(
   providerId: string,
   environment: string,
   tenantId?: string | null,
-): Promise<{ token: string | null; applicantId?: string | null; levelName: string }> {
+): Promise<{ token: string | null; applicantId?: string | null; levelName: string; error?: string }> {
   const config = await resolveSumsubConfig(environment, tenantId);
   const levelName = (config?.level_name as string) || "basic-kyc-level";
   if (!config?.enabled) return { token: null, levelName };
@@ -83,7 +83,9 @@ export async function getSumsubAccessToken(
   if (!res.ok) {
     const text = await res.text();
     console.error("Sumsub accessTokens error:", res.status, text);
-    return { token: null, levelName };
+    // Surface the Sumsub error text so callers (e.g. admin test endpoint) can
+    // report the exact reason without parsing HTTP status codes.
+    return { token: null, levelName, error: `${res.status}: ${text}` };
   }
 
   const data = (await res.json()) as { token?: string; userId?: string };

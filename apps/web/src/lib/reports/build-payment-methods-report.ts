@@ -213,7 +213,14 @@ export async function buildProviderPaymentMethodsReport(
     if (rows.length < PT_PAGE) break;
   }
 
-  /** ---------- booking_payments (till / manual) completed in window ---------- */
+  /** ---------- booking_payments (till / manual) completed in window ----------
+   * Only add a booking_payment if its booking did NOT already have a successful
+   * gateway payment_transaction in this window for the same effective method.
+   * This prevents double-counting when a webhook flow creates both a PT row and
+   * a completed BP row for the same capture (typical Paystack/Yoco flows).
+   * Cash / manual BPs on bookings that happened to also have a gateway PT (partial
+   * payments) are kept — they represent a different leg of the same booking.
+   */
   let bpQuery = supabase
     .from("booking_payments")
     .select("booking_id, amount, payment_method")
@@ -236,6 +243,9 @@ export async function buildProviderPaymentMethodsReport(
   for (const row of bpList) {
     if (!bpScope.has(row.booking_id)) continue;
     const methodKey = normalizeRecordedPaymentMethod(row.payment_method);
+    // Skip if the booking already has a gateway PT that would cover this same
+    // payment leg (prevents double-counting gateway captures).
+    if (scopedPtBookingIds.has(row.booking_id) && isGatewayCardCaptureProvider(methodKey)) continue;
     const b = getBucket(methodKey);
     b.bpCount += 1;
     b.bpAmount += Number(row.amount ?? 0);
