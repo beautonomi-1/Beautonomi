@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -223,16 +223,16 @@ export function DisputesPage() {
     );
   }
 
-  // Tab counts from server statistics (accurate across all pages)
-  const tabCounts = useMemo(
-    () => ({
-      all: stats?.total ?? 0,
-      open: stats?.open ?? 0,
-      resolved: stats?.resolved ?? 0,
-      closed: stats?.closed ?? 0,
-    }),
-    [stats]
-  );
+  // Tab counts from server statistics (accurate across all pages).
+  // Plain derivation — must NOT be a hook here because it lives after the
+  // early returns above (isLoading/error/denied); a conditionally-called hook
+  // would trigger React error #310 ("rendered fewer hooks than expected").
+  const tabCounts = {
+    all: stats?.total ?? 0,
+    open: stats?.open ?? 0,
+    resolved: stats?.resolved ?? 0,
+    closed: stats?.closed ?? 0,
+  };
 
   const tabs = [
     ["all", "All"],
