@@ -38,106 +38,126 @@ export async function GET(request: NextRequest) {
       searchParams.get("first_response_overdue") === "1" ||
       searchParams.get("first_response_overdue") === "true";
 
-    let query = supabase
-      .from("support_tickets")
-      .select(
-        `
-        *,
-        user:users!support_tickets_user_id_fkey(id, email, full_name),
-        provider:providers(id, business_name),
-        assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
-      `,
-        { count: "exact" }
-      );
+    // Build the list query. `agentQueue` gates every column introduced by
+    // migration 726 (needs_agent_response, first_response_due_at). When that
+    // migration has not been applied yet (e.g. code deployed ahead of the DB
+    // migration), Postgres raises 42703 "undefined column" and we retry once
+    // with agentQueue=false so the queue still loads with a graceful fallback
+    // instead of a hard 500.
+    const buildQuery = (agentQueue: boolean) => {
+      let query = supabase
+        .from("support_tickets")
+        .select(
+          `
+          *,
+          user:users!support_tickets_user_id_fkey(id, email, full_name),
+          provider:providers(id, business_name),
+          assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
+        `,
+          { count: "exact" }
+        );
 
-    if (status) {
-      query = query.eq("status", status);
-    }
+      if (status) {
+        query = query.eq("status", status);
+      }
 
-    if (priority) {
-      query = query.eq("priority", priority);
-    }
+      if (priority) {
+        query = query.eq("priority", priority);
+      }
 
-    if (category) {
-      query = query.eq("category", category);
-    }
+      if (category) {
+        query = query.eq("category", category);
+      }
 
-    if (assignedTo === "unassigned") {
-      query = query.is("assigned_to", null);
-    } else if (assignedTo) {
-      query = query.eq("assigned_to", assignedTo);
-    }
+      if (assignedTo === "unassigned") {
+        query = query.is("assigned_to", null);
+      } else if (assignedTo) {
+        query = query.eq("assigned_to", assignedTo);
+      }
 
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
+      if (userId) {
+        query = query.eq("user_id", userId);
+      }
 
-    if (q.length > 0) {
-      const pattern = `%${q}%`;
-      query = query.or(`subject.ilike.${pattern},ticket_number.ilike.${pattern},description.ilike.${pattern}`);
-    }
+      if (q.length > 0) {
+        const pattern = `%${q}%`;
+        query = query.or(`subject.ilike.${pattern},ticket_number.ilike.${pattern},description.ilike.${pattern}`);
+      }
 
-    if (slaOverdue) {
-      const nowIso = new Date().toISOString();
-      query = query.lt("sla_resolution_due_at", nowIso).not("status", "eq", "resolved").not("status", "eq", "closed");
-    }
+      if (slaOverdue) {
+        const nowIso = new Date().toISOString();
+        query = query.lt("sla_resolution_due_at", nowIso).not("status", "eq", "resolved").not("status", "eq", "closed");
+      }
 
-    if (needsResponse) {
-      query = query.eq("needs_agent_response", true);
-    }
+      // needs_agent_response is a migration-726 column — only filter on it when
+      // the agent-queue schema is present.
+      if (needsResponse && agentQueue) {
+        query = query.eq("needs_agent_response", true);
+      }
 
-    if (slaStateFilter === "breached") {
-      const nowIso = new Date().toISOString();
-      query = query
-        .lt("sla_resolution_due_at", nowIso)
-        .not("status", "in", '("resolved","closed")');
-    } else if (slaStateFilter === "at_risk") {
-      // at_risk: due within 25% of window. We approximate this server-side as
-      // SLA due in the next 6 hours (a conservative proxy — full computation
-      // happens client-side via computeTicketAttentionFields).
-      const nowIso = new Date().toISOString();
-      const sixHoursOut = new Date(Date.now() + 6 * 3600_000).toISOString();
-      query = query
-        .gt("sla_resolution_due_at", nowIso)
-        .lt("sla_resolution_due_at", sixHoursOut)
-        .not("status", "in", '("resolved","closed")');
-    }
-
-    if (firstResponseOverdue) {
-      const nowIso = new Date().toISOString();
-      query = query
-        .lt("first_response_due_at", nowIso)
-        .is("first_staff_reply_at", null)
-        .not("status", "in", '("resolved","closed")');
-    }
-
-    switch (sort) {
-      case "created_desc":
-        query = query.order("created_at", { ascending: false });
-        break;
-      case "sla_asc":
-        query = query.order("sla_resolution_due_at", { ascending: true, nullsFirst: false });
-        break;
-      case "priority_asc":
-        query = query.order("priority_rank", { ascending: true });
-        break;
-      case "updated_desc":
-        query = query.order("updated_at", { ascending: false });
-        break;
-      case "smart":
-      default:
-        // Attention-first: needs-response tickets first, then priority rank,
-        // then earliest SLA deadline, then oldest last message (longest wait).
+      if (slaStateFilter === "breached") {
+        const nowIso = new Date().toISOString();
         query = query
-          .order("needs_agent_response", { ascending: false })
-          .order("priority_rank", { ascending: true })
-          .order("sla_resolution_due_at", { ascending: true, nullsFirst: false })
-          .order("last_message_at", { ascending: true, nullsFirst: false });
+          .lt("sla_resolution_due_at", nowIso)
+          .not("status", "in", '("resolved","closed")');
+      } else if (slaStateFilter === "at_risk") {
+        // at_risk: due within 25% of window. We approximate this server-side as
+        // SLA due in the next 6 hours (a conservative proxy — full computation
+        // happens client-side via computeTicketAttentionFields).
+        const nowIso = new Date().toISOString();
+        const sixHoursOut = new Date(Date.now() + 6 * 3600_000).toISOString();
+        query = query
+          .gt("sla_resolution_due_at", nowIso)
+          .lt("sla_resolution_due_at", sixHoursOut)
+          .not("status", "in", '("resolved","closed")');
+      }
+
+      // first_response_due_at is a migration-726 column — gate the filter.
+      if (firstResponseOverdue && agentQueue) {
+        const nowIso = new Date().toISOString();
+        query = query
+          .lt("first_response_due_at", nowIso)
+          .is("first_staff_reply_at", null)
+          .not("status", "in", '("resolved","closed")');
+      }
+
+      switch (sort) {
+        case "created_desc":
+          query = query.order("created_at", { ascending: false });
+          break;
+        case "sla_asc":
+          query = query.order("sla_resolution_due_at", { ascending: true, nullsFirst: false });
+          break;
+        case "priority_asc":
+          query = query.order("priority_rank", { ascending: true });
+          break;
+        case "updated_desc":
+          query = query.order("updated_at", { ascending: false });
+          break;
+        case "smart":
+        default:
+          // Attention-first: needs-response tickets first, then priority rank,
+          // then earliest SLA deadline, then oldest last message (longest wait).
+          // The needs_agent_response ordering is only available post-726.
+          if (agentQueue) {
+            query = query.order("needs_agent_response", { ascending: false });
+          }
+          query = query
+            .order("priority_rank", { ascending: true })
+            .order("sla_resolution_due_at", { ascending: true, nullsFirst: false })
+            .order("last_message_at", { ascending: true, nullsFirst: false });
+      }
+
+      return query.range(offset, offset + limit - 1);
+    };
+
+    let { data, error, count } = await buildQuery(true);
+
+    // 42703 = undefined_column: migration 726 not applied yet. Retry without
+    // the agent-queue columns so the queue degrades gracefully.
+    if (error && (error as { code?: string }).code === "42703") {
+      ({ data, error, count } = await buildQuery(false));
     }
-
-    query = query.range(offset, offset + limit - 1);
-
-    const { data, error, count } = await query;
 
     if (error) throw error;
 

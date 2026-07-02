@@ -105,6 +105,10 @@ const BASE_EXPO_CONFIG = {
     // declares =face; we write the union value with tools:replace to settle it.
     "../../tooling/expo-plugins/withMlKitVisionDependencies",
     "../../tooling/expo-plugins/withGradleWrapperResilience",
+    // Drops the relocated com.atlassian.commonmark:0.13.0 artifact so Android's
+    // checkReleaseDuplicateClasses doesn't fail on org.commonmark.* classes that
+    // also ship in org.commonmark:commonmark:0.21.0 (two native SDKs pull both).
+    "../../tooling/expo-plugins/withAndroidCommonmarkDedupe",
     // Prevents Android from destroying the React Native activity (and triggering
     // an ANR) when the device locale, font scale, or time settings change.
     "../../tooling/expo-plugins/withAndroidConfigChanges",
