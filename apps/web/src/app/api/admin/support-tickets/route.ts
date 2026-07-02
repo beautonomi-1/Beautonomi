@@ -3,7 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
-import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
+import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
 
@@ -26,9 +27,16 @@ export async function GET(request: NextRequest) {
     const q = sanitizeIlikeTerm(searchParams.get("q") || "");
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "25", 10) || 25, 1), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10) || 0, 0);
-    const sort = searchParams.get("sort") || "updated_desc";
+    const sort = searchParams.get("sort") || "smart";
     const slaOverdue =
       searchParams.get("sla_overdue") === "1" || searchParams.get("sla_overdue") === "true";
+    // New segment filters
+    const needsResponse =
+      searchParams.get("needs_response") === "1" || searchParams.get("needs_response") === "true";
+    const slaStateFilter = searchParams.get("sla_state"); // "at_risk" | "breached"
+    const firstResponseOverdue =
+      searchParams.get("first_response_overdue") === "1" ||
+      searchParams.get("first_response_overdue") === "true";
 
     let query = supabase
       .from("support_tickets")
@@ -74,6 +82,35 @@ export async function GET(request: NextRequest) {
       query = query.lt("sla_resolution_due_at", nowIso).not("status", "eq", "resolved").not("status", "eq", "closed");
     }
 
+    if (needsResponse) {
+      query = query.eq("needs_agent_response", true);
+    }
+
+    if (slaStateFilter === "breached") {
+      const nowIso = new Date().toISOString();
+      query = query
+        .lt("sla_resolution_due_at", nowIso)
+        .not("status", "in", '("resolved","closed")');
+    } else if (slaStateFilter === "at_risk") {
+      // at_risk: due within 25% of window. We approximate this server-side as
+      // SLA due in the next 6 hours (a conservative proxy — full computation
+      // happens client-side via computeTicketAttentionFields).
+      const nowIso = new Date().toISOString();
+      const sixHoursOut = new Date(Date.now() + 6 * 3600_000).toISOString();
+      query = query
+        .gt("sla_resolution_due_at", nowIso)
+        .lt("sla_resolution_due_at", sixHoursOut)
+        .not("status", "in", '("resolved","closed")');
+    }
+
+    if (firstResponseOverdue) {
+      const nowIso = new Date().toISOString();
+      query = query
+        .lt("first_response_due_at", nowIso)
+        .is("first_staff_reply_at", null)
+        .not("status", "in", '("resolved","closed")');
+    }
+
     switch (sort) {
       case "created_desc":
         query = query.order("created_at", { ascending: false });
@@ -85,8 +122,17 @@ export async function GET(request: NextRequest) {
         query = query.order("priority_rank", { ascending: true });
         break;
       case "updated_desc":
-      default:
         query = query.order("updated_at", { ascending: false });
+        break;
+      case "smart":
+      default:
+        // Attention-first: needs-response tickets first, then priority rank,
+        // then earliest SLA deadline, then oldest last message (longest wait).
+        query = query
+          .order("needs_agent_response", { ascending: false })
+          .order("priority_rank", { ascending: true })
+          .order("sla_resolution_due_at", { ascending: true, nullsFirst: false })
+          .order("last_message_at", { ascending: true, nullsFirst: false });
     }
 
     query = query.range(offset, offset + limit - 1);
@@ -95,8 +141,35 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    const nowMs = Date.now();
+    const tickets = (data || []).map((row) => {
+      const attention = computeTicketAttentionFields(
+        {
+          status: row.status,
+          priority: row.priority,
+          last_message_from: row.last_message_from,
+          last_message_at: row.last_message_at,
+          first_staff_reply_at: row.first_staff_reply_at,
+          first_response_due_at: (row as Record<string, unknown>).first_response_due_at as string | null,
+          sla_resolution_due_at: row.sla_resolution_due_at,
+          assigned_to: row.assigned_to,
+          last_staff_view_at: (row as Record<string, unknown>).last_staff_view_at as string | null,
+          needs_agent_response: (row as Record<string, unknown>).needs_agent_response as boolean | null,
+        },
+        nowMs,
+      );
+      return {
+        ...row,
+          needs_agent_response: (row as Record<string, unknown>).needs_agent_response ?? (attention.attention_state !== "waiting_customer" && attention.attention_state !== "resolved" && attention.attention_state !== "assigned_idle"),
+        first_response_due_at: (row as Record<string, unknown>).first_response_due_at,
+        attention_state: attention.attention_state,
+        sla_state: attention.sla_state,
+        agent_unread: attention.agent_unread,
+      };
+    });
+
     return NextResponse.json({
-      tickets: data || [],
+      tickets,
       total: count ?? 0,
       limit,
       offset,
@@ -171,9 +244,10 @@ export async function POST(request: NextRequest) {
     const createdAt = (data as { created_at?: string }).created_at;
     if (createdAt) {
       const slaDue = computeSlaResolutionDueIso(createdAt, priorityVal);
+      const firstRespDue = computeFirstResponseDueIso(createdAt, priorityVal);
       const { data: withSla, error: slaErr } = await supabase
         .from("support_tickets")
-        .update({ sla_resolution_due_at: slaDue })
+        .update({ sla_resolution_due_at: slaDue, first_response_due_at: firstRespDue })
         .eq("id", ticketId)
         .select()
         .single();

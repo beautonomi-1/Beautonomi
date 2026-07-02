@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
 import { publicEnv } from "@/config/publicEnv";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -207,6 +208,14 @@ export function UserDetailPage() {
     queryFn: () => adminApi.getJson<UserDetail>(`/api/admin/users/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
   });
+
+  useAdminBreadcrumbLeaf(
+    typeof q.data?.full_name === "string"
+      ? q.data.full_name
+      : typeof q.data?.email === "string"
+        ? q.data.email
+        : undefined,
+  );
 
   const bookingsQ = useQuery({
     queryKey: adminQueryKeys.userBookings(id),

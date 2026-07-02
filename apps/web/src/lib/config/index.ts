@@ -23,9 +23,11 @@ import type {
   SafeSumsubModuleConfig,
   SafeAuraModuleConfig,
   SafeSafetyModuleConfig,
+  SafeVerificationPolicy,
   TenantRegionMeta,
 } from "./types";
 import { mergeGlobalAndTenantFeatureFlags } from "./merge-feature-flags";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 
 const DEFAULT_AMPLITUDE: SafeAmplitudeConfig = {
   api_key_public: null,
@@ -435,6 +437,18 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
 
   const auth = await resolvePublicAuthPolicyForTenant(tenantId);
 
+  // Verification policy — tenant-aware; uses the same flags already fetched/merged above.
+  // We call the resolver (which re-fetches flags) to avoid duplicating the derivation logic.
+  // The bundle result is advisory; per-request API responses are authoritative.
+  const verificationPolicyBundle = await resolveVerificationPolicy(tenantId ?? null, environment);
+  const verification: SafeVerificationPolicy = {
+    mode: verificationPolicyBundle.mode,
+    sumsub_enabled: verificationPolicyBundle.sumsubEnabled,
+    manual_enabled: verificationPolicyBundle.manualEnabled,
+    required_for_providers: verificationPolicyBundle.requiredForProviders,
+    required_for_payouts: verificationPolicyBundle.requiredForPayouts,
+  };
+
   const flagsWithCalV2: Record<string, ResolvedFlag> = {
     ...flags,
     // V2 is the new standard. Default to true. Can still be disabled per-tenant if an emergency rollback is needed.
@@ -483,5 +497,6 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       aura,
       safety,
     },
+    verification,
   };
 }

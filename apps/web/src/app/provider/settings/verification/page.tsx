@@ -28,6 +28,8 @@ type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | 
 interface StatusResponse {
   status: VerificationStatus;
   sumsub_available: boolean;
+  manual_available?: boolean;
+  verification_mode?: string;
   sumsub_applicant_id?: string | null;
   rejection_reason?: string | null;
   manual_verification?: {
@@ -102,6 +104,8 @@ export default function VerificationPage() {
 
   const status = statusData?.status ?? "pending";
   const sumsubAvailable = statusData?.sumsub_available ?? false;
+  const manualAvailable = statusData?.manual_available !== false;
+  const verificationOff = statusData?.verification_mode === "off";
   const badgeCfg = STATUS_BADGE[status];
 
   // ─── SumSub launch ────────────────────────────────────────────────────────
@@ -262,6 +266,15 @@ export default function VerificationPage() {
           </Alert>
         ) : null}
 
+        {/* Verification off — no paths available */}
+        {verificationOff && !isApproved && (
+          <Alert className="mb-4">
+            <AlertDescription>
+              Identity verification is currently unavailable. Contact support if you need assistance.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* SumSub flow (when available and not yet verified) */}
         {sumsubAvailable && !isApproved && !sdkReady && (
           <Button onClick={launchVerification} disabled={launching} className="mb-4">
@@ -273,8 +286,8 @@ export default function VerificationPage() {
         )}
       </SectionCard>
 
-      {/* Manual document upload — shown when SumSub is not available OR as fallback */}
-      {!isApproved && !isUnderReview && (
+      {/* Manual document upload — shown when manual is enabled and not yet approved/under review */}
+      {!isApproved && !isUnderReview && !verificationOff && manualAvailable && (
         <SectionCard
           title={sumsubAvailable ? "Alternative: Manual document upload" : "Upload ID document"}
           className="mt-4"

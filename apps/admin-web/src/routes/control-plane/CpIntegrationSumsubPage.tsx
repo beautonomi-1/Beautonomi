@@ -5,6 +5,28 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpBack, CpField, EnvSelect } from "./cpShared";
 
+type VerificationMode = "off" | "manual" | "sumsub" | "both";
+
+type FlagSnapshot = {
+  id: string;
+  feature_key: string;
+  enabled: boolean;
+};
+
+const MODE_LABEL: Record<VerificationMode, string> = {
+  off: "Off — verification unavailable",
+  manual: "Manual only — admin reviews uploaded documents",
+  sumsub: "Sumsub only — automated KYC (no manual fallback)",
+  both: "Both — Sumsub primary, manual fallback",
+};
+
+function modeFromFlags(sumsub: boolean, manual: boolean): VerificationMode {
+  if (sumsub && manual) return "both";
+  if (sumsub) return "sumsub";
+  if (manual) return "manual";
+  return "off";
+}
+
 export function CpIntegrationSumsubPage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
   const [env, setEnv] = useState("production");
@@ -20,6 +42,17 @@ export function CpIntegrationSumsubPage() {
     webhook_secret_secret: "",
   });
   const [secretsSet, setSecretsSet] = useState({ app_token: false, secret_key: false, webhook: false });
+
+  // Verification policy flags (independent of Sumsub credentials/env)
+  const [flags, setFlags] = useState<FlagSnapshot[]>([]);
+  const [flagSaving, setFlagSaving] = useState(false);
+  const [flagMsg, setFlagMsg] = useState<string | null>(null);
+
+  const sumsubFlagOn = flags.find((f) => f.feature_key === "verification.sumsub.enabled")?.enabled ?? false;
+  const manualFlagOn = flags.find((f) => f.feature_key === "verification.manual.enabled")?.enabled ?? true;
+  const requiredProviders = flags.find((f) => f.feature_key === "provider_verification")?.enabled ?? false;
+  const requiredPayouts = flags.find((f) => f.feature_key === "verification.sumsub.required_for_payouts")?.enabled ?? false;
+  const currentMode = modeFromFlags(sumsubFlagOn, manualFlagOn);
 
   useEffect(() => {
     if (!allowed) return;
@@ -56,6 +89,56 @@ export function CpIntegrationSumsubPage() {
       c = true;
     };
   }, [allowed, env]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    let c = false;
+    (async () => {
+      try {
+        const res = await adminApi.getJson<{ data?: FlagSnapshot[] } | FlagSnapshot[]>("/api/admin/feature-flags");
+        if (c) return;
+        const rows: FlagSnapshot[] = (Array.isArray(res) ? res : (res as { data?: FlagSnapshot[] }).data) ?? [];
+        const KEYS = ["verification.sumsub.enabled", "verification.manual.enabled", "provider_verification", "verification.sumsub.required_for_payouts"];
+        setFlags(rows.filter((r) => KEYS.includes(r.feature_key)));
+      } catch {
+        // non-fatal — flags section stays hidden if load fails
+      }
+    })();
+    return () => { c = true; };
+  }, [allowed]);
+
+  const saveFlags = async (updates: { feature_key: string; enabled: boolean }[]) => {
+    setFlagSaving(true);
+    setFlagMsg(null);
+    try {
+      for (const upd of updates) {
+        const row = flags.find((f) => f.feature_key === upd.feature_key);
+        if (row) {
+          await adminApi.patchJson(`/api/admin/feature-flags/${row.id}`, { enabled: upd.enabled });
+          setFlags((prev) => prev.map((f) => f.id === row.id ? { ...f, enabled: upd.enabled } : f));
+        } else {
+          // flag row doesn't exist yet — create it via POST
+          const created = await adminApi.postJson<{ data?: FlagSnapshot }>("/api/admin/feature-flags", { feature_key: upd.feature_key, enabled: upd.enabled, feature_name: upd.feature_key, category: "control_plane" });
+          const newRow = (created as { data?: FlagSnapshot }).data;
+          if (newRow) setFlags((prev) => [...prev, newRow]);
+        }
+      }
+      setFlagMsg("Saved.");
+    } catch (e) {
+      setFlagMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setFlagSaving(false);
+    }
+  };
+
+  const applyMode = (mode: VerificationMode) => {
+    const sumsub = mode === "sumsub" || mode === "both";
+    const manual = mode === "manual" || mode === "both";
+    void saveFlags([
+      { feature_key: "verification.sumsub.enabled", enabled: sumsub },
+      { feature_key: "verification.manual.enabled", enabled: manual },
+    ]);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -184,6 +267,59 @@ export function CpIntegrationSumsubPage() {
           </button>
         </AdminPanel>
       )}
+
+      {/* Verification mode card */}
+      <AdminPageHeader title="Verification mode" description="Controls which verification paths are available to users and what providers are required to do." />
+      {flagMsg ? (
+        <AdminPanel>
+          <p className="text-sm text-gray-700">{flagMsg}</p>
+        </AdminPanel>
+      ) : null}
+      <AdminPanel className="space-y-4">
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-900">Mode</p>
+          <div className="space-y-1.5">
+            {(["both", "sumsub", "manual", "off"] as VerificationMode[]).map((mode) => (
+              <label key={mode} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="verification_mode"
+                  value={mode}
+                  checked={currentMode === mode}
+                  onChange={() => applyMode(mode)}
+                  disabled={flagSaving}
+                />
+                <span className={mode === "off" ? "text-red-600" : ""}>{MODE_LABEL[mode]}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            "Sumsub" paths require credentials configured above. Mode changes take effect immediately for API calls and on the next config-bundle refresh for mobile clients.
+          </p>
+        </div>
+        <hr />
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-900">Provider requirements</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={requiredProviders}
+              disabled={flagSaving}
+              onChange={(e) => void saveFlags([{ feature_key: "provider_verification", enabled: e.target.checked }])}
+            />
+            Require identity verification for providers to complete setup and go live
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={requiredPayouts}
+              disabled={flagSaving}
+              onChange={(e) => void saveFlags([{ feature_key: "verification.sumsub.required_for_payouts", enabled: e.target.checked }])}
+            />
+            Require approved identity verification before providers can request payouts
+          </label>
+        </div>
+      </AdminPanel>
     </div>
   );
 }

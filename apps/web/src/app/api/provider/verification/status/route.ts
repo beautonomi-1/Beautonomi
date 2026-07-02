@@ -9,7 +9,7 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 
 export async function GET(request: NextRequest) {
   try {
@@ -78,20 +78,12 @@ export async function GET(request: NextRequest) {
       .eq("id", identityUserId)
       .maybeSingle();
 
-    // Check if SumSub is configured and enabled
+    // Check verification policy for this environment and tenant.
     const { searchParams } = new URL(request.url);
     const env = searchParams.get("environment") ?? "production";
-    const sumsubConfig = await resolveSumsubConfig(
-      env,
-      providerTenantId,
-      "enabled, app_token_secret, secret_key_secret, tenant_id",
-    );
+    const policy = await resolveVerificationPolicy(providerTenantId, env);
 
-    const sumsubAvailable = Boolean(
-      sumsubConfig?.enabled &&
-      sumsubConfig?.app_token_secret &&
-      sumsubConfig?.secret_key_secret
-    );
+    const sumsubAvailable = policy.sumsubEnabled;
 
     // Derive a combined status from every provider verification surface:
     // Sumsub KYC, manual admin review, user identity flag, and public badge.
@@ -152,6 +144,10 @@ export async function GET(request: NextRequest) {
           : null,
       // Whether SumSub is available for this environment
       sumsub_available: sumsubAvailable,
+      // Whether manual document upload is available
+      manual_available: policy.manualEnabled,
+      // Combined mode: "off" | "manual" | "sumsub" | "both"
+      verification_mode: policy.mode,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to get verification status");

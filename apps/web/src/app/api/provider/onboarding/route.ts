@@ -11,6 +11,7 @@ import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 import { buildOnboardingCompletionResponse } from "@/lib/provider/build-onboarding-completion-response";
 import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark-provider-onboarding-lifecycle-complete";
 import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
+import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -456,6 +457,21 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
     const providerId = provider.id as string;
+
+    // If auto-approve was applied but the verification policy requires providers to
+    // be verified before going live, downgrade the new provider to pending_approval.
+    if (autoApprove) {
+      const onboardingPolicy = await resolveVerificationPolicy(tenantId);
+      if (onboardingPolicy.requiredForProviders) {
+        const alreadyVerified = await isProviderVerificationApproved(providerId);
+        if (!alreadyVerified) {
+          await supabaseAdmin
+            .from("providers")
+            .update({ status: "pending_approval", onboarding_state: "ready_for_activation" })
+            .eq("id", providerId);
+        }
+      }
+    }
 
     // Upload thumbnail, avatar (profile circle), and gallery images to storage
     let uploadedThumbnailUrl: string | null = null;

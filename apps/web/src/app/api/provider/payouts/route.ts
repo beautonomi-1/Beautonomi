@@ -13,6 +13,7 @@ import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-triggers";
+import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 
 /**
  * GET /api/provider/payouts
@@ -126,6 +127,21 @@ export async function POST(request: NextRequest) {
     const effectiveTenantId =
       (prow as { tenant_id?: string | null; currency?: string | null } | null)?.tenant_id ??
       (await resolveTenantIdWithZaFallback(request));
+
+    // KYC gate: block payout if required_for_payouts flag is on and provider is not verified.
+    const { searchParams: payoutParams } = new URL(request.url);
+    const payoutEnv = payoutParams.get("environment") ?? "production";
+    const payoutPolicy = await resolveVerificationPolicy(effectiveTenantId, payoutEnv);
+    if (payoutPolicy.requiredForPayouts) {
+      const verified = await isProviderVerificationApproved(providerId);
+      if (!verified) {
+        return errorResponse(
+          "Complete identity verification before requesting a payout. Go to Settings → Verification to get started.",
+          "VERIFICATION_REQUIRED",
+          403,
+        );
+      }
+    }
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const payoutCurrency =

@@ -191,8 +191,6 @@ const BASE_EXPO_CONFIG = {
         ios: {
           deploymentTarget: "15.1",
           privacyManifestAggregationEnabled: true,
-          // Sumsub native SDK: IdensicMobileSDK spec comes from the Sumsub Specs repo.
-          iosPodfileSourceRepos: ["https://github.com/SumSubstance/Specs.git"],
         },
         android: {
           minSdkVersion: 24,
@@ -205,6 +203,14 @@ const BASE_EXPO_CONFIG = {
         },
       },
     ],
+    // Sumsub native SDK: prepends CocoaPods source declarations to the generated
+    // Podfile so `pod install` can resolve IdensicMobileSDK from the SumSubstance
+    // Specs repo. iosPodfileSourceRepos is not a real expo-build-properties option.
+    "../../tooling/expo-plugins/withPodfileSources",
+    // Resolves the Android manifest merger conflict: expo-dev-launcher declares
+    // com.google.mlkit.vision.DEPENDENCIES=barcode_ui while idensic-mobile-sdk
+    // declares =face; we write the union value with tools:replace to settle it.
+    "../../tooling/expo-plugins/withMlKitVisionDependencies",
     "../../tooling/expo-plugins/withGradleWrapperResilience",
     [
       "expo-local-authentication",

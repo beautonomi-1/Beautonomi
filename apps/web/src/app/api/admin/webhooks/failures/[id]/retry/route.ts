@@ -44,16 +44,15 @@ export async function POST(
       );
     }
 
-    type WebhookEventRow = { retry_count?: number };
+    type WebhookEventRow = { attempt_count?: number };
     const eventData = webhookEvent as WebhookEventRow;
 
     const { data: updated, error: updateError } = await supabase
       .from("webhook_events")
       .update({
         status: "processing",
-        retry_count: (eventData.retry_count ?? 0) + 1,
+        attempt_count: (eventData.attempt_count ?? 0) + 1,
         error_message: null,
-        error_stack: null,
       })
       .eq("id", id)
       .select()
@@ -93,7 +92,7 @@ export async function POST(
       );
     }
 
-    type EventPayloadRow = { endpoint_id?: string; retry_count?: number; payload?: unknown };
+    type EventPayloadRow = { endpoint_id?: string; payload?: unknown };
     const eventPayload = webhookEventData as EventPayloadRow;
 
     const { data: endpoint } = await supabase
@@ -128,13 +127,15 @@ export async function POST(
       body: JSON.stringify(eventPayload.payload),
     });
 
+    // attempt_count was already incremented above; here we only record the
+    // delivery outcome. status must satisfy the webhook_events CHECK
+    // constraint ('processing','processed','failed') — 'delivered' is invalid.
     await supabase
       .from("webhook_events")
       .update({
-        status: response.ok ? "delivered" : "failed",
-        response_code: response.status,
-        last_attempt_at: new Date().toISOString(),
-        retry_count: (eventPayload.retry_count ?? 0) + 1,
+        status: response.ok ? "processed" : "failed",
+        response_status: response.status,
+        sent_at: new Date().toISOString(),
       })
       .eq("id", id);
 

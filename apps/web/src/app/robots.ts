@@ -1,10 +1,15 @@
 import { MetadataRoute } from "next";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
+import { isAdminHostRequest } from "@/lib/seo/admin-host";
 
 /** Host-accurate sitemap URL in robots.txt (multi-domain on one deployment). */
 export const dynamic = "force-dynamic";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
+  if (await isAdminHostRequest()) {
+    return { rules: [{ userAgent: "*", disallow: "/" }] };
+  }
+
   const baseUrl = await getPublicSiteOriginFromHeaders();
 
   return {

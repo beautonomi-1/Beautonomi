@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, errorResponse } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
-import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 import {
   buildManualVerificationUpsertRow,
   getManualVerificationSubmitBlock,
@@ -40,21 +40,13 @@ export async function GET(request: NextRequest) {
 
     if (verificationsError) throw verificationsError;
 
-    // Check if SumSub is configured for this environment and tenant.
+    // Check verification policy for this environment and tenant.
     const { searchParams } = new URL(request.url);
     const env = searchParams.get("environment") ?? "production";
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const sumsubConfig = await resolveSumsubConfig(
-      env,
-      tenantId,
-      "enabled, app_token_secret, secret_key_secret, tenant_id",
-    );
+    const policy = await resolveVerificationPolicy(tenantId, env);
 
-    const sumsubAvailable = Boolean(
-      sumsubConfig?.enabled &&
-      sumsubConfig?.app_token_secret &&
-      sumsubConfig?.secret_key_secret
-    );
+    const sumsubAvailable = policy.sumsubEnabled;
 
     // Derive a combined status
     const userStatus = userData.identity_verification_status ?? "none";
@@ -100,6 +92,10 @@ export async function GET(request: NextRequest) {
       can_submit_verification,
       // Whether SumSub automated verification is available
       sumsub_available: sumsubAvailable,
+      // Whether manual document upload is available
+      manual_available: policy.manualEnabled,
+      // Combined mode: "off" | "manual" | "sumsub" | "both"
+      verification_mode: policy.mode,
       // Most recent manual document submission
       manual_verification: mostRecentManual
         ? {
@@ -123,6 +119,19 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+
+    // Gate: manual upload must be enabled by the verification.manual.enabled flag.
+    const { searchParams: postParams } = new URL(request.url);
+    const postEnv = postParams.get("environment") ?? "production";
+    const postTenantId = await resolveTenantIdWithZaFallback(request);
+    const postPolicy = await resolveVerificationPolicy(postTenantId, postEnv);
+    if (!postPolicy.manualEnabled) {
+      return errorResponse(
+        "Manual document upload is currently disabled. Please use automated verification or contact support.",
+        "MANUAL_VERIFICATION_DISABLED",
+        403,
+      );
+    }
 
     const formData = await request.formData();
     const file = formData.get('file') as File;

@@ -166,6 +166,7 @@ export default function App() {
           <Route path="gift-cards/:id" element={<P.GiftCardDetailPage />} />
           <Route path="gift-cards" element={<P.GiftCardsListPage />} />
           <Route path="loyalty" element={<P.LoyaltyRulesPage />} />
+          <Route path="gamification" element={<P.GamificationHubPage />} />
           <Route path="gamification/point-rules" element={<P.GamificationPointRulesPage />} />
           <Route path="gamification/badges" element={<P.GamificationBadgesPage />} />
           <Route path="gamification/operations" element={<P.GamificationOperationsPage />} />

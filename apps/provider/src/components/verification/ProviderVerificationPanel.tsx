@@ -44,6 +44,8 @@ export type VerificationStatus = "pending" | "in_progress" | "approved" | "rejec
 export interface VerificationStatusResponse {
   status: VerificationStatus;
   sumsub_available: boolean;
+  manual_available?: boolean;
+  verification_mode?: string;
   sumsub_applicant_id?: string | null;
   rejection_reason?: string | null;
   manual_verification?: {
@@ -118,6 +120,8 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
   const statusData = data as VerificationStatusResponse | undefined;
   const status = statusData?.status ?? "pending";
   const sumsubAvailable = statusData?.sumsub_available ?? false;
+  const manualAvailable = statusData?.manual_available !== false; // default true for backwards compat
+  const verificationOff = statusData?.verification_mode === "off";
   const config = STATUS_CONFIG[status];
 
   useEffect(() => {
@@ -307,9 +311,21 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
           </View>
         )}
 
-        {/* Manual upload — always available so providers have a fallback even
-            when SumSub is offered (camera issues, unsupported document, etc.). */}
-        {canAct && (
+        {/* Verification off — no paths available */}
+        {verificationOff && canAct && (
+          <View style={twStyle("mt-6 rounded-2xl bg-gray-50 p-5")}>
+            <View style={twStyle("flex-row items-center gap-2 mb-2")}>
+              <Ionicons name="ban-outline" size={18} color="#6b7280" />
+              <Text style={twStyle("text-sm font-semibold text-gray-700")}>Verification unavailable</Text>
+            </View>
+            <Text style={twStyle("text-sm text-gray-600")}>
+              Identity verification is currently unavailable. Contact support if you need assistance.
+            </Text>
+          </View>
+        )}
+
+        {/* Manual upload — shown when manual is available and action is needed */}
+        {canAct && manualAvailable && (
           <View style={twStyle("mt-6")}>
             {sumsubAvailable && (
               <View style={twStyle("flex-row items-center mb-5")}>
@@ -325,7 +341,7 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
                 <Text style={twStyle("flex-1 text-sm text-blue-700")}>
                   {sumsubAvailable
                     ? "Prefer to upload your ID instead? Submit a copy and our team will review it within 1–2 business days."
-                    : "Our automated verification is being set up. Upload a copy of your ID and our team will review it within 1–2 business days."}
+                    : "Upload a copy of your ID and our team will review it within 1–2 business days."}
                 </Text>
               </View>
             </View>

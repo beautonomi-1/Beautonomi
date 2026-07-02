@@ -72,12 +72,6 @@ const FLAG_CATEGORIES = [
  * Displayed as a muted badge so operators are not misled.
  */
 const UNWIRED_FLAG_KEYS: Record<string, string> = {
-  "verification.sumsub.enabled":
-    "Not enforced in code — Sumsub is toggled via Control plane → Integrations → Sumsub",
-  "verification.sumsub.required_for_payouts":
-    "Not enforced in code — payout eligibility is controlled separately",
-  provider_verification:
-    "Not enforced in code — provider KYC state is managed via the verifications queue",
   payment_stripe:
     "Not enforced in code — Stripe is not the processor. Online card payments are gated by payment_paystack.",
 };
@@ -389,7 +383,7 @@ export function FeatureFlagsListPage() {
   if (q.isLoading)
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Feature flags" />
+        <AdminPageHeader title="Feature Flags" />
         <AdminPanel><AdminPageSkeleton rows={5} /></AdminPanel>
       </div>
     );
@@ -401,8 +395,8 @@ export function FeatureFlagsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Feature flags"
-        description="Toggle features on/off per tenant or globally. Toggles take effect immediately."
+        title="Feature Flags"
+        description="Manage feature flags for the platform. Each flag can be scoped globally (affects all markets) or as a tenant override (affects one market only). Toggles take effect immediately without a redeploy."
         actions={
           <div className="flex gap-2">
             <button
@@ -668,7 +662,17 @@ export function FeatureFlagsListPage() {
                         <p className="mt-1 text-[10px] text-amber-600">{unwiredNote}</p>
                       ) : null}
                     </AdminTd>
-                    <AdminTd className="text-xs">{r.tenant_id ? "Tenant" : "Global"}</AdminTd>
+                    <AdminTd className="text-xs">
+                      {r.tenant_id ? (
+                        <span className="inline-block rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200" title={`Tenant override for: ${r.tenant_id}`}>
+                          Tenant override
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-200">
+                          Global
+                        </span>
+                      )}
+                    </AdminTd>
                     <AdminTd>
                       <button
                         type="button"

@@ -1,11 +1,12 @@
-import { useMemo, useState, useCallback } from "react";
+import { Fragment, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_USERS_TRUST, ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -21,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminToast } from "@/lib/adminToast";
+import { cn } from "@/lib/cn";
 
 type LogRow = Record<string, unknown> & {
   id?: string;
@@ -110,9 +112,203 @@ function JsonDiff({ before, after, fields }: { before?: Record<string, unknown> 
   );
 }
 
+// ─── Config Change Log tab ────────────────────────────────────────────────────
+
+type ConfigChangeRow = {
+  id: string;
+  changed_by?: string | null;
+  area?: string | null;
+  record_key?: string | null;
+  before_state?: Record<string, unknown> | null;
+  after_state?: Record<string, unknown> | null;
+  created_at?: string;
+};
+
+type ConfigChangeEnvelope = {
+  items: ConfigChangeRow[];
+  total: number;
+  page: number;
+  limit: number;
+  has_more: boolean;
+};
+
+function ConfigChangeLogTab({ canAccess }: { canAccess: boolean }) {
+  const [sp, setSp] = useSearchParams();
+  const page = Math.max(1, parseInt(sp.get("ccPage") || "1", 10) || 1);
+  const area = sp.get("ccArea") || "";
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const updateParams = useCallback(
+    (next: Record<string, string | null>) => {
+      const n = new URLSearchParams(sp);
+      for (const [k, v] of Object.entries(next)) {
+        if (v == null || v === "") n.delete(k);
+        else n.set(k, v);
+      }
+      setSp(n, { replace: true });
+    },
+    [sp, setSp]
+  );
+
+  const q = useQuery({
+    queryKey: ["admin", "config-change-log", page, area],
+    queryFn: () => {
+      const p = new URLSearchParams({ page: String(page), limit: "20" });
+      if (area) p.set("area", area);
+      // getJson unwraps the standard { data: T, error: null } envelope;
+      // getRawJson would leave items nested under .data.data.
+      return adminApi.getJson<ConfigChangeEnvelope>(
+        `/api/admin/control-plane/config-change-log?${p}`,
+        { timeoutMs: 30_000 }
+      );
+    },
+    enabled: canAccess,
+  });
+
+  if (!canAccess) {
+    return <PermissionDenied message="Platform config access is required to view the config change log." />;
+  }
+  if (q.isLoading) return <AdminPageSkeleton rows={5} />;
+  if (q.error) {
+    if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+  }
+
+  const items = q.data?.items ?? [];
+  const total = q.data?.total ?? 0;
+  const totalPages = q.data ? Math.max(1, Math.ceil(total / q.data.limit)) : 1;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Records every change made via the Platform Advanced (control-plane) config surfaces — integration settings,
+        module configs, and environment-scoped feature flags. Separate from the main audit log.
+      </p>
+      <AdminPanel>
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="text"
+            placeholder="Filter by area (e.g. sumsub, gemini)"
+            defaultValue={area}
+            onBlur={(e) => updateParams({ ccArea: e.target.value.trim() || null, ccPage: "1" })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")
+                updateParams({ ccArea: (e.target as HTMLInputElement).value.trim() || null, ccPage: "1" });
+            }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          {area && (
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+              onClick={() => updateParams({ ccArea: null, ccPage: "1" })}
+            >
+              Clear
+            </button>
+          )}
+          <span className="ml-auto self-center text-sm text-gray-500">{total} record{total !== 1 ? "s" : ""}</span>
+        </div>
+      </AdminPanel>
+
+      {items.length === 0 ? (
+        <EmptyState title="No config changes" description="Config changes made via Platform Advanced will appear here." />
+      ) : (
+        <AdminDataTable>
+          <AdminTableHead>
+            <tr>
+              <AdminTh>When</AdminTh>
+              <AdminTh>Area</AdminTh>
+              <AdminTh>Record key</AdminTh>
+              <AdminTh>Changed by</AdminTh>
+            </tr>
+          </AdminTableHead>
+          <AdminTableBody>
+            {items.map((row) => {
+              const isExpanded = expandedId === row.id;
+              return (
+                <Fragment key={row.id}>
+                  <tr
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                  >
+                    <AdminTd className="whitespace-nowrap text-xs">{formatDateTime(row.created_at)}</AdminTd>
+                    <AdminTd className="text-xs">{row.area ?? "—"}</AdminTd>
+                    <AdminTd className="text-xs font-mono">{row.record_key ?? "—"}</AdminTd>
+                    <AdminTd className="text-xs font-mono">{row.changed_by ?? "system"}</AdminTd>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <AdminTd colSpan={4} className="bg-gray-50 p-4">
+                        <div className="grid gap-4 text-sm sm:grid-cols-2">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">Before</h4>
+                            <pre className="mt-1 max-h-40 overflow-auto rounded bg-gray-100 p-2 text-xs">
+                              {JSON.stringify(row.before_state, null, 2) || "—"}
+                            </pre>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-900">After</h4>
+                            <pre className="mt-1 max-h-40 overflow-auto rounded bg-gray-100 p-2 text-xs">
+                              {JSON.stringify(row.after_state, null, 2) || "—"}
+                            </pre>
+                          </div>
+                        </div>
+                      </AdminTd>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </AdminTableBody>
+        </AdminDataTable>
+      )}
+
+      {total > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            disabled={page <= 1}
+            onClick={() => updateParams({ ccPage: String(page - 1) })}
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            disabled={page >= totalPages}
+            onClick={() => updateParams({ ccPage: String(page + 1) })}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main AuditLogsPage with tab bar ─────────────────────────────────────────
+
+type AuditTab = "audit" | "config-changes";
+
+const TABS: { id: AuditTab; label: string }[] = [
+  { id: "audit", label: "Audit Logs" },
+  { id: "config-changes", label: "Config Changes" },
+];
+
 export function AuditLogsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
+  const { canAccess } = useAdminSession();
+  const canSeeConfigChanges = canAccess(ADMIN_SECTION_PLATFORM_CONFIG);
   const [sp, setSp] = useSearchParams();
+  const activeTab = (sp.get("tab") as AuditTab | null) ?? "audit";
+
+  const setTab = (tab: AuditTab) => {
+    const n = new URLSearchParams(sp);
+    n.set("tab", tab);
+    setSp(n, { replace: true });
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
@@ -179,10 +375,42 @@ export function AuditLogsPage() {
   }, [rows]);
 
   if (denied) return denied;
+
+  const tabBar = (
+    <div className="flex gap-1 border-b border-gray-200">
+      {TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => setTab(t.id)}
+          className={cn(
+            "px-4 py-2 text-sm font-medium transition-colors",
+            activeTab === t.id
+              ? "border-b-2 border-primary text-primary"
+              : "text-gray-500 hover:text-gray-800"
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (activeTab === "config-changes") {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Audit Logs" description="Platform activity trail and config change history." />
+        {tabBar}
+        <ConfigChangeLogTab canAccess={canSeeConfigChanges} />
+      </div>
+    );
+  }
+
   if (q.isLoading) {
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Audit logs" />
+        <AdminPageHeader title="Audit Logs" />
+        {tabBar}
         <AdminPanel>
           <AdminPageSkeleton rows={6} />
         </AdminPanel>
@@ -196,7 +424,8 @@ export function AuditLogsPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Audit logs" />
+      <AdminPageHeader title="Audit Logs" description="Immutable record of all platform activity." />
+      {tabBar}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">

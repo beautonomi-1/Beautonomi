@@ -4,7 +4,8 @@ import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated, notifySupportStaffInboxActivity } from "@/lib/notifications/notification-service";
-import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
+import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifySupportTicketUpdated } from "@/lib/integrations/slack/triggers";
 
@@ -54,8 +55,29 @@ export async function GET(
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
 
+    // Enrich the ticket with server-computed attention fields so the detail
+    // view banner stays consistent with the list queue (same helper).
+    const t = ticket as Record<string, unknown>;
+    const attention = computeTicketAttentionFields({
+      status: t.status as string | null,
+      priority: t.priority as string | null,
+      last_message_from: t.last_message_from as string | null,
+      last_message_at: t.last_message_at as string | null,
+      first_staff_reply_at: t.first_staff_reply_at as string | null,
+      first_response_due_at: t.first_response_due_at as string | null,
+      sla_resolution_due_at: t.sla_resolution_due_at as string | null,
+      assigned_to: t.assigned_to as string | null,
+      last_staff_view_at: t.last_staff_view_at as string | null,
+      needs_agent_response: t.needs_agent_response as boolean | null,
+    });
+
     return NextResponse.json({
-      ticket,
+      ticket: {
+        ...ticket,
+        attention_state: attention.attention_state,
+        sla_state: attention.sla_state,
+        agent_unread: attention.agent_unread,
+      },
       messages: messages || [],
       notes: notes || [],
     });
@@ -93,7 +115,7 @@ export async function PATCH(
 
     const { data: before } = await supabase
       .from("support_tickets")
-      .select("assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at")
+      .select("assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at, first_staff_reply_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -131,6 +153,10 @@ export async function PATCH(
         typeof before?.created_at === "string" ? before.created_at : undefined;
       if (createdAt) {
         updateData.sla_resolution_due_at = computeSlaResolutionDueIso(createdAt, String(priority));
+        // Only recompute first-response deadline while no staff reply has been sent yet.
+        if (!before?.first_staff_reply_at) {
+          updateData.first_response_due_at = computeFirstResponseDueIso(createdAt, String(priority));
+        }
       }
     }
     if (assigned_to !== undefined) updateData.assigned_to = assigned_to;

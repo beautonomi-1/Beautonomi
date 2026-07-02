@@ -14,6 +14,8 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminListToolbar } from "@/components/admin/AdminListToolbar";
+import { AdminBulkActionBar } from "@/components/admin/AdminBulkActionBar";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
@@ -67,7 +69,6 @@ export function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<string>("all");
   const deferredSearch = useDeferredValue(searchQuery);
@@ -277,77 +278,62 @@ export function BookingsPage() {
       </AdminPanel>
 
       <AdminPanel>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <input
-            type="search"
-            placeholder="Filter by booking number…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
+        <AdminListToolbar
+          searchValue={searchQuery}
+          onSearchChange={(v) => { setSearchQuery(v); setPage(0); }}
+          searchPlaceholder="Search by booking number…"
+          hasActiveFilters={statusFilter !== "all" || !!dateFilter}
+          onClearFilters={() => { setStatusFilter("all"); setDateFilter(""); setPage(0); }}
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              value: statusFilter,
+              onChange: (v) => { setStatusFilter(v); setPage(0); },
+              options: [
+                { value: "all", label: "All statuses" },
+                { value: "pending", label: "Pending" },
+                { value: "confirmed", label: "Confirmed" },
+                { value: "in_progress", label: "In progress" },
+                { value: "completed", label: "Completed" },
+                { value: "cancelled", label: "Cancelled" },
+                { value: "no_show", label: "No show" },
+              ],
+            },
+            {
+              key: "date",
+              label: "Scheduled date",
+              type: "date",
+              value: dateFilter,
+              onChange: (v) => { setDateFilter(v); setPage(0); },
+            },
+          ]}
+          className="mb-4"
+        />
+
+        <AdminBulkActionBar
+          selectedCount={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+        >
           <button
             type="button"
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-            onClick={() => setShowFilters((s) => !s)}
+            className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            disabled={bulkMutation.isPending}
+            onClick={() => runBulk("complete")}
           >
-            Filters
+            Mark complete
           </button>
-        </div>
-        {showFilters ? (
-          <div className="mb-4 grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-gray-600">API status filter</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm"
-              >
-                <option value="all">All</option>
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="no_show">No show</option>
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-600">Scheduled date</span>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm"
-              />
-            </label>
-          </div>
-        ) : null}
-
-        {selectedIds.size > 0 ? (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-            <span>{selectedIds.size} selected</span>
-            <button type="button" className="rounded bg-white px-2 py-1 text-gray-800 ring-1 ring-gray-200" onClick={() => setSelectedIds(new Set())}>
-              Clear
-            </button>
-            <button
-              type="button"
-              className="rounded bg-gray-900 px-2 py-1 text-white disabled:opacity-50"
-              disabled={bulkMutation.isPending}
-              onClick={() => runBulk("complete")}
-            >
-              Mark complete
-            </button>
-            <button
-              type="button"
-              className="rounded bg-red-700 px-2 py-1 text-white disabled:opacity-50"
-              disabled={bulkMutation.isPending}
-              onClick={() => runBulk("cancel")}
-            >
-              Cancel
-            </button>
-            <span className="text-xs text-amber-900/80">Use Export CSV above for the current filtered booking set.</span>
-          </div>
-        ) : null}
+          <button
+            type="button"
+            className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            disabled={bulkMutation.isPending}
+            onClick={() => runBulk("cancel")}
+          >
+            Cancel
+          </button>
+          <span className="text-xs text-gray-500">Use Export CSV for the current filtered set.</span>
+        </AdminBulkActionBar>
 
         <div className="mb-4 flex flex-wrap gap-2">
           {(

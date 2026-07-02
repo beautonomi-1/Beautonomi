@@ -11,6 +11,7 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import { getSumsubAccessToken } from "@/lib/verification/sumsub-token";
 import { createEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 
 function parseEnv(s: string | null): string {
   const ENVS = ["production", "staging", "development"];
@@ -28,6 +29,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
     const tenantId = await resolveTenantIdWithZaFallback(request);
+
+    // Gate: Sumsub must be enabled (flag + credentials).
+    const policy = await resolveVerificationPolicy(tenantId, environment);
+    if (!policy.sumsubEnabled) {
+      return errorResponse(
+        "Automated verification is not available. Please upload your document manually.",
+        "SUMSUB_DISABLED",
+        403,
+      );
+    }
 
     // Use "user:{user.id}" as the SumSub externalUserId so the webhook can
     // distinguish customer applicants from provider ones.

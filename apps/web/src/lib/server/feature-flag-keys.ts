@@ -31,6 +31,36 @@ export const FEATURE_FLAG_KEYS = {
    * Booking card payments still use `/api/provider/sales` regardless of this flag.
    */
   PROVIDER_UNIFIED_POS: "provider.unified_pos_checkout",
+
+  // ── Verification / KYC ──────────────────────────────────────────────────────
+
+  /**
+   * Master switch for Sumsub-automated KYC.
+   * Effective availability = this flag AND credentials present in
+   * sumsub_integration_config.  Toggling this off hides the Sumsub CTA on all
+   * clients and returns 403 from the Sumsub token endpoints.
+   */
+  VERIFICATION_SUMSUB: "verification.sumsub.enabled",
+
+  /**
+   * Master switch for manual document upload.
+   * When disabled, POST /api/me/verification returns 403 MANUAL_VERIFICATION_DISABLED.
+   * Defaults to true so existing deployments are unaffected.
+   */
+  VERIFICATION_MANUAL: "verification.manual.enabled",
+
+  /**
+   * When enabled, providers must have approved identity verification before
+   * they can complete setup (identity step becomes required) and auto-approve
+   * will not activate unverified providers.
+   */
+  VERIFICATION_REQUIRED_FOR_PROVIDERS: "provider_verification",
+
+  /**
+   * When enabled, POST /api/provider/payouts is blocked until the provider
+   * has approved identity verification.
+   */
+  VERIFICATION_REQUIRED_FOR_PAYOUTS: "verification.sumsub.required_for_payouts",
 } as const;
 
 export type PaymentRelatedFeatureKey =

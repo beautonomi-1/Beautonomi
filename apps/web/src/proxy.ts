@@ -183,7 +183,7 @@ export async function proxy(request: NextRequest) {
 
     if (isAdminHost(host)) {
       if (pathname === '/') {
-        return setCsrfCookie(withNoIndexAdmin(NextResponse.rewrite(new URL('/admin', request.url))));
+        return withNoIndexAdmin(NextResponse.redirect(new URL('/admin', request.url), 307));
       }
 
       if (

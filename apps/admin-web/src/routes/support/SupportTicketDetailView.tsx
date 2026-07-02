@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
@@ -23,7 +23,7 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
 import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
-import { Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -43,8 +43,16 @@ type TicketRow = Record<string, unknown> & {
   assigned_to?: string | null;
   tags?: string[] | null;
   sla_resolution_due_at?: string | null;
+  first_response_due_at?: string | null;
   first_staff_reply_at?: string | null;
   last_customer_reply_at?: string | null;
+  last_message_from?: string | null;
+  last_message_at?: string | null;
+  last_staff_view_at?: string | null;
+  needs_agent_response?: boolean | null;
+  attention_state?: string | null;
+  sla_state?: string | null;
+  agent_unread?: boolean | null;
   csat_score?: number | null;
   csat_comment?: string | null;
   created_at?: string;
@@ -183,6 +191,7 @@ type SupportTicketDetailViewProps = {
 export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketDetailViewProps) {
   const isPanel = variant === "panel";
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
   const { bootstrap } = useAdminSession();
   const myStaffUserId = bootstrap?.userId ?? "";
@@ -219,10 +228,47 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
     staleTime: 60_000,
   });
 
-  const invalidateTicket = () => {
+  const invalidateTicket = useCallback(() => {
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTicketDetail(id) });
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
-  };
+  }, [qc, id]);
+
+  // Stamp last_staff_view_at when the ticket loads so agent-unread clears.
+  const seenStampedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!allowed || !id || seenStampedRef.current === id) return;
+    seenStampedRef.current = id;
+    void adminApi
+      .postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/seen`, {})
+      .then(() => void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() }))
+      .catch(() => {/* best-effort */});
+  }, [allowed, id, qc]);
+
+  // Next-in-queue: fetch the smart-ordered needs-response queue and find the next ticket after this one.
+  const nextQueueQ = useQuery({
+    queryKey: ["support-tickets-next-queue", id],
+    queryFn: () =>
+      adminApi.getJson<{ tickets: Array<{ id: string }> }>(
+        "/api/admin/support-tickets?sort=smart&needs_response=1&limit=25",
+        { timeoutMs: 15_000 },
+      ),
+    enabled: allowed && !!id,
+    staleTime: 30_000,
+  });
+  const nextTicketId = (() => {
+    const list = nextQueueQ.data?.tickets ?? [];
+    if (list.length === 0) return null;
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx === -1) return list[0]?.id ?? null;
+    return list[idx + 1]?.id ?? null;
+  })();
+  const handleNextInQueue = useCallback(() => {
+    if (nextTicketId) {
+      navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(nextTicketId)}`));
+    } else {
+      navigate(adminSpaTo("/admin/support-tickets?saved_view=needs_response"));
+    }
+  }, [nextTicketId, navigate]);
 
   // Realtime: refresh the ticket detail + list when this ticket or its messages change.
   const rtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -457,13 +503,83 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
     adminToast.success("Article link added to reply");
   };
 
+  // Compute attention banner details from the ticket row.
+  const attentionState = str(ticket.attention_state);
+  const slaState = str(ticket.sla_state);
+  const ticketStatus = str(ticket.status);
+  const firstRespDue = ticket.first_response_due_at ? new Date(str(ticket.first_response_due_at)) : null;
+  const slaDue = ticket.sla_resolution_due_at ? new Date(str(ticket.sla_resolution_due_at)) : null;
+  const nowMs = Date.now();
+
+  const banner = ((): { text: string; style: "red" | "amber" | "blue" } | null => {
+    const isDone = ticketStatus === "resolved" || ticketStatus === "closed";
+    if (isDone) return null;
+    if (attentionState === "first_response_overdue" && firstRespDue) {
+      const overdueMs = nowMs - firstRespDue.getTime();
+      const overdueH = Math.floor(overdueMs / 3600_000);
+      const overdueText = overdueH > 0 ? ` by ${overdueH}h` : "";
+      return { text: `First response overdue${overdueText} — customer has been waiting for your first reply`, style: "red" };
+    }
+    if (slaState === "breached" && slaDue) {
+      const overdueMs = nowMs - slaDue.getTime();
+      const overdueH = Math.floor(overdueMs / 3600_000);
+      const overdueD = Math.floor(overdueH / 24);
+      const overdueText = overdueD > 0 ? ` (${overdueD}d ${overdueH % 24}h)` : overdueH > 0 ? ` (${overdueH}h)` : "";
+      return { text: `Resolution SLA breached${overdueText}`, style: "red" };
+    }
+    if (attentionState === "awaiting_agent") {
+      return { text: "Awaiting your reply — customer replied last", style: "blue" };
+    }
+    if (slaState === "at_risk" && slaDue) {
+      const remainMs = slaDue.getTime() - nowMs;
+      const remainH = Math.ceil(remainMs / 3600_000);
+      return { text: `SLA due in ${remainH}h — at risk`, style: "amber" };
+    }
+    return null;
+  })();
+
   return (
     <div className={isPanel ? "space-y-4" : "space-y-6"}>
+      {/* Attention / SLA banner */}
+      {banner ? (
+        <div
+          className={`flex items-start gap-3 rounded-xl px-4 py-3 text-sm font-medium ${
+            banner.style === "red"
+              ? "bg-red-50 text-red-800 border border-red-200"
+              : banner.style === "amber"
+                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                : "bg-blue-50 text-blue-800 border border-blue-200"
+          }`}
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="flex-1">{banner.text}</span>
+          {!isPanel && nextTicketId !== undefined ? (
+            <button
+              type="button"
+              onClick={handleNextInQueue}
+              className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-current/20 bg-white/60 px-3 py-1 text-xs font-semibold hover:bg-white/80"
+            >
+              Next in queue <ArrowRight className="h-3 w-3" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <AdminPageHeader
         title={str(ticket.subject) || "Support ticket"}
         description={`#${str(ticket.ticket_number)} · ${str(ticket.status).replace(/_/g, " ")}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {!isPanel && (
+              <button
+                type="button"
+                onClick={handleNextInQueue}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+                title={nextTicketId ? "Open next needs-response ticket" : "Return to queue"}
+              >
+                Next in queue <ArrowRight className="h-4 w-4" aria-hidden />
+              </button>
+            )}
             <button
               type="button"
               className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
@@ -482,7 +598,7 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
               </Link>
             ) : (
               <Link
-                to={adminSpaTo("/admin/support-tickets")}
+                to={adminSpaTo("/admin/support-tickets?saved_view=needs_response")}
                 className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
               >
                 ← Queue

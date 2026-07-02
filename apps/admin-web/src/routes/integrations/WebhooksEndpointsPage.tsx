@@ -1,5 +1,6 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -22,6 +23,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { cn } from "@/lib/cn";
 
 interface WebhookEndpoint {
   id: string;
@@ -64,6 +66,195 @@ function defaultForm() {
   };
 }
 
+// ─── Failures tab ─────────────────────────────────────────────────────────────
+
+interface WebhookFailureRow {
+  id: string;
+  event_type?: string;
+  source?: string;
+  endpoint_id?: string;
+  error_message?: string | null;
+  // webhook_events tracks delivery attempts in attempt_count (migration 111).
+  attempt_count?: number;
+  payload?: unknown;
+  created_at?: string;
+  next_retry_at?: string | null;
+  status?: string;
+}
+
+function WebhookFailuresTab({ allowed }: { allowed: boolean }) {
+  const [sp, setSp] = useSearchParams();
+  const qc = useQueryClient();
+  const page = Math.max(1, parseInt(sp.get("fp") || "1", 10) || 1);
+  const source = sp.get("fsrc") || "";
+
+  const updateParams = useCallback(
+    (next: Record<string, string | null>) => {
+      const n = new URLSearchParams(sp);
+      for (const [k, v] of Object.entries(next)) {
+        if (v == null || v === "") n.delete(k);
+        else n.set(k, v);
+      }
+      setSp(n, { replace: true });
+    },
+    [sp, setSp]
+  );
+
+  const q = useQuery({
+    queryKey: ["admin", "webhook-failures", page, source],
+    queryFn: () => {
+      const p = new URLSearchParams({ page: String(page), limit: "30" });
+      if (source) p.set("source", source);
+      return adminApi.getRawJson<{
+        data: WebhookFailureRow[];
+        meta: { page: number; limit: number; total: number; has_more: boolean };
+      }>(`/api/admin/webhooks/failures?${p}`, { timeoutMs: 30_000 });
+    },
+    enabled: allowed,
+  });
+
+  const retryMut = useMutation({
+    mutationFn: (id: string) =>
+      // postJson unwraps { data: T } → returns T directly
+      adminApi.postJson<{ id: string; retry_initiated: boolean; delivered: boolean }>(
+        `/api/admin/webhooks/failures/${id}/retry`,
+        {},
+      ),
+    onSuccess: (res) => {
+      if (res?.delivered) {
+        adminToast.success("Webhook re-delivered successfully");
+      } else {
+        adminToast.warning("Retry queued — the endpoint returned a non-2xx response. Check failures again shortly.");
+      }
+      void qc.invalidateQueries({ queryKey: ["admin", "webhook-failures"] });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Retry failed"),
+  });
+
+  if (q.isLoading) return <AdminPageSkeleton rows={4} />;
+  if (q.error) {
+    if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+  }
+
+  const failures = q.data?.data ?? [];
+  const meta = q.data?.meta;
+  const totalPages = meta ? Math.max(1, Math.ceil(meta.total / meta.limit)) : 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder="Filter by source (e.g. paystack, yoco)"
+          defaultValue={source}
+          onBlur={(e) => updateParams({ fsrc: e.target.value.trim() || null, fp: "1" })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter")
+              updateParams({ fsrc: (e.target as HTMLInputElement).value.trim() || null, fp: "1" });
+          }}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        {source && (
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+            onClick={() => updateParams({ fsrc: null, fp: "1" })}
+          >
+            Clear
+          </button>
+        )}
+        <button
+          type="button"
+          className={adminToolbarButtonClass(q.isFetching)}
+          disabled={q.isFetching}
+          onClick={() => void q.refetch()}
+        >
+          Refresh
+        </button>
+        <span className="ml-auto text-sm text-gray-500">{meta?.total ?? 0} failure{meta?.total !== 1 ? "s" : ""}</span>
+      </div>
+
+      {failures.length === 0 ? (
+        <EmptyState
+          title="No webhook failures"
+          description="All recent webhook deliveries succeeded. Failures will appear here for monitoring and retry."
+        />
+      ) : (
+        <AdminDataTable>
+          <AdminTableHead>
+            <tr>
+              <AdminTh>When</AdminTh>
+              <AdminTh>Event type</AdminTh>
+              <AdminTh>Source</AdminTh>
+              <AdminTh>Retries</AdminTh>
+              <AdminTh>Error</AdminTh>
+              <AdminTh>Actions</AdminTh>
+            </tr>
+          </AdminTableHead>
+          <AdminTableBody>
+            {failures.map((f) => (
+              <tr key={f.id}>
+                <AdminTd className="whitespace-nowrap text-xs">
+                  {f.created_at ? new Date(f.created_at).toLocaleString() : "—"}
+                </AdminTd>
+                <AdminTd className="text-xs font-mono">{f.event_type ?? "—"}</AdminTd>
+                <AdminTd className="text-xs">{f.source ?? "—"}</AdminTd>
+                <AdminTd className="text-xs">{f.attempt_count ?? 0}</AdminTd>
+                <AdminTd className="max-w-xs text-xs text-red-700">
+                  <span title={f.error_message ?? undefined} className="line-clamp-2">
+                    {f.error_message ?? "Unknown error"}
+                  </span>
+                </AdminTd>
+                <AdminTd>
+                  <button
+                    type="button"
+                    disabled={retryMut.isPending}
+                    onClick={() => retryMut.mutate(f.id)}
+                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Retry
+                  </button>
+                </AdminTd>
+              </tr>
+            ))}
+          </AdminTableBody>
+        </AdminDataTable>
+      )}
+
+      {meta && meta.total > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            disabled={page <= 1}
+            onClick={() => updateParams({ fp: String(page - 1) })}
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            disabled={page >= totalPages}
+            onClick={() => updateParams({ fp: String(page + 1) })}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
+
+type WebhookTab = "endpoints" | "failures";
+const WEBHOOK_TABS: { id: WebhookTab; label: string }[] = [
+  { id: "endpoints", label: "Endpoints" },
+  { id: "failures", label: "Failures & Retry" },
+];
+
 export function WebhooksEndpointsPage() {
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_INTEGRATIONS_DEV,
@@ -71,6 +262,14 @@ export function WebhooksEndpointsPage() {
   );
   useAdminDocumentTitle("Webhooks");
   const qc = useQueryClient();
+  const [sp, setSp] = useSearchParams();
+  const activeTab = (sp.get("tab") as WebhookTab | null) ?? "endpoints";
+
+  const setTab = (tab: WebhookTab) => {
+    const n = new URLSearchParams(sp);
+    n.set("tab", tab);
+    setSp(n, { replace: true });
+  };
 
   const [showCreate, setShowCreate] = useState(false);
   const [editEndpoint, setEditEndpoint] = useState<WebhookEndpoint | null>(null);
@@ -173,10 +372,45 @@ export function WebhooksEndpointsPage() {
   }
 
   if (denied) return denied;
+
+  const tabBar = (
+    <div className="flex gap-1 border-b border-gray-200">
+      {WEBHOOK_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => setTab(t.id)}
+          className={cn(
+            "px-4 py-2 text-sm font-medium transition-colors",
+            activeTab === t.id
+              ? "border-b-2 border-primary text-primary"
+              : "text-gray-500 hover:text-gray-800"
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (activeTab === "failures") {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader
+          title="Webhooks"
+          description="Manage webhook endpoints and monitor failed deliveries."
+        />
+        {tabBar}
+        <WebhookFailuresTab allowed={allowed} />
+      </div>
+    );
+  }
+
   if (q.isLoading)
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Webhooks" />
+        {tabBar}
         <AdminPanel>
           <AdminPageSkeleton rows={4} />
         </AdminPanel>
@@ -214,6 +448,7 @@ export function WebhooksEndpointsPage() {
           </div>
         }
       />
+      {tabBar}
 
       {/* Signing secret reveal (once) */}
       <AdminModal
