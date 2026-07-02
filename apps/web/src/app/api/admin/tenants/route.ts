@@ -70,7 +70,10 @@ export async function POST(request: NextRequest) {
     const defaultCurrency = String(body.default_currency ?? "").trim().toUpperCase();
     const defaultLanguage = String(body.default_language ?? "en").trim().toLowerCase();
     const defaultTimezone = String(body.default_timezone ?? "").trim();
-    const lifecycle = body.lifecycle === "sandbox" || body.lifecycle === "suspended" ? body.lifecycle : "active";
+    const lifecycle =
+      body.lifecycle === "sandbox" || body.lifecycle === "suspended" || body.lifecycle === "disabled"
+        ? body.lifecycle
+        : "active";
 
     if (!slug || slug.length < 2) {
       return errorResponse("slug must be at least 2 characters (letters, numbers, hyphen, underscore)", "VALIDATION_ERROR", 400);

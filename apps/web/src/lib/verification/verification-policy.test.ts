@@ -35,6 +35,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   resolveVerificationPolicy,
   isProviderVerificationApproved,
+  isCustomerVerificationApproved,
   type VerificationMode,
 } from "@/lib/verification/verification-policy";
 
@@ -124,10 +125,24 @@ describe("resolveVerificationPolicy — mode derivation", () => {
     expect(p.requiredForPayouts).toBe(true);
   });
 
+  it('reads requiredForCustomers from flags', async () => {
+    const p = await policy({
+      "verification.sumsub.enabled": false,
+      "verification.manual.enabled": true,
+      "verification.required_for_customers": true,
+    });
+    expect(p.requiredForCustomers).toBe(true);
+  });
+
   it('defaults requiredForProviders and requiredForPayouts to false when flags absent', async () => {
     const p = await policy({ "verification.manual.enabled": true });
     expect(p.requiredForProviders).toBe(false);
     expect(p.requiredForPayouts).toBe(false);
+  });
+
+  it('defaults requiredForCustomers to false when flag absent', async () => {
+    const p = await policy({ "verification.manual.enabled": true });
+    expect(p.requiredForCustomers).toBe(false);
   });
 
   it('returns permissive defaults and does not throw on error', async () => {
@@ -139,6 +154,7 @@ describe("resolveVerificationPolicy — mode derivation", () => {
     expect(p.sumsubEnabled).toBe(false);
     expect(p.requiredForProviders).toBe(false);
     expect(p.requiredForPayouts).toBe(false);
+    expect(p.requiredForCustomers).toBe(false);
   });
 });
 
@@ -189,5 +205,65 @@ describe("isProviderVerificationApproved", () => {
   it('returns false when nothing is approved', async () => {
     stubAdmin("pending", false, false);
     expect(await isProviderVerificationApproved("p1")).toBe(false);
+  });
+});
+
+// ── isCustomerVerificationApproved ────────────────────────────────────────────
+
+describe("isCustomerVerificationApproved", () => {
+  function stubCustomerAdmin(identityVerified: boolean, status: string) {
+    mockAdmin.mockReturnValue({
+      from: (_table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: { identity_verified: identityVerified, identity_verification_status: status },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+    });
+  }
+
+  it('returns true when users.identity_verified is true', async () => {
+    stubCustomerAdmin(true, "approved");
+    expect(await isCustomerVerificationApproved("u1")).toBe(true);
+  });
+
+  it('returns true when identity_verification_status is approved but identity_verified is false', async () => {
+    stubCustomerAdmin(false, "approved");
+    expect(await isCustomerVerificationApproved("u1")).toBe(true);
+  });
+
+  it('returns false when status is pending and identity_verified is false', async () => {
+    stubCustomerAdmin(false, "pending");
+    expect(await isCustomerVerificationApproved("u1")).toBe(false);
+  });
+
+  it('returns false when user row is null', async () => {
+    mockAdmin.mockReturnValue({
+      from: (_table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        }),
+      }),
+    });
+    expect(await isCustomerVerificationApproved("u1")).toBe(false);
+  });
+
+  it('returns false and does not throw when supabase errors', async () => {
+    mockAdmin.mockReturnValue({
+      from: (_table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => { throw new Error("DB error"); },
+          }),
+        }),
+      }),
+    });
+    expect(await isCustomerVerificationApproved("u1")).toBe(false);
   });
 });

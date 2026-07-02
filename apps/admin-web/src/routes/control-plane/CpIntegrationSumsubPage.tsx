@@ -42,6 +42,8 @@ export function CpIntegrationSumsubPage() {
     webhook_secret_secret: "",
   });
   const [secretsSet, setSecretsSet] = useState({ app_token: false, secret_key: false, webhook: false });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; level_name?: string; error?: string } | null>(null);
 
   // Verification policy flags (independent of Sumsub credentials/env)
   const [flags, setFlags] = useState<FlagSnapshot[]>([]);
@@ -52,6 +54,7 @@ export function CpIntegrationSumsubPage() {
   const manualFlagOn = flags.find((f) => f.feature_key === "verification.manual.enabled")?.enabled ?? true;
   const requiredProviders = flags.find((f) => f.feature_key === "provider_verification")?.enabled ?? false;
   const requiredPayouts = flags.find((f) => f.feature_key === "verification.sumsub.required_for_payouts")?.enabled ?? false;
+  const requiredCustomers = flags.find((f) => f.feature_key === "verification.required_for_customers")?.enabled ?? false;
   const currentMode = modeFromFlags(sumsubFlagOn, manualFlagOn);
 
   useEffect(() => {
@@ -98,7 +101,7 @@ export function CpIntegrationSumsubPage() {
         const res = await adminApi.getJson<{ data?: FlagSnapshot[] } | FlagSnapshot[]>("/api/admin/feature-flags");
         if (c) return;
         const rows: FlagSnapshot[] = (Array.isArray(res) ? res : (res as { data?: FlagSnapshot[] }).data) ?? [];
-        const KEYS = ["verification.sumsub.enabled", "verification.manual.enabled", "provider_verification", "verification.sumsub.required_for_payouts"];
+        const KEYS = ["verification.sumsub.enabled", "verification.manual.enabled", "provider_verification", "verification.sumsub.required_for_payouts", "verification.required_for_customers"];
         setFlags(rows.filter((r) => KEYS.includes(r.feature_key)));
       } catch {
         // non-fatal — flags section stays hidden if load fails
@@ -138,6 +141,24 @@ export function CpIntegrationSumsubPage() {
       { feature_key: "verification.sumsub.enabled", enabled: sumsub },
       { feature_key: "verification.manual.enabled", enabled: manual },
     ]);
+  };
+
+  const testToken = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      // adminApi.postJson unwraps the `{ data }` envelope, so this resolves to
+      // the endpoint's payload directly.
+      const res = await adminApi.postJson<{ ok: boolean; level_name?: string; error?: string }>(
+        "/api/admin/control-plane/integrations/sumsub/test",
+        { environment: env },
+      );
+      setTestResult(res);
+    } catch (e) {
+      setTestResult({ ok: false, error: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const save = async () => {
@@ -230,8 +251,14 @@ export function CpIntegrationSumsubPage() {
             <input
               className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
               value={form.level_name}
-              onChange={(e) => setForm((p) => ({ ...p, level_name: e.target.value }))}
+              placeholder="basic-kyc-level"
+              onChange={(e) => setForm((p) => ({ ...p, level_name: e.target.value.trim() }))}
             />
+            {!form.level_name && (
+              <p className="mt-1 text-xs text-gray-400">
+                Defaults to <code className="rounded bg-gray-100 px-1">basic-kyc-level</code> when empty. Must exactly match a level name in your Sumsub dashboard.
+              </p>
+            )}
           </CpField>
           <CpField label={`App token${secretsSet.app_token ? " (set)" : ""}`}>
             <input
@@ -257,14 +284,48 @@ export function CpIntegrationSumsubPage() {
               onChange={(e) => setForm((p) => ({ ...p, webhook_secret_secret: e.target.value }))}
             />
           </CpField>
-          <button
-            type="button"
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-            disabled={saving}
-            onClick={() => void save()}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+              disabled={saving}
+              onClick={() => void save()}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              disabled={testing || saving}
+              onClick={() => void testToken()}
+            >
+              {testing ? "Testing…" : "Test token"}
+            </button>
+          </div>
+          {testResult && (
+            <div
+              className={`mt-3 rounded-lg px-4 py-3 text-sm ${
+                testResult.ok
+                  ? "border border-green-200 bg-green-50 text-green-800"
+                  : "border border-red-200 bg-red-50 text-red-800"
+              }`}
+            >
+              {testResult.ok ? (
+                <span>
+                  Level <code className="rounded bg-green-100 px-1">{testResult.level_name}</code> is reachable — credentials and level name are valid.
+                </span>
+              ) : (
+                <span>
+                  Test failed: {testResult.error ?? "unknown error"}.{" "}
+                  {testResult.level_name ? (
+                    <>Check that level <code className="rounded bg-red-100 px-1">{testResult.level_name}</code> exists in your Sumsub dashboard and credentials match the selected environment.</>
+                  ) : (
+                    <>Check that credentials are saved for the selected environment.</>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
         </AdminPanel>
       )}
 
@@ -299,7 +360,8 @@ export function CpIntegrationSumsubPage() {
         </div>
         <hr />
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-900">Provider requirements</p>
+          <p className="text-sm font-medium text-gray-900">Verification requirements</p>
+          <p className="text-xs text-gray-500">Provider requirements</p>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -317,6 +379,16 @@ export function CpIntegrationSumsubPage() {
               onChange={(e) => void saveFlags([{ feature_key: "verification.sumsub.required_for_payouts", enabled: e.target.checked }])}
             />
             Require approved identity verification before providers can request payouts
+          </label>
+          <p className="mt-2 text-xs text-gray-500">Customer requirements</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={requiredCustomers}
+              disabled={flagSaving}
+              onChange={(e) => void saveFlags([{ feature_key: "verification.required_for_customers", enabled: e.target.checked }])}
+            />
+            Require identity verification before a customer's first booking
           </label>
         </div>
       </AdminPanel>

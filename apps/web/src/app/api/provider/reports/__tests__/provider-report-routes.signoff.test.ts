@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as cancellationsGET } from "../bookings/cancellations/route";
 import { GET as bookingsReportGET } from "../bookings/route";
+import { GET as bookingStatusGET } from "../bookings/status/route";
 import { GET as bookingSummaryGET } from "../bookings/summary/route";
 import { GET as endOfDayGET } from "../end-of-day/route";
+import { GET as membershipsGET } from "../memberships/route";
 import { GET as refundsGET } from "../payments/refunds/route";
 import { GET as paymentsSummaryGET } from "../payments/summary/route";
 import { GET as payoutsGET } from "../payments/payouts/route";
 import { GET as revenueGET } from "../revenue/route";
+import { GET as salesServicesGET } from "../sales/services/route";
+import { GET as salesSummaryGET } from "../sales/summary/route";
 import { GET as clientsGET } from "../clients/route";
 import { GET as noShowsGET } from "../bookings/no-shows/route";
 
@@ -557,6 +561,16 @@ describe("provider report routes sign-off coverage", () => {
     });
   });
 
+  it("revenue total_revenue_inclusive equals total_revenue (no cancellation-fee double-count)", async () => {
+    const data = await json(
+      await revenueGET(
+        request("/api/provider/reports/revenue?from=2026-05-02&to=2026-05-02"),
+      ),
+    );
+    // After the double-count fix, total_revenue_inclusive must equal total_revenue
+    expect(data.total_revenue_inclusive).toBe(data.total_revenue);
+  });
+
   it("no-shows repeat offenders include booked_value and ledger_earnings", async () => {
     db.bookings.push(
       {
@@ -607,5 +621,176 @@ describe("provider report routes sign-off coverage", () => {
       ledger_earnings: 0,
       revenue: 350,
     });
+  });
+});
+
+/**
+ * Cross-report reconciliation suite — seeded dataset asserts that totals are
+ * consistent across all report surfaces that claim to share the same basis.
+ */
+describe("cross-report reconciliation (seeded dataset)", () => {
+  const FROM = "2026-05-01";
+  const TO = "2026-05-31";
+  const qs = `from=${FROM}&to=${TO}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedDb();
+    mockSupabase = createMockSupabase();
+
+    // Seed provider_earnings and membership_provider_earnings in finance_transactions
+    db.finance_transactions.push(
+      {
+        id: "pe-booking-a",
+        provider_id: providerId,
+        transaction_type: "provider_earnings",
+        amount: 90,
+        net: 90,
+        booking_id: "booking-loc-a",
+        product_order_id: null,
+        created_at: "2026-05-02T08:00:00.000Z",
+        refund_component: null,
+        description: null,
+      },
+      {
+        id: "membership-earnings",
+        provider_id: providerId,
+        transaction_type: "membership_provider_earnings",
+        amount: 50,
+        net: 50,
+        booking_id: null,
+        product_order_id: null,
+        created_at: "2026-05-03T10:00:00.000Z",
+        refund_component: null,
+        description: null,
+      },
+      {
+        id: "membership-sale-1",
+        provider_id: providerId,
+        transaction_type: "membership_sale",
+        amount: 200,
+        net: 200,
+        booking_id: null,
+        product_order_id: null,
+        created_at: "2026-05-03T10:00:00.000Z",
+        refund_component: null,
+        description: null,
+      },
+    );
+
+    // Seed booking_services for sales-by-service test
+    db.bookings[0].booking_services = [
+      { id: "bs-1", price: 120, offering_id: "offer-1", offerings: { id: "offer-1", title: "Cut", duration_minutes: 30, provider_category_id: null } },
+    ];
+
+    // Net-after-refunds mock: 90 for booking-loc-a (same as Sales Summary would return)
+    const revenueByBookingMap = new Map<string, number>([
+      ["booking-loc-a", 90],
+      ["booking-loc-b", 200],
+    ]);
+    getProviderNetAfterRefundsDetailedMock.mockResolvedValue({
+      totalRevenue: 290,
+      revenueByBooking: revenueByBookingMap,
+      revenueByProductOrder: new Map(),
+      revenueByDate: new Map([["2026-05-02", 290]]),
+      latestSettlementAtByBooking: new Map([["booking-loc-a", "2026-05-02T12:00:00.000Z"]]),
+      latestSettlementAtByProductOrder: new Map(),
+    });
+    getProviderNetAfterRefundsByBookingMock.mockResolvedValue(revenueByBookingMap);
+    getProviderRevenueMock.mockResolvedValue({
+      totalRevenue: 290,
+      revenueByBooking: revenueByBookingMap,
+      revenueByProductOrder: new Map(),
+      revenueByDate: new Map([["2026-05-02", 290]]),
+      latestSettlementAtByBooking: new Map(),
+      latestSettlementAtByProductOrder: new Map(),
+    });
+    getPreviousPeriodNetAfterRefundsMock.mockResolvedValue(200);
+    getPreviousPeriodRevenueMock.mockResolvedValue(200);
+
+    // Seed user_memberships for active subscribers
+    db.user_memberships = [
+      { id: "mem-1", provider_id: providerId, status: "active" },
+    ];
+  });
+
+  it("Sales by service totalRevenue == getProviderNetAfterRefundsByBooking sum (reconciles with Sales Summary)", async () => {
+    const [servicesData, summaryData] = await Promise.all([
+      json(await salesServicesGET(request(`/api/provider/reports/sales/services?${qs}`))),
+      json(await salesSummaryGET(request(`/api/provider/reports/sales/summary?${qs}`))),
+    ]);
+
+    // Services total must use net-after-refunds — same mock value as summary
+    // Both bookings have booking_services so expect sum of the map (90 + 200 = 290)
+    expect(servicesData.totalRevenue).toBeCloseTo(290, 1);
+    expect(servicesData.reportBasis).toContain("net-after-refunds");
+    // The ledger sub-total from bookings in Sales Summary should equal services total
+    // (summaryData.revenueByService total, or as a proxy use the same recognized revenue)
+    expect(summaryData.totalRevenue).toBe(servicesData.totalRevenue);
+  });
+
+  it("Booking Summary total_bookings reconciles with Booking Status totalBookings for the same window", async () => {
+    // Add a cancelled booking to test all-status count
+    db.bookings.push({
+      id: "cancelled-rec",
+      provider_id: providerId,
+      location_id: "loc-a",
+      status: "cancelled",
+      scheduled_at: "2026-05-10T09:00:00.000Z",
+      total_amount: 100,
+      cancellation_reason: "client request",
+      booking_source: "online",
+    });
+
+    const [summaryData, statusData, bookingsData] = await Promise.all([
+      json(await bookingSummaryGET(request(`/api/provider/reports/bookings/summary?${qs}`))),
+      json(await bookingStatusGET(request(`/api/provider/reports/bookings/status?${qs}`))),
+      json(await bookingsReportGET(request(`/api/provider/reports/bookings?${qs}`))),
+    ]);
+
+    // All three reports count bookings by scheduled_at — totals must agree
+    expect(summaryData.totalBookings).toBe(statusData.totalBookings);
+    expect(statusData.totalBookings).toBe(bookingsData.total_bookings);
+  });
+
+  it("Booking counts reconcile with Cancellations count for the same window", async () => {
+    // Seed a cancelled booking
+    db.bookings.push({
+      id: "cancelled-count-check",
+      provider_id: providerId,
+      location_id: "loc-a",
+      status: "cancelled",
+      scheduled_at: "2026-05-15T10:00:00.000Z",
+      total_amount: 80,
+      cancellation_reason: "provider request",
+      booking_source: "online",
+    });
+
+    const [bookingsData, cancellationsData] = await Promise.all([
+      json(await bookingsReportGET(request(`/api/provider/reports/bookings?${qs}`))),
+      json(await cancellationsGET(request(`/api/provider/reports/bookings/cancellations?${qs}`))),
+    ]);
+
+    expect(bookingsData.cancellation_count).toBe(cancellationsData.totalCancelled);
+  });
+
+  it("Membership recognized_earnings > 0 when membership_provider_earnings rows exist", async () => {
+    const data = await json(
+      await membershipsGET(request(`/api/provider/reports/memberships?${qs}`)),
+    );
+
+    expect(data.recognized_earnings).toBeGreaterThan(0);
+    expect(data.recognized_earnings).toBe(50);
+    expect(data.gross_sales).toBe(200);
+    expect(data.active_subscribers).toBe(1);
+    expect(data.reportBasis).toContain("membership_provider_earnings");
+  });
+
+  it("revenue total_revenue_inclusive equals total_revenue (no cancellation-fee double-count in reconciliation suite)", async () => {
+    const data = await json(
+      await revenueGET(request(`/api/provider/reports/revenue?${qs}`)),
+    );
+    expect(data.total_revenue_inclusive).toBe(data.total_revenue);
+    expect(data.cancellation_fees).toBeGreaterThanOrEqual(0);
   });
 });

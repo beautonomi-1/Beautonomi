@@ -13,7 +13,7 @@ export const REVENUE_GLOSSARY = {
     label: "Ledger net",
     short: "Net of platform commission",
     definition:
-      "The net amount posted to your ledger after platform commission and gateway fees in the period.",
+      "The net amount posted to your ledger after platform commission deduction in the period.",
   },
   payoutEarnings: {
     label: "Payout earnings",

@@ -131,13 +131,16 @@ export async function recordMembershipPayment(
     console.error("[recordMembershipPayment] finance_transactions membership_sale error:", ftSaleErr);
   }
 
-  // finance_transactions: provider_earnings (net)
+  // finance_transactions: membership_provider_earnings (net)
+  // Uses a dedicated type so the GL trigger can post DR 2600 Membership liability /
+  // CR 2000 Provider payable — rather than a wash entry — correctly crediting
+  // provider payable from the deferred membership liability.
   if (providerId) {
     const { error: ftEarnErr } = await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
       tenant_id: financeTenantId,
-      transaction_type: "provider_earnings",
+      transaction_type: "membership_provider_earnings",
       amount: grossAmount,
       fees: feeAmount,
       commission: 0,

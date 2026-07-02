@@ -280,7 +280,24 @@ export function navigateFromNotification(n: Notification): void {
 
   // ── Bookings ─────────────────────────────────────────────────────────────
   if (anyBookingIdRaw) {
-    router.push({ pathname: "/(app)/booking-detail", params: { id: String(anyBookingIdRaw) } });
+    const bookingNavParams: Record<string, string> = { id: String(anyBookingIdRaw) };
+    // For additional-charge notifications, forward charge_id + focus so the screen
+    // can auto-switch to the receipt tab and highlight the specific charge.
+    const isAdditionalChargeNotif =
+      nType === "additional_charge_requested" ||
+      nType === "payment_request" ||
+      nType === "additional_charge_paid";
+    const chargeIdForward =
+      data.charge_id != null && String(data.charge_id).trim()
+        ? String(data.charge_id).trim()
+        : data.additional_charge_id != null && String(data.additional_charge_id).trim()
+          ? String(data.additional_charge_id).trim()
+          : "";
+    if (isAdditionalChargeNotif) {
+      bookingNavParams.focus = "additional_charge";
+      if (chargeIdForward) bookingNavParams.charge_id = chargeIdForward;
+    }
+    router.push({ pathname: "/(app)/booking-detail", params: bookingNavParams });
     return;
   }
   if (
@@ -407,7 +424,19 @@ export function navigateFromNotification(n: Notification): void {
       (data.booking_id != null ? String(data.booking_id) : "") ||
       (data.bookingId != null ? String(data.bookingId) : "");
     if (bid) {
-      router.push({ pathname: "/(app)/booking-detail", params: { id: bid } });
+      // For additional-charge types, forward charge_id + focus so booking-detail can
+      // auto-switch to the receipt tab and highlight the specific charge.
+      const isAdditionalCharge = nType === "additional_charge_requested";
+      const chargeIdFwd =
+        data.charge_id != null && String(data.charge_id).trim()
+          ? String(data.charge_id).trim()
+          : data.additional_charge_id != null && String(data.additional_charge_id).trim()
+            ? String(data.additional_charge_id).trim()
+            : "";
+      const extraParams: Record<string, string> = isAdditionalCharge
+        ? { focus: "additional_charge", ...(chargeIdFwd ? { charge_id: chargeIdFwd } : {}) }
+        : {};
+      router.push({ pathname: "/(app)/booking-detail", params: { id: bid, ...extraParams } });
     } else if (
       nType.startsWith("payment_") ||
       nType === "partial_payment_received" ||

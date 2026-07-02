@@ -143,8 +143,7 @@ export default function ServicesReport() {
         <View>
           <View style={twStyle("mb-4 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2.5")}>
             <Text style={twStyle("text-xs leading-5 text-violet-950")}>
-              Revenue is ledger net (earnings, travel, tips) split across lines by price share — aligned with web Sales by
-              service.
+              Revenue is recognized provider earnings net of refund clawbacks — same basis as Sales Summary — split by service line price share.
             </Text>
           </View>
 

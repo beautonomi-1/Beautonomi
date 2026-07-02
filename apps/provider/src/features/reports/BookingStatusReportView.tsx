@@ -187,30 +187,34 @@ export function BookingStatusReportView({ data }: { data: unknown }) {
           <Text style={twStyle("mb-4 text-xs leading-5 text-gray-500")}>
             Sum of booking-linked ledger net where the booking currently sits in this status.
           </Text>
-          {rows.map((r) => {
-            const pct = Math.min(100, Math.max(0, r.percentage));
-            return (
-              <View key={`rev-${r.status}`} style={twStyle("mb-4 last:mb-0")}>
-                <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatStatusLabel(r.status)}</Text>
-                  <Text style={twStyle("text-sm tabular-nums text-gray-800")}>
-                    {formatCurrency(r.revenue)}{" "}
-                    <Text style={twStyle("text-xs text-gray-400")}>
-                      ({r.count} · {pct.toFixed(1)}%)
+          {(() => {
+            const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+            return rows.map((r) => {
+              const revPct = totalRevenue > 0 ? Math.min(100, Math.max(0, (r.revenue / totalRevenue) * 100)) : 0;
+              const countPct = Math.min(100, Math.max(0, r.percentage));
+              return (
+                <View key={`rev-${r.status}`} style={twStyle("mb-4 last:mb-0")}>
+                  <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatStatusLabel(r.status)}</Text>
+                    <Text style={twStyle("text-sm tabular-nums text-gray-800")}>
+                      {formatCurrency(r.revenue)}{" "}
+                      <Text style={twStyle("text-xs text-gray-400")}>
+                        ({r.count} · {countPct.toFixed(1)}%)
+                      </Text>
                     </Text>
-                  </Text>
+                  </View>
+                  <View style={twStyle("h-2 overflow-hidden rounded-full bg-gray-100")}>
+                    <View
+                      style={[
+                        twStyle("h-full rounded-full"),
+                        { width: `${revPct}%`, backgroundColor: barColor(r.status) },
+                      ]}
+                    />
+                  </View>
                 </View>
-                <View style={twStyle("h-2 overflow-hidden rounded-full bg-gray-100")}>
-                  <View
-                    style={[
-                      twStyle("h-full rounded-full"),
-                      { width: `${pct}%`, backgroundColor: barColor(r.status) },
-                    ]}
-                  />
-                </View>
-              </View>
-            );
-          })}
+              );
+            });
+          })()}
         </View>
       </View>
 

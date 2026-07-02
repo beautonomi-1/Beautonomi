@@ -152,13 +152,25 @@ type BookingReviewSummary = {
 
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
-  const bookingParams = useLocalSearchParams<{ id?: string | string[] }>();
+  const bookingParams = useLocalSearchParams<{ id?: string | string[]; charge_id?: string; focus?: string }>();
   /** Expo Router may pass `id` as a string[]; cancel/PDF must use the real UUID. */
   const id = useMemo(() => {
     const raw = bookingParams.id;
     const v = Array.isArray(raw) ? raw[0] : raw;
     return typeof v === "string" ? v.trim() : "";
   }, [bookingParams.id]);
+  /** charge_id forwarded by notification deep-link to focus a specific charge */
+  const chargeIdParam = useMemo(() => {
+    const raw = bookingParams.charge_id;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === "string" ? v.trim() : "";
+  }, [bookingParams.charge_id]);
+  /** focus=additional_charge forwarded by notification deep-link */
+  const focusParam = useMemo(() => {
+    const raw = bookingParams.focus;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === "string" ? v.trim() : "";
+  }, [bookingParams.focus]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
@@ -208,6 +220,11 @@ export default function BookingDetailScreen() {
   const hasLoadedOnce = useRef(false);
   const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
+  const scrollViewRef = useRef<ScrollView>(null);
+  const chargesSectionYRef = useRef(0);
+  const focusAppliedRef = useRef(false);
+  const [shouldScrollToCharges, setShouldScrollToCharges] = useState(false);
+  const [highlightedChargeId, setHighlightedChargeId] = useState<string | null>(null);
   const [groupPaymentSummary, setGroupPaymentSummary] = useState<{
     amount_paid: number;
     currency: string;
@@ -375,6 +392,47 @@ export default function BookingDetailScreen() {
       return () => setActiveBookingId(null);
     }, [id]),
   );
+
+  // When arriving from an additional-charge notification deep-link, auto-switch to the
+  // receipt tab so the customer sees the full payment options immediately.
+  useEffect(() => {
+    if (!booking || focusAppliedRef.current) return;
+    const charges: any[] = booking.additional_charges ?? [];
+    // Switch to receipt tab when:
+    //  a) focusParam says "additional_charge" (covers both pending payment prompts and paid confirmations)
+    //  b) charge_id param targets an existing charge (any status — show it in context)
+    const hasChargeTarget =
+      focusParam === "additional_charge" ||
+      (chargeIdParam !== "" && charges.some((c) => c.id === chargeIdParam));
+    if (!hasChargeTarget) return;
+    focusAppliedRef.current = true;
+    setActiveTab("receipt");
+    setShouldScrollToCharges(true);
+    if (chargeIdParam) {
+      // Only highlight if the charge is still unpaid (don't false-highlight paid rows)
+      const targetCharge = charges.find((c) => c.id === chargeIdParam);
+      if (targetCharge && (targetCharge.status === "pending" || targetCharge.status === "approved")) {
+        setHighlightedChargeId(chargeIdParam);
+        const clearTimer = setTimeout(() => setHighlightedChargeId(null), 2500);
+        return () => clearTimeout(clearTimer);
+      }
+    }
+  }, [booking, focusParam, chargeIdParam]);
+
+  // Scroll to the charges section once the receipt tab has rendered its layout.
+  useEffect(() => {
+    if (activeTab !== "receipt" || !shouldScrollToCharges) return;
+    const timer = setTimeout(() => {
+      setShouldScrollToCharges(false);
+      if (chargesSectionYRef.current > 0) {
+        scrollViewRef.current?.scrollTo({
+          y: Math.max(0, chargesSectionYRef.current - 20),
+          animated: true,
+        });
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [activeTab, shouldScrollToCharges]);
 
   // While provider is en route, poll for ETA + live location (realtime may omit JSONB-heavy columns in some setups)
   useEffect(() => {
@@ -1575,6 +1633,9 @@ export default function BookingDetailScreen() {
                 paddingVertical: 8,
                 borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
                 borderBottomColor: Colors.gray[100],
+                ...(highlightedChargeId === String(c.id)
+                  ? { backgroundColor: "#FFF7ED", borderRadius: 8, paddingHorizontal: 6, marginHorizontal: -6 }
+                  : {}),
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -1686,7 +1747,7 @@ export default function BookingDetailScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
+      <ScrollView ref={scrollViewRef} style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
           <View
@@ -1743,6 +1804,210 @@ export default function BookingDetailScreen() {
             ) : null}
           </View>
         )}
+
+        {/* ───── Additional Charge Action Banner ─────
+            Shown on EVERY tab so the customer can never miss a payment request.
+            Reuses existing approve/reject/pay handlers; "More options" switches
+            to the Receipt tab where wallet, gift card and saved-card paths live. */}
+        {(() => {
+          const allCharges: any[] = booking?.additional_charges ?? [];
+          const unpaid = allCharges.filter(
+            (c) => c.status === "pending" || c.status === "approved",
+          );
+          if (unpaid.length === 0) return null;
+          const single = unpaid.length === 1 ? unpaid[0] : null;
+          const currency: string = single?.currency || booking?.currency || "ZAR";
+          const total = unpaid.reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+          const singlePayLoading = single && additionalChargePayLoadingId === String(single.id);
+          const singleApproveLoading =
+            single && additionalChargeApproveLoadingId === String(single.id);
+          const singleAnyLoading = !!(singlePayLoading || singleApproveLoading);
+
+          const goToReceiptCharges = () => {
+            haptic.light();
+            setActiveTab("receipt");
+            setShouldScrollToCharges(true);
+          };
+
+          return (
+            <View
+              style={{
+                marginBottom: 12,
+                borderRadius: 16,
+                backgroundColor: "#FFF7ED",
+                borderWidth: 1.5,
+                borderColor: "#FB923C",
+                padding: 14,
+              }}
+              accessible={false}
+            >
+              {/* Header row */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: "#FED7AA",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 10,
+                  }}
+                >
+                  <Ionicons name="card-outline" size={20} color="#EA580C" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "700", fontSize: 14, color: "#9A3412" }}>
+                    Payment Required
+                  </Text>
+                  {single ? (
+                    <>
+                      <Text
+                        style={{ fontSize: 13, color: "#C2410C", marginTop: 1 }}
+                        numberOfLines={1}
+                      >
+                        {single.description || "Additional charge"} —{" "}
+                        {formatMoney(Number(single.amount || 0), currency)}
+                      </Text>
+                      {single.status === "pending" && (
+                        <Text style={{ fontSize: 11, color: "#92400E", marginTop: 1 }}>
+                          Awaiting your approval to pay
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 13, color: "#C2410C", marginTop: 1 }}>
+                      {unpaid.length} outstanding charges · {formatMoney(total, currency)} total
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* CTAs */}
+              {single ? (
+                <View style={{ gap: 8 }}>
+                  {/* Approve / Reject row for pending charges */}
+                  {single.status === "pending" && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => void handleApproveRejectCharge(String(single.id), true)}
+                        disabled={singleAnyLoading}
+                        style={{
+                          flex: 1,
+                          borderWidth: 1.5,
+                          borderColor: "#EA580C",
+                          borderRadius: 10,
+                          paddingVertical: 9,
+                          alignItems: "center",
+                          opacity: singleAnyLoading ? 0.4 : 1,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Approve additional charge"
+                      >
+                        {singleApproveLoading ? (
+                          <ActivityIndicator size="small" color="#EA580C" />
+                        ) : (
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#EA580C" }}>
+                            Approve
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => void handleApproveRejectCharge(String(single.id), false)}
+                        disabled={singleAnyLoading}
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: Colors.gray[300],
+                          borderRadius: 10,
+                          paddingVertical: 9,
+                          alignItems: "center",
+                          opacity: singleAnyLoading ? 0.4 : 1,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reject additional charge"
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600] }}>
+                          Reject
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Primary Pay Now button */}
+                  <TouchableOpacity
+                    onPress={() =>
+                      void handlePayAdditionalCharge(
+                        String(single.id),
+                        Number(single.amount || 0),
+                      )
+                    }
+                    disabled={singleAnyLoading}
+                    style={{
+                      backgroundColor: singleAnyLoading ? "#FB923C" : "#EA580C",
+                      paddingVertical: 13,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      opacity: singleAnyLoading ? 0.6 : 1,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      single.status === "pending"
+                        ? "Pay now, skips approval step"
+                        : "Pay now"
+                    }
+                  >
+                    {singlePayLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+                        {single.status === "pending" ? "Pay Now · Skips Approval" : "Pay Now"}
+                        {"  "}{formatMoney(Number(single.amount || 0), currency)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* More options link */}
+                  <TouchableOpacity
+                    onPress={goToReceiptCharges}
+                    accessibilityRole="button"
+                    accessibilityLabel="More payment options"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: "#EA580C",
+                        textAlign: "center",
+                        textDecorationLine: "underline",
+                      }}
+                    >
+                      More options: wallet · gift card · saved card
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                /* Multiple unpaid charges — jump to receipt tab for individual management */
+                <TouchableOpacity
+                  onPress={goToReceiptCharges}
+                  style={{
+                    backgroundColor: "#EA580C",
+                    paddingVertical: 13,
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View and pay ${unpaid.length} charges`}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+                    View &amp; Pay {unpaid.length} Charges —{" "}
+                    {formatMoney(total, currency)} total
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })()}
 
         {/* Tabs: Tracking | Receipt | Details */}
         <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], marginBottom: 16 }}>
@@ -2134,7 +2399,12 @@ export default function BookingDetailScreen() {
                 </Pressable>
               </>
             )}
-            {renderAdditionalChargesSection()}
+            <View
+              onLayout={(e) => { chargesSectionYRef.current = e.nativeEvent.layout.y; }}
+              collapsable={false}
+            >
+              {renderAdditionalChargesSection()}
+            </View>
             <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}

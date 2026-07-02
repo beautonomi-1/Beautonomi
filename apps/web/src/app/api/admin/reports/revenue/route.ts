@@ -4,7 +4,7 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
-import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -14,6 +14,8 @@ import {
   normalizeBookingChannel,
 } from "@/lib/reports/booking-channel-breakdown";
 import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
+import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,27 +60,7 @@ export async function GET(request: NextRequest) {
     const startISO = startDate.toISOString();
     const endISO = endDate.toISOString();
 
-    const { data: completedBookings } = await supabase
-      .from("bookings")
-      .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status, booking_source"
-      )
-      .eq("tenant_id", tenantId)
-      .eq("status", "completed")
-      .not("completed_at", "is", null)
-      .gte("completed_at", startISO)
-      .lte("completed_at", endISO);
-
-    const { data: confirmedBookings } = await supabase
-      .from("bookings")
-      .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status, booking_source"
-      )
-      .eq("tenant_id", tenantId)
-      .eq("status", "confirmed")
-      .gte("scheduled_at", startISO)
-      .lte("scheduled_at", endISO);
-
+    // Paginate across PostgREST 1000-row cap for high-volume periods.
     type BookingRow = {
       id?: string;
       scheduled_at?: string;
@@ -95,8 +77,34 @@ export async function GET(request: NextRequest) {
       booking_source?: string | null;
     };
 
+    const bookingSelect = "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status, booking_source";
+
+    const [completedBookings, confirmedBookings] = await Promise.all([
+      fetchAllLedgerPages<BookingRow>(
+        supabase
+          .from("bookings")
+          .select(bookingSelect)
+          .eq("tenant_id", tenantId)
+          .eq("status", "completed")
+          .not("completed_at", "is", null)
+          .gte("completed_at", startISO)
+          .lte("completed_at", endISO),
+        MAX_BOOKINGS_FOR_REPORT,
+      ),
+      fetchAllLedgerPages<BookingRow>(
+        supabase
+          .from("bookings")
+          .select(bookingSelect)
+          .eq("tenant_id", tenantId)
+          .eq("status", "confirmed")
+          .gte("scheduled_at", startISO)
+          .lte("scheduled_at", endISO),
+        MAX_BOOKINGS_FOR_REPORT,
+      ),
+    ]);
+
     const byId = new Map<string, BookingRow>();
-    for (const b of [...(completedBookings || []), ...(confirmedBookings || [])]) {
+    for (const b of [...completedBookings, ...confirmedBookings]) {
       const row = b as BookingRow;
       if (row?.id) byId.set(row.id, row);
     }
@@ -271,18 +279,15 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Fill missing dates
+    // Fill missing dates (UTC-safe)
     const revenueByDayArray = [];
-    const current = new Date(startDate);
-    while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0];
+    for (const dateStr of eachUtcDay(startDate, endDate)) {
       revenueByDayArray.push({
         date: dateStr,
         revenue: revenueByDay[dateStr]?.revenue || 0,
         actual_collected: revenueByDay[dateStr]?.actual_collected || 0,
         bookings: revenueByDay[dateStr]?.bookings || 0,
       });
-      current.setDate(current.getDate() + 1);
     }
 
     // Additional ledger metrics from finance_transactions (new accounting types)
@@ -375,12 +380,10 @@ export async function GET(request: NextRequest) {
       redemptionsByDay[date].count += 1;
     });
 
-    // Fill missing dates
+    // Fill missing dates (UTC-safe)
     const salesByDayArray = [];
     const redemptionsByDayArray = [];
-    const iterDate = new Date(startDate);
-    while (iterDate <= endDate) {
-      const dateStr = iterDate.toISOString().split("T")[0];
+    for (const dateStr of eachUtcDay(startDate, endDate)) {
       salesByDayArray.push({
         date: dateStr,
         sales: salesByDay[dateStr]?.sales || 0,
@@ -391,7 +394,6 @@ export async function GET(request: NextRequest) {
         redemptions: redemptionsByDay[dateStr]?.redemptions || 0,
         count: redemptionsByDay[dateStr]?.count || 0,
       });
-      iterDate.setDate(iterDate.getDate() + 1);
     }
 
     // Unified platform revenue breakdown from finance ledger
@@ -402,8 +404,8 @@ export async function GET(request: NextRequest) {
     );
     const ledgerAgg = aggregateFinanceLedgerRows(allLedgerRows);
 
-    const platformRecognizedRevenueNet =
-      ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net + ledgerAgg.service_fee_revenue;
+    const platformRecognizedRevenueNet = platformRevenueNetFromAggregate(ledgerAgg);
+    const gatewayFeesTotal = gatewayFeesTotalFromAggregate(ledgerAgg);
 
     const { data: productOrders } = await supabase
       .from("product_orders")
@@ -471,9 +473,10 @@ export async function GET(request: NextRequest) {
         booking_commission_net: ledgerAgg.platform_take_net,
         subscription_net: ledgerAgg.subscription_net,
         ads_net: ledgerAgg.ads_net,
+        marketing_credit_net: ledgerAgg.marketing_credit_net,
         service_fee_revenue_net: ledgerAgg.service_fee_revenue,
         total_platform_revenue_net: platformRecognizedRevenueNet,
-        gateway_fees_total: ledgerAgg.gateway_fees_services + ledgerAgg.subscription_gateway_fees + ledgerAgg.ads_gateway_fees,
+        gateway_fees_total: gatewayFeesTotal,
         provider_earnings_net: ledgerAgg.provider_earnings_net,
         refunds_gross: ledgerAgg.refunds_gross,
         refunds_abs_gross: ledgerAgg.refunds_abs_gross,

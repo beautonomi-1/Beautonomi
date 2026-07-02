@@ -7,7 +7,7 @@
  * platform_take_net, provider_earnings_net, refund splits, GMV, etc. fail loud.
  */
 import { describe, expect, it } from "vitest";
-import { aggregateFinanceLedgerRows } from "../aggregate-finance-ledger-rows";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "../aggregate-finance-ledger-rows";
 import type { FinanceLedgerRow } from "../finance-ledger-tenant";
 
 function row(partial: Partial<FinanceLedgerRow> & { transaction_type: string }): FinanceLedgerRow {
@@ -208,5 +208,191 @@ describe("aggregateFinanceLedgerRows — admin finance scenarios", () => {
     expect(agg.additional_charge_gross).toBe(53);
     /** Booking GMV stays at 0 (no payment row) but additional charges are surfaced. */
     expect(agg.service_collected_gross).toBe(53);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────────
+  // Phase 13 reconciliation scenarios — cross-surface truth lock
+  // ──────────────────────────────────────────────────────────────────────────────
+
+  it("§P13-1: platform_fee 16 / gateway 17.70 / commission 0 → platformRevenueNetFromAggregate = -1.70", () => {
+    /**
+     * Flagged booking BTN-20260702-182243-E263EC6F:
+     *   payment       amount=350 fees=17.70 net=0    (no platform commission)
+     *   platform_fee  amount=16               net=16
+     *   provider_earnings amount=350 net=350
+     *   tip           amount=10
+     *   travel_fee    amount=120
+     *   walk_in_additional_charge amount=50
+     *
+     * Platform revenue net = platform_fee 16 − gateway 17.70 = −1.70.
+     */
+    const rows: FinanceLedgerRow[] = [
+      row({ booking_id: "btn1", transaction_type: "payment",       amount: 350, fees: 17.70, commission: 0, net: 0 }),
+      row({ booking_id: "btn1", transaction_type: "platform_fee",  amount: 16,  fees: 0,     commission: 0, net: 16 }),
+      row({ booking_id: "btn1", transaction_type: "provider_earnings", amount: 350, fees: 0, commission: 0, net: 350 }),
+      row({ booking_id: "btn1", transaction_type: "tip",           amount: 10 }),
+      row({ booking_id: "btn1", transaction_type: "travel_fee",    amount: 120 }),
+      row({ booking_id: "btn1", transaction_type: "walk_in_additional_charge", amount: 50 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    const platformNet = platformRevenueNetFromAggregate(agg);
+
+    expect(agg.gateway_fees_services).toBeCloseTo(17.70, 2);
+    expect(agg.platform_fee_revenue).toBe(16);
+    // commission_net = 0, gateway = 17.70, adjustments = 0 → platform_take_net = -17.70
+    expect(agg.platform_take_net).toBeCloseTo(-17.70, 2);
+    // service_fee_revenue = 16 (platform_fee rows)
+    expect(agg.service_fee_revenue).toBe(16);
+    // platformRevenueNet = platform_take_net + service_fee_revenue = -17.70 + 16 = -1.70
+    expect(platformNet).toBeCloseTo(-1.70, 2);
+  });
+
+  it("§P13-2: fee capture — gift_card_sale with real gateway fee appears in other_gateway_fees + reduces platform net", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "gift_card_sale", amount: 200, fees: 6.50, net: 0 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    const total = gatewayFeesTotalFromAggregate(agg);
+
+    expect(agg.other_gateway_fees).toBeCloseTo(6.50, 2);
+    expect(total).toBeCloseTo(6.50, 2);
+    // gift_card_sale does not contribute to platform revenue net (it's a liability)
+    expect(platformRevenueNetFromAggregate(agg)).toBe(0);
+  });
+
+  it("§P13-3: fee capture — wallet topup gateway fee appears in other_gateway_fees", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "wallet_topup", amount: 100, fees: 3.22, net: 100 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.other_gateway_fees).toBeCloseTo(3.22, 2);
+    expect(gatewayFeesTotalFromAggregate(agg)).toBeCloseTo(3.22, 2);
+  });
+
+  it("§P13-4: payout rows carry R3 transfer fee and it appears in payout_transfer_fees", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "payout", amount: 500, fees: 3, net: 500 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.payout_transfer_fees).toBeCloseTo(3, 2);
+    expect(gatewayFeesTotalFromAggregate(agg)).toBeCloseTo(3, 2);
+  });
+
+  it("§P13-5: subscription_recognition rows count toward subscription_net (post-Phase-11 path)", () => {
+    const rows: FinanceLedgerRow[] = [
+      // Phase 11 payment row: deferred (net=0)
+      row({ transaction_type: "provider_subscription_payment", amount: 200, fees: 5, net: 0 }),
+      // Recognition row for the period
+      row({ transaction_type: "subscription_recognition", amount: 100, fees: 0, net: 100 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    // net=0 from payment + 100 from recognition = 100
+    expect(agg.subscription_net).toBe(100);
+    expect(agg.subscription_gateway_fees).toBe(5);
+  });
+
+  it("§P13-6: membership_provider_earnings counts in provider_earnings_net", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "provider_earnings",            amount: 100, net: 90 }),
+      row({ transaction_type: "membership_provider_earnings", amount: 200, net: 180 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.provider_earnings_net).toBe(270);
+  });
+
+  it("§P13-7: cross-surface invariant — Analytics / Gods Eye / Finance / Dashboard all derive from the same canonical helpers", () => {
+    /**
+     * One dataset, one range: canonical helpers must produce the same number
+     * regardless of which surface calls them. This test is the algorithmic lock-in.
+     */
+    const dataset: FinanceLedgerRow[] = [
+      row({ booking_id: "b1", transaction_type: "payment",       amount: 496, fees: 17.70, commission: 0, net: 0 }),
+      row({ booking_id: "b1", transaction_type: "platform_fee",  amount: 16,  fees: 0,     net: 16 }),
+      row({ booking_id: "b1", transaction_type: "provider_earnings", amount: 350, net: 350 }),
+      row({ booking_id: "b1", transaction_type: "tip",           amount: 10 }),
+      row({ booking_id: "b1", transaction_type: "travel_fee",    amount: 120 }),
+      row({ transaction_type: "provider_subscription_payment",   amount: 199, fees: 5, net: 194 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(dataset);
+    const revenue = platformRevenueNetFromAggregate(agg);
+    const gateway = gatewayFeesTotalFromAggregate(agg);
+
+    // Canonical platform revenue: platform_take_net + subscription_net + service_fee_revenue
+    // platform_take_net = (0 commission) - 17.70 gateway + 0 adj = -17.70
+    // subscription_net = 194 (legacy path, net>0)
+    // service_fee_revenue = 16 (platform_fee row)
+    // = -17.70 + 194 + 16 = 192.30
+    expect(revenue).toBeCloseTo(192.30, 1);
+    // gateway total = 17.70 (booking payment) + 5 (subscription)
+    expect(gateway).toBeCloseTo(22.70, 2);
+    // These values must be identical no matter which surface calls the helpers.
+    expect(platformRevenueNetFromAggregate(agg)).toBe(revenue);
+    expect(gatewayFeesTotalFromAggregate(agg)).toBe(gateway);
+  });
+
+  it("§P14-1: legacy subscription (net > 0) counts toward subscription_net without recognition rows", () => {
+    /**
+     * Pre-Phase-11 rows have net = amount (cash-basis). The aggregator sums
+     * provider_subscription_payment.net directly for backward compatibility.
+     * No subscription_recognition rows exist for this payment.
+     */
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "provider_subscription_payment", amount: 200, fees: 5, net: 194 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.subscription_net).toBe(194);
+    expect(agg.subscription_gateway_fees).toBe(5);
+  });
+
+  it("§P14-2: deferred subscription (net = 0) + recognition rows = recognition total only — no double-count", () => {
+    /**
+     * Phase 11 path: payment row has net = 0 (deferred). Two recognition rows
+     * exist for this month. The aggregator must NOT add payment.net (=0) again
+     * on top of recognition rows.
+     */
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "provider_subscription_payment", amount: 300, fees: 6, net: 0 }),
+      row({ transaction_type: "subscription_recognition", amount: 100, fees: 0, net: 100 }),
+      row({ transaction_type: "subscription_recognition", amount: 100, fees: 0, net: 100 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    // Should be exactly 200 (two recognition rows), NOT 200 + 0 + 0 = 200 (fine here)
+    // AND NOT 200 + 300 (if aggregator mistakenly counted both net and amount of payment)
+    expect(agg.subscription_net).toBe(200);
+    expect(agg.subscription_gateway_fees).toBe(6); // fees captured from the payment row
+  });
+
+  it("§P14-3: ads_recognition rows drive ads_net; provider_ads_payment with net=0 adds nothing extra", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "provider_ads_payment", amount: 500, fees: 10, net: 0 }),
+      row({ transaction_type: "ads_recognition", amount: 150, fees: 0, net: 150 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.ads_net).toBe(150);
+    expect(agg.ads_gateway_fees).toBe(10);
+    // ads_net contributes to canonical platform revenue
+    expect(platformRevenueNetFromAggregate(agg)).toBe(150);
+  });
+
+  it("§P14-4: marketing_credit_recognition contributes to marketing_credit_net and canonical platform revenue", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "provider_marketing_credit_topup", amount: 400, fees: 8, net: 0 }),
+      row({ transaction_type: "marketing_credit_recognition", amount: 200, fees: 0, net: 200 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.marketing_credit_net).toBe(200);
+    expect(agg.marketing_credit_gateway_fees).toBe(8);
+    expect(platformRevenueNetFromAggregate(agg)).toBe(200);
   });
 });

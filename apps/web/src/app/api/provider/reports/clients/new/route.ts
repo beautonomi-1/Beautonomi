@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatInTz } from "@/lib/dates/provider-tz";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { CLIENT_METRICS_BASIS_NOTE } from "@/lib/reports/client-ledger-metrics";
 
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
     }
 
-    const { data: allBookings, error: allBookingsError } = await allBookingsQuery;
+    const { data: allBookings, error: allBookingsError } = await allBookingsQuery.limit(MAX_BOOKINGS_FOR_REPORT);
 
     if (allBookingsError) {
       return handleApiError(

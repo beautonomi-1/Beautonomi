@@ -18,6 +18,10 @@ import { bookingProductLineSchema } from "@/lib/public-booking/booking-draft-sch
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { getMissingRequiredProviderFormField } from "@beautonomi/utils";
+import {
+  resolveVerificationPolicy,
+  isCustomerVerificationApproved,
+} from "@/lib/verification/verification-policy";
 import { z } from "zod";
 
 const consumeBodySchema = z.object({
@@ -137,6 +141,29 @@ export async function POST(
         "COUNTRY_RESTRICTED",
         451
       );
+    }
+
+    // §customer-verification-gate: if the tenant requires verified customers,
+    // block the first booking until identity is approved. Subsequent bookings
+    // are not re-checked so the check is a fast count-zero guard.
+    // `bookings.customer_id` is the customer's user id (see /api/public/bookings).
+    const verificationPolicy = await resolveVerificationPolicy(marketTenantId);
+    if (verificationPolicy.requiredForCustomers) {
+      const customerVerified = await isCustomerVerificationApproved(user.id);
+      if (!customerVerified) {
+        const adminSupabaseForGate = getSupabaseAdmin();
+        const { count: bookingCount } = await adminSupabaseForGate
+          .from("bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("customer_id", user.id);
+        if ((bookingCount ?? 0) === 0) {
+          return errorResponse(
+            "Please verify your identity before your first booking.",
+            "VERIFICATION_REQUIRED",
+            403,
+          );
+        }
+      }
     }
 
     const body = await request.json();

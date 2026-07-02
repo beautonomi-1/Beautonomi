@@ -19,6 +19,8 @@ export type WalletTopupPaystackPayload = {
   reference: string;
   metadata: { wallet_topup_id?: string; tenant_id?: string; [k: string]: unknown };
   amount: number;
+  /** Gateway fee for this charge (Paystack `data.fees`, smallest-unit integer). */
+  fees?: number;
 };
 
 /**
@@ -63,6 +65,7 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
   }
 
   const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
+  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const currency = topupRow.currency ?? (await lastResortCurrencyFromTenantId(resolvedTenantId));
 
   const topupWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -136,7 +139,7 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
       booking_id: null,
       reference: payload.reference,
       amount: amountInCurrency,
-      fees: 0,
+      fees: feesInCurrency,
       net_amount: amountInCurrency,
       status: "success",
       provider: "paystack",
@@ -154,7 +157,7 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     tenant_id: topupWalletTenantId,
     transaction_type: "wallet_topup",
     amount: amountInCurrency,
-    fees: 0,
+    fees: feesInCurrency,
     commission: 0,
     net: amountInCurrency,
     description: `Wallet topup: ${topupId}`,

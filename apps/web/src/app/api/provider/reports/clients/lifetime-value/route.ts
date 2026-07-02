@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import {
   CLIENT_METRICS_BASIS_NOTE,
   sumLedgerEarningsByCustomer,
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
+    const { data: bookings, error: bookingsError } = await bookingsQuery.limit(MAX_BOOKINGS_FOR_REPORT);
 
     if (bookingsError) {
       return handleApiError(
@@ -151,9 +152,14 @@ export async function GET(request: NextRequest) {
     const averageLTV = totalClients > 0
       ? enrichedLTV.reduce((sum, c) => sum + c.totalSpent, 0) / totalClients
       : 0;
-    const medianLTV = totalClients > 0
-      ? enrichedLTV[Math.floor(totalClients / 2)]?.totalSpent || 0
-      : 0;
+    const medianLTV = (() => {
+      if (totalClients === 0) return 0;
+      const mid = Math.floor((totalClients - 1) / 2);
+      if (totalClients % 2 === 1) {
+        return enrichedLTV[mid]?.totalSpent ?? 0;
+      }
+      return ((enrichedLTV[mid]?.totalSpent ?? 0) + (enrichedLTV[mid + 1]?.totalSpent ?? 0)) / 2;
+    })();
     const totalLTV = enrichedLTV.reduce((sum, c) => sum + c.totalSpent, 0);
     const totalLedgerEarnings = enrichedLTV.reduce((sum, c) => sum + (c.totalEarned ?? 0), 0);
     const averageLedgerEarnings =

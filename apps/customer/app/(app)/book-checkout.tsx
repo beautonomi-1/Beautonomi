@@ -2431,6 +2431,15 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (errStatus === 403) {
+          // Identity verification required before first booking — route the
+          // user to the verification screen with a return path back here.
+          if (errCode === "VERIFICATION_REQUIRED") {
+            router.push({
+              pathname: "/(app)/account-settings/identity-verification" as never,
+              params: { return_to: bookContinueReturnTo } as never,
+            });
+            return;
+          }
           // §Customer-audit 2026-04: HOLD_OWNERSHIP used to fire any time a
           // guest-minted hold was consumed by the user after the device's
           // guest-fingerprint rotated (fresh install, locale change,

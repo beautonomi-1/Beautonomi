@@ -74,6 +74,14 @@ const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "3 Months", value: "3months" },
 ];
 
+/** Occupancy API 400s for windows >31 days — only offer sub-31-day presets for that report. */
+const OCCUPANCY_DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
+  { label: "Today", value: "today" },
+  { label: "This Week", value: "week" },
+  { label: "This Month", value: "month" },
+  { label: "Last Month", value: "last_month" },
+];
+
 const PERIOD_MQY = [
   { label: "Month", value: "month" },
   { label: "Quarter", value: "quarter" },
@@ -200,7 +208,7 @@ export default function ReportDetailScreen() {
       {def.query === "fromTo" && (
         <View style={twStyle("mb-2")}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
-            {DATE_RANGES.map((r) => (
+            {(reportId === "occupancy" ? OCCUPANCY_DATE_RANGES : DATE_RANGES).map((r) => (
               <TouchableOpacity
                 key={r.value}
                 style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}

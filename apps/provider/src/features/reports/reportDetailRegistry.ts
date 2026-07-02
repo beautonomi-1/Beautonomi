@@ -115,7 +115,7 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
     title: "Paystack Terminal reconciliation",
     subtitle: "Terminal captures, allocations, and payout readiness",
     apiPath: "payments/paystack-terminal-reconciliation",
-    query: "none",
+    query: "fromTo",
   },
   inventory: {
     title: "Product & inventory",

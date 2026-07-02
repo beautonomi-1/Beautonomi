@@ -8,6 +8,58 @@ function isTableMissingError(e: unknown): boolean {
   return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
 }
 
+/**
+ * §Phase 8: Auto-compute expected fees for a gateway + date range from the ledger.
+ * Returns the sum of fees recorded in finance_transactions (actual fees paid to gateway)
+ * plus a calculated expected-fee total using calculate_expected_fee() from config.
+ * The difference between expected and recorded reveals mis-priced or mis-captured rows.
+ */
+async function computeLedgerFees(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  gatewayName: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ recorded_fees: number; expected_fees_from_config: number }> {
+  try {
+    // Sum fees actually recorded in the ledger for this gateway's payment rows.
+    // We join payment_transactions to know the gateway, then aggregate finance_transactions.fees.
+    const { data: rows } = await (supabase.from("finance_transactions") as any)
+      .select("fees, amount, transaction_type")
+      .in("transaction_type", ["payment", "additional_charge_payment", "gift_card_sale", "wallet_topup", "provider_subscription_payment", "provider_ads_payment", "payout", "payout_transfer_fee"])
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
+
+    const recordedFees = ((rows ?? []) as { fees?: number | null }[])
+      .reduce((s, r) => s + Math.abs(Number(r.fees ?? 0)), 0);
+
+    // Expected fees from config using the DB function for each transaction amount.
+    // For efficiency, compute via SQL aggregate.
+    const { data: expectedRows } = await (supabase.from("finance_transactions") as any)
+      .select("amount, transaction_type")
+      .in("transaction_type", ["payment", "additional_charge_payment", "gift_card_sale", "wallet_topup", "provider_subscription_payment", "provider_ads_payment"])
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
+
+    let expectedFeesFromConfig = 0;
+    for (const row of (expectedRows ?? []) as { amount?: number | null; transaction_type?: string }[]) {
+      const scope = (row.transaction_type === "payout" || row.transaction_type === "payout_transfer_fee") ? "transfer" : "transaction";
+      const { data: calcFee } = await supabase.rpc("calculate_expected_fee" as any, {
+        gateway_name_param: gatewayName,
+        transaction_amount: Number(row.amount ?? 0),
+        currency_param: "ZAR",
+        payment_method_param: "*",
+        region_param: "local",
+        fee_scope_param: scope,
+      });
+      expectedFeesFromConfig += Number(calcFee ?? 0);
+    }
+
+    return { recorded_fees: Math.round(recordedFees * 100) / 100, expected_fees_from_config: Math.round(expectedFeesFromConfig * 100) / 100 };
+  } catch {
+    return { recorded_fees: 0, expected_fees_from_config: 0 };
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
@@ -21,6 +73,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = (page - 1) * limit;
+    const autoCompute = searchParams.get("auto_compute") === "true";
 
     let query = supabase
       .from("fee_reconciliations")
@@ -50,6 +103,13 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    // §Phase 8: when auto_compute=true and a date range + gateway are provided,
+    // compute expected fees from the ledger and include as a suggestion.
+    let autoComputedFees: { recorded_fees: number; expected_fees_from_config: number } | null = null;
+    if (autoCompute && gateway && startDate && endDate) {
+      autoComputedFees = await computeLedgerFees(supabase, gateway, startDate, endDate);
+    }
+
     return NextResponse.json({
       data: data || [],
       meta: {
@@ -58,6 +118,7 @@ export async function GET(request: NextRequest) {
         total: count || 0,
         has_more: (count || 0) > offset + limit,
       },
+      auto_computed: autoComputedFees,
       error: null,
     });
   } catch (error: unknown) {

@@ -26,7 +26,36 @@ function isPaystackPayload(data: unknown): data is {
   return data != null && typeof data === "object" && !Array.isArray(data) && "rows" in data;
 }
 
+function isFeatureOffPayload(data: unknown): boolean {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  const code = String(d.code ?? d.error ?? "").toLowerCase();
+  return (
+    code.includes("not_enabled") ||
+    code.includes("feature") ||
+    code.includes("paystack_terminal") ||
+    String(d.message ?? "").toLowerCase().includes("not enabled") ||
+    String(d.message ?? "").toLowerCase().includes("paystack virtual terminal")
+  );
+}
+
+const CURRENCY_TOTAL_KEYS = new Set(["received", "allocated", "unallocated", "held", "eligible", "declined"]);
+
 export function PaystackReconciliationReportView({ data }: { data: unknown }) {
+  if (isFeatureOffPayload(data)) {
+    return (
+      <View style={twStyle("items-center px-6 py-12")}>
+        <Text style={twStyle("text-center text-base font-semibold text-gray-800")}>
+          Paystack Terminal not enabled
+        </Text>
+        <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
+          This reconciliation report is only available when Paystack Virtual Terminal is active on your account.
+          Contact your administrator to enable it.
+        </Text>
+      </View>
+    );
+  }
+
   if (!isPaystackPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -40,7 +69,9 @@ export function PaystackReconciliationReportView({ data }: { data: unknown }) {
         {Object.entries(totals).map(([key, value]) => (
           <View key={key} style={twStyle("min-w-[120px] flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2")}>
             <Text style={twStyle("text-xs text-gray-500")}>{formatStatusLabel(key)}</Text>
-            <Text style={twStyle("text-lg font-semibold text-gray-900")}>{value}</Text>
+            <Text style={twStyle("text-lg font-semibold text-gray-900")}>
+              {CURRENCY_TOTAL_KEYS.has(key) ? formatCurrency(Number(value)) : String(value)}
+            </Text>
           </View>
         ))}
       </View>

@@ -23,7 +23,7 @@ const patchSchema = z.object({
   default_currency: z.string().length(3).toUpperCase().optional(),
   default_language: z.string().min(2).max(10).toLowerCase().optional(),
   default_timezone: z.string().min(1).optional(),
-  lifecycle: z.enum(["active", "sandbox", "suspended"]).optional(),
+  lifecycle: z.enum(["active", "sandbox", "suspended", "disabled"]).optional(),
   is_active: z.boolean().optional(),
 });
 

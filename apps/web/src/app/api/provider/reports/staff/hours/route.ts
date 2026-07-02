@@ -104,36 +104,38 @@ export async function GET(request: NextRequest) {
 
       let totalHours = 0;
       let scheduledHours = 0;
-      let completedBookings = 0;
+      // completedBookingIds: distinct bookings where this staff has at least one
+      // service line with actual start/end recorded — used for attendance rate.
+      const completedBookingIds = new Set<string>();
       let onTimeBookings = 0;
 
       staffBookings.forEach((booking: any) => {
+        let bookingHasActual = false;
         booking.booking_services?.forEach((bs: any) => {
-          if (bs.staff_id === staff.id) {
-            const duration = bs.offerings?.duration_minutes || 0;
-            scheduledHours += duration / 60; // Convert minutes to hours
+          if (bs.staff_id !== staff.id) return;
+          const duration = bs.offerings?.duration_minutes || 0;
+          scheduledHours += duration / 60;
 
-            if (bs.actual_start_at && bs.actual_end_at) {
-              const start = new Date(bs.actual_start_at);
-              const end = new Date(bs.actual_end_at);
-              const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-              totalHours += hours;
-              completedBookings += 1;
+          if (bs.actual_start_at && bs.actual_end_at) {
+            const start = new Date(bs.actual_start_at);
+            const end = new Date(bs.actual_end_at);
+            totalHours += (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+            bookingHasActual = true;
 
-              // Check if on time (within 15 minutes of scheduled)
-              const scheduled = new Date(booking.scheduled_at);
-              const diff = Math.abs(start.getTime() - scheduled.getTime()) / (1000 * 60);
-              if (diff <= 15) {
-                onTimeBookings += 1;
-              }
+            // On time = started within 15 minutes of booking.scheduled_at
+            const scheduled = new Date(booking.scheduled_at);
+            const diff = Math.abs(start.getTime() - scheduled.getTime()) / (1000 * 60);
+            if (diff <= 15) {
+              onTimeBookings += 1;
             }
           }
         });
+        if (bookingHasActual) completedBookingIds.add(booking.id);
       });
 
-      const averageHoursPerDay = totalHours > 0 && staffBookings.length > 0
-        ? totalHours / (Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) || 1)
-        : 0;
+      const completedBookings = completedBookingIds.size;
+      const periodDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+      const averageHoursPerDay = totalHours > 0 ? totalHours / periodDays : 0;
 
       return {
         staffId: staff.id,
@@ -143,6 +145,7 @@ export async function GET(request: NextRequest) {
         completedBookings,
         onTimeBookings,
         averageHoursPerDay,
+        // attendanceRate: share of assigned bookings that had actual times recorded
         attendanceRate: staffBookings.length > 0
           ? (completedBookings / staffBookings.length) * 100
           : 0,

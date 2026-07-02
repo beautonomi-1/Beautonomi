@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import {
   applyPosProductStockDecrements,
   validatePosProductStock,
@@ -150,6 +151,41 @@ export async function POST(
           500,
           recordedError,
         );
+      }
+
+      // Write the `payment` finance_transactions row with the real gateway fee.
+      // The DB trigger (migration 662) skips Paystack provider rows; terminal
+      // booking allocations must therefore write the ledger row directly here.
+      // We write a minimal payment row: amount = allocated, fees = gateway fee,
+      // commission = 0 (terminal = provider-collected — platform earns no commission),
+      // net = 0 (fees absorbed; commission is zero). Full booking-level ledger
+      // rows (provider_earnings, platform_fee, etc.) are written by the charge-success
+      // webhook for online payments; for terminal allocations they are deferred to
+      // a future settlement step. This row is the minimum needed to record the gateway
+      // cost against the correct booking so finance reports are accurate.
+      if (recorded.inserted) {
+        try {
+          const terminalFinanceTenantId = await resolveTenantIdForFinanceLedger(admin as any, {
+            tenant_id: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            provider_id: providerId,
+          });
+          const gatewayFee = Number(payment.gateway_fee_amount ?? 0);
+          await (admin.from("finance_transactions") as any).insert({
+            booking_id: body.entity_id,
+            provider_id: providerId,
+            tenant_id: terminalFinanceTenantId,
+            transaction_type: "payment",
+            amount: requestedAmount,
+            fees: gatewayFee,
+            commission: 0,
+            net: 0,
+            description: `Payment for booking via Paystack Terminal. Ref: ${payment.paystack_reference}`,
+            created_at: new Date().toISOString(),
+          });
+        } catch (finErr) {
+          // Best-effort: ledger write failure must not block the allocation
+          console.error("[terminal-allocation] finance_transactions write failed:", finErr);
+        }
       }
 
       await (admin.from("booking_payments") as any)

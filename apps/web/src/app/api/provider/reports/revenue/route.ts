@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       ledger_from_bookings: ledgerFromBookings,
       ledger_from_product_orders: ledgerFromProductOrders,
       cancellation_fees: cancellationFees,
-      total_revenue_inclusive: totalRevenue + cancellationFees,
+      total_revenue_inclusive: totalRevenue,
       previous_revenue: previousRevenue,
       revenue_by_service,
       revenue_by_staff,

@@ -116,7 +116,7 @@ export function ClientSummaryReportView({ data }: { data: unknown }) {
         <Text style={twStyle("text-xs font-medium text-gray-600")}>Avg bookings / client · retention</Text>
         <Text style={twStyle("mt-1 text-sm text-gray-900")}>
           {avgBk.toFixed(1)} bookings ·{" "}
-          {retRate != null ? formatPercentage(retRate) : "—"} retained
+          {retRate != null ? formatPercentage(retRate) : "—"} repeat rate (2+ visits in window)
           {days != null ? ` · ${days} days` : ""}
         </Text>
       </View>

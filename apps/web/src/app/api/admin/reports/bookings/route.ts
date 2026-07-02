@@ -4,6 +4,8 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
+import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,25 +44,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get bookings
-    const { data: bookings } = await supabase
-      .from('bookings')
-      .select('scheduled_at, status, provider_id, booking_source, total_amount')
-      .eq('tenant_id', tenantId)
-      .gte('scheduled_at', startDate.toISOString())
-      .lte('scheduled_at', endDate.toISOString());
-
-    const bookingsByDay: Record<string, number> = {};
-    const bookingsByStatus: Record<string, number> = {};
-    const bookingsByProvider: Record<string, { count: number; provider_name: string }> = {};
-
-    let totalBookings = 0;
-    let completed = 0;
-    let cancelled = 0;
-    let noShow = 0;
-
-    const channelCounts = new Map<string, { count: number; completed: number }>();
-
+    // Paginate across PostgREST 1000-row cap.
     type BookingRow = {
       scheduled_at?: string;
       status?: string;
@@ -68,21 +52,45 @@ export async function GET(request: NextRequest) {
       booking_source?: string | null;
       total_amount?: number;
     };
-    (bookings || []).forEach((booking: BookingRow) => {
+
+    const bookingsQuery = supabase
+      .from('bookings')
+      .select('scheduled_at, status, provider_id, booking_source, total_amount')
+      .eq('tenant_id', tenantId)
+      .gte('scheduled_at', startDate.toISOString())
+      .lte('scheduled_at', endDate.toISOString())
+      .order('scheduled_at', { ascending: true });
+
+    const bookings = await fetchAllLedgerPages<BookingRow>(bookingsQuery, MAX_BOOKINGS_FOR_REPORT);
+
+    const bookingsByDay: Record<string, { count: number; gmv: number }> = {};
+    const bookingsByStatus: Record<string, number> = {};
+    const bookingsByProvider: Record<string, { count: number; provider_name: string }> = {};
+
+    let totalBookings = 0;
+    let completed = 0;
+    let cancelled = 0;
+    let noShow = 0;
+    let completedGmv = 0;
+
+    const channelCounts = new Map<string, { count: number; completed: number }>();
+
+    bookings.forEach((booking) => {
       const channel = normalizeBookingChannel(booking.booking_source);
       const ch = channelCounts.get(channel) ?? { count: 0, completed: 0 };
       ch.count += 1;
       if (booking.status === "completed") ch.completed += 1;
       channelCounts.set(channel, ch);
-      const date = new Date(booking.scheduled_at).toISOString().split('T')[0];
-      
-      // By day
-      bookingsByDay[date] = (bookingsByDay[date] || 0) + 1;
 
-      // By status
-      bookingsByStatus[booking.status] = (bookingsByStatus[booking.status] || 0) + 1;
+      // UTC day bucket to avoid DST jumps
+      const date = new Date(booking.scheduled_at ?? "").toISOString().split('T')[0];
 
-      // By provider
+      if (!bookingsByDay[date]) bookingsByDay[date] = { count: 0, gmv: 0 };
+      bookingsByDay[date].count += 1;
+      if (booking.status === 'completed') bookingsByDay[date].gmv += Number(booking.total_amount ?? 0);
+
+      bookingsByStatus[booking.status ?? 'unknown'] = (bookingsByStatus[booking.status ?? 'unknown'] || 0) + 1;
+
       if (booking.provider_id) {
         if (!bookingsByProvider[booking.provider_id]) {
           bookingsByProvider[booking.provider_id] = { count: 0, provider_name: 'Unknown' };
@@ -91,7 +99,7 @@ export async function GET(request: NextRequest) {
       }
 
       totalBookings += 1;
-      if (booking.status === 'completed') completed += 1;
+      if (booking.status === 'completed') { completed += 1; completedGmv += Number(booking.total_amount ?? 0); }
       if (booking.status === 'cancelled') cancelled += 1;
       if (booking.status === 'no_show') noShow += 1;
     });
@@ -107,31 +115,22 @@ export async function GET(request: NextRequest) {
 
       (providers || []).forEach((p: { id: string; business_name?: string }) => {
         if (bookingsByProvider[p.id]) {
-          bookingsByProvider[p.id].provider_name = p.business_name;
+          bookingsByProvider[p.id].provider_name = p.business_name ?? 'Unknown';
         }
       });
     }
 
-    // Fill missing dates
+    // Fill missing UTC dates with zeros using the shared helper
     const bookingsByDayArray = [];
-    const current = new Date(startDate);
-    while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0];
+    for (const dateStr of eachUtcDay(startDate, endDate)) {
       bookingsByDayArray.push({
         date: dateStr,
-        count: bookingsByDay[dateStr] || 0,
+        count: bookingsByDay[dateStr]?.count ?? 0,
+        completed_gmv: bookingsByDay[dateStr]?.gmv ?? 0,
       });
-      current.setDate(current.getDate() + 1);
     }
 
-    let completedGmv = 0;
-    for (const booking of bookings ?? []) {
-      if ((booking as BookingRow).status === "completed") {
-        completedGmv += Number((booking as BookingRow).total_amount ?? 0);
-      }
-    }
     const avgBookingValue = completed > 0 ? completedGmv / completed : 0;
-
     const completionRate = totalBookings > 0 ? (completed / totalBookings) * 100 : 0;
     const cancellationRate = totalBookings > 0 ? (cancelled / totalBookings) * 100 : 0;
     const noShowRate = totalBookings > 0 ? (noShow / totalBookings) * 100 : 0;
@@ -149,7 +148,7 @@ export async function GET(request: NextRequest) {
       totalBookings,
       channelBreakdown,
       channelBasisNote:
-        "Counts use bookings.scheduled_at in the selected range. Channel labels from booking_source (null treated as online).",
+        "Counts use bookings.scheduled_at (UTC) in the selected range. Channel labels from booking_source (null treated as online).",
       bookingsByDay: bookingsByDayArray,
       bookingsByStatus: Object.entries(bookingsByStatus).map(([status, count]) => ({
         status,

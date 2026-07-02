@@ -7,6 +7,7 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
 export interface AdminYocoReconciliationRow {
   id: string;
@@ -84,7 +85,8 @@ export async function GET(request: NextRequest) {
     // Yoco report matches the selected Reports period instead of silently falling back
     // to the last 30 days.
     const period = searchParams.get("period");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10) || 100, 500);
+    // Allow larger limits; fall back to 500 as default cap for backward compat
+    const limit = Math.min(parseInt(searchParams.get("limit") || "500", 10) || 500, 5000);
 
     const now = new Date();
     const periodToMs: Record<string, number> = {
@@ -101,20 +103,8 @@ export async function GET(request: NextRequest) {
         : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const to = toStr ? new Date(toStr) : now;
 
-    const query = supabaseAdmin
-      .from("provider_yoco_payments")
-      .select("id, provider_id, yoco_payment_id, amount, currency, status, appointment_id, sale_id, created_at")
-      .in("provider_id", scopeProviderIds)
-      .gte("created_at", from.toISOString())
-      .lte("created_at", to.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    const { data: yocoPayments, error: yocoError } = await query;
-
-    if (yocoError) throw yocoError;
-
-    const payments = (yocoPayments || []) as Array<{
+    // Paginate Yoco payments past the 1000-row PostgREST cap.
+    type YocoPaymentRow = {
       id: string;
       provider_id: string;
       yoco_payment_id: string;
@@ -122,9 +112,19 @@ export async function GET(request: NextRequest) {
       currency: string;
       status: string;
       appointment_id: string | null;
-      sale_id: string | null;
-      created_at: string;
-    }>;
+    };
+    const yocoPayments = await fetchAllLedgerPages<YocoPaymentRow>(
+      supabaseAdmin
+        .from("provider_yoco_payments")
+        .select("id, provider_id, yoco_payment_id, amount, currency, status, appointment_id, sale_id, created_at")
+        .in("provider_id", scopeProviderIds)
+        .gte("created_at", from.toISOString())
+        .lte("created_at", to.toISOString())
+        .order("created_at", { ascending: false }),
+      limit,
+    );
+
+    const payments = yocoPayments;
 
     const withBooking = payments.filter((p) => p.appointment_id);
     const yocoIdsWithBooking = withBooking.map((p) => p.yoco_payment_id);

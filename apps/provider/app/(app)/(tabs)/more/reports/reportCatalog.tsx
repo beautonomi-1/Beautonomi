@@ -63,7 +63,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "staff-performance",
         name: "Staff Performance",
-        description: "Hours, commissions, bookings",
+        description: "Bookings, ledger revenue, and ratings by staff member",
         icon: "person-outline",
         color: "#4f46e5",
         bg: "#eef2ff",
