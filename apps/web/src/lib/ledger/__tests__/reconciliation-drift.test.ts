@@ -69,6 +69,10 @@ const SHADOW_LEDGER_ALLOWLIST = [
   // 704: marketing credit topup revenue + purchase reversal.
   "provider_marketing_credit_topup",
   "provider_marketing_credit_refund",
+  // 731/734: membership provider earnings (DR 2600 membership liability / CR 2000 payable).
+  "membership_provider_earnings",
+  // 734: standalone Paystack transfer fee for failed/reversed payouts (DR 4000 gateway / CR 1000 cash).
+  "payout_transfer_fee",
 ] as const;
 
 /**
@@ -86,6 +90,10 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
   "704_marketing_credit_revenue_accounting.sql": [
     "provider_marketing_credit_topup",
     "provider_marketing_credit_refund",
+  ],
+  "734_gl_shadow_qa_fix.sql": [
+    "membership_provider_earnings",
+    "payout_transfer_fee",
   ],
 };
 

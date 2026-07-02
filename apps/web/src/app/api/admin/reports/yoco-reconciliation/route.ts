@@ -112,6 +112,8 @@ export async function GET(request: NextRequest) {
       currency: string;
       status: string;
       appointment_id: string | null;
+      sale_id: string | null;
+      created_at: string;
     };
     const yocoPayments = await fetchAllLedgerPages<YocoPaymentRow>(
       supabaseAdmin
