@@ -55,6 +55,9 @@ type TicketRow = Record<string, unknown> & {
   agent_unread?: boolean | null;
   csat_score?: number | null;
   csat_comment?: string | null;
+  csat_submitted_at?: string | null;
+  csat_agent_id?: string | null;
+  csat_agent?: { id?: string; full_name?: string | null; email?: string | null } | null;
   created_at?: string;
   updated_at?: string;
   user?: {
@@ -205,8 +208,6 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
   const [noteBody, setNoteBody] = useState("");
   const [patchError, setPatchError] = useState<string | null>(null);
   const [tagsInput, setTagsInput] = useState("");
-  const [csatScore, setCsatScore] = useState<number | "">("");
-  const [csatCommentDraft, setCsatCommentDraft] = useState("");
   const [dragActive, setDragActive] = useState(false);
 
   const detailQ = useQuery({
@@ -313,8 +314,6 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
       assigned_to?: string | null;
       category?: string | null;
       tags?: string[];
-      csat_score?: number | null;
-      csat_comment?: string | null;
       sla_resolution_due_at?: string | null;
     }) => {
       const bundle = qc.getQueryData<TicketBundle>(adminQueryKeys.supportTicketDetail(id));
@@ -431,10 +430,7 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
   useEffect(() => {
     if (!syncedTicket?.id) return;
     setTagsInput(((syncedTicket.tags as string[] | null | undefined) ?? []).join(", "));
-    const sc = syncedTicket.csat_score;
-    setCsatScore(typeof sc === "number" ? sc : "");
-    setCsatCommentDraft(typeof syncedTicket.csat_comment === "string" ? syncedTicket.csat_comment : "");
-  }, [syncedTicket?.id, syncedTicket?.tags, syncedTicket?.csat_score, syncedTicket?.csat_comment]);
+  }, [syncedTicket?.id, syncedTicket?.tags]);
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
@@ -1279,48 +1275,65 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
 
           <AdminPanel>
             <h2 className="text-lg font-semibold text-gray-900">Satisfaction (CSAT)</h2>
-            <p className="mt-1 text-xs text-gray-500">Record follow-up survey feedback (1–5).</p>
-            <div className="mt-3 space-y-2">
-              <label className="text-xs font-medium text-gray-600">Score</label>
-              <select
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={csatScore === "" ? "" : String(csatScore)}
-                disabled={patchTicket.isPending}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setCsatScore(v === "" ? "" : Number(v));
-                }}
-              >
-                <option value="">Not set</option>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-              <label className="text-xs font-medium text-gray-600">Comment</label>
-              <textarea
-                className="w-full min-h-[72px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={csatCommentDraft}
-                onChange={(e) => setCsatCommentDraft(e.target.value)}
-                placeholder="Optional note from the customer"
-              />
-              <button
-                type="button"
-                className={adminToolbarButtonClass(patchTicket.isPending)}
-                disabled={patchTicket.isPending}
-                onClick={() => {
-                  void patchTicket
-                    .mutateAsync({
-                      csat_score: csatScore === "" ? null : Number(csatScore),
-                      csat_comment: csatCommentDraft.trim() || null,
-                    })
-                    .then(() => adminToast.success("CSAT saved"))
-                    .catch(() => {});
-                }}
-              >
-                {patchTicket.isPending ? "Saving…" : "Save CSAT"}
-              </button>
+            <p className="mt-1 text-xs text-gray-500">
+              Submitted by the customer or provider after the ticket is resolved. Read-only — the support desk cannot set or modify this rating.
+            </p>
+            <div className="mt-3">
+              {typeof ticket.csat_score === "number" ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-2xl font-bold tabular-nums ${
+                        ticket.csat_score >= 4
+                          ? "bg-green-50 text-green-700 ring-1 ring-green-200"
+                          : ticket.csat_score === 3
+                            ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+                            : "bg-red-50 text-red-700 ring-1 ring-red-200"
+                      }`}
+                    >
+                      {ticket.csat_score}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{ticket.csat_score} / 5</p>
+                      <p className="text-xs text-gray-500">
+                        {ticket.csat_score >= 4 ? "Positive" : ticket.csat_score === 3 ? "Neutral" : "Negative"}
+                      </p>
+                    </div>
+                  </div>
+                  {ticket.csat_comment ? (
+                    <blockquote className="rounded-lg border-l-4 border-gray-300 bg-gray-50 px-4 py-2 text-sm italic text-gray-700">
+                      {ticket.csat_comment}
+                    </blockquote>
+                  ) : null}
+                  <dl className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+                    <div>
+                      <dt className="text-gray-500">Rated by</dt>
+                      <dd className="capitalize text-gray-800">
+                        {str(ticket.requester_type) || (ticket.provider_id ? "provider" : "customer")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-500">Submitted</dt>
+                      <dd className="text-gray-800">{formatDateTime(ticket.csat_submitted_at)}</dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-gray-500">Credited agent</dt>
+                      <dd className="text-gray-800">
+                        {ticket.csat_agent?.full_name ||
+                          ticket.csat_agent?.email ||
+                          (ticket.csat_agent_id ? `Agent ${String(ticket.csat_agent_id).slice(0, 8)}…` : "Unassigned at submission")}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center">
+                  <p className="text-sm font-medium text-gray-600">Awaiting rating</p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    The {str(ticket.requester_type) || "customer"} will rate this experience once the ticket is resolved.
+                  </p>
+                </div>
+              )}
             </div>
           </AdminPanel>
 

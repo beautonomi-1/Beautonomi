@@ -843,6 +843,29 @@ function priorityRowAccent(priority: string): string {
   }
 }
 
+type AgentCsatRow = {
+  agentId: string;
+  agentName: string;
+  responses: number;
+  avgScore: number;
+  positiveRate: number;
+  sufficientData: boolean;
+};
+
+function CsatScorePill({ score }: { score: number }) {
+  const cls =
+    score >= 4
+      ? "bg-green-50 text-green-700 ring-1 ring-green-200"
+      : score === 3
+        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+        : "bg-red-50 text-red-700 ring-1 ring-red-200";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${cls}`}>
+      {score.toFixed(2)} / 5
+    </span>
+  );
+}
+
 function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
   const statusMix = Array.isArray(data.statusMix)
     ? (data.statusMix as { status: string; count: number }[])
@@ -858,6 +881,9 @@ function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
     : [];
   const contextMix = Array.isArray(data.contextMix)
     ? (data.contextMix as { support_context_type: string; count: number }[])
+    : [];
+  const agentCsat = Array.isArray(data.agentCsat)
+    ? (data.agentCsat as AgentCsatRow[])
     : [];
 
   const [showEmptyDays, setShowEmptyDays] = useState(false);
@@ -1013,6 +1039,60 @@ function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
                     >
                       {r.breachRate.toFixed(1)}%
                     </span>
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+
+      {agentCsat.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Agent CSAT (by credited agent)</SectionHeading>
+          <p className="mt-1 text-xs text-gray-500">
+            Ratings submitted by customers and providers after their ticket is resolved, attributed to the assigned agent at time of submission.
+          </p>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Agent</AdminTh>
+                <AdminTh>Responses</AdminTh>
+                <AdminTh>Avg score</AdminTh>
+                <AdminTh>Positive rate (4–5)</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {agentCsat.map((row) => (
+                <tr key={row.agentId}>
+                  <AdminTd className="text-sm font-medium text-gray-900">{row.agentName}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(row.responses)}</AdminTd>
+                  <AdminTd className="text-xs">
+                    {row.sufficientData ? (
+                      <CsatScorePill score={row.avgScore} />
+                    ) : (
+                      <span className="text-gray-400 italic">
+                        {row.avgScore.toFixed(2)} / 5{" "}
+                        <span className="not-italic">(low sample)</span>
+                      </span>
+                    )}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {row.sufficientData ? (
+                      <span
+                        className={
+                          row.positiveRate >= 80
+                            ? "font-medium text-green-700"
+                            : row.positiveRate >= 60
+                              ? "font-medium text-amber-700"
+                              : "font-medium text-red-700"
+                        }
+                      >
+                        {row.positiveRate.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </AdminTd>
                 </tr>
               ))}
