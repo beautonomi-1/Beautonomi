@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
-import { sendProviderOnWayNotification } from "@/lib/otp/notifications";
+import { notifyProviderEnRoute } from "@/lib/notifications/notification-service";
 import type { Booking } from "@/types/beautonomi";
 
 /**
@@ -35,22 +35,10 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    // Get provider business name
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("business_name")
-      .eq("id", providerId)
-      .single();
-
-    const providerData = provider as any;
-
     // Get booking details
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select(`
-        *,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone)
-      `)
+      .select("*")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -119,17 +107,8 @@ export async function POST(
       // Don't fail - event is created
     }
 
-    // Send notification to customer
-    const customer = bookingData.customers;
-    if (customer) {
-      await sendProviderOnWayNotification(
-        customer.id,
-        bookingData.booking_number,
-        providerData?.business_name || "Provider",
-        id,
-        estimated_arrival,
-      );
-    }
+    // Notify customer via template pipeline (push + in-app bell row).
+    await notifyProviderEnRoute(id, estimated_arrival ?? null, ["push", "email"]);
 
     // Fetch updated booking
     const { data: updatedBooking } = await supabase

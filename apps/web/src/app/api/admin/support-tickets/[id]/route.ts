@@ -25,7 +25,8 @@ export async function GET(
         *,
         user:users!support_tickets_user_id_fkey(id, email, full_name, phone, role, created_at),
         provider:providers(id, business_name, email, phone, status, user_id, created_at),
-        assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
+        assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name),
+        csat_agent:users!support_tickets_csat_agent_id_fkey(id, email, full_name)
       `)
       .eq("id", id)
       .maybeSingle();
@@ -103,8 +104,6 @@ export async function PATCH(
       assigned_to,
       tags,
       category,
-      csat_score,
-      csat_comment,
       sla_resolution_due_at,
       requester_type,
       support_context_type,
@@ -162,13 +161,6 @@ export async function PATCH(
     if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
     if (tags !== undefined) updateData.tags = tags;
     if (category !== undefined) updateData.category = category;
-    if (csat_score !== undefined) {
-      if (csat_score !== null && (typeof csat_score !== "number" || csat_score < 1 || csat_score > 5)) {
-        return NextResponse.json({ error: "csat_score must be null or 1–5" }, { status: 400 });
-      }
-      updateData.csat_score = csat_score;
-    }
-    if (csat_comment !== undefined) updateData.csat_comment = csat_comment;
     if (sla_resolution_due_at !== undefined) updateData.sla_resolution_due_at = sla_resolution_due_at;
     if (requester_type !== undefined) updateData.requester_type = requester_type;
     if (support_context_type !== undefined) updateData.support_context_type = support_context_type || null;

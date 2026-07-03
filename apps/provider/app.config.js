@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.69",
+  version: "1.0.70",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -187,7 +187,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "261",
+    buildNumber: "262",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -235,7 +235,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 262,
+    versionCode: 263,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

@@ -177,9 +177,25 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
     }
 
     if (
+      templateKey === "provider_approved" ||
+      templateKey === "provider_reactivated"
+    ) {
+      // Approved / reactivated — take provider to their live dashboard.
+      router.push("/(app)/(tabs)/dashboard");
+      return true;
+    }
+
+    if (
+      templateKey === "provider_suspended" ||
+      templateKey === "provider_profile_rejected"
+    ) {
+      router.push("/(app)/(tabs)/more/settings/verification");
+      return true;
+    }
+
+    if (
       templateKey === "provider_onboarding_welcome" ||
       templateKey === "provider_profile_approved" ||
-      templateKey === "provider_profile_rejected" ||
       templateKey === "identity_verification_approved" ||
       templateKey === "identity_verification_rejected"
     ) {

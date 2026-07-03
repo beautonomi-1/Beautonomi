@@ -63,6 +63,26 @@ const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: strin
     body: "You have a new booking.",
     url: "/provider/bookings/{{booking_id}}",
   },
+  provider_en_route_home: {
+    title: "Provider On The Way",
+    body: "{{provider_name}} is on the way to your location.",
+    url: "/bookings/{{booking_id}}",
+  },
+  provider_arrived_home: {
+    title: "Provider Has Arrived",
+    body: "{{provider_name}} has arrived at your location. {{verification_hint}}",
+    url: "/bookings/{{booking_id}}",
+  },
+  service_started: {
+    title: "Service Started",
+    body: "Your service with {{provider_name}} has started.",
+    url: "/bookings/{{booking_id}}",
+  },
+  service_completed: {
+    title: "Service Completed",
+    body: "Your service with {{provider_name}} has been completed. Thank you for choosing Beautonomi!",
+    url: "/bookings/{{booking_id}}/review",
+  },
 };
 
 function substituteAll(template: string, variables: Record<string, string>): string {

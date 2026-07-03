@@ -26,6 +26,7 @@ interface TicketRow {
   first_staff_reply_at: string | null;
   sla_resolution_due_at: string | null;
   csat_score: number | null;
+  csat_agent_id: string | null;
   category: string | null;
   requester_type: string | null;
   support_context_type: string | null;
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
           opened: 0,
           resolved: 0,
         })),
+        agentCsat: [],
       });
     }
 
@@ -110,6 +112,7 @@ export async function GET(request: NextRequest) {
       "first_staff_reply_at",
       "sla_resolution_due_at",
       "csat_score",
+      "csat_agent_id",
       "category",
       "requester_type",
       "support_context_type",
@@ -273,6 +276,49 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    // Per-agent CSAT aggregation using csat_agent_id attribution
+    const MIN_CSAT_RESPONSES = 2; // minimum responses before showing an agent's score
+    const agentCsatMap = new Map<string, { scores: number[] }>();
+    for (const t of periodTickets) {
+      if (typeof t.csat_score !== "number" || !t.csat_agent_id) continue;
+      const agentId = t.csat_agent_id;
+      const bucket = agentCsatMap.get(agentId) ?? { scores: [] };
+      bucket.scores.push(t.csat_score);
+      agentCsatMap.set(agentId, bucket);
+    }
+
+    // Resolve agent names for the ids we found
+    const agentIds = [...agentCsatMap.keys()];
+    const agentNames: Record<string, { full_name: string | null; email: string | null }> = {};
+    if (agentIds.length > 0) {
+      const { data: agentRows } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .in("id", agentIds);
+      if (agentRows) {
+        for (const row of agentRows as { id: string; full_name: string | null; email: string | null }[]) {
+          agentNames[row.id] = { full_name: row.full_name, email: row.email };
+        }
+      }
+    }
+
+    const agentCsat = [...agentCsatMap.entries()]
+      .map(([agentId, { scores }]) => {
+        const avg = Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 100) / 100;
+        const positive = scores.filter((v) => v >= 4).length;
+        const positiveRate = Math.round((positive / scores.length) * 1000) / 10;
+        const agent = agentNames[agentId];
+        return {
+          agentId,
+          agentName: agent?.full_name || agent?.email || `Agent ${agentId.slice(0, 8)}…`,
+          responses: scores.length,
+          avgScore: avg,
+          positiveRate,
+          sufficientData: scores.length >= MIN_CSAT_RESPONSES,
+        };
+      })
+      .sort((a, b) => b.responses - a.responses);
+
     return successResponse({
       period: window.period,
       ticketsCreated,
@@ -297,6 +343,7 @@ export async function GET(request: NextRequest) {
         (t) => !t.first_staff_reply_at && !isClosedLike(t.status)
       ).length,
       ticketRowCap: TICKET_ROW_CAP,
+      agentCsat,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load support performance report");

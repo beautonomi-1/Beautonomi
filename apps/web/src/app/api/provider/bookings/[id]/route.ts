@@ -1749,8 +1749,16 @@ export async function PATCH(
             cancelledBy: 'provider',
             refundInfo: 'Marked as no-show by provider',
           });
-        } else if (dbStatus === "confirmed" && previousStatus === "pending") {
-          // Send confirmation notification
+        } else if (
+          dbStatus === "confirmed" &&
+          previousStatus !== "confirmed" &&
+          previousStatus !== "in_progress" &&
+          previousStatus !== "completed"
+        ) {
+          // Send confirmation notification for any pending-ish → confirmed
+          // transition (pending, pending_payment, booked). This wrapper is now
+          // the single source for the confirmation push + in-app row; the legacy
+          // inline block was removed to stop duplicate/US-locale notifications.
           await sendBookingConfirmationNotification(id);
         } else if (scheduled_at && scheduled_at !== (currentBooking as BookingRow).scheduled_at) {
           // Send reschedule notification
@@ -1887,176 +1895,69 @@ export async function PATCH(
       }
     }
 
-    // Notify customer of status change or reschedule
+    // Notify customer for cases NOT already handled by the lifecycle wrappers above
+    // (confirmed, in_progress, completed, cancelled, no_show, reschedule are all covered).
+    // Only create an in-app bell row here for genuinely unhandled updates such as
+    // staff assignment or minor field edits — the template-based wrappers above
+    // already emit push + in-app for the main lifecycle transitions.
     if (customerId) {
       try {
-        // Create database notification
         const bookingNumber = (updatedBooking as RefetchedBookingRow)?.ref_number || (currentBooking as BookingRow)?.ref_number || "";
-        const previousStatus = (currentBooking as BookingRow)?.status;
-        const newStatus = dbStatus || previousStatus;
-        const wasRescheduled = scheduled_at && scheduled_at !== (currentBooking as BookingRow)?.scheduled_at;
+        const previousStatusForNotif = (currentBooking as BookingRow)?.status;
+        const newStatusForNotif = dbStatus || previousStatusForNotif;
+        const wasRescheduledForNotif = scheduled_at && scheduled_at !== (currentBooking as BookingRow)?.scheduled_at;
 
-        let notificationTitle = "Booking Update";
-        let notificationMessage = "";
-        let notificationType = "booking_update";
+        // Skip statuses already handled by the dedicated wrapper block above so
+        // customers never receive duplicate notifications.
+        const handledByWrapper =
+          dbStatus === "confirmed" ||
+          dbStatus === "in_progress" ||
+          dbStatus === "completed" ||
+          dbStatus === "cancelled" ||
+          dbStatus === "no_show" ||
+          wasRescheduledForNotif;
 
-        if (wasRescheduled) {
-          notificationTitle = "Booking Rescheduled";
-          notificationMessage = `Your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}has been rescheduled.`;
-          notificationType = "booking_rescheduled";
-        } else if (status && newStatus !== previousStatus) {
-          const statusMessages: Record<string, string> = {
-            confirmed: "Your booking has been confirmed.",
-            in_progress: "Your service has started.",
-            completed: "Your service has been completed.",
-            cancelled: "Your booking has been cancelled.",
-          };
-          notificationMessage = statusMessages[String(newStatus)] || `Your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}status has been updated.`;
-          notificationType = "booking_status_update";
-        } else if (staff_id && staff_id !== (currentBooking as BookingRow)?.staff_id) {
-          notificationTitle = "Staff Assigned";
-          notificationMessage = `A staff member has been assigned to your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}.`;
-          notificationType = "booking_staff_changed";
-        } else {
-          notificationMessage = `Your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}has been updated.`;
-        }
+        if (!handledByWrapper) {
+          let notificationTitle = "Booking Update";
+          let notificationMessage = "";
+          let notificationType = "booking_update";
 
-        // Insert notification into database
-        const { insertNotification } = await import("@/lib/notifications/insert-notification");
-        await insertNotification({
-          user_id: customerId,
-          type: notificationType,
-          title: notificationTitle,
-          message: notificationMessage,
-          data: {
-            booking_id: id,
-            booking_number: bookingNumber,
-            status: newStatus,
-            previous_status: previousStatus,
-            was_rescheduled: wasRescheduled,
-          },
-          action_url: `/account-settings/bookings/${id}`,
-        });
-
-        // Also send push notification via OneSignal using templates
-        try {
-          const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-
-          const bookingTenantForMoney =
-            (updatedBooking as RefetchedBookingRow & { tenant_id?: string | null })?.tenant_id ??
-            (currentBooking as BookingRow & { tenant_id?: string | null })?.tenant_id ??
-            tenantId;
-          const { format: formatBookingMoney } =
-            await getTenantMoneyFormatter(bookingTenantForMoney);
-
-          // Get booking details for template variables
-          const bookingScheduledAt = (updatedBooking as RefetchedBookingRow)?.scheduled_at || (currentBooking as BookingRow)?.scheduled_at;
-          const previousScheduledAt = (currentBooking as BookingRow)?.scheduled_at;
-          
-          // Format dates and times
-          const formatDate = (dateStr: string | null | undefined) => {
-            if (!dateStr) return "";
-            return new Date(dateStr).toLocaleDateString();
-          };
-          
-          const formatTime = (dateStr: string | null | undefined) => {
-            if (!dateStr) return "";
-            return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          };
-          
-          const scheduledDate = formatDate(bookingScheduledAt);
-          const scheduledTime = formatTime(bookingScheduledAt);
-          const previousDate = formatDate(previousScheduledAt);
-          const previousTime = formatTime(previousScheduledAt);
-          
-          // Get provider name
-          const { data: providerData } = await supabase
-            .from("providers")
-            .select("business_name")
-            .eq("id", providerId)
-            .single();
-          
-          const providerName = providerData?.business_name || "Your provider";
-          
-          // Map status changes to template keys
-          let templateKey: string | null = null;
-          let templateVariables: Record<string, string> = {};
-          
-          if (newStatus === "confirmed" && previousStatus !== "confirmed") {
-            templateKey = "booking_confirmed";
-            templateVariables = {
-              provider_name: providerName,
-              booking_date: scheduledDate || "your appointment",
-              booking_time: scheduledTime || "",
-              services: (updatedBooking as RefetchedBookingRow)?.service_name || (currentBooking as BookingRow)?.service_name || "service",
-              total_amount: formatBookingMoney(
-                (updatedBooking as RefetchedBookingRow)?.total_amount ||
-                  (currentBooking as BookingRow)?.total_amount ||
-                  0,
-              ),
-              booking_number: bookingNumber || "",
-              booking_id: id,
+          if (staff_id && staff_id !== (currentBooking as BookingRow)?.staff_id) {
+            notificationTitle = "Staff Assigned";
+            notificationMessage = `A staff member has been assigned to your booking${bookingNumber ? ` (${bookingNumber})` : ""}.`;
+            notificationType = "booking_staff_changed";
+          } else if (dbStatus && newStatusForNotif !== previousStatusForNotif) {
+            const statusMessages: Record<string, string> = {
+              checked_in: "You have been checked in.",
+              waiting: "Your provider is preparing for your appointment.",
+              pending: "Your booking is pending confirmation.",
             };
-          } else if (newStatus === "cancelled") {
-            templateKey = "booking_cancelled";
-            const paymentStatusForRefundCopy =
-              ((updatedBooking as RefetchedBookingRow)?.payment_status ||
-                (currentBooking as BookingRow)?.payment_status ||
-                "").toString();
-            const hasCustomerFunds =
-              ["paid", "partially_paid", "partially_refunded"].includes(paymentStatusForRefundCopy) ||
-              Number(
-                (updatedBooking as RefetchedBookingRow)?.total_paid ??
-                  (currentBooking as Record<string, unknown>)?.total_paid ??
-                  0,
-              ) > 0;
-            templateVariables = {
-              provider_name: providerName,
-              booking_date: scheduledDate || "your appointment",
-              booking_number: bookingNumber || "",
-              refund_info: hasCustomerFunds
-                ? "A refund will be processed within 3-5 business days."
-                : "No payment was required.",
-              booking_id: id,
-            };
-          } else if (wasRescheduled) {
-            templateKey = "booking_rescheduled";
-            templateVariables = {
-              provider_name: providerName,
-              new_date: scheduledDate || "",
-              new_time: scheduledTime || "",
-              old_date: previousDate || "",
-              old_time: previousTime || "",
-              booking_id: id,
-            };
-          } else if (newStatus === "completed") {
-            templateKey = "service_completed";
-            templateVariables = {
-              provider_name: providerName,
-              services: (updatedBooking as RefetchedBookingRow)?.service_name || (currentBooking as BookingRow)?.service_name || "service",
-              booking_id: id,
-            };
+            notificationMessage =
+              statusMessages[String(newStatusForNotif)] ||
+              `Your booking${bookingNumber ? ` (${bookingNumber})` : ""} status has been updated.`;
+            notificationType = "booking_status_update";
+          } else {
+            notificationMessage = `Your booking${bookingNumber ? ` (${bookingNumber})` : ""} has been updated.`;
           }
 
-          // Send notification using template if available
-          if (templateKey) {
-            await sendTemplateNotification(
-              templateKey,
-              [customerId],
-              templateVariables,
-              ["push", "email"],
-              // In-app bell row inserted manually above; skip template auto-insert.
-              { appType: "customer", skipInApp: true }
-            );
+          if (notificationMessage) {
+            const { insertNotification } = await import("@/lib/notifications/insert-notification");
+            await insertNotification({
+              user_id: customerId,
+              type: notificationType,
+              title: notificationTitle,
+              message: notificationMessage,
+              data: {
+                booking_id: id,
+                booking_number: bookingNumber,
+                status: newStatusForNotif,
+                previous_status: previousStatusForNotif,
+              },
+              action_url: `/account-settings/bookings/${id}`,
+            });
           }
-          // Note: For other status changes without specific templates, notifications are skipped
-          // to avoid errors. Add specific notification templates as needed.
-        } catch (pushError) {
-          // OneSignal might not be configured, that's okay
-          console.warn("OneSignal push notification not available:", pushError);
         }
       } catch (notifError) {
-        // Log but don't fail the request
         console.error("Error creating customer notification:", notifError);
       }
     }
