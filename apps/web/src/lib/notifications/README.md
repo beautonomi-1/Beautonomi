@@ -53,20 +53,20 @@ Sends rescheduling notification.
 
 ### At-Home Service Notifications
 
-#### `notifyProviderEnRoute(bookingId, estimatedArrival, channels?)`
-Notifies customer that provider is on the way.
+#### `notifyProviderEnRoute(bookingId, estimatedArrival?, channels?)`
+Notifies customer that provider is on the way. `estimatedArrival` is optional (Date|string|null); when omitted the copy reads "shortly".
 - **When to use**: When provider starts traveling to customer location
-- **Channels**: push, sms
+- **Channels**: push, email (default)
 
 #### `notifyProviderArrivingSoon(bookingId, minutes, channels?)`
 Notifies customer that provider is arriving soon.
 - **When to use**: 15 minutes before provider arrival
 - **Channels**: push, sms
 
-#### `notifyProviderArrived(bookingId, channels?)`
-Notifies customer that provider has arrived.
+#### `notifyProviderArrived(bookingId, options?, channels?)`
+Notifies customer that provider has arrived. Pass `{ hasOtp: true }` to hint the customer to open the app for their verification code.
 - **When to use**: When provider reaches customer location
-- **Channels**: push, sms
+- **Channels**: push, email (default)
 
 #### `notifyHomeServiceLocationDetails(bookingId, channels?)`
 Sends service location details for at-home booking.

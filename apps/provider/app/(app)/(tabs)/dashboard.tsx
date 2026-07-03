@@ -846,29 +846,49 @@ export default function DashboardScreen() {
       {provider?.status === "pending_approval" && (
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: 10,
             backgroundColor: "#fffbeb",
             borderColor: "#fde68a",
             borderWidth: 1,
             borderRadius: 16,
             padding: 14,
             marginBottom: 16,
+            gap: 8,
           }}
           accessibilityRole="text"
           accessibilityLabel="Your account is under review"
         >
-          <Ionicons name="hourglass-outline" size={20} color="#d97706" style={{ marginTop: 1 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: "700", color: "#92400e" }}>
-              Your account is under review
-            </Text>
-            <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 18, color: "#b45309" }}>
-              You can explore your dashboard and finish setup now. We&apos;ll notify you once your
-              profile is approved and visible to customers.
-            </Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+            <Ionicons name="hourglass-outline" size={20} color="#d97706" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#92400e" }}>
+                Your account is under review
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 18, color: "#b45309" }}>
+                We&apos;ll notify you once your profile is approved and visible to customers. In the meantime, use
+                the time to complete your profile — a strong profile gets approved faster.
+              </Text>
+            </View>
           </View>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => router.push("/(app)/(tabs)/more/settings/setup-status" as never)}
+            style={{
+              alignSelf: "flex-start",
+              marginLeft: 30,
+              paddingVertical: 5,
+              paddingHorizontal: 12,
+              borderRadius: 20,
+              backgroundColor: "#fef3c7",
+              borderWidth: 1,
+              borderColor: "#fcd34d",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Complete your profile to speed up approval"
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400e" }}>
+              Complete your profile →
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 

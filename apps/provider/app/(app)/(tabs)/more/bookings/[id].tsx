@@ -653,6 +653,8 @@ export default function BookingDetailScreen() {
   const [optimisticBookingStatus, setOptimisticBookingStatus] = useState<{ db_status: string; status: string } | null>(
     null,
   );
+  /** Flip to true immediately on a successful OTP verify so the PIN UI clears before the heavy refresh completes. */
+  const [optimisticArrivalVerified, setOptimisticArrivalVerified] = useState(false);
 
   const resolvedBooking = useMemo((): BookingDetail | null => {
     if (!data) return null;
@@ -662,7 +664,20 @@ export default function BookingDetailScreen() {
 
   useEffect(() => {
     setOptimisticBookingStatus(null);
+    setOptimisticArrivalVerified(false);
   }, [bookingIdStr]);
+
+  // Once the server confirms arrival_otp_verified or qr_code_verified, retire the
+  // optimistic flag so the source of truth is the refreshed DB row.
+  useEffect(() => {
+    if (
+      optimisticArrivalVerified &&
+      ((data as BookingDetail | null)?.arrival_otp_verified === true ||
+        (data as BookingDetail | null)?.qr_code_verified === true)
+    ) {
+      setOptimisticArrivalVerified(false);
+    }
+  }, [data, optimisticArrivalVerified]);
 
   const currentDbStatus = useMemo(() => {
     const row = resolvedBooking ?? (data as BookingDetail | undefined);
@@ -1538,7 +1553,9 @@ export default function BookingDetailScreen() {
   const isEnRoute = b.current_stage === "provider_on_way";
   const isArrived = b.current_stage === "provider_arrived";
   const arrivalVerified =
-    b.arrival_otp_verified === true || b.qr_code_verified === true;
+    optimisticArrivalVerified ||
+    b.arrival_otp_verified === true ||
+    b.qr_code_verified === true;
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
 
@@ -1984,6 +2001,45 @@ export default function BookingDetailScreen() {
     }
 
     if (dbTarget === "completed") {
+      // Gate on unpaid balance: prompt provider to capture payment first.
+      if (outstanding > 0) {
+        const cur = b.currency ?? getTenantDefaultCurrency();
+        Alert.alert(
+          "Outstanding balance",
+          `This booking has an unpaid balance of ${cur} ${outstanding.toFixed(2)}. Capture payment before completing or choose "Complete Anyway" to settle later.`,
+          [
+            {
+              text: "Capture Payment",
+              onPress: () => {
+                setShowMarkPaid(true);
+              },
+            },
+            {
+              text: "Complete Anyway",
+              style: "default",
+              onPress: () => {
+                void (async () => {
+                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+                  const { error: err, errorCode } = await postMutation(
+                    `/api/provider/bookings/${id}/complete-service`,
+                    {},
+                  );
+                  if (err) {
+                    setOptimisticBookingStatus(null);
+                    Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+                    return;
+                  }
+                  setOptimisticBookingStatus(null);
+                  await refresh();
+                })();
+              },
+            },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+        return;
+      }
+
       setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
       const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
@@ -2356,9 +2412,14 @@ export default function BookingDetailScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Optimistic: clear PIN and flip verified flag immediately so the UI
+      // updates before the heavy booking refresh completes.
       setArrivalPinInput("");
-      await refresh();
+      setOptimisticArrivalVerified(true);
+      // Refresh in background — the realtime subscription will reconcile too.
+      void refresh();
     } finally {
+      // Spinner off immediately after API 200, not after refresh.
       setIsVerifyingArrival(false);
     }
   };

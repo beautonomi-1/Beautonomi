@@ -38,7 +38,9 @@ import {
 /** Notification types that warrant stronger haptic feedback. */
 const HIGH_URGENCY_TYPES = new Set([
   "provider_arrived",
+  "provider_arrived_home",
   "provider_on_way",
+  "provider_en_route_home",
   "waitlist_available",
   "additional_charge_requested",
 ]);

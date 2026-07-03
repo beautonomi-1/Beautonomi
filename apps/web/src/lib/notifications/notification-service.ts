@@ -554,9 +554,14 @@ export async function notifyBookingRescheduled(
 // ============================================================================
 
 /**
- * Notify customer that provider is en route (at-home service)
+ * Notify customer that provider is en route (at-home service).
+ * @param estimatedArrival - Optional ETA; omit or pass null/undefined when unknown.
  */
-export async function notifyProviderEnRoute(bookingId: string, estimatedArrival: Date, channels?: NotificationChannel[]) {
+export async function notifyProviderEnRoute(
+  bookingId: string,
+  estimatedArrival?: Date | string | null,
+  channels?: NotificationChannel[],
+) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -564,7 +569,11 @@ export async function notifyProviderEnRoute(bookingId: string, estimatedArrival:
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    estimated_arrival_time: formatBookingTime(estimatedArrival, providerTimezoneOf(booking)),
+    // Default to "shortly" when no ETA so the template never renders a dangling
+    // "Estimated arrival: " with nothing after it.
+    estimated_arrival_time: estimatedArrival
+      ? formatBookingTime(estimatedArrival, providerTimezoneOf(booking))
+      : "shortly",
     service_address: booking.service_address || "Your location",
     booking_id: bookingId,
   };
@@ -573,8 +582,8 @@ export async function notifyProviderEnRoute(bookingId: string, estimatedArrival:
     "provider_en_route_home",
     [booking.customer_id],
     withTenantVariable(booking.tenant_id, variables),
-    channels,
-    { appType: "customer" }
+    channels ?? ["push", "email"],
+    { appType: "customer" },
   );
 }
 
@@ -604,9 +613,15 @@ export async function notifyProviderArrivingSoon(bookingId: string, minutes: num
 }
 
 /**
- * Notify customer that provider has arrived (at-home service)
+ * Notify customer that provider has arrived (at-home service).
+ * @param options.hasOtp - When true, wording hints the customer to open the app for their
+ *   verification code instead of the default "Please let them in" copy.
  */
-export async function notifyProviderArrived(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyProviderArrived(
+  bookingId: string,
+  options?: { hasOtp?: boolean },
+  channels?: NotificationChannel[],
+) {
   const booking = await getBookingDetails(bookingId);
   if (!booking || booking.location_type !== "at_home") {
     return { success: false, error: "Booking not found or not at-home service" };
@@ -616,14 +631,17 @@ export async function notifyProviderArrived(bookingId: string, channels?: Notifi
     provider_name: booking.provider?.business_name || "Provider",
     service_address: booking.service_address || "Your location",
     booking_id: bookingId,
+    verification_hint: options?.hasOtp
+      ? "Open the app to see your verification code."
+      : "Please let them in.",
   };
 
   return await dispatchTemplateNotification(
     "provider_arrived_home",
     [booking.customer_id],
     withTenantVariable(booking.tenant_id, variables),
-    channels,
-    { appType: "customer" }
+    channels ?? ["push", "email"],
+    { appType: "customer" },
   );
 }
 

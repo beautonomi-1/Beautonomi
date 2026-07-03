@@ -38,6 +38,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
 
 const STORAGE_KEY_PREFIX = "provider:setup_celebration_shown_v1:";
@@ -115,6 +116,8 @@ function ConfettiPiece({ index, total }: { index: number; total: number }) {
 export function SetupCompleteCelebration() {
   const router = useRouter();
   const { user } = useAuth();
+  const { provider } = useProvider();
+  const isPendingApproval = provider?.status === "pending_approval";
   // Reads the same cache key as every other setup-status consumer.
   const { data } = useApi<SetupStatusLite>("/api/provider/setup-status");
   const [visible, setVisible] = useState(false);
@@ -215,12 +218,19 @@ export function SetupCompleteCelebration() {
         </View>
         <Animated.View style={[styles.card, cardStyle]}>
           <View style={styles.iconWrap}>
-            <Ionicons name="trophy" size={36} color="#ec4899" />
+            <Ionicons
+              name={isPendingApproval ? "hourglass-outline" : "trophy"}
+              size={36}
+              color={isPendingApproval ? "#d97706" : "#ec4899"}
+            />
           </View>
-          <Text style={styles.title}>You&apos;re all set!</Text>
+          <Text style={styles.title}>
+            {isPendingApproval ? "Profile submitted!" : "You\u2019re all set!"}
+          </Text>
           <Text style={styles.subtitle}>
-            Your business is ready to accept bookings on Beautonomi.
-            Time to grow.
+            {isPendingApproval
+              ? "Your profile is under review. We\u2019ll notify you once it\u2019s approved and visible to customers. While you wait, you can finish setting up your profile."
+              : "Your business is ready to accept bookings on Beautonomi. Time to grow."}
           </Text>
           <TouchableOpacity
             onPress={handleDashboard}
@@ -229,7 +239,9 @@ export function SetupCompleteCelebration() {
             accessibilityRole="button"
             accessibilityLabel="Continue to dashboard"
           >
-            <Text style={styles.primaryLabel}>Continue to dashboard</Text>
+            <Text style={styles.primaryLabel}>
+              {isPendingApproval ? "Go to dashboard" : "Continue to dashboard"}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleMore}
@@ -239,7 +251,9 @@ export function SetupCompleteCelebration() {
             accessibilityLabel="Add more details like gallery or identity verification"
           >
             <Text style={styles.secondaryLabel}>
-              Add more details (gallery, KYC)
+              {isPendingApproval
+                ? "Complete your profile (gallery, KYC)"
+                : "Add more details (gallery, KYC)"}
             </Text>
           </TouchableOpacity>
         </Animated.View>

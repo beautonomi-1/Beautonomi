@@ -5,7 +5,7 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { generateOTP, getOTPExpiry } from "@/lib/otp/generator";
-import { sendOTPToCustomer, sendProviderArrivedNotification } from "@/lib/otp/notifications";
+import { notifyProviderArrived } from "@/lib/notifications/notification-service";
 import { generateVerificationCode, getQRCodeExpiry, type QRCodeData } from "@/lib/qr/generator";
 import { getVerificationSettings } from "@/lib/platform-settings";
 import type { Booking } from "@/types/beautonomi";
@@ -134,16 +134,8 @@ export async function POST(
         throw updateError;
       }
 
-      // Notify customer — no OTP in simple mode, use the generic arrived notification
-      const customerSimple = bookingData.customers;
-      if (customerSimple) {
-        await sendProviderArrivedNotification(
-          customerSimple.id,
-          bookingData.booking_number,
-          providerData?.business_name || "Provider",
-          id,
-        );
-      }
+      // Notify customer via template pipeline (push + in-app bell row).
+      await notifyProviderArrived(id, { hasOtp: false }, ["push", "email"]);
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -214,16 +206,8 @@ export async function POST(
         throw updateError;
       }
 
-      // Notify customer — verification methods disabled, use generic arrived notification
-      const customerDisabled = bookingData.customers;
-      if (customerDisabled) {
-        await sendProviderArrivedNotification(
-          customerDisabled.id,
-          bookingData.booking_number,
-          providerData?.business_name || "Provider",
-          id,
-        );
-      }
+      // Notify customer via template pipeline (push + in-app bell row).
+      await notifyProviderArrived(id, { hasOtp: false }, ["push", "email"]);
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -335,29 +319,10 @@ export async function POST(
 
     const customer = bookingData.customers;
     if (customer) {
-      if (otp_enabled && otp) {
-        try {
-          await sendOTPToCustomer({
-            customerId: customer.id,
-            phone: customer.phone || "",
-            email: customer.email || "",
-            otp: otp,
-            bookingId: id,
-            bookingNumber: bookingData.booking_number,
-            providerName: providerData?.business_name || "Provider",
-            customerName: customer.full_name || "Customer",
-          });
-        } catch (otpError) {
-          console.error("Failed to send OTP, QR code available as fallback:", otpError);
-        }
-      } else {
-        await sendProviderArrivedNotification(
-          customer.id,
-          bookingData.booking_number,
-          providerData?.business_name || "Provider",
-          id,
-        );
-      }
+      // Notify via template pipeline — push + in-app bell row.
+      // When OTP is enabled the wording hints the customer to open the app for their code;
+      // the actual PIN is shown only in-app on the booking detail screen.
+      await notifyProviderArrived(id, { hasOtp: !!(otp_enabled && otp) }, ["push", "email"]);
 
       try {
         const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(

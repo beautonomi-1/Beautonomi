@@ -1305,6 +1305,42 @@ export default function GroupBookingsScreen() {
       Alert.alert("Error", "Unsupported status transition.");
       return;
     }
+
+    // Gate on unpaid balance before completing a group session.
+    if (newStatus === "completed" && !groupIsFullyPaid(group) && Number(group.balance_due ?? 0) > 0) {
+      Alert.alert(
+        "Outstanding balance",
+        `This session has an unpaid balance of ${formatCurrency(Number(group.balance_due))}. Record payment before completing, or choose "Complete Anyway" to settle later.`,
+        [
+          {
+            text: "Record Payment",
+            // Keep the detail sheet open so the provider can use the payment buttons.
+          },
+          {
+            text: "Complete Anyway",
+            style: "default",
+            onPress: () => {
+              void (async () => {
+                const { error } = await postGroupAction(
+                  `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=complete_service`,
+                  {},
+                );
+                if (error) {
+                  Alert.alert("Error", error);
+                  return;
+                }
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setSelectedGroup(null);
+                refresh();
+              })();
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ],
+      );
+      return;
+    }
+
     const { error } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=${action}`,
       {}
@@ -2068,6 +2104,10 @@ export default function GroupBookingsScreen() {
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
 
+    // Wrap all network work so progress state is always cleared even if an
+    // unexpected error escapes one of the inner branches.
+    try {
+
     const scheduledAt = buildZonedIsoForWallClock(
       createForm.date,
       createForm.time.substring(0, 5),
@@ -2340,8 +2380,9 @@ export default function GroupBookingsScreen() {
     setCreateStep("form");
     setCreateReviewError(null);
     setShowCreate(false);
-    InteractionManager.runAfterInteractions(async () => {
-      await refresh();
+    // Show the success alert right after animations settle — do NOT await
+    // refresh() before showing it; that delays feedback by up to a second.
+    InteractionManager.runAfterInteractions(() => {
       const paymentNote =
         createPaymentMethod === "pay_later"
           ? "Payment is due from participants."
@@ -2361,7 +2402,15 @@ export default function GroupBookingsScreen() {
           { text: "Done" },
         ],
       );
+      void refresh();
     });
+    } catch (createErr) {
+      console.error("[handleCreate] unexpected error:", createErr);
+      Alert.alert("Error", "Something went wrong creating the group session. Please try again.");
+    } finally {
+      // Always clear progress so the confirm button never stays permanently disabled.
+      setCreateParticipantProgress(null);
+    }
   }
 
   function applyCreateAddress(parsed: {
@@ -4334,7 +4383,7 @@ export default function GroupBookingsScreen() {
                 onPress={() => {
                   void handleCreate();
                 }}
-                loading={creatingGroup || creatingParticipantBooking || addingParticipant || createParticipantProgress != null}
+                loading={creatingGroup || creatingParticipantBooking || addingParticipant || createParticipantProgress != null || groupActionLoading}
                 variant="brand"
                 style={{ flex: 2 }}
               />

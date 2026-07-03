@@ -34,6 +34,8 @@ export interface Notification {
 export function iconNameForNotificationType(type: string): string {
   const t = (type || "").toLowerCase();
   if (t.includes("message") || t.includes("chat")) return "chatbubble-ellipses-outline";
+  if (t.includes("en_route") || t.includes("on_way") || t.includes("arrived")) return "navigate-outline";
+  if (t.includes("service_started") || t.includes("service_completed") || t.includes("service_in_progress")) return "sparkles-outline";
   if (t.includes("booking") || t.includes("appointment") || t.includes("reminder")) return "calendar-outline";
   if (t.includes("order") || t.includes("product") || t.includes("ship")) return "bag-outline";
   if (t.includes("payment") || t.includes("refund") || t.includes("wallet")) return "card-outline";
@@ -407,6 +409,10 @@ export function navigateFromNotification(n: Notification): void {
     nType === "additional_charge_requested" ||
     nType === "provider_on_way" ||
     nType === "provider_arrived" ||
+    nType === "provider_en_route_home" ||
+    nType === "provider_arrived_home" ||
+    nType === "service_started" ||
+    nType === "service_completed" ||
     nType === "booking_confirmed" ||
     nType === "booking_cancelled" ||
     nType === "booking_updated" ||

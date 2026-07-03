@@ -460,6 +460,7 @@ export async function POST(request: NextRequest) {
 
     // If auto-approve was applied but the verification policy requires providers to
     // be verified before going live, downgrade the new provider to pending_approval.
+    let providerWentLive = autoApprove;
     if (autoApprove) {
       const onboardingPolicy = await resolveVerificationPolicy(tenantId);
       if (onboardingPolicy.requiredForProviders) {
@@ -469,7 +470,24 @@ export async function POST(request: NextRequest) {
             .from("providers")
             .update({ status: "pending_approval", onboarding_state: "ready_for_activation" })
             .eq("id", providerId);
+          providerWentLive = false;
         }
+      }
+    }
+
+    // Notify the provider that they are approved and live when auto-approve activates them.
+    if (providerWentLive) {
+      try {
+        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+        await sendTemplateNotification(
+          "provider_approved",
+          [user.id],
+          { business_name: business_name || "" },
+          ["push", "email", "sms"],
+          { appType: "provider" },
+        );
+      } catch (notifErr) {
+        console.warn("[onboarding] auto-approve notification failed:", notifErr);
       }
     }
 
