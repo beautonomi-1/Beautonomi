@@ -560,7 +560,7 @@ export function ProviderVerificationPanel({
               </Text>
             </View>
             <Text style={twStyle("text-sm text-blue-700")}>
-              Your verification is being reviewed. We'll notify you once it's confirmed — no action needed.
+              {"Your verification is being reviewed. We'll notify you once it's confirmed — no action needed."}
             </Text>
           </View>
         )}
