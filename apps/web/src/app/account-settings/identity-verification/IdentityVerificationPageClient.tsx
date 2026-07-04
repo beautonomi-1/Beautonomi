@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { RefreshCw, ShieldCheck, ExternalLink } from "lucide-react";
+import { RefreshCw, ShieldCheck } from "lucide-react";
 import BackButton from "@/components/ui/back-button";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import VerificationStatusCard from "@/components/profile/VerificationStatusCard";
 import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
+import { IdentityVerificationPanel } from "@/components/identity-verification/IdentityVerificationPanel";
 
 type VerificationSubmission = {
   id: string;
@@ -115,32 +116,9 @@ export default function IdentityVerificationPageClient() {
   const submissions = data?.submissions ?? [];
   const cardStatus = statusForCard(data?.status ?? "none", Boolean(data?.verified), submissions.length > 0);
   const latestRejection = submissions.find((s) => s.rejection_reason)?.rejection_reason;
-  const sumsubAvailable = data?.sumsub_available ?? false;
+  const diditAvailable = (data as (VerificationStatus & { didit_available?: boolean }) | null)?.didit_available ?? false;
   const manualAvailable = data?.manual_available !== false; // default true for backwards compat
   const verificationOff = data?.verification_mode === "off";
-
-  const openSumsub = async () => {
-    setLaunchingSumsub(true);
-    try {
-      const res = await fetcher.get<{ data: { access_token?: string; refresh_token?: string } }>(
-        "/api/me/verification/sumsub/token",
-      );
-      const token = res.data?.access_token;
-      const refresh_token = res.data?.refresh_token;
-      if (!token) {
-        toast.error("Could not start automated verification");
-        return;
-      }
-      const hash = `token=${encodeURIComponent(token)}${
-        refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""
-      }`;
-      window.open(`/account-settings/verification/embed#${hash}`, "_blank", "noopener");
-    } catch {
-      toast.error("Could not open verification");
-    } finally {
-      setLaunchingSumsub(false);
-    }
-  };
 
   const submitManual = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,24 +210,13 @@ export default function IdentityVerificationPageClient() {
             }}
           />
 
-          {canSubmit && sumsubAvailable ? (
-            <Card>
-              <CardContent className="p-5">
-                <p className="font-medium text-gray-900 mb-1">Verify instantly</p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Automated ID check via our partner — usually takes a few minutes.
-                </p>
-                <Button
-                  type="button"
-                  onClick={() => void openSumsub()}
-                  disabled={launchingSumsub}
-                  className="bg-primary hover:bg-primary-hover"
-                >
-                  {launchingSumsub ? "Opening…" : "Start instant verification"}
-                  <ExternalLink className="ml-2 h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
+          {/* Didit automated verification (primary flow) */}
+          {diditAvailable ? (
+            <IdentityVerificationPanel
+              persona="customer"
+              returnTo={typeof window !== "undefined" ? window.location.pathname : "/account-settings/identity-verification"}
+              onApproved={() => void load(true)}
+            />
           ) : null}
 
           {verificationOff ? (

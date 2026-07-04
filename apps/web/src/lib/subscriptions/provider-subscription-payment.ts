@@ -26,12 +26,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
+import { buildProviderSubscriptionReceiptUrl } from "@/lib/receipts/receipt-download-token";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export type RecordProviderSubscriptionPaymentResult = {
   recorded: boolean;
   alreadyRecorded: boolean;
   netAmount: number;
   reference: string;
+  /** finance_transactions.id of the recognized payment (null when not recorded). */
+  financeTransactionId: string | null;
 };
 
 export type ReverseProviderSubscriptionPaymentResult = {
@@ -61,6 +66,94 @@ async function notifyProviderSafe(
     await notifyProviderTeamUsers(providerId, payload);
   } catch (notificationError) {
     console.warn("[provider_subscription] notification failed:", notificationError);
+  }
+}
+
+/**
+ * Best-effort emailed subscription receipt. Sends the `subscription_receipt`
+ * template (email + push) to the provider owner with a signed, long-lived link
+ * to the receipt PDF. Any failure is swallowed so it can never break payment
+ * recognition inside the webhook.
+ */
+async function sendSubscriptionReceiptEmailSafe(params: {
+  supabase: SupabaseClient;
+  providerId: string;
+  planId: string | null;
+  amountMajor: number;
+  financeTransactionId: string;
+  reference: string;
+  tenantIdHint: string | null;
+  paidAtIso: string;
+  isRenewal: boolean;
+}): Promise<void> {
+  const {
+    supabase,
+    providerId,
+    planId,
+    amountMajor,
+    financeTransactionId,
+    reference,
+    tenantIdHint,
+    paidAtIso,
+    isRenewal,
+  } = params;
+  try {
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("user_id, business_name, tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const provider = providerRow as
+      | { user_id?: string | null; business_name?: string | null; tenant_id?: string | null }
+      | null;
+    if (!provider?.user_id) return;
+
+    let planName = "Subscription plan";
+    let planCurrency: string | null = null;
+    if (planId) {
+      const { data: planRow } = await supabase
+        .from("subscription_plans")
+        .select("name, currency")
+        .eq("id", planId)
+        .maybeSingle();
+      const plan = planRow as { name?: string | null; currency?: string | null } | null;
+      if (plan?.name) planName = plan.name;
+      if (plan?.currency) planCurrency = plan.currency;
+    }
+
+    const tenantForCurrency = tenantIdHint ?? provider.tenant_id ?? null;
+    const currency =
+      planCurrency ||
+      (tenantForCurrency
+        ? (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY
+        : LAST_RESORT_CURRENCY);
+
+    const receiptUrl = buildProviderSubscriptionReceiptUrl({
+      financeTxId: financeTransactionId,
+      userId: provider.user_id,
+    });
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    await sendTemplateNotification(
+      "subscription_receipt",
+      [provider.user_id],
+      {
+        business_name: provider.business_name || "Provider",
+        plan_name: planName,
+        amount: `${currency} ${Number(amountMajor).toLocaleString()}`,
+        payment_date: new Date(paidAtIso).toLocaleDateString(),
+        reference,
+        payment_kind: isRenewal ? "renewal" : "payment",
+        receipt_url: receiptUrl || `${appUrl}/provider/settings/billing`,
+        app_url: appUrl,
+        year: new Date().getFullYear().toString(),
+      },
+      ["push", "email"],
+      { appType: "provider", tenantId: tenantForCurrency },
+    );
+  } catch (receiptError) {
+    console.warn("[provider_subscription] receipt email failed:", receiptError);
   }
 }
 
@@ -114,7 +207,7 @@ export async function recordProviderSubscriptionPayment(params: {
       reference,
       providerId,
     });
-    return { recorded: false, alreadyRecorded: false, netAmount, reference };
+    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null };
   }
 
   // Idempotency: one recognized payment per Paystack reference.
@@ -125,7 +218,7 @@ export async function recordProviderSubscriptionPayment(params: {
     .eq("reference", reference)
     .maybeSingle();
   if (existingTx) {
-    return { recorded: false, alreadyRecorded: true, netAmount, reference };
+    return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
   }
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -155,28 +248,54 @@ export async function recordProviderSubscriptionPayment(params: {
     created_at: nowIso,
   });
 
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: financeTenantId,
-    transaction_type: "provider_subscription_payment",
-    amount: netAmount,
-    fees: feesMajor,
-    commission: 0,
-    net: netAmount,
-    description,
-    metadata: {
-      kind,
-      reference,
-      provider_subscription_order_id: orderId,
-      plan_id: planId,
-      subscription_code: subscriptionCode,
-      invoice_code: invoiceCode,
-    },
-    created_at: nowIso,
-  });
+  const { data: financeRow } = await supabase
+    .from("finance_transactions")
+    .insert({
+      booking_id: null,
+      provider_id: providerId,
+      tenant_id: financeTenantId,
+      transaction_type: "provider_subscription_payment",
+      // `amount` holds the GROSS the provider was charged (matches the
+      // ads/marketing-credit convention and the receipt shown to providers).
+      // `net` (gross − gateway fees) is what platform revenue recognition sums.
+      amount: amountMajor,
+      fees: feesMajor,
+      commission: 0,
+      net: netAmount,
+      description,
+      metadata: {
+        kind,
+        reference,
+        provider_subscription_order_id: orderId,
+        plan_id: planId,
+        subscription_code: subscriptionCode,
+        invoice_code: invoiceCode,
+      },
+      created_at: nowIso,
+    })
+    .select("id")
+    .single();
 
-  return { recorded: true, alreadyRecorded: false, netAmount, reference };
+  const financeTransactionId = (financeRow as { id?: string } | null)?.id ?? null;
+
+  // Email the provider a receipt for every recognized charge (initial order,
+  // authorization, and recurring renewal all flow through here exactly once).
+  // Best-effort: a notification failure must never fail payment recognition.
+  if (financeTransactionId) {
+    await sendSubscriptionReceiptEmailSafe({
+      supabase,
+      providerId,
+      planId,
+      amountMajor,
+      financeTransactionId,
+      reference,
+      tenantIdHint: financeTenantId,
+      paidAtIso: nowIso,
+      isRenewal: kind === "subscription_renewal",
+    });
+  }
+
+  return { recorded: true, alreadyRecorded: false, netAmount, reference, financeTransactionId };
 }
 
 /**

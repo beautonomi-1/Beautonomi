@@ -1,0 +1,193 @@
+/**
+ * Shared renderer for the provider subscription-payment receipt PDF.
+ *
+ * Keyed on `finance_transactions.id` (one recognized `provider_subscription_payment`
+ * row per Paystack reference). Used by BOTH:
+ *   - the provider-facing route (session / signed token, ownership enforced), and
+ *   - the superadmin-facing admin route (any provider, no ownership check).
+ *
+ * The receipt always shows the GROSS amount the provider was charged
+ * (`net + fees`), robust for new rows (amount=gross) and legacy rows (amount=net).
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { NextRequest } from "next/server";
+import PDFDocument from "pdfkit";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  drawPdfFooter,
+  drawPdfHeader,
+  drawPdfInfoGrid,
+  drawPdfLineItems,
+  drawPdfTotals,
+  formatPdfDate,
+  moneyPdf,
+} from "@/lib/receipts/pdf-design";
+
+export type SubscriptionReceiptPdfResult =
+  | { kind: "ok"; buffer: Buffer; reference: string; filename: string }
+  | { kind: "error"; status: number; error: string };
+
+/**
+ * Load the subscription payment finance row + related data and render the
+ * receipt PDF. Returns a structured result so callers can map to HTTP status.
+ *
+ * @param enforceProviderId when set, the finance row must belong to this
+ *   provider (provider-facing access). When null/undefined the ownership check
+ *   is skipped (superadmin viewing any provider's receipt).
+ */
+export async function generateSubscriptionReceiptPdf(opts: {
+  supabase: SupabaseClient;
+  financeTxId: string;
+  request: NextRequest;
+  enforceProviderId?: string | null;
+}): Promise<SubscriptionReceiptPdfResult> {
+  const { supabase, financeTxId, request, enforceProviderId } = opts;
+
+  const { data: txRow } = await supabase
+    .from("finance_transactions")
+    .select(
+      "id, provider_id, tenant_id, transaction_type, amount, net, fees, description, metadata, created_at",
+    )
+    .eq("id", financeTxId)
+    .maybeSingle();
+  const tx = txRow as
+    | {
+        id: string;
+        provider_id: string | null;
+        tenant_id: string | null;
+        transaction_type: string | null;
+        amount: number | string | null;
+        net: number | string | null;
+        fees: number | string | null;
+        description: string | null;
+        metadata: Record<string, unknown> | null;
+        created_at: string | null;
+      }
+    | null;
+
+  if (!tx) {
+    return { kind: "error", status: 404, error: "Receipt not found" };
+  }
+  if (enforceProviderId != null && tx.provider_id !== enforceProviderId) {
+    return { kind: "error", status: 404, error: "Receipt not found" };
+  }
+  if (tx.transaction_type !== "provider_subscription_payment") {
+    return {
+      kind: "error",
+      status: 409,
+      error: "A receipt is only available for subscription payments.",
+    };
+  }
+
+  const providerId = tx.provider_id;
+  if (!providerId) {
+    return { kind: "error", status: 404, error: "Receipt not found" };
+  }
+
+  const { data: provRow } = await supabase
+    .from("providers")
+    .select("business_name, tenant_id, receipt_header, receipt_footer")
+    .eq("id", providerId)
+    .maybeSingle();
+  const provider = provRow as
+    | {
+        business_name?: string | null;
+        tenant_id?: string | null;
+        receipt_header?: string | null;
+        receipt_footer?: string | null;
+      }
+    | null;
+
+  const metadata = (tx.metadata ?? {}) as {
+    reference?: string | null;
+    plan_id?: string | null;
+    kind?: string | null;
+    invoice_code?: string | null;
+    subscription_code?: string | null;
+  };
+
+  let planName = "Subscription plan";
+  if (metadata.plan_id) {
+    const { data: planRow } = await supabase
+      .from("subscription_plans")
+      .select("name")
+      .eq("id", metadata.plan_id)
+      .maybeSingle();
+    if ((planRow as { name?: string } | null)?.name) {
+      planName = (planRow as { name: string }).name;
+    }
+  }
+
+  const effectiveTenantId =
+    tx.tenant_id ?? provider?.tenant_id ?? (await resolveTenantIdWithZaFallback(request));
+  const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+  const currency = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+  // GROSS the provider actually paid (net + gateway fees).
+  const amount = Number(tx.net ?? 0) + Number(tx.fees ?? 0);
+
+  const isRenewal = metadata.kind === "subscription_renewal";
+  const productLabel = isRenewal
+    ? `${planName} — subscription renewal`
+    : `${planName} — subscription`;
+  const reference = String(metadata.reference || metadata.invoice_code || tx.id);
+
+  const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
+  const chunks: Buffer[] = [];
+  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+  drawPdfHeader(doc, {
+    title: "Subscription receipt",
+    subtitle: "Provider copy for platform subscription payment records",
+    documentNumber: reference,
+    status: "paid",
+    note: provider?.receipt_header ?? null,
+  });
+
+  drawPdfInfoGrid(doc, [
+    { label: "Billed to", lines: [provider?.business_name || "-"] },
+    {
+      label: "Payment",
+      lines: [
+        `Paid ${formatPdfDate(tx.created_at)}`,
+        metadata.reference ? `Ref: ${metadata.reference}` : null,
+      ],
+    },
+    { label: "Plan", lines: [planName] },
+  ]);
+
+  doc.moveDown();
+  drawPdfLineItems(
+    doc,
+    [
+      {
+        description: productLabel,
+        detail: "Platform subscription — charged after payment was verified",
+        amount: moneyPdf(amount, currency),
+      },
+    ],
+    { title: "Items" },
+  );
+
+  drawPdfTotals(
+    doc,
+    [{ label: "Subtotal", value: moneyPdf(amount, currency) }],
+    { label: "Total paid", value: moneyPdf(amount, currency) },
+  );
+
+  drawPdfFooter(doc, provider?.receipt_footer ?? null);
+
+  doc.end();
+  const buffer = await new Promise<Buffer>((resolve) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+
+  return {
+    kind: "ok",
+    buffer,
+    reference,
+    filename: `subscription-receipt-${reference}.pdf`,
+  };
+}

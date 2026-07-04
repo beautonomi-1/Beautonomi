@@ -26,8 +26,14 @@ const onboardingSchema = z.object({
   owner_name: z.string().min(1, "Owner name is required").optional(),
   owner_email: z.string().email("Invalid email address").optional(),
   owner_phone: z.string().min(1, "Phone is required").optional(),
-  yoco_machine: z.enum(["yes", "no", "other"]).optional().nullable(),
-  yoco_machine_other: z.string().optional().nullable(),
+  // Terminal capture (replaces yoco_machine)
+  terminal_ownership_status: z.enum(["has_terminal", "no_terminal", "planning_to_get_terminal", "unsure"]).optional().nullable(),
+  terminal_provider: z.string().optional().nullable(),
+  terminal_provider_other: z.string().optional().nullable(),
+  terminal_count_range: z.enum(["one", "two_to_three", "four_to_ten", "more_than_ten", "unsure"]).optional().nullable(),
+  terminal_active_usage_status: z.enum(["yes", "no", "sometimes", "unsure"]).optional().nullable(),
+  interested_in_platform_terminal: z.enum(["yes", "maybe_later", "no"]).optional().nullable(),
+  interested_in_terminal_subscription: z.boolean().optional().nullable(),
   payroll_type: z.enum(["commission", "hourly", "both", "other"]).optional().nullable(),
   payroll_details: z.string().optional().nullable(),
   is_vat_registered: z.boolean().optional().nullable(),
@@ -234,8 +240,13 @@ export async function POST(request: NextRequest) {
       owner_name,
       owner_email,
       owner_phone,
-      yoco_machine,
-      yoco_machine_other,
+      terminal_ownership_status,
+      terminal_provider,
+      terminal_provider_other,
+      terminal_count_range,
+      terminal_active_usage_status,
+      interested_in_platform_terminal,
+      interested_in_terminal_subscription,
       payroll_type,
       payroll_details,
       // Business fields
@@ -416,8 +427,7 @@ export async function POST(request: NextRequest) {
         onboarding_state: autoApprove ? "activated" : "ready_for_activation",
         // New onboarding metadata fields
         team_size: team_size || null,
-        yoco_machine: yoco_machine || null,
-        yoco_machine_other: yoco_machine === "other" ? (yoco_machine_other || null) : null,
+        // Terminal data is now stored in provider_payment_terminal_profile (upserted below)
         payroll_type: payroll_type || null,
         payroll_details: payroll_type === "other" ? (payroll_details || null) : null,
         // VAT registration fields
@@ -457,6 +467,45 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
     const providerId = provider.id as string;
+
+    // Upsert terminal profile (gated: provider_terminal_capture_enabled, default ON)
+    // Runs after provider row exists. Non-fatal if feature flag is off or data absent.
+    if (terminal_ownership_status) {
+      try {
+        const { isFeatureEnabledServer } = await import("@/lib/server/feature-flags");
+        const { FEATURE_FLAG_KEYS } = await import("@/lib/server/feature-flag-keys");
+        const captureEnabled = await isFeatureEnabledServer(
+          FEATURE_FLAG_KEYS.PROVIDER_TERMINAL_CAPTURE,
+          tenantId,
+        );
+        if (captureEnabled) {
+          const terminalProfileData: Record<string, unknown> = {
+            tenant_id: tenantId,
+            provider_id: providerId,
+            has_payment_terminal: terminal_ownership_status === "has_terminal" ? true
+              : terminal_ownership_status === "no_terminal" ? false : null,
+            terminal_ownership_status: terminal_ownership_status ?? null,
+            terminal_provider: terminal_provider ?? null,
+            terminal_provider_other: terminal_provider === "other" ? (terminal_provider_other ?? null) : null,
+            terminal_count_range: terminal_count_range ?? null,
+            terminal_active_usage_status: terminal_active_usage_status ?? null,
+            interested_in_platform_terminal: interested_in_platform_terminal ?? null,
+            interested_in_terminal_subscription: interested_in_terminal_subscription ?? null,
+            source: "onboarding",
+            created_by: user.id,
+            updated_by: user.id,
+          };
+          const { error: profileErr } = await supabaseAdmin
+            .from("provider_payment_terminal_profile")
+            .upsert(terminalProfileData, { onConflict: "provider_id" });
+          if (profileErr) {
+            console.warn("[onboarding] terminal profile upsert (non-fatal):", profileErr.message);
+          }
+        }
+      } catch (terminalErr) {
+        console.warn("[onboarding] terminal profile upsert (non-fatal):", terminalErr);
+      }
+    }
 
     // If auto-approve was applied but the verification policy requires providers to
     // be verified before going live, downgrade the new provider to pending_approval.

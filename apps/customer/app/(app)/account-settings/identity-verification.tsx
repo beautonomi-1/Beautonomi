@@ -1,11 +1,11 @@
 /**
- * Identity verification screen.
+ * Identity verification screen (Didit).
  *
- * When SumSub is configured (sumsub_available === true):
- *   → Launches the native Sumsub SDK flow (camera + liveness in-process,
+ * When Didit is configured (didit_available === true):
+ *   → Launches the native Didit SDK flow (camera + liveness in-process,
  *     no WebView or external browser).
  *
- * When SumSub is not yet configured (sumsub_available === false):
+ * When Didit is not configured:
  *   → Shows a manual document-upload form (POST /api/me/verification).
  *     Admin reviews the document and approves manually.
  */
@@ -36,7 +36,7 @@ import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
-import { launchSumsub } from "@/lib/sumsub/launchSumsub";
+import { launchDidit } from "@/lib/identity-verification/launchDidit";
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: "license", labelKey: "docTypeLicense" },
@@ -59,6 +59,8 @@ interface VerificationStatus {
   verified: boolean;
   status: string;
   submitted_at?: string;
+  didit_available?: boolean;
+  /** @deprecated Always false (Sumsub removed). Kept for legacy compat. */
   sumsub_available: boolean;
   manual_available?: boolean;
   verification_mode?: string;
@@ -122,7 +124,8 @@ export default function IdentityVerificationScreen() {
         verified: Boolean(d?.verified),
         status: (d?.status as string) ?? "none",
         submitted_at: d?.submitted_at as string | undefined,
-        sumsub_available: Boolean(d?.sumsub_available),
+        didit_available: Boolean(d?.didit_available),
+        sumsub_available: false, // legacy; Sumsub removed
         manual_available: d?.manual_available !== false,
         verification_mode: (d?.verification_mode as string) ?? undefined,
         can_submit_verification: Boolean(d?.can_submit_verification),
@@ -167,32 +170,16 @@ export default function IdentityVerificationScreen() {
     return () => clearInterval(poll);
   }, [launching, uploading, load]);
 
-  // ─── SumSub flow ────────────────────────────────────────────────────────
-  const openSumsub = useCallback(async () => {
+  // ─── Didit flow ─────────────────────────────────────────────────────────
+  const openDiditVerification = useCallback(async () => {
     haptic.light();
     setLaunching(true);
     try {
-      const result = await launchSumsub({
-        env,
-        onStatusChanged: (status) => {
-          // Eagerly refresh status on terminal events so the UI reflects the
-          // outcome without waiting for the webhook to arrive.
-          const terminalStatuses = new Set([
-            "Approved",
-            "FinallyRejected",
-            "TemporarilyDeclined",
-            "ActionCompleted",
-          ]);
-          if (terminalStatuses.has(status)) {
-            void load({ silent: true });
-          }
-        },
-      });
-
+      const result = await launchDidit({ persona: "customer" });
       if (!result.ok) {
-        Alert.alert(errTitle, iv("startError"));
+        Alert.alert(errTitle, result.error ?? iv("startError"));
       } else {
-        // Refresh regardless — the flow may have completed successfully.
+        // SDK returned — refresh; gate is only unlocked after webhook confirms
         void load({ silent: true });
       }
     } catch {
@@ -200,7 +187,7 @@ export default function IdentityVerificationScreen() {
     } finally {
       setLaunching(false);
     }
-  }, [env, errTitle, iv, load]);
+  }, [errTitle, iv, load]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -278,7 +265,7 @@ export default function IdentityVerificationScreen() {
       ["pending", "in_progress", "submitted", "under_review"].includes(
         statusData.manual_verification.status,
       ));
-  const sumsubAvailable = statusData?.sumsub_available ?? false;
+  const diditAvailable = statusData?.didit_available ?? false;
   const manualAvailable = statusData?.manual_available !== false;
   const verificationOff = statusData?.verification_mode === "off";
 
@@ -301,7 +288,8 @@ export default function IdentityVerificationScreen() {
 
   const docTypeLabel = useCallback(
     (documentType: string) => {
-      if (documentType === "sumsub") return iv("docTypeSumsub");
+      if (documentType === "didit") return "Didit";
+      if (documentType === "sumsub") return "Sumsub (legacy)";
       const opt = DOCUMENT_TYPE_OPTIONS.find((o) => o.value === documentType);
       return opt ? iv(opt.labelKey) : documentType;
     },
@@ -529,11 +517,11 @@ export default function IdentityVerificationScreen() {
           )}
         </View>
 
-        {/* SumSub automated option — shown when available AND user may submit */}
-        {canSubmit && sumsubAvailable && (
+        {/* Didit automated verification — shown when available AND user may submit */}
+        {canSubmit && diditAvailable && (
           <View style={{ marginBottom: 24 }}>
             <TouchableOpacity
-              onPress={openSumsub}
+              onPress={openDiditVerification}
               disabled={launching}
               style={{
                 backgroundColor: launching ? Colors.gray[300] : Colors.primary,
@@ -550,11 +538,13 @@ export default function IdentityVerificationScreen() {
               ) : (
                 <>
                   <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{iv("verifyInstantly")}</Text>
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Verify instantly</Text>
                 </>
               )}
             </TouchableOpacity>
-            <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 6 }}>{iv("sumsubSubtext")}</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 6 }}>
+              Powered by Didit · takes about 2 minutes
+            </Text>
 
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 16 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: Colors.gray[200] }} />
@@ -564,8 +554,8 @@ export default function IdentityVerificationScreen() {
           </View>
         )}
 
-        {/* Info banner when SumSub not available and manual is on */}
-        {canSubmit && !sumsubAvailable && manualAvailable && !verificationOff && (
+        {/* Info banner when Didit not available and manual is on */}
+        {canSubmit && !diditAvailable && manualAvailable && !verificationOff && (
           <View
             style={{
               backgroundColor: "#EFF6FF",

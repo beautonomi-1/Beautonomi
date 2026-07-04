@@ -46,6 +46,7 @@ export const ALL_FEATURE_CATEGORY_KEYS = [
   "yoco_integration",
   "paystack_virtual_terminal",
   "calendar_sync",
+  "terminal_bundle",
 ] as const;
 
 export type FeatureCategoryKey = (typeof ALL_FEATURE_CATEGORY_KEYS)[number];
@@ -372,6 +373,18 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
         freePlanDefault: CALENDAR_PROVIDERS.map((p) => p.value),
       },
       { key: "api_access", label: "Bidirectional API access", type: "toggle", freePlanDefault: true },
+    ],
+  },
+  {
+    key: "terminal_bundle",
+    label: "Terminal bundle",
+    description: "Platform-supplied card machine / payment terminal included in the subscription plan.",
+    group: "payments",
+    fields: [
+      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: false },
+      { key: "included_terminal_count", label: "Included terminal count", type: "limit", freePlanDefault: null, generousDefault: 1 },
+      { key: "terminal_model", label: "Included terminal model / product code", type: "text", freePlanDefault: "" },
+      { key: "commercial_model", label: "Commercial model (once_off_purchase/rental/lease_to_own)", type: "text", freePlanDefault: "rental" },
     ],
   },
 ];

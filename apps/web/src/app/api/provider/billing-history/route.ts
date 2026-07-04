@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     const { data: txns, error: txnsError, count } = await supabaseAdmin
       .from("finance_transactions")
-      .select("id, amount, currency, created_at, description, transaction_type, metadata", {
+      .select("id, amount, net, fees, currency, created_at, description, transaction_type, metadata", {
         count: "exact",
       })
       .eq("provider_id", providerId)
@@ -88,9 +88,13 @@ export async function GET(request: NextRequest) {
         : isAds
           ? "Ads campaign payment"
           : "Subscription payment";
+      // Show the GROSS amount the provider paid. `net + fees` reconstructs gross
+      // and is robust across all row types (subscription/ads/marketing) and both
+      // new rows (amount=gross) and legacy subscription rows (amount=net).
+      const grossAmount = Number(t.net || 0) + Number(t.fees || 0);
       return {
         id: t.id,
-        amount: Number(t.amount || 0),
+        amount: grossAmount || Number(t.amount || 0),
         currency: t.currency || lastResortCurrency,
         status: "paid",
         type,

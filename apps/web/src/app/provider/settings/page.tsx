@@ -29,7 +29,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "House calls & travel", description: "Start with travel fees, then confirm radius and service zones", href: "/provider/settings/sales/travel-fees" },
       { title: "Distance Settings", description: "Configure service distance limits for house calls", href: "/provider/settings/distance" },
       { title: "Service Zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones" },
-      { title: "Identity verification", description: "Verify your identity with Sumsub (KYC) for payouts", href: "/provider/settings/verification" },
+      { title: "Identity verification", description: "Verify your identity (KYC) for payouts and a trusted profile", href: "/provider/settings/verification" },
       { title: "Online booking", description: "Configure online booking settings", href: "/provider/settings/appointment-activity/online-booking" },
       { title: "Group Appointments", description: "Enable and configure group booking for clients", href: "/provider/settings/appointment-activity/group-appointments" },
       { title: "Note Templates", description: "Create reusable note templates", href: "/provider/settings/note-templates" },
@@ -76,6 +76,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Payment Methods", description: "Enable or disable cash, online, and gift card payment options", href: "/provider/settings/payments" },
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
+      { title: "Terminal Integrations", description: "Connect Wappoint, iKhokha, and other card machine vendors", href: "/provider/settings/sales/terminal-integrations" },
       { title: "Paystack Terminal", description: "Create QR/link terminals for in-person payments that settle through payouts", href: "/provider/settings/sales/paystack-terminal" },
       { title: "Receipt Sequencing", description: "Configure receipt numbering", href: "/provider/settings/sales/receipt-sequencing" },
       { title: "Receipt Template", description: "Customize receipt design", href: "/provider/settings/sales/receipt-template" },
@@ -134,6 +135,7 @@ export default function ProviderSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const terminalIntegrationsEnabled = useFeatureFlag("terminal_integrations_enabled");
 
   useEffect(() => {
     loadProviderInfo();
@@ -265,6 +267,9 @@ export default function ProviderSettings() {
                       return false;
                     }
                     if (!paystackTerminalEnabled && item.href.includes("/paystack-terminal")) {
+                      return false;
+                    }
+                    if (!terminalIntegrationsEnabled && item.href.includes("/terminal-integrations")) {
                       return false;
                     }
                     // Only show upgrade option for freelancers

@@ -203,6 +203,9 @@ importers:
       '@beautonomi/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@didit-protocol/sdk-react-native':
+        specifier: ^4.0.9
+        version: 4.0.9(@expo/config-plugins@54.0.4)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
       '@expo/vector-icons':
         specifier: ^15.1.1
         version: 15.1.1(expo-font@14.0.12(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -224,9 +227,6 @@ importers:
       '@shopify/flash-list':
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.29.2)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
-      '@sumsub/react-native-mobilesdk-module':
-        specifier: ^1.44.1
-        version: 1.44.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))
       '@supabase/supabase-js':
         specifier: ^2.104.1
         version: 2.104.1
@@ -456,6 +456,9 @@ importers:
       '@beautonomi/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@didit-protocol/sdk-react-native':
+        specifier: ^4.0.9
+        version: 4.0.9(@expo/config-plugins@54.0.4)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
       '@expo/vector-icons':
         specifier: ^15.1.1
         version: 15.1.1(expo-font@14.0.12(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -480,9 +483,6 @@ importers:
       '@shopify/flash-list':
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.29.2)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
-      '@sumsub/react-native-mobilesdk-module':
-        specifier: ^1.44.1
-        version: 1.44.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))
       '@supabase/supabase-js':
         specifier: ^2.104.1
         version: 2.104.1
@@ -736,6 +736,9 @@ importers:
       '@beautonomi/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@didit-protocol/sdk-web':
+        specifier: ^0.2.1
+        version: 0.2.1
       '@mapbox/mapbox-gl-draw':
         specifier: ^1.5.1
         version: 1.5.1
@@ -1912,6 +1915,20 @@ packages:
 
   '@date-fns/tz@1.4.1':
     resolution: {integrity: sha512-P5LUNhtbj6YfI3iJjw5EL9eUAG6OitD0W3fWQcpQjDRc/QIsL0tRNuO1PcDvPccWL1fSTXXdE1ds+l95DV/OFA==}
+
+  '@didit-protocol/sdk-react-native@4.0.9':
+    resolution: {integrity: sha512-2UYeaXoWOSATR6NXoe4ejoufwb+WEY7auAHS/JRKOnQFtwh2eFCm+mrbFb1T47+5A/3RCA2P+TtEDOfuACrbww==}
+    peerDependencies:
+      '@expo/config-plugins': '>=7.0.0'
+      react: 19.1.0
+      react-native: 0.81.5
+    peerDependenciesMeta:
+      '@expo/config-plugins':
+        optional: true
+
+  '@didit-protocol/sdk-web@0.2.1':
+    resolution: {integrity: sha512-dv5mrvgV6RJgXySWIcDFwp9AMD7Hz9AN/GbDIhmZMRHpSumiIb44XP9MhUaF7YgWbtscRJhkbDH0KgHzSO6hJg==}
+    engines: {node: '>=16.0.0'}
 
   '@discoveryjs/json-ext@0.5.7':
     resolution: {integrity: sha512-dBVuXR082gk3jsFp7Rd/JI4kytwGHecnCoTtXFb7DB6CNHp4rg5k1bhg0nWdLGLnOV71lmDzGQaLMy8iPLY0pw==}
@@ -4759,11 +4776,6 @@ packages:
 
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
-
-  '@sumsub/react-native-mobilesdk-module@1.44.1':
-    resolution: {integrity: sha512-EGe5hGmR9qbrFg8wZ10A2UEhR569sPDyjf/RSiKmEFq3oVHFenaEPNlDDPYsQtNFKagPyQiltjAq0knbI9mRdA==}
-    peerDependencies:
-      react-native: 0.81.5
 
   '@supabase/auth-js@2.104.1':
     resolution: {integrity: sha512-pqFnDKekq1isqlqnzqzyJ3mzmho+o+FjfVTqhKY3PFlwj2anx3OPznO1kbo1ZEwD8zg1r4EAFf/7pplLyX0ocQ==}
@@ -11620,6 +11632,15 @@ snapshots:
 
   '@date-fns/tz@1.4.1': {}
 
+  '@didit-protocol/sdk-react-native@4.0.9(@expo/config-plugins@54.0.4)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0)
+    optionalDependencies:
+      '@expo/config-plugins': 54.0.4
+
+  '@didit-protocol/sdk-web@0.2.1': {}
+
   '@discoveryjs/json-ext@0.5.7': {}
 
   '@egjs/hammerjs@2.0.17':
@@ -15023,10 +15044,6 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@standard-schema/utils@0.3.0': {}
-
-  '@sumsub/react-native-mobilesdk-module@1.44.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))':
-    dependencies:
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0)
 
   '@supabase/auth-js@2.104.1':
     dependencies:

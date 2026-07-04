@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.70",
+  version: "1.0.71",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -91,24 +91,10 @@ const BASE_EXPO_CONFIG = {
           targetSdkVersion: 35,
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
-          // Sumsub native SDK: Android AAR lives in the Sumsub Maven repo.
-          extraMavenRepos: ["https://maven.sumsub.com/repository/maven-public/"],
         },
       },
     ],
-    // Sumsub native SDK: prepends CocoaPods source declarations to the generated
-    // Podfile so `pod install` can resolve IdensicMobileSDK from the SumSubstance
-    // Specs repo. iosPodfileSourceRepos is not a real expo-build-properties option.
-    "../../tooling/expo-plugins/withPodfileSources",
-    // Resolves the Android manifest merger conflict: expo-dev-launcher declares
-    // com.google.mlkit.vision.DEPENDENCIES=barcode_ui while idensic-mobile-sdk
-    // declares =face; we write the union value with tools:replace to settle it.
-    "../../tooling/expo-plugins/withMlKitVisionDependencies",
     "../../tooling/expo-plugins/withGradleWrapperResilience",
-    // Drops the relocated com.atlassian.commonmark:0.13.0 artifact so Android's
-    // checkReleaseDuplicateClasses doesn't fail on org.commonmark.* classes that
-    // also ship in org.commonmark:commonmark:0.21.0 (two native SDKs pull both).
-    "../../tooling/expo-plugins/withAndroidCommonmarkDedupe",
     // Prevents Android from destroying the React Native activity (and triggering
     // an ANR) when the device locale, font scale, or time settings change.
     "../../tooling/expo-plugins/withAndroidConfigChanges",
@@ -154,9 +140,8 @@ const BASE_EXPO_CONFIG = {
       "expo-camera",
       {
         cameraPermission:
-          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, and to scan arrival QR codes.",
-        // Enable microphone access on Android so the Sumsub liveness check can
-        // record video (and for future in-app video features).
+          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, and for identity verification.",
+        // Enable microphone access on Android for liveness video and future in-app features.
         recordAudioAndroid: true,
       },
     ],
@@ -177,6 +162,15 @@ const BASE_EXPO_CONFIG = {
       },
     ],
     "./plugins/sentry-allow-failure",
+    // Didit native KYC SDK. NFC disabled — basic KYC (document + liveness) does
+    // not require passport-chip reading, and disabling it avoids the iOS NFC
+    // entitlement/provisioning-profile requirement. Requires a dev/prod build
+    // (native module — not available in Expo Go); the launcher falls back to an
+    // in-app browser when the module is absent.
+    [
+      "@didit-protocol/sdk-react-native",
+      { iosNfcEnabled: false, androidNfcEnabled: false },
+    ],
   ],
   splash: {
     image: "./assets/splash-icon.png",
@@ -187,7 +181,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "262",
+    buildNumber: "263",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -235,7 +229,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 263,
+    versionCode: 264,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

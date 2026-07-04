@@ -16,12 +16,15 @@ describe("subscription-features registry", () => {
 
   it("free plan enables every product feature category", () => {
     const features = getFreePlanFeatures();
+    // Intentionally off on free: booking caps and paid terminal hardware.
+    const freePlanDisabled = new Set(["booking_limits", "terminal_bundle"]);
     for (const key of ALL_FEATURE_CATEGORY_KEYS) {
-      if (key === "booking_limits") continue;
+      if (freePlanDisabled.has(key)) continue;
       const cat = features[key];
       expect(cat?.enabled, key).toBe(true);
     }
     expect(features.booking_limits?.enabled).toBe(false);
+    expect(features.terminal_bundle?.enabled).toBe(false);
   });
 
   it("normalizeFeatures merges partial DB rows", () => {

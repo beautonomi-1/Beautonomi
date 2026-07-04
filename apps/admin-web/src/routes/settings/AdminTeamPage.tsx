@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus, RotateCcw, Mail } from "lucide-react";
+import { UserPlus, RotateCcw, Mail, Shield } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
+import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -21,6 +23,7 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminToast } from "@/lib/adminToast";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 
 const ADMIN_ROLES = [
@@ -116,7 +119,7 @@ export function AdminTeamPage() {
   const [editRole, setEditRole] = useState<AdminRole>("admin_support");
   const [inviteResult, setInviteResult] = useState<string | null>(null);
 
-  const qk = ["admin", "admin-team"] as const;
+  const qk = adminQueryKeys.adminTeam();
 
   const q = useQuery({
     queryKey: qk,
@@ -210,6 +213,15 @@ export function AdminTeamPage() {
       <AdminPageHeader
         title="Admin team"
         description="Platform administrators and their role access. Only superadmins can manage this list."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/settings/team-permissions")}
+            className={`inline-flex items-center gap-2 ${adminToolbarButtonClass(false)}`}
+          >
+            <Shield className="h-4 w-4" aria-hidden />
+            Roles &amp; permissions
+          </Link>
+        }
       />
 
       <AdminPanel className="!p-4">

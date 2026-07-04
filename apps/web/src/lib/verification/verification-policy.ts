@@ -1,30 +1,39 @@
 /**
  * Verification Policy Resolver
  *
- * Single source of truth for whether Sumsub and/or manual verification are
+ * Single source of truth for whether Didit and/or manual verification are
  * available, and whether they are required for providers to go live or request
  * payouts.  All verification API routes and the config bundle go through this
  * helper so toggling a feature flag immediately affects the whole system.
  *
- * Effective Sumsub availability = flag(verification.sumsub.enabled) AND
- * credentials present in sumsub_integration_config.
+ * Effective Didit availability = flag(verification.didit.enabled) AND
+ * env vars present (DIDIT_API_KEY + DIDIT_WORKFLOW_ID + DIDIT_WEBHOOK_SECRET).
  *
  * Effective manual availability = flag(verification.manual.enabled).
  *
- * Defaults are intentionally permissive (both enabled, nothing required) so
+ * Defaults are intentionally permissive (manual enabled, nothing required) so
  * existing deployments without the flags in the DB behave identically to
  * before this migration.
+ *
+ * @legacy Sumsub support is removed; sumsubEnabled is kept as false for any
+ * callers that haven't been updated yet.  The "sumsub" VerificationMode value
+ * is replaced by "didit".
  */
 
 import { checkMultipleFeaturesServer } from "@/lib/server/feature-flags";
-import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { diditEnvPresent } from "@/lib/identity-verification/provider/didit-provider";
 
-export type VerificationMode = "off" | "manual" | "sumsub" | "both";
+export type VerificationMode = "off" | "manual" | "didit" | "both";
 
 export interface VerificationPolicy {
-  /** Sumsub flag is on AND credentials are present. */
+  /** Didit flag is on AND env vars are present. */
+  diditEnabled: boolean;
+  /**
+   * @deprecated Sumsub is removed. Always false after migration.
+   * Kept to avoid breaking callers that reference sumsubEnabled.
+   */
   sumsubEnabled: boolean;
   /** Manual upload flag is on. */
   manualEnabled: boolean;
@@ -32,15 +41,21 @@ export interface VerificationPolicy {
   mode: VerificationMode;
   /** provider_verification flag: identity verification is required for providers to complete setup/go-live. */
   requiredForProviders: boolean;
-  /** verification.sumsub.required_for_payouts flag: identity verification must be approved before a payout can be requested. */
+  /** verification.didit.required_for_payouts flag: identity verification must be approved before a payout can be requested. */
   requiredForPayouts: boolean;
   /** verification.required_for_customers flag: identity verification is required before a customer's first booking. */
   requiredForCustomers: boolean;
+  /** verification.didit.cross_validate: pass expected_details to Didit for name/DOB cross-validation. */
+  crossValidate: boolean;
+  /** verification.min_age: minimum age for eligibility. */
+  minAge: number;
+  /** verification.dedupe: detect duplicate identities across accounts. */
+  dedupeEnabled: boolean;
 }
 
-function deriveMode(sumsub: boolean, manual: boolean): VerificationMode {
-  if (sumsub && manual) return "both";
-  if (sumsub) return "sumsub";
+function deriveMode(didit: boolean, manual: boolean): VerificationMode {
+  if (didit && manual) return "both";
+  if (didit) return "didit";
   if (manual) return "manual";
   return "off";
 }
@@ -53,38 +68,26 @@ function deriveMode(sumsub: boolean, manual: boolean): VerificationMode {
  */
 export async function resolveVerificationPolicy(
   tenantId: string | null | undefined,
-  environment = "production",
+  _environment = "production",
 ): Promise<VerificationPolicy> {
   try {
-    const [flags, sumsubConfig] = await Promise.all([
-      checkMultipleFeaturesServer(
-        [
-          FEATURE_FLAG_KEYS.VERIFICATION_SUMSUB,
-          FEATURE_FLAG_KEYS.VERIFICATION_MANUAL,
-          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS,
-          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS,
-          FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_CUSTOMERS,
-        ],
-        tenantId,
-      ),
-      resolveSumsubConfig(
-        environment,
-        tenantId,
-        "enabled, app_token_secret, secret_key_secret",
-      ),
-    ]);
-
-    const hasCredentials = Boolean(
-      sumsubConfig?.app_token_secret && sumsubConfig?.secret_key_secret,
+    const flags = await checkMultipleFeaturesServer(
+      [
+        FEATURE_FLAG_KEYS.VERIFICATION_DIDIT,
+        FEATURE_FLAG_KEYS.VERIFICATION_MANUAL,
+        FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS,
+        FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS,
+        FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_CUSTOMERS,
+        FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_CROSS_VALIDATE,
+        FEATURE_FLAG_KEYS.VERIFICATION_MIN_AGE,
+        FEATURE_FLAG_KEYS.VERIFICATION_DEDUPE,
+      ],
+      tenantId,
     );
 
-    // When verification.sumsub.enabled is not found in the DB (returns false),
-    // fall back to the sumsub_integration_config.enabled field so existing
-    // deployments that haven't run the migration yet still work.
-    const sumsubFlagOn = flags[FEATURE_FLAG_KEYS.VERIFICATION_SUMSUB];
-    const legacySumsubEnabled = Boolean(sumsubConfig?.enabled);
-    // Use flag if any row exists for the key, else fall back to legacy config.
-    const sumsubEnabled = (sumsubFlagOn || legacySumsubEnabled) && hasCredentials;
+    // Didit availability = flag on AND env vars present
+    const diditFlagOn = flags[FEATURE_FLAG_KEYS.VERIFICATION_DIDIT] === true;
+    const diditEnabled = diditFlagOn && diditEnvPresent();
 
     // Manual defaults to true if the flag row doesn't exist yet (preserves current behaviour).
     const manualEnabled = flags[FEATURE_FLAG_KEYS.VERIFICATION_MANUAL] !== false
@@ -92,26 +95,45 @@ export async function resolveVerificationPolicy(
       : false;
 
     const requiredForProviders = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PROVIDERS] === true;
-    const requiredForPayouts = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS] === true;
+    const requiredForPayouts   = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_PAYOUTS]   === true;
     const requiredForCustomers = flags[FEATURE_FLAG_KEYS.VERIFICATION_REQUIRED_FOR_CUSTOMERS] === true;
+    const crossValidate        = flags[FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_CROSS_VALIDATE] !== false
+      ? (flags[FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_CROSS_VALIDATE] ?? true)
+      : false;
+
+    // min_age is stored in metadata; default 18
+    const minAgeRaw = flags[FEATURE_FLAG_KEYS.VERIFICATION_MIN_AGE];
+    const minAge = typeof minAgeRaw === "number" ? minAgeRaw : 18;
+
+    const dedupeEnabled = flags[FEATURE_FLAG_KEYS.VERIFICATION_DEDUPE] !== false
+      ? (flags[FEATURE_FLAG_KEYS.VERIFICATION_DEDUPE] ?? true)
+      : false;
 
     return {
-      sumsubEnabled,
+      diditEnabled,
+      sumsubEnabled: false,
       manualEnabled,
-      mode: deriveMode(sumsubEnabled, manualEnabled),
+      mode: deriveMode(diditEnabled, manualEnabled),
       requiredForProviders,
       requiredForPayouts,
       requiredForCustomers,
+      crossValidate,
+      minAge,
+      dedupeEnabled,
     };
   } catch (err) {
     console.warn("[resolveVerificationPolicy] error, using permissive defaults:", err);
     return {
+      diditEnabled: false,
       sumsubEnabled: false,
       manualEnabled: true,
       mode: "manual",
       requiredForProviders: false,
       requiredForPayouts: false,
       requiredForCustomers: false,
+      crossValidate: true,
+      minAge: 18,
+      dedupeEnabled: true,
     };
   }
 }

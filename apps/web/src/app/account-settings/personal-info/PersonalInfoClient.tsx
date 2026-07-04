@@ -119,7 +119,8 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
       const verified = Boolean(d.verified);
       const status = (d.status as string) ?? "none";
       setVerificationCanSubmit(Boolean(d.can_submit_verification));
-      setSumsubAvailable(Boolean(d.sumsub_available));
+      // Didit is the active automated KYC provider (sumsub removed).
+      setSumsubAvailable(Boolean(d.didit_available));
       if (verified || status === "approved") {
         setVerificationStatus("verified");
       } else if (
@@ -611,20 +612,13 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const [sumsubLaunching, setSumsubLaunching] = React.useState(false);
 
+  // Didit automated KYC lives on the dedicated identity-verification page
+  // (confirm-legal-details + hosted flow). Route the user there rather than
+  // launching an inline SDK from the profile field editor.
   const launchSumsub = React.useCallback(async () => {
     setSumsubLaunching(true);
     try {
-      const res = await fetch("/api/me/verification/sumsub/token");
-      const json = await res.json();
-      const token = json?.data?.access_token;
-      const refresh_token = json?.data?.refresh_token;
-      if (!token) {
-        return; // fallback: user stays on manual form
-      }
-      const hash = `token=${encodeURIComponent(token)}${refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""}`;
-      window.open(`/account-settings/verification/embed#${hash}`, "_blank", "noopener");
-    } catch {
-      // silently fall through to manual upload
+      window.location.href = "/account-settings/identity-verification";
     } finally {
       setSumsubLaunching(false);
     }
@@ -815,7 +809,7 @@ const Modal: React.FC<ModalProps> = ({
                     <div className="mb-4 p-4 bg-pink-50 border border-pink-200 rounded-lg">
                       <p className="text-sm font-medium text-gray-800 mb-2">Verify instantly</p>
                       <p className="text-xs text-gray-600 mb-3">
-                        Use our automated ID check — takes about 2 minutes. Opens in a new tab.
+                        Use our automated ID check — takes about 2 minutes.
                       </p>
                       <button
                         type="button"

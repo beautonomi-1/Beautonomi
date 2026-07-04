@@ -133,6 +133,7 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
   "subscription_downgraded",
   "subscription_cancelled",
   "subscription_renewed",
+  "subscription_receipt",
   "order_confirmation",
   "rebook_reminder",
   "account_inactivity_archive_warning",

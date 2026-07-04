@@ -99,7 +99,9 @@ export interface PublicConfigBundle {
     ads: Record<string, unknown>;
     ranking: Record<string, unknown>;
     distance: Record<string, unknown>;
-    sumsub: Record<string, unknown>;
+    /** @deprecated use identity_verification */
+    sumsub?: Record<string, unknown>;
+    identity_verification: Record<string, unknown>;
     aura: Record<string, unknown>;
     safety: Record<string, unknown>;
   };
@@ -161,7 +163,7 @@ export async function fetchConfigBundle(params?: {
       ads: {},
       ranking: {},
       distance: {},
-      sumsub: {},
+      identity_verification: {},
       aura: {},
       safety: {},
     },

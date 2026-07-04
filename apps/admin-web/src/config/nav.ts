@@ -29,6 +29,11 @@ import {
   Shield,
   Receipt,
   UserCheck,
+  Terminal,
+  Package,
+  ShoppingCart,
+  Megaphone,
+  PieChart,
   MessageSquare,
   MessageCircle,
   TrendingUp,
@@ -73,6 +78,7 @@ import {
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
   ADMIN_SECTION_PROVIDER_OPS,
+  ADMIN_SECTION_COMMERCIAL,
 } from "@beautonomi/admin-access";
 
 export interface NavItemConfig {
@@ -140,7 +146,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw, section: ADMIN_SECTION_FINANCE },
       { title: "Reviews & Ratings", href: "/admin/reviews", icon: Star, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },
-      { title: "Identity Verifications", href: "/admin/verifications", icon: ShieldCheck, section: ADMIN_SECTION_USERS_TRUST },
+      { title: "Identity Verifications (legacy)", href: "/admin/verifications", icon: ShieldCheck, section: ADMIN_SECTION_USERS_TRUST },
+      { title: "Identity & Trust — Sessions", href: "/admin/identity-trust/sessions", icon: ShieldCheck, section: ADMIN_SECTION_USERS_TRUST, superadminOnly: true },
       { title: "Safety Logs", href: "/admin/control-plane/safety-logs", icon: ScrollText, section: ADMIN_SECTION_OPERATIONS, superadminOnly: true },
     ],
   },
@@ -269,13 +276,26 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe, section: ADMIN_SECTION_INTEGRATIONS_DEV },
       { title: "Yoco Web POS", href: "/admin/integrations/yoco", icon: Smartphone, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true, subheader: "Advanced" },
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
-      { title: "Sumsub (KYC)", href: "/admin/control-plane/integrations/sumsub", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Gemini (AI)", href: "/admin/control-plane/integrations/gemini", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Aura", href: "/admin/control-plane/integrations/aura", icon: Zap, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
     ],
   },
 
-  // ─── 13. Platform & Access ────────────────────────────────────────────────
+  // ─── 13. Commercial Operations ───────────────────────────────────────────────
+  {
+    label: "Commercial Operations",
+    items: [
+      { title: "Terminal Insights", href: "/admin/commercial/terminal-insights", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Products", href: "/admin/commercial/terminal-products", icon: Package, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Orders", href: "/admin/commercial/terminal-orders", icon: ShoppingCart, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Campaigns", href: "/admin/commercial/terminal-campaigns", icon: Megaphone, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Reporting", href: "/admin/commercial/terminal-reporting", icon: PieChart, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Vendors", href: "/admin/commercial/terminal-vendors", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
+    ],
+  },
+
+  // ─── 14. Platform & Access ────────────────────────────────────────────────
   {
     label: "Platform & Access",
     items: [

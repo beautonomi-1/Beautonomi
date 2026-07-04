@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { coerceOwnerPhoneToE164ForForm, phoneNumbersMatchProfile } from "./onboarding-phone";
 import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
 import { isMailableEmail } from "@beautonomi/utils";
@@ -142,6 +143,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
   // open after navigation. We capture it once so later renders don't bounce
   // the user back when the draft loader resolves.
   const initialStepRef = useRef<number | undefined>(initialStep);
+  const paystackCheckout = useInAppPaystackCheckout();
 
   const updateFormData = useCallback((u: Partial<OnboardingFormData>) => {
     setFormData((prev) => ({ ...prev, ...u }));
@@ -365,6 +367,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
           refreshProvider,
           userId: user?.id,
           showSuccessAlert: false,
+          waitForCheckout: paystackCheckout.waitForCheckout,
         });
       } catch (e) {
         Alert.alert("Error", e instanceof Error ? e.message : "Could not continue.");
@@ -445,6 +448,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
                   router,
                   refreshProvider,
                   userId: user?.id,
+                  waitForCheckout: paystackCheckout.waitForCheckout,
                 });
                 return;
               }
@@ -457,6 +461,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
               router,
               refreshProvider,
               userId: user?.id,
+              waitForCheckout: paystackCheckout.waitForCheckout,
             });
             return;
           }
@@ -490,6 +495,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         router,
         refreshProvider,
         userId: user?.id,
+        waitForCheckout: paystackCheckout.waitForCheckout,
       });
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Submit failed.");

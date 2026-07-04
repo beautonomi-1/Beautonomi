@@ -10,7 +10,7 @@ import {
 } from '@/lib/supabase/api-helpers';
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from 'zod';
-import { createCustomer, fetchCustomer, createSubscription } from '@/lib/payments/paystack-complete';
+import { createCustomer, fetchCustomer, createSubscription, disableSubscriptionByCode } from '@/lib/payments/paystack-complete';
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { createClient } from '@supabase/supabase-js';
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -38,7 +38,12 @@ type PlanRow = {
 };
 type SubRow = { id: string };
 type SubWithPlan = { subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null };
-type ExistingSubRow = { paystack_authorization_code?: string | null; subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null };
+type ExistingSubRow = {
+  paystack_authorization_code?: string | null;
+  paystack_subscription_code?: string | null;
+  paystack_customer_code?: string | null;
+  subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null;
+};
 
 /**
  * POST /api/provider/subscription/upgrade
@@ -123,7 +128,6 @@ export async function POST(request: NextRequest) {
         ?.paystack_subscription_code;
       if (existingPaystackCode) {
         try {
-          const { disableSubscriptionByCode } = await import("@/lib/payments/paystack-complete");
           await disableSubscriptionByCode(existingPaystackCode, { tenantId: subscriptionTenantId });
         } catch (disableError) {
           console.warn("[subscription/upgrade] failed to disable Paystack subscription:", disableError);
@@ -259,6 +263,7 @@ export async function POST(request: NextRequest) {
       .select(`
         paystack_authorization_code, 
         paystack_customer_code,
+        paystack_subscription_code,
         plan_id,
         subscription_plans:plan_id(name, price_monthly, price_yearly)
       `)
@@ -268,6 +273,7 @@ export async function POST(request: NextRequest) {
 
     const existingRow = existingSub as ExistingSubRow | null;
     const authorizationCode = existingRow?.paystack_authorization_code;
+    const previousSubscriptionCode = existingRow?.paystack_subscription_code;
     const oldPlan = existingRow?.subscription_plans;
 
     if (!authorizationCode) {
@@ -288,6 +294,27 @@ export async function POST(request: NextRequest) {
       }, { tenantId });
 
       const paystackSubscription = subscriptionResponse.data;
+
+      // The new Paystack subscription is now live. Disable the OLD recurring
+      // subscription so the provider is not billed on both plans (double-billing).
+      // The new subscription_code always differs from the old, so only skip when
+      // there is no previous code. Failure here must not fail the switch — the new
+      // plan is already active — but we surface it so ops can reconcile.
+      const newSubscriptionCode = paystackSubscription?.subscription_code;
+      if (
+        previousSubscriptionCode &&
+        previousSubscriptionCode !== newSubscriptionCode
+      ) {
+        try {
+          await disableSubscriptionByCode(previousSubscriptionCode, { tenantId });
+        } catch (disableError) {
+          console.warn(
+            "[subscription/upgrade] failed to disable previous Paystack subscription; possible double-billing until reconciled:",
+            previousSubscriptionCode,
+            disableError,
+          );
+        }
+      }
 
       // Update or create subscription record
       const now = new Date();

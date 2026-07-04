@@ -39,9 +39,11 @@ export interface SyncProviderVerificationStateInput {
    * Source identifier so audit/metadata rows are useful when reading the
    * `provider_verification_status.metadata` blob later.
    */
-  source: "sumsub" | "manual_admin" | "admin_reset" | "manual_upload";
-  /** Sumsub applicant id when known (for Sumsub-sourced calls). */
+  source: "didit" | "sumsub" | "manual_admin" | "admin_reset" | "manual_upload";
+  /** Sumsub applicant id when known (for legacy Sumsub-sourced calls). */
   sumsubApplicantId?: string | null;
+  /** Didit session id when sourced from Didit webhook. */
+  diditSessionId?: string | null;
   /** Free-form metadata stored alongside the row. */
   metadata?: Record<string, unknown>;
 }
@@ -200,4 +202,59 @@ export async function syncProviderVerificationState(
   }
 
   return result;
+}
+
+// ── Convenience wrapper for the Didit identity-verification service ───────────
+
+/**
+ * Sync provider verification state from a Didit webhook or reconciliation.
+ * This wrapper creates its own admin client so the service doesn't need to
+ * pass one in.
+ */
+export async function syncProviderVerificationStateFromDidit(
+  providerId: string,
+  normalizedStatus: string,
+  rejectionReason: string | null,
+  diditSessionId: string,
+): Promise<void> {
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const admin = getSupabaseAdmin();
+
+  // Map normalized status to outcome
+  const outcome: ProviderVerificationOutcome =
+    normalizedStatus === "approved"     ? "approved" :
+    normalizedStatus === "rejected"     ? "rejected"  :
+    normalizedStatus === "in_progress"  ? "in_progress" :
+    normalizedStatus === "pending_review"? "in_progress" :
+    normalizedStatus === "expired"      ? "rejected"  :
+    "reset";
+
+  // Resolve owner user id for this provider
+  const { data: provRow } = await admin
+    .from("providers")
+    .select("user_id")
+    .eq("id", providerId)
+    .maybeSingle();
+  const userId = (provRow as { user_id?: string } | null)?.user_id ?? undefined;
+
+  // Update verification_provider flag
+  await admin
+    .from("provider_verification_status")
+    .upsert({
+      provider_id:           providerId,
+      status:                outcome,
+      verification_provider: "didit",
+      didit_session_id:      diditSessionId,
+      updated_at:            new Date().toISOString(),
+      ...(rejectionReason ? { rejection_reason: rejectionReason } : {}),
+    }, { onConflict: "provider_id" });
+
+  await syncProviderVerificationState(admin, {
+    providerId,
+    userId,
+    status:        outcome,
+    source:        "didit",
+    diditSessionId,
+    metadata: { rejection_reason: rejectionReason },
+  });
 }

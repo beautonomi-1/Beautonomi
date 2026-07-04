@@ -21,7 +21,7 @@ import { resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi(ALL_ADMIN_ROLES, request);
-    const sectionRoles = await getEffectiveAdminSectionRoles();
+    const sectionRoles = await getEffectiveAdminSectionRoles(request);
     return successResponse({ sectionRoles });
   } catch (error) {
     return handleApiError(error);

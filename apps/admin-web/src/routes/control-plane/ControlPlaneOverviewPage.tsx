@@ -52,7 +52,7 @@ const GROUPS: { label: string; description: string; items: CpLink[] }[] = [
     description: "Third-party credentials and SDK hooks",
     items: [
       { title: "Integrations hub", to: "/admin/control-plane/integrations", icon: Puzzle },
-      { title: "Sumsub", to: "/admin/control-plane/integrations/sumsub", icon: Shield },
+      { title: "Didit", to: "/admin/control-plane/integrations/didit", icon: Shield },
       { title: "Gemini", to: "/admin/control-plane/integrations/gemini", icon: Bot },
       { title: "Aura", to: "/admin/control-plane/integrations/aura", icon: Activity },
     ],

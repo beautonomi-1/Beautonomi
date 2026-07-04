@@ -93,9 +93,18 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
       }
       if (table === "finance_transactions") {
         return {
+          // recordProviderSubscriptionPayment chains .insert().select("id").single()
+          // to capture the finance_transactions.id for the receipt email.
           insert: vi.fn((row: unknown) => {
             financeInserts.push(row);
-            return Promise.resolve({ error: null });
+            return {
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({
+                  data: { id: "finance-tx-1" },
+                  error: null,
+                })),
+              })),
+            };
           }),
         };
       }

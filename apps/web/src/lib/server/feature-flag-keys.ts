@@ -35,10 +35,15 @@ export const FEATURE_FLAG_KEYS = {
   // ── Verification / KYC ──────────────────────────────────────────────────────
 
   /**
-   * Master switch for Sumsub-automated KYC.
-   * Effective availability = this flag AND credentials present in
-   * sumsub_integration_config.  Toggling this off hides the Sumsub CTA on all
-   * clients and returns 403 from the Sumsub token endpoints.
+   * Master switch for Didit-automated KYC.
+   * Effective availability = this flag AND DIDIT_API_KEY + DIDIT_WORKFLOW_ID +
+   * DIDIT_WEBHOOK_SECRET env vars present.
+   */
+  VERIFICATION_DIDIT: "verification.didit.enabled",
+
+  /**
+   * @deprecated Legacy Sumsub flag key — kept for reference only; Sumsub is removed.
+   * Do not use in new code.
    */
   VERIFICATION_SUMSUB: "verification.sumsub.enabled",
 
@@ -60,13 +65,95 @@ export const FEATURE_FLAG_KEYS = {
    * When enabled, POST /api/provider/payouts is blocked until the provider
    * has approved identity verification.
    */
-  VERIFICATION_REQUIRED_FOR_PAYOUTS: "verification.sumsub.required_for_payouts",
+  VERIFICATION_REQUIRED_FOR_PAYOUTS: "verification.didit.required_for_payouts",
 
   /**
    * When enabled, a customer must have approved identity verification before
    * their FIRST booking is created. Subsequent bookings are not re-checked.
    */
   VERIFICATION_REQUIRED_FOR_CUSTOMERS: "verification.required_for_customers",
+
+  /**
+   * When enabled, pass confirm-legal-details form values as expected_details
+   * to Didit for name/DOB cross-validation. Mismatch routes to pending_review.
+   */
+  VERIFICATION_DIDIT_CROSS_VALIDATE: "verification.didit.cross_validate",
+
+  /**
+   * Minimum age (years) for identity verification eligibility. Default: 18.
+   * Stored as a numeric value in the flag metadata.
+   */
+  VERIFICATION_MIN_AGE: "verification.min_age",
+
+  /**
+   * When enabled, detect when the same verified identity is already approved
+   * on another account and raise a fraud-review flag.
+   */
+  VERIFICATION_DEDUPE: "verification.dedupe",
+
+  // ── Terminal capture & commerce ──────────────────────────────────────────────
+
+  /**
+   * Master switch for the generic card machine / payment terminal onboarding
+   * question and provider profile capture. Default ON.
+   */
+  PROVIDER_TERMINAL_CAPTURE: "provider_terminal_capture_enabled",
+
+  /**
+   * Show Commercial Operations → Terminal Insights in the admin portal.
+   */
+  SUPERADMIN_TERMINAL_INSIGHTS: "superadmin_terminal_insights_enabled",
+
+  /**
+   * Show terminal upsell banners to providers without or interested in terminals.
+   */
+  TERMINAL_UPSELL: "terminal_upsell_enabled",
+
+  /**
+   * Enable the terminal product catalog (admin management + provider browsing).
+   */
+  TERMINAL_PRODUCT_CATALOG: "terminal_product_catalog_enabled",
+
+  /**
+   * Allow providers to place terminal orders (purchase / rental / bundle).
+   * Requires TERMINAL_PRODUCT_CATALOG to also be enabled.
+   */
+  TERMINAL_ECOMMERCE: "terminal_ecommerce_enabled",
+
+  /**
+   * Enable terminal device bundling within subscription plans.
+   */
+  TERMINAL_SUBSCRIPTION_BUNDLE: "terminal_subscription_bundle_enabled",
+
+  /**
+   * Enable targeted terminal marketing campaigns to provider cohorts.
+   */
+  TERMINAL_CAMPAIGNS: "terminal_campaigns_enabled",
+
+  /**
+   * Enable accounting postings and GL journal entries for terminal transactions.
+   */
+  TERMINAL_ACCOUNTING: "terminal_accounting_enabled",
+
+  // ── Terminal integrations hub (vendor-agnostic connect/disconnect) ─────────
+
+  /**
+   * Master switch for the Terminal Integrations section in provider settings.
+   * When off, the entire "Terminal Integrations" hub is hidden. Default ON.
+   */
+  TERMINAL_INTEGRATIONS: "terminal_integrations_enabled",
+
+  /**
+   * Per-vendor feature flags. Require TERMINAL_INTEGRATIONS to also be enabled.
+   * Add new vendors by inserting into terminal_vendor_configs + a flag here.
+   */
+  TERMINAL_VENDOR_WAPPOINT: "terminal_vendor_wappoint_enabled",
+  TERMINAL_VENDOR_IKHOKHA: "terminal_vendor_ikhokha_enabled",
+  TERMINAL_VENDOR_FNB: "terminal_vendor_fnb_enabled",
+  TERMINAL_VENDOR_CAPITEC: "terminal_vendor_capitec_enabled",
+  TERMINAL_VENDOR_NEDBANK: "terminal_vendor_nedbank_enabled",
+  TERMINAL_VENDOR_ABSA: "terminal_vendor_absa_enabled",
+  TERMINAL_VENDOR_STANDARD_BANK: "terminal_vendor_standard_bank_enabled",
 } as const;
 
 export type PaymentRelatedFeatureKey =

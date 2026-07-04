@@ -102,7 +102,9 @@ export interface PublicConfigBundle {
     ads: Record<string, unknown>;
     ranking: Record<string, unknown>;
     distance: Record<string, unknown>;
-    sumsub: Record<string, unknown>;
+    /** @deprecated use identity_verification */
+    sumsub?: Record<string, unknown>;
+    identity_verification: Record<string, unknown>;
     aura: Record<string, unknown>;
     safety: Record<string, unknown>;
   };
@@ -137,7 +139,7 @@ function defaultStubBundle(environment: Environment, platform: Platform): Public
       ads: {},
       ranking: {},
       distance: {},
-      sumsub: {},
+      identity_verification: {},
       aura: {},
       safety: {},
     },

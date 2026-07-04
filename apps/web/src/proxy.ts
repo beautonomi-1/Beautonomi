@@ -232,8 +232,11 @@ export async function proxy(request: NextRequest) {
       // client has read its first CSRF cookie. These endpoints are
       // read-mostly and rejecting them with 403 was producing noisy console
       // errors on every dashboard load.
+      // External provider webhooks (Sumsub, Paystack, etc.) authenticate via
+      // their own HMAC signatures and cannot send our CSRF header.
       if (
         !pathname.startsWith("/api/auth/") &&
+        !pathname.startsWith("/api/webhooks/") &&
         pathname !== "/api/public/metrics" &&
         pathname !== "/api/me/retention/sync-on-login"
       ) {

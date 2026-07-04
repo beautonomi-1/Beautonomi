@@ -107,8 +107,8 @@ export async function GET(
       stepCompletion[3].data_present.push("business_name");
     if (draftData.description)
       stepCompletion[3].data_present.push("description");
-    if (draftData.yoco_machine)
-      stepCompletion[4].data_present.push("yoco_machine");
+    if (draftData.terminal_ownership_status)
+      stepCompletion[4].data_present.push("terminal_ownership_status");
     const addr = draftData.address as Record<string, unknown> | undefined;
     if (draftHasAddressLine(addr)) stepCompletion[7].data_present.push("address");
     if (draftData.thumbnail_url)

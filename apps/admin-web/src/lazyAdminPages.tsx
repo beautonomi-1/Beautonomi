@@ -177,8 +177,11 @@ export const CpFeatureFlagsPage = lazy(() =>
 export const CpIntegrationsHubPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationsHubPage").then((m) => ({ default: m.CpIntegrationsHubPage }))
 );
-export const CpIntegrationSumsubPage = lazy(() =>
-  import("@/routes/control-plane/CpIntegrationSumsubPage").then((m) => ({ default: m.CpIntegrationSumsubPage }))
+export const CpIntegrationDiditPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationDiditPage").then((m) => ({ default: m.CpIntegrationDiditPage }))
+);
+export const VerificationSessionsPage = lazy(() =>
+  import("@/routes/identity-trust/VerificationSessionsPage").then((m) => ({ default: m.VerificationSessionsPage }))
 );
 export const CpIntegrationGeminiPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationGeminiPage").then((m) => ({ default: m.CpIntegrationGeminiPage }))
@@ -429,4 +432,24 @@ export const WhatsAppBatchDetailPage = lazy(() =>
 );
 export const CpIntegrationWasenderPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationWasenderPage").then((m) => ({ default: m.CpIntegrationWasenderPage }))
+);
+
+// ─── Commercial Operations ────────────────────────────────────────────────────
+export const TerminalInsightsPage = lazy(() =>
+  import("@/routes/commercial/TerminalInsightsPage").then((m) => ({ default: m.TerminalInsightsPage }))
+);
+export const TerminalProductsPage = lazy(() =>
+  import("@/routes/commercial/TerminalProductsPage").then((m) => ({ default: m.TerminalProductsPage }))
+);
+export const TerminalOrdersPage = lazy(() =>
+  import("@/routes/commercial/TerminalOrdersPage").then((m) => ({ default: m.TerminalOrdersPage }))
+);
+export const TerminalCampaignsPage = lazy(() =>
+  import("@/routes/commercial/TerminalCampaignsPage").then((m) => ({ default: m.TerminalCampaignsPage }))
+);
+export const TerminalReportingPage = lazy(() =>
+  import("@/routes/commercial/TerminalReportingPage").then((m) => ({ default: m.TerminalReportingPage }))
+);
+export const TerminalVendorsPage = lazy(() =>
+  import("@/routes/commercial/TerminalVendorsPage").then((m) => ({ default: m.TerminalVendorsPage }))
 );

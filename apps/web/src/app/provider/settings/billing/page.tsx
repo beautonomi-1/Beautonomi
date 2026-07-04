@@ -105,14 +105,21 @@ export default function BillingSettings() {
             .get<{ data: { invoices: any[] } }>("/api/provider/invoices?limit=100")
             .catch(() => ({ data: { invoices: [] } })),
           fetcher
-            .get<{ data: BillingHistoryItem[] }>("/api/provider/billing-history")
-            .catch(() => ({ data: [] })),
+            .get<{ data: { items?: BillingHistoryItem[] } | BillingHistoryItem[] }>(
+              "/api/provider/billing-history",
+            )
+            .catch(() => ({ data: { items: [] } })),
         ]);
 
       const billingInfo = billingResponse.data;
       const paymentMethods = paymentMethodsResponse.data || [];
       const invoices = invoicesResponse.data?.invoices || [];
-      const billingHistory = billingHistoryResponse.data || [];
+      // The API returns `{ items, total, limit, has_more }`; tolerate a bare
+      // array too so the list never silently renders empty on shape drift.
+      const rawBillingHistory = billingHistoryResponse.data;
+      const billingHistory = Array.isArray(rawBillingHistory)
+        ? rawBillingHistory
+        : (rawBillingHistory?.items ?? []);
 
       setBillingData({
         ...billingInfo,

@@ -58,16 +58,6 @@ export async function PATCH(
     const { user: actor } = await requireRoleInApi(["superadmin"], request);
     const { id } = await params;
 
-    if (id === actor.id) {
-      const body = await request.json();
-      if (body.role && body.role !== "superadmin") {
-        return errorResponse("Cannot demote your own superadmin account.", "SELF_DEMOTE", 400);
-      }
-      if (body.deactivated_at) {
-        return errorResponse("Cannot deactivate your own account.", "SELF_DEACTIVATE", 400);
-      }
-    }
-
     const body = await request.json();
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
@@ -77,6 +67,15 @@ export async function PATCH(
         400,
         parsed.error.issues.map((i) => ({ path: i.path, message: i.message }))
       );
+    }
+
+    if (id === actor.id) {
+      if (parsed.data.role && parsed.data.role !== "superadmin") {
+        return errorResponse("Cannot demote your own superadmin account.", "SELF_DEMOTE", 400);
+      }
+      if (parsed.data.deactivated_at) {
+        return errorResponse("Cannot deactivate your own account.", "SELF_DEACTIVATE", 400);
+      }
     }
 
     const supabase = getSupabaseAdmin();

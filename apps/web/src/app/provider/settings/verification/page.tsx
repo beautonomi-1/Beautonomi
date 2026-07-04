@@ -1,36 +1,27 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-import {
-  ShieldCheck,
-  ShieldAlert,
-  Loader2,
-  Upload,
-  FileText,
-  CheckCircle,
-  Clock,
-  XCircle,
-} from "lucide-react";
+import { Loader2, Upload, FileText, CheckCircle } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
+import { IdentityVerificationPanel } from "@/components/identity-verification/IdentityVerificationPanel";
 
-type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
+type LegacyVerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
 interface StatusResponse {
-  status: VerificationStatus;
-  sumsub_available: boolean;
+  status: LegacyVerificationStatus;
+  didit_available?: boolean;
+  sumsub_available?: boolean;
   manual_available?: boolean;
   verification_mode?: string;
-  sumsub_applicant_id?: string | null;
   rejection_reason?: string | null;
   manual_verification?: {
     id: string;
@@ -47,14 +38,6 @@ const DOC_TYPES = [
   { value: "identity", label: "Identity card" },
 ];
 
-const STATUS_BADGE: Record<VerificationStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending: { label: "Not started", variant: "outline" },
-  in_progress: { label: "Under review", variant: "secondary" },
-  approved: { label: "Approved", variant: "default" },
-  rejected: { label: "Rejected", variant: "destructive" },
-  reset: { label: "Reset", variant: "outline" },
-};
-
 export default function VerificationPage() {
   const { bundle } = useConfigBundle();
   const router = useRouter();
@@ -65,9 +48,6 @@ export default function VerificationPage() {
   const isOnboarding = searchParams.get("onboarding") === "1";
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [launching, setLaunching] = useState(false);
-  const [sdkReady, setSdkReady] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Manual upload state
   const [docType, setDocType] = useState("license");
@@ -79,7 +59,9 @@ export default function VerificationPage() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const res = await fetcher.get<{ data: StatusResponse }>(`/api/provider/verification/status?environment=${encodeURIComponent(env)}`);
+      const res = await fetcher.get<{ data: StatusResponse }>(
+        `/api/provider/verification/status?environment=${encodeURIComponent(env)}`,
+      );
       setStatusData(res.data ?? null);
     } catch {
       setStatusData(null);
@@ -92,8 +74,8 @@ export default function VerificationPage() {
     loadStatus();
   }, [loadStatus]);
 
-  // Reload when the provider returns to the tab (e.g. after an admin review or a
-  // Sumsub webhook lands) so the status reflects without a manual refresh.
+  // Reload when the provider returns to the tab (e.g. after returning from the
+  // Didit hosted flow or an admin review) so status reflects without a refresh.
   useEffect(() => {
     const onFocus = () => {
       void loadStatus();
@@ -103,60 +85,16 @@ export default function VerificationPage() {
   }, [loadStatus]);
 
   const status = statusData?.status ?? "pending";
-  const sumsubAvailable = statusData?.sumsub_available ?? false;
+  const diditAvailable = statusData?.didit_available ?? false;
   const manualAvailable = statusData?.manual_available !== false;
   const verificationOff = statusData?.verification_mode === "off";
-  const badgeCfg = STATUS_BADGE[status];
 
-  // ─── SumSub launch ────────────────────────────────────────────────────────
-  const getNewToken = useCallback(async () => {
-    const res = await fetcher.get<{ data: { access_token: string } }>(`/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`);
-    return res.data?.access_token ?? "";
-  }, [env]);
-
-  const launchVerification = async () => {
-    setLaunching(true);
-    try {
-      const tokenRes = await fetcher.get<{ data: { access_token: string } }>(`/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`);
-      const token = tokenRes.data?.access_token;
-      if (!token) {
-        toast.error("Could not start verification — please try the manual upload below.");
-        setLaunching(false);
-        return;
-      }
-      setSdkReady(true);
-      setStatusData((prev) => prev ? { ...prev, status: "in_progress" } : prev);
-
-      const script = document.createElement("script");
-      script.src = "https://static.sumsub.com/idensic/static/sns-websdk-builder.js";
-      script.async = true;
-      script.onload = () => {
-        const w = window as any;
-        if (w.snsWebSdk?.init && containerRef.current) {
-          try {
-            w.snsWebSdk.init(token, getNewToken);
-          } catch (e) {
-            console.error("Sumsub init error:", e);
-            toast.error("Verification could not be loaded. Use the manual upload below.");
-          }
-        }
-        setLaunching(false);
-      };
-      script.onerror = () => {
-        toast.error("Verification service unavailable. Use the manual upload below.");
-        setLaunching(false);
-      };
-      document.body.appendChild(script);
-    } catch {
-      toast.error("Failed to start verification");
-      setLaunching(false);
-    }
-  };
+  const isApproved = status === "approved";
+  const isUnderReview = status === "in_progress" || statusData?.manual_verification?.status === "pending";
 
   // ─── Manual upload ────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setFile(f);
+    setFile(e.target.files?.[0] ?? null);
   };
 
   const submitManual = async () => {
@@ -172,8 +110,8 @@ export default function VerificationPage() {
       form.append("country", country);
 
       const res = await fetcher.post<{ data: { status: string } }>("/api/me/verification", form);
-      if ((res as any).error) {
-        toast.error((res as any).error?.message ?? "Upload failed. Please try again.");
+      if ((res as { error?: { message?: string } }).error) {
+        toast.error((res as { error?: { message?: string } }).error?.message ?? "Upload failed. Please try again.");
         return;
       }
       toast.success("Document submitted. Our team will review it within a few business days.");
@@ -195,11 +133,6 @@ export default function VerificationPage() {
     );
   }
 
-  const isApproved = status === "approved";
-  const isUnderReview = status === "in_progress" || statusData?.manual_verification?.status === "pending";
-  const canResubmit = status === "rejected" || status === "reset";
-  const canStart = status === "pending" || canResubmit;
-
   return (
     <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for compliance and payouts.">
       {/* Optional onboarding step banner — verification never blocks going live. */}
@@ -207,7 +140,7 @@ export default function VerificationPage() {
         <SectionCard title="You're almost done" className="mb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              Identity verification is optional and earns you the “Verified” badge. You can do it now or
+              Identity verification is optional and earns you the &ldquo;Verified&rdquo; badge. You can do it now or
               later from Settings.
             </p>
             <Button
@@ -221,78 +154,36 @@ export default function VerificationPage() {
         </SectionCard>
       )}
 
-      {/* Status card */}
-      <SectionCard title="Verification status">
-        <div className="flex items-center gap-3 mb-4">
-          {isApproved ? (
-            <ShieldCheck className="h-8 w-8 text-green-600 flex-shrink-0" />
-          ) : isUnderReview ? (
-            <Clock className="h-8 w-8 text-amber-500 flex-shrink-0" />
-          ) : status === "rejected" ? (
-            <XCircle className="h-8 w-8 text-red-500 flex-shrink-0" />
-          ) : (
-            <ShieldAlert className="h-8 w-8 text-amber-600 flex-shrink-0" />
-          )}
-          <div className="flex-1">
-            <p className="font-medium">
-              {isApproved
-                ? "Identity verified"
-                : isUnderReview
-                  ? "Under review"
-                  : status === "rejected"
-                    ? "Verification declined"
-                    : "Not yet verified"}
-            </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {isApproved
-                ? "Your identity has been verified."
-                : isUnderReview
-                  ? "Your document has been submitted. We'll notify you once reviewed."
-                  : status === "rejected"
-                    ? "Your verification was not approved. Please submit again or contact support."
-                    : "Submit an ID document for our team to review."}
-            </p>
-          </div>
-          <Badge variant={badgeCfg.variant}>{badgeCfg.label}</Badge>
-        </div>
+      {/* Didit automated verification (primary flow) */}
+      {diditAvailable && (
+        <SectionCard title="Verification status">
+          <IdentityVerificationPanel
+            persona="provider"
+            isProvider
+            returnTo={typeof window !== "undefined" ? window.location.pathname : "/provider/settings/verification"}
+            onApproved={() => void loadStatus()}
+          />
+        </SectionCard>
+      )}
 
-        {status === "rejected" && statusData?.rejection_reason ? (
-          <Alert variant="destructive" className="mb-4">
-            <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              <span className="font-medium">Reason: </span>
-              {statusData.rejection_reason}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {/* Verification off — no paths available */}
-        {verificationOff && !isApproved && (
-          <Alert className="mb-4">
+      {/* Verification off — no paths available */}
+      {verificationOff && !isApproved && (
+        <SectionCard title="Verification status">
+          <Alert>
             <AlertDescription>
               Identity verification is currently unavailable. Contact support if you need assistance.
             </AlertDescription>
           </Alert>
-        )}
-
-        {/* SumSub flow (when available and not yet verified) */}
-        {sumsubAvailable && !isApproved && !sdkReady && (
-          <Button onClick={launchVerification} disabled={launching} className="mb-4">
-            {launching ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Starting…</> : "Start automated verification"}
-          </Button>
-        )}
-        {sdkReady && (
-          <div ref={containerRef} id="sumsub-websdk-container" className="min-h-[400px] w-full rounded-lg border" />
-        )}
-      </SectionCard>
+        </SectionCard>
+      )}
 
       {/* Manual document upload — shown when manual is enabled and not yet approved/under review */}
       {!isApproved && !isUnderReview && !verificationOff && manualAvailable && (
         <SectionCard
-          title={sumsubAvailable ? "Alternative: Manual document upload" : "Upload ID document"}
+          title={diditAvailable ? "Alternative: Manual document upload" : "Upload ID document"}
           className="mt-4"
         >
-          {!sumsubAvailable && (
+          {!diditAvailable && (
             <Alert className="mb-4">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
@@ -377,26 +268,6 @@ export default function VerificationPage() {
             <p className="text-xs text-muted-foreground text-center">
               Your document is stored securely and used only for identity verification.
             </p>
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Under review — info only */}
-      {isUnderReview && !isApproved && (
-        <SectionCard title="Document submitted" className="mt-4">
-          <div className="flex items-start gap-3">
-            <Clock className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-gray-700">
-                Your document has been received and is being reviewed by our team. This usually takes 1–2 business days. {"We'll"} notify you once it has been processed.
-              </p>
-              {statusData?.manual_verification?.document_type && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Document: {statusData.manual_verification.document_type} · Submitted:{" "}
-                  {new Date(statusData.manual_verification.submitted_at).toLocaleDateString()}
-                </p>
-              )}
-            </div>
           </div>
         </SectionCard>
       )}

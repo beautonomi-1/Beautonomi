@@ -91,6 +91,14 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   plans: { label: "Plans & Pricing", parentHref: null },
   billing: { label: "Billing", parentHref: null },
 
+  // Commercial Operations (Terminal)
+  "commercial/terminal-insights": { label: "Terminal Insights", parentHref: null },
+  "commercial/terminal-products": { label: "Terminal Products", parentHref: null },
+  "commercial/terminal-orders": { label: "Terminal Orders", parentHref: null },
+  "commercial/terminal-campaigns": { label: "Terminal Campaigns", parentHref: null },
+  "commercial/terminal-reporting": { label: "Terminal Reporting", parentHref: null },
+  "commercial/terminal-vendors": { label: "Terminal Vendors", parentHref: null },
+
   // Commerce & Catalog
   ecommerce: { label: "E-commerce", parentHref: null },
   "ecommerce/orders": { label: "Product Orders", parentHref: "/admin/ecommerce" },
@@ -151,7 +159,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "iso-codes": { label: "ISO Codes", parentHref: null },
   "integrations/yoco": { label: "Yoco Web POS", parentHref: null },
   "control-plane/integrations": { label: "Integrations Hub", parentHref: "/admin/control-plane/overview" },
-  "control-plane/integrations/sumsub": { label: "Sumsub (KYC)", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/didit": { label: "Didit (KYC)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/gemini": { label: "Gemini (AI)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/aura": { label: "Aura", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/wasender": { label: "Wasender", parentHref: "/admin/control-plane/integrations" },

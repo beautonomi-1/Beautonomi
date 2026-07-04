@@ -55,9 +55,9 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: Sparkles,
   },
   {
-    title: "Sumsub",
-    description: "KYC verification",
-    to: adminSpaTo("/admin/control-plane/integrations/sumsub"),
+    title: "Didit",
+    description: "Identity verification (KYC)",
+    to: adminSpaTo("/admin/control-plane/integrations/didit"),
     icon: Shield,
   },
   {

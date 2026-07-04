@@ -152,7 +152,7 @@ function isScopedAdminCustomizationUrl(url: string): boolean {
     adminPathMatchesPrefix(url, "/api/admin/maintenance") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/gemini") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/aura") ||
-    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/sumsub") ||
+    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/didit") ||
     adminPathMatchesPrefix(url, "/api/admin/subscription-plans") ||
     adminPathMatchesPrefix(url, "/api/admin/ecommerce")
   );

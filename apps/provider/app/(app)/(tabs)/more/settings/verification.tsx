@@ -1,12 +1,9 @@
 /**
  * Identity verification (KYC) – status + start flow.
  *
- * When SumSub is configured → launches the embed URL in the device browser.
- * When SumSub is NOT configured → shows a manual document-upload form that
- * posts to /api/me/verification (same flow used by customer identity screen).
- *
- * The actual UI lives in the shared `ProviderVerificationPanel` so the
- * onboarding identity step renders the identical experience.
+ * Uses Didit automated KYC (native SDK with in-app browser fallback) via the
+ * shared `ProviderVerificationPanel`, so the onboarding identity step and the
+ * settings screen render the identical experience.
  */
 import { View } from "react-native";
 import { useRouter } from "expo-router";

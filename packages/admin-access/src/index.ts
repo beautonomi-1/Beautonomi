@@ -17,6 +17,7 @@ export const ADMIN_SECTION_OPERATIONS = "operations" as const;
 export const ADMIN_SECTION_PLATFORM_CONFIG = "platform_config" as const;
 export const ADMIN_SECTION_SUPPORT = "support" as const;
 export const ADMIN_SECTION_PROVIDER_OPS = "provider_ops" as const;
+export const ADMIN_SECTION_COMMERCIAL = "commercial" as const;
 
 export type AdminSection =
   | typeof ADMIN_SECTION_OVERVIEW
@@ -30,7 +31,8 @@ export type AdminSection =
   | typeof ADMIN_SECTION_INTEGRATIONS_DEV
   | typeof ADMIN_SECTION_OPERATIONS
   | typeof ADMIN_SECTION_PLATFORM_CONFIG
-  | typeof ADMIN_SECTION_PROVIDER_OPS;
+  | typeof ADMIN_SECTION_PROVIDER_OPS
+  | typeof ADMIN_SECTION_COMMERCIAL;
 
 /** Roles that can access the admin shell at all (layout allowedRoles). */
 export const ALL_ADMIN_ROLES: UserRole[] = [
@@ -62,6 +64,7 @@ export const ADMIN_SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   [ADMIN_SECTION_OPERATIONS]: ["superadmin", "admin_operations", "admin_support"],
   [ADMIN_SECTION_PLATFORM_CONFIG]: ["superadmin", "admin_platform_config"],
   [ADMIN_SECTION_PROVIDER_OPS]: ["superadmin", "admin_operations", "admin_support"],
+  [ADMIN_SECTION_COMMERCIAL]: ["superadmin", "admin_finance", "admin_operations"],
 };
 
 /** Ordered list of sections (for UI). */
@@ -78,6 +81,7 @@ export const ALL_SECTIONS: AdminSection[] = [
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
   ADMIN_SECTION_PROVIDER_OPS,
+  ADMIN_SECTION_COMMERCIAL,
 ];
 
 /** Display labels for sections (for UI). */
@@ -94,6 +98,7 @@ export const SECTION_LABELS: Record<AdminSection, string> = {
   [ADMIN_SECTION_OPERATIONS]: "Operations",
   [ADMIN_SECTION_PLATFORM_CONFIG]: "Platform config",
   [ADMIN_SECTION_PROVIDER_OPS]: "Provider Ops",
+  [ADMIN_SECTION_COMMERCIAL]: "Commercial Operations",
 };
 
 /** Admin roles that can be assigned to sections (excludes superadmin; superadmin always has access). */

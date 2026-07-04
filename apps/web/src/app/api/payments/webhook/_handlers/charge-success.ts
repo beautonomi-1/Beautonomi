@@ -1068,11 +1068,13 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
     const { data: providerRow } = await supabase
       .from("providers")
-      .select("user_id")
+      .select("user_id, receipt_auto_send")
       .eq("id", bookingData.provider_id)
       .single();
 
     const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+    const receiptAutoSend =
+      (providerRow as { receipt_auto_send?: boolean | null } | null)?.receipt_auto_send !== false;
     if (providerUserId) {
       await sendTemplateNotification(
         "payment_successful",
@@ -1097,6 +1099,29 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         },
         action_url: `/provider/bookings/${metadata.booking_id}`,
       });
+    }
+
+    // Auto-email the customer their receipt when the provider has the
+    // `receipt_auto_send` preference enabled (default on). The idempotency
+    // guard at the top of this handler ensures this runs once per charge, so
+    // customers are never emailed duplicate receipts on webhook retries.
+    //
+    // Skip deposit-only charges: the booking is only partially paid, so a
+    // receipt for the full total would be premature/misleading. The receipt for
+    // deposit bookings is sent from the pay-remaining handler once the balance
+    // is settled (booking fully paid).
+    if (receiptAutoSend && !stdIsDeposit && bookingData.customer_id && metadata.booking_id) {
+      try {
+        const { notifyReceiptSent } = await import("@/lib/notifications/notification-service");
+        await notifyReceiptSent(
+          String(metadata.booking_id),
+          bookingTotal,
+          new Date(),
+          ["email"],
+        );
+      } catch (receiptError) {
+        console.error("Error auto-sending booking receipt:", receiptError);
+      }
     }
   } catch (notifError) {
     console.error("Error sending notifications:", notifError);
@@ -3062,7 +3087,7 @@ async function handleBookingRemainingSuccess(
     );
     const { data: providerRow } = await supabase
       .from("providers")
-      .select("user_id")
+      .select("user_id, receipt_auto_send")
       .eq("id", providerId)
       .single();
     const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
@@ -3078,6 +3103,20 @@ async function handleBookingRemainingSuccess(
         ["push"],
         { appType: "provider" }
       );
+    }
+
+    // The booking is now fully paid — auto-email the customer their receipt
+    // when the provider has `receipt_auto_send` enabled (default on). Guarded by
+    // the pay-remaining idempotency check above, so it fires exactly once.
+    const payRemainReceiptAutoSend =
+      (providerRow as { receipt_auto_send?: boolean | null } | null)?.receipt_auto_send !== false;
+    if (payRemainReceiptAutoSend && bookingData.customer_id) {
+      try {
+        const { notifyReceiptSent } = await import("@/lib/notifications/notification-service");
+        await notifyReceiptSent(bookingId, bookingTotal, new Date(), ["email"]);
+      } catch (receiptError) {
+        console.error("Error auto-sending pay-remaining booking receipt:", receiptError);
+      }
     }
   } catch (notifError) {
     console.error("Error sending pay-remaining notifications:", notifError);
