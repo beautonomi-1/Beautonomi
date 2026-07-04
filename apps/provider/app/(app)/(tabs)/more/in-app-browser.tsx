@@ -153,7 +153,7 @@ export default function InAppBrowserScreen() {
     } catch {
       // ignore non-JSON messages
     }
-  }, [screenReturnTo]);
+  }, [screenReturnTo, verificationRequired]);
 
   const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
 

@@ -185,15 +185,17 @@ export default function TerminalShopScreen() {
 
       if (commercialModel === "subscription_bundle") {
         const res = await postAllocate("/api/provider/terminal-orders/allocate-from-subscription", payload);
-        order = res?.order;
+        if (res.error) throw new Error(res.error);
+        order = res.data?.order;
         requiresPayment = false;
       } else {
         const res = await postOrder("/api/provider/terminal-orders", {
           ...payload,
           commercial_model: commercialModel,
         });
-        order = res?.order;
-        requiresPayment = res?.requires_payment ?? true;
+        if (res.error) throw new Error(res.error);
+        order = res.data?.order;
+        requiresPayment = res.data?.requires_payment ?? true;
       }
 
       setCheckoutProduct(null);
@@ -201,7 +203,8 @@ export default function TerminalShopScreen() {
 
       if (order?.id && requiresPayment) {
         const payRes = await postPay(`/api/provider/terminal-orders/${order.id}/initialize-payment`, {});
-        const url = payRes?.authorization_url ?? payRes?.payment_url;
+        if (payRes.error) throw new Error(payRes.error);
+        const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
         if (url) {
           pushInAppBrowser(router, url, "Pay for terminal");
         } else {
@@ -218,7 +221,8 @@ export default function TerminalShopScreen() {
   async function payExisting(orderId: string) {
     try {
       const payRes = await postPay(`/api/provider/terminal-orders/${orderId}/initialize-payment`, {});
-      const url = payRes?.authorization_url ?? payRes?.payment_url;
+      if (payRes.error) throw new Error(payRes.error);
+      const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
       if (url) pushInAppBrowser(router, url, "Pay for terminal");
       else Alert.alert("Payment", "Could not start payment.");
     } catch (e) {
@@ -379,8 +383,9 @@ export default function TerminalShopScreen() {
                 key={opt.commercial_model}
                 onPress={() => setCommercialModel(opt.commercial_model)}
                 style={twStyle(
-                  "mt-2 rounded-xl border p-3",
-                  commercialModel === opt.commercial_model ? "border-gray-900 bg-gray-50" : "border-gray-200",
+                  `mt-2 rounded-xl border p-3 ${
+                    commercialModel === opt.commercial_model ? "border-gray-900 bg-gray-50" : "border-gray-200"
+                  }`,
                 )}
               >
                 <Text style={twStyle("font-medium text-gray-900")}>{opt.label}</Text>
@@ -424,8 +429,9 @@ export default function TerminalShopScreen() {
                       key={loc.id}
                       onPress={() => setCollectionLocationId(loc.id)}
                       style={twStyle(
-                        "mb-2 rounded-xl border p-3",
-                        collectionLocationId === loc.id ? "border-gray-900 bg-gray-50" : "border-gray-200",
+                        `mb-2 rounded-xl border p-3 ${
+                          collectionLocationId === loc.id ? "border-gray-900 bg-gray-50" : "border-gray-200"
+                        }`,
                       )}
                     >
                       <Text style={twStyle("font-medium text-gray-900")}>{loc.name}</Text>

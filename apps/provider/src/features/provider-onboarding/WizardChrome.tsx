@@ -66,6 +66,10 @@ export function WizardChrome() {
     submitBusyLabel,
   } = useOnboardingWizard();
 
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [currentStep]);
+
   if (loadingDraft) {
     return (
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
@@ -103,10 +107,6 @@ export function WizardChrome() {
 
     return { ...m, isPast, isActiveMilestone, done, fillPct };
   });
-
-  useLayoutEffect(() => {
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [currentStep]);
 
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding={false}>

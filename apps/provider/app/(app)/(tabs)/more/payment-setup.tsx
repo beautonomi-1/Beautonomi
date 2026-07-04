@@ -55,8 +55,9 @@ export default function PaymentSetupScreen() {
   const handleBack = useProviderStackBack();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-  const terminalShopEnabled =
-    useFeatureFlag("terminal_ecommerce_enabled") || useFeatureFlag("terminal_product_catalog_enabled");
+  const terminalEcommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
+  const terminalCatalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
+  const terminalShopEnabled = terminalEcommerceEnabled || terminalCatalogEnabled;
 
   const visibleItems = SETUP_ITEMS.filter((item) => {
     if (item.flag === "payment_yoco") return yocoEnabled;
