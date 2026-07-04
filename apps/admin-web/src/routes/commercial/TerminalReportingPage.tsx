@@ -51,7 +51,7 @@ export function TerminalReportingPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Terminal Reporting"
-        description="Revenue, opportunity, and conversion analytics for terminal commerce."
+        description="Revenue counts paid invoices only. Provider terminal profiles drive opportunity metrics."
       />
 
       {/* Summary stats */}
@@ -83,6 +83,26 @@ export function TerminalReportingPage() {
       )}
 
       {/* Order revenue */}
+      <AdminPanel>
+        <div className="p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-900">Orders by status</h3>
+          {Object.keys(d.orders_by_status).length === 0 ? (
+            <p className="text-sm text-gray-500">No terminal orders recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(d.orders_by_status)
+                .sort(([, a], [, b]) => b - a)
+                .map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-slate-700">{status.replace(/_/g, " ")}</span>
+                    <span className="font-medium text-slate-900">{count.toLocaleString()}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </AdminPanel>
+
       {Object.keys(d.revenue_by_model).length > 0 && (
         <AdminPanel>
           <div className="p-4">

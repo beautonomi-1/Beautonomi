@@ -33,12 +33,37 @@ jest.mock("@/lib/biometric-setup-prompt", () => ({
   setBiometricPromptPending: (...args: unknown[]) => mockSetBiometricPromptPending(...args),
 }));
 
+jest.mock("@/lib/payments/paystackRefFromUrl", () => ({
+  extractPaystackReferenceFromUrl: jest.fn(() => "ref-test"),
+}));
+
+jest.mock("@/lib/payments/verifyPaystackWithRetry", () => ({
+  verifyPaystackWithRetry: jest.fn().mockResolvedValue({ status: "success" }),
+}));
+
+jest.mock("@/lib/payments/providerPaystackReturn", () => ({
+  getSubscriptionPaystackReturnUrl: jest.fn(() => "provider://subscription-return"),
+  matchesSubscriptionPaystackReturnUrl: jest.fn(() => true),
+  pollSubscriptionProvisioned: jest.fn().mockResolvedValue({ state: "provisioned" }),
+}));
+
+jest.mock("@/lib/subscription/start-paid-checkout", () => ({
+  resolveSubscriptionPlanIdForCheckout: jest.fn().mockResolvedValue("subscription-plan-paid"),
+  startPaidSubscriptionCheckout: jest.fn(),
+}));
+
 describe("finalizeOnboardingSuccess", () => {
-  const { api } = jest.requireMock<{ api: { get: jest.Mock } }>("@/lib/api-client");
+  const { api } = jest.requireMock<{ api: { get: jest.Mock; post: jest.Mock } }>("@/lib/api-client");
+  const { startPaidSubscriptionCheckout, resolveSubscriptionPlanIdForCheckout } =
+    jest.requireMock<{
+      startPaidSubscriptionCheckout: jest.Mock;
+      resolveSubscriptionPlanIdForCheckout: jest.Mock;
+    }>("@/lib/subscription/start-paid-checkout");
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetBiometricPromptPending.mockClear();
+    resolveSubscriptionPlanIdForCheckout.mockResolvedValue("subscription-plan-paid");
     api.get.mockResolvedValue({
       data: { portal: "provider", role: "provider_owner", provider_status: "active" },
       error: null,
@@ -84,6 +109,43 @@ describe("finalizeOnboardingSuccess", () => {
       }),
     );
     expect(mockSetBiometricPromptPending).toHaveBeenCalledWith("user-1");
+  });
+
+  it("uses upgrade + initialize-payment checkout when waitForCheckout is provided", async () => {
+    const waitForCheckout = jest.fn().mockResolvedValue({
+      outcome: "success",
+      url: "https://app.test/provider/subscription?payment_success=true",
+    });
+    startPaidSubscriptionCheckout.mockResolvedValue({
+      ok: true,
+      authorizationUrl: "https://checkout.paystack.com/test",
+      orderId: "order-1",
+    });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(startPaidSubscriptionCheckout).toHaveBeenCalledWith({
+      subscriptionPlanId: "subscription-plan-paid",
+      billingPeriod: "monthly",
+      inApp: true,
+    });
+    expect(waitForCheckout).toHaveBeenCalledWith(
+      "https://checkout.paystack.com/test",
+      expect.objectContaining({ returnUrl: "provider://subscription-return" }),
+    );
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
   });
 
   it("sets portal cache to provider after free plan success", async () => {

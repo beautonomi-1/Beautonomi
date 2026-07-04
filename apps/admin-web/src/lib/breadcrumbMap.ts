@@ -98,6 +98,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "commercial/terminal-campaigns": { label: "Terminal Campaigns", parentHref: null },
   "commercial/terminal-reporting": { label: "Terminal Reporting", parentHref: null },
   "commercial/terminal-vendors": { label: "Terminal Vendors", parentHref: null },
+  "commercial/terminal-collection-locations": { label: "Pickup Locations", parentHref: null },
 
   // Commerce & Catalog
   ecommerce: { label: "E-commerce", parentHref: null },

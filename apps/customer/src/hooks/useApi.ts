@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { DeviceEventEmitter } from "react-native";
+import type { ApiError } from "@beautonomi/types";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getRuntimeMarketHost } from "@/config/public-env";
@@ -19,8 +20,22 @@ import { useAuth } from "@/providers/AuthProvider";
 export { clearApiCache };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
-/** In-memory reuse window — longer = snappier revisits / remounts, still refreshable via `refresh()`. */
-const DEFAULT_STALE_TIME_MS = 60_000;
+/** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
+const DEFAULT_STALE_TIME_MS = 5 * 60 * 1000;
+const RESUME_REFETCH_JITTER_BUCKETS = 16;
+const RESUME_REFETCH_JITTER_MS = 120;
+
+function isTransientFetchErrorCode(code: string | null | undefined): boolean {
+  return code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+}
+
+function resumeRefetchJitterMs(cacheKey: string): number {
+  let hash = 0;
+  for (let i = 0; i < cacheKey.length; i += 1) {
+    hash = (hash + cacheKey.charCodeAt(i)) % RESUME_REFETCH_JITTER_BUCKETS;
+  }
+  return hash * RESUME_REFETCH_JITTER_MS;
+}
 
 interface UseApiOptions {
   enabled?: boolean;
@@ -74,9 +89,6 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
-  // `silent=true` → background refresh: never show loading spinner if we
-  // already have data. The WhatsApp/Airbnb pattern — show what we know,
-  // swap it for fresh data when the network responds.
   const fetchData = useCallback(async (silent = false) => {
     if (!enabled) {
       setLoading(false);
@@ -90,9 +102,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const cached = responseCache.get(cacheKey) as
         | { data: T | null; error: string | null; expiresAt: number }
         | undefined;
-      // Check cache *before* `setLoading(true)` so a warm in-memory entry
-      // never flashes the loading state for one frame.
-      if (cached && cached.expiresAt > now) {
+      if (!silent && cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
         setError(cached.error);
@@ -102,35 +112,48 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
       const hasExistingData = cached?.data != null;
       if (silent && hasExistingData) {
-        // Background refresh — show existing data while fetching fresh.
+        if (!mountedRef.current || id !== requestIdRef.current) return;
+        setData(cached!.data);
+        setError(cached!.error);
+        setError(null);
+      } else if (!silent) {
+        setLoading(true);
         setError(null);
       } else {
-        setLoading(true);
         setError(null);
       }
 
       const inflight = inflightRequests.get(cacheKey) as
-        | Promise<{ data: T | null; error: string | null; cancelled?: boolean }>
+        | Promise<{ data: T | null; error: string | null; errorCode?: string | null; cancelled?: boolean }>
         | undefined;
       const requestPromise =
         inflight ??
         (async () => {
           const result = await api.get<T>(path, timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
           if (result.error) {
-            // Deliberate background cancellation — not a real failure.
-            if (result.error.code === "CANCELLED") {
-              return { data: null, error: null, cancelled: true };
+            const apiErr = result.error as ApiError;
+            if (apiErr.code === "CANCELLED") {
+              return { data: null, error: null, errorCode: "CANCELLED", cancelled: true };
             }
-            return { data: null, error: getApiErrorMessage(result.error, "Request failed") };
+            return {
+              data: null,
+              error: getApiErrorMessage(apiErr, "Request failed"),
+              errorCode: apiErr.code ?? null,
+            };
           }
-          return { data: result.data, error: null };
+          return { data: result.data, error: null, errorCode: null };
         })();
 
       if (!inflight) {
         inflightRequests.set(cacheKey, requestPromise as Promise<{ data: unknown | null; error: string | null }>);
       }
 
-      let payload: { data: T | null; error: string | null; cancelled?: boolean };
+      let payload: {
+        data: T | null;
+        error: string | null;
+        errorCode?: string | null;
+        cancelled?: boolean;
+      };
       try {
         payload = await requestPromise;
       } finally {
@@ -140,25 +163,35 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       }
       if (!mountedRef.current || id !== requestIdRef.current) return;
 
-      // Aborted because the app backgrounded — leave the cache stale (no entry
-      // written) so the focus/recover listener refetches fresh on resume.
-      if (payload.cancelled) return;
-
-      responseCache.set(cacheKey, {
-        data: payload.data,
-        error: payload.error,
-        expiresAt: Date.now() + staleTimeMs,
-      });
-      pruneResponseCache(Date.now());
+      if (payload.cancelled || isTransientFetchErrorCode(payload.errorCode)) {
+        return;
+      }
 
       if (payload.error) {
         setError(payload.error);
-        setData(null);
+        const existing = responseCache.get(cacheKey);
+        if (!existing?.data) {
+          responseCache.set(cacheKey, {
+            data: null,
+            error: payload.error,
+            expiresAt: Date.now() + staleTimeMs,
+          });
+          setData(null);
+        }
       } else {
+        responseCache.set(cacheKey, {
+          data: payload.data,
+          error: null,
+          expiresAt: Date.now() + staleTimeMs,
+        });
         setData(payload.data);
+        setError(null);
       }
+      pruneResponseCache(Date.now());
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
+      const existing = responseCache.get(cacheKey);
+      if (existing?.data != null) return;
       setError(getApiErrorMessage(err, "Request failed"));
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
@@ -173,16 +206,15 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     };
   }, [fetchData]);
 
-  // Silent background refresh on app focus or network reconnection.
   useEffect(() => {
     if (!enabled) return;
     const onFocusOrRecover = () => {
       if (!mountedRef.current) return;
-      const cached = responseCache.get(cacheKey) as
-        | { data: T | null; error: string | null; expiresAt: number }
-        | undefined;
-      const isStale = !cached || cached.expiresAt <= Date.now();
-      if (isStale) void fetchData(true);
+      const jitterMs = resumeRefetchJitterMs(cacheKey);
+      setTimeout(() => {
+        if (!mountedRef.current) return;
+        void fetchData(true);
+      }, jitterMs);
     };
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);
@@ -207,8 +239,14 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [cacheKey, fetchData]);
 
   const mutate = useCallback((newData: T) => {
+    responseCache.set(cacheKey, {
+      data: newData,
+      error: null,
+      expiresAt: Date.now() + staleTimeMs,
+    });
     setData(newData);
-  }, []);
+    setError(null);
+  }, [cacheKey, staleTimeMs]);
 
   return { data, loading, error, timedOut, refresh, mutate };
 }

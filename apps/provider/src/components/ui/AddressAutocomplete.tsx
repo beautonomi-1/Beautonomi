@@ -54,6 +54,9 @@ interface AddressAutocompleteProps {
   geocodeTypes?: string[];
   inputRef?: RefObject<TextInput | null>;
   onFocus?: TextInputProps["onFocus"];
+  returnKeyType?: TextInputProps["returnKeyType"];
+  blurOnSubmit?: boolean;
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
 }
 
 export function AddressAutocomplete({
@@ -68,6 +71,9 @@ export function AddressAutocomplete({
   geocodeTypes,
   inputRef,
   onFocus,
+  returnKeyType,
+  blurOnSubmit,
+  onSubmitEditing,
 }: AddressAutocompleteProps) {
   const { bundle } = useConfigBundle();
   const resolvedDefaultCountry =
@@ -160,7 +166,7 @@ export function AddressAutocomplete({
   }
 
   return (
-    <View>
+    <View collapsable={false}>
       {label ? (
         <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{label}</Text>
       ) : null}
@@ -182,6 +188,9 @@ export function AddressAutocomplete({
           placeholder={placeholder}
           placeholderTextColor="#9ca3af"
           autoCapitalize="words"
+          returnKeyType={returnKeyType}
+          blurOnSubmit={blurOnSubmit}
+          onSubmitEditing={onSubmitEditing}
           accessibilityLabel={label ?? "Address search"}
         />
         {loading ? <ActivityIndicator size="small" color="#6366f1" /> : null}

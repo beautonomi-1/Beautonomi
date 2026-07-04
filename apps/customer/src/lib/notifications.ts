@@ -76,6 +76,81 @@ function getUuidAfterSegment(link: string, segment: string): string {
   return match?.[1] ?? "";
 }
 
+/** Resolve charge id from notification data (push or in-app). */
+export function forwardChargeIdFromNotificationData(
+  data: Record<string, unknown>,
+): string {
+  if (data.charge_id != null && String(data.charge_id).trim()) {
+    return String(data.charge_id).trim();
+  }
+  if (data.additional_charge_id != null && String(data.additional_charge_id).trim()) {
+    return String(data.additional_charge_id).trim();
+  }
+  return "";
+}
+
+/**
+ * Effective notification type: explicit row type, push `type`, or OneSignal `template_key`.
+ */
+export function resolveEffectiveNotificationType(
+  nType: string,
+  data: Record<string, unknown>,
+): string {
+  const templateKey =
+    typeof data.template_key === "string" ? data.template_key.toLowerCase().trim() : "";
+  const dataType = data.type != null ? String(data.type).toLowerCase().trim() : "";
+  if (nType) return nType;
+  if (templateKey) return templateKey;
+  if (dataType) return dataType;
+  return "";
+}
+
+const ADDITIONAL_CHARGE_TYPES = new Set([
+  "additional_charge_requested",
+  "payment_request",
+  "additional_charge_paid",
+]);
+
+const TRACKING_FOCUS_TYPES = new Set([
+  "provider_arrived_home",
+  "provider_arrived",
+  "provider_on_way",
+  "provider_en_route_home",
+  "provider_arriving_soon",
+  "provider_arriving_soon_home",
+  "service_started",
+  "service_completed",
+  "service_in_progress",
+]);
+
+const ARRIVAL_FOCUS_TYPES = new Set(["provider_arrived_home", "provider_arrived"]);
+
+/**
+ * Build booking-detail route params including tab focus for notification deep links.
+ */
+export function buildBookingDetailNavParams(
+  bookingId: string,
+  effectiveType: string,
+  data: Record<string, unknown>,
+): Record<string, string> {
+  const params: Record<string, string> = { id: bookingId };
+  const t = effectiveType.toLowerCase();
+
+  if (ADDITIONAL_CHARGE_TYPES.has(t)) {
+    params.focus = "additional_charge";
+    const chargeId = forwardChargeIdFromNotificationData(data);
+    if (chargeId) params.charge_id = chargeId;
+    return params;
+  }
+
+  if (TRACKING_FOCUS_TYPES.has(t)) {
+    params.focus = ARRIVAL_FOCUS_TYPES.has(t) ? "arrival" : "tracking";
+    return params;
+  }
+
+  return params;
+}
+
 /**
  * Navigate to the appropriate screen based on notification type, data, and link.
  *
@@ -90,6 +165,8 @@ export function navigateFromNotification(n: Notification): void {
   const nType = (n.type ?? "").toLowerCase();
   const subtype = data.subtype != null ? String(data.subtype).toLowerCase() : "";
   const dataType = data.type != null ? String(data.type).toLowerCase() : "";
+  const templateKeyEarly =
+    typeof data.template_key === "string" ? data.template_key.toLowerCase().trim() : "";
 
   // OneSignal template pushes often include only `booking_id` in additional data (no type);
   // send users to the booking, not a generic fallthrough screen.
@@ -100,7 +177,15 @@ export function navigateFromNotification(n: Notification): void {
   // group-booking routing below so they open the group screen, not the child booking.
   const hasGroupBookingId =
     data.group_booking_id != null && String(data.group_booking_id).trim() !== "";
-  if (!nType && !subtype && !dataType && directBookingId && !hasGroupBookingId && !data.conversation_id) {
+  if (
+    !nType &&
+    !subtype &&
+    !dataType &&
+    !templateKeyEarly &&
+    directBookingId &&
+    !hasGroupBookingId &&
+    !data.conversation_id
+  ) {
     router.push({ pathname: "/(app)/booking-detail", params: { id: directBookingId } });
     return;
   }
@@ -282,23 +367,12 @@ export function navigateFromNotification(n: Notification): void {
 
   // ── Bookings ─────────────────────────────────────────────────────────────
   if (anyBookingIdRaw) {
-    const bookingNavParams: Record<string, string> = { id: String(anyBookingIdRaw) };
-    // For additional-charge notifications, forward charge_id + focus so the screen
-    // can auto-switch to the receipt tab and highlight the specific charge.
-    const isAdditionalChargeNotif =
-      nType === "additional_charge_requested" ||
-      nType === "payment_request" ||
-      nType === "additional_charge_paid";
-    const chargeIdForward =
-      data.charge_id != null && String(data.charge_id).trim()
-        ? String(data.charge_id).trim()
-        : data.additional_charge_id != null && String(data.additional_charge_id).trim()
-          ? String(data.additional_charge_id).trim()
-          : "";
-    if (isAdditionalChargeNotif) {
-      bookingNavParams.focus = "additional_charge";
-      if (chargeIdForward) bookingNavParams.charge_id = chargeIdForward;
-    }
+    const effectiveType = resolveEffectiveNotificationType(nType, data as Record<string, unknown>);
+    const bookingNavParams = buildBookingDetailNavParams(
+      String(anyBookingIdRaw),
+      effectiveType,
+      data as Record<string, unknown>,
+    );
     router.push({ pathname: "/(app)/booking-detail", params: bookingNavParams });
     return;
   }
@@ -430,19 +504,9 @@ export function navigateFromNotification(n: Notification): void {
       (data.booking_id != null ? String(data.booking_id) : "") ||
       (data.bookingId != null ? String(data.bookingId) : "");
     if (bid) {
-      // For additional-charge types, forward charge_id + focus so booking-detail can
-      // auto-switch to the receipt tab and highlight the specific charge.
-      const isAdditionalCharge = nType === "additional_charge_requested";
-      const chargeIdFwd =
-        data.charge_id != null && String(data.charge_id).trim()
-          ? String(data.charge_id).trim()
-          : data.additional_charge_id != null && String(data.additional_charge_id).trim()
-            ? String(data.additional_charge_id).trim()
-            : "";
-      const extraParams: Record<string, string> = isAdditionalCharge
-        ? { focus: "additional_charge", ...(chargeIdFwd ? { charge_id: chargeIdFwd } : {}) }
-        : {};
-      router.push({ pathname: "/(app)/booking-detail", params: { id: bid, ...extraParams } });
+      const effectiveType = resolveEffectiveNotificationType(nType, data as Record<string, unknown>);
+      const navParams = buildBookingDetailNavParams(bid, effectiveType, data as Record<string, unknown>);
+      router.push({ pathname: "/(app)/booking-detail", params: navParams });
     } else if (
       nType.startsWith("payment_") ||
       nType === "partial_payment_received" ||

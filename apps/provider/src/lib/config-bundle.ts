@@ -86,6 +86,22 @@ export interface OnDemandModuleConfig {
   ui_copy: Record<string, unknown>;
 }
 
+export interface PublicVerificationPolicy {
+  mode?: "off" | "manual" | "didit" | "both";
+  didit_enabled?: boolean;
+  manual_enabled?: boolean;
+  required_for_providers: boolean;
+  required_for_payouts?: boolean;
+  required_for_customers?: boolean;
+  cross_validate?: boolean;
+  min_age?: number;
+}
+
+export const DEFAULT_VERIFICATION_POLICY: PublicVerificationPolicy = {
+  required_for_providers: false,
+  required_for_payouts: false,
+};
+
 export interface PublicConfigBundle {
   meta: ConfigBundleMeta;
   amplitude: Record<string, unknown>;
@@ -98,18 +114,18 @@ export interface PublicConfigBundle {
     ai: Record<string, unknown>;
     ads: Record<string, unknown>;
     ranking: Record<string, unknown>;
-    distance: Record<string, unknown>;
     /** @deprecated use identity_verification */
     sumsub?: Record<string, unknown>;
     identity_verification: Record<string, unknown>;
     aura: Record<string, unknown>;
     safety: Record<string, unknown>;
   };
+  verification?: PublicVerificationPolicy;
 }
 
 let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
-const CACHE_MS = 5 * 60 * 1000; // 5 min
+const CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners still refresh stale data
 
 export async function fetchConfigBundle(params?: {
   platform?: Platform;
@@ -162,11 +178,11 @@ export async function fetchConfigBundle(params?: {
       ai: {},
       ads: {},
       ranking: {},
-      distance: {},
       identity_verification: {},
       aura: {},
       safety: {},
     },
+    verification: { ...DEFAULT_VERIFICATION_POLICY },
   };
   cacheTime = Date.now();
   return cached as PublicConfigBundle;

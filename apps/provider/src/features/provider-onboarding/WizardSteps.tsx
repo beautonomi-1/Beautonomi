@@ -52,6 +52,8 @@ import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 import {
   TravelFeesEditor,
   formatTravelFeesSummary,
@@ -62,6 +64,7 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useApi } from "@/hooks/useApi";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
+import { defaultBillingPeriod } from "@/lib/subscription/start-paid-checkout";
 import { OnboardingTextField } from "./OnboardingTextField";
 import { FocusAwareTextInput } from "./FocusAwareTextInput";
 import { KeyboardDoneAccessory } from "./KeyboardDoneAccessory";
@@ -186,6 +189,11 @@ const KEYBOARD_ACCESSORY_EMAIL = "step2-email-done";
 
 function Step2Identity() {
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
+  const { bundle } = useConfigBundle();
+  const identityVerificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
+  const identityVerificationHint = identityVerificationRequired
+    ? "After setup, identity verification with your government ID is required to go live and earn the Verified marketplace badge."
+    : "After setup, you can complete full identity verification (ID document) to earn the Verified marketplace badge. This is optional but increases customer trust.";
   const nameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
@@ -762,8 +770,7 @@ function Step2Identity() {
       <View style={twStyle("flex-row gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm mt-2")}>
         <Ionicons name="shield-checkmark-outline" size={20} color="#64748b" />
         <Text style={twStyle("flex-1 text-[14px] leading-5 text-slate-600")}>
-          After setup, you can complete full identity verification (ID document) to earn the
-          &ldquo;Verified&rdquo; marketplace badge. This is optional but increases customer trust.
+          {identityVerificationHint}
         </Text>
       </View>
     </View>
@@ -783,7 +790,7 @@ function Step3Business() {
   const { formData, updateFormData } = useOnboardingWizard();
   const businessNameRef = useRef<TextInput>(null);
   const descriptionRef = useRef<TextInput>(null);
-  useAutoFocus(businessNameRef);
+  useAutoFocus(businessNameRef, true, { resetScrollFirst: true });
   const types: BizTypeOpt[] = [
     {
       id: "salon",
@@ -820,7 +827,9 @@ function Step3Business() {
             accessibilityHint="Shown to clients"
             returnKeyType="next"
             blurOnSubmit={false}
-            onSubmitEditing={() => descriptionRef.current?.focus()}
+            onSubmitEditing={() => {
+              descriptionRef.current?.focus();
+            }}
           />
         </View>
       </View>
@@ -875,7 +884,7 @@ function Step3Business() {
         </View>
       </View>
 
-      <View>
+      <View collapsable={false}>
         <OnboardingTextField
           ref={descriptionRef}
           label="Description (recommended)"
@@ -885,8 +894,11 @@ function Step3Business() {
           placeholder="e.g. Specialist in balayage and precision cuts, serving Cape Town for 8 years."
           multiline
           numberOfLines={4}
+          focusScrollOffset={220}
           style={twStyle("min-h-[120px] text-[17px] pt-4")}
           returnKeyType="default"
+          blurOnSubmit={false}
+          textAlignVertical="top"
         />
         <Text style={twStyle("mt-2 text-right text-[13px] text-slate-400")}>
           {(formData.description || "").length} chars · 10 min recommended
@@ -1473,7 +1485,7 @@ function Step7Location() {
   const line2Ref = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
   const countryRef = useRef<TextInput>(null);
-  useAutoFocus(line2Ref);
+  useAutoFocus(streetSearchRef, true, { resetScrollFirst: true });
   const [mapPinOpen, setMapPinOpen] = useState(false);
   const [locating, setLocating] = useState(false);
 
@@ -1585,6 +1597,9 @@ function Step7Location() {
         defaultCountryName={DEFAULT_COUNTRY_NAME}
         inputRef={streetSearchRef}
         onFocus={() => onboardingScroll?.scrollToFocusedInput(streetSearchRef)}
+        returnKeyType="next"
+        blurOnSubmit={false}
+        onSubmitEditing={() => line2Ref.current?.focus()}
         proximity={
           addr.latitude && addr.longitude
             ? { latitude: addr.latitude, longitude: addr.longitude }
@@ -2495,8 +2510,11 @@ function categoryNameFromForm(form: ServiceFormState, categories: { id: string; 
 
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const onboardingScroll = useOnboardingScroll();
   const tenantCurrency = getTenantDefaultCurrency();
   const services = formData.services || [];
+  const serviceNameRef = useRef<TextInput>(null);
+  useAutoFocus(serviceNameRef, true, { resetScrollFirst: true });
 
   // Pull the tenant-configured reference data (durations, extra time, etc.) so
   // the onboarding service form offers the same options as the main catalogue
@@ -2576,15 +2594,6 @@ function Step11Services() {
     }
   }, [wizardCategories, form.categoryId, editingIndex]);
 
-  useEffect(() => {
-    if (editingIndex !== null) return;
-    setForm((prev) => ({
-      ...prev,
-      supportsAtSalon: formData.business_type !== "mobile",
-      supportsAtHome: formData.business_type !== "salon",
-    }));
-  }, [formData.business_type, editingIndex]);
-
   const handleCreateCategory = useCallback(
     async (name: string) => {
       const trimmed = name.trim();
@@ -2613,6 +2622,10 @@ function Step11Services() {
     setDraftAddons(
       (formData.service_addons || []).filter((a) => a.parent_service_index === index),
     );
+    requestAnimationFrame(() => {
+      onboardingScroll?.scrollToFocusedInput(serviceNameRef, { offset: 120 });
+      serviceNameRef.current?.focus();
+    });
   };
 
   const addAddon = () => {
@@ -2812,6 +2825,10 @@ function Step11Services() {
             showActiveToggle={false}
             onCreateCategory={handleCreateCategory}
             onClearValidationError={() => setFormError(null)}
+            nameInputRef={serviceNameRef}
+            onNameFocus={() =>
+              onboardingScroll?.scrollToFocusedInput(serviceNameRef, { offset: 120 })
+            }
           />
         )}
 
@@ -3542,7 +3559,18 @@ type PlanRow = {
   is_popular: boolean;
   features: string[];
   is_free?: boolean;
+  available_billing_periods?: ("monthly" | "yearly")[];
 };
+
+function planSelectionPatch(plan: PlanRow) {
+  const periods = plan.available_billing_periods ?? (plan.is_free ? [] : ["monthly" as const]);
+  return {
+    selected_plan_id: plan.id,
+    selected_plan_name: plan.name,
+    selected_plan_is_free: Boolean(plan.is_free),
+    selected_billing_period: plan.is_free ? undefined : defaultBillingPeriod(periods),
+  };
+}
 
 const FEATURE_PREVIEW_COUNT = 4;
 
@@ -3729,9 +3757,7 @@ function Step14Plan() {
           const popular = list.find((p) => p.is_popular);
           const chosen = free ?? popular ?? list[0];
           updateFormData({
-            selected_plan_id: chosen.id,
-            selected_plan_name: chosen.name,
-            selected_plan_is_free: Boolean(chosen.is_free),
+            ...planSelectionPatch(chosen),
             no_plans_available: false,
           });
         } else {
@@ -3771,6 +3797,10 @@ function Step14Plan() {
     );
   }
 
+  const selectedPlan = plans.find((p) => p.id === formData.selected_plan_id);
+  const billingPeriods = selectedPlan?.available_billing_periods ?? [];
+  const showBillingToggle = Boolean(selectedPlan && !selectedPlan.is_free && billingPeriods.length > 1);
+
   return (
     <View style={twStyle("gap-4")}>
       <View
@@ -3783,6 +3813,34 @@ function Step14Plan() {
           card payment after you submit. You can upgrade or downgrade any time from settings.
         </Text>
       </View>
+      {showBillingToggle ? (
+        <View style={twStyle("flex-row rounded-2xl border border-slate-200 bg-slate-50 p-1")}>
+          {billingPeriods.map((period) => {
+            const active = (formData.selected_billing_period ?? defaultBillingPeriod(billingPeriods)) === period;
+            return (
+              <TouchableOpacity
+                key={period}
+                accessibilityRole="button"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  updateFormData({ selected_billing_period: period });
+                }}
+                style={twStyle(
+                  `flex-1 items-center rounded-xl py-3 ${active ? "bg-white shadow-sm" : ""}`,
+                )}
+              >
+                <Text
+                  style={twStyle(
+                    `text-[14px] font-semibold ${active ? "text-slate-900" : "text-slate-500"}`,
+                  )}
+                >
+                  {period === "yearly" ? "Yearly" : "Monthly"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
       {plans.map((p) => (
         <PlanCard
           key={p.id}
@@ -3790,11 +3848,7 @@ function Step14Plan() {
           selected={formData.selected_plan_id === p.id}
           onSelect={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            updateFormData({
-              selected_plan_id: p.id,
-              selected_plan_name: p.name,
-              selected_plan_is_free: Boolean(p.is_free),
-            });
+            updateFormData(planSelectionPatch(p));
           }}
         />
       ))}

@@ -292,6 +292,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Terminal Campaigns", href: "/admin/commercial/terminal-campaigns", icon: Megaphone, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Reporting", href: "/admin/commercial/terminal-reporting", icon: PieChart, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Vendors", href: "/admin/commercial/terminal-vendors", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Pickup Locations", href: "/admin/commercial/terminal-collection-locations", icon: MapPinned, section: ADMIN_SECTION_COMMERCIAL },
     ],
   },
 

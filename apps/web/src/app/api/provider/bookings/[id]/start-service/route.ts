@@ -170,11 +170,7 @@ export async function POST(
       const { sendServiceStartedNotification } = await import(
         "@/lib/bookings/notifications"
       );
-      const durationMinutes =
-        typeof (updatedBooking as { duration_minutes?: number | null } | null)?.duration_minutes === "number"
-          ? ((updatedBooking as { duration_minutes?: number | null })!.duration_minutes as number)
-          : null;
-      await sendServiceStartedNotification(id, durationMinutes);
+      await sendServiceStartedNotification(id);
     } catch (notifyErr) {
       console.error("[start-service] notification failed:", notifyErr);
     }

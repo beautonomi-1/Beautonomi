@@ -18,6 +18,7 @@ import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/c
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { recordTerminalOrderPayment } from "@/lib/terminal/record-terminal-order-payment";
 
 /**
  * GET /api/paystack/verify-reference?reference=...&booking_id=...
@@ -200,6 +201,105 @@ export async function GET(request: NextRequest) {
         metadata,
         productOrderId,
         type: "product_order",
+      });
+    }
+
+    const terminalOrderId =
+      typeof metadata.terminal_order_id === "string" && metadata.terminal_order_id.trim()
+        ? metadata.terminal_order_id.trim()
+        : null;
+    if (terminalOrderId && !bookingIdParam) {
+      const { data: termOrder, error: termErr } = await (admin.from("terminal_orders") as any)
+        .select("id, tenant_id, provider_id, total_amount, invoice_status, paystack_reference, commercial_model")
+        .eq("id", terminalOrderId)
+        .maybeSingle();
+
+      if (termErr || !termOrder) {
+        return notFoundResponse("Terminal order not found");
+      }
+
+      const order = termOrder as {
+        tenant_id?: string | null;
+        provider_id?: string;
+        total_amount?: number;
+        invoice_status?: string;
+        paystack_reference?: string | null;
+        commercial_model?: string;
+      };
+
+      if (!resourceTenantMatchesHostTenant(tenantId, order.tenant_id)) {
+        return errorResponse(
+          "This order belongs to a different market.",
+          "TENANT_MISMATCH",
+          403,
+        );
+      }
+
+      if (user?.id) {
+        const { data: provAccess } = await admin
+          .from("providers")
+          .select("user_id")
+          .eq("id", order.provider_id)
+          .maybeSingle();
+        if ((provAccess as { user_id?: string } | null)?.user_id !== user.id) {
+          return errorResponse("You can only confirm payment for your own order.", "FORBIDDEN", 403);
+        }
+      }
+
+      const existingReference = order.paystack_reference ?? null;
+      if (
+        String(order.invoice_status ?? "") === "paid" &&
+        existingReference !== (d.reference ?? reference)
+      ) {
+        return errorResponse("This order does not require online payment.", "ORDER_NOT_PAYABLE", 400);
+      }
+
+      const expectedMajor = Number(order.total_amount ?? 0);
+      if (
+        Math.abs(amountInCurrency - expectedMajor) > 0.01 &&
+        existingReference !== (d.reference ?? reference)
+      ) {
+        return successResponse({
+          verified: false,
+          paystackStatus: txStatus,
+          message: "Paid amount does not match this order",
+          code: "AMOUNT_MISMATCH",
+        });
+      }
+
+      const payRecord = await recordTerminalOrderPayment({
+        supabase: admin,
+        terminalOrderId,
+        reference: d.reference ?? reference,
+        amountMajor: amountInCurrency,
+        feesMajor: convertFromSmallestUnit(Number(d.fees ?? 0)),
+        commercialModel: (order.commercial_model ?? "once_off_purchase") as
+          | "once_off_purchase"
+          | "rental"
+          | "subscription_bundle"
+          | "lease_to_own"
+          | "financed"
+          | "promotional",
+        source: "paystack_verify",
+        provider: "paystack",
+      });
+
+      const { notifyTerminalOrderPaidIfTransitioned } = await import(
+        "@/lib/terminal/notify-terminal-order-paid"
+      );
+      await notifyTerminalOrderPaidIfTransitioned(admin, terminalOrderId, {
+        transitionedToPaid: payRecord.transitionedToPaid,
+      });
+
+      return successResponse({
+        verified: true,
+        paystackStatus: txStatus,
+        amount: amountInCurrency,
+        currency: d.currency ?? lastResortCurrency,
+        reference: d.reference ?? reference,
+        metadata,
+        terminalOrderId,
+        type: "terminal_order",
       });
     }
 

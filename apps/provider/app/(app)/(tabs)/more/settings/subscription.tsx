@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
+import { startPaidSubscriptionCheckout } from "@/lib/subscription/start-paid-checkout";
 import { Colors } from "@/constants/colors";
 
 const ACCENT = "#FF0077";
@@ -653,62 +654,24 @@ export default function SubscriptionScreen() {
 
       // Paid plans: match provider web — try Paystack subscription upgrade when authorization exists,
       // otherwise initialize a checkout (first payment or new card).
-      const { error: upErr, data: upData } = await postAction("/api/provider/subscription/upgrade", {
-        plan_id: barePlanId,
-        billing_period: billingPeriod,
+      const checkoutStart = await startPaidSubscriptionCheckout({
+        subscriptionPlanId: barePlanId,
+        billingPeriod: billingPeriod as "monthly" | "yearly",
+        inApp: true,
       });
-      if (upErr) {
-        Alert.alert("Error", upErr);
+      if (!checkoutStart.ok) {
+        Alert.alert("Error", checkoutStart.error);
         return;
       }
-      const upgraded = upData as {
-        is_free?: boolean;
-        subscription_id?: string;
-        requires_payment?: boolean;
-        payment_url?: string;
-        authorization_url?: string;
-      };
-      if (upgraded?.is_free) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Success", "Plan updated!");
-        refresh();
-        return;
-      }
-      if (upgraded?.subscription_id && !upgraded?.requires_payment) {
+      if (checkoutStart.alreadyActive) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert("Success", "Subscription updated!");
         refresh();
         return;
       }
-      const upUrl = upgraded?.authorization_url ?? upgraded?.payment_url;
-      if (upUrl) {
-        await openSubscriptionPaystack(upUrl, "Subscription checkout");
-        refresh();
-        return;
-      }
-
-      const { error: err, data } = await postAction("/api/provider/subscription/initialize-payment", {
-        plan_id: barePlanId,
-        billing_period: billingPeriod,
-        in_app: true,
+      await openSubscriptionPaystack(checkoutStart.authorizationUrl, "Subscription checkout", {
+        orderId: checkoutStart.orderId,
       });
-      if (err) {
-        Alert.alert("Error", err);
-        return;
-      }
-      const d = data as { authorization_url?: string; payment_url?: string; requires_payment?: boolean; order_id?: string };
-      const url = d?.authorization_url ?? d?.payment_url;
-      const initOrderId = typeof d?.order_id === "string" ? d.order_id : undefined;
-      if (d?.requires_payment && url) {
-        await openSubscriptionPaystack(url, "Subscription checkout", { orderId: initOrderId });
-        refresh();
-        return;
-      }
-      if (url) {
-        await openSubscriptionPaystack(url, "Subscription checkout", { orderId: initOrderId });
-      } else {
-        Alert.alert("No payment link", "Unable to start checkout. Please try again or contact support.");
-      }
       refresh();
     } finally {
       setUpgradingId(null);

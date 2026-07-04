@@ -10,16 +10,20 @@ import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ProviderVerificationPanel } from "@/components/verification/ProviderVerificationPanel";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { providerVerificationSubtitle, verificationPolicyFromBundle } from "@/lib/verification/policy";
 
 export default function VerificationScreen() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
+  const verificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
 
   return (
     <ScreenContainer scrollable={false} noPadding>
       <View style={{ paddingHorizontal: 16 }}>
         <ScreenHeader
           title="Identity verification"
-          subtitle="Required for compliance"
+          subtitle={providerVerificationSubtitle(verificationRequired)}
           onBack={() => router.back()}
         />
       </View>

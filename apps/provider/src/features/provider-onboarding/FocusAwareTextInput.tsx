@@ -1,9 +1,14 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { TextInput, type TextInputProps } from "react-native";
+import { DEFAULT_SCROLL_OFFSET } from "@/hooks/useScrollToFocusedInput";
 import { useOnboardingScroll } from "./OnboardingScrollContext";
 
-export const FocusAwareTextInput = forwardRef<TextInput, TextInputProps>(
-  function FocusAwareTextInput({ onFocus, ...rest }, ref) {
+export type FocusAwareTextInputProps = TextInputProps & {
+  focusScrollOffset?: number;
+};
+
+export const FocusAwareTextInput = forwardRef<TextInput, FocusAwareTextInputProps>(
+  function FocusAwareTextInput({ onFocus, focusScrollOffset, ...rest }, ref) {
     const innerRef = useRef<TextInput>(null);
     const scroll = useOnboardingScroll();
 
@@ -14,7 +19,9 @@ export const FocusAwareTextInput = forwardRef<TextInput, TextInputProps>(
         ref={innerRef}
         onFocus={(event) => {
           onFocus?.(event);
-          scroll?.scrollToFocusedInput(innerRef);
+          scroll?.scrollToFocusedInput(innerRef, {
+            offset: focusScrollOffset ?? DEFAULT_SCROLL_OFFSET,
+          });
         }}
         {...rest}
       />

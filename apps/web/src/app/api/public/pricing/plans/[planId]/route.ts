@@ -80,6 +80,15 @@ export async function GET(
           .eq("tenant_id", tenantId)
           .maybeSingle();
         if (overrideByName) {
+          const overridePeriods: ("monthly" | "yearly")[] = [
+            ...(overrideByName.paystack_plan_code_monthly ? ["monthly" as const] : []),
+            ...(overrideByName.paystack_plan_code_yearly ? ["yearly" as const] : []),
+          ];
+          const { data: overrideLink } = await supabase
+            .from("pricing_plans")
+            .select("subscription_plan_id")
+            .eq("id", overrideByName.id)
+            .maybeSingle();
           return NextResponse.json({
             data: {
               id: overrideByName.id,
@@ -91,10 +100,11 @@ export async function GET(
               is_popular: overrideByName.is_popular,
               currency: (overrideByName as { currency?: string | null }).currency ?? null,
               features: [],
-              available_billing_periods: [
-                ...(overrideByName.paystack_plan_code_monthly ? ["monthly" as const] : []),
-                ...(overrideByName.paystack_plan_code_yearly ? ["yearly" as const] : []),
-              ],
+              available_billing_periods: overridePeriods,
+              is_free: false,
+              subscription_plan_id:
+                (overrideLink as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ??
+                null,
             },
           });
         }
@@ -126,17 +136,18 @@ export async function GET(
     const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
     const isFreeByPrice = !priceStr || parseFloat(priceStr) === 0 || /free/i.test(String(plan.price ?? ""));
     const isFree = isFreeByPrice && available_billing_periods.length === 0;
-
-    // For free plans, look up the linked subscription_plan_id
-    let subscriptionPlanId: string | null = null;
-    if (isFree) {
-      const { data: fullPlan } = await supabase
-        .from("pricing_plans")
-        .select("subscription_plan_id")
-        .eq("id", plan.id)
-        .maybeSingle();
-      subscriptionPlanId = (fullPlan as any)?.subscription_plan_id ?? null;
+    if (!isFree && available_billing_periods.length === 0) {
+      available_billing_periods.push("monthly");
     }
+
+    // Resolve linked subscription_plans row for checkout (free and paid).
+    let subscriptionPlanId: string | null = null;
+    const { data: fullPlan } = await supabase
+      .from("pricing_plans")
+      .select("subscription_plan_id")
+      .eq("id", plan.id)
+      .maybeSingle();
+    subscriptionPlanId = (fullPlan as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
 
     return NextResponse.json({
       data: {

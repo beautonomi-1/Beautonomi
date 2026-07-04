@@ -6,7 +6,10 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant, normalizeAdminLedgerRange } from "@/lib/admin/finance-ledger-tenant";
-import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  aggregateFinanceLedgerRows,
+  gatewayFeesTotalFromAggregate,
+} from "@/lib/admin/aggregate-finance-ledger-rows";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -59,6 +62,7 @@ export async function GET(request: Request) {
     let referralPayouts = 0;
     let outstandingGiftCardLiability = 0;
     let bookingsGmv = 0;
+    let terminalOrderCount = 0;
     try {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
@@ -122,6 +126,24 @@ export async function GET(request: Request) {
         // walk-in rows by design). Use total_amount only (no wallet/gift adjustments).
         bookingsGmv = (bookingRows || []).reduce((s, row) => s + Number(row.total_amount || 0), 0);
       }
+
+      let terminalOrdersQuery = supabaseAdmin
+        .from("terminal_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("invoice_status", "paid");
+      if (normalizedRange.start) {
+        terminalOrdersQuery = terminalOrdersQuery.gte("updated_at", normalizedRange.start);
+      }
+      if (normalizedRange.end) {
+        terminalOrdersQuery = terminalOrdersQuery.lte("updated_at", normalizedRange.end);
+      }
+      const { count: terminalPaidCount, error: terminalCountErr } = await terminalOrdersQuery;
+      if (terminalCountErr) {
+        console.warn("Terminal orders count query failed:", terminalCountErr.message);
+      } else {
+        terminalOrderCount = terminalPaidCount ?? 0;
+      }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
     }
@@ -142,10 +164,13 @@ export async function GET(request: Request) {
     const providerNetAfterRefunds =
       agg.provider_recognized_revenue_gross - providerRefundImpact;
     const gmvVariance = agg.service_collected_gross - bookingsGmv;
-    // §Phase 7: when bookingsGmv = 0 the percentage is meaningless (division by zero
-    // was silently returning 0%). Return null so the UI can render "n/a" instead
-    // of a misleading "0%".
-    const gmvVariancePct = bookingsGmv > 0 ? (gmvVariance / bookingsGmv) * 100 : null;
+    const GMV_VARIANCE_PCT_THRESHOLD = 100;
+    const gmvVariancePct =
+      bookingsGmv >= GMV_VARIANCE_PCT_THRESHOLD
+        ? (gmvVariance / bookingsGmv) * 100
+        : bookingsGmv > 0
+          ? null
+          : null;
     const outOfBalance = Math.abs(gmvVariance) > 1;
     const highNegativeRefundPressure = providerRefundImpact > Math.max(agg.provider_earnings_net, 0);
 
@@ -188,6 +213,18 @@ export async function GET(request: Request) {
     const gmvGrowth =
       previousGmv > 0 ? ((agg.service_collected_gross - previousGmv) / previousGmv) * 100 : 0;
 
+    const gatewayFeesTotal = gatewayFeesTotalFromAggregate(agg);
+    const gatewayFeesBreakdown = {
+      services: agg.gateway_fees_services,
+      terminal: agg.terminal_gateway_fees,
+      subscription: agg.subscription_gateway_fees,
+      ads: agg.ads_gateway_fees,
+      marketing_credits: agg.marketing_credit_gateway_fees,
+      gift_card_wallet: agg.other_gateway_fees,
+      payout_transfers: agg.payout_transfer_fees,
+      total: gatewayFeesTotal,
+    };
+
     return NextResponse.json({
       data: {
         service_collected_gross: agg.service_collected_gross,
@@ -197,6 +234,13 @@ export async function GET(request: Request) {
         grossBookedValue: bookingsGmv,
         service_collected_net: agg.service_collected_net,
         gateway_fees: agg.gateway_fees_services,
+        gateway_fees_total: gatewayFeesTotal,
+        gateway_fees_breakdown: gatewayFeesBreakdown,
+        terminal_commerce: {
+          revenue_gross: agg.terminal_revenue_gross,
+          gateway_fees: agg.terminal_gateway_fees,
+          order_count: terminalOrderCount,
+        },
 
         platform_commission_gross: agg.platform_commission_gross,
         platform_refund_impact: agg.platform_refund_impact,
@@ -318,13 +362,14 @@ export async function GET(request: Request) {
               bookings_gmv: bookingsGmv,
               variance: gmvVariance,
               variance_pct: gmvVariancePct,
-              // Null pct is neither "ok" nor "warning" — label it explicitly.
+              // Null pct when denominator is tiny or zero — percentage is misleading.
               status: gmvVariancePct === null
                 ? "unavailable"
                 : outOfBalance
                   ? "warning"
                   : "ok",
-              basis_note: "Both sides use created_at anchor; ledger excludes walk-in add-ons; bookings GMV uses total_amount (no discount/wallet adjustments).",
+              basis_note:
+                "Both sides use created_at anchor; ledger excludes walk-in add-ons and terminal commerce; bookings GMV uses total_amount (no discount/wallet adjustments). Percent hidden when booking GMV < R100.",
             },
             negative_provider_payout_balances: {
               count: negativeBalanceProviders.count ?? 0,
@@ -351,7 +396,7 @@ export async function GET(request: Request) {
                 + agg.marketing_credit_gross,
               provider_payouts: agg.payouts_paid_total,
               refunds_gross: agg.refunds_abs_gross,
-              gateway_fees: agg.gateway_fees_services + agg.other_gateway_fees + agg.subscription_gateway_fees + agg.ads_gateway_fees + agg.marketing_credit_gateway_fees,
+              gateway_fees: gatewayFeesTotal,
               payout_transfer_fees: agg.payout_transfer_fees,
               net_platform_cash:
                 agg.service_collected_gross
@@ -362,7 +407,7 @@ export async function GET(request: Request) {
                 + agg.marketing_credit_gross
                 - agg.payouts_paid_total
                 - agg.refunds_abs_gross
-                - (agg.gateway_fees_services + agg.other_gateway_fees + agg.subscription_gateway_fees + agg.ads_gateway_fees + agg.marketing_credit_gateway_fees)
+                - gatewayFeesTotal
                 - agg.payout_transfer_fees,
             },
           },

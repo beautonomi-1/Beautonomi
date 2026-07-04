@@ -40,6 +40,14 @@ const SETUP_ITEMS = [
     color: "#a855f7",
     flag: null,
   },
+  {
+    icon: "hardware-chip-outline" as const,
+    label: "Terminal Shop",
+    subtitle: "Order card machines from the Beautonomi catalog",
+    route: "/(app)/(tabs)/more/terminal-shop",
+    color: "#db2777",
+    flag: "terminal_ecommerce_enabled",
+  },
 ];
 
 export default function PaymentSetupScreen() {
@@ -47,10 +55,13 @@ export default function PaymentSetupScreen() {
   const handleBack = useProviderStackBack();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const terminalShopEnabled =
+    useFeatureFlag("terminal_ecommerce_enabled") || useFeatureFlag("terminal_product_catalog_enabled");
 
   const visibleItems = SETUP_ITEMS.filter((item) => {
     if (item.flag === "payment_yoco") return yocoEnabled;
     if (item.flag === "payment_paystack_virtual_terminal") return paystackTerminalEnabled;
+    if (item.flag === "terminal_ecommerce_enabled") return terminalShopEnabled;
     return true;
   });
 

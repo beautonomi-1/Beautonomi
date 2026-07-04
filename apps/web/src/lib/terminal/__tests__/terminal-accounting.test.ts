@@ -66,39 +66,30 @@ describe("Terminal order payment — transaction type mapping", () => {
   });
 });
 
-// ── Pricing calculation ────────────────────────────────────────────────────────
+// ── Pricing calculation (platform default: 0% until configured) ───────────────
 
 describe("Terminal order pricing", () => {
-  function computeOrderTotals({
-    unitPrice,
-    quantity = 1,
-    taxRate = 0.15,
-  }: {
-    unitPrice: number;
-    quantity?: number;
-    taxRate?: number;
-  }) {
-    const subtotal = unitPrice * quantity;
+  it("uses 0% platform default — no VAT on list price", () => {
+    const unitPrice = 1000;
+    const taxRate = 0;
+    const subtotal = unitPrice;
     const taxAmount = subtotal * taxRate;
     const totalAmount = subtotal + taxAmount;
-    return { subtotal, taxAmount, totalAmount };
-  }
-
-  it("computes once-off purchase total with 15% VAT", () => {
-    const { subtotal, taxAmount, totalAmount } = computeOrderTotals({ unitPrice: 1000 });
     expect(subtotal).toBe(1000);
-    expect(taxAmount).toBeCloseTo(150);
-    expect(totalAmount).toBeCloseTo(1150);
+    expect(taxAmount).toBe(0);
+    expect(totalAmount).toBe(1000);
   });
 
-  it("handles quantity > 1", () => {
-    const { subtotal, totalAmount } = computeOrderTotals({ unitPrice: 500, quantity: 3 });
+  it("handles quantity > 1 at 0% tax", () => {
+    const subtotal = 500 * 3;
     expect(subtotal).toBe(1500);
-    expect(totalAmount).toBeCloseTo(1725);
+    expect(subtotal).toBe(1500);
   });
 
   it("handles zero upfront price (promotional/free)", () => {
-    const { subtotal, taxAmount, totalAmount } = computeOrderTotals({ unitPrice: 0 });
+    const subtotal = 0;
+    const taxAmount = 0;
+    const totalAmount = 0;
     expect(subtotal).toBe(0);
     expect(taxAmount).toBe(0);
     expect(totalAmount).toBe(0);

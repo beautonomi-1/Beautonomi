@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useCallback, useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
-import type { ConfigBundleMeta, PublicAuthPolicy } from "@/lib/config/types";
+import type { ConfigBundleMeta, PublicAuthPolicy, SafeVerificationPolicy } from "@/lib/config/types";
 import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
 
 export type Platform = "web" | "customer" | "provider";
@@ -49,6 +49,7 @@ export interface PublicConfigBundle {
     aura: Record<string, any>;
     safety: Record<string, any>;
   };
+  verification?: SafeVerificationPolicy;
 }
 
 interface ConfigBundleContextValue {
@@ -92,6 +93,17 @@ const defaultBundle: PublicConfigBundle = {
     sumsub: {},
     aura: {},
     safety: {},
+  },
+  verification: {
+    mode: "manual",
+    sumsub_enabled: false,
+    didit_enabled: false,
+    manual_enabled: true,
+    required_for_providers: false,
+    required_for_payouts: false,
+    required_for_customers: false,
+    cross_validate: false,
+    min_age: 18,
   },
 };
 

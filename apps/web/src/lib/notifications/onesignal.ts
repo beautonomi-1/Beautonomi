@@ -1508,6 +1508,16 @@ export async function sendTemplateNotification(
     smsBody = smsBody.replace(regex, value);
   });
 
+  if (templateKey === "service_started") {
+    const { finalizeServiceStartedNotificationBody } = await import(
+      "@/lib/bookings/resolve-booking-service-duration"
+    );
+    const dur = variables.service_duration ?? "";
+    body = finalizeServiceStartedNotificationBody(body, dur);
+    emailBody = finalizeServiceStartedNotificationBody(emailBody, dur);
+    smsBody = finalizeServiceStartedNotificationBody(smsBody, dur);
+  }
+
   const templateUrlRelative = resolved.urlPath
     ? substituteTemplatePath(resolved.urlPath, variables)
     : "";
@@ -1868,7 +1878,7 @@ export async function sendTemplateNotification(
     channels: channelsToSend,
     headings: { en: title },
     contents: { en: body },
-    data: { template_key: templateKey, ...variables },
+    data: { type: templateKey, template_key: templateKey, ...variables },
   };
 
   if (channelsToSend.includes("push")) {
@@ -1919,6 +1929,7 @@ export async function sendTemplateNotification(
       "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
       "booking_number", "provider_name", "customer_name",
       "provider_id", "provider_slug", "group_booking_id",
+      "charge_id", "additional_charge_id",
     ];
     WELL_KNOWN_VARS.forEach((k) => {
       const v = variables[k];

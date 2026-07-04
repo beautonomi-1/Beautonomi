@@ -13,8 +13,8 @@ import {
   setActiveProviderApiHint,
 } from "@/lib/active-provider-api-hint";
 import { useAuth } from "./AuthProvider";
-import { getApiErrorCode } from "@/lib/api-error";
-import { captureError, addBreadcrumb } from "@/lib/sentry";
+import { getApiErrorCode, getApiErrorMessage, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
+import { captureApiFailure, addBreadcrumb } from "@/lib/sentry";
 import { emitProviderRoleChanged } from "@/lib/provider-role-events";
 
 const LOCATION_STORAGE_KEY = "provider_selected_location_id";
@@ -86,17 +86,29 @@ interface ProviderContextType {
 const ProviderContext = createContext<ProviderContextType | undefined>(undefined);
 
 const PROFILE_LOAD_TIMEOUT_MS = 15 * 1000;
-/** Routine silent refresh on foreground; recovery refetches ignore this cooldown. */
-const FOREGROUND_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 const ONBOARDING_ENTRY_ROLES = new Set(["customer", "provider_onboarding"]);
 
-function isCancelledApiError(err: unknown): boolean {
-  return getApiErrorCode(err) === "CANCELLED";
+/** Background abort or congested resume — keep cached profile/role in the UI. */
+function isRecoverableFetchError(err: unknown): boolean {
+  const code = getApiErrorCode(err);
+  return code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+}
+
+function reportFetchFailure(err: unknown, area: string, uiHandled: boolean) {
+  captureApiFailure(
+    err instanceof Error ? err : new Error(getApiErrorMessage(err)),
+    {
+      area,
+      code: getApiErrorCode(err),
+      status: getHttpErrorStatus(err),
+    },
+    { uiHandled },
+  );
 }
 
 function roleFromResponse(roleRes: Awaited<ReturnType<typeof api.get<{ role: string }>>>): string | null {
   if (roleRes.error) {
-    if (isCancelledApiError(roleRes.error)) return null;
+    if (isRecoverableFetchError(roleRes.error)) return null;
     return null;
   }
   return roleRes.data?.role ?? null;
@@ -137,8 +149,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   const applyRoleFromResponse = useCallback((roleRes: Awaited<ReturnType<typeof api.get<{ role: string }>>>) => {
     if (roleRes.error) {
       // Background abort — keep the last good role; index.tsx ignores CANCELLED the same way.
-      if (isCancelledApiError(roleRes.error)) return;
-      captureError(new Error(roleRes.error.message), {
+      if (isRecoverableFetchError(roleRes.error)) {
+        return;
+      }
+      captureApiFailure(new Error(roleRes.error.message), {
         area: "ProviderContext.role",
         code: roleRes.error.code,
         status: (roleRes.error as { status?: number }).status,
@@ -153,7 +167,12 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
 
   const lastProfileFetchRef = useRef(0);
   const roleRef = useRef<string | null>(null);
+  const providerRef = useRef<ProviderProfile | null>(null);
   const profileLoadErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    providerRef.current = provider;
+  }, [provider]);
 
   useEffect(() => {
     roleRef.current = role;
@@ -166,15 +185,23 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     profileLoadErrorRef.current = profileLoadError;
   }, [profileLoadError]);
 
-  const fetchProfile = useCallback(async (options?: { showLoading?: boolean }) => {
+  const fetchProfile = useCallback(async (options?: { showLoading?: boolean; background?: boolean }) => {
     const myId = ++fetchIdRef.current;
+    const background = options?.background === true;
     if (options?.showLoading) {
       setLoading(true);
     }
     const timeoutId = setTimeout(() => {
       if (fetchIdRef.current === myId) {
         setLoading(false);
-        setProfileLoadError((prev) => prev ?? "Profile is taking longer than expected. Pull to refresh or check your connection.");
+        // Only surface a blocking error when there is no cached profile/role to show.
+        if (!providerRef.current && !roleRef.current) {
+          setProfileLoadError(
+            (prev) =>
+              prev ??
+              "Profile is taking longer than expected. Pull to refresh or check your connection.",
+          );
+        }
       }
     }, PROFILE_LOAD_TIMEOUT_MS);
     try {
@@ -226,11 +253,22 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         if (fetchIdRef.current !== myId) return;
       }
 
-      const profileCancelled = !!profileRes.error && isCancelledApiError(profileRes.error);
-      const roleCancelled = !!roleRes.error && isCancelledApiError(roleRes.error);
+      const profileSkipped = !!profileRes.error && isRecoverableFetchError(profileRes.error);
+      const roleSkipped = !!roleRes.error && isRecoverableFetchError(roleRes.error);
+      const hasCachedBootstrap = !!(providerRef.current || roleRef.current);
 
-      // Deliberate background abort of both reads — leave profile + role untouched.
-      if (profileCancelled && roleCancelled) {
+      if (profileSkipped && profileRes.error) {
+        reportFetchFailure(profileRes.error, "ProviderContext.profile", hasCachedBootstrap);
+      }
+      if (roleSkipped && roleRes.error) {
+        reportFetchFailure(roleRes.error, "ProviderContext.role", hasCachedBootstrap);
+      }
+
+      // Background abort or resume congestion — leave profile + role untouched.
+      if (profileSkipped && roleSkipped) {
+        if (hasCachedBootstrap) {
+          setProfileLoadError(null);
+        }
         return;
       }
 
@@ -238,22 +276,22 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       const isNoProviderRowYet =
         pe?.status === 404 || pe?.code === "NOT_FOUND" || pe?.code === "NEW_PROVIDER";
       const resolvedRole = roleFromResponse(roleRes);
-      const roleForLogic = roleCancelled ? roleRef.current : resolvedRole;
+      const roleForLogic = roleSkipped ? roleRef.current : resolvedRole;
       const isExpectedOnboardingProfileAuthError =
-        !profileCancelled &&
+        !profileSkipped &&
         !!profileRes.error &&
         isAuthStatus(pe?.status) &&
         !!roleForLogic &&
         ONBOARDING_ENTRY_ROLES.has(roleForLogic);
 
-      if (!profileCancelled && profileRes.error && isNoProviderRowYet) {
+      if (!profileSkipped && profileRes.error && isNoProviderRowYet) {
         // New provider completing onboarding: no providers row yet — expected; still need role for RoleGate.
         setProvider(null);
         setProfileLoadError(null);
         setActiveProviderApiHint(null);
         AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
-        if (!roleCancelled) applyRoleFromResponse(roleRes);
-      } else if (!profileCancelled && isExpectedOnboardingProfileAuthError) {
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
+      } else if (!profileSkipped && isExpectedOnboardingProfileAuthError) {
         // First-run users may still be customer/provider_onboarding while the
         // setup wizard creates the provider row. Keep them in onboarding instead
         // of surfacing the provider-profile 403 as a scary banner.
@@ -261,16 +299,27 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         setProfileLoadError(null);
         setActiveProviderApiHint(null);
         AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
-        if (!roleCancelled) applyRoleFromResponse(roleRes);
-      } else if (!profileCancelled && profileRes.error) {
-        captureError(new Error(profileRes.error.message), {
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
+      } else if (!profileSkipped && profileRes.error) {
+        if (background && hasCachedBootstrap) {
+          if (!roleSkipped) applyRoleFromResponse(roleRes);
+          return;
+        }
+        if (isRecoverableFetchError(profileRes.error)) {
+          if (hasCachedBootstrap) {
+            setProfileLoadError(null);
+          }
+          if (!roleSkipped) applyRoleFromResponse(roleRes);
+          return;
+        }
+        captureApiFailure(new Error(profileRes.error.message), {
           area: "ProviderContext.profile",
           code: profileRes.error.code,
           status: pe?.status,
         });
         setProfileLoadError(profileRes.error.message);
         setProvider(null);
-        if (!roleCancelled) applyRoleFromResponse(roleRes);
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
       } else if (profileRes.data) {
         setProfileLoadError(null);
         setProvider(profileRes.data);
@@ -306,16 +355,23 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
           providerId: profileRes.data.id,
         });
 
-        if (!roleCancelled) applyRoleFromResponse(roleRes);
-      } else if (!profileCancelled) {
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
+      } else if (!profileSkipped) {
         setProvider(null);
-        if (!roleCancelled) applyRoleFromResponse(roleRes);
-      } else if (!roleCancelled) {
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
+      } else if (!roleSkipped) {
         applyRoleFromResponse(roleRes);
       }
     } catch (e) {
       if (fetchIdRef.current !== myId) return;
-      captureError(e, { area: "ProviderContext.fetchProfile" });
+      const recoverable = isRecoverableFetchError(e) || isTransientApiFailure(e);
+      const hasCachedBootstrap = !!(providerRef.current || roleRef.current);
+      reportFetchFailure(e, "ProviderContext.fetchProfile", recoverable && hasCachedBootstrap);
+      if ((recoverable || background) && hasCachedBootstrap) return;
+      if (recoverable) {
+        setProfileLoadError(getApiErrorMessage(e));
+        return;
+      }
       setProfileLoadError(e instanceof Error ? e.message : "Something went wrong");
       setProvider(null);
       setRole(null);
@@ -352,16 +408,18 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     void fetchProfile();
   }, [userId, fetchProfile]);
 
-  // Refresh on foreground: always re-probe when role/access is missing (stale resume),
-  // otherwise use a cooldown so we don't hit the API on every alt-tab.
+  // Refresh on foreground: silent stale-while-revalidate when we already have
+  // profile/role; only show the gate loader when bootstrap data is missing.
   useEffect(() => {
     if (!userId) return;
     const onFocusOrRecover = () => {
       if (loading) return;
       const needsRecovery = roleRef.current === null || profileLoadErrorRef.current != null;
-      const msSinceLast = Date.now() - lastProfileFetchRef.current;
-      if (!needsRecovery && msSinceLast < FOREGROUND_REFRESH_COOLDOWN_MS) return;
-      void fetchProfile({ showLoading: needsRecovery });
+      const hasBootstrap = !!(providerRef.current || roleRef.current);
+      void fetchProfile({
+        background: true,
+        showLoading: needsRecovery && !hasBootstrap,
+      });
     };
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);

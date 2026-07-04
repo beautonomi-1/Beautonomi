@@ -395,4 +395,18 @@ describe("aggregateFinanceLedgerRows — admin finance scenarios", () => {
     expect(agg.marketing_credit_gateway_fees).toBe(8);
     expect(platformRevenueNetFromAggregate(agg)).toBe(200);
   });
+
+  it("includes terminal commerce gateway fees in gatewayFeesTotalFromAggregate", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "payment", amount: 100, fees: 2.5, net: 10, commission: 10 }),
+      row({ transaction_type: "terminal_sale", amount: 500, fees: 12.69, net: 487.31 }),
+      row({ transaction_type: "terminal_rental", amount: 200, fees: 5.5, net: 194.5 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.gateway_fees_services).toBe(2.5);
+    expect(agg.terminal_gateway_fees).toBeCloseTo(18.19, 2);
+    expect(agg.terminal_revenue_gross).toBe(700);
+    expect(gatewayFeesTotalFromAggregate(agg)).toBeCloseTo(20.69, 2);
+  });
 });

@@ -1,19 +1,9 @@
 /**
- * Optional identity-verification step shown right after the onboarding wizard
- * is submitted (free plan) or after a paid checkout returns.
- *
- * Route path is UNCHANGED — all finalizeOnboardingSuccess completion paths
- * continue to route here and finalize-onboarding.test.ts contract is preserved.
- *
- * Identity verification is OPTIONAL by default. When provider_verification
- * is enabled (flag on), the screen shows "Verify to go live" but never
- * hard-locks onboarding — the provider can always reach the dashboard.
- *
- * "Back to setup" affordance added so providers can return to the wizard
- * to change business/plan details.
+ * Post-onboarding identity verification — copy and skip behaviour follow the
+ * tenant `provider_verification` flag (superadmin → Required for provider setup/go-live).
  */
-import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -22,37 +12,61 @@ import {
   ProviderVerificationPanel,
   type NormalizedVerificationStatus,
 } from "@/components/verification/ProviderVerificationPanel";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useApi } from "@/hooks/useApi";
+import {
+  canSkipProviderVerification,
+  providerVerificationContinueLabel,
+  providerVerificationSubtitle,
+  verificationPolicyFromBundle,
+} from "@/lib/verification/policy";
 import { twStyle } from "@/lib/twStyle";
 import { Shadows } from "@/constants/colors";
 import { hapticLight } from "@/lib/haptics-safe";
 
 export default function OnboardingVerifyIdentityScreen() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
+  const bundlePolicy = verificationPolicyFromBundle(bundle);
+  const env = bundle?.meta?.env ?? "production";
+  const { data: verificationStatus } = useApi<{
+    required_for_providers?: boolean;
+  }>(`/api/provider/verification/status?environment=${encodeURIComponent(env)}`);
+
+  const verificationRequired =
+    verificationStatus?.required_for_providers ?? bundlePolicy.required_for_providers;
+
   const [status, setStatus] = useState<NormalizedVerificationStatus>("not_started");
 
+  const canSkip = useMemo(
+    () => canSkipProviderVerification({ required: verificationRequired, status }),
+    [verificationRequired, status],
+  );
+
   const goToDashboard = useCallback(() => {
+    if (!canSkip) {
+      Alert.alert(
+        "Verification required",
+        "Identity verification is required before you can go live. Complete verification to earn your Verified trust badge.",
+      );
+      return;
+    }
     hapticLight();
     router.replace("/(app)/(tabs)/dashboard" as never);
-  }, [router]);
+  }, [canSkip, router]);
 
   const goBackToSetup = useCallback(() => {
     hapticLight();
-    // Return to the onboarding wizard (last step)
     router.back();
   }, [router]);
 
-  // Explicit status handling (replaces isDone heuristic)
-  const isApproved     = status === "approved";
-  const isPendingReview= status === "pending_review";
-  const isRejected     = status === "rejected";
-  const isExpired      = status === "expired" || status === "abandoned";
-  const isInProgress   = status === "in_progress";
-
-  const continueLabel = isApproved
-    ? "Continue to dashboard"
-    : isPendingReview
-      ? "Continue — we'll notify you when verified"
-      : "Do this later — go to dashboard";
+  const isApproved = status === "approved";
+  const isPendingReview = status === "pending_review";
+  const subtitle = providerVerificationSubtitle(verificationRequired);
+  const continueLabel = providerVerificationContinueLabel({
+    required: verificationRequired,
+    status,
+  });
 
   return (
     <ScreenContainer
@@ -65,25 +79,41 @@ export default function OnboardingVerifyIdentityScreen() {
       <View style={{ paddingHorizontal: 16 }}>
         <ScreenHeader
           title="Verify your identity"
-          subtitle="Optional — you can do this later"
+          subtitle={subtitle}
           showBack={false}
           rightAction={
-            <TouchableOpacity
-              onPress={goToDashboard}
-              style={twStyle(
-                "flex-row items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm",
-              )}
-              accessibilityRole="button"
-              accessibilityLabel="Skip for now and go to dashboard"
-              activeOpacity={0.85}
-            >
-              <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>Skip for now</Text>
-            </TouchableOpacity>
+            canSkip ? (
+              <TouchableOpacity
+                onPress={goToDashboard}
+                style={twStyle(
+                  "flex-row items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm",
+                )}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isApproved || isPendingReview ? "Continue to dashboard" : "Skip for now"
+                }
+                activeOpacity={0.85}
+              >
+                <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>
+                  {isApproved || isPendingReview ? "Continue" : "Skip for now"}
+                </Text>
+              </TouchableOpacity>
+            ) : undefined
           }
         />
       </View>
 
-      {/* Back to setup affordance */}
+      {verificationRequired && !canSkip ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
+          <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3")}>
+            <Text style={twStyle("text-sm leading-5 text-amber-900")}>
+              Your marketplace requires identity verification before you can go live. Complete this step to
+              earn the Verified trust badge.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
         <TouchableOpacity
           onPress={goBackToSetup}
@@ -114,9 +144,7 @@ export default function OnboardingVerifyIdentityScreen() {
                 size={18}
                 color="#fff"
               />
-              <Text style={twStyle("text-[16px] font-semibold text-white")}>
-                {continueLabel}
-              </Text>
+              <Text style={twStyle("text-[16px] font-semibold text-white")}>{continueLabel}</Text>
             </View>
           </TouchableOpacity>
         }

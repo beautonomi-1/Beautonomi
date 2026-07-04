@@ -141,6 +141,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    try {
+      const { markPendingIntegrationOrdersComplete } = await import(
+        "@/lib/terminal/terminal-integration-setup"
+      );
+      await markPendingIntegrationOrdersComplete(supabase, stateRow.provider_id, "yoco");
+    } catch (setupErr) {
+      console.warn("Yoco OAuth: terminal integration setup completion failed:", setupErr);
+    }
+
     return redirectWithFlag(origin, returnTo, "yoco_connected", "1");
   } catch (error) {
     const message =

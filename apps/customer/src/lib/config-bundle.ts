@@ -89,6 +89,21 @@ export interface OnDemandModuleConfig {
   ui_copy: Record<string, unknown>;
 }
 
+export interface PublicVerificationPolicy {
+  mode?: "off" | "manual" | "didit" | "both";
+  didit_enabled?: boolean;
+  manual_enabled?: boolean;
+  required_for_providers?: boolean;
+  required_for_payouts?: boolean;
+  required_for_customers?: boolean;
+  cross_validate?: boolean;
+  min_age?: number;
+}
+
+export const DEFAULT_VERIFICATION_POLICY: PublicVerificationPolicy = {
+  required_for_customers: false,
+};
+
 export interface PublicConfigBundle {
   meta: ConfigBundleMeta;
   amplitude: Record<string, unknown>;
@@ -108,11 +123,12 @@ export interface PublicConfigBundle {
     aura: Record<string, unknown>;
     safety: Record<string, unknown>;
   };
+  verification?: PublicVerificationPolicy;
 }
 
 let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
-const CACHE_MS = 5 * 60 * 1000;
+const CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners still refresh stale data
 
 function defaultStubBundle(environment: Environment, platform: Platform): PublicConfigBundle {
   return {
@@ -143,6 +159,7 @@ function defaultStubBundle(environment: Environment, platform: Platform): Public
       aura: {},
       safety: {},
     },
+    verification: { ...DEFAULT_VERIFICATION_POLICY },
   };
 }
 

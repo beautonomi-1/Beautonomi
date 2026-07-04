@@ -151,6 +151,8 @@ export async function GET(request: NextRequest) {
       manual_available: policy.manualEnabled,
       // Combined mode: "off" | "manual" | "didit" | "both"
       verification_mode: policy.mode,
+      required_for_providers: policy.requiredForProviders,
+      required_for_payouts: policy.requiredForPayouts,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to get verification status");

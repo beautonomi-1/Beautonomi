@@ -14,9 +14,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_COMMERCIAL } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
-import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { sendTerminalCampaignNotifications } from "@/lib/terminal/send-terminal-campaign-notifications";
 
 const createCampaignSchema = z.object({
   name: z.string().min(1).max(200),
@@ -58,14 +57,6 @@ export async function POST(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
 
-    const flagEnabled = await isFeatureEnabledServer(
-      FEATURE_FLAG_KEYS.TERMINAL_CAMPAIGNS,
-      tenantId,
-    );
-    if (!flagEnabled) {
-      return errorResponse("Terminal campaigns are not enabled.", "FEATURE_DISABLED", 403);
-    }
-
     const body = await request.json();
     const validation = createCampaignSchema.safeParse(body);
     if (!validation.success) {
@@ -94,11 +85,23 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to resolve campaign recipients", "RECIPIENT_ERROR", 500, recipientErr);
     }
 
-    const eligibleRecipients = (recipients ?? []) as Array<{
+    const rawRecipients = (recipients ?? []) as Array<{
       provider_id: string;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       providers: any;
     }>;
+
+    const providerIds = rawRecipients.map((r) => r.provider_id);
+    let eligibleRecipients = rawRecipients;
+    if (providerIds.length > 0) {
+      const { data: optOutRows } = await supabase
+        .from("terminal_campaign_recipients")
+        .select("provider_id")
+        .in("provider_id", providerIds)
+        .not("opted_out_at", "is", null);
+      const optedOut = new Set((optOutRows ?? []).map((r: { provider_id: string }) => r.provider_id));
+      eligibleRecipients = rawRecipients.filter((r) => !optedOut.has(r.provider_id));
+    }
 
     // Create campaign record
     const { data: campaign, error: campaignErr } = await supabase
@@ -127,7 +130,8 @@ export async function POST(request: NextRequest) {
 
     const campaignId = (campaign as { id?: string }).id ?? "";
 
-    // Insert recipient tracking rows (opt-out respecting)
+    // Insert recipient tracking rows and deliver notifications
+    let deliveredCount = 0;
     if (eligibleRecipients.length > 0) {
       const recipientRows = eligibleRecipients.map((r) => ({
         campaign_id: campaignId,
@@ -135,15 +139,45 @@ export async function POST(request: NextRequest) {
         user_id: r.providers.user_id ?? r.provider_id,
       }));
 
-      await supabase.from("terminal_campaign_recipients").insert(recipientRows);
+      const { data: insertedRecipients } = await supabase
+        .from("terminal_campaign_recipients")
+        .insert(recipientRows)
+        .select("id, provider_id, user_id, providers(business_name)");
 
-      // Mark sent
+      const delivery = await sendTerminalCampaignNotifications(
+        supabase,
+        {
+          id: campaignId,
+          tenant_id: tenantId,
+          name: validation.data.name,
+          message_body: validation.data.message_body,
+          cta_label: validation.data.cta_label ?? null,
+          cta_url: validation.data.cta_url ?? null,
+        },
+        (insertedRecipients ?? []).map((r: any) => ({
+          id: r.id,
+          provider_id: r.provider_id,
+          user_id: r.user_id,
+          providers: r.providers,
+        })),
+      );
+      deliveredCount = delivery.sent;
+
       await supabase
         .from("terminal_campaigns")
-        .update({ status: "sent", sent_count: eligibleRecipients.length, sent_at: new Date().toISOString() })
+        .update({
+          status: "sent",
+          sent_count: deliveredCount,
+          recipient_count: eligibleRecipients.length,
+          opt_out_count: delivery.skipped_opt_out,
+          sent_at: new Date().toISOString(),
+        })
         .eq("id", campaignId);
     } else {
-      await supabase.from("terminal_campaigns").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", campaignId);
+      await supabase
+        .from("terminal_campaigns")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", campaignId);
     }
 
     const reqMeta = extractRequestMeta(request);
@@ -155,12 +189,19 @@ export async function POST(request: NextRequest) {
       entity_id: campaignId,
       module: "terminal_commerce",
       after_json: campaign,
-      metadata: { recipient_count: eligibleRecipients.length, criteria },
+      metadata: {
+        recipient_count: eligibleRecipients.length,
+        delivered_count: deliveredCount,
+        criteria,
+      },
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
     });
 
-    return successResponse({ campaign, recipient_count: eligibleRecipients.length }, 201);
+    return successResponse(
+      { campaign, recipient_count: eligibleRecipients.length, delivered_count: deliveredCount },
+      201,
+    );
   } catch (error) {
     return handleApiError(error, "Failed to create terminal campaign");
   }

@@ -28,7 +28,7 @@ export function RoleGate({ children }: RoleGateProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, signOut } = useAuth();
-  const { role, loading, profileLoadError, refresh } = useProvider();
+  const { provider, role, loading, profileLoadError, refresh } = useProvider();
   const lastResolved = useRef<{ loading: boolean; blocked: boolean } | null>(null);
 
   async function handleSignOut() {
@@ -38,6 +38,8 @@ export function RoleGate({ children }: RoleGateProps) {
 
   const blockReason = useMemo<BlockReason | null>(() => {
     if (!role) {
+      // Cached org profile is enough to stay in-app while role catches up on resume.
+      if (provider) return null;
       if (isNetworkishProfileError(profileLoadError)) {
         return "network";
       }
@@ -51,7 +53,7 @@ export function RoleGate({ children }: RoleGateProps) {
       return "role";
     }
     return null;
-  }, [role, profileLoadError, pathname]);
+  }, [role, profileLoadError, pathname, provider]);
   const blocked = !loading && blockReason !== null;
 
   const shouldAutoRetryOnResume = useMemo(() => {

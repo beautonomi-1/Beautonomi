@@ -380,6 +380,55 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(mockWriteAuditLog).not.toHaveBeenCalled();
   });
 
+  it("dry-run: surfaces terminal commerce + fee reconciliation table keys from migration 764/765", async () => {
+    const terminalCounts = {
+      terminal_campaign_recipients: { rows: 2, via: "terminal_campaign" },
+      terminal_campaigns: { rows: 1, via: "tenant_id" },
+      terminal_admin_notes: { rows: 0, via: "tenant_id" },
+      provider_terminal_payment_allocations: { rows: 3, via: "provider" },
+      provider_paystack_terminal_payments: { rows: 5, via: "provider" },
+      provider_paystack_virtual_terminal_setup_requests: { rows: 0, via: "provider" },
+      terminal_assets: { rows: 1, via: "tenant_id" },
+      terminal_orders: { rows: 4, via: "tenant_id" },
+      fee_reconciliations: { rows: 7, via: "tenant_id" },
+    };
+    const rpcResult = {
+      tenant_id: VALID_TENANT_ID,
+      tenant_slug: VALID_SLUG,
+      dry_run: true,
+      started_at: "2026-07-04T10:00:00.000Z",
+      completed_at: "2026-07-04T10:00:01.000Z",
+      counts: {
+        bookings: { rows: 0 },
+        ...terminalCounts,
+      },
+    };
+    const admin = buildAdminClient({
+      tenantRow: { id: VALID_TENANT_ID, slug: VALID_SLUG, name: "Acme" },
+      rpcResult,
+    });
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+
+    const { POST } = await import(
+      "@/app/api/admin/compliance/reset-tenant/route"
+    );
+    const res = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: ROUTE_URL,
+        body: validBody({ dry_run: true }),
+      }) as NextRequest,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    for (const table of Object.keys(terminalCounts)) {
+      expect(body.data?.counts?.[table]).toEqual(
+        terminalCounts[table as keyof typeof terminalCounts],
+      );
+    }
+  });
+
   it("live run: writes compliance_purge_audit_log AND the generic audit log and surfaces the audit id", async () => {
     const rpcResult = {
       tenant_id: VALID_TENANT_ID,

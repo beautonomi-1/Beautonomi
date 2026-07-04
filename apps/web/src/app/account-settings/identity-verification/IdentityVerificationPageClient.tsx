@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import BackButton from "@/components/ui/back-button";
@@ -9,11 +10,18 @@ import Breadcrumb from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { fetcher } from "@/lib/http/fetcher";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import VerificationStatusCard from "@/components/profile/VerificationStatusCard";
 import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 import { IdentityVerificationPanel } from "@/components/identity-verification/IdentityVerificationPanel";
+import {
+  customerVerificationCheckoutBanner,
+  customerVerificationSubtitle,
+  verificationRequiredForCustomers,
+} from "@/lib/verification/customer-verification-ui";
 
 type VerificationSubmission = {
   id: string;
@@ -33,6 +41,7 @@ type VerificationStatus = {
   sumsub_available: boolean;
   manual_available?: boolean;
   verification_mode?: string;
+  required_for_customers?: boolean;
   submissions?: VerificationSubmission[];
 };
 
@@ -73,6 +82,10 @@ function formatWhen(iso: string | null | undefined) {
 }
 
 export default function IdentityVerificationPageClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("return_to");
+  const { bundle } = useConfigBundle();
   const [data, setData] = useState<VerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -119,6 +132,24 @@ export default function IdentityVerificationPageClient() {
   const diditAvailable = (data as (VerificationStatus & { didit_available?: boolean }) | null)?.didit_available ?? false;
   const manualAvailable = data?.manual_available !== false; // default true for backwards compat
   const verificationOff = data?.verification_mode === "off";
+  const verificationRequired =
+    data?.required_for_customers ?? verificationRequiredForCustomers(bundle?.verification);
+  const fromCheckout = Boolean(returnTo);
+  const showRequiredBanner = verificationRequired && !data?.verified;
+
+  const continueAfterVerify = useCallback(() => {
+    if (returnTo && returnTo.startsWith("/")) {
+      router.push(returnTo);
+      return;
+    }
+    router.push("/account-settings");
+  }, [returnTo, router]);
+
+  useEffect(() => {
+    if (data?.verified && returnTo) {
+      continueAfterVerify();
+    }
+  }, [data?.verified, returnTo, continueAfterVerify]);
 
   const submitManual = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,10 +206,16 @@ export default function IdentityVerificationPageClient() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Identity verification</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Verify your identity for bookings and a trusted account.
+            {customerVerificationSubtitle(verificationRequired)}
           </p>
         </div>
-        <Button
+        <div className="flex flex-wrap gap-2">
+          {fromCheckout && data?.verified ? (
+            <Button type="button" className="shrink-0" onClick={continueAfterVerify}>
+              Continue booking
+            </Button>
+          ) : null}
+          <Button
           type="button"
           variant="outline"
           size="sm"
@@ -189,7 +226,19 @@ export default function IdentityVerificationPageClient() {
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           {refreshing ? "Refreshing…" : "Refresh status"}
         </Button>
+        </div>
       </div>
+
+      {showRequiredBanner ? (
+        <Alert className="mb-4 border-amber-200 bg-amber-50 text-amber-900">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-amber-700" />
+          <AlertDescription className="text-sm">
+            {fromCheckout
+              ? customerVerificationCheckoutBanner(true)
+              : "Identity verification is required before your first booking on this marketplace."}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {lastRefreshedAt ? (
         <p className="text-xs text-gray-500 mb-4">

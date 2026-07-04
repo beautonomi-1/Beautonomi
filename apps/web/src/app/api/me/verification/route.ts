@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
             submitted_at: mostRecentManual.submitted_at,
           }
         : null,
+      required_for_customers: policy.requiredForCustomers,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch verification status");

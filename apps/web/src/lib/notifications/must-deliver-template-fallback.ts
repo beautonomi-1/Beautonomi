@@ -2,6 +2,8 @@
  * Fallback copy when a must-deliver template row is missing/disabled.
  * Ensures transactional pushes still reach devices (same transport as broadcasts).
  */
+import { finalizeServiceStartedNotificationBody } from "@/lib/bookings/resolve-booking-service-duration";
+
 const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: string }> = {
   booking_confirmed: {
     title: "Booking confirmed",
@@ -75,7 +77,7 @@ const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: strin
   },
   service_started: {
     title: "Service Started",
-    body: "Your service with {{provider_name}} has started.",
+    body: "Your service with {{provider_name}} has started. Estimated duration: {{service_duration}}.",
     url: "/bookings/{{booking_id}}",
   },
   service_completed: {
@@ -118,7 +120,13 @@ export function buildMustDeliverFallback(
 
   return {
     title: substituteAll(titleTemplate, variables),
-    body: substituteAll(bodyTemplate, variables),
+    body:
+      key === "service_started"
+        ? finalizeServiceStartedNotificationBody(
+            substituteAll(bodyTemplate, variables),
+            variables.service_duration ?? "",
+          )
+        : substituteAll(bodyTemplate, variables),
     url: urlTemplate ? substituteAll(urlTemplate, variables) : "",
     channels: ["push"],
   };

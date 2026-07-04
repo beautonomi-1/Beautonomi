@@ -66,28 +66,19 @@ export async function sendBookingConfirmationNotification(
 /**
  * Send "service started" notification to the customer (push + email).
  *
- * §Release-audit 2026-04: the provider's start-service / PATCH→in_progress
- * paths were previously silent on the customer side. Customers could not
- * tell from the app that their appointment had begun. This wrapper funnels
- * every start-service code path through a single helper so parity between
- * the generic PATCH route, the dedicated /start-service endpoint, and the
- * front-desk UI is guaranteed.
- *
- * `serviceDurationMinutes` is optional — when omitted we pass an empty
- * string and the template renders without the duration placeholder.
+ * Resolves total service duration from booking_services (not the bookings row).
  */
-export async function sendServiceStartedNotification(
-  bookingId: string,
-  serviceDurationMinutes?: number | null,
-): Promise<void> {
+export async function sendServiceStartedNotification(bookingId: string): Promise<void> {
   try {
-    const mins =
-      typeof serviceDurationMinutes === 'number' && serviceDurationMinutes > 0
-        ? `${serviceDurationMinutes} min`
-        : '';
-    await notifyServiceStarted(bookingId, mins, ['email', 'push']);
+    const {
+      resolveBookingServiceDurationMinutes,
+      formatServiceDurationForNotification,
+    } = await import("@/lib/bookings/resolve-booking-service-duration");
+    const minutes = await resolveBookingServiceDurationMinutes(bookingId);
+    const durationLabel = formatServiceDurationForNotification(minutes);
+    await notifyServiceStarted(bookingId, durationLabel, ["email", "push"]);
   } catch (error) {
-    console.error('Failed to send service-started notification:', error);
+    console.error("Failed to send service-started notification:", error);
   }
 }
 

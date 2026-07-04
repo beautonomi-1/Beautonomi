@@ -77,6 +77,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
       { title: "Terminal Integrations", description: "Connect Wappoint, iKhokha, and other card machine vendors", href: "/provider/settings/sales/terminal-integrations" },
+      { title: "Terminal Shop", description: "Order card machines and payment terminals from the platform catalog", href: "/provider/settings/sales/terminal-shop" },
       { title: "Paystack Terminal", description: "Create QR/link terminals for in-person payments that settle through payouts", href: "/provider/settings/sales/paystack-terminal" },
       { title: "Receipt Sequencing", description: "Configure receipt numbering", href: "/provider/settings/sales/receipt-sequencing" },
       { title: "Receipt Template", description: "Customize receipt design", href: "/provider/settings/sales/receipt-template" },
@@ -136,6 +137,8 @@ export default function ProviderSettings() {
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const terminalIntegrationsEnabled = useFeatureFlag("terminal_integrations_enabled");
+  const terminalShopEnabled =
+    useFeatureFlag("terminal_ecommerce_enabled") || useFeatureFlag("terminal_product_catalog_enabled");
 
   useEffect(() => {
     loadProviderInfo();
@@ -270,6 +273,9 @@ export default function ProviderSettings() {
                       return false;
                     }
                     if (!terminalIntegrationsEnabled && item.href.includes("/terminal-integrations")) {
+                      return false;
+                    }
+                    if (!terminalShopEnabled && item.href.includes("/terminal-shop")) {
                       return false;
                     }
                     // Only show upgrade option for freelancers

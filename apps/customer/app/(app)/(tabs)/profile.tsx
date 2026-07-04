@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -22,6 +23,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
 import { APP_URL, IOS_APP_STORE_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
+import { getApiErrorCode } from "@/lib/api-error";
 import { PROFILE_SUMMARY_CACHE_KEY_PREFIX } from "@/lib/cache-keys";
 import { haptic } from "@/lib/haptics";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
@@ -92,9 +94,10 @@ export default function ProfileScreen() {
     amountFormatted: null,
   });
 
-  const fetchProfileData = useCallback(async () => {
+  const fetchProfileData = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return;
-    setProfileLoadError(false);
+    const silent = options?.silent === true;
+    if (!silent) setProfileLoadError(false);
     try {
       const [summaryRes, referralsRes] = await Promise.all([
         api.get<{
@@ -141,8 +144,11 @@ export default function ProfileScreen() {
       }
 
       if (summaryRes.error || !summaryRes.data) {
+        const code = summaryRes.error ? getApiErrorCode(summaryRes.error) : null;
+        const transient = code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+        if (silent || transient || hasLoadedOnce.current) return;
         console.warn("[Profile] profile-summary error:", summaryRes.error?.message);
-        if (!hasLoadedOnce.current) setProfileLoadError(true);
+        setProfileLoadError(true);
         return;
       }
 
@@ -165,8 +171,12 @@ export default function ProfileScreen() {
         AsyncStorage.setItem(profileCacheKey, JSON.stringify(next)).catch(() => {});
       }
     } catch (err) {
-      console.warn("[Profile] fetchProfileData error:", err);
-      if (!hasLoadedOnce.current) setProfileLoadError(true);
+      const code = getApiErrorCode(err);
+      const transient = code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+      if (!silent && !transient && !hasLoadedOnce.current) {
+        console.warn("[Profile] fetchProfileData error:", err);
+        setProfileLoadError(true);
+      }
       setReferralBanner({
         loaded: true,
         enabled: true,
@@ -214,9 +224,19 @@ export default function ProfileScreen() {
       const now = Date.now();
       if (now - lastProfileTabFocusRefetchAt.current < 1500) return;
       lastProfileTabFocusRefetchAt.current = now;
-      void fetchProfileData();
+      void fetchProfileData({ silent: true });
     }, [user, fetchProfileData]),
   );
+
+  useEffect(() => {
+    if (!user) return;
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") {
+        void fetchProfileData({ silent: true });
+      }
+    });
+    return () => sub.remove();
+  }, [user, fetchProfileData]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

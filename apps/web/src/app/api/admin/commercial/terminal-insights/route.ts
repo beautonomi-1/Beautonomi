@@ -19,21 +19,12 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_COMMERCIAL } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
-import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
 
     const tenantId = await resolveAdminApiTenantId(request);
-    const flagEnabled = await isFeatureEnabledServer(
-      FEATURE_FLAG_KEYS.SUPERADMIN_TERMINAL_INSIGHTS,
-      tenantId,
-    );
-    if (!flagEnabled) {
-      return errorResponse("Terminal insights is not enabled.", "FEATURE_DISABLED", 403);
-    }
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));

@@ -192,6 +192,7 @@ export interface OnboardingFormData {
   selected_plan_id?: string;
   selected_plan_name?: string;
   selected_plan_is_free?: boolean;
+  selected_billing_period?: "monthly" | "yearly";
   no_plans_available?: boolean;
   /** Client-only snapshot from platform-limits API; not sent on submit. */
   platform_travel_limits?: {

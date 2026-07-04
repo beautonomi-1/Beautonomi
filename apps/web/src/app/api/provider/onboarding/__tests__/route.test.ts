@@ -859,8 +859,8 @@ describe("POST /api/provider/onboarding", () => {
     expect(json?.data?.checkout_path).toBe(
       `/provider/subscription-checkout?planId=${paidPlanId}`,
     );
-    // Legacy field still emitted for older clients.
-    expect(json?.data?.subscription_endpoint).toBe("/api/provider/subscriptions/create");
+    // Metadata for clients that infer checkout from subscription_endpoint presence.
+    expect(json?.data?.subscription_endpoint).toBe("/api/provider/subscription/initialize-payment");
   }, 120_000);
 
   it("returns requires_checkout=false for a free pricing plan and seeds the linked subscription plan", async () => {

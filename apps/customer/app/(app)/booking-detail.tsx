@@ -223,6 +223,8 @@ export default function BookingDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const chargesSectionYRef = useRef(0);
   const focusAppliedRef = useRef(false);
+  const chargeFetchAttemptedRef = useRef(false);
+  const [chargeFocusFetchStatus, setChargeFocusFetchStatus] = useState<"idle" | "loading" | "done">("idle");
   const [shouldScrollToCharges, setShouldScrollToCharges] = useState(false);
   const [highlightedChargeId, setHighlightedChargeId] = useState<string | null>(null);
   const [groupPaymentSummary, setGroupPaymentSummary] = useState<{
@@ -393,31 +395,117 @@ export default function BookingDetailScreen() {
     }, [id]),
   );
 
+  // Reset notification focus when deep-link params change (repeat taps, new charge, etc.).
+  useEffect(() => {
+    focusAppliedRef.current = false;
+    chargeFetchAttemptedRef.current = false;
+    setChargeFocusFetchStatus("idle");
+    setShouldScrollToCharges(false);
+    setHighlightedChargeId(null);
+  }, [id, focusParam, chargeIdParam]);
+
+  // Tracking / arrival notifications should land on the Tracking tab (PIN, QR, ETA).
+  useEffect(() => {
+    if (focusParam === "tracking" || focusParam === "arrival") {
+      setActiveTab("tracking");
+    }
+  }, [focusParam, id, chargeIdParam]);
+
+  const mergeAdditionalCharges = useCallback((incoming: any[]) => {
+    if (!incoming.length) return;
+    setBooking((prev: any) => {
+      if (!prev) return prev;
+      const existing: any[] = prev.additional_charges ?? [];
+      const byId = new Map(existing.map((c) => [String(c.id), c]));
+      for (const row of incoming) {
+        if (row?.id) byId.set(String(row.id), row);
+      }
+      return { ...prev, additional_charges: Array.from(byId.values()) };
+    });
+  }, []);
+
   // When arriving from an additional-charge notification deep-link, auto-switch to the
   // receipt tab so the customer sees the full payment options immediately.
   useEffect(() => {
-    if (!booking || focusAppliedRef.current) return;
+    if (!booking || !id) return;
+    const wantsChargeFocus = focusParam === "additional_charge" || chargeIdParam !== "";
+    if (!wantsChargeFocus) return;
+
+    setActiveTab("receipt");
+
     const charges: any[] = booking.additional_charges ?? [];
-    // Switch to receipt tab when:
-    //  a) focusParam says "additional_charge" (covers both pending payment prompts and paid confirmations)
-    //  b) charge_id param targets an existing charge (any status — show it in context)
-    const hasChargeTarget =
-      focusParam === "additional_charge" ||
-      (chargeIdParam !== "" && charges.some((c) => c.id === chargeIdParam));
-    if (!hasChargeTarget) return;
+    const targetCharge =
+      chargeIdParam !== "" ? charges.find((c) => String(c.id) === chargeIdParam) : null;
+
+    if (chargeIdParam && !targetCharge && !chargeFetchAttemptedRef.current) {
+      chargeFetchAttemptedRef.current = true;
+      setChargeFocusFetchStatus("loading");
+      let cancelled = false;
+      void api
+        .get<{ charges?: any[]; data?: { charges?: any[] } }>(
+          `/api/me/bookings/${encodeURIComponent(id)}/additional-charges`,
+        )
+        .then((res) => {
+          if (cancelled) return;
+          const raw = res.data as { charges?: any[]; data?: { charges?: any[] } } | null | undefined;
+          const rows = raw?.data?.charges ?? raw?.charges ?? [];
+          if (Array.isArray(rows) && rows.length > 0) {
+            mergeAdditionalCharges(rows);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setChargeFocusFetchStatus("done");
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (chargeIdParam && !targetCharge && chargeFocusFetchStatus === "loading") {
+      return;
+    }
+
+    if (chargeIdParam && !targetCharge && chargeFocusFetchStatus !== "done") {
+      return;
+    }
+
+    if (chargeFocusFetchStatus === "idle") {
+      setChargeFocusFetchStatus("done");
+    }
+
+    if (focusAppliedRef.current) return;
     focusAppliedRef.current = true;
+    setShouldScrollToCharges(true);
+
+    const highlightId = chargeIdParam || (targetCharge ? String(targetCharge.id) : "");
+    const rowToHighlight =
+      highlightId !== ""
+        ? (booking.additional_charges ?? []).find((c: any) => String(c.id) === highlightId)
+        : null;
+    if (
+      rowToHighlight &&
+      (rowToHighlight.status === "pending" || rowToHighlight.status === "approved")
+    ) {
+      setHighlightedChargeId(String(rowToHighlight.id));
+      const clearTimer = setTimeout(() => setHighlightedChargeId(null), 2500);
+      return () => clearTimeout(clearTimer);
+    }
+  }, [booking, focusParam, chargeIdParam, chargeFocusFetchStatus, id, mergeAdditionalCharges]);
+
+  // Highlight + scroll when a charge_id target appears after async fallback fetch.
+  useEffect(() => {
+    if (!chargeIdParam || !booking) return;
+    const row = (booking.additional_charges ?? []).find(
+      (c: any) => String(c.id) === chargeIdParam,
+    );
+    if (!row || (row.status !== "pending" && row.status !== "approved")) return;
     setActiveTab("receipt");
     setShouldScrollToCharges(true);
-    if (chargeIdParam) {
-      // Only highlight if the charge is still unpaid (don't false-highlight paid rows)
-      const targetCharge = charges.find((c) => c.id === chargeIdParam);
-      if (targetCharge && (targetCharge.status === "pending" || targetCharge.status === "approved")) {
-        setHighlightedChargeId(chargeIdParam);
-        const clearTimer = setTimeout(() => setHighlightedChargeId(null), 2500);
-        return () => clearTimeout(clearTimer);
-      }
-    }
-  }, [booking, focusParam, chargeIdParam]);
+    setHighlightedChargeId(chargeIdParam);
+    const clearTimer = setTimeout(() => setHighlightedChargeId(null), 2500);
+    return () => clearTimeout(clearTimer);
+  }, [booking?.additional_charges, chargeIdParam, booking]);
 
   // Scroll to the charges section once the receipt tab has rendered its layout.
   useEffect(() => {
@@ -2399,6 +2487,63 @@ export default function BookingDetailScreen() {
                 </Pressable>
               </>
             )}
+            {(focusParam === "additional_charge" || chargeIdParam !== "") &&
+            chargeFocusFetchStatus === "loading" ? (
+              <View style={{ marginBottom: 16, padding: 16, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[600] }}>
+                  Loading payment request…
+                </Text>
+              </View>
+            ) : null}
+            {(focusParam === "additional_charge" || chargeIdParam !== "") &&
+            chargeFocusFetchStatus === "done" &&
+            !(booking?.additional_charges ?? []).some(
+              (c: { status?: string }) => c.status === "pending" || c.status === "approved",
+            ) &&
+            (chargeIdParam === "" ||
+              !(booking?.additional_charges ?? []).some(
+                (c: { id?: string }) => String(c.id) === chargeIdParam,
+              )) ? (
+              <View
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#FED7AA",
+                  backgroundColor: "#FFF7ED",
+                  padding: 16,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#9A3412", marginBottom: 6 }}>
+                  Payment request unavailable
+                </Text>
+                <Text style={{ fontSize: 13, color: "#C2410C", marginBottom: 12 }}>
+                  This charge may already be paid or removed. Refresh to see the latest balance, or contact your
+                  provider if you still owe an amount.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    focusAppliedRef.current = false;
+                    chargeFetchAttemptedRef.current = false;
+                    setChargeFocusFetchStatus("idle");
+                    void load();
+                  }}
+                  style={{
+                    alignSelf: "flex-start",
+                    backgroundColor: Colors.primary,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh booking"
+                >
+                  <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View
               onLayout={(e) => { chargesSectionYRef.current = e.nativeEvent.layout.y; }}
               collapsable={false}

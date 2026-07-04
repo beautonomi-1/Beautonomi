@@ -164,7 +164,7 @@ export async function POST(
       const bookingRef = bookingData.booking_number || bookingData.ref_number || id.slice(0, 8).toUpperCase();
       await insertNotification({
         user_id: bookingData.customer_id,
-        type: "payment_request",
+        type: "additional_charge_requested",
         title: "Additional payment requested",
         message: `Your provider added an extra charge: ${newCharge.description || "Additional charge"} — ${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}. Estimated balance due: ${newCharge.currency} ${remainingBalance.toFixed(2)}. Booking #${bookingRef}.`,
         data: {

@@ -27,6 +27,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { recordTerminalOrderPayment } from "@/lib/terminal/record-terminal-order-payment";
 import {
   creditWalletForProductOrderIfNeeded,
   restockProductOrderLineItems,
@@ -223,6 +224,54 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         "@/lib/notifications/notify-product-order-paid"
       );
       await notifyProductOrderPaidIfTransitioned(supabase, productOrderId, {
+        transitionedToPaid: payRecord.transitionedToPaid,
+      });
+      return;
+    }
+    if (metadata?.terminal_order_id && reference) {
+      const terminalOrderId = String(metadata.terminal_order_id);
+      const amountMajor = convertFromSmallestUnit(amount || 0);
+      const { validateTerminalOrderPaystackPayment } = await import(
+        "@/lib/terminal/validate-terminal-order-paystack-payment"
+      );
+      const guard = await validateTerminalOrderPaystackPayment(supabase, {
+        terminalOrderId,
+        amountMajor,
+        reference: String(reference),
+        metadataProviderId:
+          typeof metadata.provider_id === "string" ? metadata.provider_id : null,
+      });
+
+      if (!guard.ok) {
+        console.error(
+          `[charge-success] terminal order payment rejected (${guard.reason}):`,
+          terminalOrderId,
+        );
+        return;
+      }
+
+      const commercialModel = String(guard.order.commercial_model ?? "once_off_purchase") as
+        | "once_off_purchase"
+        | "rental"
+        | "subscription_bundle"
+        | "lease_to_own"
+        | "financed"
+        | "promotional";
+
+      const payRecord = await recordTerminalOrderPayment({
+        supabase,
+        terminalOrderId,
+        reference: String(reference),
+        amountMajor,
+        feesMajor: convertFromSmallestUnit(fees || 0),
+        commercialModel,
+        source: "paystack_webhook",
+        provider: "paystack",
+      });
+      const { notifyTerminalOrderPaidIfTransitioned } = await import(
+        "@/lib/terminal/notify-terminal-order-paid"
+      );
+      await notifyTerminalOrderPaidIfTransitioned(supabase, terminalOrderId, {
         transitionedToPaid: payRecord.transitionedToPaid,
       });
       return;

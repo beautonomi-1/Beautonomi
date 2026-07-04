@@ -8,6 +8,7 @@ import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -62,13 +63,30 @@ type ReconciliationRow = Record<string, unknown> & {
   gateway_name?: string;
   expected_fees?: number;
   actual_fees?: number;
+  recorded_fees?: number;
   variance?: number;
   status?: string;
+  source?: string;
   notes?: string | null;
   statement_reference?: string | null;
 };
 
 type ListMeta = { page: number; limit: number; total: number; has_more: boolean };
+
+function monthStartYmd(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function todayYmd(d: Date = new Date()): string {
+  return d.toISOString().split("T")[0];
+}
+
+type FeeAutoComputed = {
+  recorded_fees: number;
+  expected_fees_from_config: number;
+  charge_count: number;
+  payout_transfer_count: number;
+};
 
 function inputClass(readonly?: boolean) {
   return `w-full rounded-xl border border-gray-300 p-3 text-sm shadow-inner${readonly ? " bg-gray-50" : ""}`;
@@ -100,6 +118,8 @@ function normalizeFeeTab(raw: string | null): FeeTab {
 
 export function FeesConfigsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const { bootstrap } = useAdminSession();
+  const isSuperadmin = bootstrap?.isSuperadmin === true;
   useAdminDocumentTitle("Fee management");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -157,12 +177,23 @@ export function FeesConfigsPage() {
   });
 
   const reconciliationsQ = useQuery({
-    queryKey: adminQueryKeys.fees.reconciliationsList({ page, limit }),
-    queryFn: () =>
-      adminApi.getRawJson<{ data: ReconciliationRow[]; meta: ListMeta }>(
-        `/api/admin/fees/reconciliations?page=${page}&limit=${limit}`,
-        { timeoutMs: 60_000 }
-      ),
+    queryKey: adminQueryKeys.fees.reconciliationsList({
+      page,
+      limit,
+      start: sp.get("start_date"),
+      end: sp.get("end_date"),
+    }),
+    queryFn: () => {
+      const p = new URLSearchParams({ page: String(page), limit: String(limit) });
+      const start = sp.get("start_date");
+      const end = sp.get("end_date");
+      if (start) p.set("start_date", start);
+      if (end) p.set("end_date", end);
+      return adminApi.getRawJson<{ data: ReconciliationRow[]; meta: ListMeta }>(
+        `/api/admin/fees/reconciliations?${p.toString()}`,
+        { timeoutMs: 60_000 },
+      );
+    },
     enabled: allowed && tab === "reconciliations",
     placeholderData: keepPreviousData,
   });
@@ -218,6 +249,33 @@ export function FeesConfigsPage() {
       invalidateFees();
       setReconEdit(null);
       adminToast.success("Reconciliation updated");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const backfillReconMut = useMutation({
+    mutationFn: async () => {
+      const end = todayYmd();
+      const start = monthStartYmd(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+      return adminApi.postJson(
+        `/api/admin/fees/reconciliations?backfill=true&start=${start}&end=${end}`,
+        {},
+      );
+    },
+    onSuccess: (summary) => {
+      invalidateFees();
+      const upserted = Number(
+        summary && typeof summary === "object" && "upserted" in summary
+          ? (summary as { upserted?: number }).upserted ?? 0
+          : 0,
+      );
+      const errors =
+        summary && typeof summary === "object" && "errors" in summary
+          ? Number((summary as { errors?: number }).errors ?? 0)
+          : 0;
+      adminToast.success(
+        `Backfill complete — ${upserted} row(s) upserted${errors > 0 ? `, ${errors} error(s)` : ""}`,
+      );
     },
     onError: (e: Error) => adminToast.error(e.message),
   });
@@ -326,6 +384,9 @@ export function FeesConfigsPage() {
             onEditRow={(r) => setReconEdit(r)}
             onRefresh={() => void reconciliationsQ.refetch()}
             isFetching={reconciliationsQ.isFetching}
+            isSuperadmin={isSuperadmin}
+            backfillBusy={backfillReconMut.isPending}
+            onBackfill={() => backfillReconMut.mutate()}
           />
         )
       ) : null}
@@ -560,6 +621,9 @@ function FeeReconciliationsSection({
   onEditRow,
   onRefresh,
   isFetching,
+  isSuperadmin,
+  backfillBusy,
+  onBackfill,
 }: {
   rows: ReconciliationRow[];
   meta?: ListMeta;
@@ -569,6 +633,9 @@ function FeeReconciliationsSection({
   onEditRow: (r: ReconciliationRow) => void;
   onRefresh: () => void;
   isFetching: boolean;
+  isSuperadmin?: boolean;
+  backfillBusy?: boolean;
+  onBackfill?: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -582,6 +649,16 @@ function FeeReconciliationsSection({
           >
             Refresh
           </button>
+          {isSuperadmin && onBackfill ? (
+            <button
+              type="button"
+              className={adminToolbarButtonClass(!!backfillBusy)}
+              disabled={backfillBusy}
+              onClick={onBackfill}
+            >
+              {backfillBusy ? "Backfilling…" : "Backfill last 30 days"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white"
@@ -598,13 +675,18 @@ function FeeReconciliationsSection({
         </p>
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState title="No reconciliations" description="Record expected vs actual gateway fees." />
+        <EmptyState
+          title="No reconciliations"
+          description="Auto rows appear daily after the cron runs (02:00 UTC). Use Backfill for historical dates or create a manual reconciliation."
+        />
       ) : (
         <AdminDataTable>
           <AdminTableHead>
             <tr>
               <AdminTh>Date</AdminTh>
               <AdminTh>Gateway</AdminTh>
+              <AdminTh>Source</AdminTh>
+              <AdminTh>Recorded</AdminTh>
               <AdminTh>Expected</AdminTh>
               <AdminTh>Actual</AdminTh>
               <AdminTh>Variance</AdminTh>
@@ -616,6 +698,7 @@ function FeeReconciliationsSection({
           <AdminTableBody>
             {rows.map((rec) => {
               const v = Number(rec.variance ?? 0);
+              const source = String(rec.source ?? "manual");
               return (
                 <tr key={String(rec.id)}>
                   <AdminTd>
@@ -624,6 +707,23 @@ function FeeReconciliationsSection({
                       : "—"}
                   </AdminTd>
                   <AdminTd className="font-medium">{String(rec.gateway_name ?? "")}</AdminTd>
+                  <AdminTd>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        source === "auto_daily"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {source === "auto_daily" ? "Auto" : "Manual"}
+                    </span>
+                  </AdminTd>
+                  <AdminTd className="tabular-nums">
+                    {formatAdminCurrency(
+                      Number(rec.recorded_fees ?? rec.actual_fees ?? 0),
+                      DEFAULT_CURRENCY,
+                    )}
+                  </AdminTd>
                   <AdminTd className="tabular-nums">
                     {formatAdminCurrency(Number(rec.expected_fees ?? 0), DEFAULT_CURRENCY)}
                   </AdminTd>
@@ -1164,22 +1264,90 @@ function CreateReconciliationModal({
   busy: boolean;
   onSubmit: (body: Record<string, unknown>) => void;
 }) {
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => todayYmd());
+  const [startDate, setStartDate] = useState(() => monthStartYmd());
+  const [endDate, setEndDate] = useState(() => todayYmd());
   const [gateway, setGateway] = useState("");
   const [expected, setExpected] = useState("");
   const [actual, setActual] = useState("");
   const [notes, setNotes] = useState("");
   const [ref, setRef] = useState("");
+  const [computeLoading, setComputeLoading] = useState(false);
+  const [autoComputed, setAutoComputed] = useState<FeeAutoComputed | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setDate(new Date().toISOString().split("T")[0]);
+    const today = todayYmd();
+    setDate(today);
+    setStartDate(monthStartYmd());
+    setEndDate(today);
     setGateway("");
     setExpected("");
     setActual("");
     setNotes("");
     setRef("");
+    setAutoComputed(null);
+    setComputeError(null);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEndDate(date);
+  }, [date, open]);
+
+  const suggestExpectedFees = useCallback(async () => {
+    const gw = gateway.trim();
+    if (!gw || !startDate || !endDate) return;
+    setComputeLoading(true);
+    setComputeError(null);
+    setAutoComputed(null);
+    try {
+      const qs = new URLSearchParams({
+        auto_compute: "true",
+        gateway: gw,
+        start_date: startDate,
+        end_date: endDate,
+        page: "1",
+        limit: "1",
+      });
+      const res = await adminApi.getRawJson<{
+        auto_computed: FeeAutoComputed | null;
+        auto_compute_error?: string | null;
+      }>(`/api/admin/fees/reconciliations?${qs.toString()}`, { timeoutMs: 120_000 });
+
+      if (res.auto_compute_error) {
+        setComputeError(res.auto_compute_error);
+        return;
+      }
+      if (!res.auto_computed) {
+        setComputeError("No suggestion returned — check gateway and date range.");
+        return;
+      }
+      setAutoComputed(res.auto_computed);
+      setExpected(String(res.auto_computed.expected_fees_from_config));
+      setActual(String(res.auto_computed.recorded_fees));
+    } catch (e) {
+      setComputeError(e instanceof Error ? e.message : "Failed to compute suggested fees");
+    } finally {
+      setComputeLoading(false);
+    }
+  }, [gateway, startDate, endDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!gateway.trim() || !startDate || !endDate) return;
+    void suggestExpectedFees();
+  }, [open, gateway, startDate, endDate, suggestExpectedFees]);
+
+  async function suggestExpectedFeesClick() {
+    const gw = gateway.trim();
+    if (!gw) {
+      adminToast.error("Enter a gateway name first (e.g. paystack)");
+      return;
+    }
+    await suggestExpectedFees();
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1198,6 +1366,7 @@ function CreateReconciliationModal({
       gateway_name: gateway.trim(),
       expected_fees: ex,
       actual_fees: ac,
+      recorded_fees: autoComputed?.recorded_fees ?? ac,
       notes: notes.trim() || null,
       statement_reference: ref.trim() || null,
     });
@@ -1208,7 +1377,7 @@ function CreateReconciliationModal({
       open={open}
       onClose={onClose}
       title="New reconciliation"
-      description="Variance is computed as actual − expected."
+      description="Expected = fee config. Actual defaults to ledger-recorded Paystack fees for the period."
       footer={
         <>
           <button type="button" className={adminToolbarButtonClass()} onClick={onClose}>
@@ -1248,9 +1417,75 @@ function CreateReconciliationModal({
             className={inputClass()}
             value={gateway}
             onChange={(e) => setGateway(e.target.value)}
+            list="rec-gateway-suggestions"
+            placeholder="paystack"
             required
           />
+          <datalist id="rec-gateway-suggestions">
+            <option value="paystack" />
+            <option value="yoco" />
+          </datalist>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelClass()} htmlFor="rec-start">
+              Period start *
+            </label>
+            <input
+              id="rec-start"
+              type="date"
+              className={inputClass()}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className={labelClass()} htmlFor="rec-end">
+              Period end *
+            </label>
+            <input
+              id="rec-end"
+              type="date"
+              className={inputClass()}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(false)}
+            disabled={computeLoading || !gateway.trim()}
+            onClick={() => void suggestExpectedFeesClick()}
+          >
+            {computeLoading ? "Calculating…" : "Suggest expected fees"}
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Uses fee configs + {gateway.trim() || "gateway"} charges in this period.
+          </span>
+        </div>
+        {computeError ? (
+          <p className="text-sm text-amber-700">{computeError}</p>
+        ) : null}
+        {autoComputed ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            <p>
+              Ledger recorded fees (from webhooks):{" "}
+              <strong>{formatAdminCurrency(autoComputed.recorded_fees, DEFAULT_CURRENCY)}</strong>
+              {" · "}
+              {autoComputed.charge_count} charge{autoComputed.charge_count === 1 ? "" : "s"}
+              {autoComputed.payout_transfer_count > 0
+                ? ` · ${autoComputed.payout_transfer_count} payout transfer fee${autoComputed.payout_transfer_count === 1 ? "" : "s"}`
+                : ""}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Actual is pre-filled from ledger-recorded fees (webhook truth). Adjust if you have a Paystack statement override.
+            </p>
+          </div>
+        ) : null}
         <div>
           <label className={labelClass()} htmlFor="rec-exp">
             Expected fees *
