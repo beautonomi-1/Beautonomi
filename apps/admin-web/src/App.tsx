@@ -126,6 +126,7 @@ export default function App() {
           <Route path="commercial/terminal-campaigns" element={<P.TerminalCampaignsPage />} />
           <Route path="commercial/terminal-reporting" element={<P.TerminalReportingPage />} />
           <Route path="commercial/terminal-vendors" element={<P.TerminalVendorsPage />} />
+          <Route path="commercial/terminal-collection-locations" element={<P.TerminalCollectionLocationsPage />} />
           <Route path="whatsapp/sessions" element={<P.WhatsAppSessionsPage />} />
           <Route path="whatsapp/templates" element={<P.WhatsAppTemplatesPage />} />
           <Route path="whatsapp/batches/:batchId" element={<P.WhatsAppBatchDetailPage />} />

@@ -15,8 +15,6 @@ import {
 import { ADMIN_SECTION_COMMERCIAL } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
-import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 const productSchema = z.object({
   name: z.string().min(1).max(200),
@@ -42,6 +40,8 @@ const productSchema = z.object({
   gl_inventory_account: z.string().optional().nullable(),
   gl_rental_income_account: z.string().optional().nullable(),
   tax_code: z.string().optional().nullable(),
+  requires_integration_setup: z.boolean().optional(),
+  integration_vendor_slug: z.string().optional().nullable(),
 });
 
 export async function GET(request: NextRequest) {
@@ -69,17 +69,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
+    const { user: adminUser } =     await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
-
-    const flagEnabled = await isFeatureEnabledServer(
-      FEATURE_FLAG_KEYS.TERMINAL_PRODUCT_CATALOG,
-      tenantId,
-    );
-    if (!flagEnabled) {
-      return errorResponse("Terminal product catalog is not enabled.", "FEATURE_DISABLED", 403);
-    }
 
     const body = await request.json();
     const validation = productSchema.safeParse(body);

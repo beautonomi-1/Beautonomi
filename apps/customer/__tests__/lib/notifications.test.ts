@@ -287,4 +287,96 @@ describe("navigateFromNotification", () => {
       params: { id: groupId },
     });
   });
+
+  it("routes additional charge push to receipt focus with charge_id", () => {
+    const bookingId = "00000000-0000-4000-8000-000000000111";
+    const chargeId = "00000000-0000-4000-8000-000000000222";
+    navigateFromNotification({
+      id: "n-charge",
+      type: "additional_charge_requested",
+      title: "Additional payment requested",
+      message: "Extra charge",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { booking_id: bookingId, charge_id: chargeId },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: bookingId, focus: "additional_charge", charge_id: chargeId },
+    });
+  });
+
+  it("routes payment_request in-app row to receipt focus with charge_id", () => {
+    const bookingId = "00000000-0000-4000-8000-000000000333";
+    const chargeId = "00000000-0000-4000-8000-000000000444";
+    navigateFromNotification({
+      id: "n-pay-req",
+      type: "payment_request",
+      title: "Additional payment requested",
+      message: "Extra charge",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { booking_id: bookingId, charge_id: chargeId },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: bookingId, focus: "additional_charge", charge_id: chargeId },
+    });
+  });
+
+  it("routes provider_arrived_home via template_key to tracking/arrival focus", () => {
+    const bookingId = "00000000-0000-4000-8000-000000000555";
+    navigateFromNotification({
+      id: "n-arrived",
+      type: "",
+      title: "Provider Has Arrived",
+      message: "Your provider has arrived",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { template_key: "provider_arrived_home", booking_id: bookingId },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: bookingId, focus: "arrival" },
+    });
+  });
+
+  it("routes service_started to tracking focus", () => {
+    const bookingId = "00000000-0000-4000-8000-000000000666";
+    navigateFromNotification({
+      id: "n-started",
+      type: "service_started",
+      title: "Service Started",
+      message: "Your service has started",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { booking_id: bookingId },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: bookingId, focus: "tracking" },
+    });
+  });
+
+  it("routes provider_en_route_home to tracking focus", () => {
+    const bookingId = "00000000-0000-4000-8000-000000000777";
+    navigateFromNotification({
+      id: "n-enroute",
+      type: "",
+      title: "Provider on the way",
+      message: "En route",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { template_key: "provider_en_route_home", booking_id: bookingId },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/booking-detail",
+      params: { id: bookingId, focus: "tracking" },
+    });
+  });
 });

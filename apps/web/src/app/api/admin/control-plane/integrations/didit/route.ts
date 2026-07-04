@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+
     return successResponse({
       api_key_set:         Boolean(process.env.DIDIT_API_KEY),
       workflow_id_set:     Boolean(process.env.DIDIT_WORKFLOW_ID),
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
       base_url:            process.env.DIDIT_BASE_URL ?? "https://verification.didit.me",
       environment:         process.env.DIDIT_ENVIRONMENT ?? "production",
       env_complete:        diditEnvPresent(),
+      webhook_url:         appUrl ? `${appUrl}/api/webhooks/didit` : null,
       last_webhook_received_at: (lastEvent as { received_at?: string } | null)?.received_at ?? null,
     });
   } catch (err) {

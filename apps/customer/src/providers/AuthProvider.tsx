@@ -284,21 +284,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof AppState.addEventListener !== "function") return;
+    let focusEmitTimer: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") {
         supabase.auth.startAutoRefresh();
-        DeviceEventEmitter.emit("beautonomi:app:focus");
+        // Brief delay lets the radio and NetInfo settle before every hook refetches
+        // at once (which otherwise looks like "offline" and times out in a batch).
+        if (focusEmitTimer) clearTimeout(focusEmitTimer);
+        focusEmitTimer = setTimeout(() => {
+          focusEmitTimer = null;
+          DeviceEventEmitter.emit("beautonomi:app:focus");
+        }, 400);
       } else {
+        if (focusEmitTimer) {
+          clearTimeout(focusEmitTimer);
+          focusEmitTimer = null;
+        }
         supabase.auth.stopAutoRefresh();
-        // iOS pauses JS timers while suspended, so in-flight GETs can't time out
-        // and hang until resume — then reject as a batch of "Request timed out".
-        // Cancel them now; the focus listener refetches fresh when we return.
         if (state === "background") {
           abortInFlightRequests();
         }
       }
     });
-    return () => sub.remove();
+    return () => {
+      if (focusEmitTimer) clearTimeout(focusEmitTimer);
+      sub.remove();
+    };
   }, []);
 
   const signInWithOtp = useCallback(async (phone: string) => {

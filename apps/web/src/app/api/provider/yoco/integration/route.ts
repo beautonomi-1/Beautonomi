@@ -410,6 +410,18 @@ export async function PUT(request: Request) {
       credential_mode?: "none" | "checkout" | "oauth";
       environment?: YocoEnvironment;
     };
+
+    if (integRow.is_enabled) {
+      try {
+        const { markPendingIntegrationOrdersComplete } = await import(
+          "@/lib/terminal/terminal-integration-setup"
+        );
+        await markPendingIntegrationOrdersComplete(adminClient, providerId, "yoco");
+      } catch (setupErr) {
+        console.warn("[yoco/integration] terminal setup completion failed:", setupErr);
+      }
+    }
+
     return NextResponse.json({
       data: {
         is_enabled: integRow.is_enabled || false,

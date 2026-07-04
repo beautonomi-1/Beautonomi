@@ -5,6 +5,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { MOCK_USERS } from "@/__tests__/helpers/mock-supabase";
+import { getNativeAppCodebaseVersions } from "@/lib/store/native-app-version";
+
+const codebaseVersions = getNativeAppCodebaseVersions();
 
 const mockRequireAdminSection = vi.fn();
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -18,13 +21,6 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 const mockGetSupabaseAdmin = vi.fn();
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => mockGetSupabaseAdmin(),
-}));
-
-vi.mock("@/lib/store/native-app-version", () => ({
-  getNativeAppCodebaseVersions: () => ({
-    customer: "1.0.48",
-    provider: "1.0.48",
-  }),
 }));
 
 const validPair = {
@@ -112,8 +108,8 @@ describe("/api/admin/app-version", () => {
       expect(body.data.customer.ios.min_version).toBe("1.2.0");
       expect(body.data.customer.android.force_update).toBe(true);
       expect(body.data.provider.ios.min_version).toBe("3.0.0");
-      expect(body.data.codebase_versions.customer).toBe("1.0.48");
-      expect(body.data.codebase_versions.provider).toBe("1.0.48");
+      expect(body.data.codebase_versions.customer).toBe(codebaseVersions.customer);
+      expect(body.data.codebase_versions.provider).toBe(codebaseVersions.provider);
     });
 
     it("returns defaults when select errors (e.g. missing table)", async () => {
@@ -208,7 +204,7 @@ describe("/api/admin/app-version", () => {
       expect(body.error).toBeNull();
       expect(body.data.customer.ios.min_version).toBe("1.2.0");
       expect(body.data.provider.ios.min_version).toBe("3.0.0");
-      expect(body.data.codebase_versions.customer).toBe("1.0.48");
+      expect(body.data.codebase_versions.customer).toBe(codebaseVersions.customer);
     });
 
     it("ignores codebase_versions in PATCH body", async () => {
@@ -270,7 +266,7 @@ describe("/api/admin/app-version", () => {
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.data.codebase_versions.customer).toBe("1.0.48");
+      expect(body.data.codebase_versions.customer).toBe(codebaseVersions.customer);
     });
 
     it("returns 400 when body has invalid update_url", async () => {

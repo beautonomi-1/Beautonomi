@@ -95,6 +95,10 @@ export type FinanceLedgerAggregate = {
    * Zero until Phase 4 payout-transfer-fee fix lands.
    */
   payout_transfer_fees: number;
+  /** Gateway fees on terminal commerce ledger rows (sale/rental/bundle/promotion). */
+  terminal_gateway_fees: number;
+  /** Gross terminal commerce revenue from ledger terminal_* transaction types. */
+  terminal_revenue_gross: number;
 };
 
 type Row = Pick<
@@ -115,6 +119,13 @@ function sumAbsoluteAmount(tx: Row[], types: string[]): number {
     .filter((r) => types.includes(r.transaction_type ?? ""))
     .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0);
 }
+
+const TERMINAL_COMMERCE_TYPES = [
+  "terminal_sale",
+  "terminal_rental",
+  "terminal_bundle_alloc",
+  "terminal_promotion",
+] as const;
 
 /** Refund rows are split per component; the customer cash refunded is captured by the
  *  cash legs only. Exclude the parallel discount/tender/liability reversal rows so
@@ -140,6 +151,8 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     : "MIXED";                          // cross-currency: caller must not sum
 
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
+  const terminalGatewayFees = sumFees(tx, [...TERMINAL_COMMERCE_TYPES]);
+  const terminalRevenueGross = sum(tx, [...TERMINAL_COMMERCE_TYPES], "amount");
   const otherGatewayFees = sumFees(tx, ["gift_card_sale", "wallet_topup"]);
   const payoutTransferFees = sumFees(tx, ["payout"]);
 
@@ -320,6 +333,8 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     manual_adjustments_net: manualAdjustmentsNet,
     other_gateway_fees: otherGatewayFees,
     payout_transfer_fees: payoutTransferFees,
+    terminal_gateway_fees: terminalGatewayFees,
+    terminal_revenue_gross: terminalRevenueGross,
   };
 }
 
@@ -365,6 +380,7 @@ export function platformRevenueNetFromAggregate(a: FinanceLedgerAggregate): numb
 export function gatewayFeesTotalFromAggregate(a: FinanceLedgerAggregate): number {
   return (
     a.gateway_fees_services +
+    a.terminal_gateway_fees +
     a.subscription_gateway_fees +
     a.ads_gateway_fees +
     a.marketing_credit_gateway_fees +

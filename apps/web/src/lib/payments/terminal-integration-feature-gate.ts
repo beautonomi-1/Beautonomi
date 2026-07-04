@@ -115,17 +115,32 @@ export async function isVendorIntegrationEnabled(
   supabase: any,
   providerId: string,
   vendor: string,
-): Promise<{ hubEnabled: boolean; vendorEnabled: boolean; enabled: boolean }> {
+): Promise<{ hubEnabled: boolean; vendorEnabled: boolean; configEnabled: boolean; enabled: boolean }> {
   const tenantId = await resolveTenantId(supabase, providerId);
   const hubEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.TERMINAL_INTEGRATIONS, tenantId);
-  if (!hubEnabled) return { hubEnabled: false, vendorEnabled: false, enabled: false };
+  if (!hubEnabled) {
+    return { hubEnabled: false, vendorEnabled: false, configEnabled: false, enabled: false };
+  }
+
+  const { data: configRow } = await supabase
+    .from("terminal_vendor_configs")
+    .select("enabled")
+    .is("tenant_id", null)
+    .eq("vendor", vendor.toLowerCase())
+    .maybeSingle();
+  const configEnabled = Boolean((configRow as { enabled?: boolean } | null)?.enabled);
 
   const flagKey = getVendorFlagKey(vendor);
   const vendorEnabled = flagKey
     ? await isFeatureEnabledServer(flagKey, tenantId)
-    : true; // No dedicated flag = controlled via terminal_vendor_configs.enabled only
+    : configEnabled;
 
-  return { hubEnabled, vendorEnabled, enabled: vendorEnabled };
+  return {
+    hubEnabled,
+    vendorEnabled,
+    configEnabled,
+    enabled: configEnabled && vendorEnabled,
+  };
 }
 
 /**
@@ -138,8 +153,12 @@ export async function requireVendorIntegrationEnabled(
   providerId: string,
   vendor: string,
 ): Promise<NextResponse | null> {
-  const { hubEnabled, vendorEnabled } = await isVendorIntegrationEnabled(supabase, providerId, vendor);
+  const { hubEnabled, vendorEnabled, configEnabled } = await isVendorIntegrationEnabled(
+    supabase,
+    providerId,
+    vendor,
+  );
   if (!hubEnabled) return terminalIntegrationsDisabledResponse();
-  if (!vendorEnabled) return terminalVendorDisabledResponse(vendor);
+  if (!configEnabled || !vendorEnabled) return terminalVendorDisabledResponse(vendor);
   return null;
 }

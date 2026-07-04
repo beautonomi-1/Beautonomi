@@ -1,9 +1,20 @@
 import { createContext, useContext, useMemo, type ReactNode, type RefObject } from "react";
 import { ScrollView, type TextInput } from "react-native";
-import { scrollFocusedInputIntoView } from "@/hooks/useScrollToFocusedInput";
+import {
+  DEFAULT_SCROLL_OFFSET,
+  scrollFocusedInputIntoView,
+} from "@/hooks/useScrollToFocusedInput";
+
+export type FocusScrollOptions = {
+  offset?: number;
+};
 
 type OnboardingScrollContextValue = {
-  scrollToFocusedInput: (inputRef: RefObject<TextInput | null>) => void;
+  scrollToTop: () => void;
+  scrollToFocusedInput: (
+    inputRef: RefObject<TextInput | null>,
+    options?: FocusScrollOptions,
+  ) => void;
 };
 
 const OnboardingScrollContext = createContext<OnboardingScrollContextValue | null>(null);
@@ -17,8 +28,18 @@ export function OnboardingScrollProvider({
 }) {
   const value = useMemo(
     () => ({
-      scrollToFocusedInput: (inputRef: RefObject<TextInput | null>) => {
-        scrollFocusedInputIntoView(scrollRef, inputRef);
+      scrollToTop: () => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      },
+      scrollToFocusedInput: (
+        inputRef: RefObject<TextInput | null>,
+        options?: FocusScrollOptions,
+      ) => {
+        scrollFocusedInputIntoView(
+          scrollRef,
+          inputRef,
+          options?.offset ?? DEFAULT_SCROLL_OFFSET,
+        );
       },
     }),
     [scrollRef],

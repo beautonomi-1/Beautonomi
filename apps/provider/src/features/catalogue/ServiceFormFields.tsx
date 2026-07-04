@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Switch } from "react-native";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
@@ -116,6 +116,8 @@ export interface ServiceFormFieldsProps {
   onCheckZonesBeforeAtHome?: (enable: boolean) => void | Promise<void>;
   onOpenAdvancedPricing?: () => void;
   onClearValidationError?: () => void;
+  nameInputRef?: RefObject<TextInput | null>;
+  onNameFocus?: () => void;
 }
 
 export function ServiceFormFields({
@@ -139,6 +141,8 @@ export function ServiceFormFields({
   onCheckZonesBeforeAtHome,
   onOpenAdvancedPricing,
   onClearValidationError,
+  nameInputRef,
+  onNameFocus,
 }: ServiceFormFieldsProps) {
   const form = value;
   const setForm = (patch: Partial<ServiceFormState> | ((prev: ServiceFormState) => ServiceFormState)) => {
@@ -181,7 +185,7 @@ export function ServiceFormFields({
       void onCheckZonesBeforeAtHome(enable);
       return;
     }
-    setForm({ supportsAtHome: enable });
+    patchForm({ supportsAtHome: enable });
   };
 
   const patchForm = (patch: Partial<ServiceFormState>) => {
@@ -195,17 +199,26 @@ export function ServiceFormFields({
 
   return (
     <>
-      <FormField
-        label="Service name *"
-        value={form.name}
-        onChangeText={(t) => patchForm({ name: t })}
-        placeholder="e.g. Signature Haircut"
-        hint={
-          mode === "catalogue"
-            ? "This is what customers will see when browsing your services."
-            : undefined
-        }
-      />
+      <View style={twStyle("mb-3")} collapsable={false}>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service name *</Text>
+        {mode === "catalogue" ? (
+          <Text style={twStyle("mb-2 text-xs text-gray-400")}>
+            This is what customers will see when browsing your services.
+          </Text>
+        ) : null}
+        <TextInput
+          ref={nameInputRef}
+          style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+          placeholder="e.g. Signature Haircut"
+          placeholderTextColor="#9ca3af"
+          value={form.name}
+          onChangeText={(t) => patchForm({ name: t })}
+          onFocus={() => onNameFocus?.()}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          accessibilityLabel="Service name"
+        />
+      </View>
 
       {showServiceType ? (
         <>

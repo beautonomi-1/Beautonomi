@@ -156,7 +156,7 @@ export async function PUT(
     // Load existing for audit diff
     const { data: existing } = await supabaseAdmin
       .from("provider_terminal_integrations")
-      .select("id, status")
+      .select("id, status, api_key")
       .eq("provider_id", providerId)
       .eq("vendor", vendor)
       .maybeSingle();
@@ -188,6 +188,12 @@ export async function PUT(
     // For manual mode, immediately mark connected (no API verification)
     if (data.credential_mode === "manual") {
       upsertData.status = "connected";
+    } else if (data.credential_mode === "api_key") {
+      const hasNewKey = Boolean(data.api_key?.trim());
+      const hasExistingKey = Boolean((existing as { api_key?: string | null } | null)?.api_key?.trim());
+      if (hasNewKey || hasExistingKey) {
+        upsertData.status = "connected";
+      }
     }
 
     const { data: result, error: upsertErr } = await supabaseAdmin
@@ -197,6 +203,18 @@ export async function PUT(
       .single();
 
     if (upsertErr) return errorResponse("Failed to save integration", "SAVE_ERROR", 500, upsertErr);
+
+    const connectedStatus = (result as { status?: string }).status;
+    if (connectedStatus === "connected") {
+      try {
+        const { markPendingIntegrationOrdersComplete } = await import(
+          "@/lib/terminal/terminal-integration-setup"
+        );
+        await markPendingIntegrationOrdersComplete(supabaseAdmin, providerId, vendor);
+      } catch (setupErr) {
+        console.error("[terminal-integrations] setup completion hook failed:", setupErr);
+      }
+    }
 
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({

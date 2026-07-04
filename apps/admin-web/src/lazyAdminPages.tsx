@@ -453,3 +453,8 @@ export const TerminalReportingPage = lazy(() =>
 export const TerminalVendorsPage = lazy(() =>
   import("@/routes/commercial/TerminalVendorsPage").then((m) => ({ default: m.TerminalVendorsPage }))
 );
+export const TerminalCollectionLocationsPage = lazy(() =>
+  import("@/routes/commercial/TerminalCollectionLocationsPage").then((m) => ({
+    default: m.TerminalCollectionLocationsPage,
+  }))
+);

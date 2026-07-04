@@ -7,10 +7,18 @@ import { getBackendUrl } from "@/config/public-env";
 import type { OnboardingFormData } from "./types";
 import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
 import type { InAppPaystackResult } from "@/hooks/useInAppPaystackCheckout";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 import {
   getSubscriptionPaystackReturnUrl,
   matchesSubscriptionPaystackReturnUrl,
+  pollSubscriptionProvisioned,
 } from "@/lib/payments/providerPaystackReturn";
+import {
+  resolveSubscriptionPlanIdForCheckout,
+  startPaidSubscriptionCheckout,
+  type BillingPeriod,
+} from "@/lib/subscription/start-paid-checkout";
 
 type WaitForCheckout = (
   url: string,
@@ -22,10 +30,16 @@ type WaitForCheckout = (
   },
 ) => Promise<InAppPaystackResult>;
 
-function extractBillingPeriodFromPath(path: string | null | undefined): "monthly" | "yearly" {
-  if (!path) return "monthly";
+function resolveBillingPeriod(
+  formData: Partial<OnboardingFormData>,
+  checkoutPath: string | null | undefined,
+): BillingPeriod {
+  if (formData.selected_billing_period === "yearly" || formData.selected_billing_period === "monthly") {
+    return formData.selected_billing_period;
+  }
+  if (!checkoutPath) return "monthly";
   try {
-    const parsed = new URL(path, "https://x.invalid");
+    const parsed = new URL(checkoutPath, "https://x.invalid");
     if (parsed.searchParams.get("billing_period") === "yearly") return "yearly";
   } catch {
     /* ignore */
@@ -39,6 +53,7 @@ export interface OnboardingCompletionData {
   message?: string;
   subscription_endpoint?: string | null;
   selected_plan_id?: string | null;
+  selected_subscription_plan_id?: string | null;
   selected_plan_is_free?: boolean;
   requires_checkout?: boolean;
   checkout_path?: string | null;
@@ -165,35 +180,17 @@ export async function finalizeOnboardingSuccess(options: {
     // Native path: call the API directly with the provider's Bearer token.
     // This replaces the old unauthenticated WebView which caused a 401 → login redirect.
     if (waitForCheckout) {
-      const billingPeriod = extractBillingPeriodFromPath(data?.checkout_path);
+      const billingPeriod = resolveBillingPeriod(formData, data?.checkout_path);
       try {
-        const createRes = await api.post<{
-          authorization_url?: string | null;
-          access_code?: string | null;
-        }>("/api/provider/subscriptions/create", {
-          plan_id: planId,
-          billing_period: billingPeriod,
-          in_app: true,
-          return_to_dashboard: true,
+        const subscriptionPlanId = await resolveSubscriptionPlanIdForCheckout({
+          selectedSubscriptionPlanId: data?.selected_subscription_plan_id,
+          pricingPlanId: planId,
         });
 
-        if (createRes.error || !createRes.data?.authorization_url) {
-          // 409 CONFLICT: provider already has an active paid subscription (e.g. a
-          // webhook beat us to it on a previous onboarding attempt). Treat as success.
-          if (
-            createRes.error &&
-            (createRes.error.code === "CONFLICT" || createRes.error.status === 409)
-          ) {
-            router.replace("/(app)/onboarding/verify-identity" as never);
-            return;
-          }
-          const errMsg =
-            typeof createRes.error === "object" && createRes.error !== null
-              ? (createRes.error as { message?: string }).message
-              : null;
+        if (!subscriptionPlanId) {
           Alert.alert(
             "Checkout failed",
-            errMsg || "Unable to start subscription checkout. You can complete it from Settings.",
+            "This plan is not linked to a subscription yet. Complete checkout from Settings or contact support.",
             [
               {
                 text: "Open subscription",
@@ -206,14 +203,72 @@ export async function finalizeOnboardingSuccess(options: {
           return;
         }
 
+        const checkoutStart = await startPaidSubscriptionCheckout({
+          subscriptionPlanId,
+          billingPeriod,
+          inApp: true,
+        });
+
+        if (!checkoutStart.ok) {
+          if (checkoutStart.errorCode === "CONFLICT" || checkoutStart.status === 409) {
+            router.replace("/(app)/onboarding/verify-identity" as never);
+            return;
+          }
+          Alert.alert(
+            "Checkout failed",
+            checkoutStart.error || "Unable to start subscription checkout. You can complete it from Settings.",
+            [
+              {
+                text: "Open subscription",
+                onPress: () =>
+                  router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+              },
+              { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+            ],
+          );
+          return;
+        }
+
+        if (checkoutStart.alreadyActive) {
+          router.replace("/(app)/onboarding/verify-identity" as never);
+          return;
+        }
+
         const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
-        const result = await waitForCheckout(createRes.data.authorization_url, {
+        const result = await waitForCheckout(checkoutStart.authorizationUrl, {
           returnUrl: subscriptionReturnUrl,
           matchSuccess: (u) => matchesSubscriptionPaystackReturnUrl(u, { success: true }),
           matchCancel: (u) => matchesSubscriptionPaystackReturnUrl(u, { cancelled: true }),
         });
 
         if (result.outcome === "success") {
+          const reference = extractPaystackReferenceFromUrl(result.url);
+          const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+          if (verifyResult?.status === "failed") {
+            Alert.alert(
+              "Payment not completed",
+              verifyResult.errorMessage || "Something went wrong. Complete your subscription any time from Settings.",
+              [
+                {
+                  text: "Open subscription",
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+                },
+                {
+                  text: "Continue to app",
+                  style: "cancel",
+                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+                },
+              ],
+            );
+            return;
+          }
+
+          await pollSubscriptionProvisioned({
+            orderId: checkoutStart.orderId ?? null,
+            maxAttempts: 6,
+            delayMs: 1500,
+          });
           router.replace("/(app)/onboarding/verify-identity" as never);
         } else {
           const isCancelled = result.outcome === "cancel";
@@ -272,11 +327,12 @@ export async function finalizeOnboardingSuccess(options: {
       return;
     }
 
+    const billingPeriod = resolveBillingPeriod(formData, data?.checkout_path);
     const checkoutPath =
       data?.checkout_path ||
       `/provider/subscription-checkout?planId=${encodeURIComponent(planId)}`;
     const separator = checkoutPath.includes("?") ? "&" : "?";
-    const url = `${base}${checkoutPath}${separator}in_app=1&return_to=dashboard`;
+    const url = `${base}${checkoutPath}${separator}billing_period=${billingPeriod}&in_app=1&return_to=dashboard`;
     router.replace({
       pathname: "/(app)/(tabs)/more/in-app-browser",
       params: {

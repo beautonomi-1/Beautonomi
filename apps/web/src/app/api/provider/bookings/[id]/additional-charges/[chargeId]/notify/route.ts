@@ -133,7 +133,7 @@ export async function POST(
       const { insertNotification } = await import("@/lib/notifications/insert-notification");
       await insertNotification({
         user_id: bookingData.customer_id,
-        type: "payment_request",
+        type: "additional_charge_requested",
         title: "Additional payment requested",
         message: `Your provider added an extra charge: ${chargeData.description || "Additional charge"} — ${currency} ${chargeAmount.toFixed(2)}. Estimated balance due: ${currency} ${remainingBalance.toFixed(2)}. Booking #${bookingRef}.`,
         data: {

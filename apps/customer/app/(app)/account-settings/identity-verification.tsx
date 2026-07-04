@@ -9,7 +9,7 @@
  *   → Shows a manual document-upload form (POST /api/me/verification).
  *     Admin reviews the document and approves manually.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
@@ -21,7 +21,7 @@ import {
   RefreshControl,
   AppState,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
@@ -34,6 +34,11 @@ import { RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import {
+  customerVerificationCheckoutBanner,
+  customerVerificationSubtitle,
+  verificationPolicyFromBundle,
+} from "@/lib/verification/policy";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
@@ -72,6 +77,7 @@ interface VerificationStatus {
     document_type: string;
     submitted_at: string;
   } | null;
+  required_for_customers?: boolean;
 }
 
 export default function IdentityVerificationScreen() {
@@ -85,8 +91,12 @@ export default function IdentityVerificationScreen() {
     [t],
   );
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const router = useRouter();
+  const params = useLocalSearchParams<{ return_to?: string }>();
+  const returnTo = typeof params.return_to === "string" ? params.return_to : undefined;
   const { bundle } = useConfigBundle();
   const env = bundle?.meta?.env ?? "production";
+  const bundlePolicy = verificationPolicyFromBundle(bundle);
   const [statusData, setStatusData] = useState<VerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -101,6 +111,7 @@ export default function IdentityVerificationScreen() {
 
   // SumSub launch state
   const [launching, setLaunching] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
@@ -116,7 +127,7 @@ export default function IdentityVerificationScreen() {
       );
       if (res.error) {
         if (!silent) setError(res.error.message || iv("loadStatusFailed"));
-        if (!silent) setStatusData(null);
+        if (!silent && !hasLoadedOnceRef.current) setStatusData(null);
         return;
       }
       const d = res.data as Record<string, unknown> | null;
@@ -129,15 +140,17 @@ export default function IdentityVerificationScreen() {
         manual_available: d?.manual_available !== false,
         verification_mode: (d?.verification_mode as string) ?? undefined,
         can_submit_verification: Boolean(d?.can_submit_verification),
+        required_for_customers: d?.required_for_customers === true,
         submissions: Array.isArray(d?.submissions)
           ? (d.submissions as VerificationSubmission[])
           : [],
         manual_verification: (d?.manual_verification as VerificationStatus["manual_verification"]) ?? null,
       });
+      hasLoadedOnceRef.current = true;
       setLastRefreshedAt(new Date());
     } catch (e) {
       if (!silent) setError(e instanceof Error ? e.message : iv("loadFailed"));
-      if (!silent) setStatusData(null);
+      if (!silent && !hasLoadedOnceRef.current) setStatusData(null);
     } finally {
       if (silent) {
         setRefreshing(false);
@@ -268,6 +281,23 @@ export default function IdentityVerificationScreen() {
   const diditAvailable = statusData?.didit_available ?? false;
   const manualAvailable = statusData?.manual_available !== false;
   const verificationOff = statusData?.verification_mode === "off";
+  const verificationRequired =
+    statusData?.required_for_customers ?? bundlePolicy.required_for_customers;
+  const fromCheckout = Boolean(returnTo);
+
+  const continueAfterVerify = useCallback(() => {
+    if (returnTo) {
+      router.replace(returnTo as never);
+      return;
+    }
+    router.back();
+  }, [returnTo, router]);
+
+  useEffect(() => {
+    if (statusData?.verified && returnTo) {
+      continueAfterVerify();
+    }
+  }, [statusData?.verified, returnTo, continueAfterVerify]);
 
   const statusLabel = useCallback(
     (s: string) => {
@@ -393,6 +423,40 @@ export default function IdentityVerificationScreen() {
           </Text>
         ) : null}
 
+        {verificationRequired && !isVerified ? (
+          <View
+            style={{
+              backgroundColor: "#FFFBEB",
+              borderRadius: RADIUS_CARD,
+              borderWidth: 1,
+              borderColor: "#FDE68A",
+              padding: 16,
+              marginBottom: 20,
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E" }}>
+              {fromCheckout ? "Verification required to book" : "Verification required"}
+            </Text>
+            <Text style={{ fontSize: 13, color: "#B45309", marginTop: 4, lineHeight: 18 }}>
+              {fromCheckout
+                ? customerVerificationCheckoutBanner(true)
+                : customerVerificationSubtitle(true)}
+            </Text>
+            {fromCheckout ? (
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={{ marginTop: 12, alignSelf: "flex-start" }}
+                accessibilityRole="button"
+                accessibilityLabel="Return to checkout"
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
+                  Back to checkout
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {isVerified && (
           <View style={{ alignItems: "center", marginBottom: 24 }}>
             <View
@@ -461,7 +525,9 @@ export default function IdentityVerificationScreen() {
                   No submissions yet
                 </Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
-                  Upload a government-issued ID below to get verified. Your document is reviewed securely.
+                  {verificationRequired
+                    ? "Upload a government-issued ID to complete verification before your first booking."
+                    : "Upload a government-issued ID below to get verified. Your document is reviewed securely."}
                 </Text>
               </View>
             </View>

@@ -3,6 +3,8 @@ import { successResponse, handleApiError, requireRoleInApi } from "@/lib/supabas
 import { NextRequest } from "next/server";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { resolveProfileEmailVerificationState } from "@beautonomi/utils";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/me/profile-completion
@@ -64,6 +66,12 @@ export async function GET(request: NextRequest) {
       emailConfirmedAt: (authUser as { email_confirmed_at?: string | null } | null)?.email_confirmed_at,
     });
 
+    const { searchParams } = new URL(request.url);
+    const env = searchParams.get("environment") ?? "production";
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const verificationPolicy = await resolveVerificationPolicy(tenantId, env);
+    const identityRequiredForCustomer = isCustomer && verificationPolicy.requiredForCustomers;
+
     const checklistItems = [
       {
         id: "photo",
@@ -101,7 +109,7 @@ export async function GET(request: NextRequest) {
         label: "Verify identity",
         timeEstimate: "5 min",
         completed: Boolean(userData.identity_verified),
-        required: false,
+        required: identityRequiredForCustomer,
       },
       {
         id: "phone",

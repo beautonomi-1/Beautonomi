@@ -34,6 +34,22 @@ type FinanceSummary = {
   service_collected_gross: number;
   service_collected_net: number;
   gateway_fees: number;
+  gateway_fees_total?: number;
+  gateway_fees_breakdown?: {
+    services?: number;
+    terminal?: number;
+    subscription?: number;
+    ads?: number;
+    marketing_credits?: number;
+    gift_card_wallet?: number;
+    payout_transfers?: number;
+    total?: number;
+  };
+  terminal_commerce?: {
+    revenue_gross?: number;
+    gateway_fees?: number;
+    order_count?: number;
+  };
   platform_commission_gross: number;
   platform_refund_impact: number;
   platform_commission_net: number;
@@ -108,8 +124,9 @@ type FinanceSummary = {
         ledger_gmv?: number;
         bookings_gmv?: number;
         variance?: number;
-        variance_pct?: number;
+        variance_pct?: number | null;
         status?: string;
+        basis_note?: string;
       };
       negative_provider_payout_balances?: { count?: number; status?: string };
       refund_burden_pressure?: { provider_refund_impact?: number; provider_earnings?: number; status?: string };
@@ -341,6 +358,27 @@ export function FinanceOverviewPage() {
       },
     ];
   }, [summary]);
+
+  const gatewayFeeBreakdown = useMemo(() => {
+    if (!summary?.gateway_fees_breakdown) return [];
+    const b = summary.gateway_fees_breakdown;
+    return [
+      { label: "Booking & add-on charges", value: b.services ?? summary.gateway_fees ?? 0 },
+      { label: "Terminal commerce", value: b.terminal ?? 0 },
+      { label: "Subscriptions", value: b.subscription ?? summary.subscription_gateway_fees ?? 0 },
+      { label: "Ads", value: b.ads ?? summary.ads_gateway_fees ?? 0 },
+      { label: "Marketing credits", value: b.marketing_credits ?? summary.marketing_credit_gateway_fees ?? 0 },
+      { label: "Gift card & wallet top-ups", value: b.gift_card_wallet ?? 0 },
+      { label: "Payout transfer fees", value: b.payout_transfers ?? 0 },
+    ].filter((row) => Math.abs(row.value) > 0.0001);
+  }, [summary]);
+
+  const feesReconciliationsHref = useMemo(() => {
+    const p = new URLSearchParams({ tab: "reconciliations" });
+    if (start) p.set("start_date", start);
+    if (end) p.set("end_date", end);
+    return adminSpaTo(`/admin/fees?${p.toString()}`);
+  }, [start, end]);
 
   const downloadSubscriptionReceipt = useCallback(async (financeTxId: string) => {
     setReceiptBusyId(financeTxId);
@@ -610,9 +648,69 @@ export function FinanceOverviewPage() {
           </div>
 
           <AdminPanel>
-            <h2 className="mb-4 text-base font-semibold text-gray-900">Deductions &amp; other flows</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-gray-900">Deductions &amp; other flows</h2>
+              <Link
+                to={feesReconciliationsHref}
+                className="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+              >
+                View fee reconciliations
+              </Link>
+            </div>
+            <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">Gateway fees (Paystack)</h3>
+              <div className="space-y-2 text-sm">
+                {gatewayFeeBreakdown.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">{item.label}</span>
+                    <span className="tabular-nums font-medium text-gray-900">{formatAdminCurrency(item.value)}</span>
+                  </div>
+                ))}
+                <div className="mt-2 border-t border-gray-200 pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-gray-900">Total gateway fees</span>
+                    <span className="tabular-nums text-lg font-semibold text-gray-900">
+                      {formatAdminCurrency(summary.gateway_fees_breakdown?.total ?? summary.gateway_fees_total ?? summary.gateway_fees)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Reconciliations are auto-generated daily from ledger-recorded fees vs fee config.
+              </p>
+            </div>
+            {(summary.terminal_commerce?.revenue_gross ?? 0) > 0 ||
+            (summary.terminal_commerce?.gateway_fees ?? 0) > 0 ||
+            (summary.terminal_commerce?.order_count ?? 0) > 0 ? (
+              <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900">Terminal commerce</h3>
+                  <Link
+                    to={adminSpaTo("/admin/commercial/terminal-orders")}
+                    className="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+                  >
+                    Terminal orders
+                  </Link>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <SummaryMetricCard
+                    label="Terminal revenue (gross)"
+                    value={summary.terminal_commerce?.revenue_gross ?? 0}
+                  />
+                  <SummaryMetricCard
+                    label="Terminal gateway fees"
+                    value={summary.terminal_commerce?.gateway_fees ?? 0}
+                  />
+                  <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                    <span className="text-xs font-medium text-gray-500">Paid orders in period</span>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
+                      {formatAdminNumber(summary.terminal_commerce?.order_count ?? 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <SummaryMetricCard label="Gateway fees" value={summary.gateway_fees} />
               <SummaryMetricCard label="Refunds (gross)" value={summary.refunds_gross} />
               <SummaryMetricCard label="Cancellation fees (provider-retained)" value={summary.cancellation_fees_retained ?? 0} />
               <SummaryMetricCard label="Gift card sales" value={summary.gift_card_sales} />
@@ -723,9 +821,21 @@ export function FinanceOverviewPage() {
                 <div className="rounded-lg border border-gray-200 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Ledger vs bookings GMV</p>
                   <p className="mt-1 text-sm text-gray-700">
-                    Variance {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance ?? 0)} (
-                    {formatAdminNumber(Math.abs(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance_pct ?? 0))}%)
+                    Variance {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance ?? 0)}
+                    {summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance_pct != null ? (
+                      <>
+                        {" "}
+                        ({formatAdminNumber(Math.abs(summary.reconciliation.checks.ledger_vs_bookings_gmv.variance_pct))}%)
+                      </>
+                    ) : (
+                      <span className="text-gray-500"> (n/a — booking GMV too small for a meaningful %)</span>
+                    )}
                   </p>
+                  {summary.reconciliation.checks.ledger_vs_bookings_gmv?.basis_note ? (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {summary.reconciliation.checks.ledger_vs_bookings_gmv.basis_note}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-gray-200 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Negative payout balances</p>
@@ -813,7 +923,9 @@ export function FinanceOverviewPage() {
                     <AdminTh>Date</AdminTh>
                     <AdminTh>Type</AdminTh>
                     <AdminTh>Amount</AdminTh>
-                    <AdminTh>Fees</AdminTh>
+                    <AdminTh>
+                      <span title="Paystack gateway fee recorded on payment and terminal_* ledger rows">Fees</span>
+                    </AdminTh>
                     <AdminTh>Net</AdminTh>
                     <AdminTh>Booking</AdminTh>
                     <AdminTh>Receipt</AdminTh>
@@ -825,7 +937,16 @@ export function FinanceOverviewPage() {
                       <AdminTd>{tx.created_at ? new Date(tx.created_at).toLocaleString() : "—"}</AdminTd>
                       <AdminTd className="capitalize">{tx.transaction_type}</AdminTd>
                       <AdminTd className="tabular-nums">{formatAdminCurrency(tx.amount)}</AdminTd>
-                      <AdminTd className="tabular-nums text-gray-600">{formatAdminCurrency(tx.fees)}</AdminTd>
+                      <AdminTd
+                        className="tabular-nums text-gray-600"
+                        title={
+                          tx.fees > 0
+                            ? "Paystack gateway fee from webhook (payment / terminal commerce rows)"
+                            : undefined
+                        }
+                      >
+                        {formatAdminCurrency(tx.fees)}
+                      </AdminTd>
                       <AdminTd className="tabular-nums font-medium">{formatAdminCurrency(tx.net)}</AdminTd>
                       <AdminTd>
                         {tx.booking?.id ? (

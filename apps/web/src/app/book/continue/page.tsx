@@ -1121,6 +1121,16 @@ function BookContinueContent() {
       router.replace(successUrl);
     } catch (err) {
       /* Keep the review screen so the user can retry without losing form data. */
+      if (err instanceof FetchError && err.status === 403 && err.code === "VERIFICATION_REQUIRED") {
+        const returnPath =
+          typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : "/book/continue";
+        router.push(
+          `/account-settings/identity-verification?return_to=${encodeURIComponent(returnPath)}`,
+        );
+        return;
+      }
       let msg =
         err instanceof FetchError
           ? err.message

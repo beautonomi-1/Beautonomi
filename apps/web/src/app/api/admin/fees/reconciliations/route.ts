@@ -1,69 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { computeGatewayFeeSuggestions } from "@/lib/admin/fee-reconciliation-compute";
+import { runAutoFeeReconciliation } from "@/lib/admin/auto-fee-reconciliation";
 
 function isTableMissingError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : (typeof e === "object" && e !== null && "message" in e && typeof (e as { message: unknown }).message === "string" ? (e as { message: string }).message : "");
   return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
 }
 
-/**
- * §Phase 8: Auto-compute expected fees for a gateway + date range from the ledger.
- * Returns the sum of fees recorded in finance_transactions (actual fees paid to gateway)
- * plus a calculated expected-fee total using calculate_expected_fee() from config.
- * The difference between expected and recorded reveals mis-priced or mis-captured rows.
- */
-async function computeLedgerFees(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
-  gatewayName: string,
-  startDate: string,
-  endDate: string,
-): Promise<{ recorded_fees: number; expected_fees_from_config: number }> {
-  try {
-    // Sum fees actually recorded in the ledger for this gateway's payment rows.
-    // We join payment_transactions to know the gateway, then aggregate finance_transactions.fees.
-    const { data: rows } = await (supabase.from("finance_transactions") as any)
-      .select("fees, amount, transaction_type")
-      .in("transaction_type", ["payment", "additional_charge_payment", "gift_card_sale", "wallet_topup", "provider_subscription_payment", "provider_ads_payment", "payout", "payout_transfer_fee"])
-      .gte("created_at", startDate)
-      .lte("created_at", endDate);
-
-    const recordedFees = ((rows ?? []) as { fees?: number | null }[])
-      .reduce((s, r) => s + Math.abs(Number(r.fees ?? 0)), 0);
-
-    // Expected fees from config using the DB function for each transaction amount.
-    // For efficiency, compute via SQL aggregate.
-    const { data: expectedRows } = await (supabase.from("finance_transactions") as any)
-      .select("amount, transaction_type")
-      .in("transaction_type", ["payment", "additional_charge_payment", "gift_card_sale", "wallet_topup", "provider_subscription_payment", "provider_ads_payment"])
-      .gte("created_at", startDate)
-      .lte("created_at", endDate);
-
-    let expectedFeesFromConfig = 0;
-    for (const row of (expectedRows ?? []) as { amount?: number | null; transaction_type?: string }[]) {
-      const scope = (row.transaction_type === "payout" || row.transaction_type === "payout_transfer_fee") ? "transfer" : "transaction";
-      const { data: calcFee } = await supabase.rpc("calculate_expected_fee" as any, {
-        gateway_name_param: gatewayName,
-        transaction_amount: Number(row.amount ?? 0),
-        currency_param: "ZAR",
-        payment_method_param: "*",
-        region_param: "local",
-        fee_scope_param: scope,
-      });
-      expectedFeesFromConfig += Number(calcFee ?? 0);
-    }
-
-    return { recorded_fees: Math.round(recordedFees * 100) / 100, expected_fees_from_config: Math.round(expectedFeesFromConfig * 100) / 100 };
-  } catch {
-    return { recorded_fees: 0, expected_fees_from_config: 0 };
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const gateway = searchParams.get("gateway");
@@ -74,6 +26,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = (page - 1) * limit;
     const autoCompute = searchParams.get("auto_compute") === "true";
+    const tenantFilter = searchParams.get("tenant_id") || tenantId;
 
     let query = supabase
       .from("fee_reconciliations")
@@ -81,6 +34,9 @@ export async function GET(request: NextRequest) {
       .order("reconciliation_date", { ascending: false })
       .range(offset, offset + limit - 1);
 
+    if (tenantFilter) {
+      query = query.eq("tenant_id", tenantFilter);
+    }
     if (gateway) {
       query = query.eq("gateway_name", gateway);
     }
@@ -96,35 +52,57 @@ export async function GET(request: NextRequest) {
 
     const { data, error, count } = await query;
 
+    let listData: typeof data = data;
+    let listCount = count;
     if (error) {
       if (isTableMissingError(error)) {
-        return NextResponse.json({ data: [], meta: { page, limit, total: 0, has_more: false }, error: null });
+        listData = [];
+        listCount = 0;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
-    // §Phase 8: when auto_compute=true and a date range + gateway are provided,
-    // compute expected fees from the ledger and include as a suggestion.
-    let autoComputedFees: { recorded_fees: number; expected_fees_from_config: number } | null = null;
+    let autoComputedFees: Awaited<ReturnType<typeof computeGatewayFeeSuggestions>> | null = null;
+    let autoComputeError: string | null = null;
     if (autoCompute && gateway && startDate && endDate) {
-      autoComputedFees = await computeLedgerFees(supabase, gateway, startDate, endDate);
+      try {
+        autoComputedFees = await computeGatewayFeeSuggestions(
+          supabase,
+          gateway,
+          startDate,
+          endDate,
+          { tenantId: tenantFilter || null },
+        );
+      } catch (computeErr) {
+        autoComputeError =
+          computeErr instanceof Error ? computeErr.message : "Failed to compute fee suggestions";
+        console.warn("[fees/reconciliations] auto_compute failed:", computeErr);
+      }
     }
 
     return NextResponse.json({
-      data: data || [],
+      data: listData || [],
       meta: {
         page,
         limit,
-        total: count || 0,
-        has_more: (count || 0) > offset + limit,
+        total: listCount || 0,
+        has_more: (listCount || 0) > offset + limit,
       },
       auto_computed: autoComputedFees,
+      auto_compute_error: autoComputeError,
       error: null,
     });
   } catch (error: unknown) {
     console.error("Error fetching reconciliations:", error);
     if (isTableMissingError(error)) {
-      return NextResponse.json({ data: [], meta: { page: 1, limit: 50, total: 0, has_more: false }, error: null });
+      return NextResponse.json({
+        data: [],
+        meta: { page: 1, limit: 50, total: 0, has_more: false },
+        auto_computed: null,
+        auto_compute_error: null,
+        error: null,
+      });
     }
     const message = error instanceof Error ? error.message : "Failed to fetch reconciliations";
     return NextResponse.json(
@@ -138,6 +116,29 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const { searchParams } = new URL(request.url);
+    const backfill = searchParams.get("backfill") === "true";
+
+    if (backfill) {
+      await requireRoleInApi(["superadmin"], request);
+      const start = searchParams.get("start");
+      const end = searchParams.get("end");
+      if (!start || !end) {
+        return NextResponse.json(
+          { error: "backfill requires start and end query params (YYYY-MM-DD)" },
+          { status: 400 },
+        );
+      }
+      const gateway = searchParams.get("gateway") ?? undefined;
+      const summary = await runAutoFeeReconciliation(supabase, {
+        startDate: start,
+        endDate: end,
+        tenantIds: tenantId ? [tenantId] : undefined,
+        gateways: gateway ? [gateway] : undefined,
+      });
+      return NextResponse.json({ data: summary, error: null });
+    }
 
     const body = await request.json();
     const {
@@ -145,11 +146,12 @@ export async function POST(request: NextRequest) {
       gateway_name,
       expected_fees,
       actual_fees,
+      recorded_fees,
       notes,
       statement_reference,
+      tenant_id: bodyTenantId,
     } = body;
 
-    // Validate required fields
     if (!reconciliation_date || !gateway_name || expected_fees === undefined || actual_fees === undefined) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -157,19 +159,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate variance
     const variance = actual_fees - expected_fees;
+    const recorded =
+      recorded_fees !== undefined && recorded_fees !== null
+        ? Number(recorded_fees)
+        : Number(actual_fees);
 
     const { data, error } = await supabase
       .from("fee_reconciliations")
       .insert({
         reconciliation_date,
         gateway_name,
+        tenant_id: bodyTenantId ?? tenantId ?? null,
         expected_fees,
         actual_fees,
+        recorded_fees: recorded,
         variance,
         notes,
         statement_reference,
+        source: "manual",
         created_by: user.id,
       })
       .select()
@@ -203,7 +211,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // If status is being updated to reviewed/resolved, add reviewed_by and reviewed_at
     if (status && (status === "reviewed" || status === "resolved")) {
       updates.reviewed_by = user.id;
       updates.reviewed_at = new Date().toISOString();

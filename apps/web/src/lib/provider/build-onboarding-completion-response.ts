@@ -223,7 +223,7 @@ export async function buildOnboardingCompletionResponse(
       requiresCheckout && selectedPlanId
         ? `/provider/subscription-checkout?planId=${encodeURIComponent(selectedPlanId)}`
         : null,
-    subscription_endpoint: requiresCheckout ? "/api/provider/subscriptions/create" : null,
+    subscription_endpoint: requiresCheckout ? "/api/provider/subscription/initialize-payment" : null,
     subscription_active: subscriptionActive,
     ...(alreadyCompleted ? { already_completed: true } : {}),
     ...(autoConfigured ? { auto_configured: autoConfigured } : {}),

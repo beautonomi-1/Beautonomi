@@ -13,6 +13,11 @@ import { Loader2, Upload, FileText, CheckCircle } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
 import { IdentityVerificationPanel } from "@/components/identity-verification/IdentityVerificationPanel";
+import {
+  canSkipProviderVerification,
+  providerVerificationOnboardingBanner,
+  verificationRequiredForProviders,
+} from "@/lib/verification/provider-verification-ui";
 
 type LegacyVerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
@@ -23,6 +28,7 @@ interface StatusResponse {
   manual_available?: boolean;
   verification_mode?: string;
   rejection_reason?: string | null;
+  required_for_providers?: boolean;
   manual_verification?: {
     id: string;
     status: string;
@@ -42,9 +48,6 @@ export default function VerificationPage() {
   const { bundle } = useConfigBundle();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // §provider-launch (2026-06): when reached as the optional post-onboarding
-  // identity step, show a skip/continue-to-dashboard banner. Verification stays
-  // optional and never blocks going live.
   const isOnboarding = searchParams.get("onboarding") === "1";
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,6 +94,20 @@ export default function VerificationPage() {
 
   const isApproved = status === "approved";
   const isUnderReview = status === "in_progress" || statusData?.manual_verification?.status === "pending";
+  const verificationRequired =
+    statusData?.required_for_providers ??
+    verificationRequiredForProviders(bundle?.verification);
+  const canSkip = canSkipProviderVerification({ required: verificationRequired, status });
+
+  const goToDashboard = () => {
+    if (!canSkip) {
+      toast.error(
+        "Identity verification is required before you can go live. Complete verification to earn your Verified trust badge.",
+      );
+      return;
+    }
+    router.push("/provider/dashboard");
+  };
 
   // ─── Manual upload ────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,21 +152,17 @@ export default function VerificationPage() {
 
   return (
     <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for compliance and payouts.">
-      {/* Optional onboarding step banner — verification never blocks going live. */}
       {isOnboarding && (
-        <SectionCard title="You're almost done" className="mb-4">
+        <SectionCard title={verificationRequired ? "One more step to go live" : "You're almost done"} className="mb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              Identity verification is optional and earns you the &ldquo;Verified&rdquo; badge. You can do it now or
-              later from Settings.
+              {providerVerificationOnboardingBanner(verificationRequired)}
             </p>
-            <Button
-              variant="outline"
-              className="shrink-0"
-              onClick={() => router.push("/provider/dashboard")}
-            >
-              {isApproved || isUnderReview ? "Continue to dashboard" : "Skip for now"}
-            </Button>
+            {canSkip ? (
+              <Button variant="outline" className="shrink-0" onClick={goToDashboard}>
+                {isApproved || isUnderReview ? "Continue to dashboard" : "Skip for now"}
+              </Button>
+            ) : null}
           </div>
         </SectionCard>
       )}

@@ -5,6 +5,7 @@ import {
   clearConfigBundleCache,
   type PublicConfigBundle,
   DEFAULT_AUTH,
+  DEFAULT_VERIFICATION_POLICY,
 } from "@/lib/config-bundle";
 
 interface ConfigBundleContextValue {
@@ -42,11 +43,11 @@ const defaultBundle: PublicConfigBundle = {
     ai: {},
     ads: {},
     ranking: {},
-    distance: {},
     identity_verification: {},
     aura: {},
     safety: {},
   },
+  verification: { ...DEFAULT_VERIFICATION_POLICY },
 };
 
 const ConfigBundleContext = createContext<ConfigBundleContextValue | undefined>(undefined);

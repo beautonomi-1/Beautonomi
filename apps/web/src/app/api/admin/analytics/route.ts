@@ -9,7 +9,7 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
-import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
+import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 import { eachUtcDay } from "@/lib/reports/constants";
 
@@ -284,6 +284,28 @@ export async function GET(request: NextRequest) {
       }));
     };
 
+    const getLedgerTotals = async () => {
+      try {
+        const rows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+          start: startDate.toISOString(),
+          end: now.toISOString(),
+        });
+        const agg = aggregateFinanceLedgerRows(rows);
+        return {
+          gateway_fees_total: gatewayFeesTotalFromAggregate(agg),
+          terminal_revenue: agg.terminal_revenue_gross,
+          terminal_gateway_fees: agg.terminal_gateway_fees,
+        };
+      } catch (e) {
+        console.error("Error fetching ledger totals for analytics:", e);
+        return {
+          gateway_fees_total: 0,
+          terminal_revenue: 0,
+          terminal_gateway_fees: 0,
+        };
+      }
+    };
+
     // Run all queries in parallel (users = customers only for growth chart)
     const [
       usersTimeSeries,
@@ -294,6 +316,7 @@ export async function GET(request: NextRequest) {
       bookingStatusBreakdown,
       topProviders,
       bookingsByChannel,
+      ledgerTotals,
     ] = await Promise.all([
       getDailyTimeSeries("users", "created_at"),
       getDailyTimeSeries("providers", "created_at"),
@@ -303,6 +326,7 @@ export async function GET(request: NextRequest) {
       getBookingStatusBreakdown(),
       getTopProviders(),
       getBookingsByChannel(),
+      getLedgerTotals(),
     ]);
 
     return successResponse({
@@ -320,6 +344,11 @@ export async function GET(request: NextRequest) {
       },
       bookingsByChannel,
       topProviders,
+      gateway_fees_total: ledgerTotals.gateway_fees_total,
+      terminal_revenue: ledgerTotals.terminal_revenue,
+      terminal_gateway_fees: ledgerTotals.terminal_gateway_fees,
+      financeNote:
+        "Gateway and terminal totals use the same ledger aggregate as Finance overview. Fee reconciliations auto-generate daily.",
       channelBasisNote:
         "Bookings use scheduled_at in the selected period (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not revenue.",
     });

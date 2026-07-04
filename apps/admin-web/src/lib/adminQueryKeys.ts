@@ -180,8 +180,12 @@ export const adminQueryKeys = {
     configs: (q: string) => [...adminQueryKeys.fees.all(), "configs", q] as const,
     adjustmentsList: (filters: { page: number; limit: number }) =>
       [...adminQueryKeys.fees.all(), "adjustments", filters] as const,
-    reconciliationsList: (filters: { page: number; limit: number }) =>
-      [...adminQueryKeys.fees.all(), "reconciliations", filters] as const,
+    reconciliationsList: (filters: {
+      page: number;
+      limit: number;
+      start?: string | null;
+      end?: string | null;
+    }) => [...adminQueryKeys.fees.all(), "reconciliations", filters] as const,
   },
 
   billing: {
@@ -329,4 +333,5 @@ export const adminQueryKeys = {
   commercialTerminalCampaigns: ["admin", "commercial", "terminal-campaigns"] as const,
   commercialTerminalReporting: ["admin", "commercial", "terminal-reporting"] as const,
   commercialTerminalVendors: ["admin", "commercial", "terminal-vendors"] as const,
+  commercialTerminalCollectionLocations: ["admin", "commercial", "terminal-collection-locations"] as const,
 } as const;

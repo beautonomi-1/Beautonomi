@@ -20,8 +20,13 @@ type FlagSnapshot = {
   id: string;
   feature_key: string;
   enabled: boolean;
+  tenant_id?: string | null;
   metadata?: Record<string, unknown>;
 };
+
+function isGlobalFlag(flag: FlagSnapshot): boolean {
+  return flag.tenant_id == null;
+}
 
 type DiditHealthData = {
   api_key_set: boolean;
@@ -30,6 +35,7 @@ type DiditHealthData = {
   base_url: string;
   environment: string;
   env_complete: boolean;
+  webhook_url: string | null;
   last_webhook_received_at: string | null;
 };
 
@@ -43,40 +49,58 @@ const MODE_LABEL: Record<VerificationMode, string> = {
 const VERIFICATION_FLAGS = [
   {
     key: "verification.didit.enabled",
+    feature_name: "Didit identity verification",
+    category: "control_plane",
     label: "Didit identity verification (master switch)",
     description: "Master switch. Availability = this flag AND DIDIT_API_KEY + DIDIT_WORKFLOW_ID + DIDIT_WEBHOOK_SECRET env vars present.",
   },
   {
     key: "verification.manual.enabled",
+    feature_name: "Manual verification",
+    category: "control_plane",
     label: "Manual document upload",
     description: "Allows users to upload ID documents for admin review.",
   },
   {
     key: "provider_verification",
+    feature_name: "Provider Verification",
+    category: "provider",
     label: "Required for provider setup/go-live",
     description: "When on, providers must verify before going live. Auto-approve blocked for unverified providers.",
   },
   {
     key: "verification.didit.required_for_payouts",
+    feature_name: "Identity required for payouts",
+    category: "control_plane",
     label: "Required for payouts",
     description: "When on, POST /api/provider/payouts is blocked until provider has approved identity verification.",
   },
   {
     key: "verification.required_for_customers",
+    feature_name: "Customer first-booking verification",
+    category: "control_plane",
     label: "Required for first customer booking",
     description: "When on, a customer must verify identity before their first booking.",
   },
   {
     key: "verification.didit.cross_validate",
+    feature_name: "Didit cross-validation",
+    category: "control_plane",
     label: "Cross-validation (name/DOB check)",
     description: "Pass confirm-legal-details form values as expected_details to Didit. Mismatch routes to pending_review.",
   },
   {
     key: "verification.dedupe",
+    feature_name: "Duplicate identity detection",
+    category: "control_plane",
     label: "Duplicate identity detection",
     description: "Detect when the same verified identity is already approved on another account (fraud flag).",
   },
-];
+] as const;
+
+function getVerificationFlagDef(key: string) {
+  return VERIFICATION_FLAGS.find((f) => f.key === key);
+}
 
 export function CpIntegrationDiditPage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
@@ -98,13 +122,17 @@ export function CpIntegrationDiditPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [healthData, flagsData] = await Promise.all([
+      const [healthData, allFlags] = await Promise.all([
         adminApi.getJson<DiditHealthData>("/api/admin/control-plane/integrations/didit"),
-        adminApi.getJson<{ flags: FlagSnapshot[] }>("/api/admin/feature-flags?category=control_plane"),
+        adminApi.getJson<FlagSnapshot[]>("/api/admin/feature-flags"),
       ]);
       if (healthData) setHealth(healthData);
-      const allFlags = (flagsData as { flags?: FlagSnapshot[] })?.flags ?? [];
-      setFlags(allFlags.filter((f: FlagSnapshot) => VERIFICATION_FLAGS.some(vf => vf.key === f.feature_key)));
+      const flagList = Array.isArray(allFlags) ? allFlags : [];
+      setFlags(
+        flagList.filter(
+          (f) => isGlobalFlag(f) && VERIFICATION_FLAGS.some((vf) => vf.key === f.feature_key),
+        ),
+      );
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed to load configuration");
     } finally {
@@ -119,21 +147,28 @@ export function CpIntegrationDiditPage() {
   async function toggleFlag(key: string, value: boolean) {
     setFlagSaving(true);
     try {
-      const flag = flags.find(f => f.feature_key === key);
-      if (flag) {
+      const def = getVerificationFlagDef(key);
+      if (!def) throw new Error(`Unknown verification flag: ${key}`);
+
+      const flag = flags.find((f) => f.feature_key === key);
+      if (flag?.id && !flag.id.startsWith("new-")) {
         await adminApi.patchJson(`/api/admin/feature-flags/${flag.id}`, { enabled: value });
+        setFlags((prev) =>
+          prev.map((f) => (f.feature_key === key ? { ...f, enabled: value } : f)),
+        );
       } else {
-        await adminApi.postJson("/api/admin/feature-flags", {
+        const saved = await adminApi.postJson<FlagSnapshot>("/api/admin/feature-flags", {
           feature_key: key,
+          feature_name: def.feature_name,
+          description: def.description,
           enabled: value,
-          category: "control_plane",
+          category: def.category,
+        });
+        setFlags((prev) => {
+          const without = prev.filter((f) => f.feature_key !== key);
+          return [...without, { ...saved, feature_key: key, enabled: value }];
         });
       }
-      setFlags(prev => {
-        const exists = prev.find(f => f.feature_key === key);
-        if (exists) return prev.map(f => f.feature_key === key ? { ...f, enabled: value } : f);
-        return [...prev, { id: `new-${key}`, feature_key: key, enabled: value }];
-      });
       setMsg(`Saved: ${key} = ${value}`);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed to save flag");
@@ -158,8 +193,8 @@ export function CpIntegrationDiditPage() {
     }
   }
 
-  // Compute effective mode from flags
-  const diditEnabled = getFlag("verification.didit.enabled") && Boolean(health?.api_key_set) && Boolean(health?.workflow_id_set);
+  // Compute effective mode from flags + full env readiness (matches diditEnvPresent())
+  const diditEnabled = getFlag("verification.didit.enabled") && Boolean(health?.env_complete);
   const manualEnabled = getFlag("verification.manual.enabled");
   const effectiveMode: VerificationMode = diditEnabled && manualEnabled ? "both" : diditEnabled ? "didit" : manualEnabled ? "manual" : "off";
 
@@ -213,6 +248,9 @@ export function CpIntegrationDiditPage() {
               <CpField label="Environment">
                 <span className="text-sm">{health?.environment ?? "—"}</span>
               </CpField>
+              <CpField label="Webhook URL">
+                <span className="text-sm font-mono break-all">{health?.webhook_url ?? "—"}</span>
+              </CpField>
               <CpField label="Last webhook received">
                 <span className="text-sm">{health?.last_webhook_received_at ?? "Never"}</span>
               </CpField>
@@ -237,9 +275,9 @@ export function CpIntegrationDiditPage() {
               </span>
               <span className="text-sm text-muted-foreground">{MODE_LABEL[effectiveMode]}</span>
             </div>
-            {!health?.api_key_set && (
+            {!health?.env_complete && (
               <p className="mt-2 text-sm text-amber-700">
-                ⚠ DIDIT_API_KEY or DIDIT_WORKFLOW_ID not set — Didit will not be available even if the flag is on.
+                ⚠ DIDIT_API_KEY, DIDIT_WORKFLOW_ID, or DIDIT_WEBHOOK_SECRET not set — Didit will not be available even if the flag is on.
               </p>
             )}
           </AdminPanel>
@@ -294,7 +332,7 @@ export function CpIntegrationDiditPage() {
               )}
               {testResult && (
                 <div className={`rounded-md px-3 py-2 text-sm ${testResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
-                  {testResult.ok ? "✓ Test webhook received and processed" : `✗ ${testResult.message}`}
+                  {testResult.ok ? "✓ Test webhook sent and accepted" : `✗ ${testResult.message}`}
                 </div>
               )}
             </div>

@@ -1,33 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { DeviceEventEmitter, View, Text, Platform } from "react-native";
-import NetInfo from "@react-native-community/netinfo";
+import { useEffect, useState } from "react";
+import { View, Text, Platform } from "react-native";
 import { isScreenshotMode } from "@/config/public-env";
+import { subscribeConnectivity } from "@/lib/connectivity";
 
 /**
  * Offline indicator bar that appears at the top of the screen when the device
  * loses network connectivity. Automatically hides when connectivity is restored.
  *
- * When connectivity returns it emits `beautonomi:network:recover` so all active
- * `useApi` hooks can silently refresh stale data without the user tapping Retry.
+ * Uses debounced NetInfo from `connectivity.ts` so iOS resume radio wake-up
+ * does not flash a false "No internet connection" banner.
  */
 export function OfflineBar() {
   const [isOffline, setIsOffline] = useState(false);
-  const wasOfflineRef = useRef(false);
   const screenshot = isScreenshotMode();
 
   useEffect(() => {
     if (screenshot) return;
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      const offline = !(state.isConnected && state.isInternetReachable !== false);
-      setIsOffline(offline);
-      if (wasOfflineRef.current && !offline) {
-        // Came back online — tell all data hooks to re-fetch stale entries.
-        DeviceEventEmitter.emit("beautonomi:network:recover");
-      }
-      wasOfflineRef.current = offline;
-    });
-
-    return () => unsubscribe();
+    return subscribeConnectivity(setIsOffline);
   }, [screenshot]);
 
   if (screenshot) return null;

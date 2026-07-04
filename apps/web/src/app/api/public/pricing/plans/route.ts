@@ -64,6 +64,13 @@ export async function GET(request: Request) {
           !priceStr || Number.isNaN(numericPrice) || numericPrice === 0 || /free/i.test(String(plan.price ?? ""));
         const isFree = isFreeByPrice && !hasAnyPaystackCode;
 
+        const available_billing_periods: ("monthly" | "yearly")[] = [];
+        if (plan.paystack_plan_code_monthly) available_billing_periods.push("monthly");
+        if (plan.paystack_plan_code_yearly) available_billing_periods.push("yearly");
+        if (!isFree && available_billing_periods.length === 0) {
+          available_billing_periods.push("monthly");
+        }
+
         return {
           id: plan.id,
           name: plan.name,
@@ -77,6 +84,7 @@ export async function GET(request: Request) {
           // §Provider-launch (2026-05): expose free/paid so onboarding plan
           // step can render badges + copy without re-deriving the rule.
           is_free: isFree,
+          available_billing_periods,
         };
       }),
     );

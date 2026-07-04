@@ -1671,11 +1671,7 @@ export async function PATCH(
         // else-chain below so they always run, regardless of whether the
         // caller also moved `scheduled_at` in the same PATCH body.
         if (dbStatus === "in_progress" && previousStatus !== "in_progress") {
-          const durationMinutes =
-            typeof (currentBooking as { duration_minutes?: number | null }).duration_minutes === "number"
-              ? ((currentBooking as { duration_minutes?: number | null }).duration_minutes as number)
-              : null;
-          await sendServiceStartedNotification(id, durationMinutes);
+      await sendServiceStartedNotification(id);
         } else if (dbStatus === "completed" && previousStatus !== "completed") {
           await sendServiceCompletedNotification(id);
         }

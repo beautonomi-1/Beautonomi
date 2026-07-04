@@ -103,6 +103,13 @@ export function TerminalInsightsPage() {
     navigate(`${location.pathname}?${next}`);
   }
 
+  function setPage(nextPage: number) {
+    const next = new URLSearchParams(location.search);
+    if (nextPage <= 1) next.delete("page");
+    else next.set("page", String(nextPage));
+    navigate(`${location.pathname}?${next}`);
+  }
+
   if (denied) return denied;
   if (isLoading) return <AdminPageSkeleton />;
   if (isError) {
@@ -114,13 +121,46 @@ export function TerminalInsightsPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  async function exportCsv() {
+    try {
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("per_page", "500");
+      if (ownershipFilter) params.set("terminal_ownership_status", ownershipFilter);
+      if (interestFilter) params.set("interested_in_platform_terminal", interestFilter);
+      if (providerFilter) params.set("terminal_provider", providerFilter);
+      const batch = await adminApi.getJson<InsightsResponse>(`/api/admin/commercial/terminal-insights?${params}`);
+      const rows = batch?.items ?? [];
+      const header = ["Provider", "Ownership", "Terminal provider", "Count", "Interest", "Source", "Updated"];
+      const lines = rows.map((item) => [
+        item.providers?.business_name ?? item.provider_id,
+        item.terminal_ownership_status ?? "",
+        item.terminal_provider ?? "",
+        item.terminal_count_range ?? "",
+        item.interested_in_platform_terminal ?? "",
+        item.source ?? "",
+        item.updated_at ? new Date(item.updated_at).toISOString() : "",
+      ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","));
+      const csv = [header.join(","), ...lines].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `terminal-insights-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent — user can retry
+    }
+  }
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Terminal Insights"
         description={`${total.toLocaleString()} provider terminal profile${total !== 1 ? "s" : ""} captured`}
         actions={
-          <button className={adminToolbarButtonClass()}>
+          <button type="button" className={adminToolbarButtonClass()} onClick={() => void exportCsv()}>
             <Download className="h-4 w-4" />
             Export
           </button>
@@ -237,14 +277,14 @@ export function TerminalInsightsPage() {
             <div className="flex gap-2">
               <button
                 disabled={page <= 1}
-                onClick={() => setFilter("page", String(page - 1))}
+                onClick={() => setPage(page - 1)}
                 className="rounded px-3 py-1 text-sm border border-gray-200 disabled:opacity-40"
               >
                 Prev
               </button>
               <button
                 disabled={page >= totalPages}
-                onClick={() => setFilter("page", String(page + 1))}
+                onClick={() => setPage(page + 1)}
                 className="rounded px-3 py-1 text-sm border border-gray-200 disabled:opacity-40"
               >
                 Next

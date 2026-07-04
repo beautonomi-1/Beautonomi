@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -65,6 +65,10 @@ export function WizardChrome() {
     submitLabel,
     submitBusyLabel,
   } = useOnboardingWizard();
+
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [currentStep]);
 
   if (loadingDraft) {
     return (
@@ -220,6 +224,7 @@ export function WizardChrome() {
             ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
+            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
             showsVerticalScrollIndicator={false}
           >
             <OnboardingStepBody />

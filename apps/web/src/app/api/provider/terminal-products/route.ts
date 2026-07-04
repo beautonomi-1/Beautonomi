@@ -1,7 +1,6 @@
 /**
  * GET /api/provider/terminal-products
- * Provider-facing catalog of active terminal products.
- * Gated by terminal_product_catalog_enabled.
+ * Provider-facing catalog of active terminal products with checkout eligibility.
  */
 
 import { NextRequest } from "next/server";
@@ -16,6 +15,7 @@ import {
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { getTerminalCheckoutEligibility } from "@/lib/terminal/terminal-checkout-eligibility";
 
 function getServiceClient() {
   return createClient(
@@ -53,7 +53,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("terminal_products")
-      .select("id, name, vendor, model, description, image_url, device_type, currency, upfront_price, monthly_price, rental_price, subscription_plan_eligible, accounting_model, stock_status, fulfillment_type")
+      .select(
+        "id, name, vendor, model, description, image_url, device_type, currency, upfront_price, monthly_price, rental_price, subscription_plan_eligible, accounting_model, stock_status, fulfillment_type, product_code, sku, requires_integration_setup, integration_vendor_slug",
+      )
       .eq("active", true)
       .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .order("display_order", { ascending: true });
@@ -62,7 +64,23 @@ export async function GET(request: NextRequest) {
       return errorResponse("Failed to load products", "LOAD_ERROR", 500, error);
     }
 
-    return successResponse({ products: data ?? [] });
+    const products = await Promise.all(
+      (data ?? []).map(async (product) => {
+        const eligibility = await getTerminalCheckoutEligibility(
+          supabaseAdmin,
+          providerId,
+          product as Parameters<typeof getTerminalCheckoutEligibility>[2],
+          tenantId,
+        );
+        return {
+          ...product,
+          checkout_options: eligibility.options,
+          subscription_bundle: eligibility.bundle,
+        };
+      }),
+    );
+
+    return successResponse({ products });
   } catch (error) {
     return handleApiError(error, "Failed to load terminal products");
   }

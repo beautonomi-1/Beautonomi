@@ -4,6 +4,7 @@ import {
   getCachedConfigBundle,
   clearConfigBundleCache,
   DEFAULT_AUTH,
+  DEFAULT_VERIFICATION_POLICY,
   type PublicConfigBundle,
 } from "@/lib/config-bundle";
 
@@ -42,6 +43,7 @@ const defaultBundle: PublicConfigBundle = {
     aura: {},
     safety: {},
   },
+  verification: { ...DEFAULT_VERIFICATION_POLICY },
 };
 
 const ConfigBundleContext = createContext<ConfigBundleContextValue | undefined>(undefined);

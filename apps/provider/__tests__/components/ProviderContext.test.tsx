@@ -32,9 +32,11 @@ jest.mock("@/lib/active-provider-api-hint", () => ({
 jest.mock("@/lib/sentry", () => ({
   addBreadcrumb: jest.fn(),
   captureError: jest.fn(),
+  captureApiFailure: jest.fn(),
 }));
 
 import { ProviderProvider, useProvider } from "@/providers/ProviderContext";
+import { captureApiFailure } from "@/lib/sentry";
 
 function Probe() {
   const { role, profileLoadError, provider, refresh } = useProvider();
@@ -145,6 +147,46 @@ describe("ProviderProvider first-run profile loading", () => {
     fireEvent.press(screen.getByTestId("refresh"));
     await waitFor(() => expect(call).toBeGreaterThan(1));
     expect(screen.getByTestId("role").props.children).toBe("provider_owner");
+  });
+
+  it("reports resume timeouts to Sentry while keeping cached profile data", async () => {
+    let call = 0;
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === "/api/provider/profile") {
+        call += 1;
+        if (call === 1) {
+          return Promise.resolve({
+            data: {
+              id: "prov-1",
+              business_name: "Test Salon",
+              business_type: "salon",
+              email: "a@test.com",
+              phone: "+10000000000",
+              avatar_url: null,
+              locations: [],
+            },
+          });
+        }
+        return Promise.resolve({
+          error: {
+            message: "Request timed out. Please check your internet connection and try again.",
+            code: "TIMEOUT",
+          },
+        });
+      }
+      if (path === "/api/me/role") {
+        return Promise.resolve({ data: { role: "provider_owner" } });
+      }
+      return Promise.resolve({ data: null });
+    });
+
+    const screen = renderProvider();
+    await waitFor(() => expect(screen.getByTestId("provider").props.children).toBe("prov-1"));
+
+    fireEvent.press(screen.getByTestId("refresh"));
+    await waitFor(() => expect(captureApiFailure).toHaveBeenCalled());
+    expect(screen.getByTestId("provider").props.children).toBe("prov-1");
+    expect(screen.getByTestId("error").props.children).toBe("none");
   });
 
   it("broadcasts PROVIDER_ROLE_CHANGED_EVENT so root-level consumers (push registration) can react", async () => {

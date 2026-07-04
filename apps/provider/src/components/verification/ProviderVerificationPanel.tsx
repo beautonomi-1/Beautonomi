@@ -32,6 +32,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
+import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 
 export type NormalizedVerificationStatus =
   | "not_started" | "session_created" | "in_progress" | "pending_review"
@@ -223,10 +224,15 @@ export function ProviderVerificationPanel({
     setLegalDetails, validateAndGetErrors, startPolling, refresh: refreshStatus,
   } = useIdentityVerification("provider");
 
-  // Legacy status endpoint for manual available check
+  // Policy + availability from the canonical verification status endpoint.
+  const env = bundle?.meta?.env ?? "production";
   const { data: legacyStatus, loading, error, refresh: refreshLegacy } = useApi<{
-    didit_available?: boolean; manual_available?: boolean; verification_mode?: string; rejection_reason?: string | null;
-  }>("/api/provider/identity-verification/status");
+    didit_available?: boolean;
+    manual_available?: boolean;
+    verification_mode?: string;
+    rejection_reason?: string | null;
+    required_for_providers?: boolean;
+  }>(`/api/provider/verification/status?environment=${encodeURIComponent(env)}`);
 
   useFocusEffect(
     useCallback(() => {
@@ -241,10 +247,13 @@ export function ProviderVerificationPanel({
     setRefreshing(false);
   }, [refreshStatus, refreshLegacy]);
 
-  const diditAvailable = (legacyStatus as { didit_available?: boolean } | undefined)?.didit_available !== false;
-  const manualAvailable = (legacyStatus as { manual_available?: boolean } | undefined)?.manual_available !== false;
-  const verificationOff = (legacyStatus as { verification_mode?: string } | undefined)?.verification_mode === "off";
-  const rejectionReason = (legacyStatus as { rejection_reason?: string | null } | undefined)?.rejection_reason;
+  const diditAvailable = legacyStatus?.didit_available === true;
+  const manualAvailable = legacyStatus?.manual_available !== false;
+  const verificationOff = legacyStatus?.verification_mode === "off";
+  const rejectionReason = legacyStatus?.rejection_reason;
+  const verificationRequired =
+    legacyStatus?.required_for_providers ??
+    verificationPolicyFromBundle(bundle).required_for_providers;
 
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
   const isApproved      = status === "approved";
@@ -377,7 +386,9 @@ export function ProviderVerificationPanel({
                   ? "Verification was not approved. Please try again."
                   : status === "expired" || status === "abandoned"
                     ? "Your session ended. Start a new verification."
-                    : "Verify your identity using your government ID or passport."}
+                    : verificationRequired
+                      ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
+                      : "Optional — verify with your government ID or passport to earn the Verified trust badge."}
           </Text>
         </View>
 

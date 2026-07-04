@@ -68,6 +68,26 @@ describe("onboarding-service-adapter", () => {
     expect(mobile.supportsAtHome).toBe(true);
   });
 
+  it("allows salon providers to enable at-home availability when toggled on", () => {
+    const form = defaultOnboardingFormState("salon");
+    form.name = "House call trim";
+    form.supportsAtHome = true;
+    form.pricingOptions = [
+      { id: "p1", name: "Standard", price: 350, duration: 45, priceType: "fixed" },
+    ];
+
+    const { service, error } = formStateToOnboardingService({
+      form,
+      categoryName: "Hair",
+      currency: "ZAR",
+      businessType: "salon",
+    });
+
+    expect(error).toBeNull();
+    expect(service?.supports_at_home).toBe(true);
+    expect(service?.supports_at_salon).toBe(true);
+  });
+
   it("preserves edited price when round-tripping through form state", () => {
     const service: OnboardingService = {
       title: "Trim",

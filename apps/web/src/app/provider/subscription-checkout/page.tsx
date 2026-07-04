@@ -283,24 +283,63 @@ export default function SubscriptionCheckoutPage() {
         return;
       }
 
-      const res = await fetcher.post<{
-        data?: { authorization_url?: string };
-        error?: { message?: string; code?: string };
-      }>("/api/provider/subscriptions/create", {
-        plan_id: planId,
+      const subscriptionPlanId = plan.subscription_plan_id;
+      if (!subscriptionPlanId) {
+        setError("This plan is not linked to a subscription yet. Contact support or choose another plan.");
+        return;
+      }
+
+      const upRes = await fetcher.post<{
+        data?: {
+          is_free?: boolean;
+          subscription_id?: string;
+          requires_payment?: boolean;
+          authorization_url?: string;
+          payment_url?: string;
+        };
+      }>("/api/provider/subscription/upgrade", {
+        plan_id: subscriptionPlanId,
         billing_period: billingPeriod,
-        ...(inApp && { in_app: true }),
-        ...(returnToDashboard && { return_to_dashboard: true }),
       });
-      const data = (res as any)?.data;
-      const authUrl = data?.authorization_url;
+      const upData = (upRes as { data?: Record<string, unknown> })?.data;
+      if (upData?.subscription_id && !upData?.requires_payment) {
+        toast.success("Subscription updated!");
+        if (inApp) {
+          const dashboardReturnParam = returnToDashboard ? "&return_to=dashboard" : "";
+          router.push(`/provider/subscription?payment_success=true&in_app=1${dashboardReturnParam}`);
+          return;
+        }
+        if (returnToDashboard) {
+          router.replace("/provider/dashboard?subscription_success=1");
+          return;
+        }
+        router.push("/provider/subscription");
+        return;
+      }
+
+      let authUrl =
+        (typeof upData?.authorization_url === "string" ? upData.authorization_url : null) ??
+        (typeof upData?.payment_url === "string" ? upData.payment_url : null);
+
+      if (!authUrl) {
+        const initRes = await fetcher.post<{
+          data?: { authorization_url?: string; payment_url?: string };
+        }>("/api/provider/subscription/initialize-payment", {
+          plan_id: subscriptionPlanId,
+          billing_period: billingPeriod,
+          ...(inApp && { in_app: true }),
+        });
+        const initData = (initRes as { data?: Record<string, unknown> })?.data;
+        authUrl =
+          (typeof initData?.authorization_url === "string" ? initData.authorization_url : null) ??
+          (typeof initData?.payment_url === "string" ? initData.payment_url : null);
+      }
+
       if (authUrl) {
         toast.success("Redirecting to complete payment…");
         window.location.href = authUrl;
         return;
       }
-      // Server returned success envelope but no URL — shouldn't happen after the
-      // initialize-payment 502 fix, but guard here in case of an unexpected response shape.
       setError("Payment gateway did not return a checkout URL. Please try again.");
     } catch (err) {
       const fetchErr = err instanceof FetchError ? err : null;

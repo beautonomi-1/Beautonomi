@@ -30,6 +30,10 @@ interface AnalyticsPayload {
   };
   bookingsByChannel?: Array<{ channel: string; count: number; percentage?: number }>;
   topProviders?: Array<{ provider_id: string; business_name: string; revenue: number }>;
+  gateway_fees_total?: number;
+  terminal_revenue?: number;
+  terminal_gateway_fees?: number;
+  financeNote?: string;
 }
 
 function Sparkline({ series, valueKey }: { series: Point[]; valueKey: "count" | "revenue" }) {
@@ -143,6 +147,44 @@ export function AnalyticsPage() {
                     hint="Daily net on ledger (|net| for pay, −|net| for refund)"
                   />
                 </div>
+              </section>
+
+              <section>
+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Gateway &amp; terminal commerce
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <AdminMetricCard
+                    variant="slate"
+                    label="Gateway fees (total)"
+                    value={formatAdminCurrency(data?.gateway_fees_total ?? 0)}
+                    hint="Same total as Finance overview gateway fees breakdown"
+                  />
+                  <AdminMetricCard
+                    variant="emerald"
+                    label="Terminal sales (gross)"
+                    value={formatAdminCurrency(data?.terminal_revenue ?? 0)}
+                    hint="Ledger terminal_* revenue — see Finance overview and Terminal orders"
+                  />
+                  <AdminMetricCard
+                    variant="violet"
+                    label="Terminal gateway fees"
+                    value={formatAdminCurrency(data?.terminal_gateway_fees ?? 0)}
+                    hint="Paystack fees on terminal commerce ledger rows"
+                  />
+                </div>
+                {data?.financeNote ? (
+                  <p className="mt-3 text-xs text-gray-500">
+                    {data.financeNote}{" "}
+                    <Link to={adminSpaTo("/admin/finance")} className="font-medium underline">
+                      Finance
+                    </Link>
+                    {" · "}
+                    <Link to={adminSpaTo("/admin/fees?tab=reconciliations")} className="font-medium underline">
+                      Fee reconciliations
+                    </Link>
+                  </p>
+                ) : null}
               </section>
 
               <div className="grid gap-6 lg:grid-cols-2">

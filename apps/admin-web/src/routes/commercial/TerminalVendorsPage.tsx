@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle, ExternalLink, Settings } from "lucide-react";
+import { CheckCircle2, XCircle, ExternalLink, Settings, Plus } from "lucide-react";
 import { ADMIN_SECTION_COMMERCIAL } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -12,6 +12,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import {
   AdminDataTable,
@@ -53,6 +54,14 @@ export function TerminalVendorsPage() {
 
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<VendorConfig> | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    vendor: "",
+    display_name: "",
+    description: "",
+    credential_modes: ["api_key"] as string[],
+    enabled: false,
+  });
 
   // ── List query ──────────────────────────────────────────────────────────────
   const {
@@ -105,6 +114,24 @@ export function TerminalVendorsPage() {
       adminToast.error(err.message || "Failed to save vendor config"),
   });
 
+  const createMut = useMutation({
+    mutationFn: () =>
+      adminApi.postJson("/api/admin/commercial/terminal-vendors", {
+        vendor: addForm.vendor.trim().toLowerCase(),
+        display_name: addForm.display_name.trim(),
+        description: addForm.description.trim() || null,
+        credential_modes: addForm.credential_modes,
+        enabled: addForm.enabled,
+      }),
+    onSuccess: () => {
+      adminToast.success("Vendor created");
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.commercialTerminalVendors });
+      setAddOpen(false);
+      setAddForm({ vendor: "", display_name: "", description: "", credential_modes: ["api_key"], enabled: false });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to create vendor"),
+  });
+
   // ── Auth / loading guards ───────────────────────────────────────────────────
   if (denied) return denied;
   if (isLoading) return <AdminPageSkeleton />;
@@ -138,6 +165,16 @@ export function TerminalVendorsPage() {
       <AdminPageHeader
         title="Terminal Vendors"
         description="Configure which card machine and payment terminal vendors providers can integrate. Enable a vendor and set its credentials — providers connect via their Settings → Sales page."
+        actions={
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            <Plus className="h-4 w-4" />
+            Add vendor
+          </button>
+        }
       />
 
       {/* ── Vendor catalog table ─────────────────────────────────────────── */}
@@ -384,6 +421,57 @@ export function TerminalVendorsPage() {
           </div>
         </AdminPanel>
       )}
+
+      <AdminModal
+        open={addOpen}
+        title="Add terminal vendor"
+        onClose={() => setAddOpen(false)}
+        size="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => setAddOpen(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={createMut.isPending || !addForm.vendor.trim() || !addForm.display_name.trim()}
+              onClick={() => createMut.mutate()}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            >
+              {createMut.isPending ? "Creating…" : "Create vendor"}
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Vendor key (snake_case)</label>
+            <input
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono"
+              value={addForm.vendor}
+              onChange={(e) => setAddForm((f) => ({ ...f, vendor: e.target.value }))}
+              placeholder="my_vendor"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Display name</label>
+            <input
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              value={addForm.display_name}
+              onChange={(e) => setAddForm((f) => ({ ...f, display_name: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+            <textarea
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              rows={2}
+              value={addForm.description}
+              onChange={(e) => setAddForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+        </div>
+      </AdminModal>
     </div>
   );
 }

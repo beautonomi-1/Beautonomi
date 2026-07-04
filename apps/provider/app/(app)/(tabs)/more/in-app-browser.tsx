@@ -21,9 +21,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
+  const verificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
   const params = useLocalSearchParams<{ url?: string; title?: string; returnTo?: string }>();
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
   const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
@@ -106,7 +110,9 @@ export default function InAppBrowserScreen() {
           status: "success",
           title: returnToDashboard ? "You're ready to launch" : "Subscription payment complete",
           message: returnToVerify
-            ? "Your plan payment was confirmed. Next, verify your identity (optional) or skip to your dashboard."
+            ? verificationRequired
+              ? "Your plan payment was confirmed. Next, verify your identity to go live and earn the Verified trust badge."
+              : "Your plan payment was confirmed. Next, verify your identity (optional) or skip to your dashboard."
             : returnToDashboard
               ? "Your plan payment was confirmed. Continue to your provider dashboard."
               : "Your plan payment was confirmed. Return to Subscription to see your active plan.",
@@ -147,7 +153,7 @@ export default function InAppBrowserScreen() {
     } catch {
       // ignore non-JSON messages
     }
-  }, [screenReturnTo]);
+  }, [screenReturnTo, verificationRequired]);
 
   const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
 

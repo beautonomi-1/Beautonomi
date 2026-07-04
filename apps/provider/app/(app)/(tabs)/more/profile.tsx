@@ -16,8 +16,9 @@ import {
   Modal,
   FlatList,
   useWindowDimensions,
+  AppState,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -48,7 +49,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
 import { appendFormDataFileNative, countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -107,6 +108,7 @@ export default function ProfileScreen() {
   const [savedPhoneForDisplay, setSavedPhoneForDisplay] = useState("");
   const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
+  const canUseQuietRefresh = useRef(false);
   const { pickWithOptions } = useImagePicker();
 
   const tenantCountryFallback = useCallback(
@@ -241,14 +243,20 @@ export default function ProfileScreen() {
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const quiet = canUseQuietRefresh.current;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [profileRes, subscriptionRes] = await Promise.all([
         api.get<Record<string, unknown>>("/api/me/profile"),
         api.get<Record<string, unknown> | null>("/api/provider/subscription").catch(() => ({ data: null, error: null })),
       ]);
       if (profileRes.error || !profileRes.data) {
+        const code = profileRes.error ? getApiErrorCode(profileRes.error) : null;
+        const transient = code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+        if (quiet || transient) return;
         setError(
           typeof profileRes.error === "object" && profileRes.error && "message" in profileRes.error
             ? String((profileRes.error as { message: string }).message)
@@ -323,16 +331,40 @@ export default function ProfileScreen() {
         })(),
         plan: planName,
       });
+      canUseQuietRefresh.current = true;
+      if (!quiet) setError(null);
     } catch (e) {
+      const code = getApiErrorCode(e);
+      const transient = code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+      if (quiet || transient) return;
       setError(e instanceof Error ? e.message : "Failed to load");
       setProfile(null);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    canUseQuietRefresh.current = false;
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (canUseQuietRefresh.current) void load();
+    }, [load]),
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active" && canUseQuietRefresh.current) {
+        void load();
+      }
+    });
+    return () => sub.remove();
   }, [load]);
 
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === phoneCountryCode);

@@ -7,6 +7,7 @@ import type { ApiError } from "@beautonomi/types";
 import type { ApiClientRequestBody } from "@beautonomi/api";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { captureApiFailure } from "@/lib/sentry";
 import { getRuntimeMarketHost } from "@/config/public-env";
 import {
   responseCache,
@@ -22,7 +23,22 @@ import { useAuth } from "@/providers/AuthProvider";
 export { clearApiCache };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
-const DEFAULT_STALE_TIME_MS = 20000;
+/** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
+const DEFAULT_STALE_TIME_MS = 5 * 60 * 1000;
+const RESUME_REFETCH_JITTER_BUCKETS = 16;
+const RESUME_REFETCH_JITTER_MS = 120;
+
+function isTransientFetchErrorCode(code: string | null | undefined): boolean {
+  return code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
+}
+
+function resumeRefetchJitterMs(cacheKey: string): number {
+  let hash = 0;
+  for (let i = 0; i < cacheKey.length; i += 1) {
+    hash = (hash + cacheKey.charCodeAt(i)) % RESUME_REFETCH_JITTER_BUCKETS;
+  }
+  return hash * RESUME_REFETCH_JITTER_MS;
+}
 
 interface CacheEntry<T> {
   data: T | null;
@@ -85,7 +101,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
       const now = Date.now();
       const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
-      if (cached && cached.expiresAt > now) {
+      if (!silent && cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
         setError(cached.error);
@@ -97,7 +113,13 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       // Only show the loading spinner when we don't already have usable data.
       const hasExistingData = cached?.data != null;
       if (silent && hasExistingData) {
+        if (!mountedRef.current || id !== requestIdRef.current) return;
+        setData(cached!.data);
+        setError(cached!.error);
+        setErrorCode(cached!.errorCode ?? null);
         // Background refresh — keep showing existing data, no spinner.
+      } else if (silent && cached && cached.expiresAt > now) {
+        // Warm cache but empty payload — nothing to show while refreshing.
       } else {
         setLoading(true);
         setError(null);
@@ -140,10 +162,19 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       }
       if (!mountedRef.current || id !== requestIdRef.current) return;
 
-      // Request was deliberately aborted because the app went to the background.
-      // Don't surface an error or write a cache entry — leave the entry stale so
-      // the focus/recover listener refetches fresh data on the next foreground.
-      if (payload.errorCode === "CANCELLED") return;
+      // Request was deliberately aborted or congested on resume — don't surface
+      // an error when we can keep showing cached data.
+      if (isTransientFetchErrorCode(payload.errorCode)) {
+        const existing = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+        const uiHandled = silent || existing?.data != null;
+        captureApiFailure(
+          new Error(payload.error ?? "Request failed"),
+          { area: "useApi", path, code: payload.errorCode },
+          { uiHandled },
+        );
+        if (uiHandled) return;
+        return;
+      }
 
       // §Provider-launch (audit 2026-04): preserve last-known-good data on
       // refresh failure.  Screens like the calendar otherwise clear on any
@@ -181,7 +212,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       pruneResponseCache(Date.now());
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
-      // Same "keep stale data" rule for thrown errors (timeout / network).
+      const existing = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      if (silent || existing?.data != null) return;
       setError(getApiErrorMessage(err, "Request failed"));
       setErrorCode(null);
     } finally {
@@ -198,15 +230,17 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [fetchData]);
 
   // Silent background refresh on app focus or network reconnection.
-  // Skips the loading spinner if data is already present — mirrors how
-  // WhatsApp and Airbnb keep their feeds always up-to-date on resume.
+  // Always refetch on resume (stale-while-revalidate) — keep showing cached data
+  // until fresh data arrives, like WhatsApp/Airbnb.
   useEffect(() => {
     if (!enabled) return;
     const onFocusOrRecover = () => {
       if (!mountedRef.current) return;
-      const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
-      const isStale = !cached || cached.expiresAt <= Date.now();
-      if (isStale) void fetchData(true);
+      const jitterMs = resumeRefetchJitterMs(cacheKey);
+      setTimeout(() => {
+        if (!mountedRef.current) return;
+        void fetchData(true);
+      }, jitterMs);
     };
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);

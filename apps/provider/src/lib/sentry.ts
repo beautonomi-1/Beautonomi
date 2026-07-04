@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 import { isDeviceOffline } from "@/lib/connectivity";
-import { isTransientApiFailure } from "@/lib/api-error";
+import { getApiErrorCode, getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 
 let sentryRecording = false;
 
@@ -101,19 +101,58 @@ export function clearSentryUser() {
 
 export function captureError(error: unknown, context?: Record<string, unknown>) {
   if (!isSentryEnabled()) return;
-  // Don't report failures that are just the device being offline — the user is
-  // already told via the OfflineBar and the request retries on reconnect. We
-  // still report transient-looking failures when ONLINE, since "could not reach
-  // the server" can then indicate a real outage or misconfigured API URL.
-  if (isDeviceOffline() && isTransientApiFailure(error)) return;
+  const message = getApiErrorMessage(error, "Unknown error");
+  // Offline + transient still lands in Sentry as a warning so sessions stay
+  // observable; only skip the heavier exception capture in that case.
+  if (isDeviceOffline() && isTransientApiFailure(error)) {
+    Sentry.captureMessage(message, {
+      level: "warning",
+      extra: context,
+      tags: { failure_kind: "offline_transient" },
+    });
+    return;
+  }
   if (context) {
     Sentry.setContext("extra", context);
   }
   if (error instanceof Error) {
     Sentry.captureException(error);
   } else {
-    Sentry.captureMessage(String(error));
+    Sentry.captureMessage(message);
   }
+}
+
+/**
+ * Record API failures in Sentry without coupling observability to UI blocking.
+ * Always leaves a breadcrumb; emits an exception unless the failure is a
+ * deliberate background cancel (`CANCELLED`).
+ */
+export function captureApiFailure(
+  error: unknown,
+  context?: Record<string, unknown>,
+  options?: { uiHandled?: boolean },
+): void {
+  if (!isSentryEnabled()) return;
+
+  const code = getApiErrorCode(error) ?? (typeof context?.code === "string" ? context.code : undefined);
+  const message = getApiErrorMessage(error, "API request failed");
+  const uiHandled = options?.uiHandled ?? false;
+
+  addBreadcrumb(message, "api_failure", {
+    ...context,
+    code,
+    uiHandled,
+    offline: isDeviceOffline(),
+    transient: isTransientApiFailure(error),
+  });
+
+  if (code === "CANCELLED") return;
+
+  captureError(error instanceof Error ? error : new Error(message), {
+    ...context,
+    code,
+    uiHandled,
+  });
 }
 
 export function captureAuthMessage(
