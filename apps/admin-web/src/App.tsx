@@ -119,6 +119,13 @@ export default function App() {
           <Route path="provider-ops/duplicates" element={<P.ProviderOpsDuplicatesPage />} />
           <Route path="provider-ops/reports" element={<P.ProviderOpsReportsPage />} />
           <Route path="provider-ops/settings" element={<P.ProviderOpsSettingsPage />} />
+          {/* ── Commercial Operations ── */}
+          <Route path="commercial/terminal-insights" element={<P.TerminalInsightsPage />} />
+          <Route path="commercial/terminal-products" element={<P.TerminalProductsPage />} />
+          <Route path="commercial/terminal-orders" element={<P.TerminalOrdersPage />} />
+          <Route path="commercial/terminal-campaigns" element={<P.TerminalCampaignsPage />} />
+          <Route path="commercial/terminal-reporting" element={<P.TerminalReportingPage />} />
+          <Route path="commercial/terminal-vendors" element={<P.TerminalVendorsPage />} />
           <Route path="whatsapp/sessions" element={<P.WhatsAppSessionsPage />} />
           <Route path="whatsapp/templates" element={<P.WhatsAppTemplatesPage />} />
           <Route path="whatsapp/batches/:batchId" element={<P.WhatsAppBatchDetailPage />} />
@@ -144,6 +151,7 @@ export default function App() {
           <Route path="users" element={<P.UsersListPage />} />
           <Route path="verifications/:id" element={<P.VerificationDetailPage />} />
           <Route path="verifications" element={<P.VerificationsListPage />} />
+          <Route path="identity-trust/sessions" element={<P.VerificationSessionsPage />} />
           <Route path="audit-logs" element={<P.AuditLogsPage />} />
           <Route path="ecommerce/orders/:id" element={<P.ProductOrderDetailPage />} />
           <Route path="ecommerce/orders" element={<P.ProductOrdersPage />} />
@@ -211,7 +219,7 @@ export default function App() {
             <Route path="overview" element={<P.ControlPlaneOverviewPage />} />
             <Route path="feature-flags" element={<P.CpFeatureFlagsPage />} />
             <Route path="integrations" element={<P.CpIntegrationsHubPage />} />
-            <Route path="integrations/sumsub" element={<P.CpIntegrationSumsubPage />} />
+            <Route path="integrations/didit" element={<P.CpIntegrationDiditPage />} />
             <Route path="integrations/gemini" element={<P.CpIntegrationGeminiPage />} />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
             <Route path="integrations/wasender" element={<P.CpIntegrationWasenderPage />} />

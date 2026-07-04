@@ -30,7 +30,8 @@ export type ReceiptTokenKind =
   | "customer_order_receipt"
   | "provider_order_receipt"
   | "provider_ads_receipt"
-  | "provider_subscription_receipt";
+  | "provider_subscription_receipt"
+  | "provider_terminal_order_receipt";
 
 export interface ReceiptTokenPayload {
   kind: ReceiptTokenKind;
@@ -97,6 +98,57 @@ export function mintReceiptDownloadToken(
   const sig = signPayload(payload);
   const body = { ...payload, sig };
   return Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
+}
+
+/**
+ * Build an absolute, signed provider subscription receipt URL suitable for
+ * embedding in an email (no session available at webhook time). The token is
+ * bound to the finance transaction + the provider's user id and expires after
+ * `ttlDays` (default 90) — long enough that the emailed link stays useful, but
+ * still time-bound. Returns `null` when the signing secret or public origin is
+ * not configured (so callers can silently omit the link rather than throw).
+ */
+export function buildProviderSubscriptionReceiptUrl(input: {
+  financeTxId: string;
+  userId: string;
+  ttlDays?: number;
+}): string | null {
+  if (!hasReceiptDownloadSigningSecret()) return null;
+  const origin = resolveReceiptDownloadOrigin();
+  if (!origin) return null;
+  const ttlSeconds = Math.max(1, Math.floor(input.ttlDays ?? 90)) * 24 * 60 * 60;
+  const token = mintReceiptDownloadToken({
+    kind: "provider_subscription_receipt",
+    subjectId: input.financeTxId,
+    userId: input.userId,
+    ttlSeconds,
+  });
+  return `${origin}/api/provider/subscription/receipts/${encodeURIComponent(
+    input.financeTxId,
+  )}/pdf?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Build a signed terminal order receipt URL (for email or in-app download).
+ */
+export function buildProviderTerminalOrderReceiptUrl(input: {
+  terminalOrderId: string;
+  userId: string;
+  ttlDays?: number;
+}): string | null {
+  if (!hasReceiptDownloadSigningSecret()) return null;
+  const origin = resolveReceiptDownloadOrigin();
+  if (!origin) return null;
+  const ttlSeconds = Math.max(1, Math.floor(input.ttlDays ?? 90)) * 24 * 60 * 60;
+  const token = mintReceiptDownloadToken({
+    kind: "provider_terminal_order_receipt",
+    subjectId: input.terminalOrderId,
+    userId: input.userId,
+    ttlSeconds,
+  });
+  return `${origin}/api/provider/terminal-orders/${encodeURIComponent(
+    input.terminalOrderId,
+  )}/receipt/pdf?token=${encodeURIComponent(token)}`;
 }
 
 export function parseReceiptDownloadToken(

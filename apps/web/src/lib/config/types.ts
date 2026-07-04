@@ -133,18 +133,28 @@ export interface SafeDistanceModuleConfig {
   step_km?: number | null;
 }
 
+/** @deprecated Use SafeIdentityVerificationModuleConfig */
 export interface SafeSumsubModuleConfig {
   enabled: boolean;
   level_name?: string | null;
 }
 
+export interface SafeIdentityVerificationModuleConfig {
+  enabled: boolean;
+  provider: "didit" | "none";
+}
+
 export interface SafeVerificationPolicy {
-  mode: "off" | "manual" | "sumsub" | "both";
+  mode: "off" | "manual" | "didit" | "both";
+  /** @deprecated Always false after Didit migration. Use didit_enabled. */
   sumsub_enabled: boolean;
+  didit_enabled: boolean;
   manual_enabled: boolean;
   required_for_providers: boolean;
   required_for_payouts: boolean;
   required_for_customers: boolean;
+  cross_validate: boolean;
+  min_age: number;
 }
 
 export interface SafeAuraModuleConfig {
@@ -176,15 +186,16 @@ export interface PublicConfigBundle {
     ads: SafeAdsModuleConfig;
     ranking: SafeRankingModuleConfig;
     distance: SafeDistanceModuleConfig;
+    /** @deprecated Use identity_verification */
     sumsub: SafeSumsubModuleConfig;
+    identity_verification: SafeIdentityVerificationModuleConfig;
     aura: SafeAuraModuleConfig;
     safety: SafeSafetyModuleConfig;
   };
   /**
    * Tenant-aware verification policy snapshot.
-   * Clients should treat the per-request API (sumsub_available / manual_available
-   * from /api/me/verification) as authoritative; this bundle field is provided
-   * so cold-start screens can avoid an extra roundtrip.
+   * Clients should treat the per-request API (/api/me/identity-verification/status)
+   * as authoritative; this bundle field is provided for cold-start screens.
    */
   verification: SafeVerificationPolicy;
 }

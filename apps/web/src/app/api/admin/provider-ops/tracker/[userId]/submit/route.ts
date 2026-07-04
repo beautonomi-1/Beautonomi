@@ -91,7 +91,7 @@ export async function POST(
           (typeof targetUser.phone === "string" ? targetUser.phone : null) ||
           (draftData.owner_phone as string),
         is_verified: false,
-        yoco_machine: (draftData.yoco_machine as string) || null,
+        // yoco_machine removed — terminal data captured in provider_payment_terminal_profile
       })
       .select()
       .single();

@@ -299,10 +299,15 @@ export default function SubscriptionCheckoutPage() {
         window.location.href = authUrl;
         return;
       }
-      setError("Could not start payment. Please try again.");
+      // Server returned success envelope but no URL — shouldn't happen after the
+      // initialize-payment 502 fix, but guard here in case of an unexpected response shape.
+      setError("Payment gateway did not return a checkout URL. Please try again.");
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Checkout failed. Please try again.";
-      if (err instanceof FetchError && err.status === 401) {
+      const fetchErr = err instanceof FetchError ? err : null;
+      const serverCode = fetchErr?.code as string | undefined;
+      const serverMsg = fetchErr?.message;
+
+      if (fetchErr?.status === 401) {
         toast.error("Please sign in to complete your subscription.");
         const inAppParam = inApp ? "&in_app=1" : "";
         const dashboardReturnParam = returnToDashboard ? "&return_to=dashboard" : "";
@@ -310,15 +315,24 @@ export default function SubscriptionCheckoutPage() {
         router.push(`/?login=true&redirect=${encodeURIComponent(redirectPath)}`);
         return;
       }
-      if (err instanceof FetchError && err.status === 409) {
+      if (fetchErr?.status === 409) {
         toast.error("You already have an active subscription.");
         router.push("/provider/subscription");
         return;
       }
-      if (err instanceof FetchError && err.status === 404) {
+      if (fetchErr?.status === 404) {
         setError("Provider not found. Please complete onboarding first.");
         return;
       }
+      if (serverCode === "CONFIGURATION_ERROR") {
+        setError(serverMsg || "This plan isn't linked to Paystack yet. Contact support or choose another plan.");
+        return;
+      }
+      if (serverCode === "PAYSTACK_ERROR") {
+        setError(serverMsg || "Payment gateway error. Please try again shortly.");
+        return;
+      }
+      const msg = serverMsg || (err instanceof Error ? err.message : "Checkout failed. Please try again.");
       setError(msg);
       toast.error(msg);
     } finally {

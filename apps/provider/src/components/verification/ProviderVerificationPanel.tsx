@@ -1,26 +1,19 @@
 /**
- * Reusable provider identity-verification (KYC) panel.
+ * Reusable provider identity-verification (KYC) panel (Didit).
  *
- * Encapsulates the status badge, the SumSub "automated verification" launch
- * (when configured) and the manual document-upload fallback. Used by both the
- * settings screen (`more/settings/verification.tsx`) and the optional
- * onboarding identity step (`onboarding/verify-identity.tsx`) so behavior stays
- * identical in both places.
+ * Replaces the previous Sumsub-based panel. Encapsulates:
+ *   - Confirm-legal-details step (inline validation, provider-specific copy)
+ *   - Didit native SDK launch via @didit-protocol/sdk-react-native
+ *   - Manual document-upload fallback (when manual_available)
+ *   - All 10 normalized status states (3B UX blueprint)
+ *   - Optimistic "checking" after SDK return — status confirmed by webhook
  *
- * When SumSub is configured -> launches the native Sumsub SDK flow (camera +
- * liveness in-process, no WebView or external browser).
- * When SumSub is NOT configured -> manual document-upload form that posts to
- * /api/me/verification (same flow used by the customer identity screen).
+ * Route path is UNCHANGED so `finalize-onboarding.test.ts` contract holds.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useState, useRef, useEffect, type ReactNode } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  RefreshControl,
-  Alert,
-  TouchableOpacity,
-  ActivityIndicator,
+  View, Text, ScrollView, RefreshControl, Alert,
+  TouchableOpacity, ActivityIndicator, TextInput,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,7 +23,8 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { appendFormDataFileNative } from "@beautonomi/utils";
-import { launchSumsub } from "@/lib/sumsub/launchSumsub";
+import { launchDidit } from "@/lib/identity-verification/launchDidit";
+import { useIdentityVerification, type LegalDetails } from "@/lib/identity-verification/useIdentityVerification";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -39,36 +33,50 @@ import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 
-export type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
+export type NormalizedVerificationStatus =
+  | "not_started" | "session_created" | "in_progress" | "pending_review"
+  | "approved" | "rejected" | "expired" | "abandoned" | "requires_retry" | "errored";
 
-export interface VerificationStatusResponse {
-  status: VerificationStatus;
-  sumsub_available: boolean;
-  manual_available?: boolean;
-  verification_mode?: string;
-  sumsub_applicant_id?: string | null;
-  rejection_reason?: string | null;
-  manual_verification?: {
-    id: string;
-    status: string;
-    document_type: string;
-    submitted_at: string;
-    rejection_reason?: string | null;
-  } | null;
-  last_reviewed_at?: string | null;
-  updated_at?: string | null;
+// Keep legacy VerificationStatus alias for backward compat with `verify-identity.tsx`
+export type VerificationStatus = NormalizedVerificationStatus;
+
+export interface ProviderVerificationPanelProps {
+  footer?: ReactNode;
+  onStatusChange?: (status: NormalizedVerificationStatus) => void;
+  onApproved?: () => void;
 }
 
 const STATUS_CONFIG: Record<
-  VerificationStatus,
+  NormalizedVerificationStatus,
   { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }
 > = {
-  pending: { label: "Not started", icon: "time-outline", color: "#6b7280", bg: "bg-gray-100" },
-  in_progress: { label: "Under review", icon: "hourglass-outline", color: "#f59e0b", bg: "bg-amber-100" },
-  approved: { label: "Verified", icon: "checkmark-circle", color: "#22c55e", bg: "bg-green-100" },
-  rejected: { label: "Rejected", icon: "close-circle", color: "#ef4444", bg: "bg-red-100" },
-  reset: { label: "Reset", icon: "refresh-outline", color: "#6366f1", bg: "bg-indigo-100" },
+  not_started:    { label: "Not started",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
+  session_created:{ label: "Not started",      icon: "time-outline",           color: "#6b7280", bg: "bg-gray-100" },
+  in_progress:    { label: "In progress",      icon: "hourglass-outline",      color: "#f59e0b", bg: "bg-amber-100" },
+  pending_review: { label: "Under review",     icon: "hourglass-outline",      color: "#3b82f6", bg: "bg-blue-100" },
+  approved:       { label: "Verified",         icon: "checkmark-circle",       color: "#22c55e", bg: "bg-green-100" },
+  rejected:       { label: "Not verified",     icon: "close-circle",           color: "#ef4444", bg: "bg-red-100" },
+  expired:        { label: "Session expired",  icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
+  abandoned:      { label: "Not completed",    icon: "alert-circle-outline",   color: "#f59e0b", bg: "bg-amber-100" },
+  requires_retry: { label: "Retry required",   icon: "refresh-outline",        color: "#6366f1", bg: "bg-indigo-100" },
+  errored:        { label: "Unavailable",      icon: "alert-circle-outline",   color: "#6b7280", bg: "bg-gray-100" },
 };
+
+const COUNTRY_OPTIONS = [
+  { code: "ZA", name: "South Africa" },
+  { code: "ZW", name: "Zimbabwe" },
+  { code: "MZ", name: "Mozambique" },
+  { code: "LS", name: "Lesotho" },
+  { code: "SZ", name: "Eswatini" },
+  { code: "BW", name: "Botswana" },
+  { code: "NA", name: "Namibia" },
+  { code: "ZM", name: "Zambia" },
+  { code: "MW", name: "Malawi" },
+  { code: "TZ", name: "Tanzania" },
+  { code: "KE", name: "Kenya" },
+  { code: "NG", name: "Nigeria" },
+  { code: "OTHER", name: "Other country" },
+];
 
 const DOC_TYPES = [
   { value: "license", label: "Driver's license" },
@@ -76,118 +84,231 @@ const DOC_TYPES = [
   { value: "identity", label: "Identity card" },
 ] as const;
 
-export interface ProviderVerificationPanelProps {
-  /** Optional content rendered at the bottom of the scroll (e.g. onboarding continue button). */
-  footer?: ReactNode;
-  /** Override environment; defaults to the config bundle env. */
-  env?: string;
-  /** Called after a status change (manual submit succeeds / refresh). */
-  onStatusChange?: (status: VerificationStatus) => void;
+// ─── Confirm Legal Details Form ──────────────────────────────────────────────
+
+interface ConfirmLegalDetailsFormProps {
+  values: LegalDetails;
+  errors: Partial<Record<keyof LegalDetails, string>>;
+  onChange: (v: LegalDetails) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
 }
 
-export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange }: ProviderVerificationPanelProps) {
+function ConfirmLegalDetailsForm({ values, errors, onChange, onSubmit, onCancel }: ConfirmLegalDetailsFormProps) {
+  const lastNameRef = useRef<TextInput>(null);
+  const dobRef      = useRef<TextInput>(null);
+  const countryRef  = useRef<TextInput>(null);
+
+  const borderFor = (field: keyof LegalDetails) =>
+    errors[field] ? "#ef4444" : "#e2e8f0";
+
+  return (
+    <View style={twStyle("mt-4 rounded-2xl bg-white border border-gray-200 p-4")}>
+      <Text style={twStyle("text-base font-semibold text-gray-900 mb-1")}>Confirm your legal details</Text>
+      <Text style={twStyle("text-sm text-gray-600 mb-4 leading-5")}>
+        Enter your details exactly as they appear on your government-issued ID or passport. Nicknames or abbreviations will cause a mismatch.
+      </Text>
+
+      {/* First name */}
+      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Legal first name <Text style={{ color: "#ef4444" }}>*</Text></Text>
+      <TextInput
+        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("firstName") }]}
+        value={values.firstName ?? ""}
+        onChangeText={v => onChange({ ...values, firstName: v })}
+        placeholder="As on your ID"
+        placeholderTextColor="#9ca3af"
+        autoCapitalize="words"
+        autoCorrect={false}
+        returnKeyType="next"
+        onSubmitEditing={() => lastNameRef.current?.focus()}
+        accessibilityLabel="Legal first name"
+      />
+      {errors.firstName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.firstName}</Text>}
+
+      {/* Last name */}
+      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Legal last name <Text style={{ color: "#ef4444" }}>*</Text></Text>
+      <TextInput
+        ref={lastNameRef}
+        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("lastName") }]}
+        value={values.lastName ?? ""}
+        onChangeText={v => onChange({ ...values, lastName: v })}
+        placeholder="Surname as on your ID"
+        placeholderTextColor="#9ca3af"
+        autoCapitalize="words"
+        autoCorrect={false}
+        returnKeyType="next"
+        onSubmitEditing={() => dobRef.current?.focus()}
+        accessibilityLabel="Legal last name"
+      />
+      {errors.lastName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.lastName}</Text>}
+
+      {/* Date of birth */}
+      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Date of birth <Text style={{ color: "#ef4444" }}>*</Text></Text>
+      <TextInput
+        ref={dobRef}
+        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("dateOfBirth") }]}
+        value={values.dateOfBirth ?? ""}
+        onChangeText={v => onChange({ ...values, dateOfBirth: v })}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor="#9ca3af"
+        keyboardType="numbers-and-punctuation"
+        returnKeyType="next"
+        onSubmitEditing={() => countryRef.current?.focus()}
+        accessibilityLabel="Date of birth"
+      />
+      {errors.dateOfBirth && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.dateOfBirth}</Text>}
+
+      {/* Country */}
+      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Country on ID <Text style={{ color: "#ef4444" }}>*</Text></Text>
+      <TextInput
+        ref={countryRef}
+        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("country") }]}
+        value={values.country ?? ""}
+        onChangeText={v => onChange({ ...values, country: v.toUpperCase().slice(0, 2) })}
+        placeholder="ZA (ISO 3166-1 alpha-2)"
+        placeholderTextColor="#9ca3af"
+        autoCapitalize="characters"
+        autoCorrect={false}
+        maxLength={2}
+        returnKeyType="done"
+        accessibilityLabel="Country of ID"
+      />
+      {errors.country && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.country}</Text>}
+
+      <Text style={twStyle("text-xs text-gray-400 mt-1 mb-4")}>
+        E.g. ZA = South Africa, ZW = Zimbabwe, NG = Nigeria
+      </Text>
+
+      <TouchableOpacity
+        onPress={onSubmit}
+        style={twStyle("bg-primary rounded-full py-4 items-center")}
+        accessibilityRole="button"
+        accessibilityLabel="Start verification"
+      >
+        <Text style={twStyle("text-white font-semibold text-base")}>Start verification</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onCancel}
+        style={twStyle("mt-3 items-center py-2")}
+        accessibilityRole="button"
+        accessibilityLabel="Cancel"
+      >
+        <Text style={twStyle("text-sm text-gray-500")}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Panel ───────────────────────────────────────────────────────────────────
+
+export function ProviderVerificationPanel({
+  footer,
+  onStatusChange,
+  onApproved,
+}: ProviderVerificationPanelProps) {
   const { bundle } = useConfigBundle();
   const [refreshing, setRefreshing] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [showConfirmDetails, setShowConfirmDetails] = useState(false);
 
   // Manual upload state
   const [docType, setDocType] = useState<string>("license");
-  const [country, setCountry] = useState("");
+  const [manualCountry, setManualCountry] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ uri: string; fileName: string } | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const env = envProp ?? bundle?.meta?.env ?? "production";
+  // Didit session hook
+  const {
+    status, loading: statusLoading, legalDetails, legalDetailsErrors,
+    setLegalDetails, validateAndGetErrors, startPolling, refresh: refreshStatus,
+  } = useIdentityVerification("provider");
 
-  const { data, loading, error, refresh } = useApi<VerificationStatusResponse>(
-    `/api/provider/verification/status?environment=${encodeURIComponent(env)}`
-  );
+  // Legacy status endpoint for manual available check
+  const { data: legacyStatus, loading, error, refresh: refreshLegacy } = useApi<{
+    didit_available?: boolean; manual_available?: boolean; verification_mode?: string; rejection_reason?: string | null;
+  }>("/api/provider/identity-verification/status");
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh])
+      void refreshStatus();
+      void refreshLegacy();
+    }, [refreshStatus, refreshLegacy])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await refresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refresh]);
+    await Promise.all([refreshStatus(), refreshLegacy()]).catch(() => {});
+    setRefreshing(false);
+  }, [refreshStatus, refreshLegacy]);
 
-  const statusData = data as VerificationStatusResponse | undefined;
-  const status = statusData?.status ?? "pending";
-  const sumsubAvailable = statusData?.sumsub_available ?? false;
-  const manualAvailable = statusData?.manual_available !== false; // default true for backwards compat
-  const verificationOff = statusData?.verification_mode === "off";
-  const config = STATUS_CONFIG[status];
+  const diditAvailable = (legacyStatus as { didit_available?: boolean } | undefined)?.didit_available !== false;
+  const manualAvailable = (legacyStatus as { manual_available?: boolean } | undefined)?.manual_available !== false;
+  const verificationOff = (legacyStatus as { verification_mode?: string } | undefined)?.verification_mode === "off";
+  const rejectionReason = (legacyStatus as { rejection_reason?: string | null } | undefined)?.rejection_reason;
 
+  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
+  const isApproved      = status === "approved";
+  const isUnderReview   = status === "in_progress" || status === "pending_review";
+  const canAct          = !isApproved && !isUnderReview;
+  const needsRetry      = status === "rejected" || status === "expired" || status === "abandoned" || status === "requires_retry";
+
+  // Notify parent on status transitions (useRef so stale closures don't block)
+  const prevStatusRef = useRef<NormalizedVerificationStatus>(status);
   useEffect(() => {
-    if (statusData?.status) onStatusChange?.(statusData.status);
-  }, [statusData?.status, onStatusChange]);
+    if (prevStatusRef.current !== status) {
+      onStatusChange?.(status);
+      if (status === "approved") onApproved?.();
+      prevStatusRef.current = status;
+    }
+  }, [status, onStatusChange, onApproved]);
 
-  const isApproved = status === "approved";
-  const isUnderReview =
-    status === "in_progress" || statusData?.manual_verification?.status === "pending";
-  const canAct = !isApproved && !isUnderReview;
+  // ─── Didit flow ──────────────────────────────────────────────────────────
+  const openDiditVerification = useCallback(async () => {
+    // Validate legal details first
+    const errors = validateAndGetErrors();
+    if (Object.keys(errors).length > 0) {
+      setShowConfirmDetails(true);
+      return;
+    }
 
-  // ─── SumSub flow ────────────────────────────────────────────────────────
-  const openVerificationFlow = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLaunching(true);
     try {
-      const result = await launchSumsub({
-        env,
-        onStatusChanged: (status) => {
-          // Eagerly refresh status after any terminal event so the UI updates
-          // without waiting for the next webhook delivery.
-          const terminalStatuses = new Set([
-            "Approved",
-            "FinallyRejected",
-            "TemporarilyDeclined",
-            "ActionCompleted",
-          ]);
-          if (terminalStatuses.has(status)) {
-            refresh();
-          }
-        },
+      const result = await launchDidit({
+        persona: "provider",
+        languageCode: bundle?.meta?.env === "staging" ? "en" : "en",
+        confirmedLegalDetails: legalDetails.firstName
+          ? legalDetails
+          : undefined,
       });
 
-      if (!result.ok) {
+      if (!result.ok && result.error) {
         Alert.alert(
-          "Automated verification unavailable",
-          "Please use the manual document upload below to submit your ID for review."
+          "Verification unavailable",
+          result.error + " Please use the manual upload below."
         );
-      } else {
-        // Always refresh after the flow closes so status badge reflects the
-        // latest state (SDK may close before webhook arrives).
-        refresh();
+        return;
       }
+
+      // SDK returned — start polling for webhook-confirmed status
+      // Never trust SDK result directly; wait for webhook
+      startPolling();
+      await refreshStatus();
     } catch {
-      Alert.alert("Error", "Could not start verification. Please use the manual upload below.");
+      Alert.alert("Error", "Could not start verification. Please try again.");
     } finally {
       setLaunching(false);
     }
-  }, [env, refresh]);
+  }, [validateAndGetErrors, legalDetails, bundle, startPolling, refreshStatus]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
     try {
       const result = await launchImageLibraryWithPermission(
-        {
-          mediaTypes: ["images"],
-          allowsEditing: false,
-          quality: 0.9,
-        },
-        {
-          title: "Permission needed",
-          message: "Allow access to photos to upload your document.",
-        },
+        { mediaTypes: ["images"], allowsEditing: false, quality: 0.9 },
+        { title: "Permission needed", message: "Allow access to photos to upload your document." },
       );
-      if (!result) return;
-      if (result.canceled) return;
+      if (!result || result.canceled) return;
       const asset = result.assets[0];
       setSelectedFile({ uri: asset.uri, fileName: asset.fileName ?? `verification-${Date.now()}.jpg` });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -197,34 +318,26 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
   };
 
   const submitManual = async () => {
-    if (!selectedFile || !country) {
+    if (!selectedFile || !manualCountry) {
       Alert.alert("Missing info", "Please select a document photo and choose the country of issue.");
       return;
     }
     setUploading(true);
     try {
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
-        uri: selectedFile.uri,
-        name: selectedFile.fileName,
-        type: "image/jpeg",
-      });
+      appendFormDataFileNative(formData, "file", { uri: selectedFile.uri, name: selectedFile.fileName, type: "image/jpeg" });
       formData.append("document_type", docType);
-      formData.append("country", country);
-
+      formData.append("country", manualCountry);
       const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData);
       if (res.error) {
         Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload document."));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "Document submitted",
-        "Your ID has been submitted. Our team will review it within 1–2 business days and notify you."
-      );
+      Alert.alert("Document submitted", "Our team will review it within 1–2 business days and notify you.");
       setSelectedFile(null);
-      setCountry("");
-      refresh();
+      setManualCountry("");
+      await refreshStatus();
     } catch {
       Alert.alert("Error", "Upload failed. Please try again.");
     } finally {
@@ -232,20 +345,12 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
     }
   };
 
-  if (loading && !data) {
-    return (
-      <View style={twStyle("flex-1 items-center justify-center py-12")}>
-        <LoadingState />
-      </View>
-    );
+  if (statusLoading && !status) {
+    return <View style={twStyle("flex-1 items-center justify-center py-12")}><LoadingState /></View>;
   }
 
-  if (error && !data) {
-    return (
-      <View style={twStyle("flex-1 justify-center px-4")}>
-        <ErrorState message={error} onRetry={refresh} />
-      </View>
-    );
+  if (error && !legacyStatus) {
+    return <View style={twStyle("flex-1 justify-center px-4")}><ErrorState message={error} onRetry={onRefresh} /></View>;
   }
 
   return (
@@ -259,59 +364,100 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
       <View style={twStyle("px-4 pt-6")}>
         {/* Status badge */}
         <View style={[twStyle(`rounded-2xl p-6 items-center ${config.bg}`)]}>
-          <View
-            style={[
-              twStyle("w-16 h-16 rounded-full items-center justify-center mb-4"),
-              { backgroundColor: `${config.color}30` },
-            ]}
-          >
+          <View style={[twStyle("w-16 h-16 rounded-full items-center justify-center mb-4"), { backgroundColor: `${config.color}30` }]}>
             <Ionicons name={config.icon} size={32} color={config.color} />
           </View>
           <Text style={twStyle("text-lg font-semibold text-gray-900")}>{config.label}</Text>
-          <Text style={twStyle("mt-2 text-center text-gray-600")}>
+          <Text style={twStyle("mt-2 text-center text-gray-600 text-sm")}>
             {isApproved
               ? "Your identity is verified."
               : isUnderReview
-                ? "Your document is under review. We'll notify you once it's processed."
+                ? "Your verification is under review. We'll notify you once it's confirmed."
                 : status === "rejected"
-                  ? "Verification was not approved. Please submit your ID again."
-                  : "Upload a government-issued ID so our team can verify your identity."}
+                  ? "Verification was not approved. Please try again."
+                  : status === "expired" || status === "abandoned"
+                    ? "Your session ended. Start a new verification."
+                    : "Verify your identity using your government ID or passport."}
           </Text>
         </View>
 
-        {/* Rejection reason — tells the provider exactly what to fix */}
-        {status === "rejected" && statusData?.rejection_reason ? (
+        {/* Important: use legal name notice */}
+        {canAct && diditAvailable && (
+          <View style={twStyle("mt-4 rounded-xl bg-amber-50 p-4")}>
+            <View style={twStyle("flex-row items-start gap-2")}>
+              <Ionicons name="warning-outline" size={18} color="#d97706" style={{ marginTop: 1 }} />
+              <Text style={twStyle("flex-1 text-sm text-amber-800 leading-snug")}>
+                Use your real legal name and details exactly as they appear on your ID or passport. Nicknames or mismatched details will cause verification to fail.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Provider note: verifying yourself, not your business */}
+        {canAct && diditAvailable && (
+          <View style={twStyle("mt-3 rounded-xl bg-blue-50 p-4")}>
+            <View style={twStyle("flex-row items-start gap-2")}>
+              <Ionicons name="information-circle-outline" size={18} color="#3b82f6" style={{ marginTop: 1 }} />
+              <Text style={twStyle("flex-1 text-sm text-blue-700 leading-snug")}>
+                You&apos;re verifying your own identity as the owner or representative. If your salon is a registered business, your payout account can be in the business name — that&apos;s expected.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Confirm legal details form */}
+        {(canAct || needsRetry) && diditAvailable && showConfirmDetails && (
+          <ConfirmLegalDetailsForm
+            values={legalDetails}
+            errors={legalDetailsErrors}
+            onChange={setLegalDetails}
+            onSubmit={() => { setShowConfirmDetails(false); void openDiditVerification(); }}
+            onCancel={() => setShowConfirmDetails(false)}
+          />
+        )}
+
+        {/* Rejection reason */}
+        {status === "rejected" && rejectionReason ? (
           <View style={twStyle("mt-4 rounded-2xl bg-red-50 p-4")}>
             <View style={twStyle("flex-row items-start gap-2")}>
               <Ionicons name="alert-circle-outline" size={18} color="#ef4444" style={{ marginTop: 1 }} />
               <View style={twStyle("flex-1")}>
                 <Text style={twStyle("text-sm font-semibold text-red-800 mb-1")}>Why it was declined</Text>
-                <Text style={twStyle("text-sm text-red-700")}>{statusData.rejection_reason}</Text>
+                <Text style={twStyle("text-sm text-red-700")}>{rejectionReason}</Text>
               </View>
             </View>
           </View>
         ) : null}
 
-        {/* SumSub button — only when available and action is needed */}
-        {sumsubAvailable && canAct && (
+        {/* Didit button */}
+        {diditAvailable && (canAct || needsRetry) && (
           <View style={twStyle("mt-6")}>
             <ActionButton
-              label={launching ? "Starting…" : "Start automated verification"}
+              label={launching ? "Starting…" : (needsRetry ? "Try again" : "Start verification")}
               variant="secondary"
-              onPress={openVerificationFlow}
+              onPress={() => {
+                setShowConfirmDetails(true);
+              }}
               fullWidth
               icon="shield-checkmark-outline"
               iconPosition="right"
               loading={launching}
               disabled={launching}
             />
-            <Text style={twStyle("mt-3 text-center text-sm text-gray-500")}>
-              Powered by Sumsub · runs fully in-app.
+            <Text style={twStyle("mt-3 text-center text-xs text-gray-500")}>
+              Powered by Didit · runs fully in-app · takes about 2 minutes
             </Text>
           </View>
         )}
 
-        {/* Verification off — no paths available */}
+        {/* Consent disclosure */}
+        {diditAvailable && (canAct || needsRetry) && (
+          <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
+            By proceeding you agree to our Privacy Policy and Didit&apos;s end-user terms.
+          </Text>
+        )}
+
+        {/* Verification off */}
         {verificationOff && canAct && (
           <View style={twStyle("mt-6 rounded-2xl bg-gray-50 p-5")}>
             <View style={twStyle("flex-row items-center gap-2 mb-2")}>
@@ -324,29 +470,27 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
           </View>
         )}
 
-        {/* Manual upload — shown when manual is available and action is needed */}
+        {/* Manual upload divider */}
+        {diditAvailable && canAct && manualAvailable && (
+          <View style={twStyle("flex-row items-center mt-6 mb-2")}>
+            <View style={twStyle("flex-1 h-px bg-gray-200")} />
+            <Text style={twStyle("mx-3 text-xs font-medium text-gray-400")}>OR UPLOAD MANUALLY</Text>
+            <View style={twStyle("flex-1 h-px bg-gray-200")} />
+          </View>
+        )}
+
+        {/* Manual upload form */}
         {canAct && manualAvailable && (
-          <View style={twStyle("mt-6")}>
-            {sumsubAvailable && (
-              <View style={twStyle("flex-row items-center mb-5")}>
-                <View style={twStyle("flex-1 h-px bg-gray-200")} />
-                <Text style={twStyle("mx-3 text-xs font-medium text-gray-400")}>OR UPLOAD MANUALLY</Text>
-                <View style={twStyle("flex-1 h-px bg-gray-200")} />
-              </View>
-            )}
-            {/* Info banner */}
+          <View style={twStyle("mt-3")}>
             <View style={twStyle("bg-blue-50 rounded-xl p-4 mb-5")}>
               <View style={twStyle("flex-row items-start gap-3")}>
                 <Ionicons name="information-circle-outline" size={20} color="#3b82f6" />
                 <Text style={twStyle("flex-1 text-sm text-blue-700")}>
-                  {sumsubAvailable
-                    ? "Prefer to upload your ID instead? Submit a copy and our team will review it within 1–2 business days."
-                    : "Upload a copy of your ID and our team will review it within 1–2 business days."}
+                  Upload a copy of your ID and our team will review it within 1–2 business days.
                 </Text>
               </View>
             </View>
 
-            {/* Document type */}
             <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>Document type</Text>
             <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
               {DOC_TYPES.map((opt) => (
@@ -356,20 +500,9 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
                   accessibilityRole="button"
                   accessibilityLabel={`Document type ${opt.label}`}
                   accessibilityState={{ selected: docType === opt.value }}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    borderRadius: 999,
-                    backgroundColor: docType === opt.value ? Colors.primary : Colors.gray[100],
-                  }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: docType === opt.value ? Colors.primary : Colors.gray[100] }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: docType === opt.value ? "#fff" : Colors.gray[700],
-                    }}
-                  >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: docType === opt.value ? "#fff" : Colors.gray[700] }}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -377,88 +510,57 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
             </View>
 
             <CountryOfIssuePicker
-              value={country}
-              onChange={setCountry}
+              value={manualCountry}
+              onChange={setManualCountry}
               tenantRegionCode={bundle?.meta?.tenant_region?.code}
               tenantRegionName={bundle?.meta?.tenant_region?.name}
             />
 
-            {/* File picker */}
-            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>Document photo</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2 mt-4")}>Document photo</Text>
             <TouchableOpacity
               onPress={pickDocument}
               accessibilityRole="button"
-              accessibilityLabel={selectedFile ? "Change document photo" : "Select document photo"}
-              style={{
-                borderRadius: 16,
-                borderWidth: 2,
-                borderStyle: "dashed",
-                borderColor: selectedFile ? Colors.primary : Colors.gray[300],
-                backgroundColor: selectedFile ? "#FDF2F8" : Colors.gray[50],
-                padding: 24,
-                alignItems: "center",
-                marginBottom: 20,
-              }}
+              style={{ borderRadius: 16, borderWidth: 2, borderStyle: "dashed", borderColor: selectedFile ? Colors.primary : Colors.gray[300], backgroundColor: selectedFile ? "#FDF2F8" : Colors.gray[50], padding: 24, alignItems: "center", marginBottom: 20 }}
             >
               {selectedFile ? (
                 <>
                   <Ionicons name="document-attach" size={32} color={Colors.primary} style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-                    {selectedFile.fileName}
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{selectedFile.fileName}</Text>
                   <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4 }}>Tap to change</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={32} color={Colors.gray[400]} style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
-                    Tap to select your ID photo
-                  </Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
-                    JPEG or PNG · max 10 MB
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>Tap to select your ID photo</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>JPEG or PNG · max 10 MB</Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {/* Submit */}
             <TouchableOpacity
               onPress={submitManual}
-              disabled={uploading || !selectedFile || !country}
+              disabled={uploading || !selectedFile || !manualCountry}
               accessibilityRole="button"
-              accessibilityLabel="Submit for verification"
-              style={{
-                backgroundColor:
-                  uploading || !selectedFile || !country ? Colors.gray[300] : Colors.primary,
-                paddingVertical: 16,
-                borderRadius: 14,
-                alignItems: "center",
-              }}
+              style={{ backgroundColor: uploading || !selectedFile || !manualCountry ? Colors.gray[300] : Colors.primary, paddingVertical: 16, borderRadius: 14, alignItems: "center" }}
             >
-              {uploading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
-                  Submit for verification
-                </Text>
+              {uploading ? <ActivityIndicator color="#fff" size="small" /> : (
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Submit for verification</Text>
               )}
             </TouchableOpacity>
-
-            <Text style={twStyle("mt-4 text-center text-xs text-gray-500")}>
-              Your document is stored securely and used only for identity verification.
-            </Text>
           </View>
         )}
 
         {/* Under review message */}
         {isUnderReview && !isApproved && (
-          <View style={twStyle("mt-6 bg-amber-50 rounded-2xl p-5")}>
+          <View style={twStyle("mt-6 bg-blue-50 rounded-2xl p-5")}>
             <View style={twStyle("flex-row items-center gap-2 mb-2")}>
-              <Ionicons name="hourglass-outline" size={18} color="#f59e0b" />
-              <Text style={twStyle("text-sm font-semibold text-amber-800")}>Document under review</Text>
+              <Ionicons name="hourglass-outline" size={18} color="#3b82f6" />
+              <Text style={twStyle("text-sm font-semibold text-blue-800")}>
+                {status === "pending_review" ? "Under review" : "Document under review"}
+              </Text>
             </View>
-            <Text style={twStyle("text-sm text-amber-700")}>
-              Your document has been received. Our team will review it within 1-2 business days and you&apos;ll be notified once complete.
+            <Text style={twStyle("text-sm text-blue-700")}>
+              Your verification is being reviewed. We'll notify you once it's confirmed — no action needed.
             </Text>
           </View>
         )}
@@ -470,7 +572,7 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
             <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>Why we verify</Text>
           </View>
           <Text style={twStyle("text-sm text-gray-600 leading-5")}>
-            Identity verification helps us prevent fraud and meet regulatory requirements. Your information is processed securely by our team.
+            Identity verification helps us prevent fraud and meet regulatory requirements. Your information is processed securely.
           </Text>
         </View>
 

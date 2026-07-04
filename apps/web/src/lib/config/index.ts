@@ -24,6 +24,7 @@ import type {
   SafeAuraModuleConfig,
   SafeSafetyModuleConfig,
   SafeVerificationPolicy,
+  SafeIdentityVerificationModuleConfig,
   TenantRegionMeta,
 } from "./types";
 import { mergeGlobalAndTenantFeatureFlags } from "./merge-feature-flags";
@@ -218,7 +219,10 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     supabase.from("ads_module_config").select("*").eq("environment", environment).maybeSingle(),
     supabase.from("ranking_module_config").select("*").eq("environment", environment).maybeSingle(),
     supabase.from("distance_module_config").select("*").eq("environment", environment).maybeSingle(),
-    supabase.from("sumsub_integration_config").select("enabled, level_name").eq("environment", environment).maybeSingle(),
+    // Sumsub removed — no DB lookup. Placeholder keeps result indices stable;
+    // the bundle still emits a deprecated `sumsub: { enabled: false }` for
+    // backward compatibility with published mobile clients.
+    Promise.resolve({ data: null, error: null }),
     supabase.from("aura_integration_config").select("enabled").eq("environment", environment).maybeSingle(),
     supabase.from("safety_module_config").select("*").eq("environment", environment).maybeSingle(),
   ]);
@@ -416,10 +420,9 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : { enabled: false };
 
-  const sumsubRow = sumsubRes.data as Record<string, any> | null;
-  const sumsub: SafeSumsubModuleConfig = sumsubRow
-    ? { enabled: Boolean(sumsubRow.enabled), level_name: (sumsubRow.level_name as string) ?? null }
-    : { enabled: false };
+  // @deprecated Sumsub removed. Always disabled; retained for legacy clients.
+  void sumsubRes;
+  const sumsub: SafeSumsubModuleConfig = { enabled: false, level_name: null };
 
   const auraRow = auraRes.data as Record<string, any> | null;
   const aura: SafeAuraModuleConfig = auraRow ? { enabled: Boolean(auraRow.enabled) } : { enabled: false };
@@ -443,11 +446,14 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
   const verificationPolicyBundle = await resolveVerificationPolicy(tenantId ?? null, environment);
   const verification: SafeVerificationPolicy = {
     mode: verificationPolicyBundle.mode,
-    sumsub_enabled: verificationPolicyBundle.sumsubEnabled,
-    manual_enabled: verificationPolicyBundle.manualEnabled,
+    didit_enabled:          verificationPolicyBundle.diditEnabled,
+    sumsub_enabled:         verificationPolicyBundle.sumsubEnabled,  // always false; kept for legacy clients
+    manual_enabled:         verificationPolicyBundle.manualEnabled,
     required_for_providers: verificationPolicyBundle.requiredForProviders,
-    required_for_payouts: verificationPolicyBundle.requiredForPayouts,
+    required_for_payouts:   verificationPolicyBundle.requiredForPayouts,
     required_for_customers: verificationPolicyBundle.requiredForCustomers,
+    cross_validate:         verificationPolicyBundle.crossValidate,
+    min_age:                verificationPolicyBundle.minAge,
   };
 
   const flagsWithCalV2: Record<string, ResolvedFlag> = {
@@ -494,7 +500,11 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       ads,
       ranking,
       distance,
-      sumsub,
+      sumsub,  // kept for legacy clients; use identity_verification going forward
+      identity_verification: {
+        enabled: verificationPolicyBundle.diditEnabled,
+        provider: verificationPolicyBundle.diditEnabled ? "didit" as const : "none" as const,
+      },
       aura,
       safety,
     },

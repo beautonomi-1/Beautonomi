@@ -27,7 +27,7 @@ export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   services: 12,
   // Operating hours → wizard "Hours"
   availability: 13,
-  // Yoco terminal → wizard "Payment setup"
+  // Card machine / payment terminal → wizard "Payment setup"
   payment: 4,
   // §provider-onboarding-2026-05: `payment-methods` and `payout` are now
   // handled exclusively by their native screens (returned via the server's

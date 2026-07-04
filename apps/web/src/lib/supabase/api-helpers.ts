@@ -22,6 +22,7 @@ import {
   type AdminSection,
 } from '@/lib/admin-sections';
 import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
+import { fetchScopedSingle } from '@/lib/tenant/scoped-overrides';
 
 export interface ApiError {
   message: string;
@@ -202,7 +203,8 @@ export function handleApiError(
       errorMessage.includes("authentication required") ||
       errorMessage.includes("unauthorized") ||
       errorMessage.includes("not assigned to this tenant") ||
-      errorMessage.includes("no active tenant assignment")
+      errorMessage.includes("no active tenant assignment") ||
+      errorMessage.includes("account deactivated")
     ) {
       status = 403;
       code = "FORBIDDEN";
@@ -269,6 +271,18 @@ function isAdminApiRequest(request?: NextRequest | Request): boolean {
 
 function rolesIncludeAdmin(roles: UserRole[]): boolean {
   return roles.some((role) => (ALL_ADMIN_ROLES as readonly string[]).includes(role as string));
+}
+
+/** Reject deactivated platform admins (users.deactivated_at set). */
+async function assertAdminUserActive(userId: string): Promise<void> {
+  const { data } = await getSupabaseAdmin()
+    .from("users")
+    .select("deactivated_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if ((data as { deactivated_at?: string | null } | null)?.deactivated_at) {
+    throw new Error("Account deactivated. Contact a platform administrator to reactivate.");
+  }
 }
 
 async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
@@ -399,6 +413,7 @@ export async function requireRoleInApi(
 
   const result = await requireRoleInApiImpl(roles, request);
   if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
+    await assertAdminUserActive(result.user.id);
     await requireAdminMfaIfRequired(request, result.user?.role);
   }
   if (request) REQUIRE_ROLE_CACHE.set(request, result);
@@ -523,6 +538,9 @@ async function requireRoleInApiImpl(
 
         if (!roleAllowed)
           throw new Error(`Insufficient permissions: requires one of ${roles.join(", ")}`);
+        if (rolesIncludeAdmin(roles)) {
+          await assertAdminUserActive(resolvedUserData!.id);
+        }
         return { user: { id: resolvedUserData!.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: resolvedUserData!.full_name } };
       } catch (err) {
         throw err;
@@ -604,22 +622,42 @@ async function requireRoleInApiImpl(
 
 /**
  * Effective section -> roles (DB overrides merged with code defaults). Used for permission checks.
+ * When `request` is provided, reads tenant-scoped platform_settings with global fallback.
  */
-export async function getEffectiveAdminSectionRoles(): Promise<Record<AdminSection, UserRole[]>> {
+export async function getEffectiveAdminSectionRoles(
+  request?: NextRequest | Request
+): Promise<Record<AdminSection, UserRole[]>> {
   const supabase = getSupabaseAdmin();
-  const { data: row } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
+  let stored: Partial<Record<AdminSection, UserRole[]>> = {};
 
-  const settings = (row as { settings?: { admin_section_roles?: Partial<Record<AdminSection, UserRole[]>> } } | null)?.settings ?? {};
-  const stored = settings.admin_section_roles ?? {};
+  if (request) {
+    const tenantId = await resolveAdminApiTenantId(request);
+    const scoped = await fetchScopedSingle<{ settings?: { admin_section_roles?: Partial<Record<AdminSection, UserRole[]>> } }>({
+      supabase,
+      table: "platform_settings",
+      tenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    stored = scoped.data?.settings?.admin_section_roles ?? {};
+  } else {
+    const { data: row } = await supabase
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .is("tenant_id", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    stored =
+      ((row as { settings?: { admin_section_roles?: Partial<Record<AdminSection, UserRole[]>> } } | null)
+        ?.settings?.admin_section_roles) ?? {};
+  }
 
   const result = {} as Record<AdminSection, UserRole[]>;
   for (const s of ALL_SECTIONS) {
-    result[s] = Array.isArray(stored[s]) ? stored[s] as UserRole[] : ADMIN_SECTION_ROLES[s];
+    result[s] = Array.isArray(stored[s]) ? (stored[s] as UserRole[]) : ADMIN_SECTION_ROLES[s];
   }
   return result;
 }
@@ -635,7 +673,7 @@ export async function requireAdminSection(
 ): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
   const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
   if (!user) throw new Error('Authentication required');
-  const effectiveRoles = await getEffectiveAdminSectionRoles();
+  const effectiveRoles = await getEffectiveAdminSectionRoles(request);
   if (!canAccessSection(user.role as UserRole, section, effectiveRoles)) {
     throw new Error(`Insufficient permissions: access to section '${section}' required`);
   }
@@ -690,7 +728,7 @@ export async function requireAdminSectionAny(
 ): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
   const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
   if (!user) throw new Error("Authentication required");
-  const effectiveRoles = await getEffectiveAdminSectionRoles();
+  const effectiveRoles = await getEffectiveAdminSectionRoles(request);
   const role = user.role as UserRole;
   if (role !== "superadmin") {
     const ok = sections.some((section) => canAccessSection(role, section, effectiveRoles));

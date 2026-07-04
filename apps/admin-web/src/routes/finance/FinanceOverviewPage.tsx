@@ -224,6 +224,8 @@ export function FinanceOverviewPage() {
 
   const [exportErr, setExportErr] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
+  const [receiptErr, setReceiptErr] = useState<string | null>(null);
 
   const walletFlagQ = useTenantFeatureFlags([TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_WALLET], allowed);
   const showWalletDisabledBanner =
@@ -339,6 +341,29 @@ export function FinanceOverviewPage() {
       },
     ];
   }, [summary]);
+
+  const downloadSubscriptionReceipt = useCallback(async (financeTxId: string) => {
+    setReceiptBusyId(financeTxId);
+    setReceiptErr(null);
+    try {
+      const blob = await adminApi.downloadBlob(
+        `/api/admin/provider-subscriptions/receipts/${encodeURIComponent(financeTxId)}/pdf`,
+        { timeoutMs: 60_000 },
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `subscription-receipt-${financeTxId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      a.remove();
+    } catch (e) {
+      setReceiptErr(e instanceof Error ? e.message : "Could not download receipt");
+    } finally {
+      setReceiptBusyId(null);
+    }
+  }, []);
 
   const runExport = async () => {
     setExportErr(null);
@@ -778,6 +803,9 @@ export function FinanceOverviewPage() {
         ) : (
           <>
             <p className="mb-3 text-sm text-gray-600">{formatAdminNumber(total)} total in this range (paginated)</p>
+            {receiptErr ? (
+              <p className="mb-3 text-sm text-red-600">{receiptErr}</p>
+            ) : null}
             <div className="hidden overflow-x-auto md:block">
               <AdminDataTable>
                 <AdminTableHead>
@@ -788,6 +816,7 @@ export function FinanceOverviewPage() {
                     <AdminTh>Fees</AdminTh>
                     <AdminTh>Net</AdminTh>
                     <AdminTh>Booking</AdminTh>
+                    <AdminTh>Receipt</AdminTh>
                   </tr>
                 </AdminTableHead>
                 <AdminTableBody>
@@ -806,6 +835,20 @@ export function FinanceOverviewPage() {
                           >
                             {tx.booking.booking_number || tx.booking.id.slice(0, 8)}
                           </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </AdminTd>
+                      <AdminTd>
+                        {tx.transaction_type === "provider_subscription_payment" ? (
+                          <button
+                            type="button"
+                            className="text-primary underline disabled:opacity-50"
+                            disabled={receiptBusyId === tx.id}
+                            onClick={() => void downloadSubscriptionReceipt(tx.id)}
+                          >
+                            {receiptBusyId === tx.id ? "Preparing…" : "Receipt PDF"}
+                          </button>
                         ) : (
                           "—"
                         )}
@@ -840,6 +883,18 @@ export function FinanceOverviewPage() {
                     <div className="mt-1 text-xs text-gray-600">
                       Gross {formatAdminCurrency(tx.amount)}
                       {tx.fees > 0 ? ` · Fees ${formatAdminCurrency(tx.fees)}` : null}
+                    </div>
+                  ) : null}
+                  {tx.transaction_type === "provider_subscription_payment" ? (
+                    <div className="mt-1 text-xs">
+                      <button
+                        type="button"
+                        className="text-primary underline disabled:opacity-50"
+                        disabled={receiptBusyId === tx.id}
+                        onClick={() => void downloadSubscriptionReceipt(tx.id)}
+                      >
+                        {receiptBusyId === tx.id ? "Preparing receipt…" : "Download receipt PDF"}
+                      </button>
                     </div>
                   ) : null}
                 </div>

@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
     const policy = await resolveVerificationPolicy(providerTenantId, env);
 
     const sumsubAvailable = policy.sumsubEnabled;
+    const diditAvailable = policy.diditEnabled;
 
     // Derive a combined status from every provider verification surface:
     // Sumsub KYC, manual admin review, user identity flag, and public badge.
@@ -142,11 +143,13 @@ export async function GET(request: NextRequest) {
         effectiveStatus === "rejected"
           ? (manualRow as { rejection_reason?: string | null } | null)?.rejection_reason ?? null
           : null,
-      // Whether SumSub is available for this environment
+      // Whether Didit automated KYC is available for this environment
+      didit_available: diditAvailable,
+      // @deprecated Always false (Sumsub removed). Kept for legacy client compat.
       sumsub_available: sumsubAvailable,
       // Whether manual document upload is available
       manual_available: policy.manualEnabled,
-      // Combined mode: "off" | "manual" | "sumsub" | "both"
+      // Combined mode: "off" | "manual" | "didit" | "both"
       verification_mode: policy.mode,
     });
   } catch (error) {

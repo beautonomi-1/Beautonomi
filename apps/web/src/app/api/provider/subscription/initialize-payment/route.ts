@@ -188,6 +188,19 @@ export async function POST(request: NextRequest) {
 
     const paymentUrl = paystackData?.data?.authorization_url || null;
 
+    if (!paymentUrl) {
+      // Mark the order as failed immediately so it never leaks as a perpetual
+      // pending row. Idempotent: any subsequent retry creates a fresh order.
+      await (supabase.from("provider_subscription_orders") as any)
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", order.id);
+      return errorResponse(
+        "Paystack did not return a payment URL. Check that your Paystack credentials are valid and the plan amount is set.",
+        "PAYSTACK_ERROR",
+        502,
+      );
+    }
+
     await (supabase.from("provider_subscription_orders") as any)
       .update({ 
         paystack_reference: reference, 

@@ -77,6 +77,13 @@ export async function GET(
         ? reviews.reduce((sum: number, r: { rating?: number }) => sum + (r.rating ?? 0), 0) / reviews.length
         : 0;
 
+    // Load terminal profile (provider_payment_terminal_profile 1:1 with provider)
+    const { data: terminalProfileRow } = await supabase
+      .from("provider_payment_terminal_profile")
+      .select("*")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
     const { data: yocoIntegration } = await supabase
       .from("provider_yoco_integrations")
       .select(
@@ -194,6 +201,7 @@ export async function GET(
     return successResponse({
       ...(provider as Record<string, unknown>),
       owner: owner ?? null,
+      terminal_profile: (terminalProfileRow as Record<string, unknown> | null) ?? null,
       yoco_summary,
       stats: {
         booking_count: bookingCount || 0,

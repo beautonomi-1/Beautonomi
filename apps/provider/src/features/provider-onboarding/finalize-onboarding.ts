@@ -6,6 +6,32 @@ import { clearPortalCache, setCachedPortal } from "@/lib/portal-cache";
 import { getBackendUrl } from "@/config/public-env";
 import type { OnboardingFormData } from "./types";
 import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
+import type { InAppPaystackResult } from "@/hooks/useInAppPaystackCheckout";
+import {
+  getSubscriptionPaystackReturnUrl,
+  matchesSubscriptionPaystackReturnUrl,
+} from "@/lib/payments/providerPaystackReturn";
+
+type WaitForCheckout = (
+  url: string,
+  options: {
+    matchSuccess: (u: string) => boolean;
+    matchCancel?: (u: string) => boolean;
+    title?: string;
+    returnUrl?: string;
+  },
+) => Promise<InAppPaystackResult>;
+
+function extractBillingPeriodFromPath(path: string | null | undefined): "monthly" | "yearly" {
+  if (!path) return "monthly";
+  try {
+    const parsed = new URL(path, "https://x.invalid");
+    if (parsed.searchParams.get("billing_period") === "yearly") return "yearly";
+  } catch {
+    /* ignore */
+  }
+  return "monthly";
+}
 
 const LOCAL_DRAFT_KEY = "beautonomi_provider_onboarding_draft_local";
 
@@ -107,8 +133,14 @@ export async function finalizeOnboardingSuccess(options: {
   refreshProvider: () => Promise<void>;
   userId?: string | null;
   showSuccessAlert?: boolean;
+  /**
+   * Passed from a React component via `useInAppPaystackCheckout().waitForCheckout`.
+   * When provided, paid-plan checkout runs natively (Bearer-authenticated) instead
+   * of opening an unauthenticated WebView that would 401 and redirect to login.
+   */
+  waitForCheckout?: WaitForCheckout;
 }): Promise<void> {
-  const { data, formData, router, refreshProvider, userId, showSuccessAlert = true } = options;
+  const { data, formData, router, refreshProvider, userId, showSuccessAlert = true, waitForCheckout } = options;
 
   try {
     await AsyncStorage.removeItem(LOCAL_DRAFT_KEY);
@@ -127,7 +159,102 @@ export async function finalizeOnboardingSuccess(options: {
     await setBiometricPromptPending(userId.trim());
   }
 
-  if (planId && requiresCheckout) {
+  // Only enter Paystack checkout for paid plans. Free plans have requiresCheckout=false
+  // from the server, but guard explicitly on selected_plan_is_free as a safety net.
+  if (planId && requiresCheckout && !data?.selected_plan_is_free) {
+    // Native path: call the API directly with the provider's Bearer token.
+    // This replaces the old unauthenticated WebView which caused a 401 → login redirect.
+    if (waitForCheckout) {
+      const billingPeriod = extractBillingPeriodFromPath(data?.checkout_path);
+      try {
+        const createRes = await api.post<{
+          authorization_url?: string | null;
+          access_code?: string | null;
+        }>("/api/provider/subscriptions/create", {
+          plan_id: planId,
+          billing_period: billingPeriod,
+          in_app: true,
+          return_to_dashboard: true,
+        });
+
+        if (createRes.error || !createRes.data?.authorization_url) {
+          // 409 CONFLICT: provider already has an active paid subscription (e.g. a
+          // webhook beat us to it on a previous onboarding attempt). Treat as success.
+          if (
+            createRes.error &&
+            (createRes.error.code === "CONFLICT" || createRes.error.status === 409)
+          ) {
+            router.replace("/(app)/onboarding/verify-identity" as never);
+            return;
+          }
+          const errMsg =
+            typeof createRes.error === "object" && createRes.error !== null
+              ? (createRes.error as { message?: string }).message
+              : null;
+          Alert.alert(
+            "Checkout failed",
+            errMsg || "Unable to start subscription checkout. You can complete it from Settings.",
+            [
+              {
+                text: "Open subscription",
+                onPress: () =>
+                  router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+              },
+              { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+            ],
+          );
+          return;
+        }
+
+        const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
+        const result = await waitForCheckout(createRes.data.authorization_url, {
+          returnUrl: subscriptionReturnUrl,
+          matchSuccess: (u) => matchesSubscriptionPaystackReturnUrl(u, { success: true }),
+          matchCancel: (u) => matchesSubscriptionPaystackReturnUrl(u, { cancelled: true }),
+        });
+
+        if (result.outcome === "success") {
+          router.replace("/(app)/onboarding/verify-identity" as never);
+        } else {
+          const isCancelled = result.outcome === "cancel";
+          Alert.alert(
+            isCancelled ? "Payment cancelled" : "Payment not completed",
+            isCancelled
+              ? "No charge was made. Complete your subscription any time from Settings."
+              : "Something went wrong. Complete your subscription any time from Settings.",
+            [
+              {
+                text: "Open subscription",
+                onPress: () =>
+                  router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+              },
+              {
+                text: "Continue to app",
+                style: "cancel",
+                onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+              },
+            ],
+          );
+        }
+      } catch (e) {
+        Alert.alert(
+          "Checkout failed",
+          e instanceof Error ? e.message : "Unable to start checkout.",
+          [
+            {
+              text: "Open subscription settings",
+              onPress: () =>
+                router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+            },
+            { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
+          ],
+        );
+      }
+      return;
+    }
+
+    // Fallback: open the web checkout page via WebView. Only reached when
+    // waitForCheckout is not passed (e.g. in unit tests / non-React contexts).
     const base = (getBackendUrl() || "").replace(/\/$/, "");
     if (!base) {
       Alert.alert(

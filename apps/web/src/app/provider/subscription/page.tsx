@@ -428,8 +428,7 @@ export default function SubscriptionPage() {
         return;
       }
 
-      toast.success("Subscription checkout started");
-      setShowUpgradeDialog(false);
+      toast.error("Could not start subscription checkout. Please try again or contact support.");
       setReviewPlan(null);
       setReviewSubmitting(false);
     } catch (error) {

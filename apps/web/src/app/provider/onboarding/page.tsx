@@ -129,9 +129,14 @@ interface OnboardingData {
     linkedin?: string;
   };
 
-  // Step 4: Payment Setup
-  yoco_machine: "yes" | "no" | "other";
-  yoco_machine_other?: string;
+  // Step 4: Payment Setup (generic terminal capture — replaces yoco_machine)
+  terminal_ownership_status?: "has_terminal" | "no_terminal" | "planning_to_get_terminal" | "unsure";
+  terminal_provider?: string;
+  terminal_provider_other?: string;
+  terminal_count_range?: "one" | "two_to_three" | "four_to_ten" | "more_than_ten" | "unsure";
+  terminal_active_usage_status?: "yes" | "no" | "sometimes" | "unsure";
+  interested_in_platform_terminal?: "yes" | "maybe_later" | "no";
+  interested_in_terminal_subscription?: boolean;
   payout_setup_complete?: boolean; // Track if payout account is set up
   is_vat_registered?: boolean; // VAT registration status
   vat_number?: string; // SARS VAT number (if VAT registered)
@@ -380,7 +385,7 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
   business_name: "",
   business_type: "salon",
   description: "",
-  yoco_machine: undefined,
+  terminal_ownership_status: undefined,
   previous_software: undefined,
   payroll_type: undefined,
   services: [],
@@ -404,7 +409,7 @@ const STEPS = [
   { id: 1, title: "Team Size", description: "Tell us about your team" },
   { id: 2, title: "Your Identity", description: "Your name, email, and phone" },
   { id: 3, title: "Business Details", description: "Tell us about your business" },
-  { id: 4, title: "Payment Setup", description: "Do you have a Yoco machine?" },
+  { id: 4, title: "Payment Setup", description: "Do you have a card machine or payment terminal?" },
   { id: 5, title: "Current Software", description: "Are you moving from another system?" },
   {
     id: 6,
@@ -797,8 +802,13 @@ export default function ProviderOnboarding() {
         owner_name: formData.owner_name,
         owner_email: formData.owner_email,
         owner_phone: coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
-        yoco_machine: formData.yoco_machine || null,
-        yoco_machine_other: formData.yoco_machine_other || null,
+        terminal_ownership_status: formData.terminal_ownership_status || null,
+        terminal_provider: formData.terminal_provider || null,
+        terminal_provider_other: formData.terminal_provider_other || null,
+        terminal_count_range: formData.terminal_count_range || null,
+        terminal_active_usage_status: formData.terminal_active_usage_status || null,
+        interested_in_platform_terminal: formData.interested_in_platform_terminal || null,
+        interested_in_terminal_subscription: formData.interested_in_terminal_subscription ?? null,
         payroll_type: formData.payroll_type || null,
         payroll_details: formData.payroll_details || null,
         // Business fields
@@ -2619,7 +2629,64 @@ function Step3BusinessDetails({
   );
 }
 
-// Step 4: Payment Setup - Yoco Machine
+// Step 4: Payment Setup — generic card machine / payment terminal capture
+const TERMINAL_OWNERSHIP_OPTIONS = [
+  {
+    id: "has_terminal" as const,
+    title: "Yes, I have card machines / payment terminals",
+    description: "I am already set up for in-person card payments",
+  },
+  {
+    id: "no_terminal" as const,
+    title: "No, I do not have card machines / payment terminals",
+    description: "I collect cash or use other payment methods",
+  },
+  {
+    id: "planning_to_get_terminal" as const,
+    title: "I am planning to get one",
+    description: "I would like to accept card payments in future",
+  },
+  {
+    id: "unsure" as const,
+    title: "I am not sure",
+    description: "Not sure about my current card payment setup",
+  },
+];
+
+const TERMINAL_VENDOR_OPTIONS = [
+  { id: "yoco", label: "Yoco" },
+  { id: "ikhokha", label: "iKhokha" },
+  { id: "capitec", label: "Capitec" },
+  { id: "fnb", label: "FNB" },
+  { id: "nedbank", label: "Nedbank" },
+  { id: "absa", label: "Absa" },
+  { id: "standard_bank", label: "Standard Bank" },
+  { id: "psp", label: "Payment service provider / PSP" },
+  { id: "other", label: "Other" },
+  { id: "unsure", label: "I am not sure" },
+];
+
+const TERMINAL_COUNT_OPTIONS = [
+  { id: "one", label: "1" },
+  { id: "two_to_three", label: "2–3" },
+  { id: "four_to_ten", label: "4–10" },
+  { id: "more_than_ten", label: "More than 10" },
+  { id: "unsure", label: "I am not sure" },
+];
+
+const TERMINAL_USAGE_OPTIONS = [
+  { id: "yes", label: "Yes, actively used" },
+  { id: "sometimes", label: "Sometimes" },
+  { id: "no", label: "No, not currently used" },
+  { id: "unsure", label: "I am not sure" },
+];
+
+const TERMINAL_INTEREST_OPTIONS = [
+  { id: "yes", label: "Yes" },
+  { id: "maybe_later", label: "Maybe later" },
+  { id: "no", label: "No" },
+];
+
 function Step4PaymentSetup({
   data,
   updateData,
@@ -2627,11 +2694,34 @@ function Step4PaymentSetup({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const options = [
-    { id: "yes", title: "Yes, I do", description: "I have a Yoco card machine" },
-    { id: "no", title: "No (but I want one)", description: "I'd like to get a Yoco machine" },
-    { id: "other", title: "Other", description: "I have another card machine" },
-  ];
+  const ownershipStatus = data.terminal_ownership_status;
+  const hasTerminal = ownershipStatus === "has_terminal";
+  const noOrPlanning = ownershipStatus === "no_terminal" || ownershipStatus === "planning_to_get_terminal";
+
+  function renderRadioGroup<T extends string>(
+    options: { id: T; label: string }[],
+    selected: T | undefined,
+    onSelect: (v: T) => void,
+  ) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onSelect(opt.id)}
+            className={`rounded-xl border px-4 py-2 text-sm transition-all duration-200 ${
+              selected === opt.id
+                ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -2653,63 +2743,110 @@ function Step4PaymentSetup({
             </svg>
           </div>
           <div className="min-w-0 space-y-1">
-            <p className="text-base font-semibold text-slate-900 sm:text-lg">Payment setup</p>
+            <p className="text-base font-semibold text-slate-900 sm:text-lg">Card machine / payment terminal</p>
             <p className="text-sm leading-relaxed text-slate-600">
-              Do you have a Yoco card machine? Yoco is widely used in South Africa. You can connect
-              payouts and terminals after onboarding.
+              This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {options.map((option) => {
-          const isSelected = data.yoco_machine === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => updateData({ yoco_machine: option.id as any })}
-              className={`w-full rounded-[1.5rem] border p-5 text-left transition-all duration-300 sm:p-6 ${
-                isSelected
-                  ? "border-slate-900 bg-slate-900/5 shadow-sm"
-                  : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
-                  <p className="text-sm text-slate-500">{option.description}</p>
+      {/* Primary question */}
+      <div className="space-y-3">
+        <p className="text-base font-semibold text-slate-900">Do you currently have a card machine or payment terminal?</p>
+        <div className="space-y-3">
+          {TERMINAL_OWNERSHIP_OPTIONS.map((option) => {
+            const isSelected = ownershipStatus === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => updateData({ terminal_ownership_status: option.id })}
+                className={`w-full rounded-[1.5rem] border p-5 text-left transition-all duration-300 sm:p-6 ${
+                  isSelected
+                    ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="mb-1 text-base font-semibold text-slate-900">{option.title}</h3>
+                    <p className="text-sm text-slate-500">{option.description}</p>
+                  </div>
+                  <div
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                      isSelected ? "border-slate-900 bg-slate-900" : "border-slate-300 bg-white"
+                    }`}
+                    aria-hidden
+                  >
+                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                  </div>
                 </div>
-                <div
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                    isSelected ? "border-slate-900 bg-slate-900" : "border-slate-300 bg-white"
-                  }`}
-                  aria-hidden
-                >
-                  {isSelected && <Check className="h-3 w-3 text-white" />}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {data.yoco_machine === "other" && (
-        <div className="mt-4">
-          <Label
-            htmlFor="yoco_machine_other"
-            className="text-base font-semibold text-gray-900 mb-2 block"
-          >
-            What card machine do you have?
-          </Label>
-          <Input
-            id="yoco_machine_other"
-            value={data.yoco_machine_other || ""}
-            onChange={(e) => updateData({ yoco_machine_other: e.target.value })}
-            placeholder="e.g., iZettle, Square, etc."
-            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-          />
+      {/* Follow-ups when provider HAS a terminal */}
+      {hasTerminal && (
+        <div className="space-y-6 rounded-[1.5rem] border border-slate-100 bg-slate-50/60 p-6">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Which card machine or terminal provider do you use?</p>
+            {renderRadioGroup(
+              TERMINAL_VENDOR_OPTIONS,
+              data.terminal_provider as any,
+              (v) => updateData({ terminal_provider: v, terminal_provider_other: v !== "other" ? undefined : data.terminal_provider_other }),
+            )}
+            {data.terminal_provider === "other" && (
+              <Input
+                value={data.terminal_provider_other || ""}
+                onChange={(e) => updateData({ terminal_provider_other: e.target.value })}
+                placeholder="Which terminal provider or model?"
+                className="mt-2 h-11 text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+              />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">How many card machines / payment terminals do you have?</p>
+            {renderRadioGroup(
+              TERMINAL_COUNT_OPTIONS,
+              data.terminal_count_range as any,
+              (v) => updateData({ terminal_count_range: v }),
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Are these terminals actively used for customer payments?</p>
+            {renderRadioGroup(
+              TERMINAL_USAGE_OPTIONS,
+              data.terminal_active_usage_status as any,
+              (v) => updateData({ terminal_active_usage_status: v }),
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Would you be interested in better terminal pricing, platform-integrated terminals, or bundled subscription options?</p>
+            {renderRadioGroup(
+              TERMINAL_INTEREST_OPTIONS,
+              data.interested_in_platform_terminal as any,
+              (v) => updateData({ interested_in_platform_terminal: v }),
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Interest question for No / Planning */}
+      {noOrPlanning && (
+        <div className="space-y-3 rounded-[1.5rem] border border-slate-100 bg-slate-50/60 p-6">
+          <p className="text-sm font-semibold text-slate-800">Would you be interested in getting a platform-supported card machine in future?</p>
+          <p className="text-xs text-slate-500">This could include once-off purchase, rental, or subscription bundle options when available.</p>
+          {renderRadioGroup(
+            TERMINAL_INTEREST_OPTIONS,
+            data.interested_in_platform_terminal as any,
+            (v) => updateData({ interested_in_platform_terminal: v }),
+          )}
         </div>
       )}
 
@@ -4866,7 +5003,7 @@ function Step14PlanSelection({
           Choose your plan
         </h3>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600 sm:mt-3 sm:text-base">
-          Beautonomi Starter is free and includes online booking, Yoco, and calendar sync. Upgrade
+          Beautonomi Starter is free and includes online booking, card payment integrations, and calendar sync. Upgrade
           anytime for SMS, WhatsApp, and higher limits.
         </p>
       </div>

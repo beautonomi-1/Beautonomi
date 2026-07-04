@@ -69,7 +69,7 @@ import { useOnboardingScroll } from "./OnboardingScrollContext";
 import { useAutoFocus } from "./useAutoFocus";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164, phoneNumbersMatchProfile } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
-import type { BusinessType, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
+import type { BusinessType, OnboardingServiceAddon, TeamSize, TerminalOwnershipStatus, TerminalVendor, TerminalCountRange, TerminalActiveUsageStatus, TerminalInterestLevel } from "./types";
 import { ServiceFormFields } from "@/features/catalogue/ServiceFormFields";
 import {
   defaultOnboardingFormState,
@@ -896,80 +896,128 @@ function Step3Business() {
   );
 }
 
-// ─── Step 4: Payment setup ───────────────────────────────────────────────────
+// ─── Step 4: Payment setup (generic terminal capture) ────────────────────────
 
-type YocoOpt = {
-  id: YocoMachine;
+type TerminalOpt = {
+  id: TerminalOwnershipStatus;
   t: string;
   sub: string;
   icon: ComponentProps<typeof Ionicons>["name"];
 };
 
+type TerminalChipOpt<T extends string> = { id: T; label: string };
+
+const TERMINAL_OWNERSHIP_OPTS: TerminalOpt[] = [
+  { id: "has_terminal", t: "Yes, I have card machines / payment terminals", sub: "Already set up for in-person card payments", icon: "card-outline" },
+  { id: "no_terminal", t: "No, I do not have card machines / payment terminals", sub: "I collect cash or use other methods", icon: "close-circle-outline" },
+  { id: "planning_to_get_terminal", t: "I am planning to get one", sub: "Would like to accept card payments in future", icon: "add-circle-outline" },
+  { id: "unsure", t: "I am not sure", sub: "Not sure about my current setup", icon: "help-circle-outline" },
+];
+
+const TERMINAL_VENDOR_OPTS: TerminalChipOpt<TerminalVendor>[] = [
+  { id: "yoco", label: "Yoco" },
+  { id: "ikhokha", label: "iKhokha" },
+  { id: "capitec", label: "Capitec" },
+  { id: "fnb", label: "FNB" },
+  { id: "nedbank", label: "Nedbank" },
+  { id: "absa", label: "Absa" },
+  { id: "standard_bank", label: "Standard Bank" },
+  { id: "psp", label: "PSP" },
+  { id: "other", label: "Other" },
+  { id: "unsure", label: "Not sure" },
+];
+
+const TERMINAL_COUNT_OPTS: TerminalChipOpt<TerminalCountRange>[] = [
+  { id: "one", label: "1" },
+  { id: "two_to_three", label: "2–3" },
+  { id: "four_to_ten", label: "4–10" },
+  { id: "more_than_ten", label: "10+" },
+  { id: "unsure", label: "Not sure" },
+];
+
+const TERMINAL_USAGE_OPTS: TerminalChipOpt<TerminalActiveUsageStatus>[] = [
+  { id: "yes", label: "Yes" },
+  { id: "sometimes", label: "Sometimes" },
+  { id: "no", label: "No" },
+  { id: "unsure", label: "Not sure" },
+];
+
+const TERMINAL_INTEREST_OPTS: TerminalChipOpt<TerminalInterestLevel>[] = [
+  { id: "yes", label: "Yes" },
+  { id: "maybe_later", label: "Maybe later" },
+  { id: "no", label: "No" },
+];
+
+function ChipRow<T extends string>({
+  opts,
+  selected,
+  onSelect,
+}: {
+  opts: TerminalChipOpt<T>[];
+  selected: T | undefined;
+  onSelect: (v: T) => void;
+}) {
+  return (
+    <View style={twStyle("flex-row flex-wrap gap-2")}>
+      {opts.map((o) => {
+        const sel = selected === o.id;
+        return (
+          <TouchableOpacity
+            key={o.id}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelect(o.id); }}
+            style={twStyle(`rounded-xl border px-4 py-2 ${sel ? "border-slate-900 bg-slate-900" : "border-slate-200 bg-white"}`)}
+            accessibilityRole="button"
+            accessibilityLabel={o.label}
+          >
+            <Text style={twStyle(`text-[14px] font-medium ${sel ? "text-white" : "text-slate-700"}`)}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 function Step4Payment() {
   const { formData, updateFormData } = useOnboardingWizard();
-  const yocoOtherRef = useRef<TextInput>(null);
+  const vendorOtherRef = useRef<TextInput>(null);
   const vatNumberRef = useRef<TextInput>(null);
-  useAutoFocus(yocoOtherRef, formData.yoco_machine === "other");
-  useAutoFocus(vatNumberRef, formData.is_vat_registered === true && formData.yoco_machine !== "other");
-  const yoco: YocoOpt[] = [
-    {
-      id: "yes",
-      t: "Yes, I have Yoco",
-      sub: "I'm already set up for in-person card payments",
-      icon: "card-outline",
-    },
-    {
-      id: "no",
-      t: "No — I want one",
-      sub: "Help me get a Yoco device",
-      icon: "add-circle-outline",
-    },
-    {
-      id: "other",
-      t: "Other card machine",
-      sub: "iZettle, Square, SumUp, or other",
-      icon: "phone-portrait-outline",
-    },
-  ];
+  useAutoFocus(vendorOtherRef, formData.terminal_provider === "other");
+  useAutoFocus(vatNumberRef, formData.is_vat_registered === true && formData.terminal_provider !== "other");
+
+  const ownershipStatus = formData.terminal_ownership_status;
+  const hasTerminal = ownershipStatus === "has_terminal";
+  const noOrPlanning = ownershipStatus === "no_terminal" || ownershipStatus === "planning_to_get_terminal";
+
   return (
     <View style={twStyle("gap-6")}>
+      {/* Primary question */}
       <View>
-        <Text style={twStyle(labelCls)}>Card machine</Text>
+        <Text style={twStyle(labelCls)}>Card machine / payment terminal</Text>
         <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
-          Beautonomi uses Yoco for in-person card payments. Select what applies to you.
+          This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.
         </Text>
         <View style={twStyle("gap-4")}>
-          {yoco.map((o) => {
-            const sel = formData.yoco_machine === o.id;
+          {TERMINAL_OWNERSHIP_OPTS.map((o) => {
+            const sel = ownershipStatus === o.id;
             return (
               <TouchableOpacity
                 key={o.id}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  updateFormData({ yoco_machine: o.id });
+                  updateFormData({ terminal_ownership_status: o.id });
                 }}
                 style={twStyle(
-                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={o.t}
               >
-                <View
-                  style={twStyle(
-                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`
-                  )}
-                >
+                <View style={twStyle(`h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`)}>
                   <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
                 </View>
                 <View style={twStyle("flex-1")}>
-                  <Text
-                    style={twStyle(
-                      `text-[17px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`
-                    )}
-                  >
-                    {o.t}
-                  </Text>
-                  <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
+                  <Text style={twStyle(`text-[15px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`)}>{o.t}</Text>
+                  <Text style={twStyle("mt-1 text-[13px] text-slate-500")}>{o.sub}</Text>
                 </View>
                 {sel ? (
                   <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
@@ -980,18 +1028,49 @@ function Step4Payment() {
             );
           })}
         </View>
-        {formData.yoco_machine === "other" ? (
-          <OnboardingTextField
-            ref={yocoOtherRef}
-            label="Card machine model"
-            value={formData.yoco_machine_other || ""}
-            onChangeText={(t) => updateFormData({ yoco_machine_other: t })}
-            placeholder="Which device? (e.g. iZettle, Square)"
-            containerStyle={twStyle("mt-4")}
-            returnKeyType="done"
-          />
-        ) : null}
       </View>
+
+      {/* Follow-ups: provider HAS a terminal */}
+      {hasTerminal && (
+        <View style={twStyle("gap-5 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5")}>
+          <View style={twStyle("gap-2")}>
+            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Which terminal provider do you use?</Text>
+            <ChipRow opts={TERMINAL_VENDOR_OPTS} selected={formData.terminal_provider as TerminalVendor | undefined} onSelect={(v) => updateFormData({ terminal_provider: v, terminal_provider_other: v !== "other" ? undefined : formData.terminal_provider_other })} />
+            {formData.terminal_provider === "other" && (
+              <OnboardingTextField
+                ref={vendorOtherRef}
+                label="Which provider or model?"
+                value={formData.terminal_provider_other || ""}
+                onChangeText={(t) => updateFormData({ terminal_provider_other: t })}
+                placeholder="e.g. Payflex, Square"
+                containerStyle={twStyle("mt-2")}
+                returnKeyType="done"
+              />
+            )}
+          </View>
+          <View style={twStyle("gap-2")}>
+            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>How many terminals do you have?</Text>
+            <ChipRow opts={TERMINAL_COUNT_OPTS} selected={formData.terminal_count_range as TerminalCountRange | undefined} onSelect={(v) => updateFormData({ terminal_count_range: v })} />
+          </View>
+          <View style={twStyle("gap-2")}>
+            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Are they actively used for payments?</Text>
+            <ChipRow opts={TERMINAL_USAGE_OPTS} selected={formData.terminal_active_usage_status as TerminalActiveUsageStatus | undefined} onSelect={(v) => updateFormData({ terminal_active_usage_status: v })} />
+          </View>
+          <View style={twStyle("gap-2")}>
+            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Interested in better or integrated terminal options?</Text>
+            <ChipRow opts={TERMINAL_INTEREST_OPTS} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
+          </View>
+        </View>
+      )}
+
+      {/* Follow-up: No / Planning */}
+      {noOrPlanning && (
+        <View style={twStyle("gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5")}>
+          <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Would you be interested in getting a platform-supported card machine in future?</Text>
+          <Text style={twStyle("text-[13px] text-slate-500")}>Could include purchase, rental, or subscription bundle options when available.</Text>
+          <ChipRow opts={TERMINAL_INTEREST_OPTS} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
+        </View>
+      )}
 
       <View
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}

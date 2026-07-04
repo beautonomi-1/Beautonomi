@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
 
     // Identity verification — completes the checklist step when:
     // 1. Admin manual review approved (users.identity_verified === true), or
-    // 2. Sumsub auto-approved the provider KYC (provider_verification_status), or
+    // 2. Didit (or legacy Sumsub) auto-approved the provider KYC (provider_verification_status), or
     // 3. The provider's marketplace verified badge is on (providers.is_verified).
     // Any one of these signals means we have a confirmed identity for the provider.
     const kycStatus = (providerKycRow as { status?: string | null } | null)?.status ?? null;

@@ -3,7 +3,7 @@
  *
  * The resolver depends on:
  *   - checkMultipleFeaturesServer (feature-flags.ts)
- *   - resolveSumsubConfig (sumsub-token.ts)
+ *   - diditEnvPresent (identity-verification/provider/didit-provider.ts)
  *   - getSupabaseAdmin (supabase/admin.ts)
  *
  * All three are mocked so we can test the derivation logic in isolation.
@@ -16,8 +16,8 @@ vi.mock("@/lib/server/feature-flags", () => ({
   checkMultipleFeaturesServer: vi.fn(),
 }));
 
-vi.mock("@/lib/verification/sumsub-token", () => ({
-  resolveSumsubConfig: vi.fn(),
+vi.mock("@/lib/identity-verification/provider/didit-provider", () => ({
+  diditEnvPresent: vi.fn(() => true),
 }));
 
 // isProviderVerificationApproved also calls getSupabaseAdmin — stub it out
@@ -30,7 +30,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { checkMultipleFeaturesServer } from "@/lib/server/feature-flags";
-import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import { diditEnvPresent } from "@/lib/identity-verification/provider/didit-provider";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   resolveVerificationPolicy,
@@ -40,117 +40,116 @@ import {
 } from "@/lib/verification/verification-policy";
 
 const mockFlags = checkMultipleFeaturesServer as ReturnType<typeof vi.fn>;
-const mockSumsub = resolveSumsubConfig as ReturnType<typeof vi.fn>;
+const mockEnv = diditEnvPresent as ReturnType<typeof vi.fn>;
 const mockAdmin = getSupabaseAdmin as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockEnv.mockReturnValue(true);
 });
 
 // ── resolveVerificationPolicy ─────────────────────────────────────────────────
 
 describe("resolveVerificationPolicy — mode derivation", () => {
-  const creds = { app_token_secret: "tok", secret_key_secret: "sec" };
-
   async function policy(
     flags: Record<string, boolean>,
-    sumsubConfig: Record<string, unknown> | null = creds,
+    diditEnv = true,
   ) {
     mockFlags.mockResolvedValue(flags);
-    mockSumsub.mockResolvedValue(sumsubConfig);
+    mockEnv.mockReturnValue(diditEnv);
     return resolveVerificationPolicy(null);
   }
 
-  it('returns mode=both when sumsub flag+creds on AND manual on', async () => {
+  it("returns mode=both when didit flag+env on AND manual on", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": true,
+      "verification.didit.enabled": true,
       "verification.manual.enabled": true,
     });
     expect(p.mode).toBe<VerificationMode>("both");
-    expect(p.sumsubEnabled).toBe(true);
+    expect(p.diditEnabled).toBe(true);
     expect(p.manualEnabled).toBe(true);
   });
 
-  it('returns mode=sumsub when only sumsub is on', async () => {
+  it("returns mode=didit when only didit is on", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": true,
+      "verification.didit.enabled": true,
       "verification.manual.enabled": false,
     });
-    expect(p.mode).toBe<VerificationMode>("sumsub");
+    expect(p.mode).toBe<VerificationMode>("didit");
   });
 
-  it('returns mode=manual when only manual is on', async () => {
+  it("returns mode=manual when only manual is on", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": false,
+      "verification.didit.enabled": false,
       "verification.manual.enabled": true,
     });
     expect(p.mode).toBe<VerificationMode>("manual");
   });
 
-  it('returns mode=off when both flags are off', async () => {
+  it("returns mode=off when both flags are off", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": false,
+      "verification.didit.enabled": false,
       "verification.manual.enabled": false,
     });
     expect(p.mode).toBe<VerificationMode>("off");
-    expect(p.sumsubEnabled).toBe(false);
+    expect(p.diditEnabled).toBe(false);
     expect(p.manualEnabled).toBe(false);
   });
 
-  it('disables sumsub when flag is on but credentials are absent', async () => {
+  it("disables didit when flag is on but env vars are absent", async () => {
     const p = await policy(
-      { "verification.sumsub.enabled": true, "verification.manual.enabled": true },
-      { app_token_secret: null, secret_key_secret: null }, // no creds
+      { "verification.didit.enabled": true, "verification.manual.enabled": true },
+      false, // env not present
     );
-    expect(p.sumsubEnabled).toBe(false);
+    expect(p.diditEnabled).toBe(false);
     expect(p.mode).toBe<VerificationMode>("manual");
   });
 
-  it('disables sumsub when sumsub config row is null', async () => {
-    const p = await policy(
-      { "verification.sumsub.enabled": true, "verification.manual.enabled": true },
-      null,
-    );
+  it("sumsubEnabled is always false (Sumsub removed)", async () => {
+    const p = await policy({
+      "verification.didit.enabled": true,
+      "verification.manual.enabled": true,
+    });
     expect(p.sumsubEnabled).toBe(false);
   });
 
-  it('reads requiredForProviders and requiredForPayouts from flags', async () => {
+  it("reads requiredForProviders and requiredForPayouts from flags", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": false,
+      "verification.didit.enabled": false,
       "verification.manual.enabled": true,
       provider_verification: true,
-      "verification.sumsub.required_for_payouts": true,
+      "verification.didit.required_for_payouts": true,
     });
     expect(p.requiredForProviders).toBe(true);
     expect(p.requiredForPayouts).toBe(true);
   });
 
-  it('reads requiredForCustomers from flags', async () => {
+  it("reads requiredForCustomers from flags", async () => {
     const p = await policy({
-      "verification.sumsub.enabled": false,
+      "verification.didit.enabled": false,
       "verification.manual.enabled": true,
       "verification.required_for_customers": true,
     });
     expect(p.requiredForCustomers).toBe(true);
   });
 
-  it('defaults requiredForProviders and requiredForPayouts to false when flags absent', async () => {
+  it("defaults requiredForProviders and requiredForPayouts to false when flags absent", async () => {
     const p = await policy({ "verification.manual.enabled": true });
     expect(p.requiredForProviders).toBe(false);
     expect(p.requiredForPayouts).toBe(false);
   });
 
-  it('defaults requiredForCustomers to false when flag absent', async () => {
+  it("defaults requiredForCustomers to false when flag absent", async () => {
     const p = await policy({ "verification.manual.enabled": true });
     expect(p.requiredForCustomers).toBe(false);
   });
 
-  it('returns permissive defaults and does not throw on error', async () => {
+  it("returns permissive defaults and does not throw on error", async () => {
     mockFlags.mockRejectedValue(new Error("DB unavailable"));
-    mockSumsub.mockResolvedValue(null);
     const p = await resolveVerificationPolicy(null);
     expect(p.mode).toBe("manual");
     expect(p.manualEnabled).toBe(true);
+    expect(p.diditEnabled).toBe(false);
     expect(p.sumsubEnabled).toBe(false);
     expect(p.requiredForProviders).toBe(false);
     expect(p.requiredForPayouts).toBe(false);

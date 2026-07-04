@@ -7,6 +7,7 @@ export const adminQueryKeys = {
 
   bootstrap: () => [...adminQueryKeys.root, "bootstrap"] as const,
   sectionPermissions: () => [...adminQueryKeys.root, "section-permissions"] as const,
+  adminTeam: () => [...adminQueryKeys.root, "admin-team"] as const,
   navCounts: () => [...adminQueryKeys.root, "nav-counts"] as const,
   tenants: () => [...adminQueryKeys.root, "tenants"] as const,
   activity: () => [...adminQueryKeys.root, "activity"] as const,
@@ -49,6 +50,16 @@ export const adminQueryKeys = {
       [...adminQueryKeys.providers.all(), "payout-accounts", providerId] as const,
     transactions: (providerId: string, qs: string) =>
       [...adminQueryKeys.providers.all(), "transactions", providerId, qs] as const,
+    terminalProfile: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "terminal-profile", providerId] as const,
+    terminalIntegrations: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "terminal-integrations", providerId] as const,
+    terminalNotes: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "terminal-notes", providerId] as const,
+    subscriptions: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "subscriptions", providerId] as const,
+    bookings: (providerId: string, filters: { page: number; status: string }) =>
+      [...adminQueryKeys.providers.all(), "bookings", providerId, filters] as const,
   },
 
   staff: (q: string) => [...adminQueryKeys.root, "staff", q] as const,
@@ -308,4 +319,14 @@ export const adminQueryKeys = {
     batchDetail: (id: string) => [...adminQueryKeys.whatsapp.all(), "batches", id] as const,
     leadComms: (leadId: string) => [...adminQueryKeys.whatsapp.all(), "lead-comms", leadId] as const,
   },
+
+  // ── Commercial Operations — Terminal ──────────────────────────────────────
+  // NOTE: Use hardcoded roots here (not adminQueryKeys.root) to avoid a
+  // circular initializer reference that breaks TypeScript inference.
+  commercialTerminalInsights: ["admin", "commercial", "terminal-insights"] as const,
+  commercialTerminalProducts: ["admin", "commercial", "terminal-products"] as const,
+  commercialTerminalOrders: ["admin", "commercial", "terminal-orders"] as const,
+  commercialTerminalCampaigns: ["admin", "commercial", "terminal-campaigns"] as const,
+  commercialTerminalReporting: ["admin", "commercial", "terminal-reporting"] as const,
+  commercialTerminalVendors: ["admin", "commercial", "terminal-vendors"] as const,
 } as const;

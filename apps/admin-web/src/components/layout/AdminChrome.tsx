@@ -1,7 +1,16 @@
-import { Suspense, useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  Suspense,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { Link, NavLink, Outlet, useNavigate, type NavLinkRenderProps } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import {
   ADMIN_SCOPE_STORAGE_KEY,
@@ -55,7 +64,10 @@ export function AdminChrome() {
     }>;
   } | null>(null);
   const [searching, setSearching] = useState(false);
+  /** Highlighted entry in the flattened result list (nav + entities) for keyboard nav. */
+  const [activeIndex, setActiveIndex] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const navCountsQuery = useQuery({
     queryKey: adminQueryKeys.navCounts(),
@@ -161,6 +173,8 @@ export function AdminChrome() {
     const onDocMouseDown = (e: MouseEvent) => {
       if (searchRef.current?.contains(e.target as Node)) return;
       setSearchResults(null);
+      setSearchQuery("");
+      setActiveIndex(0);
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
@@ -203,6 +217,103 @@ export function AdminChrome() {
       }),
     })).filter((g) => g.items.length > 0);
   }, [bootstrap, canAccess]);
+
+  type NavMatch = { title: string; href: string; group: string; icon: LucideIcon };
+
+  /**
+   * Client-side, instant page/navigation suggestions from the already
+   * RBAC-filtered sidebar. Ranked: title-prefix > title-substring > group-match.
+   */
+  const navMatches = useMemo<NavMatch[]>(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query.length < 2) return [];
+    const scored: Array<{ m: NavMatch; score: number }> = [];
+    const seen = new Set<string>();
+    for (const group of filteredNav) {
+      for (const item of group.items) {
+        if (seen.has(item.href)) continue;
+        const title = item.title.toLowerCase();
+        const group_ = group.label.toLowerCase();
+        let score = -1;
+        if (title.startsWith(query)) score = 0;
+        else if (title.includes(query)) score = 1;
+        else if (group_.includes(query)) score = 2;
+        if (score >= 0) {
+          seen.add(item.href);
+          scored.push({ m: { title: item.title, href: item.href, group: group.label, icon: item.icon }, score });
+        }
+      }
+    }
+    scored.sort((a, b) => (a.score - b.score) || a.m.title.localeCompare(b.m.title));
+    return scored.slice(0, 6).map((s) => s.m);
+  }, [searchQuery, filteredNav]);
+
+  /** Flattened, ordered targets (nav first, then entities) for keyboard selection. */
+  const flatResults = useMemo(() => {
+    const items: Array<{ key: string; to: string }> = [];
+    for (const n of navMatches) items.push({ key: `nav:${n.href}`, to: adminSpaTo(n.href) });
+    for (const u of (searchResults?.users ?? []).slice(0, 5)) items.push({ key: `user:${u.id}`, to: adminSearchResultSpaPath("user", u.id) });
+    for (const p of (searchResults?.providers ?? []).slice(0, 5)) items.push({ key: `provider:${p.id}`, to: adminSearchResultSpaPath("provider", p.id) });
+    for (const b of (searchResults?.bookings ?? []).slice(0, 5)) items.push({ key: `booking:${b.id}`, to: adminSearchResultSpaPath("booking", b.id) });
+    return items;
+  }, [navMatches, searchResults]);
+
+  const indexByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    flatResults.forEach((r, i) => map.set(r.key, i));
+    return map;
+  }, [flatResults]);
+
+  /** Keep the highlighted row valid as results stream in / change. */
+  useEffect(() => {
+    setActiveIndex((i) => (flatResults.length === 0 ? 0 : Math.min(i, flatResults.length - 1)));
+  }, [flatResults.length]);
+
+  const closeSearch = useCallback(() => {
+    setSearchQuery("");
+    setSearchResults(null);
+    setActiveIndex(0);
+  }, []);
+
+  const onSearchKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Escape") {
+        e.currentTarget.blur();
+        closeSearch();
+        return;
+      }
+      if (flatResults.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(i + 1, flatResults.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        const target = flatResults[activeIndex] ?? flatResults[0];
+        if (target) {
+          e.preventDefault();
+          navigate(target.to);
+          closeSearch();
+        }
+      }
+    },
+    [flatResults, activeIndex, navigate, closeSearch],
+  );
+
+  /** ⌘K / Ctrl+K focuses the header search from anywhere in the shell. */
+  useEffect(() => {
+    if (!canUseGlobalSearch) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [canUseGlobalSearch]);
 
   const navCounts = navCountsQuery.data ?? {};
 
@@ -335,33 +446,91 @@ export function AdminChrome() {
 
           {canUseGlobalSearch ? (
             <div ref={searchRef} className="relative min-w-0 flex-1 basis-full max-w-xl md:basis-auto">
-              <div className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-gray-50/90 px-3 shadow-sm">
+              <div className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-gray-50/90 px-3 shadow-sm focus-within:border-primary/40 focus-within:bg-white">
                 <Search className="h-4 w-4 shrink-0 text-gray-400" />
                 <input
+                  ref={searchInputRef}
                   className="h-11 w-full min-w-0 bg-transparent text-sm outline-none"
-                  placeholder="Search users, bookings, providers…"
+                  placeholder="Search pages, users, bookings, providers…"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setActiveIndex(0);
+                  }}
+                  onKeyDown={onSearchKeyDown}
+                  role="combobox"
+                  aria-expanded={searchQuery.trim().length >= 2}
+                  aria-controls="admin-search-results"
+                  aria-autocomplete="list"
                 />
+                <kbd className="hidden shrink-0 items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-400 sm:inline-flex">
+                  ⌘K
+                </kbd>
               </div>
               {searchQuery.trim().length >= 2 ? (
-                <div className="absolute left-0 right-0 top-11 z-50 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                  {searching ? (
-                    <div className="p-3 text-sm text-gray-500">Searching…</div>
-                  ) : searchResults ? (
-                    <div className="p-2 text-sm">
-                      {searchResults.users?.length ? (
-                        <div className="mb-2">
-                          <div className="px-2 py-1 text-xs font-medium text-gray-400">Users</div>
-                          {searchResults.users.slice(0, 5).map((u) => (
+                <div
+                  id="admin-search-results"
+                  role="listbox"
+                  className="absolute left-0 right-0 top-11 z-50 max-h-[28rem] overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+                >
+                  <div className="p-2 text-sm">
+                    {/* ── Pages / navigation (instant, client-side) ── */}
+                    {navMatches.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Pages</div>
+                        {navMatches.map((n) => {
+                          const active = indexByKey.get(`nav:${n.href}`) === activeIndex;
+                          return (
+                            <Link
+                              key={n.href}
+                              to={adminSpaTo(n.href)}
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "flex w-full min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10 text-primary" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`nav:${n.href}`);
+                                if (idx != null) setActiveIndex(idx);
+                              }}
+                              onClick={closeSearch}
+                            >
+                              <n.icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-gray-400")} />
+                              <span className="min-w-0 flex-1 truncate">
+                                <span className={cn("font-medium", active ? "text-primary" : "text-gray-900")}>
+                                  {n.title}
+                                </span>
+                                <span className="ml-2 text-xs text-gray-400">{n.group}</span>
+                              </span>
+                              {active ? <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-primary/70" /> : null}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {/* ── Records (users / providers / bookings) ── */}
+                    {searchResults?.users?.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Users</div>
+                        {searchResults.users.slice(0, 5).map((u) => {
+                          const active = indexByKey.get(`user:${u.id}`) === activeIndex;
+                          return (
                             <Link
                               key={u.id}
                               to={adminSearchResultSpaPath("user", u.id)}
-                              className="block w-full min-h-11 rounded-lg px-2 py-2 text-left hover:bg-gray-50"
-                              onClick={() => {
-                                setSearchQuery("");
-                                setSearchResults(null);
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "block w-full min-h-11 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`user:${u.id}`);
+                                if (idx != null) setActiveIndex(idx);
                               }}
+                              onClick={closeSearch}
                             >
                               <span className="font-medium text-gray-900">{u.full_name || "No name"}</span>
                               <span className="mt-0.5 block text-xs text-gray-500">
@@ -369,42 +538,60 @@ export function AdminChrome() {
                                 {u.phone ? ` • ${u.phone}` : ""}
                               </span>
                             </Link>
-                          ))}
-                        </div>
-                      ) : null}
-                      {searchResults.providers?.length ? (
-                        <div className="mb-2">
-                          <div className="px-2 py-1 text-xs font-medium text-gray-400">Providers</div>
-                          {searchResults.providers.slice(0, 5).map((p) => (
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {searchResults?.providers?.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Providers</div>
+                        {searchResults.providers.slice(0, 5).map((p) => {
+                          const active = indexByKey.get(`provider:${p.id}`) === activeIndex;
+                          return (
                             <Link
                               key={p.id}
                               to={adminSearchResultSpaPath("provider", p.id)}
-                              className="block w-full min-h-11 rounded-lg px-2 py-2 text-left hover:bg-gray-50"
-                              onClick={() => {
-                                setSearchQuery("");
-                                setSearchResults(null);
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "block w-full min-h-11 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`provider:${p.id}`);
+                                if (idx != null) setActiveIndex(idx);
                               }}
+                              onClick={closeSearch}
                             >
                               <span className="font-medium text-gray-900">{p.business_name}</span>
                               <span className="mt-0.5 block text-xs text-gray-500">
                                 {p.owner_name || p.owner_email || ""}
                               </span>
                             </Link>
-                          ))}
-                        </div>
-                      ) : null}
-                      {searchResults.bookings?.length ? (
-                        <div>
-                          <div className="px-2 py-1 text-xs font-medium text-gray-400">Bookings</div>
-                          {searchResults.bookings.slice(0, 5).map((b) => (
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {searchResults?.bookings?.length ? (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-xs font-medium text-gray-400">Bookings</div>
+                        {searchResults.bookings.slice(0, 5).map((b) => {
+                          const active = indexByKey.get(`booking:${b.id}`) === activeIndex;
+                          return (
                             <Link
                               key={b.id}
                               to={adminSearchResultSpaPath("booking", b.id)}
-                              className="block w-full min-h-11 rounded-lg px-2 py-2 text-left hover:bg-gray-50"
-                              onClick={() => {
-                                setSearchQuery("");
-                                setSearchResults(null);
+                              role="option"
+                              aria-selected={active}
+                              className={cn(
+                                "block w-full min-h-11 rounded-lg px-2 py-2 text-left",
+                                active ? "bg-primary/10" : "hover:bg-gray-50",
+                              )}
+                              onMouseEnter={() => {
+                                const idx = indexByKey.get(`booking:${b.id}`);
+                                if (idx != null) setActiveIndex(idx);
                               }}
+                              onClick={closeSearch}
                             >
                               <span className="font-medium text-gray-900">{b.booking_number}</span>
                               {b.created_at ? (
@@ -413,17 +600,23 @@ export function AdminChrome() {
                                 </span>
                               ) : null}
                             </Link>
-                          ))}
-                        </div>
-                      ) : null}
-                      {!searching &&
-                      !searchResults.users?.length &&
-                      !searchResults.providers?.length &&
-                      !searchResults.bookings?.length ? (
-                        <div className="p-3 text-gray-500">No results</div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {/* ── Status rows ── */}
+                    {searching ? (
+                      <div className="px-2 py-2 text-xs text-gray-400">Searching records…</div>
+                    ) : null}
+                    {!searching &&
+                    !navMatches.length &&
+                    !searchResults?.users?.length &&
+                    !searchResults?.providers?.length &&
+                    !searchResults?.bookings?.length ? (
+                      <div className="p-3 text-gray-500">No results for “{searchQuery.trim()}”</div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
             </div>

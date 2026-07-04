@@ -14,7 +14,7 @@ import { resolveVerificationCountry } from "@/lib/verification/resolve-verificat
 
 /**
  * GET /api/me/verification
- * Get current user's verification status, plus whether SumSub is available
+ * Get current user's verification status, plus whether Didit is available
  * so the front-end can decide to show the automated or manual flow.
  */
 export async function GET(request: NextRequest) {
@@ -46,7 +46,8 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const policy = await resolveVerificationPolicy(tenantId, env);
 
-    const sumsubAvailable = policy.sumsubEnabled;
+    const diditAvailable = policy.diditEnabled;
+    const sumsubAvailable = false; // Sumsub removed; kept for API backward compat
 
     // Derive a combined status
     const userStatus = userData.identity_verification_status ?? "none";
@@ -90,11 +91,13 @@ export async function GET(request: NextRequest) {
       verifications: list,
       submissions,
       can_submit_verification,
-      // Whether SumSub automated verification is available
+      // Whether Didit automated verification is available
+      didit_available: diditAvailable,
+      // @deprecated Always false (Sumsub removed). Kept for legacy client compat.
       sumsub_available: sumsubAvailable,
       // Whether manual document upload is available
       manual_available: policy.manualEnabled,
-      // Combined mode: "off" | "manual" | "sumsub" | "both"
+      // Combined mode: "off" | "manual" | "didit" | "both"
       verification_mode: policy.mode,
       // Most recent manual document submission
       manual_verification: mostRecentManual

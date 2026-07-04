@@ -73,7 +73,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.70",
+  version: "1.0.71",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -87,13 +87,11 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "262",
+    buildNumber: "263",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
         "Beautonomi can add your appointment to your calendar when you choose Save to calendar.",
-      // Sumsub identity verification requires camera access for document capture
-      // and liveness checks, and microphone access for liveness video recording.
       NSCameraUsageDescription:
         "Beautonomi uses the camera for identity verification and profile photos.",
       NSMicrophoneUsageDescription:
@@ -138,12 +136,10 @@ const BASE_EXPO_CONFIG = {
     permissions: [
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
-      // Sumsub identity verification: camera for document capture + liveness,
-      // RECORD_AUDIO for liveness video recording.
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 263,
+    versionCode: 264,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -198,24 +194,10 @@ const BASE_EXPO_CONFIG = {
           targetSdkVersion: 35,
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
-          // Sumsub native SDK: Android AAR lives in the Sumsub Maven repo.
-          extraMavenRepos: ["https://maven.sumsub.com/repository/maven-public/"],
         },
       },
     ],
-    // Sumsub native SDK: prepends CocoaPods source declarations to the generated
-    // Podfile so `pod install` can resolve IdensicMobileSDK from the SumSubstance
-    // Specs repo. iosPodfileSourceRepos is not a real expo-build-properties option.
-    "../../tooling/expo-plugins/withPodfileSources",
-    // Resolves the Android manifest merger conflict: expo-dev-launcher declares
-    // com.google.mlkit.vision.DEPENDENCIES=barcode_ui while idensic-mobile-sdk
-    // declares =face; we write the union value with tools:replace to settle it.
-    "../../tooling/expo-plugins/withMlKitVisionDependencies",
     "../../tooling/expo-plugins/withGradleWrapperResilience",
-    // Drops the relocated com.atlassian.commonmark:0.13.0 artifact so Android's
-    // checkReleaseDuplicateClasses doesn't fail on org.commonmark.* classes that
-    // also ship in org.commonmark:commonmark:0.21.0 (two native SDKs pull both).
-    "../../tooling/expo-plugins/withAndroidCommonmarkDedupe",
     [
       "expo-local-authentication",
       {
@@ -290,6 +272,15 @@ const BASE_EXPO_CONFIG = {
     ],
     // After Sentry: ensure EAS env for uploads reaches Run Script phases (see plugin header).
     "./plugins/sentry-allow-failure",
+    // Didit native KYC SDK. NFC disabled — basic KYC (document + liveness) does
+    // not require passport-chip reading, and disabling it avoids the iOS NFC
+    // entitlement/provisioning-profile requirement. Requires a dev/prod build
+    // (native module — not available in Expo Go); the launcher falls back to an
+    // in-app browser when the module is absent.
+    [
+      "@didit-protocol/sdk-react-native",
+      { iosNfcEnabled: false, androidNfcEnabled: false },
+    ],
   ],
   extra: {
     eas: { projectId: "434ef972-0597-4d93-9c09-ff7b9e11b149" },

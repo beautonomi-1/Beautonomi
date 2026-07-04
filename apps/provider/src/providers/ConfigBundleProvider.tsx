@@ -43,7 +43,7 @@ const defaultBundle: PublicConfigBundle = {
     ads: {},
     ranking: {},
     distance: {},
-    sumsub: {},
+    identity_verification: {},
     aura: {},
     safety: {},
   },

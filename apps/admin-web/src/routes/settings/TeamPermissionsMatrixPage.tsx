@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserCheck } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import type { UserRole } from "@beautonomi/types";
 import {
@@ -27,6 +29,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminToast } from "@/lib/adminToast";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 function roleLabel(role: UserRole): string {
   if (role === "superadmin") return "Superadmin";
@@ -173,7 +176,16 @@ export function TeamPermissionsMatrixPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Team permissions"
-        description="Effective section → roles from GET /api/admin/settings/section-permissions. Changes are saved with PUT (superadmin only)."
+        description="Configure which admin roles can access each portal section. Assign roles to people on the Admin team page."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/settings/admin-team")}
+            className={`inline-flex items-center gap-2 ${adminToolbarButtonClass(false)}`}
+          >
+            <UserCheck className="h-4 w-4" aria-hidden />
+            Admin team
+          </Link>
+        }
       />
       <div className="flex flex-wrap items-center gap-3">
         <button

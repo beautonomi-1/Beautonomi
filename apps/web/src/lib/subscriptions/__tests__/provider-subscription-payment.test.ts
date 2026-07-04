@@ -74,8 +74,24 @@ function makeDb(initial: Record<string, Row[]>) {
       insert: (payload: Row | Row[]) => {
         const arr = Array.isArray(payload) ? payload : [payload];
         inserts[table] = [...(inserts[table] ?? []), ...arr];
-        tables[table] = [...(tables[table] ?? []), ...arr.map((r) => ({ ...r }))];
-        return Promise.resolve({ data: null, error: null });
+        const stored = arr.map((r, i) => ({
+          id: r.id ?? `${table}-ins-${(tables[table]?.length ?? 0) + i + 1}`,
+          ...r,
+        }));
+        tables[table] = [...(tables[table] ?? []), ...stored];
+        const first = stored[0] ?? null;
+        const result = { data: null, error: null };
+        // Chainable + thenable: supports both `await insert(...)` and
+        // `await insert(...).select("id").single()`.
+        return {
+          select: () => ({
+            single: async () => ({ data: first, error: null }),
+            maybeSingle: async () => ({ data: first, error: null }),
+          }),
+          then: (resolve: (v: unknown) => unknown, reject?: (r: unknown) => unknown) =>
+            Promise.resolve(result).then(resolve, reject),
+          catch: (reject: (r: unknown) => unknown) => Promise.resolve(result).catch(reject),
+        } as Row;
       },
     };
     return api;
@@ -104,11 +120,14 @@ describe("recordProviderSubscriptionPayment", () => {
     expect(result.recorded).toBe(true);
     expect(result.alreadyRecorded).toBe(false);
     expect(result.netAmount).toBe(291);
+    expect(result.financeTransactionId).toBeTruthy();
     expect(db.inserts.payment_transactions).toHaveLength(1);
     const finance = db.inserts.finance_transactions ?? [];
     expect(finance).toHaveLength(1);
     expect(finance[0].transaction_type).toBe("provider_subscription_payment");
-    expect(finance[0].amount).toBe(291);
+    // `amount` is the GROSS charged (matches ads/marketing convention + the
+    // provider receipt); `net` is gross − gateway fees (revenue recognition).
+    expect(finance[0].amount).toBe(300);
     expect(finance[0].net).toBe(291);
     expect(finance[0].metadata.reference).toBe("ref-1");
     expect(finance[0].metadata.provider_subscription_order_id).toBe("order-1");

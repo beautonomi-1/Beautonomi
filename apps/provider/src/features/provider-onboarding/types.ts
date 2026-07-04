@@ -4,8 +4,38 @@
 
 export type TeamSize = "freelancer" | "small" | "medium" | "large";
 export type BusinessType = "salon" | "mobile" | "both";
+/** @deprecated Use TerminalOwnershipStatus from terminal types. Kept for backcompat during migration. */
 export type YocoMachine = "yes" | "no" | "other";
 export type PayrollType = "commission" | "hourly" | "both" | "other";
+
+// ── Terminal capture types (replaces YocoMachine) ─────────────────────────────
+export type TerminalOwnershipStatus =
+  | "has_terminal"
+  | "no_terminal"
+  | "planning_to_get_terminal"
+  | "unsure";
+
+export type TerminalVendor =
+  | "yoco"
+  | "ikhokha"
+  | "capitec"
+  | "fnb"
+  | "nedbank"
+  | "absa"
+  | "standard_bank"
+  | "psp"
+  | "other"
+  | "unsure";
+
+export type TerminalCountRange =
+  | "one"
+  | "two_to_three"
+  | "four_to_ten"
+  | "more_than_ten"
+  | "unsure";
+
+export type TerminalActiveUsageStatus = "yes" | "no" | "sometimes" | "unsure";
+export type TerminalInterestLevel = "yes" | "maybe_later" | "no";
 
 export interface OnboardingAddress {
   line1: string;
@@ -120,8 +150,18 @@ export interface OnboardingFormData {
     twitter?: string;
     linkedin?: string;
   };
+  /** @deprecated Replaced by terminal_ownership_status. */
   yoco_machine?: YocoMachine;
+  /** @deprecated Replaced by terminal_provider_other. */
   yoco_machine_other?: string;
+  // Terminal capture (new generic fields)
+  terminal_ownership_status?: TerminalOwnershipStatus;
+  terminal_provider?: TerminalVendor;
+  terminal_provider_other?: string;
+  terminal_count_range?: TerminalCountRange;
+  terminal_active_usage_status?: TerminalActiveUsageStatus;
+  interested_in_platform_terminal?: TerminalInterestLevel;
+  interested_in_terminal_subscription?: boolean;
   payout_setup_complete?: boolean;
   is_vat_registered?: boolean;
   vat_number?: string;
