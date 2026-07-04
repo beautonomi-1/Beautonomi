@@ -21,6 +21,10 @@ vi.mock("@/lib/admin/fee-reconciliation-compute", () => ({
   computeGatewayFeeSuggestions: (...args: unknown[]) => mockCompute(...args),
 }));
 
+vi.mock("@/lib/tenant/admin-request-tenant", () => ({
+  resolveAdminApiTenantId: vi.fn().mockResolvedValue("tenant-1"),
+}));
+
 describe("GET /api/admin/fees/reconciliations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,6 +41,10 @@ describe("GET /api/admin/fees/reconciliations", () => {
         data: [],
         error: null,
         count: 0,
+      })),
+      maybeSingle: vi.fn(async () => ({
+        data: { id: "tenant-1" },
+        error: null,
       })),
     };
     mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn(() => chain) });
@@ -71,6 +79,7 @@ describe("GET /api/admin/fees/reconciliations", () => {
       "paystack",
       "2026-01-01",
       "2026-01-31",
+      { tenantId: "tenant-1" },
     );
   });
 

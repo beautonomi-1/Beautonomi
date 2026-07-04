@@ -242,7 +242,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           typeof metadata.provider_id === "string" ? metadata.provider_id : null,
       });
 
-      if (!guard.ok) {
+      if (guard.ok === false) {
         console.error(
           `[charge-success] terminal order payment rejected (${guard.reason}):`,
           terminalOrderId,

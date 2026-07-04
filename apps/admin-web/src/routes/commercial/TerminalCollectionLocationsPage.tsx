@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Plus, Settings2, Trash2 } from "lucide-react";
+import { Plus, Settings2, Trash2 } from "lucide-react";
 import { ADMIN_SECTION_COMMERCIAL } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -136,7 +136,7 @@ export function TerminalCollectionLocationsPage() {
 
   if (denied) return denied;
   if (isLoading) return <AdminPageSkeleton />;
-  if (isError) return <AdminRetryBlock onRetry={() => void refetch()} />;
+  if (isError) return <AdminRetryBlock message="Failed to load pickup locations" onRetry={() => void refetch()} />;
 
   return (
     <div className="space-y-6">
@@ -144,7 +144,7 @@ export function TerminalCollectionLocationsPage() {
         title="Terminal Pickup Locations"
         description="Configure warehouse and hub locations for collection fulfillment on terminal orders."
         actions={
-          <button type="button" className={adminToolbarButtonClass} onClick={openCreate}>
+          <button type="button" className={adminToolbarButtonClass()} onClick={openCreate}>
             <Plus className="h-4 w-4" />
             Add location
           </button>
@@ -154,10 +154,17 @@ export function TerminalCollectionLocationsPage() {
       <AdminPanel>
         {items.length === 0 ? (
           <EmptyState
-            icon={MapPin}
             title="No pickup locations"
             description="Add a location so providers can select pickup during terminal checkout."
-            action={{ label: "Add location", onClick: openCreate }}
+            action={
+              <button
+                type="button"
+                onClick={openCreate}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                Add location
+              </button>
+            }
           />
         ) : (
           <AdminDataTable>
@@ -209,6 +216,28 @@ export function TerminalCollectionLocationsPage() {
           setCreating(false);
         }}
         title={editLocation ? "Edit pickup location" : "Add pickup location"}
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm"
+              onClick={() => {
+                setEditLocation(null);
+                setCreating(false);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={!form.name.trim() || saveMut.isPending}
+              onClick={() => saveMut.mutate()}
+            >
+              {saveMut.isPending ? "Saving…" : "Save"}
+            </button>
+          </>
+        }
       >
         <div className="space-y-3">
           <label className="block text-sm">
@@ -272,26 +301,6 @@ export function TerminalCollectionLocationsPage() {
               />
               Active
             </label>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm"
-              onClick={() => {
-                setEditLocation(null);
-                setCreating(false);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              disabled={!form.name.trim() || saveMut.isPending}
-              onClick={() => saveMut.mutate()}
-            >
-              {saveMut.isPending ? "Saving…" : "Save"}
-            </button>
           </div>
         </div>
       </AdminModal>

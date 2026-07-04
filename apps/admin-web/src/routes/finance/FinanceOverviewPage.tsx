@@ -923,7 +923,9 @@ export function FinanceOverviewPage() {
                     <AdminTh>Date</AdminTh>
                     <AdminTh>Type</AdminTh>
                     <AdminTh>Amount</AdminTh>
-                    <AdminTh title="Paystack gateway fee recorded on payment and terminal_* ledger rows">Fees</AdminTh>
+                    <AdminTh>
+                      <span title="Paystack gateway fee recorded on payment and terminal_* ledger rows">Fees</span>
+                    </AdminTh>
                     <AdminTh>Net</AdminTh>
                     <AdminTh>Booking</AdminTh>
                     <AdminTh>Receipt</AdminTh>

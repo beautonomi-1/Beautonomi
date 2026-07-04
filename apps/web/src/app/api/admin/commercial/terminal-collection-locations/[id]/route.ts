@@ -18,7 +18,7 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const patchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  address: z.record(z.unknown()).optional(),
+  address: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
   display_order: z.number().int().optional(),
 });

@@ -1,7 +1,7 @@
 const APP_BASE = () => (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 
 export function resolveIntegrationVendorSlug(product: {
-  vendor: string;
+  vendor?: string;
   integration_vendor_slug?: string | null;
 }): string {
   return (product.integration_vendor_slug ?? product.vendor ?? "").trim().toLowerCase();
@@ -9,7 +9,7 @@ export function resolveIntegrationVendorSlug(product: {
 
 /** Provider web path for completing brand integration after a terminal order. */
 export function resolveIntegrationSetupPath(product: {
-  vendor: string;
+  vendor?: string;
   integration_vendor_slug?: string | null;
 }): string {
   const slug = resolveIntegrationVendorSlug(product);
@@ -20,7 +20,7 @@ export function resolveIntegrationSetupPath(product: {
 }
 
 export function resolveIntegrationSetupUrl(
-  product: { vendor: string; integration_vendor_slug?: string | null },
+  product: { vendor?: string; integration_vendor_slug?: string | null },
   orderId?: string,
 ): string {
   const base = APP_BASE();

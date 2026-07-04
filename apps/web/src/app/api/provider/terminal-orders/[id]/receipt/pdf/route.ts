@@ -97,24 +97,25 @@ export async function GET(
       },
     ]);
 
-    drawPdfSectionTitle(doc, "Items");
+    const lineTotal = (receipt.unit_price ?? 0) * (receipt.quantity ?? 1);
     drawPdfLineItems(doc, [
       {
-        name: receipt.product_name || "Terminal device",
+        description: receipt.product_name || "Terminal device",
         detail: [receipt.vendor, receipt.model].filter(Boolean).join(" · ") || undefined,
-        qty: receipt.quantity ?? 1,
-        unitPrice: receipt.unit_price ?? 0,
-        total: (receipt.unit_price ?? 0) * (receipt.quantity ?? 1),
+        amount: moneyPdf(lineTotal, currency),
       },
-    ]);
+    ], { title: "Items" });
 
-    drawPdfTotals(doc, [
-      { label: "Subtotal", value: moneyPdf((receipt.unit_price ?? 0) * (receipt.quantity ?? 1), currency) },
-      ...(Number(receipt.tax ?? 0) > 0
-        ? [{ label: "VAT", value: moneyPdf(receipt.tax ?? 0, currency) }]
-        : []),
-      { label: "Total", value: moneyPdf(receipt.total ?? 0, currency), bold: true },
-    ]);
+    drawPdfTotals(
+      doc,
+      [
+        { label: "Subtotal", value: moneyPdf(lineTotal, currency) },
+        ...(Number(receipt.tax ?? 0) > 0
+          ? [{ label: "VAT", value: moneyPdf(receipt.tax ?? 0, currency) }]
+          : []),
+      ],
+      { label: "Total", value: moneyPdf(receipt.total ?? 0, currency) },
+    );
 
     drawPdfFooter(doc, receipt.receipt_footer ?? undefined);
     doc.end();
