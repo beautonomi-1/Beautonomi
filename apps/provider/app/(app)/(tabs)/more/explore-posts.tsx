@@ -172,7 +172,13 @@ export default function ExplorePostsScreen() {
   const exploreGridColumns = isTablet ? 4 : 3;
   const exploreGridCellSize =
     (windowWidth - screenPadding * 2 - exploreGridGap * (exploreGridColumns - 1)) / exploreGridColumns;
-  const params = useLocalSearchParams<{ create?: string }>();
+  const params = useLocalSearchParams<{
+    create?: string;
+    offeringId?: string;
+    caption?: string;
+    addToGallery?: string;
+    bookingId?: string;
+  }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<PickedAsset[]>([]);
@@ -180,6 +186,8 @@ export default function ExplorePostsScreen() {
   const [publishNow, setPublishNow] = useState(true);
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(null);
   const [offeringId, setOfferingId] = useState<string | null>(null);
+  const [alsoAddToGallery, setAlsoAddToGallery] = useState(true);
+  const [preseedBookingId, setPreseedBookingId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [uploading, setUploading] = useState(false);
 
@@ -300,8 +308,15 @@ export default function ExplorePostsScreen() {
   }, []);
 
   useEffect(() => {
-    if (params.create === "1" && canCreateExplorePosts) setCreateOpen(true);
-  }, [params.create, canCreateExplorePosts]);
+    if (params.create === "1" && canCreateExplorePosts) {
+      // Pre-seed from the "post your work" completion flow (booking detail → this deep link).
+      if (params.caption) setCaption(String(params.caption));
+      if (params.offeringId) setOfferingId(String(params.offeringId));
+      if (params.bookingId) setPreseedBookingId(String(params.bookingId));
+      if (params.addToGallery != null) setAlsoAddToGallery(params.addToGallery === "1" || params.addToGallery === "true");
+      setCreateOpen(true);
+    }
+  }, [params.create, params.caption, params.offeringId, params.bookingId, params.addToGallery, canCreateExplorePosts]);
 
   const diversityTip = useMemo(() => {
     if (posts.length < 3 || categories.length < 2) return null;
@@ -533,6 +548,8 @@ export default function ExplorePostsScreen() {
     setPublishNow(true);
     setPrimaryCategorySlug(null);
     setOfferingId(null);
+    setAlsoAddToGallery(true);
+    setPreseedBookingId(null);
     setTagInput("");
     setCreateOpen(true);
   }, []);
@@ -652,6 +669,8 @@ export default function ExplorePostsScreen() {
         ...(primaryCategorySlug ? { primary_category_slug: primaryCategorySlug } : {}),
         ...(tags.length ? { tags } : {}),
         ...(offeringId ? { offering_id: offeringId } : {}),
+        ...(alsoAddToGallery ? { also_add_to_gallery: true } : {}),
+        ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
       });
       setUploading(false);
       if (createErr) {
@@ -671,7 +690,7 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : "Something went wrong.",
       );
     }
-  }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
+  }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, tagInput, createPost, refresh]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (!canCreateExplorePosts) {
@@ -1069,6 +1088,25 @@ export default function ExplorePostsScreen() {
             </ScrollView>
           </>
         ) : null}
+        <TouchableOpacity
+          onPress={() => setAlsoAddToGallery((v) => !v)}
+          style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          activeOpacity={0.8}
+        >
+          <View style={twStyle("flex-1 pr-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-800")}>Also add to my portfolio</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+              Shows this photo in your provider gallery too.
+            </Text>
+          </View>
+          <View
+            style={twStyle(
+              `h-6 w-11 rounded-full ${alsoAddToGallery ? "bg-violet-600" : "bg-gray-300"} items-${alsoAddToGallery ? "end" : "start"} justify-center px-0.5`,
+            )}
+          >
+            <View style={twStyle("h-5 w-5 rounded-full bg-white shadow-sm")} />
+          </View>
+        </TouchableOpacity>
         <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
             onPress={() => setPublishNow(true)}

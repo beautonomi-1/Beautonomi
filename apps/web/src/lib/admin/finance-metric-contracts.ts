@@ -1,4 +1,4 @@
-export const FINANCE_METRIC_CONTRACT_VERSION = "2026.04.12";
+export const FINANCE_METRIC_CONTRACT_VERSION = "2026.07.05";
 
 type MetricContract = {
   key: string;
@@ -51,6 +51,24 @@ const CONTRACTS: Record<string, MetricContract> = {
     source: ["gift_cards"],
     timezone: "tenant",
     cadence: "daily",
+  },
+  gatewayFeesServices: {
+    key: "gatewayFeesServices",
+    label: "Gateway Fees (Booking Services)",
+    formula:
+      "sum(finance_transactions.fees where transaction_type in payment, additional_charge_payment)",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "near_realtime",
+  },
+  gatewayFeesTotal: {
+    key: "gatewayFeesTotal",
+    label: "Gateway Fees (All Paystack Flows)",
+    formula:
+      "gatewayFeesTotalFromAggregate — services + terminal + subscription + ads + marketing + gift/wallet + membership + payout transfers",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "near_realtime",
   },
 };
 

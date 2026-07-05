@@ -16,6 +16,7 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
+import { repairSubscriptionPlanFromPayments } from "@/lib/subscriptions/repair-subscription-plan-from-payments";
 
 const PAST_DUE_GRACE_DAYS = 3;
 
@@ -165,11 +166,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let subscriptionPlansRepaired = 0;
+    const { data: tenants } = await supabase.from("tenants").select("id");
+    for (const tenant of tenants ?? []) {
+      const tenantId = String((tenant as { id?: string }).id ?? "");
+      if (!tenantId) continue;
+      try {
+        subscriptionPlansRepaired += await repairSubscriptionPlanFromPayments(supabase, tenantId);
+      } catch (repairErr) {
+        console.error(`Subscription plan repair failed for tenant ${tenantId}:`, repairErr);
+      }
+    }
+
     return successResponse({
       cancelled_expired: count,
       naturally_expired: naturalCount,
       past_due_expired: pastDueCount,
       providers_notified: notified,
+      subscription_plans_repaired: subscriptionPlansRepaired,
     });
   } catch (error) {
     return handleApiError(error, "Cron: expire-cancelled-subscriptions failed");

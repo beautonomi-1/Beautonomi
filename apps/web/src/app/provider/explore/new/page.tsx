@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ExplorePostForm } from "@/components/provider/ExplorePostForm";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -9,6 +9,11 @@ import { ChevronLeft } from "lucide-react";
 
 export default function ProviderExploreNewPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preseedCaption = searchParams.get("caption") ?? undefined;
+  const preseedOfferingId = searchParams.get("offeringId") ?? undefined;
+  const preseedBookingId = searchParams.get("bookingId") ?? undefined;
+  const preseedAddToGallery = searchParams.get("addToGallery");
 
   return (
     <RoleGuard
@@ -34,6 +39,10 @@ export default function ProviderExploreNewPage() {
 
         <div className="max-w-lg mx-auto px-4 py-6">
           <ExplorePostForm
+            preseedCaption={preseedCaption}
+            preseedOfferingId={preseedOfferingId}
+            preseedBookingId={preseedBookingId}
+            preseedAddToGallery={preseedAddToGallery === "1" || preseedAddToGallery === "true"}
             onSuccess={() => router.replace("/provider/explore")}
             onCancel={() => router.push("/provider/explore")}
           />

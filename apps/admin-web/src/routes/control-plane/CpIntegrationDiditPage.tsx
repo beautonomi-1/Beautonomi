@@ -31,11 +31,18 @@ function isGlobalFlag(flag: FlagSnapshot): boolean {
 type DiditHealthData = {
   api_key_set: boolean;
   workflow_id_set: boolean;
+  workflow_id_source?: "env" | "default";
+  effective_workflow_id?: string;
+  default_workflow_id?: string;
   webhook_secret_set: boolean;
+  missing_env_vars?: string[];
   base_url: string;
   environment: string;
   env_complete: boolean;
   webhook_url: string | null;
+  webhook_url_uses_www?: boolean;
+  webhook_url_may_redirect?: boolean;
+  recommended_webhook_url?: string;
   last_webhook_received_at: string | null;
 };
 
@@ -52,7 +59,7 @@ const VERIFICATION_FLAGS = [
     feature_name: "Didit identity verification",
     category: "control_plane",
     label: "Didit identity verification (master switch)",
-    description: "Master switch. Availability = this flag AND DIDIT_API_KEY + DIDIT_WORKFLOW_ID + DIDIT_WEBHOOK_SECRET env vars present.",
+    description: "Master switch. Availability = this flag AND DIDIT_API_KEY + DIDIT_WEBHOOK_SECRET env vars present.",
   },
   {
     key: "verification.manual.enabled",
@@ -233,9 +240,14 @@ export function CpIntegrationDiditPage() {
                 </span>
               </CpField>
               <CpField label="DIDIT_WORKFLOW_ID">
-                <span className={health?.workflow_id_set ? "text-green-700" : "text-red-600"}>
-                  {health?.workflow_id_set ? "✓ Set" : "✗ Not set"}
+                <span className={health?.workflow_id_set ? "text-green-700" : "text-amber-600"}>
+                  {health?.workflow_id_set
+                    ? "✓ Set (env override)"
+                    : `Using default — ${health?.effective_workflow_id ?? "Free KYC"}`}
                 </span>
+              </CpField>
+              <CpField label="Effective workflow">
+                <span className="text-sm font-mono break-all">{health?.effective_workflow_id ?? "—"}</span>
               </CpField>
               <CpField label="DIDIT_WEBHOOK_SECRET">
                 <span className={health?.webhook_secret_set ? "text-green-700" : "text-amber-600"}>
@@ -250,6 +262,11 @@ export function CpIntegrationDiditPage() {
               </CpField>
               <CpField label="Webhook URL">
                 <span className="text-sm font-mono break-all">{health?.webhook_url ?? "—"}</span>
+                {health?.webhook_url_may_redirect && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    ⚠ Set NEXT_PUBLIC_APP_URL to {health?.recommended_webhook_url?.replace("/api/webhooks/didit", "") ?? "https://www.beautonomi.com"} — non-www URLs redirect and Didit webhooks do not follow redirects.
+                  </p>
+                )}
               </CpField>
               <CpField label="Last webhook received">
                 <span className="text-sm">{health?.last_webhook_received_at ?? "Never"}</span>
@@ -277,7 +294,7 @@ export function CpIntegrationDiditPage() {
             </div>
             {!health?.env_complete && (
               <p className="mt-2 text-sm text-amber-700">
-                ⚠ DIDIT_API_KEY, DIDIT_WORKFLOW_ID, or DIDIT_WEBHOOK_SECRET not set — Didit will not be available even if the flag is on.
+                ⚠ Missing: {(health?.missing_env_vars?.length ? health.missing_env_vars.join(", ") : "DIDIT_API_KEY or DIDIT_WEBHOOK_SECRET")} — Didit will not be available even if the flag is on.
               </p>
             )}
           </AdminPanel>

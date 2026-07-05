@@ -13,7 +13,7 @@
 import { useCallback, useState, useRef, useEffect, type ReactNode } from "react";
 import {
   View, Text, ScrollView, RefreshControl, Alert,
-  TouchableOpacity, ActivityIndicator, TextInput,
+  TouchableOpacity, ActivityIndicator,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +24,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
-import { useIdentityVerification, type LegalDetails } from "@/lib/identity-verification/useIdentityVerification";
+import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -32,6 +32,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
+import { LegalDetailsConfirmForm } from "@/components/verification/LegalDetailsConfirmForm";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 
 export type NormalizedVerificationStatus =
@@ -63,142 +64,11 @@ const STATUS_CONFIG: Record<
   errored:        { label: "Unavailable",      icon: "alert-circle-outline",   color: "#6b7280", bg: "bg-gray-100" },
 };
 
-const COUNTRY_OPTIONS = [
-  { code: "ZA", name: "South Africa" },
-  { code: "ZW", name: "Zimbabwe" },
-  { code: "MZ", name: "Mozambique" },
-  { code: "LS", name: "Lesotho" },
-  { code: "SZ", name: "Eswatini" },
-  { code: "BW", name: "Botswana" },
-  { code: "NA", name: "Namibia" },
-  { code: "ZM", name: "Zambia" },
-  { code: "MW", name: "Malawi" },
-  { code: "TZ", name: "Tanzania" },
-  { code: "KE", name: "Kenya" },
-  { code: "NG", name: "Nigeria" },
-  { code: "OTHER", name: "Other country" },
-];
-
 const DOC_TYPES = [
   { value: "license", label: "Driver's license" },
   { value: "passport", label: "Passport" },
   { value: "identity", label: "Identity card" },
 ] as const;
-
-// ─── Confirm Legal Details Form ──────────────────────────────────────────────
-
-interface ConfirmLegalDetailsFormProps {
-  values: LegalDetails;
-  errors: Partial<Record<keyof LegalDetails, string>>;
-  onChange: (v: LegalDetails) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmLegalDetailsForm({ values, errors, onChange, onSubmit, onCancel }: ConfirmLegalDetailsFormProps) {
-  const lastNameRef = useRef<TextInput>(null);
-  const dobRef      = useRef<TextInput>(null);
-  const countryRef  = useRef<TextInput>(null);
-
-  const borderFor = (field: keyof LegalDetails) =>
-    errors[field] ? "#ef4444" : "#e2e8f0";
-
-  return (
-    <View style={twStyle("mt-4 rounded-2xl bg-white border border-gray-200 p-4")}>
-      <Text style={twStyle("text-base font-semibold text-gray-900 mb-1")}>Confirm your legal details</Text>
-      <Text style={twStyle("text-sm text-gray-600 mb-4 leading-5")}>
-        Enter your details exactly as they appear on your government-issued ID or passport. Nicknames or abbreviations will cause a mismatch.
-      </Text>
-
-      {/* First name */}
-      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Legal first name <Text style={{ color: "#ef4444" }}>*</Text></Text>
-      <TextInput
-        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("firstName") }]}
-        value={values.firstName ?? ""}
-        onChangeText={v => onChange({ ...values, firstName: v })}
-        placeholder="As on your ID"
-        placeholderTextColor="#9ca3af"
-        autoCapitalize="words"
-        autoCorrect={false}
-        returnKeyType="next"
-        onSubmitEditing={() => lastNameRef.current?.focus()}
-        accessibilityLabel="Legal first name"
-      />
-      {errors.firstName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.firstName}</Text>}
-
-      {/* Last name */}
-      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Legal last name <Text style={{ color: "#ef4444" }}>*</Text></Text>
-      <TextInput
-        ref={lastNameRef}
-        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("lastName") }]}
-        value={values.lastName ?? ""}
-        onChangeText={v => onChange({ ...values, lastName: v })}
-        placeholder="Surname as on your ID"
-        placeholderTextColor="#9ca3af"
-        autoCapitalize="words"
-        autoCorrect={false}
-        returnKeyType="next"
-        onSubmitEditing={() => dobRef.current?.focus()}
-        accessibilityLabel="Legal last name"
-      />
-      {errors.lastName && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.lastName}</Text>}
-
-      {/* Date of birth */}
-      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Date of birth <Text style={{ color: "#ef4444" }}>*</Text></Text>
-      <TextInput
-        ref={dobRef}
-        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("dateOfBirth") }]}
-        value={values.dateOfBirth ?? ""}
-        onChangeText={v => onChange({ ...values, dateOfBirth: v })}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor="#9ca3af"
-        keyboardType="numbers-and-punctuation"
-        returnKeyType="next"
-        onSubmitEditing={() => countryRef.current?.focus()}
-        accessibilityLabel="Date of birth"
-      />
-      {errors.dateOfBirth && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.dateOfBirth}</Text>}
-
-      {/* Country */}
-      <Text style={twStyle("text-sm font-medium text-gray-700 mb-1 mt-2")}>Country on ID <Text style={{ color: "#ef4444" }}>*</Text></Text>
-      <TextInput
-        ref={countryRef}
-        style={[twStyle("rounded-xl border px-4 py-3 mb-1 text-base text-gray-900"), { borderColor: borderFor("country") }]}
-        value={values.country ?? ""}
-        onChangeText={v => onChange({ ...values, country: v.toUpperCase().slice(0, 2) })}
-        placeholder="ZA (ISO 3166-1 alpha-2)"
-        placeholderTextColor="#9ca3af"
-        autoCapitalize="characters"
-        autoCorrect={false}
-        maxLength={2}
-        returnKeyType="done"
-        accessibilityLabel="Country of ID"
-      />
-      {errors.country && <Text style={twStyle("text-xs text-red-600 mb-2")}>{errors.country}</Text>}
-
-      <Text style={twStyle("text-xs text-gray-400 mt-1 mb-4")}>
-        E.g. ZA = South Africa, ZW = Zimbabwe, NG = Nigeria
-      </Text>
-
-      <TouchableOpacity
-        onPress={onSubmit}
-        style={twStyle("bg-primary rounded-full py-4 items-center")}
-        accessibilityRole="button"
-        accessibilityLabel="Start verification"
-      >
-        <Text style={twStyle("text-white font-semibold text-base")}>Start verification</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={onCancel}
-        style={twStyle("mt-3 items-center py-2")}
-        accessibilityRole="button"
-        accessibilityLabel="Cancel"
-      >
-        <Text style={twStyle("text-sm text-gray-500")}>Cancel</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
@@ -286,9 +156,7 @@ export function ProviderVerificationPanel({
       const result = await launchDidit({
         persona: "provider",
         languageCode: bundle?.meta?.env === "staging" ? "en" : "en",
-        confirmedLegalDetails: legalDetails.firstName
-          ? legalDetails
-          : undefined,
+        confirmedLegalDetails: legalDetails.firstName ? legalDetails : undefined,
       });
 
       if (!result.ok && result.error) {
@@ -418,12 +286,15 @@ export function ProviderVerificationPanel({
 
         {/* Confirm legal details form */}
         {(canAct || needsRetry) && diditAvailable && showConfirmDetails && (
-          <ConfirmLegalDetailsForm
+          <LegalDetailsConfirmForm
             values={legalDetails}
             errors={legalDetailsErrors}
             onChange={setLegalDetails}
             onSubmit={() => { setShowConfirmDetails(false); void openDiditVerification(); }}
             onCancel={() => setShowConfirmDetails(false)}
+            tenantRegionCode={bundle?.meta?.tenant_region?.code}
+            tenantRegionName={bundle?.meta?.tenant_region?.name}
+            isProvider
           />
         )}
 
@@ -440,8 +311,8 @@ export function ProviderVerificationPanel({
           </View>
         ) : null}
 
-        {/* Didit button */}
-        {diditAvailable && (canAct || needsRetry) && (
+        {/* Didit button — hidden while the confirm form is open (form has its own CTA) */}
+        {diditAvailable && (canAct || needsRetry) && !showConfirmDetails && (
           <View style={twStyle("mt-6")}>
             <ActionButton
               label={launching ? "Starting…" : (needsRetry ? "Try again" : "Start verification")}

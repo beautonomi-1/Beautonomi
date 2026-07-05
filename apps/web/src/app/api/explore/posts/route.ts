@@ -592,6 +592,8 @@ export async function POST(request: NextRequest) {
       primary_category_slug,
       primary_category_id: bodyCategoryId,
       offering_id: bodyOfferingId,
+      also_add_to_gallery: alsoAddToGallery = false,
+      booking_id: bodyBookingId,
     } = body;
 
     if (!Array.isArray(rawMediaUrls) || rawMediaUrls.length === 0) {
@@ -636,6 +638,24 @@ export async function POST(request: NextRequest) {
         return errorResponse("Offering not found or does not belong to your provider", "VALIDATION_ERROR", 400);
       }
       offering_id = off.id;
+    }
+
+    // Optional booking context (e.g. "post your work" prompt on completion).
+    // Used only for gallery attribution below — not persisted on explore_posts.
+    let bookingId: string | null = null;
+    if (bodyBookingId != null && bodyBookingId !== "") {
+      if (typeof bodyBookingId !== "string") {
+        return errorResponse("booking_id must be a UUID string", "VALIDATION_ERROR", 400);
+      }
+      const { data: bookingRow } = await supabaseAdmin
+        .from("bookings")
+        .select("id, provider_id")
+        .eq("id", bodyBookingId)
+        .single();
+      if (!bookingRow || bookingRow.provider_id !== providerId) {
+        return errorResponse("Booking not found or does not belong to your provider", "VALIDATION_ERROR", 400);
+      }
+      bookingId = bookingRow.id;
     }
 
     const publishedAt = status === "published" ? new Date().toISOString() : null;
@@ -688,6 +708,23 @@ export async function POST(request: NextRequest) {
         });
       } catch (pointsError) {
         console.warn("[explore/posts] Award points for post after booking:", pointsError);
+      }
+
+      if (alsoAddToGallery === true && media_urls.length > 0) {
+        try {
+          const galleryUrl = toPublicMediaUrl(media_urls[0], supabaseUrl());
+          await supabaseAdmin.rpc("append_provider_gallery", {
+            p_provider_id: providerId,
+            p_url: galleryUrl,
+          });
+        } catch (galleryError) {
+          console.warn("[explore/posts] Also-add-to-gallery failed:", {
+            providerId,
+            postId: (post as any).id,
+            bookingId,
+            error: galleryError,
+          });
+        }
       }
     }
 

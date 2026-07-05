@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -72,36 +73,104 @@ export default function BookingDetailPage() {
   const [isPayingOutstanding, setIsPayingOutstanding] = useState(false);
   const [chargeApproveLoadingId, setChargeApproveLoadingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadBooking = async () => {
-      try {
+  const reloadBooking = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!bookingId) return;
+    try {
+      if (!opts?.silent) {
         setIsLoading(true);
         setError(null);
-
-        const response = await fetcher.get<{
-          data: BookingDetail;
-          error: null;
-        }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
-
-        setBooking(response.data);
-      } catch (err) {
+      }
+      const response = await fetcher.get<{
+        data: BookingDetail;
+        error: null;
+      }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
+      setBooking(response.data);
+    } catch (err) {
+      if (!opts?.silent) {
         const errorMessage =
           err instanceof FetchTimeoutError
             ? "Request timed out. Please try again."
             : err instanceof FetchError
-            ? err.message
-            : "Failed to load booking";
+              ? err.message
+              : "Failed to load booking";
         setError(errorMessage);
         console.error("Error loading booking:", err);
-      } finally {
-        setIsLoading(false);
       }
-    };
-
-    if (bookingId) {
-      loadBooking();
+    } finally {
+      if (!opts?.silent) setIsLoading(false);
     }
   }, [bookingId]);
+
+  useEffect(() => {
+    if (bookingId) {
+      void reloadBooking();
+    }
+  }, [bookingId, reloadBooking]);
+
+  /** Realtime + window focus refetch so additional charges appear without manual refresh. */
+  useEffect(() => {
+    if (!bookingId) return;
+    const supabase = getSupabaseClient();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void reloadBooking({ silent: true });
+      }, 400);
+    };
+
+    const channel = supabase
+      ? supabase
+          .channel(`customer-booking-detail-${bookingId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "bookings",
+              filter: `id=eq.${bookingId}`,
+            },
+            scheduleReload,
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "additional_charges",
+              filter: `booking_id=eq.${bookingId}`,
+            },
+            scheduleReload,
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "additional_charges",
+              filter: `booking_id=eq.${bookingId}`,
+            },
+            scheduleReload,
+          )
+          .subscribe()
+      : null;
+
+    const onFocus = () => {
+      void reloadBooking({ silent: true });
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (channel && supabase) void supabase.removeChannel(channel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+      }
+    };
+  }, [bookingId, reloadBooking]);
 
   // Show post-completion modal once per booking when opening a completed booking
   useEffect(() => {

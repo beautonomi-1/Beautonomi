@@ -40,8 +40,10 @@ import {
   verificationPolicyFromBundle,
 } from "@/lib/verification/policy";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
+import { LegalDetailsConfirmForm } from "@/components/LegalDetailsConfirmForm";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
+import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: "license", labelKey: "docTypeLicense" },
@@ -111,7 +113,17 @@ export default function IdentityVerificationScreen() {
 
   // SumSub launch state
   const [launching, setLaunching] = useState(false);
+  const [showConfirmDetails, setShowConfirmDetails] = useState(false);
   const hasLoadedOnceRef = useRef(false);
+
+  const {
+    legalDetails,
+    legalDetailsErrors,
+    setLegalDetails,
+    validateAndGetErrors,
+    startPolling,
+    refresh: refreshIvStatus,
+  } = useIdentityVerification("customer");
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
@@ -185,22 +197,33 @@ export default function IdentityVerificationScreen() {
 
   // ─── Didit flow ─────────────────────────────────────────────────────────
   const openDiditVerification = useCallback(async () => {
+    const errors = validateAndGetErrors();
+    if (Object.keys(errors).length > 0) {
+      setShowConfirmDetails(true);
+      return;
+    }
+
     haptic.light();
     setLaunching(true);
     try {
-      const result = await launchDidit({ persona: "customer" });
+      const result = await launchDidit({
+        persona: "customer",
+        returnTo,
+        confirmedLegalDetails: legalDetails.firstName ? legalDetails : undefined,
+      });
       if (!result.ok) {
         Alert.alert(errTitle, result.error ?? iv("startError"));
       } else {
-        // SDK returned — refresh; gate is only unlocked after webhook confirms
+        startPolling();
         void load({ silent: true });
+        void refreshIvStatus();
       }
     } catch {
       Alert.alert(errTitle, iv("startVerificationFailed"));
     } finally {
       setLaunching(false);
     }
-  }, [errTitle, iv, load]);
+  }, [errTitle, iv, load, returnTo, legalDetails, validateAndGetErrors, startPolling, refreshIvStatus]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -444,7 +467,15 @@ export default function IdentityVerificationScreen() {
             </Text>
             {fromCheckout ? (
               <TouchableOpacity
-                onPress={() => router.back()}
+                onPress={() => {
+                  // Use the explicit return path — router.back() can land
+                  // elsewhere if the navigation stack differs (e.g. deep link).
+                  if (returnTo) {
+                    router.replace(returnTo as never);
+                  } else {
+                    router.back();
+                  }
+                }}
                 style={{ marginTop: 12, alignSelf: "flex-start" }}
                 accessibilityRole="button"
                 accessibilityLabel="Return to checkout"
@@ -584,10 +615,23 @@ export default function IdentityVerificationScreen() {
         </View>
 
         {/* Didit automated verification — shown when available AND user may submit */}
-        {canSubmit && diditAvailable && (
+        {canSubmit && diditAvailable && showConfirmDetails && (
+          <LegalDetailsConfirmForm
+            values={legalDetails}
+            errors={legalDetailsErrors}
+            onChange={setLegalDetails}
+            onSubmit={() => { setShowConfirmDetails(false); void openDiditVerification(); }}
+            onCancel={() => setShowConfirmDetails(false)}
+            tenantRegionCode={bundle?.meta?.tenant_region?.code}
+            tenantRegionName={bundle?.meta?.tenant_region?.name}
+            countryLabel="Country that issued your document"
+          />
+        )}
+
+        {canSubmit && diditAvailable && !showConfirmDetails && (
           <View style={{ marginBottom: 24 }}>
             <TouchableOpacity
-              onPress={openDiditVerification}
+              onPress={() => setShowConfirmDetails(true)}
               disabled={launching}
               style={{
                 backgroundColor: launching ? Colors.gray[300] : Colors.primary,

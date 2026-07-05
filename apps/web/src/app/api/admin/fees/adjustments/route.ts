@@ -8,6 +8,10 @@ import {
   fetchBookingInAdminTenant,
   fetchProviderInAdminTenant,
 } from "@/lib/tenant/admin-booking-tenant";
+import {
+  financeNetAfterFeeAdjustment,
+  paymentNetAfterFeeAdjustment,
+} from "@/lib/admin/fee-adjustment-net";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 function isTableMissingError(e: unknown): boolean {
@@ -336,20 +340,29 @@ export async function POST(request: NextRequest) {
     }
 
     let originalFee = original_fee_amount;
+    let paymentTxRow: { amount: number; fees: number } | null = null;
+    let financeTxRow: { amount: number; fees: number; commission: number | null } | null = null;
+
     if (payment_transaction_id) {
       const { data: tx } = await supabase
         .from("payment_transactions")
-        .select("fees")
+        .select("amount, fees")
         .eq("id", payment_transaction_id as string)
         .maybeSingle();
-      if (tx) originalFee = (tx as { fees: number }).fees;
+      if (tx) {
+        paymentTxRow = tx as { amount: number; fees: number };
+        originalFee = paymentTxRow.fees;
+      }
     } else if (finance_transaction_id) {
       const { data: tx } = await supabase
         .from("finance_transactions")
-        .select("fees")
+        .select("amount, fees, commission")
         .eq("id", finance_transaction_id as string)
         .maybeSingle();
-      if (tx) originalFee = (tx as { fees: number }).fees;
+      if (tx) {
+        financeTxRow = tx as { amount: number; fees: number; commission: number | null };
+        originalFee = financeTxRow.fees;
+      }
     }
 
     const { data: adjustment, error: adjustmentError } = await supabase
@@ -369,24 +382,28 @@ export async function POST(request: NextRequest) {
 
     if (adjustmentError) throw adjustmentError;
 
-    if (payment_transaction_id) {
+    if (payment_transaction_id && paymentTxRow) {
       const { error: updateError } = await supabase
         .from("payment_transactions")
         .update({
           fees: adjusted_fee_amount,
-          net_amount: () => `amount - ${adjusted_fee_amount}`,
+          net_amount: paymentNetAfterFeeAdjustment(Number(paymentTxRow.amount), Number(adjusted_fee_amount)),
         })
         .eq("id", payment_transaction_id as string);
 
       if (updateError) {
         console.error("Error updating payment_transaction fee:", updateError);
       }
-    } else if (finance_transaction_id) {
+    } else if (finance_transaction_id && financeTxRow) {
       const { error: updateError } = await supabase
         .from("finance_transactions")
         .update({
           fees: adjusted_fee_amount,
-          net: () => `amount - ${adjusted_fee_amount} - commission`,
+          net: financeNetAfterFeeAdjustment(
+            Number(financeTxRow.amount),
+            Number(adjusted_fee_amount),
+            Number(financeTxRow.commission ?? 0),
+          ),
         })
         .eq("id", finance_transaction_id as string);
 

@@ -120,6 +120,10 @@ export async function GET(request: NextRequest) {
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
 
+    let pendingCount = 0;
+    let freeActiveCount = 0;
+    let mrrEligibleCount = 0;
+
     if (allSubscriptions) {
       totalSubscriptions = allSubscriptions.length;
       (allSubscriptions as SubRow[]).forEach((sub) => {
@@ -127,9 +131,10 @@ export async function GET(request: NextRequest) {
         else if (sub.status === "trialing") trialingCount++;
         else if (sub.status === "cancelled") cancelledCount++;
         else if (sub.status === "past_due") pastDueCount++;
+        else if (sub.status === "pending") pendingCount++;
 
-        const startedAt = new Date(sub.started_at);
-        if (startedAt >= currentMonth) {
+        const startedAt = sub.started_at ? new Date(sub.started_at) : null;
+        if (startedAt && startedAt >= currentMonth) {
           newThisMonth++;
         }
 
@@ -142,11 +147,39 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 5. Calculate churn rate (cancelled this month / active at start of month)
-    const activeAtMonthStart = activeCount + cancelledThisMonth;
-    const churnRate = activeAtMonthStart > 0 
-      ? (cancelledThisMonth / activeAtMonthStart) * 100 
-      : 0;
+    if (activeSubscriptions) {
+      (activeSubscriptions as unknown as SubWithPlan[]).forEach((sub) => {
+        const plan = Array.isArray(sub.subscription_plans)
+          ? sub.subscription_plans[0]
+          : sub.subscription_plans;
+        if (!plan) return;
+        const isMonthly = sub.billing_period === "monthly";
+        const price = isMonthly ? plan.price_monthly : plan.price_yearly;
+        if (price && Number(price) > 0) {
+          mrrEligibleCount += 1;
+        } else {
+          freeActiveCount += 1;
+        }
+      });
+    }
+
+    const monthStartIso = currentMonth.toISOString();
+    let activeAtMonthStart = 0;
+    if (allSubscriptions) {
+      for (const sub of allSubscriptions as SubRow[]) {
+        const started = sub.started_at ? new Date(sub.started_at) : null;
+        const expired = sub.expires_at ? new Date(sub.expires_at) : null;
+        const wasActiveAtStart =
+          started &&
+          started <= currentMonth &&
+          (sub.status === "active" || sub.status === "trialing") &&
+          (!expired || expired >= currentMonth);
+        if (wasActiveAtStart) activeAtMonthStart += 1;
+      }
+    }
+
+    const churnRate =
+      activeAtMonthStart > 0 ? (cancelledThisMonth / activeAtMonthStart) * 100 : 0;
 
     // 6. Calculate ARPU (Average Revenue Per User)
     const activeTotal = activeCount + trialingCount;
@@ -251,9 +284,16 @@ export async function GET(request: NextRequest) {
     const statusBreakdown = {
       active: activeCount,
       trialing: trialingCount,
+      pending: pendingCount,
       cancelled: cancelledCount,
       past_due: pastDueCount,
-      inactive: totalSubscriptions - activeCount - trialingCount - cancelledCount - pastDueCount,
+      inactive:
+        totalSubscriptions -
+        activeCount -
+        trialingCount -
+        pendingCount -
+        cancelledCount -
+        pastDueCount,
     };
 
     // 10. Get billing period breakdown
@@ -313,6 +353,8 @@ export async function GET(request: NextRequest) {
       top_providers: top10Providers,
       realized_subscription_revenue: Math.round(realizedSubscriptionRevenue * 100) / 100,
       realized_subscription_transaction_count: realizedSubscriptionTransactionCount,
+      mrr_eligible_count: mrrEligibleCount,
+      free_active_count: freeActiveCount,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch subscription metrics");

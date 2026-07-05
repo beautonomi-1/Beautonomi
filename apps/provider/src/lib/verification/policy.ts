@@ -49,7 +49,12 @@ export function providerVerificationContinueLabel(options: {
     return "Continue — we'll notify you when verified";
   }
   if (options.required) {
-    return "I'll verify later — go to dashboard anyway";
+    // Mirrors canSkipProviderVerification: only in_progress may continue;
+    // otherwise the button is a hard gate, so don't promise "later".
+    if (options.status === "in_progress") {
+      return "Continue — finish verification anytime";
+    }
+    return "Verification required to go live";
   }
   return "Do this later — go to dashboard";
 }

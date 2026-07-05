@@ -424,6 +424,57 @@ export default function BookingDetailScreen() {
     });
   }, []);
 
+  // Fallback fetch when deep-link charge_id is not yet in the booking payload.
+  // Kept in its own effect (no chargeFocusFetchStatus in deps) so setting "loading"
+  // does not re-run cleanup and cancel the in-flight request.
+  useEffect(() => {
+    if (!id) return;
+
+    // focus=additional_charge without a specific charge_id: nothing to fetch,
+    // resolve immediately so the receipt tab UI (spinner / unavailable block) settles.
+    if (!chargeIdParam) {
+      if (focusParam === "additional_charge") {
+        setChargeFocusFetchStatus("done");
+      }
+      return;
+    }
+
+    const charges: any[] = booking?.additional_charges ?? [];
+    if (charges.some((c) => String(c.id) === chargeIdParam)) {
+      setChargeFocusFetchStatus("done");
+      return;
+    }
+
+    if (chargeFetchAttemptedRef.current) return;
+    chargeFetchAttemptedRef.current = true;
+    setChargeFocusFetchStatus("loading");
+
+    const safetyTimer = setTimeout(() => {
+      setChargeFocusFetchStatus("done");
+    }, 8000);
+
+    void api
+      .get<{ charges?: any[]; data?: { charges?: any[] } }>(
+        `/api/me/bookings/${encodeURIComponent(id)}/additional-charges`,
+      )
+      .then((res) => {
+        const raw = res.data as { charges?: any[]; data?: { charges?: any[] } } | null | undefined;
+        const rows = raw?.data?.charges ?? raw?.charges ?? [];
+        if (Array.isArray(rows) && rows.length > 0) {
+          mergeAdditionalCharges(rows);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(safetyTimer);
+        setChargeFocusFetchStatus("done");
+      });
+
+    return () => {
+      clearTimeout(safetyTimer);
+    };
+  }, [id, chargeIdParam, focusParam, booking?.additional_charges, mergeAdditionalCharges]);
+
   // When arriving from an additional-charge notification deep-link, auto-switch to the
   // receipt tab so the customer sees the full payment options immediately.
   useEffect(() => {
@@ -433,55 +484,21 @@ export default function BookingDetailScreen() {
 
     setActiveTab("receipt");
 
-    const charges: any[] = booking.additional_charges ?? [];
-    const targetCharge =
-      chargeIdParam !== "" ? charges.find((c) => String(c.id) === chargeIdParam) : null;
-
-    if (chargeIdParam && !targetCharge && !chargeFetchAttemptedRef.current) {
-      chargeFetchAttemptedRef.current = true;
-      setChargeFocusFetchStatus("loading");
-      let cancelled = false;
-      void api
-        .get<{ charges?: any[]; data?: { charges?: any[] } }>(
-          `/api/me/bookings/${encodeURIComponent(id)}/additional-charges`,
-        )
-        .then((res) => {
-          if (cancelled) return;
-          const raw = res.data as { charges?: any[]; data?: { charges?: any[] } } | null | undefined;
-          const rows = raw?.data?.charges ?? raw?.charges ?? [];
-          if (Array.isArray(rows) && rows.length > 0) {
-            mergeAdditionalCharges(rows);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!cancelled) setChargeFocusFetchStatus("done");
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (chargeIdParam && !targetCharge && chargeFocusFetchStatus === "loading") {
+    if (chargeIdParam && chargeFocusFetchStatus !== "done") {
       return;
-    }
-
-    if (chargeIdParam && !targetCharge && chargeFocusFetchStatus !== "done") {
-      return;
-    }
-
-    if (chargeFocusFetchStatus === "idle") {
-      setChargeFocusFetchStatus("done");
     }
 
     if (focusAppliedRef.current) return;
     focusAppliedRef.current = true;
     setShouldScrollToCharges(true);
 
+    const charges: any[] = booking.additional_charges ?? [];
+    const targetCharge =
+      chargeIdParam !== "" ? charges.find((c) => String(c.id) === chargeIdParam) : null;
     const highlightId = chargeIdParam || (targetCharge ? String(targetCharge.id) : "");
     const rowToHighlight =
       highlightId !== ""
-        ? (booking.additional_charges ?? []).find((c: any) => String(c.id) === highlightId)
+        ? charges.find((c: any) => String(c.id) === highlightId)
         : null;
     if (
       rowToHighlight &&
@@ -491,7 +508,7 @@ export default function BookingDetailScreen() {
       const clearTimer = setTimeout(() => setHighlightedChargeId(null), 2500);
       return () => clearTimeout(clearTimer);
     }
-  }, [booking, focusParam, chargeIdParam, chargeFocusFetchStatus, id, mergeAdditionalCharges]);
+  }, [booking, focusParam, chargeIdParam, chargeFocusFetchStatus, id]);
 
   // Highlight + scroll when a charge_id target appears after async fallback fetch.
   useEffect(() => {
@@ -657,13 +674,21 @@ export default function BookingDetailScreen() {
     return () => clearInterval(interval);
   }, [needsPinDisplay, pinExpiresAt]);
 
-  // Realtime booking status updates — trigger a silent reload instead of partial-merging the raw DB row
-  // to ensure joined fields (services, provider info, etc.) stay consistent.
+  // Realtime booking + additional-charge updates — silent reload keeps joined fields consistent.
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
     if (!id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        loadRef.current({ silent: true });
+        setLastLiveUpdateAt(Date.now());
+        haptic.success();
+      }, 400);
+    };
     const channel = supabase
       .channel(nextRealtimeTopic(`booking-detail-${id}`))
       .on(
@@ -674,15 +699,27 @@ export default function BookingDetailScreen() {
           table: "bookings",
           filter: `id=eq.${id}`,
         },
-        () => {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            debounceTimer = null;
-            loadRef.current({ silent: true });
-            setLastLiveUpdateAt(Date.now());
-            haptic.success();
-          }, 400);
+        scheduleReload,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${id}`,
         },
+        scheduleReload,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${id}`,
+        },
+        scheduleReload,
       )
       .subscribe();
 
@@ -691,6 +728,21 @@ export default function BookingDetailScreen() {
       supabase.removeChannel(channel);
     };
   }, [id]);
+
+  // Poll fallback while receipt tab is open and charges are pending or focus is resolving.
+  useEffect(() => {
+    if (!id || !booking || activeTab !== "receipt") return;
+    const charges: any[] = booking.additional_charges ?? [];
+    const hasUnpaid = charges.some(
+      (c) => c.status === "pending" || c.status === "approved",
+    );
+    const resolvingFocus = chargeIdParam !== "" && chargeFocusFetchStatus === "loading";
+    if (!hasUnpaid && !resolvingFocus) return;
+    const interval = setInterval(() => {
+      load({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, load, booking, activeTab, chargeIdParam, chargeFocusFetchStatus]);
 
   const handleCancel = useCallback(async () => {
     if (!booking) return;

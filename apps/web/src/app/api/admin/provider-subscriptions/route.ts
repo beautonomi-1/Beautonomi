@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      query = query.eq("status", status);
+      const normalizedStatus = status === "trial" ? "trialing" : status;
+      query = query.eq("status", normalizedStatus);
     }
 
     const { data: subscriptions, error } = await query;

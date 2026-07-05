@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { validateLegalDobParts } from "@beautonomi/utils";
 import type { NormalizedVerificationStatus } from "@/lib/identity-verification/types";
 
 export type VerificationPersona = "customer" | "provider";
@@ -76,8 +77,15 @@ function validateLegalDetails(d: LegalDetails): Partial<Record<keyof LegalDetail
     errors.lastName = "Enter your name as it appears on your ID";
   if (!d.dateOfBirth) errors.dateOfBirth = "Date of birth is required";
   else {
-    const dob = new Date(d.dateOfBirth);
-    if (isNaN(dob.getTime()) || dob >= new Date()) errors.dateOfBirth = "Enter a valid date of birth";
+    const dobError = validateLegalDobParts(
+      {
+        day: Number(d.dateOfBirth.slice(8, 10)) || null,
+        month: Number(d.dateOfBirth.slice(5, 7)) || null,
+        year: Number(d.dateOfBirth.slice(0, 4)) || null,
+      },
+      { minAge: 18 },
+    );
+    if (dobError) errors.dateOfBirth = dobError;
   }
   if (!d.country) errors.country = "Issuing country is required";
   return errors;

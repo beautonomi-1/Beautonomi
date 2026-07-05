@@ -23,6 +23,7 @@ import {
   Star,
   Link2,
   CreditCard,
+  Camera,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -555,10 +556,11 @@ export default function ProviderBookingDetail() {
       await fetcher.post(`/api/provider/bookings/${bookingId}/mark-paid`, {
         payment_method: markPaidMethod,
         amount: paymentAmount,
+        settle_additional_charges: true,
       });
       toast.success("Booking marked as paid");
       setShowMarkPaid(false);
-      loadBooking();
+      await Promise.all([loadBooking(), loadAdditionalCharges()]);
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
     } finally {
@@ -903,6 +905,7 @@ export default function ProviderBookingDetail() {
           payment_provider: "yoco",
           reference,
           amount: Number(chargeForBooking.toFixed(2)),
+          settle_additional_charges: true,
         });
       } catch (err) {
         toast.error(
@@ -920,7 +923,7 @@ export default function ProviderBookingDetail() {
       yocoPendingSaleOutstandingSnapshotRef.current = null;
       setShowYocoPayment(false);
       toast.success("Booking payment recorded");
-      await loadBooking();
+      await Promise.all([loadBooking(), loadAdditionalCharges()]);
     },
     [booking, bookingId, loadBooking, yocoBookingSaleId]
   );
@@ -2140,8 +2143,8 @@ export default function ProviderBookingDetail() {
                       : 'bg-gray-50 border-gray-200'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1">
+                  <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
                       <p className="font-medium">{c.description}</p>
                       <p className="text-sm text-gray-600 mt-1">
                         {c.currency} {Number(c.amount).toFixed(2)}
@@ -2971,7 +2974,7 @@ export default function ProviderBookingDetail() {
           </div>
         )}
 
-        {/* Post-completion modal: points, rate client, reviews tip (only when booking loaded) */}
+        {/* Post-completion modal: points, post-your-work, rate client, reviews tip (only when booking loaded) */}
         {booking && (
         <Dialog open={showProviderCompletionModal} onOpenChange={(open) => !open && dismissProviderCompletionModal(true)}>
           <DialogContent className="sm:max-w-md" hideClose={false}>
@@ -2983,7 +2986,6 @@ export default function ProviderBookingDetail() {
               </div>
               <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
               <DialogDescription className="text-center space-y-2">
-                <span className="block">Great work. This booking is complete.</span>
                 {(() => {
                   const raw = booking.provider_points_earned;
                   const pointsNum = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
@@ -2997,13 +2999,45 @@ export default function ProviderBookingDetail() {
                   </span>
                 );
                 })()}
-                <span className="block text-sm text-muted-foreground">
-                  Your client can leave a review. Reviews help you get more bookings and earn extra points.
-                </span>
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex-col-reverse gap-2 sm:flex-col">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left">
+              <div className="flex items-center gap-2 mb-1">
+                <Camera className="h-4 w-4 text-primary" aria-hidden />
+                <span className="text-sm font-semibold text-gray-900">Show off your work</span>
+              </div>
+              <p className="text-xs text-gray-600 mb-3 leading-5">
+                Post a photo to Explore to reach new clients and grow your portfolio. Earn bonus reward points for
+                every post.
+              </p>
               <Button
+                onClick={() => {
+                  dismissProviderCompletionModal(true);
+                  const primaryOfferingId = booking.services?.[0]?.offering_id;
+                  const primaryServiceName = booking.services?.[0]?.offering_name || "Appointment";
+                  const qs = new URLSearchParams({
+                    caption: `Fresh ${primaryServiceName} \u2728`,
+                    addToGallery: "1",
+                    ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
+                    ...(bookingId ? { bookingId: String(bookingId) } : {}),
+                  }).toString();
+                  router.push(`/provider/explore/new?${qs}`);
+                }}
+                className="w-full"
+              >
+                <Camera className="h-4 w-4 mr-2" aria-hidden />
+                Add a photo of your work
+              </Button>
+              <p className="text-[11px] text-gray-400 text-center mt-2">
+                Make sure your client is happy to be featured.
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground text-center mt-4">
+              Your client can leave a review. Reviews help you get more bookings and earn extra points.
+            </p>
+            <DialogFooter className="flex-col-reverse gap-2 sm:flex-col mt-2">
+              <Button
+                variant="outline"
                 onClick={() => {
                   dismissProviderCompletionModal(true);
                   setShowRateCustomerFromModal(true);
@@ -3013,7 +3047,7 @@ export default function ProviderBookingDetail() {
                 Rate this client
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={() => dismissProviderCompletionModal(true)}
                 className="w-full"
               >

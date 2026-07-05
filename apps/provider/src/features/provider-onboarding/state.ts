@@ -78,6 +78,10 @@ export const STEPS: OnboardingStepMeta[] = [
 export const CATEGORIES_STEP_ID =
   STEPS.find((s) => s.title === "Categories")?.id ?? 11;
 
+/** Step id for the Review step (used by "edit from review" jumps). */
+export const REVIEW_STEP_ID =
+  STEPS.find((s) => s.title === "Review")?.id ?? 14;
+
 export function stepIsVisible(stepId: number, data: Partial<OnboardingFormData>): boolean {
   const meta = STEPS[stepId - 1];
   if (!meta) return false;

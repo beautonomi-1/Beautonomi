@@ -80,6 +80,20 @@ export {
   type ParsedAddressFromMapboxFeature,
 } from "./mapbox/geocodeFeatureToAddressParts";
 export { countryFilterIso2FromStorage } from "./geo/countryFilterIso2";
+export {
+  alpha2ToAlpha3,
+  ISO3166_ALPHA2_TO_ALPHA3,
+} from "./geo/iso3166-alpha3";
+export {
+  composeLegalDobIso,
+  daysInMonth,
+  formatLegalDobDisplay,
+  LEGAL_DOB_MONTHS,
+  legalDobYearRange,
+  parseLegalDobIso,
+  validateLegalDobParts,
+  type LegalDobParts,
+} from "./dates/legal-dob";
 export type { VerificationCountryOption } from "./geo/verification-country";
 export {
   STATIC_VERIFICATION_COUNTRIES,

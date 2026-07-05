@@ -11,6 +11,26 @@ import { getVerificationSettings } from "@/lib/platform-settings";
 import type { Booking } from "@/types/beautonomi";
 
 /**
+ * Fire the customer "provider arrived" notification and log failures instead
+ * of swallowing them silently — mirrors the try/catch + result-check pattern
+ * used by start-service/complete-service so arrived pushes are as reliable
+ * as the rest of the booking lifecycle.
+ */
+async function notifyArrivedAndLog(bookingId: string, hasOtp: boolean): Promise<void> {
+  try {
+    const result = await notifyProviderArrived(bookingId, { hasOtp }, ["push", "email"]);
+    if (!result?.success) {
+      console.error("[arrive] notifyProviderArrived did not succeed:", {
+        bookingId,
+        error: (result as { error?: string } | undefined)?.error,
+      });
+    }
+  } catch (notifyErr) {
+    console.error("[arrive] notifyProviderArrived threw:", bookingId, notifyErr);
+  }
+}
+
+/**
  * POST /api/provider/bookings/[id]/arrive
  * 
  * Mark provider as arrived and generate OTP for customer verification
@@ -135,7 +155,7 @@ export async function POST(
       }
 
       // Notify customer via template pipeline (push + in-app bell row).
-      await notifyProviderArrived(id, { hasOtp: false }, ["push", "email"]);
+      await notifyArrivedAndLog(id, false);
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -207,7 +227,7 @@ export async function POST(
       }
 
       // Notify customer via template pipeline (push + in-app bell row).
-      await notifyProviderArrived(id, { hasOtp: false }, ["push", "email"]);
+      await notifyArrivedAndLog(id, false);
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -318,12 +338,16 @@ export async function POST(
     }
 
     const customer = bookingData.customers;
-    if (customer) {
-      // Notify via template pipeline — push + in-app bell row.
-      // When OTP is enabled the wording hints the customer to open the app for their code;
-      // the actual PIN is shown only in-app on the booking detail screen.
-      await notifyProviderArrived(id, { hasOtp: !!(otp_enabled && otp) }, ["push", "email"]);
 
+    // Notify via template pipeline — push + in-app bell row. This must run
+    // regardless of whether the RLS-scoped `customers` join above resolved a
+    // row (it can be null even when bookings.customer_id is set), otherwise
+    // the arrived push is silently dropped while confirmed/started always fire.
+    // When OTP is enabled the wording hints the customer to open the app for their code;
+    // the actual PIN is shown only in-app on the booking detail screen.
+    await notifyArrivedAndLog(id, !!(otp_enabled && otp));
+
+    if (customer) {
       try {
         const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
           "@/lib/portal/guest-booking-link-delivery"

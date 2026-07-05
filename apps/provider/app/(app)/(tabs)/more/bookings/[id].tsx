@@ -1943,6 +1943,7 @@ export default function BookingDetailScreen() {
       reference: result.reference,
       idempotency_key: `yoco:${id}:${result.reference}`,
       amount: Number(chargeForBooking.toFixed(2)),
+      settle_additional_charges: true,
     });
     if (res.error) {
       Alert.alert(
@@ -1967,7 +1968,7 @@ export default function BookingDetailScreen() {
     yocoPendingChargeAmountRef.current = null;
     yocoPendingSaleOutstandingSnapshotRef.current = null;
     setShowYocoPayment(false);
-    await refresh();
+    await Promise.all([refresh(), refreshCharges()]);
   }
 
   const isConflictError = (msg: string | null) =>
@@ -2278,6 +2279,7 @@ export default function BookingDetailScreen() {
       payment_method: markPaidMethod,
       amount: Number(yocoTerminalAmount.toFixed(2)),
       idempotency_key: `manual:${id}:${markPaidMethod}:${Number(yocoTerminalAmount.toFixed(2))}:${Number(b.total_paid ?? 0).toFixed(2)}`,
+      settle_additional_charges: true,
     });
     setMarkingPaid(false);
     if (res.error) {
@@ -2285,7 +2287,7 @@ export default function BookingDetailScreen() {
       return;
     }
     setShowMarkPaid(false);
-    await refresh();
+    await Promise.all([refresh(), refreshCharges()]);
   };
 
   const handleRefund = async () => {
@@ -3650,25 +3652,6 @@ export default function BookingDetailScreen() {
           </Text>
         ) : null}
 
-        {showProviderCompletionModal ? (
-          <View style={twStyle("rounded-3xl border border-primary/20 bg-primary/10 p-4 mb-3")}>
-            <View style={twStyle("flex-row items-start")}>
-              <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-2xl bg-white")}>
-                <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
-              </View>
-              <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-sm font-bold text-gray-900")}>Service completed</Text>
-                <Text style={twStyle("mt-1 text-xs leading-5 text-gray-600")}>
-                  Rate the client, share the receipt, or post the finished work when you are ready.
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => dismissProviderCompletionModal(true)} accessibilityLabel="Dismiss completed service tip">
-                <Ionicons name="close" size={18} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
-
         {/* Client rating (provider → customer via provider_client_ratings) */}
         {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
@@ -4088,26 +4071,28 @@ export default function BookingDetailScreen() {
             )}
             {additionalCharges.map((c) => (
               <View key={c.id} style={twStyle("rounded-lg border border-gray-100 bg-gray-50 p-3 mb-2")}>
-                <View style={twStyle("flex-row items-center justify-between")}>
-                  <View>
-                    <Text style={twStyle("font-medium text-gray-900")}>{c.description}</Text>
+                <View style={twStyle("flex-row flex-wrap items-start justify-between gap-2")}>
+                  <View style={twStyle("flex-1 min-w-0")}>
+                    <Text style={twStyle("font-medium text-gray-900")} numberOfLines={2}>
+                      {c.description}
+                    </Text>
                     <Text style={twStyle("text-sm text-gray-600")}>
                       {c.currency} {Number(c.amount).toFixed(2)} · {c.status}
                     </Text>
                   </View>
                   {canProcessPayments && (c.status === "pending" || c.status === "approved") && (
-                    <View style={twStyle("flex-row items-center gap-2")}>
+                    <View style={twStyle("w-full flex-row flex-wrap items-center gap-2 mt-1")}>
                       <TouchableOpacity
                         onPress={() => void handleSendChargeToClient(c.id)}
                         disabled={notifyingChargeId === c.id}
-                        style={twStyle("rounded-lg border border-primary py-2 px-3")}
+                        style={twStyle("flex-1 min-w-[120px] rounded-lg border border-primary py-2 px-3 items-center")}
                         accessibilityRole="button"
                         accessibilityLabel="Send this charge to the client to pay online"
                       >
                         {notifyingChargeId === c.id ? (
                           <ActivityIndicator size="small" color={Colors.primary} />
                         ) : (
-                          <Text style={twStyle("text-xs font-medium text-primary")}>Send to client</Text>
+                          <Text style={twStyle("text-xs font-medium text-primary text-center")}>Send to client</Text>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -4116,12 +4101,12 @@ export default function BookingDetailScreen() {
                           setChargeMarkPaidMethod("card");
                         }}
                         disabled={markingChargePaid}
-                        style={twStyle("rounded-lg bg-green-600 py-2 px-3")}
+                        style={twStyle("flex-1 min-w-[120px] rounded-lg bg-green-600 py-2 px-3 items-center")}
                       >
                         {markingChargePaid && chargeMarkPaidId === c.id ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={twStyle("text-xs font-medium text-white")}>Mark paid</Text>
+                          <Text style={twStyle("text-xs font-medium text-white text-center")}>Mark paid</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -4787,9 +4772,12 @@ export default function BookingDetailScreen() {
         ) : null}
       </BottomSheet>
 
-      {/* Provider post-completion modal: once per booking when opening a completed booking */}
+      {/* Provider post-completion modal: shown immediately on completing a booking, and
+          once per booking thereafter (see PROVIDER_COMPLETION_MODAL_STORAGE_KEY effect above).
+          Primary CTA drives providers to capture a photo of the finished work, which posts to
+          Explore (and, when the toggle is on in the create sheet, to their portfolio gallery). */}
       <Modal
-        visible={false}
+        visible={showProviderCompletionModal}
         animationType="fade"
         transparent
         onRequestClose={() => dismissProviderCompletionModal(true)}
@@ -4808,26 +4796,55 @@ export default function BookingDetailScreen() {
               </View>
             </View>
             <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>Booking complete</Text>
-            <Text style={{ fontSize: 15, color: Colors.gray[600], textAlign: "center", marginBottom: 12 }}>
-              Great work. This booking is complete.
-            </Text>
             {(() => {
               const raw = b?.provider_points_earned;
               const pointsNum = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
               return pointsNum > 0 ? (
-                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 12 }}>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 16 }}>
                   You earned {pointsNum} points. {"They've been added to your balance."}
                 </Text>
               ) : (
-                <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 16 }}>
                   You earn points for each completed booking—keep going to unlock badges.
                 </Text>
               );
             })()}
-            <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", marginBottom: 8 }}>
-              Share this booking to Explore and earn reward points.
-            </Text>
-            <Text style={{ fontSize: 13, color: Colors.gray[500], textAlign: "center", marginBottom: 20 }}>
+
+            {/* Primary: capture and post the finished work — the world-class moment. */}
+            <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                <Ionicons name="camera" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>Show off your work</Text>
+              </View>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 12, lineHeight: 18 }}>
+                Post a photo to Explore to reach new clients and grow your portfolio. Earn bonus reward points for every post.
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  dismissProviderCompletionModal(true);
+                  const primaryOfferingId = services[0]?.offering_id ?? services[0]?.service_id ?? "";
+                  const defaultCaption = `Fresh ${primaryServiceName} \u2728`;
+                  const qs = new URLSearchParams({
+                    create: "1",
+                    addToGallery: "1",
+                    caption: defaultCaption,
+                    ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
+                    ...(bookingIdStr ? { bookingId: bookingIdStr } : {}),
+                  }).toString();
+                  router.push(`/(app)/(tabs)/more/explore-posts?${qs}` as never);
+                }}
+                style={{ flexDirection: "row", backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", justifyContent: "center" }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="camera" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Add a photo of your work</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 11, color: Colors.gray[400], textAlign: "center", marginTop: 8 }}>
+                Make sure your client is happy to be featured.
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 13, color: Colors.gray[500], textAlign: "center", marginBottom: 16 }}>
               Your client can leave a review. Reviews help you get more bookings and earn extra points.
             </Text>
             {hasProviderClientRating !== true ? (
@@ -4838,22 +4855,12 @@ export default function BookingDetailScreen() {
                     setShowRateClientSheet(true);
                   }, 400);
                 }}
-                style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+                style={{ backgroundColor: "#fff", borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
                 activeOpacity={0.8}
               >
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Rate this client</Text>
+                <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 16 }}>Rate this client</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              onPress={() => {
-                dismissProviderCompletionModal(true);
-                router.push("/(app)/(tabs)/more/explore-posts?create=1" as never);
-              }}
-              style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: "center", marginBottom: 10 }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Post to Explore</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => dismissProviderCompletionModal(true)}
               style={{ paddingVertical: 14, alignItems: "center" }}

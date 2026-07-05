@@ -97,6 +97,8 @@ export type FinanceLedgerAggregate = {
   payout_transfer_fees: number;
   /** Gateway fees on terminal commerce ledger rows (sale/rental/bundle/promotion). */
   terminal_gateway_fees: number;
+  /** Gateway fees on membership sales. */
+  membership_gateway_fees: number;
   /** Gross terminal commerce revenue from ledger terminal_* transaction types. */
   terminal_revenue_gross: number;
 };
@@ -154,6 +156,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const terminalGatewayFees = sumFees(tx, [...TERMINAL_COMMERCE_TYPES]);
   const terminalRevenueGross = sum(tx, [...TERMINAL_COMMERCE_TYPES], "amount");
   const otherGatewayFees = sumFees(tx, ["gift_card_sale", "wallet_topup"]);
+  const membershipGatewayFees = sumFees(tx, ["membership_sale"]);
   const payoutTransferFees = sumFees(tx, ["payout"]);
 
   const bookingPlatformFees = tx
@@ -332,6 +335,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     additional_charge_gross: additionalChargeGross,
     manual_adjustments_net: manualAdjustmentsNet,
     other_gateway_fees: otherGatewayFees,
+    membership_gateway_fees: membershipGatewayFees,
     payout_transfer_fees: payoutTransferFees,
     terminal_gateway_fees: terminalGatewayFees,
     terminal_revenue_gross: terminalRevenueGross,
@@ -385,6 +389,7 @@ export function gatewayFeesTotalFromAggregate(a: FinanceLedgerAggregate): number
     a.ads_gateway_fees +
     a.marketing_credit_gateway_fees +
     a.other_gateway_fees +
+    a.membership_gateway_fees +
     a.payout_transfer_fees
   );
 }

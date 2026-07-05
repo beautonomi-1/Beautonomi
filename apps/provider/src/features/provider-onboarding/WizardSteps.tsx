@@ -44,6 +44,7 @@ import {
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
+import { AddressCountryPicker } from "@/components/AddressCountryPicker";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
@@ -1484,7 +1485,6 @@ function Step7Location() {
   const streetSearchRef = useRef<TextInput>(null);
   const line2Ref = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
-  const countryRef = useRef<TextInput>(null);
   useAutoFocus(streetSearchRef, true, { resetScrollFirst: true });
   const [mapPinOpen, setMapPinOpen] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -1678,18 +1678,12 @@ function Step7Location() {
           onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
           textContentType="addressCity"
           autoComplete="address-line2"
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => countryRef.current?.focus()}
+          returnKeyType="done"
         />
-        <OnboardingTextField
-          ref={countryRef}
+        <AddressCountryPicker
           label="Country"
           value={addr.country || ""}
-          onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
-          textContentType="countryName"
-          autoComplete="country"
-          returnKeyType="done"
+          onChange={(country) => updateFormData({ address: { ...addr, country } })}
         />
       </View>
 
@@ -3324,6 +3318,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
           color={ok ? "#10b981" : "#f59e0b"}
         />
       ) : null}
+      {onPress ? <Ionicons name="chevron-forward" size={16} color="#94a3b8" /> : null}
     </>
   );
 
@@ -3350,7 +3345,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
 }
 
 function Step13Review() {
-  const { formData, setCurrentStep } = useOnboardingWizard();
+  const { formData, editFromReview } = useOnboardingWizard();
   const a = formData.address;
   const hasRequiredPhotos = !!(formData.thumbnail_url && formData.avatar_url);
   const catCount = (formData.global_category_ids || []).length;
@@ -3375,7 +3370,7 @@ function Step13Review() {
       >
         <Ionicons name="rocket-outline" size={18} color="#047857" />
         <Text style={twStyle("flex-1 text-sm font-semibold text-emerald-900")}>
-          You&apos;re almost there! Review your details then hit Submit.
+          You&apos;re almost there! Review your details — tap any row to edit it.
         </Text>
       </View>
 
@@ -3391,6 +3386,7 @@ function Step13Review() {
           label="Name"
           value={formData.owner_name || "—"}
           ok={!!formData.owner_name}
+          onPress={() => editFromReview(2)}
         />
         <ReviewRow
           icon="mail-outline"
@@ -3399,6 +3395,7 @@ function Step13Review() {
           label="Email"
           value={formData.owner_email || "—"}
           ok={formData.email_verified}
+          onPress={() => editFromReview(2)}
         />
         <ReviewRow
           icon="phone-portrait-outline"
@@ -3407,6 +3404,7 @@ function Step13Review() {
           label="Mobile"
           value={formData.owner_phone || "—"}
           ok={formData.phone_verified}
+          onPress={() => editFromReview(2)}
         />
       </View>
 
@@ -3422,6 +3420,7 @@ function Step13Review() {
           label="Name"
           value={formData.business_name || "—"}
           ok={!!formData.business_name}
+          onPress={() => editFromReview(3)}
         />
         <ReviewRow
           icon="storefront-outline"
@@ -3429,6 +3428,7 @@ function Step13Review() {
           iconColor="#9333ea"
           label="Type"
           value={bizTypeLabel}
+          onPress={() => editFromReview(3)}
         />
         {formData.description ? (
           <ReviewRow
@@ -3440,6 +3440,7 @@ function Step13Review() {
               formData.description.slice(0, 80) + (formData.description.length > 80 ? "…" : "")
             }
             ok
+            onPress={() => editFromReview(3)}
           />
         ) : (
           <ReviewRow
@@ -3449,6 +3450,7 @@ function Step13Review() {
             label="Description"
             value="Not added — recommended"
             ok={false}
+            onPress={() => editFromReview(3)}
           />
         )}
       </View>
@@ -3465,6 +3467,7 @@ function Step13Review() {
           label="Address"
           value={a?.line1 ? `${a.line1}, ${a.city}` : "Not set"}
           ok={!!(a?.line1 && a?.city)}
+          onPress={() => editFromReview(7)}
         />
         <ReviewRow
           icon="time-outline"
@@ -3473,6 +3476,7 @@ function Step13Review() {
           label="Open days"
           value={`${openDayCount} of 7 days`}
           ok={openDayCount > 0}
+          onPress={() => editFromReview(13)}
         />
       </View>
 
@@ -3488,7 +3492,7 @@ function Step13Review() {
             label="At-home travel"
             value={formatTravelFeesSummary(formData.travel_fees, getTenantDefaultCurrency())}
             ok={formData.travel_fees?.enabled !== false}
-            onPress={() => setCurrentStep(10)}
+            onPress={() => editFromReview(10)}
           />
         </View>
       )}
@@ -3505,6 +3509,7 @@ function Step13Review() {
           label="Categories"
           value={catCount > 0 ? `${catCount} selected` : "None selected"}
           ok={catCount > 0}
+          onPress={() => editFromReview(11)}
         />
         <ReviewRow
           icon="cut-outline"
@@ -3513,6 +3518,7 @@ function Step13Review() {
           label="Services"
           value={svcCount > 0 ? `${svcCount} added` : "Auto-generated from categories"}
           ok={svcCount >= 0}
+          onPress={() => editFromReview(12)}
         />
         <ReviewRow
           icon="images-outline"
@@ -3521,6 +3527,7 @@ function Step13Review() {
           label="Photos"
           value={hasRequiredPhotos ? "Thumbnail + profile image uploaded" : "Thumbnail and profile image required"}
           ok={hasRequiredPhotos}
+          onPress={() => editFromReview(8)}
         />
       </View>
 

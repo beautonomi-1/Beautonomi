@@ -3,6 +3,7 @@ import {
   feeReconciliationDateBounds,
   normalizeGatewayName,
   computeGatewayFeeSuggestions,
+  resolveLedgerRowGateway,
 } from "../fee-reconciliation-compute";
 
 describe("feeReconciliationDateBounds", () => {
@@ -81,5 +82,53 @@ describe("computeGatewayFeeSuggestions", () => {
     expect(result.recorded_fees).toBe(9);
     expect(result.expected_fees_from_config).toBe(8.7);
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("resolveLedgerRowGateway (tenant gateway filter)", () => {
+  const maps = {
+    sourcePaymentGateway: new Map([["bp-1", "paystack"]]),
+    bookingGateway: new Map([["book-1", "yoco"]]),
+    referenceGateway: new Map([["ref-sub", "paystack"]]),
+  };
+
+  it("matches booking payment via source_payment_id", () => {
+    expect(
+      resolveLedgerRowGateway(
+        { source_payment_id: "bp-1", transaction_type: "payment" },
+        "paystack",
+        maps,
+      ),
+    ).toBe(true);
+    expect(
+      resolveLedgerRowGateway(
+        { source_payment_id: "bp-1", transaction_type: "payment" },
+        "yoco",
+        maps,
+      ),
+    ).toBe(false);
+  });
+
+  it("matches subscription ledger rows to paystack platform flows", () => {
+    expect(
+      resolveLedgerRowGateway(
+        { provider_id: "prov-1", transaction_type: "provider_subscription_payment", metadata: { reference: "ref-sub" } },
+        "paystack",
+        maps,
+      ),
+    ).toBe(true);
+  });
+
+  it("excludes wallet booking rows when booking gateway is wallet", () => {
+    expect(
+      resolveLedgerRowGateway(
+        { booking_id: "book-wallet", transaction_type: "payment" },
+        "paystack",
+        {
+          ...maps,
+          bookingGateway: new Map([["book-wallet", "wallet"]]),
+        },
+      ),
+    ).toBe(false);
   });
 });
