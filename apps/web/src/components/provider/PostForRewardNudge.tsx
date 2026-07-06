@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Gift, ImageIcon } from "lucide-react";
+import { Gift, Camera } from "lucide-react";
 
 interface PostForRewardNudgeProps {
   open: boolean;
@@ -28,7 +28,8 @@ export function PostForRewardNudge({ open, onOpenChange }: PostForRewardNudgePro
             Earn reward points
           </DialogTitle>
           <DialogDescription>
-            Share your work on Explore and earn reward points. Post a photo or story from today’s booking to grow your visibility and unlock rewards.
+            Show off your work — post a photo to Explore to reach new clients, grow your portfolio, and earn bonus
+            reward points.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-0">
@@ -36,9 +37,9 @@ export function PostForRewardNudge({ open, onOpenChange }: PostForRewardNudgePro
             Maybe later
           </Button>
           <Button asChild className="bg-primary hover:bg-primary/90 text-white">
-            <Link href="/provider/explore/new" onClick={() => onOpenChange(false)}>
-              <ImageIcon className="w-4 h-4 mr-2" />
-              Post to Explore
+            <Link href="/provider/explore/new?addToGallery=1" onClick={() => onOpenChange(false)}>
+              <Camera className="w-4 h-4 mr-2" />
+              Add a photo of your work
             </Link>
           </Button>
         </DialogFooter>

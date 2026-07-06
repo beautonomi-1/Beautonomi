@@ -14,6 +14,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { alpha2ToAlpha3 } from "@beautonomi/utils";
 import type {
   DiditDecision,
   DiditSessionCreateParams,
@@ -25,12 +26,20 @@ import type {
 
 const DIDIT_BASE = (process.env.DIDIT_BASE_URL ?? "https://verification.didit.me").replace(/\/$/, "");
 const DIDIT_API_KEY = process.env.DIDIT_API_KEY ?? "";
-const DIDIT_WORKFLOW_ID = process.env.DIDIT_WORKFLOW_ID ?? "";
+const DIDIT_WORKFLOW_ID_ENV = process.env.DIDIT_WORKFLOW_ID ?? "";
 const DIDIT_WEBHOOK_SECRET = process.env.DIDIT_WEBHOOK_SECRET ?? "";
 
-/** Returns true when all required Didit env vars are set. */
+/** Per-session config (not a secret). "Free KYC" workflow in Didit console. */
+const DEFAULT_DIDIT_WORKFLOW_ID = "850587e4-2afc-4aa1-b96e-5d45ef09447b";
+
+/** Effective workflow id: env override, else code default. */
+export function getEffectiveDiditWorkflowId(): string {
+  return DIDIT_WORKFLOW_ID_ENV || DEFAULT_DIDIT_WORKFLOW_ID;
+}
+
+/** Returns true when required Didit secrets are set (API key + webhook secret). */
 export function diditEnvPresent(): boolean {
-  return Boolean(DIDIT_API_KEY && DIDIT_WORKFLOW_ID && DIDIT_WEBHOOK_SECRET);
+  return Boolean(DIDIT_API_KEY && DIDIT_WEBHOOK_SECRET);
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -64,8 +73,8 @@ async function diditFetch<T>(
 export async function createDiditSession(
   params: DiditSessionCreateParams,
 ): Promise<DiditSessionCreateResult> {
-  const workflowId = DIDIT_WORKFLOW_ID;
-  if (!workflowId) throw new Error("DIDIT_WORKFLOW_ID is not configured");
+  const workflowId = params.workflow_id || getEffectiveDiditWorkflowId();
+  if (!workflowId) throw new Error("Didit workflow_id is not configured");
 
   const body: Record<string, unknown> = {
     workflow_id: workflowId,
@@ -90,7 +99,11 @@ export async function createDiditSession(
     if (ed.dateOfBirth) expected.date_of_birth = ed.dateOfBirth;
     // nationality / id_country want alpha-3; convert from our alpha-2 form or drop.
     const idCountryA3 = toAlpha3(ed.country);
-    if (idCountryA3) expected.id_country = idCountryA3;
+    if (idCountryA3) {
+      expected.id_country = idCountryA3;
+    } else if (ed.country) {
+      console.warn(`[didit] Unmapped id_country alpha-2: ${ed.country}`);
+    }
     const nationalityA3 = ed.nationality ? toAlpha3(ed.nationality) ?? ed.nationality : undefined;
     if (nationalityA3 && nationalityA3.length === 3) expected.nationality = nationalityA3;
     if (Object.keys(expected).length > 0) body.expected_details = expected;
@@ -124,18 +137,8 @@ function normaliseLanguageCode(raw: string | null | undefined): string | undefin
   return DIDIT_SUPPORTED_LANGS.has(base) ? base : "en";
 }
 
-/** ISO 3166-1 alpha-2 → alpha-3 for the countries the platform serves. */
-const ALPHA2_TO_ALPHA3: Record<string, string> = {
-  ZA: "ZAF", ZW: "ZWE", MZ: "MOZ", LS: "LSO", SZ: "SWZ", BW: "BWA",
-  NA: "NAM", ZM: "ZMB", MW: "MWI", TZ: "TZA", KE: "KEN", NG: "NGA",
-  GB: "GBR", US: "USA", CA: "CAN", AU: "AUS", IN: "IND",
-};
-
 function toAlpha3(code: string | null | undefined): string | undefined {
-  if (!code) return undefined;
-  const upper = code.trim().toUpperCase();
-  if (upper.length === 3) return upper;                 // already alpha-3
-  return ALPHA2_TO_ALPHA3[upper];                       // undefined if unknown → omit
+  return alpha2ToAlpha3(code);
 }
 
 // ── Decision fetch (for reconciliation) ──────────────────────────────────────
@@ -401,4 +404,7 @@ export function extractLegalIdentityFromDecision(
   };
 }
 
-export { DIDIT_WORKFLOW_ID, DIDIT_BASE };
+export {
+  DEFAULT_DIDIT_WORKFLOW_ID,
+  DIDIT_BASE,
+};

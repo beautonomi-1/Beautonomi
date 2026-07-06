@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
 
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);

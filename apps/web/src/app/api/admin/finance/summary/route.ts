@@ -18,6 +18,8 @@ import {
   getNegativeBalanceProvidersForTenant,
   type NegativeBalanceProvidersPayload,
 } from "@/lib/admin/negative-provider-payout-balances";
+import { computeAlignedBookingsGmv } from "@/lib/admin/bookings-gmv-for-reconciliation";
+import { countGatewayFeeCaptureAnomalies } from "@/lib/admin/gateway-fee-capture-anomalies";
 
 /**
  * GET /api/admin/finance/summary
@@ -62,7 +64,10 @@ export async function GET(request: Request) {
     let referralPayouts = 0;
     let outstandingGiftCardLiability = 0;
     let bookingsGmv = 0;
+    let grossBookingsGmv = 0;
+    let walkInBookingsDeduction = 0;
     let terminalOrderCount = 0;
+    let gatewayFeeAnomalies = { row_count: 0, expected_fees_total: 0 };
     try {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
@@ -108,24 +113,21 @@ export async function GET(request: Request) {
         );
       }
 
-      let bookingsQuery = supabaseAdmin
-        .from("bookings")
-        .select("total_amount")
-        .eq("tenant_id", tenantId)
-        .in("status", ["confirmed", "completed"]);
-      // §Phase 7: align time axis to created_at (ledger anchor) instead of
-      // scheduled_at to avoid "Variance R496 (0%)" false-zero on same-day bookings.
-      if (normalizedRange.start) bookingsQuery = bookingsQuery.gte("created_at", normalizedRange.start);
-      if (normalizedRange.end) bookingsQuery = bookingsQuery.lte("created_at", normalizedRange.end);
-      const { data: bookingRows, error: bookingErr } = await bookingsQuery;
-      if (bookingErr) {
-        console.warn("Bookings GMV reconciliation query failed:", bookingErr.message);
-      } else {
-        // §Phase 7: exclude walk-in additional charges from bookings GMV so both
-        // sides use the same base (ledger GMV = service_collected_gross excludes
-        // walk-in rows by design). Use total_amount only (no wallet/gift adjustments).
-        bookingsGmv = (bookingRows || []).reduce((s, row) => s + Number(row.total_amount || 0), 0);
-      }
+      const alignedGmv = await computeAlignedBookingsGmv(
+        supabaseAdmin,
+        tenantId,
+        normalizedRange,
+        agg.walk_in_additional_charges,
+      );
+      grossBookingsGmv = alignedGmv.grossBookingsGmv;
+      walkInBookingsDeduction = alignedGmv.walkInAddOnDeduction;
+      bookingsGmv = alignedGmv.alignedBookingsGmv;
+
+      gatewayFeeAnomalies = await countGatewayFeeCaptureAnomalies(
+        supabaseAdmin,
+        tenantId,
+        normalizedRange,
+      );
 
       let terminalOrdersQuery = supabaseAdmin
         .from("terminal_orders")
@@ -165,13 +167,20 @@ export async function GET(request: Request) {
       agg.provider_recognized_revenue_gross - providerRefundImpact;
     const gmvVariance = agg.service_collected_gross - bookingsGmv;
     const GMV_VARIANCE_PCT_THRESHOLD = 100;
+    const gmvPctDenominator = Math.min(agg.service_collected_gross, bookingsGmv);
     const gmvVariancePct =
-      bookingsGmv >= GMV_VARIANCE_PCT_THRESHOLD
-        ? (gmvVariance / bookingsGmv) * 100
-        : bookingsGmv > 0
-          ? null
-          : null;
+      gmvPctDenominator >= GMV_VARIANCE_PCT_THRESHOLD
+        ? (gmvVariance / gmvPctDenominator) * 100
+        : null;
     const outOfBalance = Math.abs(gmvVariance) > 1;
+    const gmvControlStatus =
+      gmvVariancePct === null
+        ? outOfBalance
+          ? "review"
+          : "ok"
+        : outOfBalance
+          ? "warning"
+          : "ok";
     const highNegativeRefundPressure = providerRefundImpact > Math.max(agg.provider_earnings_net, 0);
 
     const period = startDate && endDate ? "custom" : "month";
@@ -221,6 +230,7 @@ export async function GET(request: Request) {
       ads: agg.ads_gateway_fees,
       marketing_credits: agg.marketing_credit_gateway_fees,
       gift_card_wallet: agg.other_gateway_fees,
+      membership: agg.membership_gateway_fees,
       payout_transfers: agg.payout_transfer_fees,
       total: gatewayFeesTotal,
     };
@@ -356,20 +366,19 @@ export async function GET(request: Request) {
           checks: {
             ledger_vs_bookings_gmv: {
               ledger_gmv: agg.service_collected_gross,
-              // §Phase 7: bookings GMV now uses created_at (same axis as ledger),
-              // excludes walk-in add-ons (same base as ledger), and shows null%
-              // instead of 0% when bookingsGmv = 0 (prevents false green signal).
               bookings_gmv: bookingsGmv,
+              gross_bookings_gmv: grossBookingsGmv,
+              walk_in_deduction: walkInBookingsDeduction,
               variance: gmvVariance,
               variance_pct: gmvVariancePct,
-              // Null pct when denominator is tiny or zero — percentage is misleading.
-              status: gmvVariancePct === null
-                ? "unavailable"
-                : outOfBalance
-                  ? "warning"
-                  : "ok",
+              status: gmvControlStatus,
               basis_note:
-                "Both sides use created_at anchor; ledger excludes walk-in add-ons and terminal commerce; bookings GMV uses total_amount (no discount/wallet adjustments). Percent hidden when booking GMV < R100.",
+                "Both sides use created_at; bookings GMV is paid bookings only minus walk-in add-ons (aligned with ledger service_collected_gross). Percent shown only when min(ledger, bookings) ≥ R100.",
+            },
+            gateway_fee_capture_anomalies: {
+              row_count: gatewayFeeAnomalies.row_count,
+              expected_fees_total: gatewayFeeAnomalies.expected_fees_total,
+              status: gatewayFeeAnomalies.row_count > 0 ? "warning" : "ok",
             },
             negative_provider_payout_balances: {
               count: negativeBalanceProviders.count ?? 0,
@@ -420,6 +429,8 @@ export async function GET(request: Request) {
             "taxesCollected",
             "liabilityWalletTopups",
             "liabilityGiftCardOutstanding",
+            "gatewayFeesServices",
+            "gatewayFeesTotal",
           ]),
         },
         language_context: {

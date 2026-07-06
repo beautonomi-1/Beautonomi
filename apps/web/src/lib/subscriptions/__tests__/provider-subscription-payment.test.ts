@@ -97,7 +97,14 @@ function makeDb(initial: Record<string, Row[]>) {
     return api;
   }
 
-  return { supabase: { from: (t: string) => builder(t) } as never, tables, inserts };
+  return {
+    supabase: {
+      from: (t: string) => builder(t),
+      rpc: async () => ({ data: 0, error: null }),
+    } as never,
+    tables,
+    inserts,
+  };
 }
 
 describe("recordProviderSubscriptionPayment", () => {

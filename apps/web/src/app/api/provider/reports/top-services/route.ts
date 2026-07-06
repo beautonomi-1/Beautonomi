@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
 
     if (!providerId) return notFoundResponse("Provider not found");
 

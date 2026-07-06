@@ -10,7 +10,7 @@ import {
   TextInput,
   Switch,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
+import { tabBarBottomInset } from "@/constants/layout";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
@@ -96,6 +97,7 @@ export default function CustomOfferCheckoutScreen() {
   const router = useRouter();
   const { offer_id } = useLocalSearchParams<{ offer_id: string }>();
   const { contentPadding } = useResponsive();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useTranslation();
   const coc = useCallback(
@@ -1190,7 +1192,8 @@ export default function CustomOfferCheckoutScreen() {
         <View
           style={{
             paddingHorizontal: contentPadding,
-            paddingVertical: 14,
+            paddingTop: 14,
+            paddingBottom: 14 + tabBarBottomInset(insets.bottom),
             backgroundColor: "#fff",
             borderTopWidth: 1,
             borderTopColor: "#F3F4F6",

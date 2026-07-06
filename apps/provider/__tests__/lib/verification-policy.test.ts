@@ -35,9 +35,14 @@ describe("verification policy helpers", () => {
   });
 
   it("labels continue action based on requirement", () => {
+    // Required + not started: the button is a hard gate, so the label must not
+    // promise the user they can skip (canSkipProviderVerification returns false).
     expect(
       providerVerificationContinueLabel({ required: true, status: "not_started" }),
-    ).toContain("verify later");
+    ).toContain("required");
+    expect(
+      providerVerificationContinueLabel({ required: true, status: "in_progress" }),
+    ).toContain("Continue");
     expect(
       providerVerificationContinueLabel({ required: false, status: "not_started" }),
     ).toContain("Do this later");

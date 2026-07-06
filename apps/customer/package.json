@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.72",
+  "version": "1.0.73",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -38,6 +38,7 @@
     "@expo/vector-icons": "^15.1.1",
     "@hookform/resolvers": "^5.2.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
     "@react-navigation/native": "^7.1.8",
     "@sentry/react-native": "~7.2.0",

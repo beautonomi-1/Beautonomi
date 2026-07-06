@@ -76,6 +76,124 @@ export function participantMaxRefundable(args: {
 }
 
 /** Online single-charge: primary holds the group charge; guests have no separate booking. */
+export type GroupFinancialProductLine = {
+  quantity?: number | null;
+  unit_price?: number | null;
+  unitPrice?: number | null;
+  total_price?: number | null;
+  totalPrice?: number | null;
+};
+
+export type GroupFinancialBreakdownSource = GroupPaymentSummarySource & {
+  location_type?: string | null;
+  travel_fee?: number | null;
+  package_discount_amount?: number | null;
+  participants?: Array<{ price?: number | null; tip_amount?: number | null }> | null;
+  products?: GroupFinancialProductLine[] | null;
+  bookings?: Array<{
+    additional_charges?: Array<{ amount?: number | null; status?: string | null }> | null;
+  }> | null;
+};
+
+export type GroupFinancialBreakdown = {
+  participantServicesTotal: number;
+  productsTotal: number;
+  travelFee: number;
+  tipsTotal: number;
+  packageDiscount: number;
+  additionalChargesTotal: number;
+  total: number;
+};
+
+function financialProductLineTotal(product: GroupFinancialProductLine): number {
+  const qty = Math.max(1, Number(product.quantity ?? 1) || 1);
+  return Math.max(
+    0,
+    Number(
+      product.total_price ??
+        product.totalPrice ??
+        (Number(product.unit_price ?? product.unitPrice ?? 0) || 0) * qty,
+    ) || 0,
+  );
+}
+
+/** Mirrors web group-bookings Financials section for native detail sheet. */
+export function computeGroupFinancialBreakdown(
+  group: GroupFinancialBreakdownSource,
+): GroupFinancialBreakdown {
+  const participants = group.participants ?? [];
+  const participantServicesTotal = participants.reduce(
+    (sum, p) => sum + (Number(p.price) || 0),
+    0,
+  );
+  const productsTotal = (group.products ?? []).reduce(
+    (sum, product) => sum + financialProductLineTotal(product),
+    0,
+  );
+  const travelFee =
+    group.location_type === "at_home" ? Math.max(0, Number(group.travel_fee ?? 0)) : 0;
+  const tipsTotal = participants.reduce(
+    (sum, p) => sum + (Number(p.tip_amount ?? 0) || 0),
+    0,
+  );
+  const packageDiscount = Math.max(0, Number(group.package_discount_amount ?? 0));
+  const additionalChargesTotal = (group.bookings ?? []).reduce((sum, booking) => {
+    const charges = booking.additional_charges ?? [];
+    return (
+      sum +
+      charges
+        .filter((charge) => String(charge.status ?? "").toLowerCase() !== "rejected")
+        .reduce((inner, charge) => inner + (Number(charge.amount ?? 0) || 0), 0)
+    );
+  }, 0);
+  const total = Number(group.total_price ?? 0);
+
+  return {
+    participantServicesTotal,
+    productsTotal,
+    travelFee,
+    tipsTotal,
+    packageDiscount,
+    additionalChargesTotal,
+    total,
+  };
+}
+
+/**
+ * When the open detail sheet is ahead of a stale list row (common right after
+ * mark_paid + list refresh), do not let list-sync roll payment state back.
+ */
+export function shouldRejectStaleListPaymentSync(
+  selected: GroupPaymentSummarySource,
+  fresh: GroupPaymentSummarySource,
+): boolean {
+  if (groupIsFullyPaid(selected) && !groupIsFullyPaid(fresh)) return true;
+  const selectedPaid = Number(selected.amount_paid ?? 0);
+  const freshPaid = Number(fresh.amount_paid ?? 0);
+  if (selectedPaid > freshPaid + 0.01) return true;
+  const selectedBalance = Number(selected.balance_due ?? NaN);
+  const freshBalance = Number(fresh.balance_due ?? NaN);
+  if (
+    Number.isFinite(selectedBalance) &&
+    selectedBalance <= 0 &&
+    Number.isFinite(freshBalance) &&
+    freshBalance > 0.01
+  ) {
+    return true;
+  }
+  const selectedStatus = String(selected.payment_status ?? "").toLowerCase();
+  const freshStatus = String(fresh.payment_status ?? "").toLowerCase();
+  if (selectedStatus === "paid" && freshStatus === "pending") return true;
+  if (
+    (selectedStatus === "partially_paid" || selectedStatus === "partial") &&
+    freshStatus === "pending" &&
+    selectedPaid > freshPaid + 0.01
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function isSingleChargeOnlineGroup(
   participants: GroupParticipantRefundContext[] | undefined,
   refundableParticipantId: string,

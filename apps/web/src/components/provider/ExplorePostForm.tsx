@@ -34,18 +34,32 @@ interface ExplorePostFormProps {
   post?: ExplorePost;
   onSuccess: () => void;
   onCancel?: () => void;
+  /** Pre-seed from the "post your work" completion flow (booking detail → new post). */
+  preseedCaption?: string;
+  preseedOfferingId?: string;
+  preseedBookingId?: string;
+  preseedAddToGallery?: boolean;
 }
 
 export function ExplorePostForm({
   post,
   onSuccess,
   onCancel,
+  preseedCaption,
+  preseedOfferingId,
+  preseedBookingId,
+  preseedAddToGallery,
 }: ExplorePostFormProps) {
-  const [caption, setCaption] = useState(post?.caption ?? "");
+  const [caption, setCaption] = useState(post?.caption ?? preseedCaption ?? "");
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(
     post?.primary_category_slug ?? null
   );
-  const [offeringId, setOfferingId] = useState<string | null>(post?.offering_id ?? null);
+  const [offeringId, setOfferingId] = useState<string | null>(
+    post?.offering_id ?? preseedOfferingId ?? null
+  );
+  const [alsoAddToGallery, setAlsoAddToGallery] = useState(
+    post ? false : preseedAddToGallery ?? true
+  );
   const [categories, setCategories] = useState<{ id: string; slug: string; name: string }[]>([]);
   const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
   const [tags, setTags] = useState<string[]>(post?.tags ?? []);
@@ -332,6 +346,8 @@ export function ExplorePostForm({
           primary_category_slug: primaryCategorySlug,
           offering_id: offeringId || undefined,
           status: "published",
+          ...(alsoAddToGallery ? { also_add_to_gallery: true } : {}),
+          ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
         });
         setIsPosted(true);
         toast.success("Posted!");
@@ -777,6 +793,21 @@ export function ExplorePostForm({
           <p className="text-xs text-gray-400 mt-1">Maximum 10 tags per post</p>
         )}
       </div>
+
+      {!post && (
+        <label className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={alsoAddToGallery}
+            onChange={(e) => setAlsoAddToGallery(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-800">Also add to my portfolio</span>
+            <span className="block text-xs text-gray-500 mt-0.5">Shows this photo in your provider gallery too.</span>
+          </span>
+        </label>
+      )}
 
       <div className="mt-6 flex gap-3">
         <Button

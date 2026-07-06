@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { validateLegalDobParts, parseLegalDobIso } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 
 export type NormalizedVerificationStatus =
@@ -35,8 +36,8 @@ function validateLegalDetails(d: LegalDetails): LegalDetailsErrors {
   if (!d.lastName.trim()) errors.lastName = "Legal last name is required";
   if (!d.dateOfBirth) errors.dateOfBirth = "Date of birth is required";
   else {
-    const dob = new Date(d.dateOfBirth);
-    if (isNaN(dob.getTime()) || dob >= new Date()) errors.dateOfBirth = "Enter a valid past date";
+    const dobError = validateLegalDobParts(parseLegalDobIso(d.dateOfBirth), { minAge: 18 });
+    if (dobError) errors.dateOfBirth = dobError;
   }
   if (!d.country) errors.country = "Issuing country is required";
   return errors;

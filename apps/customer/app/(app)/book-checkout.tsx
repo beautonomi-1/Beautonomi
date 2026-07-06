@@ -857,6 +857,39 @@ export default function BookCheckoutScreen() {
       })();
     }, [normalizedHoldId, bookingConfirmedData, consuming, t])
   );
+  // §customer-verification-gate (proactive): warn before the user fills in the
+  // whole checkout only to be blocked at submit. Server remains the enforcer —
+  // /api/me/verification precomputes the same first-booking gate condition.
+  const { bundle: configBundle } = useConfigBundle();
+  const verificationRequiredFlag = Boolean(
+    configBundle?.verification?.required_for_customers
+  );
+  const [verificationGate, setVerificationGate] = useState(false);
+  const refreshVerificationGate = useCallback(async () => {
+    if (!user || !verificationRequiredFlag) {
+      setVerificationGate(false);
+      return;
+    }
+    try {
+      const res = await api.get<{ booking_verification_gate?: boolean }>(
+        "/api/me/verification",
+        { timeout: 10_000 }
+      );
+      if (!res.error) {
+        setVerificationGate(res.data?.booking_verification_gate === true);
+      }
+    } catch {
+      // Non-blocking — the consume endpoint still enforces the gate
+    }
+  }, [user, verificationRequiredFlag]);
+  // Re-check on focus so the banner clears right after the user verifies
+  // and returns from the identity-verification screen.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshVerificationGate();
+    }, [refreshVerificationGate])
+  );
+
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   const onDemandModule = useModuleConfig("on_demand");
@@ -2960,6 +2993,49 @@ export default function BookCheckoutScreen() {
             {/* Countdown */}
             {hold.expires_at && (
               <CountdownBar expiresAt={hold.expires_at} clockOffsetMs={serverClockOffsetMs} t={t} />
+            )}
+
+            {/* ═══ Identity verification heads-up (first booking) ═══ */}
+            {verificationGate && (
+              <View
+                style={{
+                  backgroundColor: "#FFFBEB",
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: "#FDE68A",
+                  padding: 14,
+                  marginBottom: 16,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#D97706" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#92400E" }}>
+                      Verify your identity to book
+                    </Text>
+                    <Text style={{ fontSize: 13, color: "#B45309", marginTop: 3, lineHeight: 18 }}>
+                      Your first booking needs a quick identity check — it takes about 2 minutes
+                      and you&apos;ll come right back here.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptic.light();
+                        router.push({
+                          pathname: "/(app)/account-settings/identity-verification" as never,
+                          params: { return_to: bookContinueReturnTo } as never,
+                        });
+                      }}
+                      style={{ marginTop: 10, alignSelf: "flex-start" }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Verify identity now"
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.primary }}>
+                        Verify now →
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
             )}
 
             {/* ═══ Provider Identity ═══ */}

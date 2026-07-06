@@ -192,7 +192,7 @@ export default function ActivityScreen() {
               </Text>
             </View>
             <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>
-              Ledger net this month (provider_earnings) — dashboard scope
+              Recognized revenue this month (ledger)
             </Text>
             {(stats.revenue_growth ?? 0) !== 0 ? (
               <Text

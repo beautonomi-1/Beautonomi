@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
 
     const bookingLimit = await checkBookingLimit(providerId, supabase);
 

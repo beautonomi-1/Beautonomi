@@ -70,6 +70,22 @@ export async function GET(request: NextRequest) {
     const can_submit_verification =
       !(userData.identity_verified ?? false) && !userBlocking && !recordBlocking;
 
+    // §customer-verification-gate mirror: precompute whether the first-booking
+    // verification gate (see /api/public/booking-holds/[id]/consume) will block
+    // this user, so clients can warn upfront instead of failing at submit.
+    let bookingVerificationGate = false;
+    const gateVerified =
+      (userData.identity_verified ?? false) ||
+      userData.identity_verification_status === "approved";
+    if (policy.requiredForCustomers && !gateVerified) {
+      const adminSupabase = getSupabaseAdmin();
+      const { count: bookingCount } = await adminSupabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", user.id);
+      bookingVerificationGate = (bookingCount ?? 0) === 0;
+    }
+
     /** Safe list for clients — use GET /api/me/verification/[id]/view for file access */
     const submissions = list.map((v) => ({
       id: v.id,
@@ -109,6 +125,9 @@ export async function GET(request: NextRequest) {
           }
         : null,
       required_for_customers: policy.requiredForCustomers,
+      // True when the first-booking verification gate will block this user's
+      // next booking attempt (required + unverified + no bookings yet).
+      booking_verification_gate: bookingVerificationGate,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch verification status");

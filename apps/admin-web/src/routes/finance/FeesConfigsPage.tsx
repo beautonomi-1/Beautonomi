@@ -176,6 +176,42 @@ export function FeesConfigsPage() {
     placeholderData: keepPreviousData,
   });
 
+  useEffect(() => {
+    if (tab !== "reconciliations") return;
+    if (sp.get("start_date") && sp.get("end_date")) return;
+    const n = new URLSearchParams(sp);
+    n.set("start_date", monthStartYmd());
+    n.set("end_date", todayYmd());
+    setSp(n, { replace: true });
+  }, [tab, sp, setSp]);
+
+  const reconStart = sp.get("start_date") ?? monthStartYmd();
+  const reconEnd = sp.get("end_date") ?? todayYmd();
+  const reconRangeKey = `${reconStart}|${reconEnd}`;
+
+  const reconPeriodSummaryQ = useQuery({
+    queryKey: adminQueryKeys.finance.summary(reconRangeKey),
+    queryFn: () => {
+      const p = new URLSearchParams({ start_date: reconStart, end_date: reconEnd });
+      return adminApi.getJson<{ gateway_fees_total?: number; gateway_fees?: number }>(
+        `/api/admin/finance/summary?${p.toString()}`,
+        { timeoutMs: 90_000 },
+      );
+    },
+    enabled: allowed && tab === "reconciliations",
+  });
+
+  const setReconDateRange = useCallback(
+    (start: string, end: string) => {
+      const n = new URLSearchParams(sp);
+      n.set("start_date", start);
+      n.set("end_date", end);
+      n.set("page", "1");
+      setSp(n, { replace: true });
+    },
+    [setSp, sp],
+  );
+
   const reconciliationsQ = useQuery({
     queryKey: adminQueryKeys.fees.reconciliationsList({
       page,
@@ -387,6 +423,15 @@ export function FeesConfigsPage() {
             isSuperadmin={isSuperadmin}
             backfillBusy={backfillReconMut.isPending}
             onBackfill={() => backfillReconMut.mutate()}
+            startDate={reconStart}
+            endDate={reconEnd}
+            onDateRangeChange={setReconDateRange}
+            periodGatewayFeesTotal={
+              reconPeriodSummaryQ.data?.gateway_fees_total ??
+              reconPeriodSummaryQ.data?.gateway_fees ??
+              null
+            }
+            periodSummaryLoading={reconPeriodSummaryQ.isLoading}
           />
         )
       ) : null}
@@ -624,6 +669,11 @@ function FeeReconciliationsSection({
   isSuperadmin,
   backfillBusy,
   onBackfill,
+  startDate,
+  endDate,
+  onDateRangeChange,
+  periodGatewayFeesTotal,
+  periodSummaryLoading,
 }: {
   rows: ReconciliationRow[];
   meta?: ListMeta;
@@ -636,9 +686,85 @@ function FeeReconciliationsSection({
   isSuperadmin?: boolean;
   backfillBusy?: boolean;
   onBackfill?: () => void;
+  startDate: string;
+  endDate: string;
+  onDateRangeChange: (start: string, end: string) => void;
+  periodGatewayFeesTotal: number | null;
+  periodSummaryLoading?: boolean;
 }) {
+  const periodTotals = useMemo(() => {
+    return rows.reduce(
+      (acc, rec) => {
+        acc.recorded += Number(rec.recorded_fees ?? rec.actual_fees ?? 0);
+        acc.expected += Number(rec.expected_fees ?? 0);
+        acc.actual += Number(rec.actual_fees ?? 0);
+        return acc;
+      },
+      { recorded: 0, expected: 0, actual: 0 } as { recorded: number; expected: number; actual: number },
+    );
+  }, [rows]);
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+        <div>
+          <label className={labelClass()} htmlFor="recon-filter-start">
+            Period start
+          </label>
+          <input
+            id="recon-filter-start"
+            type="date"
+            className={inputClass()}
+            value={startDate}
+            onChange={(e) => onDateRangeChange(e.target.value, endDate)}
+          />
+        </div>
+        <div>
+          <label className={labelClass()} htmlFor="recon-filter-end">
+            Period end
+          </label>
+          <input
+            id="recon-filter-end"
+            type="date"
+            className={inputClass()}
+            value={endDate}
+            onChange={(e) => onDateRangeChange(startDate, e.target.value)}
+          />
+        </div>
+        <p className="text-xs text-gray-600">
+          Defaults to month-to-date. Finance gateway fees for this period should match ledger-recorded totals.
+        </p>
+      </div>
+      <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-gray-800">
+        <p className="font-medium text-gray-900">Period totals ({startDate} → {endDate})</p>
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+          <span>
+            Listed recorded:{" "}
+            <strong>{formatAdminCurrency(periodTotals.recorded, DEFAULT_CURRENCY)}</strong>
+          </span>
+          <span>
+            Listed expected:{" "}
+            <strong>{formatAdminCurrency(periodTotals.expected, DEFAULT_CURRENCY)}</strong>
+          </span>
+          <span>
+            Listed actual:{" "}
+            <strong>{formatAdminCurrency(periodTotals.actual, DEFAULT_CURRENCY)}</strong>
+          </span>
+          <span>
+            Finance gateway fees (all flows):{" "}
+            <strong>
+              {periodSummaryLoading
+                ? "…"
+                : periodGatewayFeesTotal != null
+                  ? formatAdminCurrency(periodGatewayFeesTotal, DEFAULT_CURRENCY)
+                  : "—"}
+            </strong>
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-gray-600">
+          Auto rows: Actual = ledger-recorded Paystack fees. Recorded mirrors Actual in auto mode. Expected = fee config.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Fee reconciliations</h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -686,9 +812,21 @@ function FeeReconciliationsSection({
               <AdminTh>Date</AdminTh>
               <AdminTh>Gateway</AdminTh>
               <AdminTh>Source</AdminTh>
-              <AdminTh>Recorded</AdminTh>
-              <AdminTh>Expected</AdminTh>
-              <AdminTh>Actual</AdminTh>
+              <AdminTh>
+                <span title="Ledger-recorded gateway fees (webhook truth); same as Actual in auto mode">
+                  Recorded
+                </span>
+              </AdminTh>
+              <AdminTh>
+                <span title="Expected fees from active gateway fee config for charges in period">
+                  Expected
+                </span>
+              </AdminTh>
+              <AdminTh>
+                <span title="Ledger-recorded fees unless overridden by Paystack statement">
+                  Actual
+                </span>
+              </AdminTh>
               <AdminTh>Variance</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Reference</AdminTh>

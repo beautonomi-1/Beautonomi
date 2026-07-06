@@ -14,6 +14,7 @@ import {
   extractLegalIdentityFromDecision,
   extractRejectionReason,
   getDiditDecision,
+  getEffectiveDiditWorkflowId,
   isKycExpired,
   normalizeDiditStatus,
   sanitiseDecisionForStorage,
@@ -139,7 +140,7 @@ export async function createVerificationSession(
     // URL, back-fill the existing row (no new insert → unique index preserved).
     try {
       const recovered = await createDiditSession({
-        workflow_id: process.env.DIDIT_WORKFLOW_ID ?? "",
+        workflow_id: getEffectiveDiditWorkflowId(),
         vendor_data: vendorData,
         language_code: languageCode,
         callback,
@@ -170,7 +171,7 @@ export async function createVerificationSession(
   }
 
   const params: Parameters<typeof createDiditSession>[0] = {
-    workflow_id: process.env.DIDIT_WORKFLOW_ID ?? "",
+    workflow_id: getEffectiveDiditWorkflowId(),
     vendor_data: vendorData,
     language_code: languageCode,
     callback,
@@ -212,7 +213,7 @@ export async function createVerificationSession(
       tenant_id:          tenantId ?? null,
       provider:           "didit",
       provider_session_id:diditResult.session_id,
-      workflow_id:        diditResult.session_id ? process.env.DIDIT_WORKFLOW_ID : null,
+      workflow_id:        getEffectiveDiditWorkflowId(),
       status:             normalizedStatus,
       vendor_data:        vendorData,
       session_url:        diditResult.url ?? null,

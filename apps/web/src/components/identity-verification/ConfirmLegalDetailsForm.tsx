@@ -5,9 +5,6 @@
  *
  * Pre-verification step that asks the user to confirm their legal details
  * exactly as they appear on their government ID or passport.
- *
- * Shows inline per-field validation (not a single alert).
- * Includes the "You're verifying yourself, not your business" note for providers.
  */
 
 import { type ChangeEvent } from "react";
@@ -17,29 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon, AlertCircle } from "lucide-react";
-
-interface CountryOption { code: string; name: string }
-
-// Minimal country list — in production reuse /api/public/countries or the platform's country list
-const COMMON_COUNTRIES: CountryOption[] = [
-  { code: "ZA", name: "South Africa" },
-  { code: "ZW", name: "Zimbabwe" },
-  { code: "MZ", name: "Mozambique" },
-  { code: "LS", name: "Lesotho" },
-  { code: "SZ", name: "Eswatini" },
-  { code: "BW", name: "Botswana" },
-  { code: "NA", name: "Namibia" },
-  { code: "ZM", name: "Zambia" },
-  { code: "MW", name: "Malawi" },
-  { code: "TZ", name: "Tanzania" },
-  { code: "KE", name: "Kenya" },
-  { code: "NG", name: "Nigeria" },
-  { code: "GH", name: "Ghana" },
-  { code: "ET", name: "Ethiopia" },
-  { code: "GB", name: "United Kingdom" },
-  { code: "US", name: "United States" },
-  { code: "OTHER", name: "Other country" },
-];
+import { LegalDobPicker } from "./LegalDobPicker";
+import { LegalCountryCombobox } from "./LegalCountryCombobox";
 
 interface Props {
   legalDetails: LegalDetails;
@@ -59,14 +35,13 @@ export function ConfirmLegalDetailsForm({
   isProvider = false,
 }: Props) {
   function update(field: keyof LegalDetails) {
-    return (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    return (e: ChangeEvent<HTMLInputElement>) => {
       onChange({ ...legalDetails, [field]: e.target.value });
     };
   }
 
   return (
     <div className="space-y-5" role="form" aria-label="Confirm legal details before verification">
-      {/* Guidance banner */}
       <Alert className="border-amber-200 bg-amber-50 text-amber-900">
         <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
         <AlertDescription className="text-sm leading-snug">
@@ -88,7 +63,6 @@ export function ConfirmLegalDetailsForm({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {/* First name */}
         <div className="space-y-1.5">
           <Label htmlFor="legal-first-name">
             Legal first name <span aria-hidden="true" className="text-destructive">*</span>
@@ -110,7 +84,6 @@ export function ConfirmLegalDetailsForm({
           )}
         </div>
 
-        {/* Last name */}
         <div className="space-y-1.5">
           <Label htmlFor="legal-last-name">
             Legal last name <span aria-hidden="true" className="text-destructive">*</span>
@@ -132,60 +105,17 @@ export function ConfirmLegalDetailsForm({
           )}
         </div>
 
-        {/* Date of birth */}
-        <div className="space-y-1.5">
-          <Label htmlFor="legal-dob">
-            Date of birth <span aria-hidden="true" className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="legal-dob"
-            type="date"
-            value={legalDetails.dateOfBirth}
-            onChange={update("dateOfBirth")}
-            max={new Date().toISOString().split("T")[0]}
-            aria-required="true"
-            aria-describedby={errors.dateOfBirth ? "err-dob" : undefined}
-            className={errors.dateOfBirth ? "border-destructive" : ""}
-          />
-          {errors.dateOfBirth && (
-            <p id="err-dob" className="text-xs text-destructive" role="alert">
-              {errors.dateOfBirth}
-            </p>
-          )}
-        </div>
+        <LegalDobPicker
+          value={legalDetails.dateOfBirth}
+          onChange={(dateOfBirth) => onChange({ ...legalDetails, dateOfBirth })}
+          error={errors.dateOfBirth}
+        />
 
-        {/* Issuing country */}
-        <div className="space-y-1.5">
-          <Label htmlFor="legal-country">
-            Country that issued your document <span aria-hidden="true" className="text-destructive">*</span>
-          </Label>
-          <select
-            id="legal-country"
-            value={legalDetails.country}
-            onChange={update("country")}
-            aria-required="true"
-            aria-describedby={errors.country ? "err-country" : undefined}
-            className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-              errors.country ? "border-destructive" : "border-input"
-            }`}
-          >
-            <option value="">Select country…</option>
-            {COMMON_COUNTRIES.map(c => (
-              <option key={c.code} value={c.code}>{c.name}</option>
-            ))}
-          </select>
-          {errors.country && (
-            <p id="err-country" className="text-xs text-destructive" role="alert">
-              {errors.country}
-            </p>
-          )}
-          {legalDetails.country === "OTHER" && (
-            <p className="text-xs text-muted-foreground">
-              We&apos;re expanding to more countries. Contact support if your document country isn&apos;t
-              listed — we&apos;re here to help.
-            </p>
-          )}
-        </div>
+        <LegalCountryCombobox
+          value={legalDetails.country}
+          onChange={(country) => onChange({ ...legalDetails, country })}
+          error={errors.country}
+        />
       </div>
 
       <p className="text-xs text-muted-foreground">

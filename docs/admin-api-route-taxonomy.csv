@@ -282,6 +282,7 @@ path,class,note
 /api/admin/provider-ops/tracker,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/tracker/stats,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-subscriptions/[id],T,"uses resolveAdminApiTenantId"
+/api/admin/provider-subscriptions/[id]/activate,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-subscriptions/receipts/[financeTxId]/pdf,T,"review: likely tenant-scoped ops"
 /api/admin/provider-subscriptions,T,"uses resolveAdminApiTenantId"
 /api/admin/providers/[id]/distance-settings,T,"uses resolveAdminApiTenantId"

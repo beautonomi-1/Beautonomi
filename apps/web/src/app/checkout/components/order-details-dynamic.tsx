@@ -107,11 +107,20 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     }
   };
 
-  /** Realtime booking updates (mirrors customer-app `booking-detail.tsx`) + 15s poll fallback above */
+  /** Realtime booking + additional-charge updates + 15s poll fallback above */
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase || !bookingId) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void loadBooking();
+        void loadEvents();
+        void loadAdditionalCharges();
+      }, 400);
+    };
     const channel = supabase
       .channel(`checkout-order-detail-${bookingId}`)
       .on(
@@ -122,15 +131,27 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
           table: "bookings",
           filter: `id=eq.${bookingId}`,
         },
-        () => {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            debounceTimer = null;
-            void loadBooking();
-            void loadEvents();
-            void loadAdditionalCharges();
-          }, 400);
+        scheduleReload,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${bookingId}`,
         },
+        scheduleReload,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${bookingId}`,
+        },
+        scheduleReload,
       )
       .subscribe();
 

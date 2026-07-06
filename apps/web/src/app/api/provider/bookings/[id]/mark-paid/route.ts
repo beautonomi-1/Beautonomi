@@ -9,6 +9,161 @@ import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-hos
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
+type AdditionalChargeRow = {
+  id?: string;
+  amount?: number;
+  status?: string;
+  description?: string | null;
+  currency?: string | null;
+};
+
+async function settleUnpaidAdditionalChargesForMarkPaid(params: {
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
+  bookingId: string;
+  providerId: string;
+  tenantId: string;
+  booking: {
+    tenant_id?: string | null;
+    customer_id: string;
+    booking_number?: string | null;
+    ref_number?: string | null;
+    currency?: string | null;
+  };
+  userId: string;
+  unpaidCharges: AdditionalChargeRow[];
+  effectivePaymentMethod: string;
+  paymentProvider: string;
+  stableReference: string | null;
+  formatMoney: (value: number) => string;
+  paymentMethodLabel: string;
+}): Promise<
+  { charge_id: string; amount: number; description?: string | null; reference: string }[]
+> {
+  const {
+    supabaseAdmin,
+    bookingId,
+    providerId,
+    tenantId,
+    booking,
+    userId,
+    unpaidCharges,
+    effectivePaymentMethod,
+    paymentProvider,
+    stableReference,
+    formatMoney,
+    paymentMethodLabel,
+  } = params;
+
+  const settled: {
+    charge_id: string;
+    amount: number;
+    description?: string | null;
+    reference: string;
+  }[] = [];
+
+  for (const charge of unpaidCharges) {
+    if (!charge.id) continue;
+    const chargeAmount = Number(charge.amount ?? 0);
+    const chargeRef =
+      stableReference != null && stableReference !== ""
+        ? `${stableReference}:charge:${charge.id}`
+        : `mark_paid_settle:${bookingId}:${charge.id}:${effectivePaymentMethod}`;
+
+    const { error: settlementError } = await supabaseAdmin.rpc(
+      "record_walk_in_additional_charge_payment",
+      {
+        p_booking_id: bookingId,
+        p_charge_id: charge.id,
+        p_provider_id: providerId,
+        p_tenant_id: booking.tenant_id ?? tenantId,
+        p_payment_provider: paymentProvider,
+        p_payment_method: effectivePaymentMethod,
+        p_reference: chargeRef,
+        p_created_by: userId,
+      },
+    );
+
+    if (settlementError) {
+      throw new Error(
+        settlementError.message ||
+          `Failed to settle additional charge ${charge.id}`,
+      );
+    }
+
+    settled.push({
+      charge_id: charge.id,
+      amount: chargeAmount,
+      description: charge.description ?? null,
+      reference: chargeRef,
+    });
+
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "additional_payment_paid",
+        event_data: {
+          charge_id: charge.id,
+          description: charge.description,
+          amount: chargeAmount,
+          payment_method: paymentMethodLabel,
+          payment_reference: chargeRef,
+          source: "provider_mark_paid_settle_all",
+        },
+        created_by: userId,
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create additional charge booking event:", eventErr);
+    }
+
+    const currency =
+      charge.currency || booking.currency || "ZAR";
+    try {
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await insertNotification({
+        user_id: booking.customer_id,
+        type: "additional_charge_paid",
+        title: "Additional Charge Paid",
+        message: `Your additional charge of ${currency} ${chargeAmount.toFixed(2)} has been paid and confirmed.`,
+        data: {
+          booking_id: bookingId,
+          charge_id: charge.id,
+          amount: chargeAmount,
+          payment_method: paymentMethodLabel,
+        },
+        action_url: `/account-settings/bookings/${bookingId}`,
+      });
+
+      try {
+        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+        const bookingRef =
+          booking.ref_number ||
+          booking.booking_number ||
+          bookingId.slice(0, 8).toUpperCase();
+        await sendTemplateNotification(
+          "payment_successful",
+          [booking.customer_id],
+          {
+            amount: formatMoney(chargeAmount),
+            booking_number: bookingRef,
+            payment_method: paymentMethodLabel,
+            transaction_id: chargeRef,
+            booking_id: bookingId,
+            charge_description: charge.description ?? "",
+          },
+          ["push", "email"],
+          { appType: "customer", skipInApp: true },
+        );
+      } catch (pushError) {
+        console.warn("OneSignal push for additional charge failed:", pushError);
+      }
+    } catch (notifError) {
+      console.warn("Failed to create additional charge payment notification:", notifError);
+    }
+  }
+
+  return settled;
+}
+
 /**
  * POST /api/provider/bookings/[id]/mark-paid
  * 
@@ -55,7 +210,9 @@ export async function POST(
       reference,
       payment_provider,
       idempotency_key,
+      settle_additional_charges,
     } = body;
+    const settleAllCharges = settle_additional_charges === true;
 
     if (
       payment_provider === "paystack_virtual_terminal" ||
@@ -87,7 +244,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type, additional_charges(amount,status)")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -185,44 +342,61 @@ export async function POST(
     const walletGiftCoverage = walletAlreadyApplied + giftCardAlreadyApplied;
     const coverage = Math.max(effectivePaid, walletGiftCoverage);
     const remainingBalance = bookingTotal - coverage;
-    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
-      ? (booking as any).additional_charges
-          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
-      : 0;
-    
+    const unpaidChargeRows: AdditionalChargeRow[] = Array.isArray(
+      (booking as { additional_charges?: AdditionalChargeRow[] }).additional_charges,
+    )
+      ? (booking as { additional_charges: AdditionalChargeRow[] }).additional_charges.filter(
+          (charge) => charge?.status !== "paid" && charge?.status !== "rejected",
+        )
+      : [];
+    const unpaidAdditionalCharges = unpaidChargeRows.reduce(
+      (sum, charge) => sum + Number(charge?.amount || 0),
+      0,
+    );
+
     if (remainingBalance <= 0) {
       if (unpaidAdditionalCharges > 0) {
+        if (!settleAllCharges) {
+          return errorResponse(
+            `Base booking is settled, but ${formatMoney(unpaidAdditionalCharges)} in additional charges is still unpaid. Settle those charges from the Additional Charges section.`,
+            "ADDITIONAL_CHARGES_DUE",
+            400,
+          );
+        }
+      } else {
         return errorResponse(
-          `Base booking is settled, but ${formatMoney(unpaidAdditionalCharges)} in additional charges is still unpaid. Settle those charges from the Additional Charges section.`,
-          "ADDITIONAL_CHARGES_DUE",
-          400
+          "Booking is already fully paid (including wallet/gift card credits)",
+          "ALREADY_PAID",
+          400,
         );
       }
-      return errorResponse(
-        "Booking is already fully paid (including wallet/gift card credits)",
-        "ALREADY_PAID",
-        400
-      );
     }
 
-    let paymentAmount: number;
-    if (amount) {
-      if (amount > remainingBalance) {
-        paymentAmount = remainingBalance;
-        console.warn(`Clamped payment amount from ${amount} to remaining balance ${remainingBalance} to prevent overpayment.`);
+    let paymentAmount = 0;
+    if (remainingBalance > 0) {
+      if (amount) {
+        if (amount > remainingBalance) {
+          paymentAmount = remainingBalance;
+          console.warn(
+            `Clamped payment amount from ${amount} to remaining balance ${remainingBalance} to prevent overpayment.`,
+          );
+        } else {
+          paymentAmount = amount;
+        }
       } else {
-        paymentAmount = amount;
+        paymentAmount = remainingBalance;
       }
-    } else {
-      paymentAmount = remainingBalance;
     }
 
-    if (paymentAmount <= 0) {
+    const baseFullySettledAfterPayment =
+      remainingBalance <= 0 ||
+      (paymentAmount > 0 && paymentAmount >= remainingBalance - 0.01);
+
+    if (paymentAmount <= 0 && !(settleAllCharges && unpaidChargeRows.length > 0)) {
       return errorResponse(
         "No balance due — booking is already settled via wallet or gift card credits",
         "ALREADY_PAID",
-        400
+        400,
       );
     }
 
@@ -250,125 +424,124 @@ export async function POST(
 
     let payment: any = null;
     let paymentError: any = null;
+    let paymentAlreadyRecorded = false;
 
-    if (stableReference) {
-      const { data: existingPayment, error: existingPaymentError } = await supabaseAdmin
-        .from("booking_payments")
-        .select()
-        .eq("payment_provider", paymentProvider)
-        .eq("payment_provider_id", stableReference)
-        .maybeSingle();
-
-      if (existingPaymentError) {
-        return errorResponse(
-          existingPaymentError.message || "Could not verify existing payment reference",
-          "PAYMENT_REFERENCE_LOOKUP_ERROR",
-          500,
-          existingPaymentError
-        );
-      }
-
-      if (existingPayment) {
-        return successResponse({
-          payment: existingPayment,
-          message: "Payment already recorded"
-        });
-      }
-    }
-
-    if (!stableReference) {
-      try {
-      const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
-        'create_booking_payment',
-        {
-          p_booking_id: bookingId,
-          p_amount: paymentAmount,
-          p_payment_method: effectivePaymentMethod,
-          p_payment_provider: paymentProvider,
-          p_status: 'completed',
-          p_notes: notes || `Payment received via ${payment_method}`,
-          p_created_by: user.id,
-          p_reference: stableReference || null,
-        }
-      );
-
-      if (!rpcError && rpcPayment) {
-        payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
-      } else if (rpcError && !rpcError.message?.includes('function') && !rpcError.message?.includes('does not exist')) {
-        paymentError = rpcError;
-      }
-      } catch {
-        console.log("RPC function not available, using direct insert");
-      }
-    }
-
-    if (!payment && !paymentError) {
-      const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
-      const paymentData: any = {
-        booking_id: bookingId,
-        amount: paymentAmount,
-        payment_method: effectivePaymentMethod,
-        payment_provider: paymentProvider,
-        status: 'completed',
-        notes: notes || `Payment received via ${payment_method}`,
-        created_by: user.id,
-        ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-      };
-
+    if (paymentAmount > 0) {
       if (stableReference) {
-        paymentData.payment_provider_id = stableReference;
-        paymentData.payment_provider_data = {
-          source: paymentProvider === "yoco" ? "provider_mark_paid_yoco_terminal" : "provider_mark_paid",
-          reference: stableReference,
-          idempotency_key:
-            typeof idempotency_key === "string" && idempotency_key.trim()
-              ? idempotency_key.trim()
-              : request.headers.get("Idempotency-Key")?.trim() || null,
-        };
+        const { data: existingPayment, error: existingPaymentError } = await supabaseAdmin
+          .from("booking_payments")
+          .select()
+          .eq("payment_provider", paymentProvider)
+          .eq("payment_provider_id", stableReference)
+          .maybeSingle();
+
+        if (existingPaymentError) {
+          return errorResponse(
+            existingPaymentError.message || "Could not verify existing payment reference",
+            "PAYMENT_REFERENCE_LOOKUP_ERROR",
+            500,
+            existingPaymentError,
+          );
+        }
+
+        if (existingPayment) {
+          payment = existingPayment;
+          paymentAlreadyRecorded = true;
+        }
       }
-      
-      // Try insert with status
-      const { data: paymentInserted, error: insertError } = await supabaseAdmin
-        .from("booking_payments")
-        .insert(paymentData)
-        .select()
-        .single();
-      
-      if (insertError) {
-        // If insert fails due to status enum, try without status and update after
-        if (insertError.message?.includes('status') || insertError.message?.includes('enum')) {
-          delete paymentData.status;
-          const { data: paymentWithoutStatus, error: insertError2 } = await supabaseAdmin
-            .from("booking_payments")
-            .insert(paymentData)
-            .select()
-            .single();
-          
-          if (insertError2) {
-            paymentError = insertError2;
-          } else {
-            payment = paymentWithoutStatus;
-            // Update status after insert
-            const { error: updateError } = await supabaseAdmin
-              .from("booking_payments")
-              .update({ status: 'completed' })
-              .eq("id", payment.id);
-            
-            if (updateError) {
-              console.warn("Failed to update payment status after insert:", updateError);
-              // Payment was created but status might not be set - trigger should still work
-            } else {
-              // Refresh to get updated status
-              const { data: updated } = await supabaseAdmin
-                .from("booking_payments")
-                .select()
-                .eq("id", payment.id)
-                .single();
-              if (updated) payment = updated;
-            }
+
+      if (!payment && !stableReference) {
+        try {
+          const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
+            "create_booking_payment",
+            {
+              p_booking_id: bookingId,
+              p_amount: paymentAmount,
+              p_payment_method: effectivePaymentMethod,
+              p_payment_provider: paymentProvider,
+              p_status: "completed",
+              p_notes: notes || `Payment received via ${payment_method}`,
+              p_created_by: user.id,
+              p_reference: stableReference || null,
+            },
+          );
+
+          if (!rpcError && rpcPayment) {
+            payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
+          } else if (
+            rpcError &&
+            !rpcError.message?.includes("function") &&
+            !rpcError.message?.includes("does not exist")
+          ) {
+            paymentError = rpcError;
           }
-        } else {
-          if (insertError.code === "23505" && stableReference) {
+        } catch {
+          console.log("RPC function not available, using direct insert");
+        }
+      }
+
+      if (!payment && !paymentError) {
+        const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
+        const paymentData: any = {
+          booking_id: bookingId,
+          amount: paymentAmount,
+          payment_method: effectivePaymentMethod,
+          payment_provider: paymentProvider,
+          status: "completed",
+          notes: notes || `Payment received via ${payment_method}`,
+          created_by: user.id,
+          ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
+        };
+
+        if (stableReference) {
+          paymentData.payment_provider_id = stableReference;
+          paymentData.payment_provider_data = {
+            source:
+              paymentProvider === "yoco"
+                ? "provider_mark_paid_yoco_terminal"
+                : "provider_mark_paid",
+            reference: stableReference,
+            idempotency_key:
+              typeof idempotency_key === "string" && idempotency_key.trim()
+                ? idempotency_key.trim()
+                : request.headers.get("Idempotency-Key")?.trim() || null,
+          };
+        }
+
+        const { data: paymentInserted, error: insertError } = await supabaseAdmin
+          .from("booking_payments")
+          .insert(paymentData)
+          .select()
+          .single();
+
+        if (insertError) {
+          if (insertError.message?.includes("status") || insertError.message?.includes("enum")) {
+            delete paymentData.status;
+            const { data: paymentWithoutStatus, error: insertError2 } = await supabaseAdmin
+              .from("booking_payments")
+              .insert(paymentData)
+              .select()
+              .single();
+
+            if (insertError2) {
+              paymentError = insertError2;
+            } else {
+              payment = paymentWithoutStatus;
+              const { error: updateError } = await supabaseAdmin
+                .from("booking_payments")
+                .update({ status: "completed" })
+                .eq("id", payment.id);
+
+              if (!updateError) {
+                const { data: updated } = await supabaseAdmin
+                  .from("booking_payments")
+                  .select()
+                  .eq("id", payment.id)
+                  .single();
+                if (updated) payment = updated;
+              }
+            }
+          } else if (insertError.code === "23505" && stableReference) {
             const { data: existingPayment } = await supabaseAdmin
               .from("booking_payments")
               .select()
@@ -377,196 +550,208 @@ export async function POST(
               .maybeSingle();
             if (existingPayment) {
               payment = existingPayment;
+              paymentAlreadyRecorded = true;
             } else {
               paymentError = insertError;
             }
           } else {
             paymentError = insertError;
           }
-        }
-      } else {
-        payment = paymentInserted;
-        
-        // Verify status is set correctly
-        if (payment && payment.status !== 'completed') {
-          const { error: updateError } = await supabaseAdmin
-            .from("booking_payments")
-            .update({ status: 'completed' })
-            .eq("id", payment.id);
-          
-          if (!updateError) {
-            // Refresh to get updated status
-            const { data: updated } = await supabaseAdmin
+        } else {
+          payment = paymentInserted;
+          if (payment && payment.status !== "completed") {
+            const { error: updateError } = await supabaseAdmin
               .from("booking_payments")
-              .select()
-              .eq("id", payment.id)
-              .single();
-            if (updated) payment = updated;
+              .update({ status: "completed" })
+              .eq("id", payment.id);
+
+            if (!updateError) {
+              const { data: updated } = await supabaseAdmin
+                .from("booking_payments")
+                .select()
+                .eq("id", payment.id)
+                .single();
+              if (updated) payment = updated;
+            }
           }
         }
       }
-    }
-    
-    if (paymentError || !payment) {
-      console.error("Error creating payment record:", paymentError);
-      const errorMessage = paymentError?.message || "Failed to create payment record";
-      const errorDetails = paymentError?.details || paymentError;
-      
-      // Provide helpful error message for enum type issues
-      if (errorMessage.includes('payment_status') && errorMessage.includes('enum')) {
-        return errorResponse(
-          `Database enum error: The payment_status trigger needs to be updated to cast enum values properly. Please run migration 140_fix_payment_status_enum_cast.sql to fix this. Error: ${errorMessage}`,
-          "PAYMENT_ENUM_ERROR",
-          500,
-          errorDetails
-        );
+
+      if (paymentError || !payment) {
+        console.error("Error creating payment record:", paymentError);
+        const errorMessage = paymentError?.message || "Failed to create payment record";
+        const errorDetails = paymentError?.details || paymentError;
+
+        if (errorMessage.includes("payment_status") && errorMessage.includes("enum")) {
+          return errorResponse(
+            `Database enum error: The payment_status trigger needs to be updated to cast enum values properly. Please run migration 140_fix_payment_status_enum_cast.sql to fix this. Error: ${errorMessage}`,
+            "PAYMENT_ENUM_ERROR",
+            500,
+            errorDetails,
+          );
+        }
+
+        return errorResponse(errorMessage, "PAYMENT_CREATE_ERROR", 500, errorDetails);
       }
-      
-      return errorResponse(
-        errorMessage,
-        "PAYMENT_CREATE_ERROR",
-        500,
-        errorDetails
-      );
-    }
 
-    // Record booking event for audit trail
-    try {
-      await supabaseAdmin.from("booking_events").insert({
-        booking_id: bookingId,
-        event_type: "payment_received",
-        event_data: {
-          payment_id: payment.id,
-          amount: paymentAmount,
-          payment_method,
-          reference: stableReference || null,
-        },
-        created_by: user.id,
-      });
-    } catch (eventErr) {
-      console.warn("Failed to create payment booking event:", eventErr);
-    }
+      if (!paymentAlreadyRecorded) {
+        try {
+          await supabaseAdmin.from("booking_events").insert({
+            booking_id: bookingId,
+            event_type: "payment_received",
+            event_data: {
+              payment_id: payment.id,
+              amount: paymentAmount,
+              payment_method,
+              reference: stableReference || null,
+            },
+            created_by: user.id,
+          });
+        } catch (eventErr) {
+          console.warn("Failed to create payment booking event:", eventErr);
+        }
+      }
 
-    // Verify payment was created with correct status and amount
-    if (payment.status !== 'completed') {
-      console.warn(`Payment created with status '${payment.status}' instead of 'completed'. Attempting to fix...`);
-      const { error: fixError } = await supabaseAdmin
-        .from("booking_payments")
-        .update({ status: 'completed' })
-        .eq("id", payment.id);
-      
-      if (fixError) {
-        console.error("Failed to fix payment status:", fixError);
-      } else {
-        // Refresh payment to get updated status
-        const { data: updatedPayment } = await supabaseAdmin
+      if (payment.status !== "completed") {
+        console.warn(
+          `Payment created with status '${payment.status}' instead of 'completed'. Attempting to fix...`,
+        );
+        const { error: fixError } = await supabaseAdmin
           .from("booking_payments")
-          .select()
-          .eq("id", payment.id)
-          .single();
-        if (updatedPayment) {
-          payment = updatedPayment;
+          .update({ status: "completed" })
+          .eq("id", payment.id);
+
+        if (!fixError) {
+          const { data: updatedPayment } = await supabaseAdmin
+            .from("booking_payments")
+            .select()
+            .eq("id", payment.id)
+            .single();
+          if (updatedPayment) payment = updatedPayment;
+        }
+      }
+
+      const { data: updatedBooking } = await supabaseAdmin
+        .from("bookings")
+        .select("total_paid, payment_status")
+        .eq("id", bookingId)
+        .single();
+
+      if (updatedBooking) {
+        console.log(
+          `Payment created: ${formatMoney(paymentAmount)}. Booking total_paid: ${formatMoney(updatedBooking.total_paid || 0)}, status: ${updatedBooking.payment_status}`,
+        );
+
+        const expectedTotalPaid = (currentTotalPaid || 0) + paymentAmount;
+        if (Math.abs((updatedBooking.total_paid || 0) - expectedTotalPaid) > 0.01) {
+          console.warn(
+            `Payment trigger may not have fired correctly. Expected total_paid: ${formatMoney(expectedTotalPaid)}, Actual: ${formatMoney(updatedBooking.total_paid || 0)}`,
+          );
+        }
+      }
+
+      if (!paymentAlreadyRecorded) {
+        try {
+          const { syncBookingAfterPaystackSuccess } = await import(
+            "@/lib/bookings/sync-booking-after-paystack-success"
+          );
+          await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingId);
+        } catch (syncErr) {
+          console.warn("[mark-paid] post-payment booking lifecycle sync failed:", syncErr);
+        }
+
+        try {
+          const { insertNotification } = await import("@/lib/notifications/insert-notification");
+          await insertNotification({
+            user_id: booking.customer_id,
+            type: "payment_received",
+            title: "Payment Confirmed",
+            message: `Your payment of ${formatMoney(paymentAmount)} has been received and confirmed.`,
+            data: {
+              booking_id: bookingId,
+              payment_id: payment.id,
+              amount: paymentAmount,
+              payment_method,
+            },
+            action_url: `/account-settings/bookings/${bookingId}`,
+          });
+
+          try {
+            const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+            const bookingRef =
+              booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+            await sendTemplateNotification(
+              "payment_successful",
+              [booking.customer_id],
+              {
+                amount: formatMoney(paymentAmount),
+                booking_number: bookingRef,
+                payment_method: payment_method,
+                transaction_id: payment.id,
+                booking_id: bookingId,
+              },
+              ["push", "email"],
+              { appType: "customer", skipInApp: true },
+            );
+          } catch (pushError) {
+            console.warn("OneSignal push notification failed:", pushError);
+          }
+        } catch (notifError) {
+          console.warn("Failed to create payment notification:", notifError);
         }
       }
     }
 
-    // Verify the trigger updated the booking correctly. PostgreSQL row triggers run
-    // in the same statement, so this must be visible immediately.
-    const { data: updatedBooking } = await supabaseAdmin
-      .from("bookings")
-      .select("total_paid, payment_status")
-      .eq("id", bookingId)
-      .single();
-    
-    if (updatedBooking) {
-      console.log(
-        `Payment created: ${formatMoney(paymentAmount)}. Booking total_paid: ${formatMoney(updatedBooking.total_paid || 0)}, status: ${updatedBooking.payment_status}`,
-      );
+    let chargesSettled: {
+      charge_id: string;
+      amount: number;
+      description?: string | null;
+      reference: string;
+    }[] = [];
 
-      // If total_paid doesn't match expected, log warning
-      const expectedTotalPaid = (currentTotalPaid || 0) + paymentAmount;
-      if (Math.abs((updatedBooking.total_paid || 0) - expectedTotalPaid) > 0.01) {
-        console.warn(
-          `Payment trigger may not have fired correctly. Expected total_paid: ${formatMoney(expectedTotalPaid)}, Actual: ${formatMoney(updatedBooking.total_paid || 0)}`,
-        );
-      }
-    }
-
-    // Finance ledger entries are created automatically by the DB trigger
-    // (create_finance_ledger_from_payment) when booking_payments rows are inserted.
-    // The trigger (migration 458) handles:
-    //   - proportional commission based on actual payment amount
-    //   - per-payment idempotency via source_payment_id
-    //   - booking-level items (tip/tax/travel/service_fee) only once per booking
-    //   - live commission rate from platform_settings
-    //   - correct handling of 'online', 'walk_in', and 'provider' booking sources
-    // No app-level finance_transactions creation needed here.
-
-    // Lifecycle reconciliation: if this mark-paid clears outstanding for a
-    // booking that is still in `pending_payment` (rare, but possible if the
-    // online payment never completed and provider is recording cash), advance
-    // the lifecycle and apply the auto-confirm policy. Migration 595 also does
-    // this at the DB layer (advancing pending_payment → pending), but
-    // syncBookingAfterPaystackSuccess additionally honours the provider's
-    // require_confirmation_for_bookings setting (so auto-confirming providers
-    // jump straight to `confirmed`).
-    try {
-      const { syncBookingAfterPaystackSuccess } = await import(
-        "@/lib/bookings/sync-booking-after-paystack-success"
-      );
-      await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingId);
-    } catch (syncErr) {
-      console.warn(
-        "[mark-paid] post-payment booking lifecycle sync failed:",
-        syncErr,
-      );
-    }
-
-    // Create notification for customer (will be sent via OneSignal)
-    try {
-      const { insertNotification } = await import("@/lib/notifications/insert-notification");
-      await insertNotification({
-        user_id: booking.customer_id,
-        type: "payment_received",
-        title: "Payment Confirmed",
-        message: `Your payment of ${formatMoney(paymentAmount)} has been received and confirmed.`,
-        data: {
-          booking_id: bookingId,
-          payment_id: payment.id,
-          amount: paymentAmount,
-          payment_method,
-        },
-        action_url: `/account-settings/bookings/${bookingId}`,
-      });
-
-      // Send push notification via OneSignal using template
+    if (settleAllCharges && baseFullySettledAfterPayment && unpaidChargeRows.length > 0) {
       try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-        await sendTemplateNotification(
-          "payment_successful",
-          [booking.customer_id],
-          {
-            amount: formatMoney(paymentAmount),
-            booking_number: bookingRef,
-            payment_method: payment_method,
-            transaction_id: payment.id,
-            booking_id: bookingId,
+        chargesSettled = await settleUnpaidAdditionalChargesForMarkPaid({
+          supabaseAdmin,
+          bookingId,
+          providerId,
+          tenantId,
+          booking: booking as {
+            tenant_id?: string | null;
+            customer_id: string;
+            booking_number?: string | null;
+            ref_number?: string | null;
+            currency?: string | null;
           },
-          ["push", "email"],
-          // In-app bell row inserted manually above; skip template auto-insert.
-          { appType: "customer", skipInApp: true }
-        );
-      } catch (pushError) {
-        console.warn("OneSignal push notification failed:", pushError);
+          userId: user.id,
+          unpaidCharges: unpaidChargeRows,
+          effectivePaymentMethod,
+          paymentProvider,
+          stableReference,
+          formatMoney,
+          paymentMethodLabel: payment_method,
+        });
+      } catch (settleErr) {
+        const msg =
+          settleErr instanceof Error ? settleErr.message : "Failed to settle additional charges";
+        return errorResponse(msg, "ADDITIONAL_CHARGE_SETTLEMENT_ERROR", 500, settleErr);
       }
-    } catch (notifError) {
-      console.warn("Failed to create payment notification:", notifError);
     }
 
-    return successResponse({ 
-      payment,
-      message: "Booking marked as paid successfully" 
+    const message =
+      paymentAmount > 0 && chargesSettled.length > 0
+        ? "Booking and additional charges marked as paid successfully"
+        : chargesSettled.length > 0
+          ? "Additional charges marked as paid successfully"
+          : paymentAlreadyRecorded
+            ? "Payment already recorded"
+            : "Booking marked as paid successfully";
+
+    return successResponse({
+      payment: payment ?? null,
+      base_paid: paymentAmount > 0 ? paymentAmount : 0,
+      charges_settled: chargesSettled,
+      message,
     });
   } catch (error) {
     return handleApiError(error, "Failed to mark booking as paid");

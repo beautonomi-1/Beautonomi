@@ -33,6 +33,7 @@ import {
   PROVIDER_CHILD_BOOKINGS_SELECT,
 } from "@/lib/bookings/group-booking-postgrest";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
+import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -218,11 +219,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       (groupBooking as any).location_type === "at_home"
         ? Math.max(0, Number((groupBooking as any).travel_fee ?? 0))
         : 0;
+    const packageDiscount = pkg
+      ? computeCatalogPackageServiceDiscount(pkg, participantServiceTotal)
+      : 0;
     const sessionEstimateTotal = groupPackageTotal({
       participantTotal: participantServiceTotal,
       productTotal,
       travelFee,
-      packageDiscount: 0,
+      packageDiscount,
     });
 
     const displayTotal =
@@ -249,6 +253,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       booking_participants: participants,
       participants,
       package_name: pkg?.name ?? null,
+      package_discount_amount: packageDiscount,
       /** Align list + detail: detail fetch must not drop enrollment count in mobile modal. */
       current_participants: participants.length,
       scheduled_date: scheduledAt ? scheduledAt.toISOString().split("T")[0] : "",

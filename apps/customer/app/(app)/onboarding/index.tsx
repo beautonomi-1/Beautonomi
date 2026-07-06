@@ -41,6 +41,7 @@ import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
 import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
+import { AddressCountryPicker } from "@/components/AddressCountryPicker";
 import { StaticMapImage } from "@/components/StaticMapImage";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAutoFocus } from "@/features/onboarding/useAutoFocus";
@@ -94,10 +95,29 @@ const currentYear = new Date().getFullYear();
 const BIRTH_YEARS = Array.from({ length: 88 }, (_, i) => String(currentYear - 13 - i));
 
 /* ── Helpers ── */
+/**
+ * Number of selectable days for the picker. Falls back to 31 when the month
+ * isn't chosen yet, and to a leap-year Feb (29) when the year isn't chosen,
+ * so users born on Feb 29 can pick their day in any selection order.
+ */
+function daysInMonth(year: string, month: string): number {
+  const mIndex = MONTHS.indexOf(month);
+  if (mIndex < 0) return 31;
+  const y = parseInt(year, 10);
+  if (!Number.isFinite(y)) return mIndex === 1 ? 29 : new Date(2024, mIndex + 1, 0).getDate();
+  return new Date(y, mIndex + 1, 0).getDate();
+}
+
 function buildDob(year: string, month: string, day: string): string | null {
   if (!year || !month || !day) return null;
-  const m = String(MONTHS.indexOf(month) + 1).padStart(2, "0");
-  const d = String(day).padStart(2, "0");
+  const mIndex = MONTHS.indexOf(month);
+  const dayNum = parseInt(day, 10);
+  if (mIndex < 0 || !Number.isFinite(dayNum)) return null;
+  // Reject impossible dates (e.g. Feb 31) — the pickers clamp, but stale
+  // prefilled values could still combine into an invalid date.
+  if (dayNum < 1 || dayNum > daysInMonth(year, month)) return null;
+  const m = String(mIndex + 1).padStart(2, "0");
+  const d = String(dayNum).padStart(2, "0");
   return `${year}-${m}-${d}`;
 }
 
@@ -163,7 +183,6 @@ export default function CustomerOnboarding() {
   const cityRef = useRef<TextInput>(null);
   const provinceRef = useRef<TextInput>(null);
   const postalCodeRef = useRef<TextInput>(null);
-  const countryRef = useRef<TextInput>(null);
   const phoneNationalRef = useRef<TextInput>(null);
   const ob = useCallback(
     (key: string, options?: Record<string, string | number>) => {
@@ -887,10 +906,12 @@ export default function CustomerOnboarding() {
                 </View>
               </View>
 
-              {/* Inline pickers */}
+              {/* Inline pickers — day list is clamped to the chosen month/year */}
               {showDayPicker && (
                 <ScrollPickerList
-                  items={Array.from({ length: 31 }, (_, i) => String(i + 1))}
+                  items={Array.from({ length: daysInMonth(dobYear, dobMonth) }, (_, i) =>
+                    String(i + 1)
+                  )}
                   selected={dobDay}
                   onSelect={(v) => {
                     setDobDay(v);
@@ -905,6 +926,9 @@ export default function CustomerOnboarding() {
                   onSelect={(v) => {
                     setDobMonth(v);
                     setShowMonthPicker(false);
+                    // Keep the day valid when switching to a shorter month
+                    const max = daysInMonth(dobYear, v);
+                    if (dobDay && parseInt(dobDay, 10) > max) setDobDay(String(max));
                   }}
                 />
               )}
@@ -915,6 +939,9 @@ export default function CustomerOnboarding() {
                   onSelect={(v) => {
                     setDobYear(v);
                     setShowYearPicker(false);
+                    // Feb 29 → Feb 28 when switching to a non-leap year
+                    const max = daysInMonth(v, dobMonth);
+                    if (dobDay && parseInt(dobDay, 10) > max) setDobDay(String(max));
                   }}
                 />
               )}
@@ -1402,23 +1429,15 @@ export default function CustomerOnboarding() {
                                 inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
                                 onFocus={scrollToFocusedInput(postalCodeRef)}
                               />
-                              <KeyboardDoneAccessory
-                                nativeID={CUSTOMER_KEYBOARD_ACCESSORY.postal}
-                                onNext={() => countryRef.current?.focus()}
-                              />
+                              <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.postal} />
                             </View>
                           </View>
 
-                          <SectionLabel required>Country</SectionLabel>
-                          <TextInput
-                            ref={countryRef}
+                          <AddressCountryPicker
+                            label="Country"
+                            required
                             value={country}
-                            onChangeText={setCountry}
-                            placeholder={tenantRegionName || "Country"}
-                            style={inputStyle}
-                            placeholderTextColor="#94A3B8"
-                            returnKeyType="done"
-                            onFocus={scrollToFocusedInput(countryRef)}
+                            onChange={setCountry}
                           />
                         </View>
                       )}

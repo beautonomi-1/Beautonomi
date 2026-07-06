@@ -98,12 +98,22 @@ export async function runAutoFeeReconciliationForDay(
       gateway,
       reconciliationDate,
       reconciliationDate,
-      { tenantId },
+      { tenantId, asOfDate: reconciliationDate },
     );
     const recorded = computed.recorded_fees;
     const expected = computed.expected_fees_from_config;
     const actual = recorded;
     const variance = Math.round((actual - expected) * 100) / 100;
+    const hasActivity =
+      recorded > 0 ||
+      expected > 0 ||
+      computed.charge_count > 0 ||
+      computed.payout_transfer_count > 0;
+
+    if (!hasActivity) {
+      return { ...base, upserted: false };
+    }
+
     const status = Math.abs(variance) < varianceReviewThreshold ? "reviewed" : "pending";
 
     const { error } = await supabase.from("fee_reconciliations").upsert(
@@ -118,7 +128,8 @@ export async function runAutoFeeReconciliationForDay(
         status,
         source: "auto_daily",
         created_by: null,
-        notes: "Auto-generated from ledger-recorded Paystack fees vs fee config.",
+        notes:
+          "Auto-generated: Actual = ledger-recorded gateway fees; Expected = fee config for date.",
       },
       { onConflict: "reconciliation_date,gateway_name,tenant_id" },
     );

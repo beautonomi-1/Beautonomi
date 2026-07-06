@@ -200,6 +200,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const body = await request.json();
     const { id, status, notes, ...updates } = body;
@@ -208,6 +209,25 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "Missing reconciliation ID" },
         { status: 400 }
+      );
+    }
+
+    const { data: existing, error: existingErr } = await supabase
+      .from("fee_reconciliations")
+      .select("id, tenant_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+    if (!existing) {
+      return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 });
+    }
+
+    const existingTenantId = (existing as { tenant_id?: string | null }).tenant_id;
+    if (existingTenantId && tenantId && String(existingTenantId) !== String(tenantId)) {
+      return NextResponse.json(
+        { error: "This reconciliation belongs to another tenant" },
+        { status: 403 },
       );
     }
 

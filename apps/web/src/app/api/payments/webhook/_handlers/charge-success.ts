@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
@@ -76,6 +77,25 @@ async function lastResortCurrencyFromTenantId(
     }
   }
   return LAST_RESORT_CURRENCY;
+}
+
+async function resolvePaystackChargeFees(
+  supabase: SupabaseClient,
+  amount: number | undefined,
+  fees: number | undefined,
+) {
+  const amountInCurrency = convertFromSmallestUnit(amount || 0);
+  const resolved = await resolvePaystackFeeMajor(supabase, {
+    feesSmallestOrMajor: convertFromSmallestUnit(fees || 0),
+    amountMajor: amountInCurrency,
+    alreadyMajor: true,
+  });
+  return {
+    amountInCurrency,
+    feesInCurrency: resolved.feesMajor,
+    feeSource: resolved.feeSource,
+    netAmount: amountInCurrency - resolved.feesMajor,
+  };
 }
 
 /** Paystack charge webhook payload (reference, metadata, amount, etc.) */
@@ -458,9 +478,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   }
 
   // Calculate amounts (Paystack amounts are in smallest currency unit)
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
+  const {
+    amountInCurrency,
+    feesInCurrency,
+    feeSource: paystackFeeSource,
+    netAmount,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
 
   // Tip/tax/travel and customer-paid platform fees are excluded from commission.
   // These are the FULL booking-level amounts (used for booking-level ledger entries).
@@ -740,6 +763,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       paystack_reference: reference,
       customer_email: customer?.email,
       customer_code: customer?.customer_code,
+      fee_source: paystackFeeSource,
     },
     created_at: webhookNow,
   });
@@ -2455,8 +2479,10 @@ async function handleProviderSubscriptionOrderSuccess(
     provider_id: providerId,
   });
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const {
+    amountInCurrency,
+    feesInCurrency,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
 
   await supabase.from("provider_subscription_orders")
     .update({
@@ -2641,9 +2667,11 @@ async function handleCustomerCardVerificationSuccess(
     metadata.set_as_default === "true" ||
     String(metadata.set_as_default ?? "").toLowerCase() === "true";
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
+  const {
+    amountInCurrency,
+    feesInCurrency,
+    netAmount,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
   const email = customer?.email;
   const authCode = authorization?.authorization_code;
   const reusable = authorization?.reusable === true;
@@ -2728,8 +2756,10 @@ async function handleSubscriptionAuthorizationSuccess(
     return;
   }
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const {
+    amountInCurrency,
+    feesInCurrency,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
 
   const subscriptionAuthTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -2745,33 +2775,94 @@ async function handleSubscriptionAuthorizationSuccess(
     })
     .eq("id", orderId);
 
-  const { data: existingSub } = await supabase
+  const { data: existingSubRows, error: existingSubErr } = await supabase
     .from("provider_subscriptions")
     .select("id")
     .eq("provider_id", providerId)
-    .single();
+    .order("created_at", { ascending: true })
+    .limit(5);
 
-  if (existingSub) {
-    await supabase.from("provider_subscriptions")
+  if (existingSubErr) {
+    console.error("Failed to load provider subscription row:", existingSubErr);
+    return;
+  }
+
+  let subscriptionRowId: string | null = null;
+  if (existingSubRows && existingSubRows.length > 0) {
+    if (existingSubRows.length > 1) {
+      console.warn(
+        `[subscription_auth] provider ${providerId} has ${existingSubRows.length} subscription rows; using oldest`,
+      );
+    }
+    subscriptionRowId = String((existingSubRows[0] as { id: string }).id);
+    await supabase
+      .from("provider_subscriptions")
       .update({
+        plan_id: planId,
+        billing_period: billingPeriod,
         paystack_authorization_code: authCode,
         paystack_customer_code: customerCode,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", (existingSub as { id: string }).id);
+      .eq("id", subscriptionRowId);
   } else {
-    await supabase.from("provider_subscriptions").insert({
-      provider_id: providerId,
-      tenant_id: subscriptionAuthTenantId,
-      plan_id: planId,
-      status: "pending",
-      billing_period: billingPeriod,
-      auto_renew: false,
-      paystack_authorization_code: authCode,
-      paystack_customer_code: customerCode,
-      updated_at: new Date().toISOString(),
-    });
+    const { data: insertedSub, error: insertErr } = await supabase
+      .from("provider_subscriptions")
+      .insert({
+        provider_id: providerId,
+        tenant_id: subscriptionAuthTenantId,
+        plan_id: planId,
+        status: "pending",
+        billing_period: billingPeriod,
+        auto_renew: false,
+        paystack_authorization_code: authCode,
+        paystack_customer_code: customerCode,
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (insertErr || !insertedSub) {
+      console.error("Failed to insert provider subscription row:", insertErr);
+      return;
+    }
+    subscriptionRowId = String((insertedSub as { id: string }).id);
   }
+
+  if (!subscriptionRowId) {
+    console.error("Could not resolve provider subscription row id");
+    return;
+  }
+
+  const applyActiveSubscriptionUpdate = async (
+    extra: Record<string, unknown>,
+  ): Promise<void> => {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        plan_id: planId,
+        billing_period: billingPeriod,
+        status: "active",
+        paystack_sync_pending: false,
+        paystack_sync_note: null,
+        updated_at: new Date().toISOString(),
+        ...extra,
+      })
+      .eq("id", subscriptionRowId);
+  };
+
+  const applyPendingSyncFailure = async (message: string): Promise<void> => {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        plan_id: planId,
+        billing_period: billingPeriod,
+        status: "pending",
+        paystack_sync_pending: true,
+        paystack_sync_note: message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", subscriptionRowId);
+  };
 
   // Recognize the initial authorization charge through the unified idempotent
   // helper. Previously this path posted only payment_transactions and NO
@@ -2820,35 +2911,25 @@ async function handleSubscriptionAuthorizationSuccess(
 
       const paystackSubscription = subscriptionResponse.data;
 
-      await supabase.from("provider_subscriptions")
-        .update({
-          status: "active",
-          paystack_subscription_code: paystackSubscription?.subscription_code,
-          next_payment_date: paystackSubscription?.next_payment_date
-            ? new Date(paystackSubscription.next_payment_date).toISOString()
-            : null,
-          started_at: new Date().toISOString(),
-          auto_renew: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("provider_id", providerId);
+      await applyActiveSubscriptionUpdate({
+        paystack_subscription_code: paystackSubscription?.subscription_code,
+        next_payment_date: paystackSubscription?.next_payment_date
+          ? new Date(paystackSubscription.next_payment_date).toISOString()
+          : null,
+        started_at: new Date().toISOString(),
+        auto_renew: true,
+      });
     } else {
       const now = new Date();
       const expiresAt = new Date(now);
       if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
       else expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-      await supabase.from("provider_subscriptions")
-        .update({
-          status: "active",
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          auto_renew: false,
-          paystack_sync_pending: false,
-          paystack_sync_note: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("provider_id", providerId);
+      await applyActiveSubscriptionUpdate({
+        started_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        auto_renew: false,
+      });
     }
 
     try {
@@ -2872,7 +2953,11 @@ async function handleSubscriptionAuthorizationSuccess(
       console.warn("Subscription activation notification failed:", notificationError);
     }
   } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("Failed to create Paystack subscription after authorization:", err);
+    await applyPendingSyncFailure(
+      `Paystack subscription setup failed: ${msg}. Payment was recorded — use admin Activate to complete.`,
+    );
   }
 }
 
@@ -2918,8 +3003,10 @@ async function handleBookingRemainingSuccess(
     provider_id: bookingData.provider_id as string | null | undefined,
   });
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const {
+    amountInCurrency,
+    feesInCurrency,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
 
   const { error: bookingPaymentInsertError } = await supabase
     .from("booking_payments")
@@ -3230,14 +3317,16 @@ async function handleAdditionalChargeSuccess(
   }
   await completeWalletGiftSyntheticPayments(supabase, bookingId);
 
-  const amountInCurrency = convertFromSmallestUnit(amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const {
+    amountInCurrency,
+    feesInCurrency,
+    netAmount,
+  } = await resolvePaystackChargeFees(supabase, amount, fees);
   const chargeAmountMajor = Number((charge as { amount?: number }).amount ?? 0);
   const totalEconomicAmount =
     chargeAmountMajor > 0
       ? chargeAmountMajor
       : amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
-  const netAmount = amountInCurrency - feesInCurrency;
 
   const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
     tenantId: bookingData.tenant_id ?? additionalChargeFinanceTenantId ?? null,

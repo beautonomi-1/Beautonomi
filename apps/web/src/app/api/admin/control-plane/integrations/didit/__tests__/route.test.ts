@@ -19,6 +19,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/identity-verification/provider/didit-provider", () => ({
   diditEnvPresent: () => mockDiditEnvPresent(),
+  getEffectiveDiditWorkflowId: () =>
+    process.env.DIDIT_WORKFLOW_ID || "850587e4-2afc-4aa1-b96e-5d45ef09447b",
+  DEFAULT_DIDIT_WORKFLOW_ID: "850587e4-2afc-4aa1-b96e-5d45ef09447b",
 }));
 
 describe("GET /api/admin/control-plane/integrations/didit", () => {
@@ -59,11 +62,15 @@ describe("GET /api/admin/control-plane/integrations/didit", () => {
     expect(body.data).toMatchObject({
       api_key_set: true,
       workflow_id_set: true,
+      workflow_id_source: "env",
+      effective_workflow_id: "wf-123",
       webhook_secret_set: true,
+      missing_env_vars: [],
       base_url: "https://verification.didit.me",
       environment: "production",
       env_complete: true,
       webhook_url: "https://beautonomi.com/api/webhooks/didit",
+      webhook_url_may_redirect: true,
       last_webhook_received_at: "2026-07-04T10:00:00.000Z",
     });
     expect(JSON.stringify(body)).not.toContain("test-key");
@@ -82,5 +89,6 @@ describe("GET /api/admin/control-plane/integrations/didit", () => {
     expect(body.data.webhook_url).toBeNull();
     expect(body.data.env_complete).toBe(false);
     expect(body.data.api_key_set).toBe(false);
+    expect(body.data.missing_env_vars).toContain("DIDIT_API_KEY");
   });
 });

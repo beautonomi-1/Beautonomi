@@ -42,6 +42,7 @@ type FinanceSummary = {
     ads?: number;
     marketing_credits?: number;
     gift_card_wallet?: number;
+    membership?: number;
     payout_transfers?: number;
     total?: number;
   };
@@ -123,10 +124,17 @@ type FinanceSummary = {
       ledger_vs_bookings_gmv?: {
         ledger_gmv?: number;
         bookings_gmv?: number;
+        gross_bookings_gmv?: number;
+        walk_in_deduction?: number;
         variance?: number;
         variance_pct?: number | null;
         status?: string;
         basis_note?: string;
+      };
+      gateway_fee_capture_anomalies?: {
+        row_count?: number;
+        expected_fees_total?: number;
+        status?: string;
       };
       negative_provider_payout_balances?: { count?: number; status?: string };
       refund_burden_pressure?: { provider_refund_impact?: number; provider_earnings?: number; status?: string };
@@ -368,6 +376,7 @@ export function FinanceOverviewPage() {
       { label: "Subscriptions", value: b.subscription ?? summary.subscription_gateway_fees ?? 0 },
       { label: "Ads", value: b.ads ?? summary.ads_gateway_fees ?? 0 },
       { label: "Marketing credits", value: b.marketing_credits ?? summary.marketing_credit_gateway_fees ?? 0 },
+      { label: "Membership sales", value: b.membership ?? 0 },
       { label: "Gift card & wallet top-ups", value: b.gift_card_wallet ?? 0 },
       { label: "Payout transfer fees", value: b.payout_transfers ?? 0 },
     ].filter((row) => Math.abs(row.value) > 0.0001);
@@ -659,6 +668,10 @@ export function FinanceOverviewPage() {
             </div>
             <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
               <h3 className="mb-3 text-sm font-semibold text-gray-900">Gateway fees (Paystack)</h3>
+              <p className="mb-2 text-xs text-gray-500">
+                Booking &amp; add-on gateway fees ({formatAdminCurrency(summary.gateway_fees ?? 0)}) are a subset of
+                total gateway fees across all Paystack flows.
+              </p>
               <div className="space-y-2 text-sm">
                 {gatewayFeeBreakdown.map((item) => (
                   <div key={item.label} className="flex items-center justify-between gap-3">
@@ -805,8 +818,9 @@ export function FinanceOverviewPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryMetricCard label="Total platform take (net)" value={summary.total_platform_take_net} />
               <SummaryMetricCard
-                label="Total platform take (after referrals & wallet)"
+                label="Total platform take (after referral payouts)"
                 value={summary.total_platform_take_after_referrals ?? summary.total_platform_take_net}
+                tooltip="Platform take net minus referral payouts. Wallet top-ups are deferred revenue and excluded from recognized revenue."
               />
             </div>
           </AdminPanel>
@@ -820,7 +834,21 @@ export function FinanceOverviewPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-gray-200 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Ledger vs bookings GMV</p>
-                  <p className="mt-1 text-sm text-gray-700">
+                  <div className="mt-2 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+                    <div>
+                      <span className="text-xs text-gray-500">Ledger GMV</span>
+                      <p className="font-medium tabular-nums">
+                        {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.ledger_gmv ?? summary.service_collected_gross ?? 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Bookings GMV (aligned)</span>
+                      <p className="font-medium tabular-nums">
+                        {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.bookings_gmv ?? 0)}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-700">
                     Variance {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance ?? 0)}
                     {summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance_pct != null ? (
                       <>
@@ -828,13 +856,52 @@ export function FinanceOverviewPage() {
                         ({formatAdminNumber(Math.abs(summary.reconciliation.checks.ledger_vs_bookings_gmv.variance_pct))}%)
                       </>
                     ) : (
-                      <span className="text-gray-500"> (n/a — booking GMV too small for a meaningful %)</span>
+                      <span className="text-gray-500"> (n/a — min side &lt; R100)</span>
                     )}
+                    {summary.reconciliation.checks.ledger_vs_bookings_gmv?.status ? (
+                      <span
+                        className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          summary.reconciliation.checks.ledger_vs_bookings_gmv.status === "ok"
+                            ? "bg-green-100 text-green-800"
+                            : summary.reconciliation.checks.ledger_vs_bookings_gmv.status === "warning"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {summary.reconciliation.checks.ledger_vs_bookings_gmv.status}
+                      </span>
+                    ) : null}
                   </p>
                   {summary.reconciliation.checks.ledger_vs_bookings_gmv?.basis_note ? (
                     <p className="mt-1 text-xs text-gray-500">
                       {summary.reconciliation.checks.ledger_vs_bookings_gmv.basis_note}
                     </p>
+                  ) : null}
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Gateway fee capture anomalies</p>
+                  <p className="mt-1 text-sm text-gray-700">
+                    {formatAdminNumber(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0)} Paystack
+                    row{(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0) === 1 ? "" : "s"} with
+                    fees ≤ 0
+                    {(summary.reconciliation.checks.gateway_fee_capture_anomalies?.expected_fees_total ?? 0) > 0 ? (
+                      <>
+                        {" "}
+                        (≈{" "}
+                        {formatAdminCurrency(
+                          summary.reconciliation.checks.gateway_fee_capture_anomalies?.expected_fees_total ?? 0,
+                        )}{" "}
+                        expected)
+                      </>
+                    ) : null}
+                  </p>
+                  {(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0) > 0 ? (
+                    <Link
+                      to={feesReconciliationsHref}
+                      className="mt-2 inline-block text-xs font-medium text-gray-700 underline hover:text-gray-900"
+                    >
+                      Review in fee reconciliations →
+                    </Link>
                   ) : null}
                 </div>
                 <div className="rounded-lg border border-gray-200 p-3">

@@ -46,7 +46,7 @@ describe("auto-fee-reconciliation", () => {
       "paystack",
       "2026-07-03",
       "2026-07-03",
-      { tenantId: "tenant-1" },
+      { tenantId: "tenant-1", asOfDate: "2026-07-03" },
     );
     expect(result.upserted).toBe(true);
     expect(result.actual_fees).toBe(12.69);
@@ -94,6 +94,30 @@ describe("auto-fee-reconciliation", () => {
 
   it("iterates tenants × gateways × dates in backfill mode", async () => {
     computeGatewayFeeSuggestions.mockResolvedValue({
+      recorded_fees: 5.5,
+      expected_fees_from_config: 5.5,
+      charge_count: 1,
+      payout_transfer_count: 0,
+    });
+
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const supabase = {
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as unknown as Parameters<typeof runAutoFeeReconciliation>[0];
+
+    const summary = await runAutoFeeReconciliation(supabase, {
+      startDate: "2026-07-01",
+      endDate: "2026-07-02",
+      tenantIds: ["t1"],
+      gateways: ["paystack"],
+    });
+
+    expect(summary.results).toHaveLength(2);
+    expect(summary.upserted).toBe(2);
+  });
+
+  it("skips upsert for days with no gateway activity", async () => {
+    computeGatewayFeeSuggestions.mockResolvedValue({
       recorded_fees: 0,
       expected_fees_from_config: 0,
       charge_count: 0,
@@ -113,6 +137,7 @@ describe("auto-fee-reconciliation", () => {
     });
 
     expect(summary.results).toHaveLength(2);
-    expect(summary.upserted).toBe(2);
+    expect(summary.upserted).toBe(0);
+    expect(upsert).not.toHaveBeenCalled();
   });
 });

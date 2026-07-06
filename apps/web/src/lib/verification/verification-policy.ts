@@ -7,7 +7,8 @@
  * helper so toggling a feature flag immediately affects the whole system.
  *
  * Effective Didit availability = flag(verification.didit.enabled) AND
- * env vars present (DIDIT_API_KEY + DIDIT_WORKFLOW_ID + DIDIT_WEBHOOK_SECRET).
+ * env vars present (DIDIT_API_KEY + DIDIT_WEBHOOK_SECRET). Workflow id uses
+ * DIDIT_WORKFLOW_ID when set, otherwise the code default (Free KYC).
  *
  * Effective manual availability = flag(verification.manual.enabled).
  *

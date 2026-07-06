@@ -13,13 +13,18 @@ import {
   resolveReceiptDownloadOrigin,
 } from "@/lib/receipts/receipt-download-token";
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user: authUser } = await requireAuthInApi(request);
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     if (!id) return errorResponse("Group booking id is required", "VALIDATION_ERROR", 400);
 
     const admin = getSupabaseAdmin();

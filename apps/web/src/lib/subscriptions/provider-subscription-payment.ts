@@ -29,6 +29,7 @@ import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions
 import { buildProviderSubscriptionReceiptUrl } from "@/lib/receipts/receipt-download-token";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
 
 export type RecordProviderSubscriptionPaymentResult = {
   recorded: boolean;
@@ -200,7 +201,14 @@ export async function recordProviderSubscriptionPayment(params: {
     tenantIdHint = null,
   } = params;
 
-  const netAmount = amountMajor - feesMajor;
+  let resolvedFeesMajor = feesMajor;
+  const resolvedFees = await resolvePaystackFeeMajor(supabase, {
+    feesSmallestOrMajor: feesMajor,
+    amountMajor,
+    alreadyMajor: true,
+  });
+  resolvedFeesMajor = resolvedFees.feesMajor;
+  const netAmount = amountMajor - resolvedFeesMajor;
 
   if (!reference || !providerId) {
     console.error("[provider_subscription] recordProviderSubscriptionPayment: missing reference/providerId", {
@@ -232,7 +240,7 @@ export async function recordProviderSubscriptionPayment(params: {
     booking_id: null,
     reference,
     amount: amountMajor,
-    fees: feesMajor,
+    fees: resolvedFeesMajor,
     net_amount: netAmount,
     status: "success",
     provider: "paystack",
@@ -259,7 +267,7 @@ export async function recordProviderSubscriptionPayment(params: {
       // ads/marketing-credit convention and the receipt shown to providers).
       // `net` (gross − gateway fees) is what platform revenue recognition sums.
       amount: amountMajor,
-      fees: feesMajor,
+      fees: resolvedFeesMajor,
       commission: 0,
       net: netAmount,
       description,
@@ -270,6 +278,7 @@ export async function recordProviderSubscriptionPayment(params: {
         plan_id: planId,
         subscription_code: subscriptionCode,
         invoice_code: invoiceCode,
+        fee_source: resolvedFees.feeSource,
       },
       created_at: nowIso,
     })

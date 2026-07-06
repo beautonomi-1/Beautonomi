@@ -30,6 +30,7 @@ import {
   getNextStep,
   getPreviousStep,
   INITIAL_FORM,
+  REVIEW_STEP_ID,
   STEPS,
   stepIsVisible,
   visibleStepIndex,
@@ -49,6 +50,13 @@ interface OnboardingWizardContextValue {
   updateFormData: (u: Partial<OnboardingFormData>) => void;
   currentStep: number;
   setCurrentStep: (n: number) => void;
+  /**
+   * Jump to an earlier step from the Review step. The next Continue (or Back)
+   * returns straight to Review instead of walking the whole wizard again.
+   */
+  editFromReview: (n: number) => void;
+  /** True while the user is editing a step they jumped to from Review. */
+  editingFromReview: boolean;
   goNext: () => void;
   goBack: () => void;
   skipForward: () => void;
@@ -151,6 +159,13 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
 
   const setCurrentStep = useCallback((n: number) => {
     setCurrentStepState(Math.min(Math.max(1, n), STEPS.length));
+  }, []);
+
+  const [editingFromReview, setEditingFromReview] = useState(false);
+
+  const editFromReview = useCallback((n: number) => {
+    setCurrentStepState(Math.min(Math.max(1, n), STEPS.length));
+    setEditingFromReview(true);
   }, []);
 
   useEffect(() => {
@@ -320,24 +335,40 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       return;
     }
     Keyboard.dismiss();
+    if (editingFromReview && currentStep < REVIEW_STEP_ID) {
+      setEditingFromReview(false);
+      setCurrentStepState(REVIEW_STEP_ID);
+      return;
+    }
     const next = getNextStep(currentStep, formData);
     if (next !== null) setCurrentStepState(next);
-  }, [currentStep, formData]);
+  }, [currentStep, formData, editingFromReview]);
 
   const goBack = useCallback(() => {
     Keyboard.dismiss();
+    if (editingFromReview && currentStep < REVIEW_STEP_ID) {
+      // Back = cancel the edit — return to Review rather than the previous step.
+      setEditingFromReview(false);
+      setCurrentStepState(REVIEW_STEP_ID);
+      return;
+    }
     const prev = getPreviousStep(currentStep, formData);
     if (prev !== null) setCurrentStepState(prev);
     else router.back();
-  }, [currentStep, formData, router]);
+  }, [currentStep, formData, router, editingFromReview]);
 
   const skipForward = useCallback(() => {
     const meta = STEPS[currentStep - 1];
     if (!meta?.canSkip) return;
     Keyboard.dismiss();
+    if (editingFromReview && currentStep < REVIEW_STEP_ID) {
+      setEditingFromReview(false);
+      setCurrentStepState(REVIEW_STEP_ID);
+      return;
+    }
     const next = getNextStep(currentStep, formData);
     if (next !== null) setCurrentStepState(next);
-  }, [currentStep, formData]);
+  }, [currentStep, formData, editingFromReview]);
 
   const continueToApp = useCallback(() => {
     router.replace("/(app)/(tabs)/dashboard" as never);
@@ -516,7 +547,9 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         ? selectedPlanIsFree
           ? "Launch your business"
           : "Submit & launch"
-        : "Continue";
+        : editingFromReview && currentStep < REVIEW_STEP_ID
+          ? "Back to review"
+          : "Continue";
 
   const submitBusyLabel =
     currentStep === STEPS.length && selectedPlanIsFree
@@ -537,6 +570,8 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       updateFormData,
       currentStep,
       setCurrentStep,
+      editFromReview,
+      editingFromReview,
       goNext,
       goBack,
       skipForward,
@@ -558,6 +593,8 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       updateFormData,
       currentStep,
       setCurrentStep,
+      editFromReview,
+      editingFromReview,
       goNext,
       goBack,
       skipForward,

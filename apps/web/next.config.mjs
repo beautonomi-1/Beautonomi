@@ -273,8 +273,8 @@ const nextConfig = {
           {
             key: 'Permissions-Policy',
             value: [
-              'camera=()',
-              'microphone=()',
+              'camera=(self "https://verify.didit.me")',
+              'microphone=(self "https://verify.didit.me")',
               'geolocation=(self)',
               'payment=(self)',
               'usb=()',
@@ -302,8 +302,8 @@ const nextConfig = {
               // XHR/fetch/WebSocket — Pusher is used by the Vercel Live
               // preview comments toolbar (only loaded on preview/dev builds).
               "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com https://vercel.live https://*.vercel.live wss://*.pusher.com wss://ws-us3.pusher.com wss://ws-us2.pusher.com wss://ws-eu.pusher.com",
-              // Iframes: Paystack popup; Vercel preview toolbar (vercel.live)
-              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://vercel.live",
+              // Iframes: Paystack popup; Didit verification modal; Vercel preview toolbar
+              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://verify.didit.me https://*.didit.me https://vercel.live",
               // Workers (Next.js, service workers)
               "worker-src 'self' blob:",
               "object-src 'none'",

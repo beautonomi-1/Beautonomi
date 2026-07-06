@@ -18,15 +18,15 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { addDays, format as formatDateFns, isSameDay, parseISO, startOfDay } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
+import { useGroupBookingPaymentRealtime } from "@/hooks/useGroupBookingPaymentRealtime";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -77,10 +77,12 @@ import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { webApiTenantHeaders } from "@/config/public-env";
 import {
+  computeGroupFinancialBreakdown,
   countGroupParticipantsCheckedIn,
   isGroupParticipantCheckedIn,
   isGroupParticipantCheckedOut,
   resolveGroupParticipantCount,
+  shouldRejectStaleListPaymentSync,
 } from "@/lib/group-booking-detail-helpers";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
@@ -131,6 +133,7 @@ interface Participant {
   total_paid?: number | null;
   total_refunded?: number | null;
   wallet_gift_coverage?: number | null;
+  tip_amount?: number | null;
   is_primary_contact?: boolean;
   addons?:
     | {
@@ -182,6 +185,7 @@ interface GroupBooking {
   // the list endpoint. Keep it typed so the create / detail sheet can
   // show the attached package name + pass the id through on edits.
   package_id?: string | null;
+  package_discount_amount?: number | null;
   payment_status?: string | null;
   amount_paid?: number | null;
   balance_due?: number | null;
@@ -658,6 +662,7 @@ export default function GroupBookingsScreen() {
   }>();
   const pendingGroupDeepLinkRef = useRef<"edit" | "cancel" | null>(null);
   const openGroupDetailRef = useRef<(group: GroupBooking) => Promise<void>>(async () => {});
+  const selectedGroupRef = useRef<GroupBooking | null>(null);
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -747,6 +752,7 @@ export default function GroupBookingsScreen() {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<GroupBooking | null>(null);
+  selectedGroupRef.current = selectedGroup;
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormRow>(
     createBlankParticipant("participant-form")
@@ -1010,12 +1016,14 @@ export default function GroupBookingsScreen() {
   // Keep `selectedGroup` in sync when participant payment/check-in data changes,
   // not only when `group_bookings.updated_at` bumps (mark_paid often skips that).
   // Skip while an optimistic mutation is in flight so a stale list refresh cannot
-  // flash the detail sheet back to pre-action state.
+  // flash the detail sheet back to pre-action state. Also skip when the open
+  // detail is ahead of the list row (common immediately after mark_paid).
   useEffect(() => {
     if (!selectedGroup) return;
     if (pendingParticipantId || groupActionLoading || previousGroupRef.current) return;
     const fresh = groups.find((g) => g.id === selectedGroup.id);
     if (!fresh) return;
+    if (shouldRejectStaleListPaymentSync(selectedGroup, fresh)) return;
     const metaChanged =
       fresh.updated_at !== selectedGroup.updated_at || fresh.status !== selectedGroup.status;
     const participantsChanged = !participantsEqual(
@@ -1080,8 +1088,7 @@ export default function GroupBookingsScreen() {
     })();
   }, [groups, params.open_group_id, router]);
 
-  async function openGroupDetail(group: GroupBooking) {
-    setSelectedGroup(group);
+  async function refreshGroupDetail(group: GroupBooking): Promise<GroupBooking | null> {
     setGroupDetailLoading(true);
     try {
       const res = await api.get<any>(
@@ -1101,12 +1108,43 @@ export default function GroupBookingsScreen() {
             ? prev.map((g) => (g.id === normalized.id ? normalized : g))
             : [...prev, normalized]
         );
+        if (groupData?.data) {
+          mutateGroupList({
+            ...groupData,
+            data: groupData.data.map((g) => (g.id === normalized.id ? normalized : g)),
+          });
+        }
+        return normalized;
       }
     } finally {
       setGroupDetailLoading(false);
     }
+    return null;
+  }
+
+  async function openGroupDetail(group: GroupBooking) {
+    setSelectedGroup(group);
+    await refreshGroupDetail(group);
   }
   openGroupDetailRef.current = openGroupDetail;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedGroup?.id) return;
+      void openGroupDetailRef.current(selectedGroup);
+    }, [selectedGroup?.id])
+  );
+
+  useGroupBookingPaymentRealtime(
+    selectedGroup?.id,
+    !!selectedGroup,
+    useCallback(() => {
+      const current = selectedGroupRef.current;
+      if (current?.id) {
+        void openGroupDetailRef.current(current);
+      }
+    }, [])
+  );
 
   useEffect(() => {
     if (params.open_edit === "1") pendingGroupDeepLinkRef.current = "edit";
@@ -1385,6 +1423,7 @@ export default function GroupBookingsScreen() {
     previousGroupRef.current = null;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setPaymentRecordedNotice("Payment recorded for all participant bookings.");
+    await openGroupDetail(group);
     await refresh();
   }
 
@@ -2818,9 +2857,8 @@ export default function GroupBookingsScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const base = getApiBaseUrl().replace(/\/$/, "");
       const pdfPath = `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/pdf`;
-      const safeName = `group_receipt_${(group.ref_number || group.id).replace(/[^\w.-]+/g, "_")}.pdf`;
 
-      const tryBearerDownload = async (): Promise<boolean> => {
+      const tryBearerPdf = async (): Promise<boolean> => {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
         if (!token || !base) return false;
@@ -2829,10 +2867,12 @@ export default function GroupBookingsScreen() {
           Authorization: `Bearer ${token}`,
           ...webApiTenantHeaders(),
         };
+        const response = await fetch(pdfUrl, { headers, credentials: "omit" });
+        if (!response.ok) return false;
+        const contentType = response.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/pdf")) return false;
         if (Platform.OS === "web") {
-          const r = await fetch(pdfUrl, { headers, credentials: "omit" });
-          if (!r.ok) return false;
-          const blob = await r.blob();
+          const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
           if (typeof window !== "undefined") {
             window.open(objectUrl, "_blank", "noopener,noreferrer");
@@ -2840,18 +2880,10 @@ export default function GroupBookingsScreen() {
           }
           return true;
         }
-        if (!cacheDirectory) return false;
-        const fileUri = `${cacheDirectory}${safeName}`;
-        const dl = await downloadAsync(pdfUrl, fileUri, { headers });
-        if (dl.status !== 200) return false;
-        await RNShare.share({
-          url: fileUri,
-          message: `Group receipt ${group.ref_number || group.id}`,
-        });
         return true;
       };
 
-      if (await tryBearerDownload()) {
+      if (Platform.OS === "web" && (await tryBearerPdf())) {
         return;
       }
 
@@ -2867,28 +2899,14 @@ export default function GroupBookingsScreen() {
         Alert.alert("Group receipt", msg);
         return;
       }
+
       if (Platform.OS === "web") {
         pushInAppBrowser(router, signedUrl, "Group receipt");
         return;
       }
-      if (!cacheDirectory) {
-        Alert.alert("Group receipt", "File storage is not available on this device.");
-        return;
-      }
-      const fileUri = `${cacheDirectory}${safeName}`;
-      const dl = await downloadAsync(signedUrl, fileUri);
-      if (dl.status !== 200) {
-        const hint =
-          dl.status === 401 || dl.status === 403
-            ? "Your session may have expired. Please refresh and try again."
-            : `The server returned status ${dl.status}.`;
-        Alert.alert("Group receipt", `Could not download the PDF. ${hint}`);
-        return;
-      }
-      await RNShare.share({
-        url: fileUri,
-        message: `Group receipt ${group.ref_number || group.id}`,
-      });
+
+      // Native: open the signed PDF URL in the in-app browser (full document view).
+      pushInAppBrowser(router, signedUrl, "Group receipt");
     } catch (err) {
       const msg =
         err instanceof Error
@@ -3186,13 +3204,85 @@ export default function GroupBookingsScreen() {
                   </Text>
                 </View>
               ) : null}
-              <View style={twStyle("mt-1 border-t border-gray-200 pt-2 flex-row justify-between")}>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>
-                  {formatCurrency(Number(selectedGroup.total_price) || 0)}
-                </Text>
-              </View>
             </View>
+
+            {(() => {
+              const financials = computeGroupFinancialBreakdown(selectedGroup);
+              const hasParticipantBookings = (selectedGroup.participants ?? []).some((p) => p.booking_id);
+              const totalLabel = hasParticipantBookings ? "Total" : "Session estimate";
+              return (
+                <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+                  <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>
+                    Financials
+                  </Text>
+                  {financials.participantServicesTotal > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Participant services</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(financials.participantServicesTotal)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {financials.productsTotal > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Products</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(financials.productsTotal)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {financials.travelFee > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Travel fee</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(financials.travelFee)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {financials.tipsTotal > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Tips</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(financials.tipsTotal)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {financials.packageDiscount > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Package discount</Text>
+                      <Text style={twStyle("text-sm font-medium text-emerald-700")}>
+                        -{formatCurrency(financials.packageDiscount)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {financials.additionalChargesTotal > 0 ? (
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Additional charges</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {formatCurrency(financials.additionalChargesTotal)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={twStyle("mt-2 border-t border-gray-200 pt-2 flex-row justify-between")}>
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>{totalLabel}</Text>
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>
+                      {formatCurrency(financials.total)}
+                    </Text>
+                  </View>
+                  {!hasParticipantBookings ? (
+                    <Text style={twStyle("mt-2 text-[11px] leading-4 text-gray-500")}>
+                      No participant bookings are linked yet. Add participants so the receipt reflects
+                      each service price instead of the session estimate.
+                    </Text>
+                  ) : null}
+                  {selectedGroup.location_type === "at_home" && financials.travelFee > 0 ? (
+                    <Text style={twStyle("mt-1 text-[11px] text-gray-500")}>
+                      Includes travel to the client location.
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })()}
 
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
               <View style={twStyle("mb-2 flex-row items-center justify-between")}>
