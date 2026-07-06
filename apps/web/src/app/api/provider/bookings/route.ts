@@ -121,7 +121,7 @@ async function handleGetProviderBookings(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     // Get provider ID
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
@@ -907,7 +907,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     );
 
     // Get provider ID
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }

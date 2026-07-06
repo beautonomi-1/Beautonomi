@@ -119,7 +119,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       }
     );
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
 
     const cacheKey = `${providerId}:${locationId || "all"}:${includeInsights ? "insights" : "base"}`;

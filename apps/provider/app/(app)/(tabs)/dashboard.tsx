@@ -1114,7 +1114,7 @@ export default function DashboardScreen() {
 
       <SectionHeader title={`This ${periodLabel}`} />
       <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12, marginTop: -4 }}>
-        Earnings use the day you were paid. Appointments use the day they are scheduled.
+        Revenue earned is ledger-based (platform-settled payments). Cash and Yoco service payments you collected are not included. Earnings use the day you were paid. Appointments use the day they are scheduled.
       </Text>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -1122,7 +1122,7 @@ export default function DashboardScreen() {
           <StatCard
             title="Revenue earned"
             value={displayRevenue}
-            subtitle="Counted on payment date"
+            subtitle="Ledger by payment date · excludes cash/Yoco service payments"
             icon="wallet-outline"
             iconColor="#22c55e"
             iconBg="bg-green-50"
