@@ -110,6 +110,24 @@ WHERE didit_session_id IS NULL AND verification_provider IS NULL;
 
 ---
 
+## Phase 7b — Webhook 401 recovery (stuck sessions)
+
+Didit **does not retry** webhook deliveries that return `401`. If the Business Console Deliveries tab shows `401` for `status.updated`, Beautonomi never updates session status — provider UI stays unverified and **Last webhook received** stays **Never**.
+
+| # | Check | Who |
+|---|-------|-----|
+| [>] | In Didit Console → API & Webhooks → destination → copy `secret_shared_key` into Vercel `DIDIT_WEBHOOK_SECRET` (not `DIDIT_API_KEY`) | Ops |
+| [>] | Redeploy web app after updating secret | CI/CD |
+| [>] | Cloudflare/WAF: allow Didit webhook IP `18.203.201.92`; do not strip `X-Signature*` / `X-Timestamp` headers | Ops |
+| [>] | Webhook URL must be `https://www.beautonomi.com/api/webhooks/didit` (www, HTTPS, no redirect) | Ops |
+| [>] | Control Plane → Didit → **Send test webhook** → expect HTTP 200 | Admin |
+| [>] | Didit Console → Deliveries → new events show 200 | Ops |
+| [>] | For sessions already **Approved** in Didit but still pending in Beautonomi: Superadmin → **Identity & Trust → Verification Sessions** → **Reprocess** on each stuck row (or run reconciliation cron) | Admin |
+
+Ops note: auto-Approved Didit sessions do **not** appear in legacy **Identity Verifications** (`/admin/verifications`). Use **Verification Sessions** (`/admin/identity-trust/sessions`) for Didit ops.
+
+---
+
 ## Phase 8 — Monitoring & Rollback
 
 | # | Check | Status |

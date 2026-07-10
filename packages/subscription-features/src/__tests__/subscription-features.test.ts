@@ -16,8 +16,8 @@ describe("subscription-features registry", () => {
 
   it("free plan enables every product feature category", () => {
     const features = getFreePlanFeatures();
-    // Intentionally off on free: booking caps and paid terminal hardware.
-    const freePlanDisabled = new Set(["booking_limits", "terminal_bundle"]);
+    // Intentionally off on free: booking caps, paid terminal hardware, and card machines.
+    const freePlanDisabled = new Set(["booking_limits", "terminal_bundle", "paycloud_integration"]);
     for (const key of ALL_FEATURE_CATEGORY_KEYS) {
       if (freePlanDisabled.has(key)) continue;
       const cat = features[key];

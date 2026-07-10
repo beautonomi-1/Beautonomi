@@ -7,6 +7,8 @@ const mockGetPlatformSalesDefaults = vi.fn();
 const mockLocationHasOperatingHours = vi.fn();
 const mockCreateClient = vi.fn();
 const mockIsFeatureEnabledServer = vi.fn();
+const mockCheckMultipleFeaturesServer = vi.fn();
+const mockIsProviderVerificationPlanComplete = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireAuthInApi: (...args: unknown[]) => mockRequireAuthInApi(...args),
@@ -37,6 +39,12 @@ vi.mock("@supabase/supabase-js", () => ({
 
 vi.mock("@/lib/server/feature-flags", () => ({
   isFeatureEnabledServer: (...args: unknown[]) => mockIsFeatureEnabledServer(...args),
+  checkMultipleFeaturesServer: (...args: unknown[]) => mockCheckMultipleFeaturesServer(...args),
+}));
+
+vi.mock("@/lib/verification/provider-verification-state", () => ({
+  isProviderVerificationPlanComplete: (...args: unknown[]) =>
+    mockIsProviderVerificationPlanComplete(...args),
 }));
 
 type Fixture = {
@@ -170,6 +178,8 @@ async function callRoute(fixture: Fixture) {
     Array.isArray(hours) ? hours.length > 0 : !!hours,
   );
   mockIsFeatureEnabledServer.mockResolvedValue(true);
+  mockCheckMultipleFeaturesServer.mockResolvedValue({});
+  mockIsProviderVerificationPlanComplete.mockResolvedValue(false);
   const { GET } = await import("../route");
   const req = new NextRequest("https://app.example.com/api/provider/setup-status");
   const res = await GET(req);

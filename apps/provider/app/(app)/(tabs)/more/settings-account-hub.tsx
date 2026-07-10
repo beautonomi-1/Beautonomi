@@ -105,6 +105,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     items: [
       { title: "Payout center", description: "Balance, statements and payouts", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
       { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
+      { title: "Card machines", description: "Beautonomi in-person terminals", href: "/provider/settings/sales/card-machines", mobileRoute: "/(app)/(tabs)/more/card-machines" },
       { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
       { title: "Paystack Terminal", description: "QR and link payments through Beautonomi payouts", href: "/provider/settings/sales/paystack-terminal", mobileRoute: "/(app)/(tabs)/more/paystack-terminal" },
       { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
@@ -180,6 +181,7 @@ export default function SettingsAccountHubScreen() {
   const [expandedId, setExpandedId] = useState<string | null>("account");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
 
   const { data: providerData } = useApi<{ business_type?: string } | { data?: { business_type?: string } }>(
     "/api/me/provider"
@@ -347,7 +349,8 @@ export default function SettingsAccountHubScreen() {
             const routeKey = item.mobileRoute ?? item.href;
             return (
               (paystackTerminalEnabled || !routeKey.includes("paystack-terminal")) &&
-              (yocoEnabled || !routeKey.includes("yoco"))
+              (yocoEnabled || !routeKey.includes("yoco")) &&
+              (paycloudEnabled || !routeKey.includes("card-machines"))
             );
           });
           return (

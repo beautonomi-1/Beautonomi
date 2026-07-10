@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import Constants from "expo-constants";
+import { getAppNativeVersion } from "@/lib/app-native-version";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotifications } from "@/providers/NotificationsContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -863,7 +863,7 @@ export default function ProfileScreen() {
       {/* ── Footer ── */}
       <View style={{ alignItems: "center", marginTop: 8, paddingBottom: 16 }}>
         <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
-          Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
+          Beautonomi v{getAppNativeVersion()}
         </Text>
       </View>
       </ScrollView>
@@ -938,7 +938,7 @@ function LoggedOutProfile() {
 
       <View style={{ alignItems: "center", marginTop: 32, paddingBottom: 16 }}>
         <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
-          Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
+          Beautonomi v{getAppNativeVersion()}
         </Text>
       </View>
       </ScrollView>

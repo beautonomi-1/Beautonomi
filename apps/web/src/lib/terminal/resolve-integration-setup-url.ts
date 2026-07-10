@@ -16,6 +16,9 @@ export function resolveIntegrationSetupPath(product: {
   if (slug === "yoco") {
     return "/provider/settings/sales/yoco-integration";
   }
+  if (slug === "paycloud") {
+    return "/provider/settings/sales/card-machines";
+  }
   return `/provider/settings/sales/terminal-integrations/${encodeURIComponent(slug)}`;
 }
 

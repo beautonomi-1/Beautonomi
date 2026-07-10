@@ -38,6 +38,7 @@ import {
   Search, Users, Calendar, Edit, Trash2, CheckCircle, Plus, Sparkles,
   MapPin, Clock, DollarSign, User, Phone, Mail, FileText, Play,
   CheckSquare, XCircle, Info, Building2, Home, QrCode, ExternalLink, Copy,
+  CreditCard,
 } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -45,6 +46,8 @@ import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Money } from "@/components/provider-portal/Money";
 import { GroupBookingDialog } from "@/components/provider-portal/GroupBookingDialog";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
@@ -689,6 +692,15 @@ function GroupBookingsPageInner() {
             onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
             onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
             onDownloadReceipt={() => handleDownloadReceipt(detailBooking.id, detailBooking.ref_number)}
+            onPaycloudSuccess={async () => {
+              await loadGroupBookings();
+              try {
+                const refreshed = await providerApi.getGroupBooking(detailBooking.id);
+                setDetailBooking(refreshed);
+              } catch (error) {
+                console.error("Failed to refresh group booking after PayCloud payment:", error);
+              }
+            }}
             isStatusChanging={isStatusChanging}
           />}
         </SheetContent>
@@ -848,6 +860,7 @@ interface DetailPanelProps {
   onEdit: () => void;
   onCancel: () => void;
   onDownloadReceipt: () => void;
+  onPaycloudSuccess: () => void;
   isStatusChanging: boolean;
 }
 
@@ -863,10 +876,13 @@ function GroupBookingDetailPanel({
   onEdit,
   onCancel,
   onDownloadReceipt,
+  onPaycloudSuccess,
   isStatusChanging,
 }: DetailPanelProps) {
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const [paycloudOpen, setPaycloudOpen] = useState(false);
   const participants: GroupBookingParticipant[] = booking.participants ?? [];
+  const outstandingBalance = computeGroupOutstandingBalance(participants, booking);
   const cancelled = booking.status === "cancelled";
   const completed = booking.status === "completed";
   const isFinal = cancelled || completed;
@@ -911,6 +927,7 @@ function GroupBookingDetailPanel({
   );
 
   return (
+    <>
     <div className="space-y-6 pb-8">
       <SheetHeader>
         <SheetTitle className="flex items-center gap-3">
@@ -1136,6 +1153,13 @@ function GroupBookingDetailPanel({
                 >
                   Card
                 </Button>
+                <PaycloudCollectButton
+                  amount={computeGroupOutstandingBalance(participants, booking)}
+                  currency={booking.currency ?? "ZAR"}
+                  context="group_booking"
+                  onClick={() => setPaycloudOpen(true)}
+                  className="gap-1.5"
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -1338,6 +1362,22 @@ function GroupBookingDetailPanel({
         {(booking as any).updated_at && <p>Last updated: {formatDt((booking as any).updated_at)}</p>}
       </section>
     </div>
+    {paycloudOpen ? (
+      <PayCloudPaymentDialog
+        open={paycloudOpen}
+        onOpenChange={setPaycloudOpen}
+        amount={outstandingBalance}
+        entityType="group_booking"
+        entityId={booking.id}
+        groupBookingId={booking.id}
+        bookingLocationId={booking.location_id ?? null}
+        onSuccess={() => {
+          setPaycloudOpen(false);
+          onPaycloudSuccess();
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

@@ -4,7 +4,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Constants from "expo-constants";
+import { getAppNativeVersion } from "@/lib/app-native-version";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
@@ -204,6 +204,7 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
   { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "hardware-chip-outline", label: "Card machines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
   { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/billing?tab=subscription", color: "#8b5cf6" },
   { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/money?tab=payouts", color: "#047857" },
@@ -216,6 +217,7 @@ export default function MoreScreen() {
   const { user, signOut } = useAuth();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     "Grow your business": true,
     Operations: true,
@@ -689,7 +691,8 @@ export default function MoreScreen() {
           {QUICK_ACTIONS.filter(
             (action) =>
               (paystackTerminalEnabled || !action.route.includes("paystack-terminal")) &&
-              (yocoEnabled || !action.route.includes("yoco")),
+              (yocoEnabled || !action.route.includes("yoco")) &&
+              (paycloudEnabled || !action.route.includes("card-machines")),
           ).map((action) => {
             const badge = formatBadgeCount(getRouteBadgeCount(action.route));
             return (
@@ -947,7 +950,8 @@ export default function MoreScreen() {
                   {section.items.filter(
                     (item) =>
                       (paystackTerminalEnabled || !item.route.includes("paystack-terminal")) &&
-                      (yocoEnabled || !item.route.includes("yoco")),
+                      (yocoEnabled || !item.route.includes("yoco")) &&
+                      (paycloudEnabled || !item.route.includes("card-machines")),
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
                     return (
@@ -1055,7 +1059,7 @@ export default function MoreScreen() {
 
         <View style={{ alignItems: "center", marginTop: 8, paddingBottom: 16 }}>
           <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
-            Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
+            Beautonomi v{getAppNativeVersion()}
           </Text>
         </View>
     </ScreenContainer>

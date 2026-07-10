@@ -11,6 +11,7 @@ import { locationHasOperatingHours } from "@/lib/provider/location-operating-hou
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
+import { isProviderVerificationPlanComplete } from "@/lib/verification/provider-verification-state";
 
 export interface SetupStatusStep {
   id: string;
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
     const { data: provider } = await supabaseAdmin
       .from("providers")
       .select(
-        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, accept_cash, accept_card, accept_online, phone, email, is_verified"
+        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, payee_kind, accept_cash, accept_card, accept_online, phone, email, is_verified"
       )
       .eq("id", providerId)
       .single();
@@ -274,20 +275,24 @@ export async function GET(request: NextRequest) {
     const hasPaymentMethods =
       acceptCash || acceptCard || acceptOnline || effectiveGiftCardsEnabled === true;
 
-    // Identity verification — completes the checklist step when:
-    // 1. Admin manual review approved (users.identity_verified === true), or
-    // 2. Didit (or legacy Sumsub) auto-approved the provider KYC (provider_verification_status), or
-    // 3. The provider's marketplace verified badge is on (providers.is_verified).
-    // Any one of these signals means we have a confirmed identity for the provider.
-    const kycStatus = (providerKycRow as { status?: string | null } | null)?.status ?? null;
-    const isIdentityVerified =
-      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
-      kycStatus === "approved" ||
-      (provider as { is_verified?: boolean | null }).is_verified === true;
-
-    // Resolve verification policy to determine if identity is a required step.
+    // Identity verification — use the full verification plan (person KYC + KYB
+    // when required). Legacy person-only signals must not mark the step complete
+    // when KYB is still outstanding.
     const providerTenantId = (provider as { tenant_id?: string | null }).tenant_id ?? tenantId;
     const verificationPolicy = await resolveVerificationPolicy(providerTenantId);
+    const kybRequired =
+      verificationPolicy.kybRequiredForBusiness &&
+      verificationPolicy.kybEnabled &&
+      (provider as { payee_kind?: string | null }).payee_kind === "business";
+
+    const planVerified = await isProviderVerificationPlanComplete(providerId);
+    const kycStatus = (providerKycRow as { status?: string | null } | null)?.status ?? null;
+    const isIdentityVerified = kybRequired
+      ? planVerified
+      : planVerified ||
+        (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
+        kycStatus === "approved" ||
+        (provider as { is_verified?: boolean | null }).is_verified === true;
 
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin

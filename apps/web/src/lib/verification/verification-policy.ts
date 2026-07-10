@@ -25,6 +25,7 @@ import { checkMultipleFeaturesServer } from "@/lib/server/feature-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { diditEnvPresent } from "@/lib/identity-verification/provider/didit-provider";
+import { isProviderVerificationPlanComplete } from "@/lib/verification/provider-verification-state";
 
 export type VerificationMode = "off" | "manual" | "didit" | "both";
 
@@ -52,6 +53,10 @@ export interface VerificationPolicy {
   minAge: number;
   /** verification.dedupe: detect duplicate identities across accounts. */
   dedupeEnabled: boolean;
+  /** verification.didit.kyb.enabled: Didit business verification available. */
+  kybEnabled: boolean;
+  /** verification.didit.kyb.required_for_business: KYB blocks gates for business payee_kind. */
+  kybRequiredForBusiness: boolean;
 }
 
 function deriveMode(didit: boolean, manual: boolean): VerificationMode {
@@ -82,6 +87,8 @@ export async function resolveVerificationPolicy(
         FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_CROSS_VALIDATE,
         FEATURE_FLAG_KEYS.VERIFICATION_MIN_AGE,
         FEATURE_FLAG_KEYS.VERIFICATION_DEDUPE,
+        FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_KYB,
+        FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_KYB_REQUIRED_FOR_BUSINESS,
       ],
       tenantId,
     );
@@ -110,6 +117,12 @@ export async function resolveVerificationPolicy(
       ? (flags[FEATURE_FLAG_KEYS.VERIFICATION_DEDUPE] ?? true)
       : false;
 
+    const kybFlagOn = flags[FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_KYB] === true;
+    const kybEnabled = kybFlagOn && diditEnabled;
+    const kybRequiredForBusiness =
+      kybEnabled &&
+      flags[FEATURE_FLAG_KEYS.VERIFICATION_DIDIT_KYB_REQUIRED_FOR_BUSINESS] === true;
+
     return {
       diditEnabled,
       sumsubEnabled: false,
@@ -121,6 +134,8 @@ export async function resolveVerificationPolicy(
       crossValidate,
       minAge,
       dedupeEnabled,
+      kybEnabled,
+      kybRequiredForBusiness,
     };
   } catch (err) {
     console.warn("[resolveVerificationPolicy] error, using permissive defaults:", err);
@@ -135,6 +150,8 @@ export async function resolveVerificationPolicy(
       crossValidate: true,
       minAge: 18,
       dedupeEnabled: true,
+      kybEnabled: false,
+      kybRequiredForBusiness: false,
     };
   }
 }
@@ -167,6 +184,8 @@ export async function isCustomerVerificationApproved(
 /**
  * Returns true if the provider's identity verification is in an approved state
  * via any path: Sumsub webhook, manual admin review, or direct admin toggle.
+ *
+ * When KYB is required for business providers, person KYC alone is not enough.
  */
 export async function isProviderVerificationApproved(
   providerId: string,
@@ -174,22 +193,39 @@ export async function isProviderVerificationApproved(
   try {
     const supabase = getSupabaseAdmin();
 
-    const [{ data: kycRow }, { data: providerRow }] = await Promise.all([
-      supabase
-        .from("provider_verification_status")
-        .select("status")
-        .eq("provider_id", providerId)
-        .maybeSingle(),
-      supabase
-        .from("providers")
-        .select("is_verified, user_id")
-        .eq("id", providerId)
-        .maybeSingle(),
-    ]);
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("is_verified, user_id, payee_kind, tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+
+    const payeeKind = (providerRow as { payee_kind?: string | null } | null)?.payee_kind;
+    const tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id;
+    const policy = await resolveVerificationPolicy(tenantId ?? null);
+    const kybRequired =
+      policy.kybRequiredForBusiness &&
+      policy.kybEnabled &&
+      payeeKind === "business";
+
+    // When KYB is required, only the full verification plan (person KYC + KYB)
+    // counts — marketplace badge / person-only signals must not bypass KYB.
+    if (kybRequired) {
+      return await isProviderVerificationPlanComplete(providerId);
+    }
+
+    const planComplete = await isProviderVerificationPlanComplete(providerId);
+    if (planComplete) return true;
 
     if ((providerRow as { is_verified?: boolean | null } | null)?.is_verified === true) {
       return true;
     }
+
+    const { data: kycRow } = await supabase
+      .from("provider_verification_status")
+      .select("status")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
     if ((kycRow as { status?: string | null } | null)?.status === "approved") {
       return true;
     }

@@ -56,6 +56,8 @@ export const adminQueryKeys = {
       [...adminQueryKeys.providers.all(), "terminal-integrations", providerId] as const,
     terminalNotes: (providerId: string) =>
       [...adminQueryKeys.providers.all(), "terminal-notes", providerId] as const,
+    paycloud: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "paycloud", providerId] as const,
     subscriptions: (providerId: string) =>
       [...adminQueryKeys.providers.all(), "subscriptions", providerId] as const,
     bookings: (providerId: string, filters: { page: number; status: string }) =>
@@ -240,6 +242,16 @@ export const adminQueryKeys = {
   paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
   resendConfig: () => [...adminQueryKeys.root, "integrations", "resend"] as const,
   yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
+  paycloudIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "paycloud"] as const,
+  paycloudOperations: {
+    all: () => [...adminQueryKeys.root, "paycloud-operations"] as const,
+    payments: (signature: string) =>
+      [...adminQueryKeys.paycloudOperations.all(), "payments", signature] as const,
+    terminalsSummary: () => [...adminQueryKeys.paycloudOperations.all(), "terminals-summary"] as const,
+    terminals: (signature: string) =>
+      [...adminQueryKeys.paycloudOperations.all(), "terminals", signature] as const,
+    merchants: () => [...adminQueryKeys.paycloudOperations.all(), "merchants"] as const,
+  },
 
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,
 

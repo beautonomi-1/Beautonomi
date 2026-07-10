@@ -141,6 +141,15 @@ import { isCompleteE164 } from "@/lib/phone";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
+import {
+  inferBookingCollectContext,
+  formatPaycloudCollectLabel,
+  PAYCLOUD_SETUP_LABEL,
+} from "@/lib/payments/paycloud-collect-cta";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 // Types are now in ./types.ts
 type AppointmentProductOrderLink = {
@@ -243,6 +252,7 @@ export function AppointmentSidebar({
   const { provider: portalProviderRaw } = useProviderPortal();
   const portalProvider = portalProviderRaw as PortalProviderProfile | null;
   const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const { currencyCode } = useReportCurrency();
   const recurringDetails = getRecurringDetails(selectedAppointment);
 
   /** Booking id for PATCH /bookings/:id (calendar rows may use composite ids or service-line ids). */
@@ -262,6 +272,7 @@ export function AppointmentSidebar({
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundReason, setRefundReason] = useState("");
   const [refundAmount, setRefundAmount] = useState(0);
+  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
 
   // Rating dialog state
   const [showRatingDialog, setShowRatingDialog] = useState(false);
@@ -4862,6 +4873,28 @@ export function AppointmentSidebar({
                           const effectivePaid = Math.max(0, totalPaid - totalRefunded);
                           const remainingBalance = Math.max(0, totalAmount - effectivePaid - walletAmt - giftAmt);
                           const isPartiallyPaid = effectivePaid > 0 && remainingBalance > 0;
+                          const unpaidAdditionalCharges = Array.isArray((selectedAppointment as any).additional_charges)
+                            ? (selectedAppointment as any).additional_charges
+                                .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
+                                .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+                            : Number((selectedAppointment as any).unpaid_additional_charges || 0);
+                          const paycloudOutstanding = Number(
+                            computeBookingOutstandingDisplay({
+                              totalAmount,
+                              totalPaid: effectivePaid,
+                              totalRefunded,
+                              walletAmount: walletAmt,
+                              giftCardAmount: giftAmt,
+                              unpaidAdditionalCharges,
+                              paymentStatus: selectedAppointment.payment_status,
+                            }).toFixed(2),
+                          );
+                          const paycloudContext = inferBookingCollectContext({
+                            totalAmount,
+                            totalPaid: effectivePaid,
+                            unpaidAdditionalCharges,
+                            outstanding: paycloudOutstanding,
+                          });
                           
                           return (
                             <>
@@ -4929,6 +4962,14 @@ export function AppointmentSidebar({
                           {isPartiallyPaid ? `Pay Remaining (R${remainingBalance.toFixed(2)})` : 'Mark as Paid (Cash)'}
                         </Button>
                         
+                        <PaycloudCollectButton
+                          amount={paycloudOutstanding > 0 ? paycloudOutstanding : totalAmount}
+                          currency={currencyCode}
+                          context={paycloudContext}
+                          onClick={() => setShowPaycloudDialog(true)}
+                          className="w-full text-xs"
+                        />
+
                         <Button 
                           className="w-full text-xs" 
                           variant="outline"
@@ -5871,6 +5912,48 @@ onRatingSubmitted={() => {
           if (!nextOpen) setCreatedBookingDialog(null);
         }}
       />
+      {selectedAppointment && activeBookingId && (() => {
+        const totalPaid = Number((selectedAppointment as any).total_paid || 0);
+        const totalRefunded = Number((selectedAppointment as any).total_refunded || 0);
+        const walletAmt = Number((selectedAppointment as any).wallet_amount || 0);
+        const giftAmt = Number((selectedAppointment as any).gift_card_amount || 0);
+        const totalAmount = selectedAppointment.total_amount || 0;
+        const unpaidAdditionalCharges = Array.isArray((selectedAppointment as any).additional_charges)
+          ? (selectedAppointment as any).additional_charges
+              .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
+              .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+          : Number((selectedAppointment as any).unpaid_additional_charges || 0);
+        const paymentAmount = Number(
+          computeBookingOutstandingDisplay({
+            totalAmount,
+            totalPaid,
+            totalRefunded,
+            walletAmount: walletAmt,
+            giftCardAmount: giftAmt,
+            unpaidAdditionalCharges,
+            paymentStatus: (selectedAppointment as any).payment_status,
+          }).toFixed(2),
+        );
+        return (
+          <PayCloudPaymentDialog
+            open={showPaycloudDialog}
+            onOpenChange={setShowPaycloudDialog}
+            amount={paymentAmount > 0 ? paymentAmount : totalAmount}
+            entityType="booking"
+            entityId={activeBookingId}
+            bookingId={activeBookingId}
+            bookingLocationId={selectedAppointment.location_id ?? null}
+            onSuccess={() => {
+              setShowPaycloudDialog(false);
+              updateSelectedAppointment({
+                ...selectedAppointment,
+                payment_status: "paid",
+              });
+              onRefresh?.();
+            }}
+          />
+        );
+      })()}
     </>
   );
 }

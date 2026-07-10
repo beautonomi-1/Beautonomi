@@ -11,6 +11,7 @@
   "regions": ["cpt1"],
   "crons": [
     { "path": "/api/cron/sync-paystack-terminal-payments", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/sync-paycloud-payments", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/send-reminders", "schedule": "0 * * * *" },
     { "path": "/api/cron/expire-booking-holds", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/expire-pending-payment-bookings", "schedule": "*/10 * * * *" },

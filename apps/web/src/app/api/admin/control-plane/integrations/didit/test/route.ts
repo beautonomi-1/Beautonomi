@@ -7,6 +7,7 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { createHmac } from "crypto";
+import { canonicaliseDiditWebhookBody } from "@/lib/identity-verification/provider/didit-provider";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,13 @@ export async function POST(request: NextRequest) {
     }
 
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+    if (!appUrl) {
+      return errorResponse(
+        "NEXT_PUBLIC_APP_URL is not set — cannot reach webhook endpoint. Set it to https://www.beautonomi.com (or your public app origin) and redeploy.",
+        "APP_URL_MISSING",
+        400,
+      );
+    }
     const webhookUrl = `${appUrl}/api/webhooks/didit`;
 
     const ts = Math.floor(Date.now() / 1000);
@@ -29,19 +37,8 @@ export async function POST(request: NextRequest) {
       timestamp:    ts,
     };
 
-    // Reproduce Didit's X-Signature-V2 canonical form: sorted keys, compact JSON.
-    const sortKeys = (obj: unknown): unknown => {
-      if (Array.isArray(obj)) return obj.map(sortKeys);
-      if (obj !== null && typeof obj === "object") {
-        return Object.keys(obj as Record<string, unknown>).sort().reduce<Record<string, unknown>>((acc, k) => {
-          acc[k] = sortKeys((obj as Record<string, unknown>)[k]);
-          return acc;
-        }, {});
-      }
-      return obj;
-    };
     const body = JSON.stringify(payload);
-    const canonical = JSON.stringify(sortKeys(payload));
+    const canonical = canonicaliseDiditWebhookBody(payload);
     const timestamp = String(ts);
     const signature = createHmac("sha256", webhookSecret)
       .update(canonical, "utf8")
@@ -54,21 +51,34 @@ export async function POST(request: NextRequest) {
           "Content-Type": "application/json",
           "x-signature-v2": signature,
           "x-timestamp": timestamp,
+          "User-Agent": "BeautonomiAdminDiditTest/1.0",
         },
         body,
       });
 
+      let responseBody: string | null = null;
+      try {
+        responseBody = await res.text();
+      } catch {
+        responseBody = null;
+      }
+
       return successResponse({
         ok: res.ok,
         status: res.status,
+        webhook_url: webhookUrl,
         message: res.ok
           ? "Test webhook sent and accepted"
-          : `Webhook endpoint returned ${res.status}`,
+          : `Webhook endpoint returned ${res.status}${responseBody ? `: ${responseBody.slice(0, 200)}` : ""}`,
+        response_body: responseBody,
       });
     } catch (fetchErr) {
       return successResponse({
         ok: false,
+        status: 0,
+        webhook_url: webhookUrl,
         message: `Failed to reach webhook endpoint: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+        response_body: null,
       });
     }
   } catch (err) {

@@ -22,6 +22,7 @@ import { recordProductOrderPayment } from "@/lib/orders/record-product-order-pay
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -79,18 +80,26 @@ const walkInLineSchema = z.object({
   product_variant_id: z.string().uuid().optional().nullable(),
 });
 
-const walkInSaleSchema = z.object({
-  items: z.array(walkInLineSchema).min(1),
-  payment_method: z.enum(["cash", "yoco", "card", "eft", "other"]),
-  payment_reference: z.string().max(200).optional(),
-  customer_name: z.string().max(100).optional(),
-  customer_phone: z.string().max(32).optional(),
-  /** Optional dial digits / ISO hint for national-format phones (matches clients/create). */
-  customer_phone_country_code: z.string().max(8).optional().nullable(),
-  customer_id: z.string().uuid().optional(),
-  /** Salon branch for walk-in attribution (matches provider dashboard location filter). */
-  location_id: z.string().uuid().optional(),
-});
+const walkInSaleSchema = z
+  .object({
+    items: z.array(walkInLineSchema).optional(),
+    payment_method: z.enum(["cash", "yoco", "card", "eft", "other", "paycloud"]),
+    payment_reference: z.string().max(200).optional(),
+    finalize_paycloud_order_id: z.string().uuid().optional(),
+    customer_name: z.string().max(100).optional(),
+    customer_phone: z.string().max(32).optional(),
+    /** Optional dial digits / ISO hint for national-format phones (matches clients/create). */
+    customer_phone_country_code: z.string().max(8).optional().nullable(),
+    customer_id: z.string().uuid().optional(),
+    /** Salon branch for walk-in attribution (matches provider dashboard location filter). */
+    location_id: z.string().uuid().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.finalize_paycloud_order_id) return;
+    if (!data.items?.length) {
+      ctx.addIssue({ code: "custom", message: "At least one item is required", path: ["items"] });
+    }
+  });
 
 type WalkInLine = z.infer<typeof walkInLineSchema>;
 
@@ -118,6 +127,130 @@ function variantLabel(optionValues: Record<string, unknown> | null | undefined, 
   return "Option";
 }
 
+async function finalizePaycloudWalkInOrder(params: {
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>;
+  providerId: string;
+  userId: string;
+  orderId: string;
+}) {
+  const { supabase, providerId, userId, orderId } = params;
+
+  const { data: order, error: orderErr } = await supabase
+    .from("product_orders")
+    .select("id, order_number, provider_id, payment_status, payment_reference, status, total_amount, order_source")
+    .eq("id", orderId)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+
+  if (orderErr) throw orderErr;
+  if (!order) return notFoundResponse("Order not found");
+  if (String(order.order_source ?? "") !== "walk_in") {
+    return errorResponse("Only walk-in product orders can be finalized this way.", "INVALID_ORDER", 400);
+  }
+  if (order.payment_status !== "paid") {
+    return errorResponse(
+      "Terminal payment has not settled yet. Wait a moment and try again.",
+      "PAYMENT_NOT_SETTLED",
+      400,
+    );
+  }
+  if (order.status === "delivered") {
+    const { data: items } = await supabase
+      .from("product_order_items")
+      .select("product_name, quantity, unit_price")
+      .eq("order_id", orderId);
+    return successResponse({ order: { ...order, items: items ?? [] } });
+  }
+
+  const { data: lineItems, error: itemsErr } = await supabase
+    .from("product_order_items")
+    .select("product_id, product_variant_id, quantity")
+    .eq("order_id", orderId);
+  if (itemsErr) throw itemsErr;
+
+  const posItems = (lineItems ?? []).map((item) => ({
+    type: "product" as const,
+    item_id: item.product_id,
+    product_variant_id: item.product_variant_id ?? null,
+    quantity: item.quantity,
+  }));
+
+  const stockValidation = await validatePosProductStock(supabase, providerId, posItems);
+  if (stockValidation) {
+    return errorResponse(stockValidation, "STOCK_ERROR", 400);
+  }
+
+  const totalAmount = Number(order.total_amount ?? 0);
+  let payResult = { transitionedToPaid: false, duplicate: false };
+  try {
+    payResult = await recordProductOrderPayment({
+      supabase: getSupabaseAdmin() as never,
+      productOrderId: orderId,
+      reference: order.payment_reference?.trim() || `walk_in_paycloud_${orderId}`,
+      amountMajor: totalAmount,
+      feesMajor: 0,
+      source: "walk_in_pos",
+      provider: "card_on_delivery",
+      platformHeld: false,
+    });
+  } catch (ledgerErr) {
+    console.error("[product-sales] finalize paycloud recordProductOrderPayment failed", {
+      orderId,
+      error: ledgerErr,
+    });
+  }
+
+  await applyPosProductStockDecrements(supabase, posItems);
+
+  try {
+    const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
+    await logSaleStockMovements(supabase, {
+      providerId,
+      referenceId: orderId,
+      actorUserId: userId,
+      lines: (lineItems ?? []).map((i) => ({
+        productId: i.product_id,
+        productVariantId: i.product_variant_id ?? null,
+        quantity: i.quantity,
+      })),
+    });
+  } catch (logErr) {
+    console.error("[product-sales] finalize paycloud stock movement log failed:", logErr);
+  }
+
+  const { data: updated, error: updateErr } = await supabase
+    .from("product_orders")
+    .update({
+      status: "delivered",
+      delivered_at: new Date().toISOString(),
+      paid_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+    .eq("provider_id", providerId)
+    .select()
+    .single();
+  if (updateErr) throw updateErr;
+
+  try {
+    const { notifyProductOrderPaidIfTransitioned } = await import(
+      "@/lib/notifications/notify-product-order-paid"
+    );
+    await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, orderId, {
+      transitionedToPaid: payResult.transitionedToPaid,
+    });
+  } catch (notifyErr) {
+    console.error("[product-sales] finalize paycloud notify failed:", notifyErr);
+  }
+
+  const { data: displayItems } = await supabase
+    .from("product_order_items")
+    .select("product_name, quantity, unit_price")
+    .eq("order_id", orderId);
+
+  return successResponse({ order: { ...updated, items: displayItems ?? [] } }, 200);
+}
+
 /**
  * POST /api/provider/product-sales — create a walk-in product sale
  * No platform fee, no online payment.
@@ -131,14 +264,28 @@ export async function POST(request: NextRequest) {
     const { user } = permissionCheck;
     const body = await request.json();
     const parsed = walkInSaleSchema.parse(body);
-    const mergedItems = mergeWalkInLines(parsed.items);
+    const mergedItems = mergeWalkInLines(parsed.items ?? []);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    if (parsed.finalize_paycloud_order_id) {
+      return finalizePaycloudWalkInOrder({
+        supabase,
+        providerId,
+        userId: user.id,
+        orderId: parsed.finalize_paycloud_order_id,
+      });
+    }
+
     if (parsed.payment_method === "yoco") {
       const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
       if (yocoGate) return yocoGate;
+    }
+
+    if (parsed.payment_method === "paycloud") {
+      const paycloudGate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
+      if (paycloudGate) return paycloudGate;
     }
 
     const { data: providerRow, error: provTenantErr } = await supabase
@@ -363,6 +510,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const isPendingPaycloud =
+      parsed.payment_method === "paycloud" && !parsed.payment_reference?.trim();
+
     const totalAmount = sumMoney(subtotal, taxAmount);
 
     const { data: seqData } = await supabase.rpc("nextval", {
@@ -383,18 +533,18 @@ export async function POST(request: NextRequest) {
         delivery_fee: "0.00",
         platform_fee: "0.00",
         total_amount: totalAmount.toFixed(2),
-        payment_method: paymentMethodForOrder,
+        payment_method: isPendingPaycloud ? "card" : paymentMethodForOrder,
         payment_reference: parsed.payment_reference ?? null,
-        payment_status: "paid",
-        status: "delivered",
+        payment_status: isPendingPaycloud ? "pending" : "paid",
+        status: isPendingPaycloud ? "confirmed" : "delivered",
         order_source: "walk_in",
         collection_location_id: parsed.location_id ?? null,
         staff_id: user.id,
         customer_name: parsed.customer_name ?? null,
         customer_phone: parsed.customer_phone ?? null,
-        confirmed_at: new Date().toISOString(),
-        delivered_at: new Date().toISOString(),
-        paid_at: new Date().toISOString(),
+        confirmed_at: isPendingPaycloud ? new Date().toISOString() : undefined,
+        delivered_at: isPendingPaycloud ? null : new Date().toISOString(),
+        paid_at: isPendingPaycloud ? null : new Date().toISOString(),
       })
       .select()
       .single();
@@ -414,6 +564,10 @@ export async function POST(request: NextRequest) {
 
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
     if (insertErr) throw insertErr;
+
+    if (isPendingPaycloud) {
+      return successResponse({ order: { ...order, items: orderItems } }, 201);
+    }
 
     // payment_transactions has no provider INSERT RLS (only service_role).
     // Use the admin client so the ledger write is not blocked by RLS — the

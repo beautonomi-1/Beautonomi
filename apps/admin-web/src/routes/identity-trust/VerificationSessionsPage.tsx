@@ -1,7 +1,7 @@
 /**
  * Identity & Trust → Verification Sessions
  *
- * Lists all identity verification sessions with filter, search, and manual actions.
+ * Didit identity-verification session ops console with filter, search, and manual actions.
  * Permission-gated to superadmin. All manual actions are audited.
  */
 import { useEffect, useState } from "react";
@@ -13,6 +13,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 type SessionRow = {
   id: string;
   persona_type: "customer" | "provider";
+  session_kind?: "user" | "business";
   provider: string;
   provider_session_id: string | null;
   status: string;
@@ -25,7 +26,6 @@ type SessionRow = {
   user_id: string;
   provider_id: string | null;
   tenant_id: string | null;
-  is_legacy?: boolean;
   user_email?: string;
   user_name?: string;
 };
@@ -53,7 +53,7 @@ export function VerificationSessionsPage() {
   const { allowed, denied } = useSuperadminPage("Identity & Trust is superadmin-only.");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ status: "", persona: "", flags: "" });
+  const [filter, setFilter] = useState({ status: "", persona: "", sessionKind: "", flags: "" });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -74,6 +74,7 @@ export function VerificationSessionsPage() {
         per_page: "25",
         ...(filter.status   ? { status:  filter.status }  : {}),
         ...(filter.persona  ? { persona: filter.persona } : {}),
+        ...(filter.sessionKind ? { session_kind: filter.sessionKind } : {}),
         ...(filter.flags === "needs_review"
           ? { has_flags: "true" }
           : filter.flags === "mismatch"
@@ -111,7 +112,7 @@ export function VerificationSessionsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Verification Sessions"
-        description="All identity-verification sessions. Legacy Sumsub rows are read-only."
+        description="Didit identity-verification sessions."
       />
 
       {msg && (
@@ -150,7 +151,15 @@ export function VerificationSessionsPage() {
           <option value="provider">Provider</option>
         </select>
         <select
-          value={filter.flags}
+          value={filter.sessionKind}
+          onChange={e => { setFilter(f => ({ ...f, sessionKind: e.target.value })); setPage(1); }}
+          className="rounded-md border border-input px-3 py-1.5 text-sm"
+        >
+          <option value="">All session types</option>
+          <option value="user">Person (KYC)</option>
+          <option value="business">Business (KYB)</option>
+        </select>
+        <select
           onChange={e => { setFilter(f => ({ ...f, flags: e.target.value })); setPage(1); }}
           className="rounded-md border border-input px-3 py-1.5 text-sm"
         >
@@ -175,7 +184,7 @@ export function VerificationSessionsPage() {
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="pb-2 pr-4">User / Provider</th>
                   <th className="pb-2 pr-4">Persona</th>
-                  <th className="pb-2 pr-4">Provider</th>
+                  <th className="pb-2 pr-4">Vendor</th>
                   <th className="pb-2 pr-4">Status</th>
                   <th className="pb-2 pr-4">Flags</th>
                   <th className="pb-2 pr-4">Created</th>
@@ -187,12 +196,17 @@ export function VerificationSessionsPage() {
                   <tr key={s.id} className="border-b last:border-0">
                     <td className="py-2 pr-4">
                       <div className="font-mono text-xs text-muted-foreground">{s.user_email ?? s.user_id.slice(0, 8) + "…"}</div>
-                      {s.is_legacy && (
-                        <span className="inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 mt-0.5">Legacy Sumsub</span>
+                      {s.user_name && (
+                        <div className="text-xs text-gray-700 mt-0.5">{s.user_name}</div>
                       )}
                     </td>
                     <td className="py-2 pr-4">
                       <span className="capitalize">{s.persona_type}</span>
+                      {s.session_kind === "business" && (
+                        <span className="ml-1 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-indigo-800">
+                          KYB
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-4">
                       <span className="font-mono text-xs">{s.provider}</span>
@@ -216,42 +230,40 @@ export function VerificationSessionsPage() {
                       {new Date(s.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-2">
-                      {!s.is_legacy && (
-                        <div className="flex flex-wrap gap-1">
-                          {["approved","rejected","in_progress"].includes(s.status) || (
-                            <button
-                              onClick={() => void doAction(s.id, "override", { status: "approved", reason: "Admin manual override" })}
-                              disabled={actionLoading !== null}
-                              className="text-xs rounded px-2 py-1 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
-                            >
-                              Approve
-                            </button>
-                          )}
+                      <div className="flex flex-wrap gap-1">
+                        {["approved","rejected","in_progress"].includes(s.status) || (
                           <button
-                            onClick={() => void doAction(s.id, "resend")}
+                            onClick={() => void doAction(s.id, "override", { status: "approved", reason: "Admin manual override" })}
                             disabled={actionLoading !== null}
-                            className="text-xs rounded px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            className="text-xs rounded px-2 py-1 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
                           >
-                            Resend
+                            Approve
                           </button>
+                        )}
+                        <button
+                          onClick={() => void doAction(s.id, "resend")}
+                          disabled={actionLoading !== null}
+                          className="text-xs rounded px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          onClick={() => void doAction(s.id, "reprocess-webhook")}
+                          disabled={actionLoading !== null}
+                          className="text-xs rounded px-2 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Reprocess
+                        </button>
+                        {(s.name_mismatch_flag || s.identity_dedupe_flag || s.under_age_flag) && (
                           <button
-                            onClick={() => void doAction(s.id, "reprocess-webhook")}
+                            onClick={() => void doAction(s.id, "resolve-flag", { flag: "all", rationale: "Admin reviewed" })}
                             disabled={actionLoading !== null}
-                            className="text-xs rounded px-2 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                            className="text-xs rounded px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                           >
-                            Reprocess
+                            Resolve flags
                           </button>
-                          {(s.name_mismatch_flag || s.identity_dedupe_flag || s.under_age_flag) && (
-                            <button
-                              onClick={() => void doAction(s.id, "resolve-flag", { flag: "all", rationale: "Admin reviewed" })}
-                              disabled={actionLoading !== null}
-                              className="text-xs rounded px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
-                            >
-                              Resolve flags
-                            </button>
-                          )}
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

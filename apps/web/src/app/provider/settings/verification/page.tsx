@@ -14,6 +14,10 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
 import { IdentityVerificationPanel } from "@/components/identity-verification/IdentityVerificationPanel";
 import {
+  ProviderVerificationHub,
+  type VerificationHubStatus,
+} from "@/components/provider-verification/ProviderVerificationHub";
+import {
   canSkipProviderVerification,
   providerVerificationOnboardingBanner,
   verificationRequiredForProviders,
@@ -21,7 +25,7 @@ import {
 
 type LegacyVerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
-interface StatusResponse {
+interface StatusResponse extends VerificationHubStatus {
   status: LegacyVerificationStatus;
   didit_available?: boolean;
   sumsub_available?: boolean;
@@ -167,14 +171,59 @@ export default function VerificationPage() {
         </SectionCard>
       )}
 
-      {/* Didit automated verification (primary flow) */}
-      {diditAvailable && (
-        <SectionCard title="Verification status">
-          <IdentityVerificationPanel
-            persona="provider"
-            isProvider
-            returnTo={typeof window !== "undefined" ? window.location.pathname : "/provider/settings/verification"}
-            onApproved={() => void loadStatus()}
+      {(diditAvailable || manualAvailable) && statusData && (
+        <SectionCard title="Verification">
+          <ProviderVerificationHub
+            statusData={statusData}
+            onRefresh={loadStatus}
+            manualUploadSection={
+              !isApproved && !isUnderReview && manualAvailable ? (
+                <div className="space-y-4 pt-2">
+                  {!diditAvailable && (
+                    <p className="text-sm text-muted-foreground">
+                      Upload a clear photo of your government-issued ID. Our team will review it manually.
+                    </p>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Document type</label>
+                      <select
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value)}
+                      >
+                        {DOC_TYPES.map((d) => (
+                          <option key={d.value} value={d.value}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Country of issue</label>
+                      <CountryOfIssueSelect value={country} onChange={setCountry} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Document photo</label>
+                    <input type="file" accept="image/*" onChange={handleFileChange} />
+                  </div>
+                  <Button onClick={submitManual} disabled={uploading || !file || !country}>
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Submit for review
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : undefined
+            }
           />
         </SectionCard>
       )}
@@ -187,101 +236,6 @@ export default function VerificationPage() {
               Identity verification is currently unavailable. Contact support if you need assistance.
             </AlertDescription>
           </Alert>
-        </SectionCard>
-      )}
-
-      {/* Manual document upload — shown when manual is enabled and not yet approved/under review */}
-      {!isApproved && !isUnderReview && !verificationOff && manualAvailable && (
-        <SectionCard
-          title={diditAvailable ? "Alternative: Manual document upload" : "Upload ID document"}
-          className="mt-4"
-        >
-          {!diditAvailable && (
-            <Alert className="mb-4">
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                Our automated verification is being set up. In the meantime upload a copy of your ID — our team will review it manually within 1–2 business days.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-4">
-            {/* Document type */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Document type</label>
-              <div className="flex flex-wrap gap-2">
-                {DOC_TYPES.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setDocType(opt.value)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                      docType === opt.value
-                        ? "bg-primary text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Country */}
-            <div>
-              <label htmlFor="country-of-issue" className="block text-sm font-medium mb-1">
-                Country of issue
-              </label>
-              <CountryOfIssueSelect
-                id="country-of-issue"
-                value={country}
-                onChange={setCountry}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-
-            {/* File upload */}
-            <div>
-              <label className="block text-sm font-medium mb-1">Document photo</label>
-              <label
-                className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-colors ${
-                  file ? "border-primary bg-pink-50" : "border-gray-300 hover:border-gray-400"
-                }`}
-              >
-                {file ? (
-                  <>
-                    <FileText className="h-8 w-8 text-primary" />
-                    <span className="text-sm font-medium text-gray-900">{file.name}</span>
-                    <span className="text-xs text-primary">Click to change</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-8 w-8 text-gray-400" />
-                    <span className="text-sm text-gray-600">Click to select a photo of your ID</span>
-                    <span className="text-xs text-gray-500">JPEG, PNG, WebP or PDF — max 10 MB</span>
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-              </label>
-            </div>
-
-            <Button
-              onClick={submitManual}
-              disabled={uploading || !file || !country.trim()}
-              className="w-full bg-primary hover:bg-[#e6006b]"
-            >
-              {uploading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Uploading…</> : "Submit for verification"}
-            </Button>
-
-            <p className="text-xs text-muted-foreground text-center">
-              Your document is stored securely and used only for identity verification.
-            </p>
-          </div>
         </SectionCard>
       )}
 

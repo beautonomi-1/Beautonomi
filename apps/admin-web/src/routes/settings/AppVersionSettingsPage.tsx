@@ -83,7 +83,12 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-function validatePlatformVersion(app: string, platform: string, value: PlatformVersion): string[] {
+function validatePlatformVersion(
+  app: string,
+  platform: string,
+  value: PlatformVersion,
+  codebaseVersion: string | null,
+): string[] {
   const prefix = `${app} ${platform}`;
   const errors: string[] = [];
   if (!SEMVER_PATTERN.test(value.min_version.trim())) {
@@ -99,6 +104,15 @@ function validatePlatformVersion(app: string, platform: string, value: PlatformV
   ) {
     errors.push(`${prefix}: latest version cannot be older than minimum version.`);
   }
+  if (
+    codebaseVersion &&
+    SEMVER_PATTERN.test(value.latest_version.trim()) &&
+    compareVersions(value.latest_version, codebaseVersion) > 0
+  ) {
+    errors.push(
+      `${prefix}: latest version cannot exceed codebase version (${codebaseVersion}). Set Latest only after the build is live in stores.`,
+    );
+  }
   try {
     const url = new URL(value.update_url);
     if (!["https:", "market:", "itms-apps:"].includes(url.protocol)) {
@@ -110,12 +124,15 @@ function validatePlatformVersion(app: string, platform: string, value: PlatformV
   return errors;
 }
 
-function validateForm(form: FullAppVersionData): string[] {
+function validateForm(
+  form: FullAppVersionData,
+  codebaseVersions: { customer: string | null; provider: string | null },
+): string[] {
   return [
-    ...validatePlatformVersion("Customer", "iOS", form.customer.ios),
-    ...validatePlatformVersion("Customer", "Android", form.customer.android),
-    ...validatePlatformVersion("Provider", "iOS", form.provider.ios),
-    ...validatePlatformVersion("Provider", "Android", form.provider.android),
+    ...validatePlatformVersion("Customer", "iOS", form.customer.ios, codebaseVersions.customer),
+    ...validatePlatformVersion("Customer", "Android", form.customer.android, codebaseVersions.customer),
+    ...validatePlatformVersion("Provider", "iOS", form.provider.ios, codebaseVersions.provider),
+    ...validatePlatformVersion("Provider", "Android", form.provider.android, codebaseVersions.provider),
   ];
 }
 
@@ -125,6 +142,16 @@ function rolloutState(value: PlatformVersion, nativeVersion: string | null) {
       tone: "warn" as const,
       label: "Codebase version unavailable",
       detail: "Could not read this app's version from app.config.js.",
+    };
+  }
+  if (
+    SEMVER_PATTERN.test(value.latest_version.trim()) &&
+    compareVersions(value.latest_version, nativeVersion) > 0
+  ) {
+    return {
+      tone: "danger" as const,
+      label: "Latest exceeds codebase",
+      detail: `Latest v${value.latest_version} is above codebase v${nativeVersion}. Users will see false update prompts.`,
     };
   }
   const belowMin = compareVersions(nativeVersion, value.min_version) < 0;
@@ -202,7 +229,7 @@ function PlatformForm({
         <p className="mt-0.5">{state.detail}</p>
       </div>
       {field("Minimum version", "min_version", "text", "Users below this version are blocked only when Force update is enabled.")}
-      {field("Latest version", "latest_version", "text", "Users below this version see an optional update prompt. Keep this at or above minimum.")}
+      {field("Latest version", "latest_version", "text", "Highest version live in the App Store / Play Store. Cannot exceed the codebase version in app.config.js until a new build ships.")}
       {field("Store URL", "update_url", "text", "Use the exact App Store or Play Store listing URL for this app and platform.")}
       {field("Force update", "force_update", "checkbox")}
     </div>
@@ -267,7 +294,8 @@ export function AppVersionSettingsPage() {
   const [form, setForm] = useState<FullAppVersionData>(DEFAULTS);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const validationErrors = validateForm(form);
+  const codebaseVersions = q.data?.codebase_versions ?? { customer: null, provider: null };
+  const validationErrors = validateForm(form, codebaseVersions);
 
   useEffect(() => {
     if (q.data) {
@@ -316,8 +344,6 @@ export function AppVersionSettingsPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const codebaseVersions = q.data?.codebase_versions ?? { customer: null, provider: null };
-
   return (
     <div className="space-y-6">
       <AdminPageHeader
@@ -340,7 +366,7 @@ export function AppVersionSettingsPage() {
           <p className="mt-1 leading-relaxed">
             Codebase versions are read from each app&apos;s <code className="rounded bg-blue-100 px-1">app.config.js</code>
             {" "}(customer v{codebaseVersions.customer ?? "?"}, provider v{codebaseVersions.provider ?? "?"}).
-            Set Latest first for soft prompts; raise Minimum and enable Force update only after the new build is live in both stores.
+            Set Latest to the highest version live in the stores (cannot exceed codebase until a new build ships). Raise Minimum and enable Force update only after that build is published on both stores.
           </p>
         </div>
         <div className="space-y-8">

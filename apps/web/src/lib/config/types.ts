@@ -155,6 +155,8 @@ export interface SafeVerificationPolicy {
   required_for_customers: boolean;
   cross_validate: boolean;
   min_age: number;
+  kyb_enabled: boolean;
+  kyb_required_for_business: boolean;
 }
 
 export interface SafeAuraModuleConfig {

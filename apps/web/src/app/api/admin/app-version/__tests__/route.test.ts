@@ -23,16 +23,19 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
 
+const customerLatest = codebaseVersions.customer ?? "1.0.0";
+const providerLatest = codebaseVersions.provider ?? "1.0.0";
+
 const validPair = {
   ios: {
-    min_version: "2.0.0",
-    latest_version: "2.0.0",
+    min_version: "1.0.0",
+    latest_version: customerLatest,
     force_update: false,
     update_url: "https://apps.apple.com/app/beautonomi",
   },
   android: {
-    min_version: "2.0.0",
-    latest_version: "2.0.0",
+    min_version: "1.0.0",
+    latest_version: customerLatest,
     force_update: false,
     update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
   },
@@ -40,12 +43,20 @@ const validPair = {
 
 const validBody = {
   customer: {
-    ios: { ...validPair.ios, min_version: "1.2.0" },
-    android: { ...validPair.android, force_update: true },
+    ios: { ...validPair.ios, min_version: "1.0.0", latest_version: customerLatest },
+    android: { ...validPair.android, force_update: true, latest_version: customerLatest },
   },
   provider: {
-    ios: { ...validPair.ios, min_version: "3.0.0", latest_version: "3.0.0" },
-    android: validPair.android,
+    ios: {
+      ...validPair.ios,
+      min_version: "1.0.0",
+      latest_version: providerLatest,
+    },
+    android: {
+      ...validPair.android,
+      min_version: "1.0.0",
+      latest_version: providerLatest,
+    },
   },
 };
 
@@ -202,8 +213,8 @@ describe("/api/admin/app-version", () => {
 
       expect(res.status).toBe(200);
       expect(body.error).toBeNull();
-      expect(body.data.customer.ios.min_version).toBe("1.2.0");
-      expect(body.data.provider.ios.min_version).toBe("3.0.0");
+      expect(body.data.customer.ios.min_version).toBe("1.0.0");
+      expect(body.data.provider.ios.min_version).toBe("1.0.0");
       expect(body.data.codebase_versions.customer).toBe(codebaseVersions.customer);
     });
 
@@ -320,6 +331,27 @@ describe("/api/admin/app-version", () => {
         provider: {
           ...validBody.provider,
           android: { ...validBody.provider.android, latest_version: "2026.05" },
+        },
+      };
+      const req = new NextRequest("http://localhost/api/admin/app-version", {
+        method: "PATCH",
+        body: JSON.stringify(bad),
+        headers: { "Content-Type": "application/json" },
+      });
+      const res = await PATCH(req);
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when latest version exceeds codebase version", async () => {
+      mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn() });
+
+      const { PATCH } = await import("../route");
+      const bad = {
+        ...validBody,
+        customer: {
+          ...validBody.customer,
+          ios: { ...validBody.customer.ios, latest_version: "99.99.99" },
         },
       };
       const req = new NextRequest("http://localhost/api/admin/app-version", {

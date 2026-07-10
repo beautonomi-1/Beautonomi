@@ -37,6 +37,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import Link from "next/link";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import {
+  formatPaycloudCollectLabel,
+  PAYCLOUD_SETUP_LABEL,
+} from "@/lib/payments/paycloud-collect-cta";
 
 interface ServiceItem {
   id: string;
@@ -69,19 +77,21 @@ interface CheckoutDialogProps {
   isOpen: boolean;
   onClose: () => void;
   checkoutData: CheckoutData | null;
+  bookingLocationId?: string | null;
   onComplete: (
     paymentMethod: string,
     tipAmount: number,
     discountAmount: number,
-    notes: string
-  ) => void;
+    notes: string,
+    options?: { sendReceipt?: boolean; paycloudSettled?: boolean },
+  ) => void | Promise<void>;
 }
 
 type PaymentMethod = "card" | "cash" | "mobile" | "gift_card" | "split";
 
 const PAYMENT_METHODS: { id: PaymentMethod; name: string; description: string; icon: React.ElementType }[] = [
   { id: "cash", name: "Cash", description: "Pay with cash", icon: Banknote },
-  { id: "card", name: "Card (Terminal)", description: "Process via card terminal", icon: CreditCard },
+  { id: "card", name: "Card machine", description: "Charge your Beautonomi card machine", icon: CreditCard },
   { id: "mobile", name: "EFT / Bank Transfer", description: "Instant EFT or bank transfer", icon: Smartphone },
   { id: "gift_card", name: "Gift Card", description: "Redeem gift card balance", icon: Gift },
   { id: "split", name: "Split Payment", description: "Split between multiple methods", icon: Wallet },
@@ -93,9 +103,13 @@ export function CheckoutDialog({
   isOpen,
   onClose,
   checkoutData,
+  bookingLocationId = null,
   onComplete,
 }: CheckoutDialogProps) {
   const locale = useTenantLocaleTag();
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
+  const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [tipPercentage, setTipPercentage] = useState(0);
   const [customTip, setCustomTip] = useState("");
@@ -106,6 +120,7 @@ export function CheckoutDialog({
   const [sendReceipt, setSendReceipt] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<"review" | "payment" | "complete">("review");
+  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
 
   // Calculate totals
   const calculations = useMemo(() => {
@@ -151,14 +166,39 @@ export function CheckoutDialog({
     }).format(amount);
   };
 
+  const visiblePaymentMethods = useMemo(() => {
+    if (!paycloudEnabled) {
+      return PAYMENT_METHODS.filter((m) => m.id !== "card");
+    }
+    return PAYMENT_METHODS;
+  }, [paycloudEnabled]);
+
+  const cardCollectLabel =
+    paycloudReady || paycloudInFlight
+      ? formatPaycloudCollectLabel({
+          context: "booking",
+          amount: calculations.total,
+          currency: LAST_RESORT_CURRENCY,
+          inFlight: paycloudInFlight,
+        })
+      : PAYCLOUD_SETUP_LABEL;
+
   const handleComplete = async () => {
+    if (paymentMethod === "card" && paycloudEnabled) {
+      if (!paycloudReady && !paycloudInFlight) {
+        return;
+      }
+      setShowPaycloudDialog(true);
+      return;
+    }
     setIsProcessing(true);
     try {
       await onComplete(
         paymentMethod,
         calculations.tip,
         calculations.discount,
-        notes
+        notes,
+        { sendReceipt },
       );
       setStep("complete");
       // Auto-close after 2 seconds on success
@@ -175,6 +215,26 @@ export function CheckoutDialog({
     }
   };
 
+  const handlePaycloudSuccess = async () => {
+    setShowPaycloudDialog(false);
+    setIsProcessing(true);
+    try {
+      await onComplete("card", calculations.tip, calculations.discount, notes, {
+        sendReceipt,
+        paycloudSettled: true,
+      });
+      setStep("complete");
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error("Checkout failed after PayCloud payment:", error);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleClose = () => {
     setStep("review");
     setPaymentMethod("card");
@@ -183,12 +243,14 @@ export function CheckoutDialog({
     setDiscountValue("");
     setPromoCode("");
     setNotes("");
+    setShowPaycloudDialog(false);
     onClose();
   };
 
   if (!checkoutData) return null;
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header */}
@@ -440,9 +502,40 @@ export function CheckoutDialog({
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold">Payment Method</Label>
                     <div className="grid grid-cols-2 gap-2">
-                      {PAYMENT_METHODS.map((method) => {
+                      {visiblePaymentMethods.map((method) => {
                         const Icon = method.icon;
                         const isSelected = paymentMethod === method.id;
+                        const isCardSetupBlocked =
+                          method.id === "card" && paycloudEnabled && !paycloudReady && !paycloudInFlight;
+                        const displayName =
+                          method.id === "card" && paycloudEnabled ? cardCollectLabel : method.name;
+                        const displayDescription =
+                          method.id === "card" && isCardSetupBlocked
+                            ? "Finish card machine setup to collect"
+                            : method.description;
+                        const cardSetupHref = blockers[0]?.href ?? "/provider/settings/sales/card-machines";
+                        if (isCardSetupBlocked) {
+                          return (
+                            <Link
+                              key={method.id}
+                              href={cardSetupHref}
+                              className={cn(
+                                "relative p-3 rounded-xl border-2 text-left transition-all",
+                                "border-amber-200 hover:border-amber-300 bg-amber-50/50",
+                              )}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700">
+                                  <Icon className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-sm text-amber-900">{displayName}</p>
+                                  <p className="text-xs text-amber-700/80 mt-0.5">{displayDescription}</p>
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        }
                         return (
                           <button
                             key={method.id}
@@ -474,9 +567,9 @@ export function CheckoutDialog({
                                   "font-medium text-sm",
                                   isSelected ? "text-primary" : "text-gray-900"
                                 )}>
-                                  {method.name}
+                                  {displayName}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{displayDescription}</p>
                               </div>
                             </div>
                           </button>
@@ -585,5 +678,18 @@ export function CheckoutDialog({
         )}
       </DialogContent>
     </Dialog>
+    {paycloudEnabled && (
+      <PayCloudPaymentDialog
+        open={showPaycloudDialog}
+        onOpenChange={setShowPaycloudDialog}
+        amount={calculations.total}
+        entityType="booking"
+        entityId={checkoutData.appointment_id}
+        bookingId={checkoutData.appointment_id}
+        bookingLocationId={bookingLocationId}
+        onSuccess={handlePaycloudSuccess}
+      />
+    )}
+    </>
   );
 }

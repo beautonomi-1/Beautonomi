@@ -12,6 +12,7 @@ import {
 import { updateTransferRecipient } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
 import { z } from "zod";
 
 const updateAccountSchema = z.object({
@@ -207,6 +208,21 @@ export async function PATCH(
 
     if (updateError) {
       throw updateError;
+    }
+
+    const nameForMatch =
+      (updatedAccount as { account_name?: string | null })?.account_name ??
+      validationResult.data.account_name;
+    if (updatedAccount?.id && nameForMatch && validationResult.data.account_name) {
+      try {
+        await applyPayoutNameMatchForAccount(
+          providerId,
+          updatedAccount.id as string,
+          nameForMatch,
+        );
+      } catch (matchErr) {
+        console.warn("[payout-accounts] name match check failed:", matchErr);
+      }
     }
 
     return successResponse(updatedAccount);

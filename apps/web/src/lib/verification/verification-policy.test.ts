@@ -29,6 +29,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   })),
 }));
 
+vi.mock("@/lib/verification/provider-verification-state", () => ({
+  isProviderVerificationPlanComplete: vi.fn(async () => false),
+}));
+
 import { checkMultipleFeaturesServer } from "@/lib/server/feature-flags";
 import { diditEnvPresent } from "@/lib/identity-verification/provider/didit-provider";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -38,14 +42,17 @@ import {
   isCustomerVerificationApproved,
   type VerificationMode,
 } from "@/lib/verification/verification-policy";
+import { isProviderVerificationPlanComplete } from "@/lib/verification/provider-verification-state";
 
 const mockFlags = checkMultipleFeaturesServer as ReturnType<typeof vi.fn>;
 const mockEnv = diditEnvPresent as ReturnType<typeof vi.fn>;
 const mockAdmin = getSupabaseAdmin as ReturnType<typeof vi.fn>;
+const mockPlanComplete = isProviderVerificationPlanComplete as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockEnv.mockReturnValue(true);
+  mockPlanComplete.mockResolvedValue(false);
 });
 
 // ── resolveVerificationPolicy ─────────────────────────────────────────────────
@@ -170,7 +177,15 @@ describe("isProviderVerificationApproved", () => {
                 return { data: kycStatus ? { status: kycStatus } : null, error: null };
               }
               if (table === "providers") {
-                return { data: { is_verified: isVerified, user_id: "user-1" }, error: null };
+                return {
+                  data: {
+                    is_verified: isVerified,
+                    user_id: "user-1",
+                    payee_kind: "individual",
+                    tenant_id: null,
+                  },
+                  error: null,
+                };
               }
               if (table === "users") {
                 return {
@@ -204,6 +219,72 @@ describe("isProviderVerificationApproved", () => {
   it('returns false when nothing is approved', async () => {
     stubAdmin("pending", false, false);
     expect(await isProviderVerificationApproved("p1")).toBe(false);
+  });
+
+  it("returns false when KYB required even if is_verified badge is set", async () => {
+    mockFlags.mockResolvedValue({
+      "verification.didit.enabled": true,
+      "verification.manual.enabled": true,
+      "verification.didit.kyb.enabled": true,
+      "verification.didit.kyb.required_for_business": true,
+    });
+    mockAdmin.mockReturnValue({
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              if (table === "providers") {
+                return {
+                  data: {
+                    is_verified: true,
+                    user_id: "user-1",
+                    payee_kind: "business",
+                    tenant_id: null,
+                  },
+                  error: null,
+                };
+              }
+              return { data: null, error: null };
+            },
+          }),
+        }),
+      }),
+    });
+    mockPlanComplete.mockResolvedValue(false);
+    expect(await isProviderVerificationApproved("p1")).toBe(false);
+  });
+
+  it("returns true when KYB required and plan is complete", async () => {
+    mockFlags.mockResolvedValue({
+      "verification.didit.enabled": true,
+      "verification.manual.enabled": true,
+      "verification.didit.kyb.enabled": true,
+      "verification.didit.kyb.required_for_business": true,
+    });
+    mockAdmin.mockReturnValue({
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              if (table === "providers") {
+                return {
+                  data: {
+                    is_verified: false,
+                    user_id: "user-1",
+                    payee_kind: "business",
+                    tenant_id: null,
+                  },
+                  error: null,
+                };
+              }
+              return { data: null, error: null };
+            },
+          }),
+        }),
+      }),
+    });
+    mockPlanComplete.mockResolvedValue(true);
+    expect(await isProviderVerificationApproved("p1")).toBe(true);
   });
 });
 

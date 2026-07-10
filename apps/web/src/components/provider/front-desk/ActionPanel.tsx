@@ -250,6 +250,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   unpaidAdditionalCharges={unpaidAdditionalCharges}
                   paymentStatus={(booking as any).payment_status}
                   currency={booking.currency || tenantCurrency}
+                  bookingLocationId={(booking as any).location_id ?? null}
                   onComplete={onActionComplete}
                   variant="footer"
                 />

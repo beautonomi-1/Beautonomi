@@ -10,6 +10,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { ProviderDetail, str, OWNERSHIP_STATUS_LABELS, TERMINAL_VENDOR_LABELS } from "./types";
+import { ProviderPayeeEntityPanel } from "../components/ProviderPayeeEntityPanel";
 
 type Props = {
   id: string;
@@ -427,6 +428,8 @@ export function ProviderOverviewTab({
           </ul>
         )}
       </AdminPanel>
+
+      <ProviderPayeeEntityPanel providerId={providerCanonicalId || id} />
     </div>
   );
 }

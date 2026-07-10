@@ -23,6 +23,9 @@ import * as Location from "expo-location";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -921,10 +924,23 @@ export default function BookingDetailScreen() {
 
   // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
   const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
+  const [paycloudTerminalAmount, setPaycloudTerminalAmount] = useState(0);
+  const [paycloudEntityType, setPaycloudEntityType] = useState<
+    "booking" | "additional_charge"
+  >("booking");
+  const [paycloudEntityId, setPaycloudEntityId] = useState(id ?? "");
   const { integration: yocoIntegration } = useYocoIntegration();
+  const { settings: paycloudSettings } = usePayCloudSettings();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const paycloudReady =
+    paycloudEnabled &&
+    Boolean(paycloudSettings?.ready);
+  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const markPaidPaymentMethods = useMemo(
     () => buildMarkPaidPaymentMethods(paystackTerminalEnabled, yocoEnabled),
     [paystackTerminalEnabled, yocoEnabled],
@@ -3886,6 +3902,33 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>Mark paid</Text>
                     )}
                   </TouchableOpacity>
+                  {canCreateSales && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setPaycloudEntityType("booking");
+                        setPaycloudEntityId(id);
+                        setPaycloudTerminalAmount(Number(outstanding.toFixed(2)));
+                        setShowPaycloudPayment(true);
+                      }}
+                      style={twStyle("rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-4")}
+                    >
+                      <Text style={twStyle("font-medium text-slate-900")}>
+                        {formatPaycloudCollectLabel({
+                          context: "booking",
+                          amount: outstanding,
+                          inFlight: paycloudInFlight,
+                        })}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {canCreateSales && paycloudEnabled && !paycloudCollectEnabled && outstanding > 0 && (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
+                      style={twStyle("rounded-xl border border-dashed border-slate-300 bg-white py-2.5 px-4")}
+                    >
+                      <Text style={twStyle("font-medium text-slate-600")}>{PAYCLOUD_SETUP_LABEL}</Text>
+                    </TouchableOpacity>
+                  )}
                   {canCreateSales && yocoEnabled && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
                     <TouchableOpacity
                       onPress={() => void openYocoCheckout()}
@@ -4109,6 +4152,34 @@ export default function BookingDetailScreen() {
                           <Text style={twStyle("text-xs font-medium text-white text-center")}>Mark paid</Text>
                         )}
                       </TouchableOpacity>
+                      {paycloudEnabled && paycloudCollectEnabled ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setPaycloudEntityType("additional_charge");
+                            setPaycloudEntityId(c.id);
+                            setPaycloudTerminalAmount(Number(c.amount ?? 0));
+                            setShowPaycloudPayment(true);
+                          }}
+                          style={twStyle("flex-1 min-w-[120px] rounded-lg border border-slate-300 bg-slate-50 py-2 px-3 items-center")}
+                        >
+                          <Text style={twStyle("text-xs font-medium text-slate-900 text-center")}>
+                            {formatPaycloudCollectLabel({
+                              context: "additional_charge",
+                              amount: Number(c.amount ?? 0),
+                              inFlight: paycloudInFlight,
+                            })}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : paycloudEnabled ? (
+                        <TouchableOpacity
+                          onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
+                          style={twStyle("flex-1 min-w-[120px] rounded-lg border border-dashed border-slate-300 bg-white py-2 px-3 items-center")}
+                        >
+                          <Text style={twStyle("text-xs font-medium text-slate-600 text-center")}>
+                            {PAYCLOUD_SETUP_LABEL}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   )}
                 </View>
@@ -4707,6 +4778,21 @@ export default function BookingDetailScreen() {
           })()}
         </View>
       </BottomSheet>
+
+      <PayCloudPaymentSheet
+        visible={showPaycloudPayment}
+        onClose={() => setShowPaycloudPayment(false)}
+        amount={paycloudTerminalAmount}
+        currency={b.currency ?? getTenantDefaultCurrency()}
+        entityType={paycloudEntityType}
+        entityId={paycloudEntityId}
+        bookingId={id}
+        bookingLocationId={b.location_id ?? null}
+        onPaymentSuccess={() => {
+          setShowPaycloudPayment(false);
+          void refreshBookingDetail();
+        }}
+      />
 
       {/* Yoco: pending POS sale → terminal (sale_id + booking_id) → complete sale + mark booking paid */}
       <YocoPaymentSheet

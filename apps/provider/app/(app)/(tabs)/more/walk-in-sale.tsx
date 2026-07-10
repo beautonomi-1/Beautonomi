@@ -25,6 +25,9 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
+import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import {
@@ -156,11 +159,12 @@ type CartLine = {
   tax_rate_percent: number;
 };
 
-type WalkInPaymentMethod = "cash" | "yoco" | "paystack_terminal" | "card" | "eft" | "other";
+type WalkInPaymentMethod = "cash" | "yoco" | "paycloud" | "paystack_terminal" | "card" | "eft" | "other";
 
 const WALK_IN_PAYMENT_METHODS: { id: WalkInPaymentMethod; label: string }[] = [
   { id: "cash", label: "Cash" },
   { id: "yoco", label: "Yoco" },
+  { id: "paycloud", label: "Card machine" },
   { id: "paystack_terminal", label: "Paystack Terminal" },
   { id: "card", label: "Card manual" },
   { id: "eft", label: "EFT" },
@@ -231,6 +235,13 @@ export default function WalkInSaleScreen() {
   const { selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { settings: paycloudSettings } = usePayCloudSettings();
+  const paycloudReady =
+    paycloudEnabled &&
+    Boolean(paycloudSettings?.ready);
+  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -239,6 +250,10 @@ export default function WalkInSaleScreen() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhoneE164, setCustomerPhoneE164] = useState("");
   const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
+  const [paycloudLinkedOrderId, setPaycloudLinkedOrderId] = useState<string | null>(null);
+  const [paycloudLinkedTotal, setPaycloudLinkedTotal] = useState<number | null>(null);
+  const [preparingPaycloud, setPreparingPaycloud] = useState(false);
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
     code: string;
@@ -339,7 +354,10 @@ export default function WalkInSaleScreen() {
     if (!yocoEnabled && paymentMethod === "yoco") {
       setPaymentMethod("cash");
     }
-  }, [paystackTerminalEnabled, yocoEnabled, paymentMethod]);
+    if (!paycloudCollectEnabled && paymentMethod === "paycloud") {
+      setPaymentMethod("cash");
+    }
+  }, [paystackTerminalEnabled, yocoEnabled, paycloudCollectEnabled, paymentMethod]);
 
   const openNewSaleSheet = useCallback(() => {
     setSelectedSale(null);
@@ -353,6 +371,9 @@ export default function WalkInSaleScreen() {
     setClientPickSearch("");
     setLinkedClient(null);
     setCheckoutError(null);
+    setPaycloudLinkedOrderId(null);
+    setPaycloudLinkedTotal(null);
+    setShowPaycloudPayment(false);
     setCreateOpen(true);
     refreshProducts();
   }, [refreshProducts]);
@@ -471,7 +492,7 @@ export default function WalkInSaleScreen() {
   }, [cart]);
 
   const submitSale = useCallback(
-    async (paymentRef?: string) => {
+    async (paymentRef?: string, finalizePaycloudOrderId?: string) => {
       const phoneErr = validateE164Phone(customerPhoneE164);
       if (phoneErr) {
         setCheckoutError(phoneErr);
@@ -485,9 +506,10 @@ export default function WalkInSaleScreen() {
         product_variant_id: c.product_variant_id ?? undefined,
       }));
       const { data, error: err, errorCode } = await postSale("/api/provider/product-sales", {
-        items,
+        ...(finalizePaycloudOrderId ? {} : { items }),
         payment_method: paymentMethod,
         payment_reference: paymentRef,
+        finalize_paycloud_order_id: finalizePaycloudOrderId,
         customer_id: linkedClient?.customer_id,
         customer_name: customerName.trim() || undefined,
         customer_phone: customerPhoneE164.trim() || undefined,
@@ -518,6 +540,9 @@ export default function WalkInSaleScreen() {
       );
       setCreateOpen(false);
       setShowYocoPayment(false);
+      setShowPaycloudPayment(false);
+      setPaycloudLinkedOrderId(null);
+      setPaycloudLinkedTotal(null);
       setVariantPickProduct(null);
       setCart([]);
       setCustomerName("");
@@ -552,6 +577,55 @@ export default function WalkInSaleScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (paymentMethod === "yoco") {
       setShowYocoPayment(true);
+      return;
+    }
+    if (paymentMethod === "paycloud") {
+      const phoneErr = validateE164Phone(customerPhoneE164);
+      if (phoneErr) {
+        setCheckoutError(phoneErr);
+        Alert.alert("Invalid phone", phoneErr);
+        return;
+      }
+      setCheckoutError(null);
+      setPreparingPaycloud(true);
+      try {
+        const items = cart.map((c) => ({
+          product_id: c.product_id,
+          quantity: c.quantity,
+          product_variant_id: c.product_variant_id ?? undefined,
+        }));
+        const { data, error: err, errorCode } = await postSale("/api/provider/product-sales", {
+          items,
+          payment_method: "paycloud",
+          customer_id: linkedClient?.customer_id,
+          customer_name: customerName.trim() || undefined,
+          customer_phone: customerPhoneE164.trim() || undefined,
+          ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
+        });
+        if (err) {
+          const friendly = walkInSaleErrorMessage(errorCode, err);
+          setCheckoutError(friendly);
+          Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
+          return;
+        }
+        const rawPayload = data as { order?: WalkInSale } | WalkInSale | null | undefined;
+        const order =
+          rawPayload && typeof rawPayload === "object" && "order" in rawPayload && rawPayload.order
+            ? rawPayload.order
+            : rawPayload && typeof rawPayload === "object" && "order_number" in rawPayload
+              ? (rawPayload as WalkInSale)
+              : undefined;
+        if (!order?.id) {
+          Alert.alert("Error", "Could not prepare card sale");
+          return;
+        }
+        const serverTotal = Number(order.total_amount ?? cartTotalDue);
+        setPaycloudLinkedOrderId(order.id);
+        setPaycloudLinkedTotal(Number.isFinite(serverTotal) ? serverTotal : cartTotalDue);
+        setShowPaycloudPayment(true);
+      } finally {
+        setPreparingPaycloud(false);
+      }
       return;
     }
     if (paymentMethod === "paystack_terminal") {
@@ -590,7 +664,17 @@ export default function WalkInSaleScreen() {
       return;
     }
     await submitSale();
-  }, [cart, paymentMethod, submitSale, cartTotalDue]);
+  }, [
+    cart,
+    paymentMethod,
+    submitSale,
+    cartTotalDue,
+    customerName,
+    customerPhoneE164,
+    linkedClient,
+    postSale,
+    selectedLocationId,
+  ]);
 
   const lineCountForSale = (sale: WalkInSale) => {
     const rows = sale.items ?? sale.product_order_items ?? [];
@@ -1103,7 +1187,9 @@ export default function WalkInSaleScreen() {
                   {WALK_IN_PAYMENT_METHODS.filter(
                     (method) =>
                       (paystackTerminalEnabled || method.id !== "paystack_terminal") &&
-                      (yocoEnabled || method.id !== "yoco"),
+                      (yocoEnabled || method.id !== "yoco") &&
+                      (paycloudEnabled || method.id !== "paycloud") &&
+                      (paycloudCollectEnabled || method.id !== "paycloud"),
                   ).map((method) => {
                     const active = paymentMethod === method.id;
                     return (
@@ -1125,6 +1211,26 @@ export default function WalkInSaleScreen() {
                       </TouchableOpacity>
                     );
                   })}
+                  {paycloudEnabled && !paycloudCollectEnabled ? (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
+                      style={{
+                        width: "48%",
+                        marginHorizontal: "1%",
+                        marginBottom: 8,
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderStyle: "dashed",
+                        borderColor: Colors.gray[300],
+                        backgroundColor: Colors.white,
+                      }}
+                    >
+                      <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
+                        {PAYCLOUD_SETUP_LABEL}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 <TouchableOpacity
@@ -1267,7 +1373,7 @@ export default function WalkInSaleScreen() {
 
                 <ActionButton
                   label={
-                    preparingPaystackTerminal
+                    preparingPaystackTerminal || preparingPaycloud
                       ? "Preparing terminal..."
                       : creating
                         ? "Completing…"
@@ -1276,7 +1382,7 @@ export default function WalkInSaleScreen() {
                           : `Complete sale · ${formatCurrency(cartTotalDue)}`
                   }
                   onPress={handleCompleteSale}
-                  loading={creating || preparingPaystackTerminal}
+                  loading={creating || preparingPaystackTerminal || preparingPaycloud}
                   fullWidth
                 />
               </>
@@ -1299,6 +1405,21 @@ export default function WalkInSaleScreen() {
           await submitSale(result.reference);
         }}
       />
+
+      {paycloudLinkedOrderId ? (
+        <PayCloudPaymentSheet
+          visible={showPaycloudPayment}
+          onClose={() => setShowPaycloudPayment(false)}
+          amount={paycloudLinkedTotal ?? cartTotalDue}
+          currency={tenantCurrency}
+          entityType="product_order"
+          entityId={paycloudLinkedOrderId}
+          bookingLocationId={selectedLocationId}
+          onPaymentSuccess={async () => {
+            await submitSale(undefined, paycloudLinkedOrderId);
+          }}
+        />
+      ) : null}
 
       <BottomSheet
         visible={!!paystackTerminalPrompt}

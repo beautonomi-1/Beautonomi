@@ -83,6 +83,9 @@ import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import RateCustomerModal from "@/components/reviews/rate-customer-modal";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
+import { inferBookingCollectContext } from "@/lib/payments/paycloud-collect-cta";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { buildSaleItemsFromBookingDetail } from "@/lib/provider-booking/build-sale-items-from-booking-detail";
@@ -128,6 +131,7 @@ type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 export default function ProviderBookingDetail() {
   const { format: formatMoney } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const params = useParams();
   const router = useRouter();
@@ -188,6 +192,13 @@ export default function ProviderBookingDetail() {
   const yocoBookingSaleIdRef = useRef<string | null>(null);
   const yocoPendingChargeAmountRef = useRef<number | null>(null);
   const yocoPendingSaleOutstandingSnapshotRef = useRef<number | null>(null);
+
+  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
+  const [paycloudDialogAmount, setPaycloudDialogAmount] = useState(0);
+  const [paycloudEntityType, setPaycloudEntityType] = useState<
+    "booking" | "additional_charge"
+  >("booking");
+  const [paycloudEntityId, setPaycloudEntityId] = useState(bookingId);
 
   // Paystack Terminal (platform-held in-person QR/link collection)
   const [paystackTerminalReady, setPaystackTerminalReady] = useState(false);
@@ -287,6 +298,7 @@ export default function ProviderBookingDetail() {
       cancelled = true;
     };
   }, []);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -786,6 +798,49 @@ export default function ProviderBookingDetail() {
     setShowYocoPayment(true);
   }, [booking, bookingId, yocoBookingSaleId]);
 
+  const openPaycloudCheckout = useCallback(() => {
+    const b = booking;
+    if (!b) return;
+    const unpaidChargesTotal = Array.isArray((b as any).additional_charges)
+      ? (b as any).additional_charges
+          .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
+          .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+      : Number((b as any).unpaid_additional_charges || 0);
+    const chargeAmount = Number(
+      computeBookingOutstandingDisplay({
+        totalAmount: Number(b.total_amount ?? 0),
+        totalPaid: Number(b.total_paid ?? 0),
+        totalRefunded: Number(b.total_refunded ?? 0),
+        walletAmount: Number((b as any).wallet_amount ?? 0),
+        giftCardAmount: Number((b as any).gift_card_amount ?? 0),
+        unpaidAdditionalCharges: unpaidChargesTotal,
+        paymentStatus: b.payment_status,
+      }).toFixed(2),
+    );
+    if (chargeAmount <= 0) {
+      toast.error("There is no remaining balance to collect.");
+      return;
+    }
+    setPaycloudEntityType("booking");
+    setPaycloudEntityId(bookingId);
+    setPaycloudDialogAmount(chargeAmount);
+    setShowPaycloudPayment(true);
+  }, [booking, bookingId]);
+
+  const openPaycloudAdditionalCharge = useCallback(
+    (chargeId: string, chargeAmount: number) => {
+      if (chargeAmount <= 0) {
+        toast.error("There is no remaining balance to collect.");
+        return;
+      }
+      setPaycloudEntityType("additional_charge");
+      setPaycloudEntityId(chargeId);
+      setPaycloudDialogAmount(chargeAmount);
+      setShowPaycloudPayment(true);
+    },
+    [],
+  );
+
   const openPaystackTerminalCollection = useCallback(async () => {
     const b = booking as ProviderBookingDetail | null;
     if (!b) return;
@@ -1249,6 +1304,14 @@ export default function ProviderBookingDetail() {
     b.payment_status !== "paid" &&
     !!(b.customer_email || b.customer_phone);
   const showYocoPayButton = yocoEnabled && yocoIntegrationEnabled && canMarkPaid;
+  const showPaycloudPayButton = paycloudEnabled && canMarkPaid;
+  const paycloudCollectContext = inferBookingCollectContext({
+    totalAmount,
+    totalPaid,
+    unpaidAdditionalCharges: unpaidChargesTotal,
+    outstanding,
+  });
+  const bookingCurrency = (b as { currency?: string }).currency ?? "ZAR";
   const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
   const actionModel = useMemo(
     () =>
@@ -2197,6 +2260,16 @@ export default function ProviderBookingDetail() {
                         >
                           Mark as Paid (Walk-in/In-Salon)
                         </Button>
+                        {paycloudEnabled && (
+                          <PaycloudCollectButton
+                            amount={Number(c.amount ?? 0)}
+                            currency={bookingCurrency}
+                            context="additional_charge"
+                            onClick={() =>
+                              openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0))
+                            }
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -2411,6 +2484,17 @@ export default function ProviderBookingDetail() {
               <CreditCard className="w-4 h-4 mr-2" />
               {preparingYocoSale ? "Preparing…" : "Pay with Yoco (terminal)"}
             </Button>
+          )}
+          {showPaycloudPayButton && (
+            <PaycloudCollectButton
+              amount={outstanding}
+              currency={bookingCurrency}
+              context={paycloudCollectContext}
+              onClick={openPaycloudCheckout}
+              className="flex-1 min-h-[44px] border-slate-300 text-slate-900 hover:bg-slate-50"
+              variant="outline"
+              size="default"
+            />
           )}
           {showPaystackTerminalButton && (
             <Button
@@ -3077,6 +3161,23 @@ export default function ProviderBookingDetail() {
           />
         ) : null}
 
+        <PayCloudPaymentDialog
+          open={showPaycloudPayment}
+          onOpenChange={setShowPaycloudPayment}
+          amount={paycloudDialogAmount}
+          entityType={paycloudEntityType}
+          entityId={paycloudEntityId}
+          bookingId={bookingId}
+          bookingLocationId={(booking as { location_id?: string | null } | null)?.location_id ?? null}
+          onSuccess={async () => {
+            toast.success(
+              paycloudEntityType === "additional_charge"
+                ? "Additional charge payment recorded"
+                : "Booking payment recorded",
+            );
+            await Promise.all([loadBooking(), loadAdditionalCharges()]);
+          }}
+        />
         <YocoPaymentDialog
           open={showYocoPayment}
           onOpenChange={setShowYocoPayment}

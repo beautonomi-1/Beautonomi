@@ -11,6 +11,8 @@ export const SCOPED_ADMIN_PATH_PREFIXES: readonly string[] = [
   "/api/admin/settings",
   "/api/admin/integrations/paystack",
   "/api/admin/integrations/yoco",
+  "/api/admin/integrations/paycloud",
+  "/api/admin/paycloud-operations",
   "/api/admin/content",
   "/api/admin/email-templates",
   "/api/admin/sms-templates",

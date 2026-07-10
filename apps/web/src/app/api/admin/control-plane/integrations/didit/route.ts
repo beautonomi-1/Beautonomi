@@ -11,6 +11,8 @@ import {
   DEFAULT_DIDIT_WORKFLOW_ID,
   diditEnvPresent,
   getEffectiveDiditWorkflowId,
+  getEffectiveDiditKybWorkflowId,
+  kybEnvPresent,
 } from "@/lib/identity-verification/provider/didit-provider";
 
 export async function GET(request: NextRequest) {
@@ -32,7 +34,9 @@ export async function GET(request: NextRequest) {
     if (!process.env.DIDIT_WEBHOOK_SECRET) missingEnvVars.push("DIDIT_WEBHOOK_SECRET");
 
     const workflowIdEnvSet = Boolean(process.env.DIDIT_WORKFLOW_ID);
+    const kybWorkflowIdEnvSet = Boolean(process.env.DIDIT_KYB_WORKFLOW_ID);
     const effectiveWorkflowId = getEffectiveDiditWorkflowId();
+    const effectiveKybWorkflowId = getEffectiveDiditKybWorkflowId();
     const webhookUrl = appUrl ? `${appUrl}/api/webhooks/didit` : null;
     const webhookUrlUsesWww = webhookUrl?.includes("://www.") ?? false;
     const webhookUrlMayRedirect =
@@ -46,6 +50,9 @@ export async function GET(request: NextRequest) {
       workflow_id_source:  workflowIdEnvSet ? "env" : "default",
       effective_workflow_id: effectiveWorkflowId,
       default_workflow_id: DEFAULT_DIDIT_WORKFLOW_ID,
+      kyb_workflow_id_set: kybWorkflowIdEnvSet,
+      effective_kyb_workflow_id: effectiveKybWorkflowId,
+      kyb_env_complete: kybEnvPresent(),
       webhook_secret_set:  Boolean(process.env.DIDIT_WEBHOOK_SECRET),
       missing_env_vars:    missingEnvVars,
       base_url:            process.env.DIDIT_BASE_URL ?? "https://verification.didit.me",

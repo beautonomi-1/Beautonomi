@@ -51,6 +51,12 @@ export interface YocoFeatureAccess {
   advancedFeatures: boolean; // Webhooks, reporting, etc.
 }
 
+export interface PaycloudFeatureAccess {
+  enabled: boolean;
+  maxTerminals?: number;
+  advancedFeatures: boolean;
+}
+
 export interface PaystackVirtualTerminalFeatureAccess {
   enabled: boolean;
   maxTerminals?: number;
@@ -443,6 +449,29 @@ export async function checkYocoFeatureAccess(
     enabled: yoco.enabled === true,
     maxDevices: yoco.max_devices,
     advancedFeatures: yoco.advanced_features === true,
+  };
+}
+
+/**
+ * Check if provider has access to PayCloud card machine features.
+ */
+export async function checkPaycloudFeatureAccess(
+  providerId: string,
+  supabaseClient?: SupabaseClient
+): Promise<PaycloudFeatureAccess> {
+  const supabase = supabaseClient ?? (await getSupabaseServer());
+  const tier = await getProviderSubscriptionTier(supabase, providerId);
+
+  if (!tier) {
+    return { enabled: false, advancedFeatures: false };
+  }
+
+  const paycloud = tier.features?.paycloud_integration || {};
+
+  return {
+    enabled: paycloud.enabled === true,
+    maxTerminals: paycloud.max_terminals,
+    advancedFeatures: paycloud.advanced_features === true,
   };
 }
 

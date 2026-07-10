@@ -19,8 +19,9 @@ type RecordProductOrderPaymentInput = {
     | "paystack_virtual_terminal_allocation"
     | "wallet_checkout"
     | "provider_mark_collected"
-    | "walk_in_pos";
-  provider: "paystack" | "wallet" | "cash" | "yoco" | "card_on_delivery";
+    | "walk_in_pos"
+    | "paycloud_terminal";
+  provider: "paystack" | "wallet" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
   /** True when Beautonomi/gateway holds money that can become provider payout balance. */
   platformHeld?: boolean;
 };

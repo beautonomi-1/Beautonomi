@@ -34,6 +34,21 @@ const appPairSchema = z.object({
 const fullBodySchema = z.object({
   customer: appPairSchema,
   provider: appPairSchema,
+}).superRefine((value, ctx) => {
+  const codebase = getNativeAppCodebaseVersions();
+  for (const app of APP_KEYS) {
+    const ceiling = codebase[app];
+    if (!ceiling) continue;
+    for (const platform of ["ios", "android"] as const) {
+      if (compareVersions(value[app][platform].latest_version, ceiling) > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [app, platform, "latest_version"],
+          message: `Latest version cannot exceed codebase version (${ceiling})`,
+        });
+      }
+    }
+  }
 });
 
 type PlatformVersion = z.infer<typeof platformSchema>;

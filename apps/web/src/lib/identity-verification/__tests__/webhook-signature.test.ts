@@ -18,7 +18,7 @@ const WEBHOOK_SECRET = vi.hoisted(() => {
   return "test-webhook-secret-for-unit-tests";
 });
 
-import { verifyDiditWebhookSignature } from "../provider/didit-provider";
+import { verifyDiditWebhookSignature, canonicaliseDiditWebhookBody } from "../provider/didit-provider";
 
 // ── Canonical helpers mirroring the implementation ──────────────────────────
 function sortKeys(obj: unknown): unknown {
@@ -45,14 +45,19 @@ const rawBodyBuffer = Buffer.from(body, "utf8");
 const now = String(Math.floor(Date.now() / 1000));
 
 function makeV2Sig(obj: unknown): string {
-  const canonical = JSON.stringify(sortKeys(obj));
+  const canonical = canonicaliseDiditWebhookBody(obj);
   return createHmac("sha256", WEBHOOK_SECRET).update(canonical, "utf8").digest("hex");
 }
 function makeRawSig(raw: Buffer): string {
   return createHmac("sha256", WEBHOOK_SECRET).update(raw).digest("hex");
 }
 function makeSimpleSig(obj: Record<string, unknown>): string {
-  const canonical = [obj.timestamp ?? "", obj.session_id ?? "", obj.status ?? "", obj.webhook_type ?? ""].join(":");
+  const canonical = [
+    obj.timestamp === null || obj.timestamp === undefined ? "" : String(obj.timestamp),
+    obj.session_id === null || obj.session_id === undefined ? "" : String(obj.session_id),
+    obj.status === null || obj.status === undefined ? "" : String(obj.status),
+    obj.webhook_type === null || obj.webhook_type === undefined ? "" : String(obj.webhook_type),
+  ].join(":");
   return createHmac("sha256", WEBHOOK_SECRET).update(canonical, "utf8").digest("hex");
 }
 
@@ -93,7 +98,7 @@ describe("verifyDiditWebhookSignature", () => {
 
   it("rejects a V2 signature with wrong secret", () => {
     const wrongSig = createHmac("sha256", "wrong-secret")
-      .update(JSON.stringify(sortKeys(payloadObj)), "utf8")
+      .update(canonicaliseDiditWebhookBody(payloadObj), "utf8")
       .digest("hex");
     const result = verifyDiditWebhookSignature({
       rawBody: rawBodyBuffer,
@@ -201,5 +206,67 @@ describe("verifyDiditWebhookSignature", () => {
       timestamp: now,
     });
     expect(result.ok).toBe(true);
+  });
+
+  it("accepts V2 with Unicode decision payload", () => {
+    const unicodePayload = {
+      event_id: "evt_unicode",
+      webhook_type: "status.updated",
+      session_id: "sess_unicode",
+      status: "Approved",
+      timestamp: 1774970000,
+      decision: {
+        id_verifications: [{ first_name: "José", last_name: "Müller", status: "Approved" }],
+      },
+    };
+    const bodyUnicode = JSON.stringify(unicodePayload);
+    const result = verifyDiditWebhookSignature({
+      rawBody: Buffer.from(bodyUnicode, "utf8"),
+      signatureV2: makeV2Sig(unicodePayload),
+      signatureRaw: null,
+      signatureSimple: null,
+      timestamp: now,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts Simple-only with numeric timestamp in envelope", () => {
+    const result = verifyDiditWebhookSignature({
+      rawBody: rawBodyBuffer,
+      signatureV2: null,
+      signatureRaw: null,
+      signatureSimple: makeSimpleSig(payloadObj),
+      timestamp: now,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.variant).toBe("simple");
+  });
+
+  it("rejects when signature headers present but X-Timestamp missing", () => {
+    const result = verifyDiditWebhookSignature({
+      rawBody: rawBodyBuffer,
+      signatureV2: makeV2Sig(payloadObj),
+      signatureRaw: null,
+      signatureSimple: null,
+      timestamp: null,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.diagnostics.reason).toBe("missing_timestamp");
+  });
+
+  it("returns diagnostics on signature mismatch", () => {
+    const result = verifyDiditWebhookSignature({
+      rawBody: rawBodyBuffer,
+      signatureV2: "deadbeef",
+      signatureRaw: null,
+      signatureSimple: null,
+      timestamp: now,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics.reason).toBe("signature_mismatch");
+      expect(result.diagnostics.hasSignatureV2).toBe(true);
+      expect(result.diagnostics.bodyBytes).toBeGreaterThan(0);
+    }
   });
 });

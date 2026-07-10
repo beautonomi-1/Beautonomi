@@ -48,6 +48,10 @@ import { ProviderClientRatingDialog } from "@/components/provider-portal/Provide
 import { AppointmentStatusBadge } from "@/components/provider-portal/AppointmentStatusBadge";
 import { Money } from "@/components/provider-portal/Money";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { AppointmentSidebar } from "@/components/appointments";
 import { openViewMode } from "@/stores/appointment-sidebar-store";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -58,7 +62,6 @@ import {
   buildProviderBookingActionModel,
   type ProviderBookingAction,
 } from "@/lib/provider-booking/action-policy";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
@@ -98,6 +101,8 @@ export function BookingsClient({
   const searchParams = useSearchParams();
   const { selectedLocationId, provider } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
 
   // View mode — §Hydration 2026-04: initial state MUST match server render
   // (always "table") to avoid React error #418. We rehydrate from
@@ -168,6 +173,8 @@ export function BookingsClient({
   // Yoco
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
   const [yocoBooking, setYocoBooking] = useState<ProviderBookingListItem | null>(null);
+  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
+  const [paycloudBooking, setPaycloudBooking] = useState<ProviderBookingListItem | null>(null);
 
   // Sidebar data (team members, services, locations for AppointmentSidebar)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -608,7 +615,7 @@ export function BookingsClient({
 
   // ─── Yoco ──────────────────────────────────────────────────────────────────
   const shouldShowPayButton = (b: ProviderBookingListItem) => {
-    if (!yocoEnabled) return false;
+    if (!yocoEnabled && !paycloudEnabled) return false;
     const s = (b.status || "").toLowerCase();
     if (s === "cancelled" || s === "canceled") return false;
     const ps = ((b as any).payment_status || "").toLowerCase();
@@ -618,6 +625,11 @@ export function BookingsClient({
   const handleYocoPayment = (b: ProviderBookingListItem) => {
     setYocoBooking(b);
     setYocoDialogOpen(true);
+  };
+
+  const handlePaycloudPayment = (b: ProviderBookingListItem) => {
+    setPaycloudBooking(b);
+    setPaycloudDialogOpen(true);
   };
 
   const handlePaymentSuccess = (_payment: YocoPayment) => {
@@ -824,7 +836,16 @@ export function BookingsClient({
                                 {primaryAction.label}
                               </Button>
                             )}
-                            {shouldShowPayButton(b) && (
+                            {shouldShowPayButton(b) && paycloudEnabled ? (
+                              <PaycloudCollectButton
+                                amount={b.total_amount || 0}
+                                currency={(b as { currency?: string }).currency ?? "ZAR"}
+                                context="booking"
+                                onClick={() => handlePaycloudPayment(b)}
+                                className="text-[11px] h-7 px-2"
+                                size="sm"
+                              />
+                            ) : shouldShowPayButton(b) && yocoEnabled ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -835,7 +856,7 @@ export function BookingsClient({
                               >
                                 <CreditCard className="w-3.5 h-3.5" />
                               </Button>
-                            )}
+                            ) : null}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -945,11 +966,20 @@ export function BookingsClient({
                         {primaryAction.label}
                       </Button>
                     )}
-                    {shouldShowPayButton(b) && (
+                    {shouldShowPayButton(b) && paycloudEnabled ? (
+                      <PaycloudCollectButton
+                        amount={b.total_amount || 0}
+                        currency={(b as { currency?: string }).currency ?? "ZAR"}
+                        context="booking"
+                        onClick={() => handlePaycloudPayment(b)}
+                        className="text-xs h-9"
+                        size="sm"
+                      />
+                    ) : shouldShowPayButton(b) && yocoEnabled ? (
                       <Button variant="outline" size="sm" onClick={() => handleYocoPayment(b)} className="gap-1 text-xs h-9">
                         <CreditCard className="w-3 h-3" /> Pay
                       </Button>
-                    )}
+                    ) : null}
                     <Button variant="ghost" size="sm" onClick={() => openBookingDetails(b)} className="text-xs h-9">
                       Details
                     </Button>
@@ -1240,6 +1270,22 @@ export function BookingsClient({
           />
         )}
         <PostForRewardNudge open={showPostNudge} onOpenChange={setShowPostNudge} />
+
+        {paycloudBooking && (
+          <PayCloudPaymentDialog
+            open={paycloudDialogOpen}
+            onOpenChange={setPaycloudDialogOpen}
+            amount={paycloudBooking.total_amount || 0}
+            entityType="booking"
+            entityId={paycloudBooking.id}
+            bookingId={paycloudBooking.id}
+            bookingLocationId={(paycloudBooking as { location_id?: string | null }).location_id ?? null}
+            onSuccess={() => {
+              loadBookings();
+              setPaycloudDialogOpen(false);
+            }}
+          />
+        )}
 
         {/* Yoco payment dialog */}
         {yocoBooking && (
