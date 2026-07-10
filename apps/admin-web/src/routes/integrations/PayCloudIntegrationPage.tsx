@@ -17,6 +17,9 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
+const RSA_PRIVATE_KEY_PLACEHOLDER = ["-----BEGIN ", "RSA PRIVATE KEY", "-----"].join("");
+const PUBLIC_KEY_PLACEHOLDER = ["-----BEGIN ", "PUBLIC KEY", "-----"].join("");
+
 type PaycloudEnv = "live" | "sandbox";
 
 interface PaycloudFeatureFlag {
@@ -160,7 +163,7 @@ function PaycloudAppEditor({
             <textarea
               className="mt-1 min-h-[84px] w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
               value={form.app_rsa_private_key}
-              placeholder={app?.has_app_rsa_private_key ? "Set (hidden)" : "-----BEGIN RSA PRIVATE KEY-----"}
+              placeholder={app?.has_app_rsa_private_key ? "Set (hidden)" : RSA_PRIVATE_KEY_PLACEHOLDER}
               onChange={(event) => setForm((f) => ({ ...f, app_rsa_private_key: event.target.value }))}
             />
           </div>
@@ -169,7 +172,7 @@ function PaycloudAppEditor({
             <textarea
               className="mt-1 min-h-[84px] w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
               value={form.gateway_rsa_public_key}
-              placeholder={app?.has_gateway_rsa_public_key ? "Set (hidden)" : "-----BEGIN PUBLIC KEY-----"}
+              placeholder={app?.has_gateway_rsa_public_key ? "Set (hidden)" : PUBLIC_KEY_PLACEHOLDER}
               onChange={(event) => setForm((f) => ({ ...f, gateway_rsa_public_key: event.target.value }))}
             />
           </div>

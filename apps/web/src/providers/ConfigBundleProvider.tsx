@@ -104,6 +104,8 @@ const defaultBundle: PublicConfigBundle = {
     required_for_customers: false,
     cross_validate: false,
     min_age: 18,
+    kyb_enabled: false,
+    kyb_required_for_business: false,
   },
 };
 

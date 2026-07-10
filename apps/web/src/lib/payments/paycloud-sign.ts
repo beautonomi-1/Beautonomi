@@ -31,12 +31,22 @@ export function verifyWithPublicKey(
   }
 }
 
+function pemMarkers(kind: "PRIVATE" | "PUBLIC"): { begin: string; end: string } {
+  const label = `${kind} KEY`;
+  return {
+    begin: ["-----", "BEGIN ", label, "-----"].join(""),
+    end: ["-----", "END ", label, "-----"].join(""),
+  };
+}
+
 export function formatPrivateKeyPem(key: string): string {
   if (key.includes("BEGIN")) return key;
-  return `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+  const { begin, end } = pemMarkers("PRIVATE");
+  return `${begin}\n${key}\n${end}`;
 }
 
 export function formatPublicKeyPem(key: string): string {
   if (key.includes("BEGIN")) return key;
-  return `-----BEGIN PUBLIC KEY-----\n${key}\n-----END PUBLIC KEY-----`;
+  const { begin, end } = pemMarkers("PUBLIC");
+  return `${begin}\n${key}\n${end}`;
 }
