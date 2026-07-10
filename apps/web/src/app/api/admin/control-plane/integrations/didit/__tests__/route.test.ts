@@ -21,6 +21,8 @@ vi.mock("@/lib/identity-verification/provider/didit-provider", () => ({
   diditEnvPresent: () => mockDiditEnvPresent(),
   getEffectiveDiditWorkflowId: () =>
     process.env.DIDIT_WORKFLOW_ID || "850587e4-2afc-4aa1-b96e-5d45ef09447b",
+  getEffectiveDiditKybWorkflowId: () => process.env.DIDIT_KYB_WORKFLOW_ID ?? null,
+  kybEnvPresent: () => Boolean(process.env.DIDIT_KYB_WORKFLOW_ID),
   DEFAULT_DIDIT_WORKFLOW_ID: "850587e4-2afc-4aa1-b96e-5d45ef09447b",
 }));
 

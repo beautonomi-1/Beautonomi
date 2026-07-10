@@ -454,6 +454,8 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     required_for_customers: verificationPolicyBundle.requiredForCustomers,
     cross_validate:         verificationPolicyBundle.crossValidate,
     min_age:                verificationPolicyBundle.minAge,
+    kyb_enabled:            verificationPolicyBundle.kybEnabled,
+    kyb_required_for_business: verificationPolicyBundle.kybRequiredForBusiness,
   };
 
   const flagsWithCalV2: Record<string, ResolvedFlag> = {

@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Constants from "expo-constants";
+import { getAppNativeVersion } from "@/lib/app-native-version";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -272,7 +272,7 @@ export default function SettingsScreen() {
         {/* App version */}
         <View style={twStyle("mt-6 items-center pb-4")}>
           <Text style={twStyle("text-xs text-gray-400")}>
-            Beautonomi Provider v{Constants.expoConfig?.version ?? "1.0.0"}
+            Beautonomi Provider v{getAppNativeVersion()}
           </Text>
         </View>
       </ScrollView>

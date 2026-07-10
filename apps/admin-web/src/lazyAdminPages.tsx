@@ -123,6 +123,12 @@ export const PaystackConfigPage = lazy(() =>
 export const YocoIntegrationPage = lazy(() =>
   import("@/routes/integrations/YocoIntegrationPage").then((m) => ({ default: m.YocoIntegrationPage }))
 );
+export const PayCloudIntegrationPage = lazy(() =>
+  import("@/routes/integrations/PayCloudIntegrationPage").then((m) => ({ default: m.PayCloudIntegrationPage }))
+);
+export const PayCloudOperationsPage = lazy(() =>
+  import("@/routes/integrations/PayCloudOperationsPage").then((m) => ({ default: m.PayCloudOperationsPage }))
+);
 export const ResendIntegrationPage = lazy(() =>
   import("@/routes/integrations/ResendIntegrationPage").then((m) => ({ default: m.ResendIntegrationPage }))
 );

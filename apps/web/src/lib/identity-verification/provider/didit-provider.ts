@@ -27,6 +27,7 @@ import type {
 const DIDIT_BASE = (process.env.DIDIT_BASE_URL ?? "https://verification.didit.me").replace(/\/$/, "");
 const DIDIT_API_KEY = process.env.DIDIT_API_KEY ?? "";
 const DIDIT_WORKFLOW_ID_ENV = process.env.DIDIT_WORKFLOW_ID ?? "";
+const DIDIT_KYB_WORKFLOW_ID_ENV = process.env.DIDIT_KYB_WORKFLOW_ID ?? "";
 const DIDIT_WEBHOOK_SECRET = process.env.DIDIT_WEBHOOK_SECRET ?? "";
 
 /** Per-session config (not a secret). "Free KYC" workflow in Didit console. */
@@ -35,6 +36,16 @@ const DEFAULT_DIDIT_WORKFLOW_ID = "850587e4-2afc-4aa1-b96e-5d45ef09447b";
 /** Effective workflow id: env override, else code default. */
 export function getEffectiveDiditWorkflowId(): string {
   return DIDIT_WORKFLOW_ID_ENV || DEFAULT_DIDIT_WORKFLOW_ID;
+}
+
+/** KYB workflow id from env. No code default — must be configured when KYB is enabled. */
+export function getEffectiveDiditKybWorkflowId(): string | null {
+  return DIDIT_KYB_WORKFLOW_ID_ENV || null;
+}
+
+/** Returns true when KYB workflow id is configured. */
+export function kybEnvPresent(): boolean {
+  return Boolean(getEffectiveDiditKybWorkflowId());
 }
 
 /** Returns true when required Didit secrets are set (API key + webhook secret). */
@@ -248,6 +259,59 @@ function safeCompareHex(expectedHex: string, providedHex: string): boolean {
   }
 }
 
+export type DiditWebhookSignatureFailureReason =
+  | "missing_secret"
+  | "missing_signature_headers"
+  | "missing_timestamp"
+  | "timestamp_out_of_window"
+  | "invalid_json"
+  | "signature_mismatch";
+
+export interface DiditWebhookSignatureDiagnostics {
+  hasSignatureV2: boolean;
+  hasSignatureRaw: boolean;
+  hasSignatureSimple: boolean;
+  hasTimestamp: boolean;
+  timestampAgeSeconds: number | null;
+  bodyBytes: number;
+  userAgent: string | null;
+  reason: DiditWebhookSignatureFailureReason;
+}
+
+/** Canonical JSON body for X-Signature-V2 (exported for tests + admin test route). */
+export function canonicaliseDiditWebhookBody(parsed: unknown): string {
+  return JSON.stringify(sortKeys(shortenFloats(parsed)));
+}
+
+function envelopeField(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function buildSignatureDiagnostics(params: {
+  rawBody: Buffer;
+  signatureV2: string | null;
+  signatureRaw: string | null;
+  signatureSimple: string | null;
+  timestamp: string | null;
+  userAgent?: string | null;
+  reason: DiditWebhookSignatureFailureReason;
+}): DiditWebhookSignatureDiagnostics {
+  const ts = params.timestamp ? Number(params.timestamp) : NaN;
+  const timestampAgeSeconds =
+    Number.isFinite(ts) ? Math.abs(Date.now() / 1000 - ts) : null;
+  return {
+    hasSignatureV2: Boolean(params.signatureV2),
+    hasSignatureRaw: Boolean(params.signatureRaw),
+    hasSignatureSimple: Boolean(params.signatureSimple),
+    hasTimestamp: Boolean(params.timestamp),
+    timestampAgeSeconds,
+    bodyBytes: params.rawBody.length,
+    userAgent: params.userAgent ?? null,
+    reason: params.reason,
+  };
+}
+
 /**
  * Verify a Didit webhook using the three signature variants Didit sends, each
  * with its OWN algorithm (per https://docs.didit.me/integration/webhooks):
@@ -269,56 +333,107 @@ export function verifyDiditWebhookSignature(params: {
   signatureRaw: string | null;
   signatureSimple: string | null;
   timestamp: string | null;
-}): { ok: true; variant: "v2" | "raw" | "simple" } | { ok: false } {
-  const { rawBody, signatureV2, signatureRaw, signatureSimple, timestamp } = params;
-  if (!DIDIT_WEBHOOK_SECRET) return { ok: false };
-  if (!signatureV2 && !signatureRaw && !signatureSimple) return { ok: false };
+  userAgent?: string | null;
+}):
+  | { ok: true; variant: "v2" | "raw" | "simple" }
+  | { ok: false; diagnostics: DiditWebhookSignatureDiagnostics } {
+  const { rawBody, signatureV2, signatureRaw, signatureSimple, timestamp, userAgent } = params;
+  const baseDiag = {
+    rawBody,
+    signatureV2,
+    signatureRaw,
+    signatureSimple,
+    timestamp,
+    userAgent,
+  };
 
-  // Replay window: reject if timestamp is more than 300s off (X-Timestamp is epoch seconds)
-  if (timestamp) {
-    const ts = Number(timestamp);
-    if (Number.isFinite(ts)) {
-      const diffSeconds = Math.abs(Date.now() / 1000 - ts);
-      if (diffSeconds > 300) return { ok: false };
+  if (!DIDIT_WEBHOOK_SECRET) {
+    return {
+      ok: false,
+      diagnostics: buildSignatureDiagnostics({
+        ...baseDiag,
+        reason: "missing_secret",
+      }),
+    };
+  }
+  if (!signatureV2 && !signatureRaw && !signatureSimple) {
+    return {
+      ok: false,
+      diagnostics: buildSignatureDiagnostics({
+        ...baseDiag,
+        reason: "missing_signature_headers",
+      }),
+    };
+  }
+
+  if (!timestamp) {
+    return {
+      ok: false,
+      diagnostics: buildSignatureDiagnostics({
+        ...baseDiag,
+        reason: "missing_timestamp",
+      }),
+    };
+  }
+
+  const ts = Number(timestamp);
+  if (Number.isFinite(ts)) {
+    const diffSeconds = Math.abs(Date.now() / 1000 - ts);
+    if (diffSeconds > 300) {
+      return {
+        ok: false,
+        diagnostics: buildSignatureDiagnostics({
+          ...baseDiag,
+          reason: "timestamp_out_of_window",
+        }),
+      };
     }
   }
 
   const secret = Buffer.from(DIDIT_WEBHOOK_SECRET, "utf8");
 
-  // Parse once for V2 canonicalisation + Simple envelope fields.
   let parsed: Record<string, unknown> | null = null;
   try {
     parsed = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
   } catch {
-    parsed = null;
+    return {
+      ok: false,
+      diagnostics: buildSignatureDiagnostics({
+        ...baseDiag,
+        reason: "invalid_json",
+      }),
+    };
   }
 
-  // 1. V2 — canonical JSON (recommended; survives middleware re-encoding)
-  if (signatureV2 && parsed) {
-    const canonical = JSON.stringify(sortKeys(shortenFloats(parsed)));
+  if (signatureV2) {
+    const canonical = canonicaliseDiditWebhookBody(parsed);
     const v2Hmac = createHmac("sha256", secret).update(canonical, "utf8").digest("hex");
     if (safeCompareHex(v2Hmac, signatureV2)) return { ok: true, variant: "v2" };
   }
 
-  // 2. Raw — exact bytes as transmitted
   if (signatureRaw) {
     const rawHmac = createHmac("sha256", secret).update(rawBody).digest("hex");
     if (safeCompareHex(rawHmac, signatureRaw)) return { ok: true, variant: "raw" };
   }
 
-  // 3. Simple — envelope-only canonical string
-  if (signatureSimple && parsed) {
+  if (signatureSimple) {
     const canonicalSimple = [
-      parsed.timestamp ?? "",
-      parsed.session_id ?? "",
-      parsed.status ?? "",
-      parsed.webhook_type ?? "",
+      envelopeField(parsed.timestamp),
+      envelopeField(parsed.session_id),
+      envelopeField(parsed.status),
+      envelopeField(parsed.webhook_type),
     ].join(":");
     const simpleHmac = createHmac("sha256", secret).update(canonicalSimple, "utf8").digest("hex");
     if (safeCompareHex(simpleHmac, signatureSimple)) return { ok: true, variant: "simple" };
   }
 
-  return { ok: false };
+  return {
+    ok: false,
+    diagnostics: buildSignatureDiagnostics({
+      ...baseDiag,
+      reason: "signature_mismatch",
+    }),
+  };
 }
 
 // ── PII minimisation ──────────────────────────────────────────────────────────

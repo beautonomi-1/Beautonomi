@@ -7,6 +7,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
+import { clearIdentityVerificationForReverify } from "@/lib/verification/clear-identity-verification-for-reverify";
 import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 import { z } from "zod";
 
@@ -58,17 +59,29 @@ export async function POST(request: NextRequest) {
 
       for (const provider of providers ?? []) {
         const p = provider as { id: string; user_id?: string | null };
-        const syncResult = await syncProviderVerificationState(admin, {
-          providerId: p.id,
-          userId: p.user_id ?? null,
-          status: action === "verify" ? "approved" : "reset",
-          source: action === "verify" ? "manual_admin" : "admin_reset",
-          metadata: {
-            admin_bulk_action: action,
-            reviewed_by_user_id: user.id,
-            reason: reason ?? null,
-          },
-        });
+        const syncResult =
+          action === "verify"
+            ? await syncProviderVerificationState(admin, {
+                providerId: p.id,
+                userId: p.user_id ?? null,
+                status: "approved",
+                source: "manual_admin",
+                metadata: {
+                  admin_bulk_action: action,
+                  reviewed_by_user_id: user.id,
+                  reason: reason ?? null,
+                },
+              })
+            : await clearIdentityVerificationForReverify(admin, {
+                userId: p.user_id ?? "",
+                providerId: p.id,
+                adminUserId: user.id,
+                reason: reason ?? undefined,
+                metadata: {
+                  admin_bulk_action: action,
+                  reviewed_by_user_id: user.id,
+                },
+              });
         if (syncResult.ok) {
           results.success += 1;
         } else {

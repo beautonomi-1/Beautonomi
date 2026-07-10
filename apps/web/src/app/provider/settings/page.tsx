@@ -10,7 +10,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
-type SettingsItem = { title: string; description: string; href: string; isUpgrade?: boolean };
+type SettingsItem = { title: string; description: string; href: string; isUpgrade?: boolean; featureFlag?: string };
 
 const settingsCategories: { id: string; title: string; description: string; items: SettingsItem[] }[] = [
   {
@@ -75,7 +75,8 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
       { title: "Payment Methods", description: "Enable or disable cash, online, and gift card payment options", href: "/provider/settings/payments" },
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
-      { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
+      { title: "Card machines", description: "Beautonomi in-person terminals — add, manage, and accept card payments", href: "/provider/settings/sales/card-machines" },
+      { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration", featureFlag: "payment_yoco" },
       { title: "Terminal Integrations", description: "Connect Wappoint, iKhokha, and other card machine vendors", href: "/provider/settings/sales/terminal-integrations" },
       { title: "Terminal Shop", description: "Order card machines and payment terminals from the platform catalog", href: "/provider/settings/sales/terminal-shop" },
       { title: "Paystack Terminal", description: "Create QR/link terminals for in-person payments that settle through payouts", href: "/provider/settings/sales/paystack-terminal" },
@@ -135,10 +136,17 @@ export default function ProviderSettings() {
   const [businessType, setBusinessType] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const terminalIntegrationsEnabled = useFeatureFlag("terminal_integrations_enabled");
   const terminalShopEnabled =
     useFeatureFlag("terminal_ecommerce_enabled") || useFeatureFlag("terminal_product_catalog_enabled");
+  const cardMachinesHubVisible =
+    paycloudEnabled ||
+    yocoEnabled ||
+    paystackTerminalEnabled ||
+    terminalIntegrationsEnabled ||
+    terminalShopEnabled;
 
   useEffect(() => {
     loadProviderInfo();
@@ -269,6 +277,11 @@ export default function ProviderSettings() {
                     if (!yocoEnabled && item.href.includes("/yoco")) {
                       return false;
                     }
+                    if (!cardMachinesHubVisible && item.href.includes("/card-machines")) {
+                      return false;
+                    }
+                    if (item.featureFlag === "payment_paycloud" && !paycloudEnabled) return false;
+                    if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
                     if (!paystackTerminalEnabled && item.href.includes("/paystack-terminal")) {
                       return false;
                     }

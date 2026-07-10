@@ -1,22 +1,25 @@
 /**
  * GET /api/provider/verification/status
  *
- * Returns current provider's verification status plus whether SumSub is
- * configured. When SumSub is not available the front-end falls back to the
- * manual document-upload flow (POST /api/me/verification).
+ * Returns provider verification status, policy flags, and server-driven verification plan.
  */
 
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
+import { loadProviderVerificationState } from "@/lib/verification/provider-verification-state";
+import {
+  verificationPlanProgress,
+  VERIFICATION_STEP_LABELS,
+  type VerificationStep,
+} from "@/lib/verification/verification-plan";
 
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = getSupabaseAdmin();
 
-    // Resolve provider id
     let providerId: string | null = null;
     let providerOwnerUserId: string | null = null;
     let providerTenantId: string | null = null;
@@ -32,9 +35,13 @@ export async function GET(request: NextRequest) {
       providerOwnerUserId = (byOwner as { user_id?: string | null }).user_id ?? user.id;
       providerTenantId = (byOwner as { tenant_id?: string | null }).tenant_id ?? null;
       providerIsVerified = (byOwner as { is_verified?: boolean | null }).is_verified === true;
-    }
-    else {
-      const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
+    } else {
+      const { data: staff } = await supabase
+        .from("provider_staff")
+        .select("provider_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
       if (staff?.provider_id) providerId = staff.provider_id;
     }
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
@@ -55,15 +62,23 @@ export async function GET(request: NextRequest) {
 
     const identityUserId = providerOwnerUserId ?? user.id;
 
-    // Sumsub verification status (KYC table)
     const { data: kycRow, error: kycError } = await supabase
       .from("provider_verification_status")
-      .select("status, sumsub_applicant_id, last_reviewed_at, updated_at")
+      .select("status, sumsub_applicant_id, last_reviewed_at, updated_at, metadata")
       .eq("provider_id", providerId)
       .maybeSingle();
     if (kycError) throw kycError;
 
-    // Manual (user_verifications) — most recent record for this user
+    const { data: diditSessionRow } = await supabase
+      .from("identity_verification_sessions")
+      .select("status, rejection_reason")
+      .eq("provider_id", providerId)
+      .eq("persona_type", "provider")
+      .eq("session_kind", "user")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     const { data: manualRow } = await supabase
       .from("user_verifications")
       .select("id, status, document_type, submitted_at, rejection_reason")
@@ -78,35 +93,59 @@ export async function GET(request: NextRequest) {
       .eq("id", identityUserId)
       .maybeSingle();
 
-    // Check verification policy for this environment and tenant.
     const { searchParams } = new URL(request.url);
     const env = searchParams.get("environment") ?? "production";
     const policy = await resolveVerificationPolicy(providerTenantId, env);
+    const verificationState = await loadProviderVerificationState(providerId);
 
     const sumsubAvailable = policy.sumsubEnabled;
     const diditAvailable = policy.diditEnabled;
+    // Match plan capability (flag + KYB workflow env), not flag alone.
+    const kybAvailable = verificationState?.plan.kybEnabled ?? false;
 
-    // Derive a combined status from every provider verification surface:
-    // Sumsub KYC, manual admin review, user identity flag, and public badge.
-    // Approval should win because any approved path means the provider is
-    // verified; rejection/reset should clear stale approved UI.
     const kycStatus = kycRow?.status ?? "pending";
     const manualStatus = manualRow?.status ?? null;
     const identityStatus =
       (identityUser as { identity_verification_status?: string | null } | null)
         ?.identity_verification_status ?? null;
     const identityVerified =
-      (identityUser as { identity_verified?: boolean | null } | null)
-        ?.identity_verified === true;
+      (identityUser as { identity_verified?: boolean | null } | null)?.identity_verified === true;
     let effectiveStatus = kycStatus;
 
-    if (
+    const planComplete = verificationState?.isComplete === true;
+    const kybRequired =
+      verificationState?.plan.kybRequiredForBusiness === true &&
+      verificationState.plan.payeeKind === "business" &&
+      verificationState.plan.required_steps.includes("business_kyb");
+    const personApproved =
       kycStatus === "approved" ||
       manualStatus === "approved" ||
       identityStatus === "approved" ||
       identityVerified ||
-      providerIsVerified
-    ) {
+      providerIsVerified;
+
+    // When KYB is required, overall status is approved only if the full plan is complete.
+    if (kybRequired) {
+      if (planComplete) {
+        effectiveStatus = "approved";
+      } else if (
+        verificationState?.businessKybStatus === "rejected" ||
+        verificationState?.personKycStatus === "rejected" ||
+        kycStatus === "rejected" ||
+        manualStatus === "rejected"
+      ) {
+        effectiveStatus = "rejected";
+      } else if (
+        personApproved ||
+        verificationState?.personKycStatus === "in_progress" ||
+        verificationState?.businessKybStatus === "in_progress" ||
+        verificationState?.businessKybStatus === "pending_review"
+      ) {
+        effectiveStatus = "in_progress";
+      } else {
+        effectiveStatus = "reset";
+      }
+    } else if (personApproved || planComplete) {
       effectiveStatus = "approved";
     } else if (
       kycStatus === "rejected" ||
@@ -114,19 +153,67 @@ export async function GET(request: NextRequest) {
       identityStatus === "rejected"
     ) {
       effectiveStatus = "rejected";
-    } else if (kycStatus === "reset" || identityStatus === "reset") {
+    } else if (
+      kycStatus === "reset" ||
+      identityStatus === "reset" ||
+      kycStatus === "not_started" ||
+      identityStatus === "none" ||
+      identityStatus === "not_started"
+    ) {
       effectiveStatus = "reset";
     } else if (kycStatus === "in_progress" || manualStatus === "pending") {
       effectiveStatus = "in_progress";
     }
 
+    const kycMetadata = (kycRow as { metadata?: Record<string, unknown> } | null)?.metadata;
+    const kycRejectionFromMetadata =
+      typeof kycMetadata?.rejection_reason === "string" ? kycMetadata.rejection_reason : null;
+    const diditRejectionReason =
+      (diditSessionRow as { rejection_reason?: string | null } | null)?.rejection_reason ?? null;
+    const manualRejectionReason =
+      (manualRow as { rejection_reason?: string | null } | null)?.rejection_reason ?? null;
+    const combinedRejectionReason =
+      effectiveStatus === "rejected"
+        ? diditRejectionReason ?? manualRejectionReason ?? kycRejectionFromMetadata
+        : null;
+
+    const plan = verificationState?.plan ?? null;
+    const progress = plan && verificationState
+      ? verificationPlanProgress(plan, {
+          personKycStatus: verificationState.personKycStatus,
+          businessKybStatus: verificationState.businessKybStatus,
+          manualStatus: verificationState.manualStatus,
+        })
+      : { completed: 0, total: 0 };
+
+    const stepStatuses: Partial<Record<VerificationStep, string>> = verificationState
+      ? {
+          person_kyc: verificationState.personKycStatus,
+          business_kyb: verificationState.businessKybStatus,
+          manual_upload: verificationState.manualStatus ?? "not_started",
+          manual_business_review: verificationState.businessKybStatus,
+        }
+      : {};
+
+    const steps = plan
+      ? [...plan.required_steps, ...plan.optional_steps].map((step) => ({
+          step,
+          required: plan.required_steps.includes(step),
+          label: VERIFICATION_STEP_LABELS[step].title,
+          description: VERIFICATION_STEP_LABELS[step].description,
+          status: stepStatuses[step] ?? "not_started",
+          locked:
+            step === "business_kyb" &&
+            verificationState?.personKycStatus !== "approved" &&
+            plan.kybRequiredForBusiness,
+        }))
+      : [];
+
     return successResponse({
-      // KYC / Sumsub status
       status: effectiveStatus,
       sumsub_applicant_id: kycRow?.sumsub_applicant_id ?? null,
       last_reviewed_at: kycRow?.last_reviewed_at ?? null,
       updated_at: kycRow?.updated_at ?? null,
-      // Manual verification
       manual_verification: manualRow
         ? {
             id: manualRow.id,
@@ -137,22 +224,32 @@ export async function GET(request: NextRequest) {
               (manualRow as { rejection_reason?: string | null }).rejection_reason ?? null,
           }
         : null,
-      // Most recent reviewer note (why a submission was declined), surfaced so
-      // the provider knows exactly what to fix before resubmitting.
-      rejection_reason:
-        effectiveStatus === "rejected"
-          ? (manualRow as { rejection_reason?: string | null } | null)?.rejection_reason ?? null
-          : null,
-      // Whether Didit automated KYC is available for this environment
+      rejection_reason: combinedRejectionReason,
       didit_available: diditAvailable,
-      // @deprecated Always false (Sumsub removed). Kept for legacy client compat.
+      kyb_available: kybAvailable,
       sumsub_available: sumsubAvailable,
-      // Whether manual document upload is available
       manual_available: policy.manualEnabled,
-      // Combined mode: "off" | "manual" | "didit" | "both"
       verification_mode: policy.mode,
       required_for_providers: policy.requiredForProviders,
       required_for_payouts: policy.requiredForPayouts,
+      verification_plan: plan
+        ? {
+            mode: plan.mode,
+            payee_kind: plan.payeeKind,
+            required_steps: plan.required_steps,
+            optional_steps: plan.optional_steps,
+            kyb_enabled: plan.kybEnabled,
+            kyb_required_for_business: plan.kybRequiredForBusiness,
+            kyb_country_unsupported: plan.kyb_country_unsupported,
+            effective_summary: plan.effective_summary,
+            progress,
+            steps,
+            is_complete: verificationState?.isComplete ?? false,
+          }
+        : null,
+      payee_entity: verificationState?.entity ?? null,
+      person_kyc_status: verificationState?.personKycStatus ?? null,
+      business_kyb_status: verificationState?.businessKybStatus ?? null,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to get verification status");

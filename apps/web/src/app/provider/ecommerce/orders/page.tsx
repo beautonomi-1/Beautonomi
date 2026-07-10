@@ -10,7 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import {
+  formatPaycloudCollectLabel,
+  PAYCLOUD_SETUP_LABEL,
+} from "@/lib/payments/paycloud-collect-cta";
+import Link from "next/link";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -103,6 +111,10 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
 
 export default function ProviderProductOrdersPage() {
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
+  const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
+  const { selectedLocationId } = useProviderPortal();
   const searchParams = useSearchParams();
   const focusOrderId = searchParams.get("order")?.trim() ?? "";
   const highlightRef = useRef<HTMLDivElement | null>(null);
@@ -127,6 +139,8 @@ export default function ProviderProductOrdersPage() {
   const [trackingUrlInput, setTrackingUrlInput] = useState("");
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
   const [yocoOrder, setYocoOrder] = useState<ProductOrder | null>(null);
+  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
+  const [paycloudOrder, setPaycloudOrder] = useState<ProductOrder | null>(null);
 
   // Refund dialog: capture method (cash vs wallet), amount, and reason so
   // product-sale refunds match the in-person/wallet split used for bookings.
@@ -287,6 +301,11 @@ export default function ProviderProductOrdersPage() {
     setYocoDialogOpen(true);
   };
 
+  const openPaycloudCollection = (order: ProductOrder) => {
+    setPaycloudOrder(order);
+    setPaycloudDialogOpen(true);
+  };
+
   const handleYocoCollectionSuccess = async (payment: YocoPayment) => {
     if (!yocoOrder) return;
     try {
@@ -384,11 +403,13 @@ export default function ProviderProductOrdersPage() {
               const totalAmount = Number(o.total_amount ?? 0);
               const providerEarnings = Math.max(0, totalAmount - platformFee);
               const isAppointmentOrder = o.order_source === "appointment";
-              const canCollectWithYoco =
-                yocoEnabled &&
+              const canCollectPayment =
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
+              const canCollectWithYoco = yocoEnabled && canCollectPayment;
+              const canCollectWithPaycloud =
+                paycloudEnabled && canCollectPayment && !isAppointmentOrder;
               return (
                 <div
                   key={o.id}
@@ -491,6 +512,27 @@ export default function ProviderProductOrdersPage() {
                               {updating === o.id ? "..." : a.label}
                             </button>
                           ))}
+                        {canCollectWithPaycloud ? (
+                          paycloudReady || paycloudInFlight ? (
+                            <button
+                              onClick={() => openPaycloudCollection(o)}
+                              className="px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-gray-900 hover:bg-black"
+                            >
+                              {formatPaycloudCollectLabel({
+                                context: "product_order",
+                                amount: providerEarnings,
+                                inFlight: paycloudInFlight,
+                              })}
+                            </button>
+                          ) : (
+                            <Link
+                              href={blockers[0]?.href ?? "/provider/settings/sales/card-machines"}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
+                            >
+                              {PAYCLOUD_SETUP_LABEL}
+                            </Link>
+                          )
+                        ) : null}
                         {canCollectWithYoco ? (
                           <button
                             onClick={() => openYocoCollection(o)}
@@ -508,6 +550,26 @@ export default function ProviderProductOrdersPage() {
           </div>
         )}
       </div>
+
+      {paycloudOrder ? (
+        <PayCloudPaymentDialog
+          open={paycloudDialogOpen}
+          onOpenChange={(open) => {
+            setPaycloudDialogOpen(open);
+            if (!open) setPaycloudOrder(null);
+          }}
+          amount={Number(paycloudOrder.total_amount || 0)}
+          entityType="product_order"
+          entityId={paycloudOrder.id}
+          bookingLocationId={selectedLocationId}
+          onSuccess={() => {
+            clearFetcherCache();
+            void fetchOrders();
+            setPaycloudDialogOpen(false);
+            setPaycloudOrder(null);
+          }}
+        />
+      ) : null}
 
       {yocoOrder ? (
         <YocoPaymentDialog

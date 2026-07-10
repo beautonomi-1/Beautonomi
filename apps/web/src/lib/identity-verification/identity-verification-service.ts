@@ -15,6 +15,7 @@ import {
   extractRejectionReason,
   getDiditDecision,
   getEffectiveDiditWorkflowId,
+  getEffectiveDiditKybWorkflowId,
   isKycExpired,
   normalizeDiditStatus,
   sanitiseDecisionForStorage,
@@ -31,6 +32,10 @@ import { isTerminalStatus, TERMINAL_STATUSES } from "./types";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 import { syncProviderVerificationStateFromDidit } from "@/lib/verification/sync-provider-verification";
 import { notifyIdentityVerificationReviewed } from "@/lib/verification/notify-identity-verification-reviewed";
+import {
+  slackNotifyVerificationNeedsReview,
+  slackNotifyVerificationRejected,
+} from "@/lib/integrations/slack/ops-triggers";
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
@@ -59,6 +64,10 @@ export const IV_ERROR = {
 
 function buildVendorData(persona: VerificationPersona, id: string): string {
   return persona === "customer" ? `user:${id}` : `provider:${id}`;
+}
+
+function buildBusinessVendorData(providerId: string): string {
+  return `provider:${providerId}:kyb`;
 }
 
 function buildCallback(persona: VerificationPersona, appUrl: string, returnTo?: string): string {
@@ -107,6 +116,7 @@ export async function createVerificationSession(
     .from("identity_verification_sessions")
     .select("id, provider_session_id, session_url, status")
     .eq("persona_type", persona)
+    .eq("session_kind", "user")
     .not("status", "in", TERMINAL);
 
   if (isProviderPersona) {
@@ -214,6 +224,7 @@ export async function createVerificationSession(
       provider:           "didit",
       provider_session_id:diditResult.session_id,
       workflow_id:        getEffectiveDiditWorkflowId(),
+      session_kind:       "user",
       status:             normalizedStatus,
       vendor_data:        vendorData,
       session_url:        diditResult.url ?? null,
@@ -247,6 +258,7 @@ export async function getVerificationStatus(
   userId: string,
   persona: VerificationPersona,
   providerId?: string | null,
+  sessionKind: "user" | "business" = "user",
 ): Promise<NormalizedVerificationStatus> {
   const supabase = getSupabaseAdmin();
 
@@ -254,6 +266,7 @@ export async function getVerificationStatus(
     .from("identity_verification_sessions")
     .select("id, status, provider_session_id, last_checked_at")
     .eq("persona_type", persona)
+    .eq("session_kind", sessionKind)
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -281,6 +294,251 @@ export async function getVerificationStatus(
   return status;
 }
 
+/** Latest business KYB session status for a provider. */
+export async function getBusinessVerificationStatus(
+  providerId: string,
+): Promise<NormalizedVerificationStatus | "not_required"> {
+  const supabase = getSupabaseAdmin();
+  const { data: row } = await supabase
+    .from("identity_verification_sessions")
+    .select("id, status, provider_session_id, last_checked_at")
+    .eq("provider_id", providerId)
+    .eq("persona_type", "provider")
+    .eq("session_kind", "business")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!row) return "not_started";
+
+  const status = row.status as NormalizedVerificationStatus;
+  if (!isTerminalStatus(status) && row.provider_session_id) {
+    const lastChecked = row.last_checked_at ? new Date(row.last_checked_at).getTime() : 0;
+    if (Date.now() - lastChecked > 5 * 60 * 1000) {
+      void reconcileSession(row.id, row.provider_session_id as string);
+    }
+  }
+  return status;
+}
+
+export interface CreateBusinessSessionInput {
+  userId: string;
+  providerId: string;
+  tenantId?: string | null;
+  languageCode?: string;
+  returnTo?: string;
+}
+
+/** Create or reuse a Didit KYB session for a registered business provider. */
+export async function createBusinessVerificationSession(
+  input: CreateBusinessSessionInput,
+): Promise<CreateSessionOutput> {
+  const { userId, providerId, tenantId, languageCode, returnTo } = input;
+  const supabase = getSupabaseAdmin();
+
+  const policy = await resolveVerificationPolicy(tenantId ?? null);
+  if (!policy.kybEnabled) {
+    throw new IdentityVerificationError(
+      "Business verification is not available",
+      IV_ERROR.PROVIDER_UNAVAILABLE,
+      503,
+    );
+  }
+
+  const kybWorkflowId = getEffectiveDiditKybWorkflowId();
+  if (!kybWorkflowId) {
+    throw new IdentityVerificationError(
+      "KYB workflow is not configured",
+      IV_ERROR.PROVIDER_UNAVAILABLE,
+      503,
+    );
+  }
+
+  const { data: providerRow } = await supabase
+    .from("providers")
+    .select(
+      "payee_kind, registered_business_name, business_registration_number, business_registration_country",
+    )
+    .eq("id", providerId)
+    .maybeSingle();
+
+  if ((providerRow as { payee_kind?: string } | null)?.payee_kind !== "business") {
+    throw new IdentityVerificationError(
+      "Business verification is only for registered companies",
+      "PAYEE_KIND_NOT_BUSINESS",
+      400,
+    );
+  }
+
+  const personApproved = await getApprovedSession(userId, "provider", providerId);
+  if (!personApproved && policy.kybRequiredForBusiness) {
+    throw new IdentityVerificationError(
+      "Complete identity verification before verifying your business",
+      "PERSON_KYC_REQUIRED_FIRST",
+      409,
+    );
+  }
+
+  const existingKybApproved = await getApprovedBusinessSession(providerId);
+  if (existingKybApproved) {
+    throw new IdentityVerificationError(
+      "Business is already verified",
+      IV_ERROR.ALREADY_APPROVED,
+      409,
+    );
+  }
+
+  const TERMINAL = `("approved","rejected","expired","abandoned","errored")`;
+  const { data: liveSession } = await supabase
+    .from("identity_verification_sessions")
+    .select("id, provider_session_id, session_url, status")
+    .eq("provider_id", providerId)
+    .eq("persona_type", "provider")
+    .eq("session_kind", "business")
+    .not("status", "in", TERMINAL)
+    .maybeSingle();
+
+  const vendorData = buildBusinessVendorData(providerId);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const callback = buildCallback("provider", appUrl, returnTo);
+
+  const regName =
+    (providerRow as { registered_business_name?: string | null }).registered_business_name ?? "";
+  const regNumber =
+    (providerRow as { business_registration_number?: string | null })
+      .business_registration_number ?? "";
+  const regCountry =
+    (providerRow as { business_registration_country?: string | null })
+      .business_registration_country ?? "";
+
+  if (liveSession?.provider_session_id) {
+    const storedUrl = (liveSession.session_url as string | null) ?? "";
+    if (storedUrl) {
+      return {
+        sessionId: liveSession.id as string,
+        providerSessionId: liveSession.provider_session_id as string,
+        sessionToken: "",
+        url: storedUrl,
+        isExisting: true,
+      };
+    }
+  }
+
+  let diditResult: Awaited<ReturnType<typeof createDiditSession>>;
+  try {
+    diditResult = await createDiditSession({
+      workflow_id: kybWorkflowId,
+      vendor_data: vendorData,
+      language_code: languageCode,
+      callback,
+      metadata: {
+        persona: "provider",
+        session_kind: "business",
+        tenant_id: tenantId,
+        registered_business_name: regName,
+        business_registration_number: regNumber,
+        business_registration_country: regCountry,
+        return_to: returnTo,
+      },
+    });
+  } catch (err) {
+    throw new IdentityVerificationError(
+      `Failed to create Didit KYB session: ${err instanceof Error ? err.message : String(err)}`,
+      IV_ERROR.SESSION_CREATE_FAILED,
+      502,
+    );
+  }
+
+  const normalizedStatus = normalizeDiditStatus(diditResult.status);
+  const businessSnapshot = {
+    registered_business_name: regName,
+    business_registration_number: regNumber,
+    business_registration_country: regCountry,
+  };
+
+  if (liveSession?.id) {
+    await supabase
+      .from("identity_verification_sessions")
+      .update({
+        provider_session_id: diditResult.session_id,
+        session_url: diditResult.url ?? null,
+        workflow_id: kybWorkflowId,
+        status: normalizedStatus,
+        business_snapshot: businessSnapshot,
+        last_checked_at: new Date().toISOString(),
+      })
+      .eq("id", liveSession.id);
+
+    return {
+      sessionId: liveSession.id as string,
+      providerSessionId: diditResult.session_id,
+      sessionToken: diditResult.session_token,
+      url: diditResult.url,
+      isExisting: true,
+    };
+  }
+
+  const { data: newSession, error: insertErr } = await supabase
+    .from("identity_verification_sessions")
+    .insert({
+      user_id: userId,
+      provider_id: providerId,
+      persona_type: "provider",
+      tenant_id: tenantId ?? null,
+      provider: "didit",
+      provider_session_id: diditResult.session_id,
+      workflow_id: kybWorkflowId,
+      session_kind: "business",
+      status: normalizedStatus,
+      vendor_data: vendorData,
+      session_url: diditResult.url ?? null,
+      business_snapshot: businessSnapshot,
+      metadata: {
+        persona: "provider",
+        session_kind: "business",
+        tenant_id: tenantId,
+        return_to: returnTo,
+      },
+      expires_at: diditResult.expires_at ?? null,
+      last_checked_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertErr || !newSession) {
+    throw new IdentityVerificationError(
+      "Failed to store business verification session",
+      IV_ERROR.SESSION_CREATE_FAILED,
+      500,
+    );
+  }
+
+  await supabase
+    .from("providers")
+    .update({ kyb_verification_status: "in_progress" })
+    .eq("id", providerId);
+
+  return {
+    sessionId: newSession.id,
+    providerSessionId: diditResult.session_id,
+    sessionToken: diditResult.session_token,
+    url: diditResult.url,
+    isExisting: false,
+  };
+}
+
+async function getApprovedBusinessSession(providerId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("identity_verification_sessions")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("session_kind", "business")
+    .eq("status", "approved")
+    .maybeSingle();
+  return Boolean(data);
+}
+
 // ── Approved check ────────────────────────────────────────────────────────────
 
 async function getApprovedSession(
@@ -293,6 +551,7 @@ async function getApprovedSession(
     .from("identity_verification_sessions")
     .select("id")
     .eq("persona_type", persona)
+    .eq("session_kind", "user")
     .eq("status", "approved");
 
   if (persona === "provider" && providerId) {
@@ -324,25 +583,39 @@ export async function handleVerificationWebhook(
 
   if (existingEvent) return; // already processed
 
-  // Find session
-  const { data: session } = await supabase
-    .from("identity_verification_sessions")
-    .select("*")
-    .eq("provider_session_id", payload.session_id)
-    .maybeSingle();
+  // Find session — KYB webhooks may reference business_session_id
+  const lookupIds = [
+    payload.session_id,
+    payload.business_session_id,
+  ].filter((id): id is string => Boolean(id));
+
+  let session: Record<string, unknown> | null = null;
+  for (const lookupId of lookupIds) {
+    const { data } = await supabase
+      .from("identity_verification_sessions")
+      .select("*")
+      .eq("provider_session_id", lookupId)
+      .maybeSingle();
+    if (data) {
+      session = data as Record<string, unknown>;
+      break;
+    }
+  }
 
   if (!session) {
     console.warn(`[webhook/didit] Unknown session ${payload.session_id}`);
     return;
   }
 
+  const sessionId = String(session.id);
   const eventTimestamp = diditTimestampToIso(payload.timestamp ?? payload.created_at);
-  const currentLastEventAt = session.last_event_at;
+  const currentLastEventAt =
+    typeof session.last_event_at === "string" ? session.last_event_at : null;
 
   // Monotonicity: only apply if this event is newer than last applied
   if (currentLastEventAt && new Date(eventTimestamp) <= new Date(currentLastEventAt)) {
     // Still store the event for audit, but don't apply
-    await storeEvent(supabase, session.id, eventId, payload, rawBody, signatureVariant);
+    await storeEvent(supabase, sessionId, eventId, payload, rawBody, signatureVariant);
     return;
   }
 
@@ -351,7 +624,7 @@ export async function handleVerificationWebhook(
 
   // Terminal safety: approved can only move to expired (Kyc Expired)
   if (currentStatus === "approved" && newNormalized !== "expired") {
-    await storeEvent(supabase, session.id, eventId, payload, rawBody, signatureVariant);
+    await storeEvent(supabase, sessionId, eventId, payload, rawBody, signatureVariant);
     return;
   }
 
@@ -360,13 +633,16 @@ export async function handleVerificationWebhook(
   let decisionSource: Record<string, unknown> | null =
     (payload.decision as unknown as Record<string, unknown> | null) ?? null;
   let statusSource: string = payload.status;
-  if (signatureVariant === "simple" && payload.session_id) {
-    try {
-      const fetched = await getDiditDecision(payload.session_id);
-      decisionSource = fetched as unknown as Record<string, unknown>;
-      statusSource = fetched.status ?? payload.status;
-    } catch (err) {
-      console.warn("[webhook/didit] simple-variant decision re-fetch failed:", err);
+  if (signatureVariant === "simple") {
+    const decisionSessionId = payload.session_id || payload.business_session_id;
+    if (decisionSessionId) {
+      try {
+        const fetched = await getDiditDecision(decisionSessionId);
+        decisionSource = fetched as unknown as Record<string, unknown>;
+        statusSource = fetched.status ?? payload.status;
+      } catch (err) {
+        console.warn("[webhook/didit] simple-variant decision re-fetch failed:", err);
+      }
     }
   }
 
@@ -407,10 +683,10 @@ export async function handleVerificationWebhook(
   await supabase
     .from("identity_verification_sessions")
     .update(updateData)
-    .eq("id", session.id);
+    .eq("id", sessionId);
 
   // Store event log
-  await storeEvent(supabase, session.id, eventId, payload, rawBody, signatureVariant);
+  await storeEvent(supabase, sessionId, eventId, payload, rawBody, signatureVariant);
 
   // Sync to legacy columns + audit + notify
   await syncLegacyColumns(
@@ -425,6 +701,7 @@ export async function handleVerificationWebhook(
   // Notify user on terminal transitions
   const isApproved = newNormalized === "approved";
   const isRejected = newNormalized === "rejected";
+  const isPendingReview = newNormalized === "pending_review";
   if (isApproved || isRejected) {
     try {
       await notifyIdentityVerificationReviewed({
@@ -436,6 +713,42 @@ export async function handleVerificationWebhook(
     } catch (err) {
       console.warn("[webhook/didit] notification failed:", err);
     }
+  }
+
+  // Ops Slack alerts for Didit review outcomes (manual upload already does this separately)
+  const tenantId = (session.tenant_id as string | null) ?? "platform";
+  const isBusinessSession = (session.session_kind as string | undefined) === "business";
+  const isProviderPersona = (session.persona_type as string) === "provider";
+  const slackSource = isBusinessSession
+    ? "didit_kyb"
+    : isProviderPersona
+      ? "didit_provider"
+      : "didit_customer";
+  const sessionsActionUrl = `/admin/identity-trust/sessions`;
+
+  try {
+    if (isPendingReview) {
+      slackNotifyVerificationNeedsReview({
+        tenantId,
+        verificationId: sessionId,
+        documentType: "didit",
+        source: slackSource,
+        detail: rejectionReason ?? "Didit session moved to In Review",
+        actionUrl: sessionsActionUrl,
+        entityType: "identity_verification_session",
+      });
+    } else if (isRejected) {
+      slackNotifyVerificationRejected({
+        tenantId,
+        verificationId: sessionId,
+        source: slackSource,
+        detail: rejectionReason ?? "Didit verification declined",
+        actionUrl: sessionsActionUrl,
+        entityType: "identity_verification_session",
+      });
+    }
+  } catch (err) {
+    console.warn("[webhook/didit] slack notify failed:", err);
   }
 }
 
@@ -490,6 +803,56 @@ function extractWarnings(decision: unknown): ParsedWarning[] {
   return results;
 }
 
+// ── KYB legacy sync ───────────────────────────────────────────────────────────
+
+function mapNormalizedToKybStatus(
+  normalized: NormalizedVerificationStatus,
+): string {
+  if (normalized === "approved") return "approved";
+  if (normalized === "rejected") return "rejected";
+  if (normalized === "pending_review") return "pending_review";
+  if (normalized === "expired") return "expired";
+  if (
+    normalized === "in_progress" ||
+    normalized === "session_created" ||
+    normalized === "requires_retry"
+  ) {
+    return "in_progress";
+  }
+  return "not_started";
+}
+
+async function syncProviderKybStatus(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  normalized: NormalizedVerificationStatus,
+  _rejectionReason: string | null,
+) {
+  await supabase
+    .from("providers")
+    .update({ kyb_verification_status: mapNormalizedToKybStatus(normalized) })
+    .eq("id", providerId);
+}
+
+function extractBusinessSnapshotFromDecision(
+  decision: Record<string, unknown>,
+): Record<string, unknown> {
+  const snapshot: Record<string, unknown> = {};
+  const business = decision.business_verification as Record<string, unknown> | undefined;
+  if (business) {
+    if (typeof business.company_name === "string") {
+      snapshot.registry_company_name = business.company_name;
+    }
+    if (typeof business.registration_number === "string") {
+      snapshot.registry_registration_number = business.registration_number;
+    }
+    if (typeof business.country === "string") {
+      snapshot.registry_country = business.country;
+    }
+  }
+  return snapshot;
+}
+
 // ── Legacy column sync ────────────────────────────────────────────────────────
 
 async function syncLegacyColumns(
@@ -504,6 +867,26 @@ async function syncLegacyColumns(
   const persona  = session.persona_type as VerificationPersona;
   const providerId = session.provider_id as string | null;
   const sessionId  = session.id as string;
+  const sessionKind = (session.session_kind as string | undefined) ?? "user";
+
+  if (sessionKind === "business" && providerId) {
+    await syncProviderKybStatus(
+      supabase,
+      providerId,
+      normalized,
+      rejectionReason,
+    );
+    if (normalized === "approved" && decision) {
+      const snapshot = extractBusinessSnapshotFromDecision(decision);
+      if (Object.keys(snapshot).length > 0) {
+        await supabase
+          .from("identity_verification_sessions")
+          .update({ business_snapshot: snapshot })
+          .eq("id", sessionId);
+      }
+    }
+    return;
+  }
 
   if (persona === "customer") {
     await syncCustomerVerificationState(supabase, userId, normalized, sessionId);

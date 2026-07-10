@@ -61,7 +61,7 @@ type NavItemConfig = {
   href: string;
   badge?: string;
   permission?: keyof StaffPermissions;
-  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal" | typeof FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS;
+  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal" | "payment_paycloud" | typeof FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS;
 };
 
 // Navigation sections with permission requirements
@@ -125,6 +125,7 @@ const navigationSections: { title: string; items: NavItemConfig[] }[] = [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions, featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Card machines", href: "/provider/settings/sales/card-machines", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paycloud" },
       { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
       { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
       { icon: CreditCard, label: "Subscription", href: "/provider/subscription", permission: undefined },
@@ -288,6 +289,7 @@ export function ProviderSidebar() {
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const [navCounts, setNavCounts] = React.useState<ProviderNavCounts>(emptyNavCounts);
   
@@ -362,10 +364,11 @@ export function ProviderSidebar() {
     (item: NavItemConfig) => {
       if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
       if (item.featureFlag === "payment_paystack_virtual_terminal" && !paystackTerminalEnabled) return false;
+      if (item.featureFlag === "payment_paycloud" && !paycloudEnabled) return false;
       if (item.featureFlag === FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS && !unifiedPosEnabled) return false;
       return true;
     },
-    [yocoEnabled, paystackTerminalEnabled, unifiedPosEnabled],
+    [yocoEnabled, paystackTerminalEnabled, paycloudEnabled, unifiedPosEnabled],
   );
 
   const passesPermission = React.useCallback(

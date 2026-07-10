@@ -59,6 +59,8 @@ export { KpiCardsRow } from "./KpiCardsRow";
 // Sales & Payments
 export { NewSaleDialog } from "./NewSaleDialog";
 export { YocoPaymentDialog } from "./YocoPaymentDialog";
+export { PayCloudPaymentDialog } from "./PayCloudPaymentDialog";
+export { PaycloudCollectButton } from "./PaycloudCollectButton";
 export { Money } from "./Money";
 
 // QR Code

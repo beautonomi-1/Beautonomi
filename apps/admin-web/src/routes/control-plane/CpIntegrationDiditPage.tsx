@@ -34,6 +34,9 @@ type DiditHealthData = {
   workflow_id_source?: "env" | "default";
   effective_workflow_id?: string;
   default_workflow_id?: string;
+  kyb_workflow_id_set?: boolean;
+  effective_kyb_workflow_id?: string | null;
+  kyb_env_complete?: boolean;
   webhook_secret_set: boolean;
   missing_env_vars?: string[];
   base_url: string;
@@ -103,6 +106,20 @@ const VERIFICATION_FLAGS = [
     label: "Duplicate identity detection",
     description: "Detect when the same verified identity is already approved on another account (fraud flag).",
   },
+  {
+    key: "verification.didit.kyb.enabled",
+    feature_name: "Didit KYB",
+    category: "control_plane",
+    label: "Didit business verification (KYB)",
+    description: "When on with Didit KYC, registered business providers can verify their company. Requires DIDIT_KYB_WORKFLOW_ID.",
+  },
+  {
+    key: "verification.didit.kyb.required_for_business",
+    feature_name: "KYB required for businesses",
+    category: "control_plane",
+    label: "KYB required for registered businesses",
+    description: "When on, registered business providers must complete KYB (in addition to identity) for go-live and payouts.",
+  },
 ] as const;
 
 function getVerificationFlagDef(key: string) {
@@ -117,7 +134,13 @@ export function CpIntegrationDiditPage() {
   const [flags, setFlags] = useState<FlagSnapshot[]>([]);
   const [flagSaving, setFlagSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message?: string;
+    status?: number;
+    webhook_url?: string;
+    response_body?: string | null;
+  } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -188,7 +211,13 @@ export function CpIntegrationDiditPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await adminApi.postJson<{ ok: boolean; message?: string }>(
+      const res = await adminApi.postJson<{
+        ok: boolean;
+        message?: string;
+        status?: number;
+        webhook_url?: string;
+        response_body?: string | null;
+      }>(
         "/api/admin/control-plane/integrations/didit/test",
         {},
       );
@@ -203,7 +232,18 @@ export function CpIntegrationDiditPage() {
   // Compute effective mode from flags + full env readiness (matches diditEnvPresent())
   const diditEnabled = getFlag("verification.didit.enabled") && Boolean(health?.env_complete);
   const manualEnabled = getFlag("verification.manual.enabled");
+  const kybFlagOn = getFlag("verification.didit.kyb.enabled");
+  const kybRequired = getFlag("verification.didit.kyb.required_for_business");
+  const kybEnabled = diditEnabled && kybFlagOn && Boolean(health?.kyb_env_complete);
   const effectiveMode: VerificationMode = diditEnabled && manualEnabled ? "both" : diditEnabled ? "didit" : manualEnabled ? "manual" : "off";
+
+  const providerModePreview = !diditEnabled
+    ? "Verification off (Didit unavailable or disabled)"
+    : !kybEnabled
+      ? "Providers: identity verification only (KYC)"
+      : kybRequired
+        ? "Individual providers: KYC · Registered businesses: KYC + KYB required"
+        : "Individual providers: KYC · Registered businesses: KYC + optional KYB";
 
   if (denied) return null;
 
@@ -246,13 +286,28 @@ export function CpIntegrationDiditPage() {
                     : `Using default — ${health?.effective_workflow_id ?? "Free KYC"}`}
                 </span>
               </CpField>
-              <CpField label="Effective workflow">
+              <CpField label="DIDIT_KYB_WORKFLOW_ID">
+                <span className={health?.kyb_workflow_id_set ? "text-green-700" : "text-amber-600"}>
+                  {health?.kyb_workflow_id_set
+                    ? "✓ Set (env)"
+                    : "Not set — KYB unavailable until configured"}
+                </span>
+                {health?.effective_kyb_workflow_id && (
+                  <p className="mt-1 text-xs font-mono break-all text-muted-foreground">
+                    {health.effective_kyb_workflow_id}
+                  </p>
+                )}
+              </CpField>
+              <CpField label="Effective KYC workflow">
                 <span className="text-sm font-mono break-all">{health?.effective_workflow_id ?? "—"}</span>
               </CpField>
               <CpField label="DIDIT_WEBHOOK_SECRET">
                 <span className={health?.webhook_secret_set ? "text-green-700" : "text-amber-600"}>
                   {health?.webhook_secret_set ? "✓ Set" : "✗ Not set"}
                 </span>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Must match the destination <code className="font-mono">secret_shared_key</code> from Didit Business Console → API &amp; Webhooks (not the API key). Each webhook destination has its own secret.
+                </p>
               </CpField>
               <CpField label="Base URL">
                 <span className="text-sm font-mono">{health?.base_url ?? "—"}</span>
@@ -270,6 +325,11 @@ export function CpIntegrationDiditPage() {
               </CpField>
               <CpField label="Last webhook received">
                 <span className="text-sm">{health?.last_webhook_received_at ?? "Never"}</span>
+                {health?.last_webhook_received_at == null && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    If Didit deliveries show 401, the webhook secret is wrong or signature headers were stripped. Fix the secret, allowlist Didit IP <code className="font-mono">18.203.201.92</code> in Cloudflare/WAF, then use Reprocess on Verification Sessions for stuck approvals.
+                  </p>
+                )}
               </CpField>
             </div>
           </AdminPanel>
@@ -292,6 +352,7 @@ export function CpIntegrationDiditPage() {
               </span>
               <span className="text-sm text-muted-foreground">{MODE_LABEL[effectiveMode]}</span>
             </div>
+            <p className="mt-3 text-sm text-gray-700">{providerModePreview}</p>
             {!health?.env_complete && (
               <p className="mt-2 text-sm text-amber-700">
                 ⚠ Missing: {(health?.missing_env_vars?.length ? health.missing_env_vars.join(", ") : "DIDIT_API_KEY or DIDIT_WEBHOOK_SECRET")} — Didit will not be available even if the flag is on.
@@ -334,7 +395,9 @@ export function CpIntegrationDiditPage() {
           <AdminPanel>
             <div className="mb-4">
               <h3 className="text-base font-semibold text-gray-900">Test webhook</h3>
-              <p className="text-sm text-muted-foreground">Send a test webhook event to validate the Didit webhook endpoint.</p>
+              <p className="text-sm text-muted-foreground">
+                Sends a signed test POST to your public webhook URL. Requires <code className="font-mono">NEXT_PUBLIC_APP_URL</code>, <code className="font-mono">DIDIT_WEBHOOK_SECRET</code>, and a reachable <code className="font-mono">https://www.beautonomi.com/api/webhooks/didit</code> endpoint (no redirects).
+              </p>
             </div>
             <div className="space-y-3">
               <button
@@ -350,6 +413,15 @@ export function CpIntegrationDiditPage() {
               {testResult && (
                 <div className={`rounded-md px-3 py-2 text-sm ${testResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
                   {testResult.ok ? "✓ Test webhook sent and accepted" : `✗ ${testResult.message}`}
+                  {"status" in testResult && testResult.status != null && testResult.status > 0 && (
+                    <div className="mt-1 text-xs opacity-80">HTTP {testResult.status}</div>
+                  )}
+                  {"webhook_url" in testResult && testResult.webhook_url && (
+                    <div className="mt-1 text-xs font-mono break-all opacity-80">{testResult.webhook_url}</div>
+                  )}
+                  {"response_body" in testResult && testResult.response_body && (
+                    <div className="mt-1 text-xs font-mono break-all opacity-80">{testResult.response_body.slice(0, 300)}</div>
+                  )}
                 </div>
               )}
             </div>

@@ -25,6 +25,14 @@ const SETUP_ITEMS = [
     flag: "payment_yoco",
   },
   {
+    icon: "hardware-chip-outline" as const,
+    label: "Card machines",
+    subtitle: "Beautonomi in-person card machines",
+    route: "/(app)/(tabs)/more/card-machines",
+    color: "#7c3aed",
+    flag: "payment_paycloud",
+  },
+  {
     icon: "qr-code-outline" as const,
     label: "Paystack Terminal",
     subtitle: "QR and link payments through Beautonomi payouts",
@@ -54,6 +62,7 @@ export default function PaymentSetupScreen() {
   const router = useRouter();
   const handleBack = useProviderStackBack();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const terminalEcommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
   const terminalCatalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
@@ -61,6 +70,7 @@ export default function PaymentSetupScreen() {
 
   const visibleItems = SETUP_ITEMS.filter((item) => {
     if (item.flag === "payment_yoco") return yocoEnabled;
+    if (item.flag === "payment_paycloud") return paycloudEnabled;
     if (item.flag === "payment_paystack_virtual_terminal") return paystackTerminalEnabled;
     if (item.flag === "terminal_ecommerce_enabled") return terminalShopEnabled;
     return true;

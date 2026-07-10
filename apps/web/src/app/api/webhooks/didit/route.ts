@@ -12,6 +12,10 @@
  *
  * This route is CSRF-exempt (no session cookie needed; the webhook is
  * authenticated via HMAC signature).
+ *
+ * Didit Business Console "Test Webhook" payloads often omit `event_id` and set
+ * `X-Didit-Test-Webhook: true`. Those are acknowledged with 200 so the console
+ * shows success; live deliveries always include `event_id`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,6 +27,19 @@ export const dynamic = "force-dynamic";
 
 /** Session-level webhook events we act on. Others are acknowledged and ignored. */
 const SESSION_EVENT_TYPES = new Set(["status.updated", "data.updated"]);
+
+function isDiditConsoleTestWebhook(
+  request: NextRequest,
+  payload: DiditWebhookPayload,
+): boolean {
+  const header = request.headers.get("x-didit-test-webhook");
+  if (header === "true" || header === "1") return true;
+  const meta = payload.metadata as Record<string, unknown> | undefined;
+  if (meta?.test_webhook === true) return true;
+  const ua = request.headers.get("user-agent") ?? "";
+  if (ua.includes("(Test)")) return true;
+  return false;
+}
 
 export async function POST(request: NextRequest) {
   // Read raw body for HMAC verification (must happen before any parsing)
@@ -40,12 +57,13 @@ export async function POST(request: NextRequest) {
     signatureRaw,
     signatureSimple,
     timestamp,
+    userAgent: request.headers.get("user-agent"),
   });
 
-  if (!sigResult.ok) {
-    console.warn("[webhook/didit] invalid signature");
+  if (sigResult.ok === false) {
+    console.warn("[webhook/didit] invalid signature", sigResult.diagnostics);
     return NextResponse.json(
-      { error: "DIDIT_WEBHOOK_SIGNATURE_INVALID" },
+      { error: "DIDIT_WEBHOOK_SIGNATURE_INVALID", reason: sigResult.diagnostics.reason },
       { status: 401 },
     );
   }
@@ -55,18 +73,39 @@ export async function POST(request: NextRequest) {
   try {
     payload = JSON.parse(rawBodyBuffer.toString("utf8")) as DiditWebhookPayload;
   } catch {
+    console.warn("[webhook/didit] invalid payload JSON");
     return NextResponse.json({ error: "INVALID_PAYLOAD" }, { status: 400 });
   }
 
   const eventId = payload.event_id;
   if (!eventId) {
+    // Console "Test Webhook" often omits event_id; acknowledge so Didit shows success.
+    // Do not apply state — synthetic session_ids are not in our DB.
+    if (isDiditConsoleTestWebhook(request, payload)) {
+      console.info("[webhook/didit] console test webhook acknowledged (no event_id)", {
+        webhook_type: payload.webhook_type,
+        session_id: payload.session_id ?? null,
+        status: payload.status ?? null,
+      });
+      return NextResponse.json(
+        { received: true, ignored: true, reason: "didit_console_test_missing_event_id" },
+        { status: 200 },
+      );
+    }
+    console.warn("[webhook/didit] missing event_id", {
+      webhook_type: payload.webhook_type,
+      session_id: payload.session_id ?? null,
+    });
     return NextResponse.json({ error: "MISSING_EVENT_ID" }, { status: 400 });
   }
 
   // Gracefully acknowledge (200) events we don't handle — entity/transaction
   // events, or session events without a session_id — so Didit does not retry
   // and eventually drop them.
-  if (!SESSION_EVENT_TYPES.has(payload.webhook_type) || !payload.session_id) {
+  if (
+    !SESSION_EVENT_TYPES.has(payload.webhook_type) ||
+    (!payload.session_id && !payload.business_session_id)
+  ) {
     return NextResponse.json({ received: true, ignored: true }, { status: 200 });
   }
 

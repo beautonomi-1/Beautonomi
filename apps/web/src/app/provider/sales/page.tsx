@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Money } from "@/components/provider-portal/Money";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { NewSaleDialog } from "@/components/provider-portal/NewSaleDialog";
 import { toast } from "sonner";
 import { Search, Plus, CreditCard, Calendar, User, ShoppingBag } from "lucide-react";
@@ -23,13 +25,16 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { ProtectedPage } from "@/components/provider/ProtectedPage";
 import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 function ProviderSalesContent() {
   const router = useRouter();
+  const { currencyCode } = useReportCurrency();
   const { isLoading: configLoading } = useConfigBundle();
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const { selectedLocationId } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -37,6 +42,7 @@ function ProviderSalesContent() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
+  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isNewSaleDialogOpen, setIsNewSaleDialogOpen] = useState(false);
 
@@ -50,7 +56,7 @@ function ProviderSalesContent() {
     loadSales();
   }, [page, dateRange, selectedLocationId]);
 
-  // Optimized debounced search (reduced from 500ms to 300ms for faster response)
+  // Optimized debounced search
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
       if (page === 1) {
@@ -114,6 +120,11 @@ function ProviderSalesContent() {
   const handleYocoPayment = (sale: Sale) => {
     setSelectedSale(sale);
     setYocoDialogOpen(true);
+  };
+
+  const handlePaycloudPayment = (sale: Sale) => {
+    setSelectedSale(sale);
+    setPaycloudDialogOpen(true);
   };
 
   const handlePaymentSuccess = (_payment: YocoPayment) => {
@@ -290,6 +301,13 @@ function ProviderSalesContent() {
                     <TableCell>{sale.payment_method}</TableCell>
                     <TableCell>{sale.team_member_name || "-"}</TableCell>
                     <TableCell className="text-right">
+                      <PaycloudCollectButton
+                        amount={sale.total}
+                        currency={currencyCode}
+                        context="sale"
+                        onClick={() => handlePaycloudPayment(sale)}
+                        className="gap-2"
+                      />
                       {yocoEnabled && (
                         <Button
                           variant="outline"
@@ -318,6 +336,22 @@ function ProviderSalesContent() {
             </div>
           )}
         </>
+      )}
+
+      {selectedSale && (
+        <PayCloudPaymentDialog
+          open={paycloudDialogOpen}
+          onOpenChange={setPaycloudDialogOpen}
+          amount={selectedSale.total}
+          entityType="sale"
+          entityId={selectedSale.id}
+          saleId={selectedSale.id}
+          bookingLocationId={selectedLocationId}
+          onSuccess={() => {
+            loadSales();
+            setPaycloudDialogOpen(false);
+          }}
+        />
       )}
 
       {selectedSale && (

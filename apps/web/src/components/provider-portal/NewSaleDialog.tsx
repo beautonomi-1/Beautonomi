@@ -32,6 +32,11 @@ import { providerPortalFetch } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import { Money } from "./Money";
 import { YocoPaymentDialog } from "./YocoPaymentDialog";
+import { PayCloudPaymentDialog } from "./PayCloudPaymentDialog";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import Link from "next/link";
+import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
 import {
   Search,
   User,
@@ -72,7 +77,6 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface Client {
@@ -148,7 +152,8 @@ function formatProductVariantLabel(v: ProductVariantItem): string {
 // Payment methods for POS sale dialog - aligned with other dialogs
 const paymentMethods = [
   { id: "cash", label: "Cash", description: "Pay with cash", icon: Banknote },
-  { id: "yoco", label: "Card (Terminal)", description: "Process via card terminal", icon: CreditCard },
+  { id: "paycloud", label: "Card machine", description: "Customer pays on your Beautonomi card machine", icon: CreditCard },
+  { id: "yoco", label: "Yoco", description: "Charge your Yoco card machine", icon: CreditCard },
   { id: "card", label: "Card (Manual)", description: "Record card payment manually", icon: CreditCard },
   { id: "eft", label: "EFT / Bank Transfer", description: "Instant EFT or bank transfer", icon: Smartphone },
   { id: "gift_card", label: "Gift Card", description: "Redeem gift card balance", icon: Gift },
@@ -167,11 +172,14 @@ export function NewSaleDialog({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
   const [activeTab, setActiveTab] = useState<"services" | "products">("services");
-  const { enabled: giftCardsEnabled } = useFeatureFlag("gift_cards");
-  const { enabled: yocoEnabled } = useFeatureFlag("payment_yoco");
+  const giftCardsEnabled = useFeatureFlag("gift_cards");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
   const visiblePaymentMethods = paymentMethods.filter((m) => {
     if (m.id === "gift_card") return giftCardsEnabled;
     if (m.id === "yoco") return yocoEnabled;
+    if (m.id === "paycloud") return paycloudEnabled;
     return true;
   });
 
@@ -179,11 +187,12 @@ export function NewSaleDialog({
   useEffect(() => {
     if (
       (!giftCardsEnabled && selectedPaymentMethod === "gift_card") ||
-      (!yocoEnabled && selectedPaymentMethod === "yoco")
+      (!yocoEnabled && selectedPaymentMethod === "yoco") ||
+      (!paycloudEnabled && selectedPaymentMethod === "paycloud")
     ) {
       setSelectedPaymentMethod("cash");
     }
-  }, [giftCardsEnabled, yocoEnabled, selectedPaymentMethod]);
+  }, [giftCardsEnabled, yocoEnabled, paycloudEnabled, selectedPaymentMethod]);
 
   // Client search
   const [clientSearchQuery, setClientSearchQuery] = useState("");
@@ -215,11 +224,19 @@ export function NewSaleDialog({
   const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
   const yocoPendingSaleIdRef = useRef<string | null>(null);
 
+  // PayCloud payment — pending sale row links terminal payment via sale_id
+  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
+  const [paycloudLinkedSaleId, setPaycloudLinkedSaleId] = useState<string | null>(null);
+  const paycloudPendingSaleIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!open) {
       yocoPendingSaleIdRef.current = null;
       setYocoLinkedSaleId(null);
       setShowYocoDialog(false);
+      paycloudPendingSaleIdRef.current = null;
+      setPaycloudLinkedSaleId(null);
+      setShowPaycloudDialog(false);
     }
   }, [open]);
 
@@ -765,6 +782,7 @@ export function NewSaleDialog({
   const handleSubmit = async (options?: {
     afterYocoTerminalSuccess?: boolean;
     yocoPayment?: YocoPayment;
+    afterPaycloudTerminalSuccess?: boolean;
   }) => {
     if (cart.length === 0) {
       toast.error("Please add items to the sale");
@@ -833,6 +851,48 @@ export function NewSaleDialog({
         Boolean(selectedClient?.id?.startsWith("walk-in")) ||
         Boolean(selectedClient?.id?.startsWith("new-client-")),
     };
+
+    // PayCloud: create a pending sale, charge terminal with sale_id, settlement completes the sale
+    if (selectedPaymentMethod === "paycloud" && !options?.afterPaycloudTerminalSuccess) {
+      if (!paycloudReady) {
+        return;
+      }
+      setIsLoading(true);
+      try {
+        let saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+        if (!saleId) {
+          const pending = await providerApi.createSale({
+            ...saleBase,
+            payment_method: "card",
+            payment_status: "pending",
+          } as Partial<Sale>);
+          saleId = pending.id;
+          paycloudPendingSaleIdRef.current = saleId;
+          setPaycloudLinkedSaleId(saleId);
+        }
+        setShowPaycloudDialog(true);
+      } catch (error) {
+        console.error("Failed to start PayCloud sale:", error);
+        toast.error("Failed to prepare card sale");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (selectedPaymentMethod === "paycloud" && options?.afterPaycloudTerminalSuccess) {
+      const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+      if (!saleId) {
+        toast.error("Could not finalize card sale");
+        return;
+      }
+      paycloudPendingSaleIdRef.current = null;
+      setPaycloudLinkedSaleId(null);
+      toast.success("Sale completed!");
+      onSuccess?.({ id: saleId } as Sale);
+      onOpenChange(false);
+      return;
+    }
 
     // Yoco: create a pending sale, charge terminal with sale_id, then mark completed (no second insert)
     if (selectedPaymentMethod === "yoco" && !options?.afterYocoTerminalSuccess) {
@@ -907,6 +967,11 @@ export function NewSaleDialog({
   const handleYocoPaymentSuccess = (payment: YocoPayment) => {
     setShowYocoDialog(false);
     void handleSubmit({ afterYocoTerminalSuccess: true, yocoPayment: payment });
+  };
+
+  const handlePaycloudPaymentSuccess = () => {
+    setShowPaycloudDialog(false);
+    void handleSubmit({ afterPaycloudTerminalSuccess: true });
   };
 
   return (
@@ -1842,6 +1907,31 @@ export function NewSaleDialog({
                     {visiblePaymentMethods.map((method) => {
                       const Icon = method.icon;
                       const isSelected = selectedPaymentMethod === method.id;
+                      const isPaycloudSetupBlocked =
+                        method.id === "paycloud" && paycloudEnabled && !paycloudReady;
+                      const setupHref = blockers[0]?.href ?? "/provider/settings/sales/card-machines";
+                      if (isPaycloudSetupBlocked) {
+                        return (
+                          <Link
+                            key={method.id}
+                            href={setupHref}
+                            className={cn(
+                              "relative p-3 rounded-xl border-2 text-left transition-all",
+                              "border-amber-200 hover:border-amber-300 bg-amber-50/50",
+                            )}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700">
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-sm text-amber-900">{PAYCLOUD_SETUP_LABEL}</p>
+                                <p className="text-xs text-amber-700/80 mt-0.5">{method.description}</p>
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      }
                       return (
                         <button
                           key={method.id}
@@ -1926,6 +2016,19 @@ export function NewSaleDialog({
           amount={total}
           saleId={yocoLinkedSaleId}
           onSuccess={handleYocoPaymentSuccess}
+        />
+      )}
+
+      {showPaycloudDialog && paycloudLinkedSaleId && (
+        <PayCloudPaymentDialog
+          open={showPaycloudDialog}
+          onOpenChange={setShowPaycloudDialog}
+          amount={total}
+          entityType="sale"
+          entityId={paycloudLinkedSaleId}
+          saleId={paycloudLinkedSaleId}
+          bookingLocationId={serviceLocationType === "at-salon" ? selectedLocationId : undefined}
+          onSuccess={handlePaycloudPaymentSuccess}
         />
       )}
 

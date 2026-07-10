@@ -275,6 +275,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Mapbox", href: "/admin/mapbox", icon: Map, section: ADMIN_SECTION_INTEGRATIONS_DEV },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe, section: ADMIN_SECTION_INTEGRATIONS_DEV },
       { title: "Yoco Web POS", href: "/admin/integrations/yoco", icon: Smartphone, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true, subheader: "Advanced" },
+      { title: "PayCloud Card Machines", href: "/admin/integrations/paycloud", icon: Terminal, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "PayCloud Operations", href: "/admin/integrations/paycloud-operations", icon: Terminal, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Gemini (AI)", href: "/admin/control-plane/integrations/gemini", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },

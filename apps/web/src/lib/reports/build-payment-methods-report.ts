@@ -17,6 +17,7 @@ export function isGatewayCardCaptureProvider(provider: string | null | undefined
     p === "paystack_terminal" ||
     p === "paystack_virtual_terminal" ||
     p === "yoco" ||
+    p === "paycloud" ||
     p === "stripe" ||
     p === "card"
   );

@@ -63,6 +63,33 @@ export async function finalizeTerminalOrderAfterPayment(
     } catch (syncErr) {
       console.error("[finalizeTerminalOrderAfterPayment] asset sync failed:", syncErr);
     }
+
+    if (o.terminal_products?.integration_vendor_slug === "paycloud") {
+      try {
+        const { data: orderRow } = await supabase
+          .from("terminal_orders")
+          .select("provider_id, tenant_id, collection_location_id, terminal_assets(id, serial_number, label)")
+          .eq("id", terminalOrderId)
+          .maybeSingle();
+        const assets = (orderRow as any)?.terminal_assets;
+        const asset = Array.isArray(assets) ? assets[0] : assets;
+        if (orderRow?.provider_id && orderRow?.tenant_id && asset?.serial_number) {
+          const { registerPaycloudTerminalFromAsset } = await import(
+            "@/lib/terminal/register-paycloud-terminal-from-asset"
+          );
+          await registerPaycloudTerminalFromAsset(supabase, {
+            terminalAssetId: asset.id,
+            providerId: orderRow.provider_id,
+            tenantId: orderRow.tenant_id,
+            locationId: orderRow.collection_location_id,
+            serialNumber: asset.serial_number,
+            displayName: asset.label,
+          });
+        }
+      } catch (paycloudErr) {
+        console.error("[finalizeTerminalOrderAfterPayment] PayCloud registry bridge failed:", paycloudErr);
+      }
+    }
   }
 
   const needsSetup = o.terminal_products?.requires_integration_setup === true;

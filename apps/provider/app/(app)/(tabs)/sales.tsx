@@ -15,6 +15,9 @@ import { useFromTransactionsHub, useProviderStackBack } from "@/lib/provider-tab
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
+import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
 import { getReportDateRange } from "@/lib/reportDateRanges";
 import { useApi, useApiPost } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
@@ -205,7 +208,7 @@ type CheckoutStep =
   | "payment"
   | "receipt";
 
-type PaymentMethod = "cash" | "yoco" | "card" | "eft" | "paystack_terminal";
+type PaymentMethod = "cash" | "yoco" | "paycloud" | "card" | "eft" | "paystack_terminal";
 
 const DATE_RANGES = [
   { label: "Today", value: "today" },
@@ -224,6 +227,13 @@ export default function SalesScreen() {
   const adsFeatureOn = useFeatureFlag("ads.enabled");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { settings: paycloudSettings } = usePayCloudSettings();
+  const paycloudReady =
+    paycloudEnabled &&
+    Boolean(paycloudSettings?.ready);
+  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const { isLoading: configLoading } = useConfigBundle();
   const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
 
@@ -239,11 +249,18 @@ export default function SalesScreen() {
       ...(yocoEnabled
         ? [{ label: "Yoco terminal", value: "yoco" as const, icon: "card-outline" as const }]
         : []),
+      ...(paycloudEnabled && paycloudCollectEnabled
+        ? [{
+            label: paycloudInFlight ? "Resume card machine" : "Card machine",
+            value: "paycloud" as const,
+            icon: "card-outline" as const,
+          }]
+        : []),
       { label: "Card manual", value: "card", icon: "reader-outline" },
       { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
     ];
     if (paystackTerminalEnabled) {
-      const insertAt = yocoEnabled ? 3 : 2;
+      const insertAt = 2 + (yocoEnabled ? 1 : 0) + (paycloudEnabled && paycloudCollectEnabled ? 1 : 0);
       base.splice(insertAt, 0, {
         label: "Paystack Terminal",
         value: "paystack_terminal",
@@ -251,7 +268,7 @@ export default function SalesScreen() {
       });
     }
     return base;
-  }, [paystackTerminalEnabled, yocoEnabled]);
+  }, [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -293,6 +310,9 @@ export default function SalesScreen() {
   const yocoPendingSaleIdRef = useRef<string | null>(null);
   const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
   const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const paycloudPendingSaleIdRef = useRef<string | null>(null);
+  const [paycloudLinkedSaleId, setPaycloudLinkedSaleId] = useState<string | null>(null);
+  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
     code: string;
@@ -623,6 +643,8 @@ export default function SalesScreen() {
     variantsCacheRef.current.clear();
     yocoPendingSaleIdRef.current = null;
     setYocoLinkedSaleId(null);
+    paycloudPendingSaleIdRef.current = null;
+    setPaycloudLinkedSaleId(null);
     setCheckoutStep("select_client");
   }
 
@@ -678,6 +700,8 @@ export default function SalesScreen() {
     }
     yocoPendingSaleIdRef.current = null;
     setYocoLinkedSaleId(null);
+    paycloudPendingSaleIdRef.current = null;
+    setPaycloudLinkedSaleId(null);
     setReceiptData({
       total: grandTotal,
       items: [...cart],
@@ -793,6 +817,30 @@ export default function SalesScreen() {
       setShowYocoPayment(true);
       return;
     }
+    if (paymentMethod === "paycloud") {
+      let saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+      if (!saleId) {
+        const { data, error } = await createSale(
+          buildSalePayload({
+            payment_method: "paycloud",
+            payment_status: "pending",
+          }),
+        );
+        if (error) {
+          Alert.alert("Error", error);
+          return;
+        }
+        if (!data?.id) {
+          Alert.alert("Error", "Could not prepare card sale");
+          return;
+        }
+        saleId = data.id;
+        paycloudPendingSaleIdRef.current = saleId;
+        setPaycloudLinkedSaleId(saleId);
+      }
+      setShowPaycloudPayment(true);
+      return;
+    }
     await completeSaleWithMethod(paymentMethod);
   }
 
@@ -831,6 +879,49 @@ export default function SalesScreen() {
       items: [...cart],
       client: selectedClient?.full_name ?? "Walk-in",
       method: "yoco",
+      date: new Date().toISOString(),
+    });
+    setCheckoutStep("receipt");
+    refreshSales();
+    refreshMetrics();
+  }
+
+  async function finalizePaycloudSale(result: { id: string }) {
+    const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+    if (!saleId) {
+      Alert.alert("Error", "Could not finalize card sale");
+      return;
+    }
+    const patch = await api.patch(`/api/provider/sales/${saleId}`, {
+      payment_status: "completed",
+      payment_provider: "paycloud",
+      payment_provider_id: result.id,
+    });
+    if (patch.error) {
+      Alert.alert(
+        "Payment received — finish recording",
+        "The terminal payment succeeded but this sale is still pending. Tap Finish recording to retry without charging the customer again.",
+        [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Finish recording",
+            onPress: () => {
+              void finalizePaycloudSale(result);
+            },
+          },
+        ],
+      );
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    paycloudPendingSaleIdRef.current = null;
+    setPaycloudLinkedSaleId(null);
+    setShowPaycloudPayment(false);
+    setReceiptData({
+      total: grandTotal,
+      items: [...cart],
+      client: selectedClient?.full_name ?? "Walk-in",
+      method: "paycloud",
       date: new Date().toISOString(),
     });
     setCheckoutStep("receipt");
@@ -1334,6 +1425,18 @@ export default function SalesScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          {paycloudEnabled && !paycloudCollectEnabled ? (
+            <TouchableOpacity
+              style={[
+                { width: "48%", marginHorizontal: "1%", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", paddingVertical: 12, paddingHorizontal: 8, marginBottom: 8, borderColor: Colors.gray[300], backgroundColor: Colors.white },
+              ]}
+              onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
+              accessibilityLabel={PAYCLOUD_SETUP_LABEL}
+              accessibilityRole="button"
+            >
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>{PAYCLOUD_SETUP_LABEL}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16 }}>
@@ -1646,6 +1749,18 @@ export default function SalesScreen() {
         saleId={yocoLinkedSaleId ?? undefined}
         description={`POS Sale for ${selectedClient?.full_name ?? "Walk-in"}`}
         onPaymentSuccess={(result) => finalizeYocoSale(result)}
+      />
+
+      <PayCloudPaymentSheet
+        visible={showPaycloudPayment}
+        onClose={() => setShowPaycloudPayment(false)}
+        amount={grandTotal}
+        currency={tenantCurrency}
+        entityType="sale"
+        entityId={paycloudLinkedSaleId ?? ""}
+        saleId={paycloudLinkedSaleId ?? undefined}
+        bookingLocationId={selectedLocationId}
+        onPaymentSuccess={(result) => void finalizePaycloudSale(result)}
       />
 
       <BottomSheet

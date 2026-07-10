@@ -20,6 +20,7 @@ export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "paystack",
   "paystack_terminal",
   "yoco",
+  "paycloud",
   "gift_card",
   "wallet",
   "other",

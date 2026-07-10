@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
       )
       .eq("id", providerId)
       .single();
@@ -80,6 +80,7 @@ export async function GET(request: NextRequest) {
     const effectiveTenantId =
       (provider as { tenant_id?: string | null }).tenant_id ?? hostTenantId;
     const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, effectiveTenantId);
+    const paycloudEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD, effectiveTenantId);
     const paystackTerminalEnabled = await isFeatureEnabledServer(
       FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL,
       effectiveTenantId,
@@ -126,6 +127,7 @@ export async function GET(request: NextRequest) {
       acceptPaystackTerminal: paystackTerminalEnabled
         ? (provider.accept_paystack_terminal ?? false)
         : false,
+      acceptPaycloud: paycloudEnabled ? (provider.accept_paycloud ?? false) : false,
       taxInclusive: provider.tax_inclusive ?? true,
       tipsEnabled: provider.tips_enabled ?? true,
       tipPresets: provider.tip_presets ?? [10, 15, 20, 25],
@@ -147,6 +149,10 @@ export async function GET(request: NextRequest) {
         terminals: paystackTerminalAvailability.terminals,
         selectableTerminals: paystackTerminalAvailability.selectableTerminals,
         activeTerminalCount: paystackTerminalAvailability.activeTerminalCount,
+      },
+      paycloud: {
+        platformEnabled: paycloudEnabled,
+        accepted: paycloudEnabled ? (provider.accept_paycloud ?? false) : false,
       },
       defaultTaxRate,
     };
@@ -185,6 +191,7 @@ export async function PATCH(request: NextRequest) {
     if (mismatch) return mismatch;
 
     const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, tenantId);
+    const paycloudEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD, tenantId);
     const paystackTerminalEnabled = await isFeatureEnabledServer(
       FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL,
       tenantId,
@@ -227,6 +234,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.acceptPaystackTerminal !== undefined) {
       updates.accept_paystack_terminal = paystackTerminalEnabled ? body.acceptPaystackTerminal : false;
+    }
+    if (body.acceptPaycloud !== undefined) {
+      updates.accept_paycloud = paycloudEnabled ? body.acceptPaycloud : false;
     }
     if (body.taxInclusive !== undefined) {
       updates.tax_inclusive = body.taxInclusive;

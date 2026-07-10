@@ -44,6 +44,7 @@ export const ALL_FEATURE_CATEGORY_KEYS = [
   "platform_ads",
   "advanced_analytics",
   "yoco_integration",
+  "paycloud_integration",
   "paystack_virtual_terminal",
   "calendar_sync",
   "terminal_bundle",
@@ -337,6 +338,23 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
         generousDefault: 10,
       },
       { key: "advanced_features", label: "Advanced Yoco features", type: "toggle", freePlanDefault: true },
+    ],
+  },
+  {
+    key: "paycloud_integration",
+    label: "Beautonomi card machines",
+    description: "In-person card payments via PayCloud/WiseCashier terminals.",
+    group: "payments",
+    fields: [
+      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: false },
+      {
+        key: "max_terminals",
+        label: "Max terminals",
+        type: "limit",
+        freePlanDefault: 1,
+        generousDefault: 5,
+      },
+      { key: "advanced_features", label: "Advanced terminal features", type: "toggle", freePlanDefault: false },
     ],
   },
   {

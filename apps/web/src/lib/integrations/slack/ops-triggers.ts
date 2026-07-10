@@ -54,7 +54,7 @@ export function slackNotifyUserReportCreated(params: {
 export function slackNotifyVerificationRejected(params: {
   tenantId: string;
   verificationId: string;
-  source: "sumsub_customer" | "sumsub_provider" | "manual";
+  source: "sumsub_customer" | "sumsub_provider" | "manual" | "didit_customer" | "didit_provider" | "didit_kyb";
   subject?: string | null;
   detail?: string | null;
   actionUrl?: string;
@@ -65,7 +65,13 @@ export function slackNotifyVerificationRejected(params: {
       ? "SumSub (customer)"
       : params.source === "sumsub_provider"
         ? "SumSub (provider)"
-        : "Manual review";
+        : params.source === "didit_customer"
+          ? "Didit (customer)"
+          : params.source === "didit_provider"
+            ? "Didit (provider)"
+            : params.source === "didit_kyb"
+              ? "Didit (KYB)"
+            : "Manual review";
   void tryNotifySlackEvent({
     tenantId: params.tenantId,
     environment: eventEnv(),
@@ -81,7 +87,9 @@ export function slackNotifyVerificationRejected(params: {
       "Action: notify user/provider and guide resubmission",
       params.source === "sumsub_provider"
         ? "Admin → Provider Lifecycle → Verification card"
-        : "Admin → Verifications",
+        : params.source === "didit_provider" || params.source === "didit_customer"
+          ? "Admin → Identity & Trust → Verification Sessions"
+          : "Admin → Verifications",
     ].filter(Boolean) as string[],
     actionUrl: params.actionUrl ?? `/verifications/${params.verificationId}`,
   });
@@ -220,12 +228,12 @@ export function slackNotifyPaystackTerminalSetupRequested(params: {
   });
 }
 
-/** Manual upload or SumSub outcome that still needs admin review. */
+/** Manual upload, SumSub, or Didit outcome that still needs admin review. */
 export function slackNotifyVerificationNeedsReview(params: {
   tenantId: string;
   verificationId: string;
   documentType?: string | null;
-  source?: "manual" | "sumsub_customer" | "sumsub_provider";
+  source?: "manual" | "sumsub_customer" | "sumsub_provider" | "didit_customer" | "didit_provider" | "didit_kyb";
   detail?: string | null;
   /** Defaults to user verification detail path; use provider detail for SumSub provider reviews. */
   actionUrl?: string;
@@ -236,7 +244,13 @@ export function slackNotifyVerificationNeedsReview(params: {
       ? "SumSub (customer)"
       : params.source === "sumsub_provider"
         ? "SumSub (provider)"
-        : "Manual document";
+        : params.source === "didit_customer"
+          ? "Didit (customer)"
+          : params.source === "didit_provider"
+            ? "Didit (provider)"
+            : params.source === "didit_kyb"
+              ? "Didit (KYB)"
+            : "Manual document";
   const actionUrl = params.actionUrl ?? `/verifications/${params.verificationId}`;
   void tryNotifySlackEvent({
     tenantId: params.tenantId,
@@ -252,7 +266,9 @@ export function slackNotifyVerificationNeedsReview(params: {
       params.detail,
       params.source === "sumsub_provider"
         ? "Action: Admin → Providers"
-        : "Action: Admin → Verifications",
+        : params.source === "didit_provider" || params.source === "didit_customer"
+          ? "Action: Admin → Identity & Trust → Verification Sessions"
+          : "Action: Admin → Verifications",
     ].filter(Boolean) as string[],
     actionUrl,
   });

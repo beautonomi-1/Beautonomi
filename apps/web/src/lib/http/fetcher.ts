@@ -144,6 +144,7 @@ function isScopedAdminCustomizationUrl(url: string): boolean {
   return (
     adminPathMatchesPrefix(url, "/api/admin/settings") ||
     adminPathMatchesPrefix(url, "/api/admin/integrations/paystack") ||
+    adminPathMatchesPrefix(url, "/api/admin/integrations/paycloud") ||
     adminPathMatchesPrefix(url, "/api/admin/content") ||
     adminPathMatchesPrefix(url, "/api/admin/email-templates") ||
     adminPathMatchesPrefix(url, "/api/admin/sms-templates") ||

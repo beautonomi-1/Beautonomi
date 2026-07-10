@@ -8,6 +8,14 @@ export const FEATURE_FLAG_KEYS = {
   PAYMENT_PAYSTACK_VIRTUAL_TERMINAL: "payment_paystack_virtual_terminal",
   /** Master switch for provider-side Yoco collection and management. */
   PAYMENT_YOCO: "payment_yoco",
+  /** Master switch for provider-side Beautonomi card machine (PayCloud) collection. */
+  PAYMENT_PAYCLOUD: "payment_paycloud",
+  /** Enable QR wallet payments on PayCloud terminals. */
+  PAYMENT_PAYCLOUD_QR: "payment_paycloud_qr",
+  /** Enable cashback on PayCloud terminal sales. */
+  PAYMENT_PAYCLOUD_CASHBACK: "payment_paycloud_cashback",
+  /** Same-terminal Intent on P5/P5L (gated; requires hardware validation). */
+  PAYMENT_PAYCLOUD_SAME_TERMINAL: "payment_paycloud_same_terminal",
   /** Master switch for the provider booking payment-link method (send a Paystack checkout link). */
   PAYMENT_LINK: "payment_link",
   PAYMENT_WALLET: "payment_wallet",
@@ -90,6 +98,19 @@ export const FEATURE_FLAG_KEYS = {
    * on another account and raise a fraud-review flag.
    */
   VERIFICATION_DEDUPE: "verification.dedupe",
+
+  /**
+   * Master switch for Didit KYB (business verification) for registered companies.
+   * Effective when verification.didit.enabled is also on.
+   */
+  VERIFICATION_DIDIT_KYB: "verification.didit.kyb.enabled",
+
+  /**
+   * When enabled (and KYB master is on), registered business providers must
+   * complete KYB in addition to person KYC for go-live / payout gates.
+   */
+  VERIFICATION_DIDIT_KYB_REQUIRED_FOR_BUSINESS:
+    "verification.didit.kyb.required_for_business",
 
   // ── Terminal capture & commerce ──────────────────────────────────────────────
 

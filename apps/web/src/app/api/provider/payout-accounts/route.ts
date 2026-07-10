@@ -21,6 +21,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
+import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
 
 // §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
 // `ghipss`, `mobile_money`, and `basa`. For South African providers (the
@@ -396,6 +397,20 @@ export async function POST(request: NextRequest) {
         500,
         dbSaveErrorResponseDetails(saveError),
       );
+    }
+
+    const accountNameForMatch =
+      (savedAccount as { account_name?: string | null }).account_name ?? resolvedName ?? account_name;
+    if (savedAccount?.id && accountNameForMatch) {
+      try {
+        await applyPayoutNameMatchForAccount(
+          providerId,
+          savedAccount.id as string,
+          accountNameForMatch,
+        );
+      } catch (matchErr) {
+        console.warn("[payout-accounts] name match check failed:", matchErr);
+      }
     }
 
     return successResponse(savedAccount);

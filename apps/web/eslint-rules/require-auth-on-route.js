@@ -30,6 +30,7 @@
  *   - /api/bookings/at-home/**    public distance/availability checks
  *   - /api/custom-fields/**       RLS-protected read (authenticated Supabase client)
  *   - /api/provider/yoco/webhook  Yoco webhook (HMAC signature)
+ *   - /api/provider/paycloud/webhook  PayCloud webhook (RSA2 signature)
  *
  * Accepted guard references (case sensitive):
  *   requireRoleInApi, requireAuthInApi, optionalAuthInApi, requireRole, requireAdminSection,
@@ -68,6 +69,7 @@ const GUARD_IDENTIFIERS = new Set([
   "verifyCronSecret",
   "verifyCronRequest",
   "verifyWebhookSignature",
+  "verifyPaycloudWebhookSignature",
   "verifyPaystackSignature",
 ]);
 
@@ -108,6 +110,7 @@ const ALLOW_LIST_PREFIXES = [
   "src/app/api/bookings/at-home/",
   "src/app/api/custom-fields/",
   "src/app/api/provider/yoco/webhook",
+  "src/app/api/provider/paycloud/webhook",
   "src/app/api/provider/calendar/links/",
   "src/app/api/provider/calendar/providers",
   "src/app/api/provider/reference-data",

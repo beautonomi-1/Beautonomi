@@ -10,6 +10,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
+import { clearIdentityVerificationForReverify } from "@/lib/verification/clear-identity-verification-for-reverify";
 
 /**
  * PATCH /api/admin/providers/[id]/verify
@@ -69,16 +70,26 @@ export async function PATCH(
     // Keep admin badge toggles in sync with provider KYC and user identity
     // state. A direct `providers.is_verified` write caused the mobile
     // verification screen, setup checklist, and marketplace badge to drift.
-    const syncResult = await syncProviderVerificationState(supabase, {
-      providerId: id,
-      userId: providerRow.user_id ?? null,
-      status: verified ? "approved" : "reset",
-      source: verified ? "manual_admin" : "admin_reset",
-      metadata: {
-        admin_provider_verify_toggle: true,
-        reviewed_by_user_id: user.id,
-      },
-    });
+    const syncResult = verified
+      ? await syncProviderVerificationState(supabase, {
+          providerId: id,
+          userId: providerRow.user_id ?? null,
+          status: "approved",
+          source: "manual_admin",
+          metadata: {
+            admin_provider_verify_toggle: true,
+            reviewed_by_user_id: user.id,
+          },
+        })
+      : await clearIdentityVerificationForReverify(supabase, {
+          userId: providerRow.user_id ?? "",
+          providerId: id,
+          adminUserId: user.id,
+          metadata: {
+            admin_provider_verify_toggle: true,
+            reviewed_by_user_id: user.id,
+          },
+        });
 
     if (!syncResult.ok) {
       return handleApiError(

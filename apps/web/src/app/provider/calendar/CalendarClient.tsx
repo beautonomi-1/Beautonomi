@@ -1489,7 +1489,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     paymentMethod: string,
     tipAmount: number,
     discountAmount: number,
-    notes: string
+    notes: string,
+    options?: { sendReceipt?: boolean; paycloudSettled?: boolean },
   ) => {
     if (!selectedAppointment) {
       throw new Error("No appointment selected");
@@ -1506,47 +1507,64 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
       }
 
-      // Create sale record with payment details (all services + products on the booking)
-      try {
-        const saleItems = buildSaleItemsFromAppointment(apt);
-        const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
-        const subtotalForSale = Number(apt.subtotal ?? lineSum);
-        const taxForSale = Number(apt.tax_amount ?? 0);
-        const travel = Number(apt.travel_fee ?? 0);
-        const bookingTotal =
-          Number(apt.total_amount) > 0
-            ? Number(apt.total_amount)
-            : subtotalForSale + taxForSale + travel;
-        const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
+      const skipSaleRecord =
+        options?.paycloudSettled === true ||
+        (paymentMethod === "card" &&
+          (apt.payment_status === "paid" || options?.paycloudSettled));
 
-        await providerApi.createSale({
-          customer_id: apt.client_id,
-          client_name: apt.client_name,
-          date: apt.scheduled_date,
-          items: saleItems.map((i) => ({
-            id: i.id,
-            type: i.type,
-            name: i.name,
-            quantity: i.quantity,
-            unit_price: i.unit_price,
-            total: i.total,
-            item_id: i.item_id ?? undefined,
-            product_variant_id: i.product_variant_id ?? undefined,
-          })),
-          subtotal: subtotalForSale,
-          tax: taxForSale,
-          total: saleTotal,
-          payment_method: paymentMethod,
-          location_id: apt.location_id || undefined,
-          team_member_id: apt.team_member_id || undefined,
-          notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: R${tipAmount})` : ""}`.trim() : undefined,
-          discount_amount: discountAmount,
-        } as Parameters<typeof providerApi.createSale>[0]);
-      } catch (error) {
-        console.error("Failed to create sale record:", error);
-        throw new Error(
-          "The appointment was completed, but the sale could not be recorded. Please retry checkout before closing this dialog.",
-        );
+      if (!skipSaleRecord) {
+        try {
+          const saleItems = buildSaleItemsFromAppointment(apt);
+          const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
+          const subtotalForSale = Number(apt.subtotal ?? lineSum);
+          const taxForSale = Number(apt.tax_amount ?? 0);
+          const travel = Number(apt.travel_fee ?? 0);
+          const bookingTotal =
+            Number(apt.total_amount) > 0
+              ? Number(apt.total_amount)
+              : subtotalForSale + taxForSale + travel;
+          const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
+
+          await providerApi.createSale({
+            customer_id: apt.client_id,
+            client_name: apt.client_name,
+            date: apt.scheduled_date,
+            items: saleItems.map((i) => ({
+              id: i.id,
+              type: i.type,
+              name: i.name,
+              quantity: i.quantity,
+              unit_price: i.unit_price,
+              total: i.total,
+              item_id: i.item_id ?? undefined,
+              product_variant_id: i.product_variant_id ?? undefined,
+            })),
+            subtotal: subtotalForSale,
+            tax: taxForSale,
+            total: saleTotal,
+            payment_method: paymentMethod,
+            location_id: apt.location_id || undefined,
+            team_member_id: apt.team_member_id || undefined,
+            notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: R${tipAmount})` : ""}`.trim() : undefined,
+            discount_amount: discountAmount,
+          } as Parameters<typeof providerApi.createSale>[0]);
+        } catch (error) {
+          console.error("Failed to create sale record:", error);
+          throw new Error(
+            "The appointment was completed, but the sale could not be recorded. Please retry checkout before closing this dialog.",
+          );
+        }
+      } else if (options?.sendReceipt && bookingIdForRating && !options?.paycloudSettled) {
+        // PayCloud settle emails via handlePaycloudPostSettle when receipt_auto_send is on.
+        // Skip after card-machine checkout to avoid duplicate customer emails.
+        try {
+          await providerApi.sendReceiptEmail(
+            bookingIdForRating,
+            apt.client_email || undefined,
+          );
+        } catch (receiptError) {
+          console.error("Failed to send checkout receipt:", receiptError);
+        }
       }
 
       setIsCheckoutDialogOpen(false);
@@ -2563,6 +2581,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             <CheckoutDialog
               isOpen
               onClose={() => setIsCheckoutDialogOpen(false)}
+              bookingLocationId={selectedAppointment.location_id ?? null}
               checkoutData={{
                 appointment_id: rootBookingIdFromAppointment(selectedAppointment),
                 client_id: selectedAppointment.client_id || "",

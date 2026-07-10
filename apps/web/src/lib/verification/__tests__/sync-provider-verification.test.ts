@@ -86,7 +86,7 @@ describe("syncProviderVerificationState", () => {
   });
 
   it("resets all surfaces on admin reset", async () => {
-    const { admin, updates } = makeAdmin({ is_verified: true });
+    const { admin, updates, upserts } = makeAdmin({ is_verified: true });
     const res = await syncProviderVerificationState(admin, {
       providerId: "provider-1",
       userId: "user-1",
@@ -94,7 +94,15 @@ describe("syncProviderVerificationState", () => {
       source: "admin_reset",
     });
     expect(res.ok).toBe(true);
-    expect(updates.find((u) => u.table === "users")?.payload.identity_verified).toBe(false);
+    expect(upserts.find((u) => u.table === "provider_verification_status")?.payload.status).toBe(
+      "not_started",
+    );
+    const userUpdate = updates.find((u) => u.table === "users")?.payload;
+    expect(userUpdate?.identity_verified).toBe(false);
+    expect(userUpdate?.identity_verification_status).toBe("none");
+    expect(userUpdate?.identity_verification_submitted_at).toBeNull();
+    expect(userUpdate?.identity_verification_reviewed_at).toBeNull();
+    expect(userUpdate?.identity_verification_reviewed_by).toBeNull();
     expect(updates.find((u) => u.table === "providers")?.payload.is_verified).toBe(false);
   });
 

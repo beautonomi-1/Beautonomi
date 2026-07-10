@@ -166,6 +166,8 @@ export default function App() {
           <Route path="integrations/slack" element={<P.SlackIntegrationPage />} />
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
           <Route path="integrations/yoco" element={<P.YocoIntegrationPage />} />
+          <Route path="integrations/paycloud" element={<P.PayCloudIntegrationPage />} />
+          <Route path="integrations/paycloud-operations" element={<P.PayCloudOperationsPage />} />
           <Route path="integrations/resend" element={<P.ResendIntegrationPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />

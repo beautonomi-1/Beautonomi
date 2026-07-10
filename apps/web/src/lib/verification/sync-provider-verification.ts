@@ -56,6 +56,18 @@ export interface SyncProviderVerificationStateResult {
   errors: string[];
 }
 
+/** DB-safe KYC row status (migration 742 dropped `reset`). */
+export function mapKycStatusForDb(status: ProviderVerificationOutcome): string {
+  if (status === "reset") return "not_started";
+  return status;
+}
+
+/** DB-safe users.identity_verification_status text. */
+export function mapUserIdentityStatusForDb(status: ProviderVerificationOutcome): string {
+  if (status === "reset") return "none";
+  return status;
+}
+
 /**
  * Resolve provider id from a user id (owner first, then active staff). Pure
  * helper exposed for tests + admin tooling.
@@ -90,7 +102,8 @@ export async function resolveProviderIdForUser(
  *
  * - `approved`     → identity_verified=true,  is_verified=true,  KYC=approved
  * - `rejected`     → identity_verified=false, is_verified=false, KYC=rejected
- * - `reset`        → identity_verified=false, is_verified=false, KYC=reset
+ * - `reset`        → identity_verified=false, is_verified=false, KYC=not_started,
+ *                    users.identity_verification_status=none
  * - `in_progress`  → identity_verified unchanged, is_verified unchanged,
  *                    KYC=in_progress (so the provider screen can show
  *                    "Under review" without revoking an existing badge)
@@ -118,11 +131,12 @@ export async function syncProviderVerificationState(
   try {
     const upsert: Record<string, unknown> = {
       provider_id: input.providerId,
-      status: input.status,
+      status: mapKycStatusForDb(input.status),
       last_reviewed_at: isApproved || isRejected ? now : null,
       updated_at: now,
       metadata: {
         source: input.source,
+        ...(isReset ? { admin_reset: true } : {}),
         ...(input.metadata ?? {}),
       },
     };
@@ -148,13 +162,21 @@ export async function syncProviderVerificationState(
   // a re-submission cannot accidentally revoke a still-valid badge.
   if (input.userId && (isApproved || isRejected || isReset)) {
     try {
+      const userUpdate: Record<string, unknown> = {
+        identity_verified: isApproved,
+        identity_verification_status: mapUserIdentityStatusForDb(input.status),
+        updated_at: now,
+      };
+      if (isReset) {
+        userUpdate.identity_verification_submitted_at = null;
+        userUpdate.identity_verification_reviewed_at = null;
+        userUpdate.identity_verification_reviewed_by = null;
+      } else {
+        userUpdate.identity_verification_reviewed_at = now;
+      }
       const { error } = await admin
         .from("users")
-        .update({
-          identity_verified: isApproved,
-          identity_verification_status: input.status,
-          identity_verification_reviewed_at: now,
-        })
+        .update(userUpdate)
         .eq("id", input.userId);
       if (error) {
         result.ok = false;
@@ -242,7 +264,7 @@ export async function syncProviderVerificationStateFromDidit(
     .from("provider_verification_status")
     .upsert({
       provider_id:           providerId,
-      status:                outcome,
+      status:                mapKycStatusForDb(outcome),
       verification_provider: "didit",
       didit_session_id:      diditSessionId,
       updated_at:            new Date().toISOString(),

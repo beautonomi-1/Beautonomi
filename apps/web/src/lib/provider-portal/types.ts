@@ -200,6 +200,7 @@ export interface Appointment {
   total_amount?: number; // Final total including all fees
   total_paid?: number;
   total_refunded?: number;
+  currency?: string;
   service_id: string;
   services?: unknown[];
   products?: unknown[];
@@ -372,6 +373,7 @@ export interface Sale {
   subtotal: number;
   tax: number;
   total: number;
+  currency?: string;
   payment_method: string;
   payment_status?: string;
   team_member_id?: string;
@@ -786,6 +788,7 @@ export interface GroupBooking {
   service_id: string;
   service_name: string;
   total_price: number;
+  currency?: string;
   status: "booked" | "started" | "completed" | "cancelled" | "confirmed" | "pending";
   created_date: string;
   participants: GroupBookingParticipant[];

@@ -20,8 +20,12 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
+import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
 import { PaystackTerminalCollectSheet } from "@/components/PaystackTerminalCollectSheet";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
@@ -261,11 +265,20 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [cancelReasonOrderId, setCancelReasonOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [recordPaymentSheetOpen, setRecordPaymentSheetOpen] = useState(false);
-  const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco">("cash");
+  const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco" | "paycloud">("cash");
   const [recordPaymentReference, setRecordPaymentReference] = useState("");
   const [showYocoPaymentSheet, setShowYocoPaymentSheet] = useState(false);
+  const [showPaycloudPaymentSheet, setShowPaycloudPaymentSheet] = useState(false);
   const [terminalSheetOpen, setTerminalSheetOpen] = useState(false);
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { settings: paycloudSettings } = usePayCloudSettings();
+  const { selectedLocationId } = useProvider();
+  const paycloudReady =
+    paycloudEnabled &&
+    Boolean(paycloudSettings?.ready);
+  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
 
   const pageSize = 50;
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
@@ -499,6 +512,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     setRecordPaymentReference("");
     setRecordPaymentMethod("cash");
     setShowYocoPaymentSheet(false);
+    setShowPaycloudPaymentSheet(false);
     setViewOrder(null);
     setOrderDetail(null);
     refresh();
@@ -516,6 +530,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     },
     [recordCollectionPayment],
   );
+
+  const handlePaycloudCollectionSuccess = useCallback(async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setShowPaycloudPaymentSheet(false);
+    setRecordPaymentSheetOpen(false);
+    setRecordPaymentReference("");
+    setRecordPaymentMethod("cash");
+    setViewOrder(null);
+    setOrderDetail(null);
+    refresh();
+  }, [refresh]);
 
   const handleConfirmShipped = useCallback(() => {
     if (!pendingStatus) return;
@@ -1298,6 +1323,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               { label: "Cash", value: "cash" as const },
               { label: "Card on delivery", value: "card_on_delivery" as const },
               { label: "Yoco", value: "yoco" as const },
+              ...(paycloudEnabled && paycloudCollectEnabled
+                ? [{
+                    label: formatPaycloudCollectLabel({
+                      context: "product_order",
+                      amount: 0,
+                      inFlight: paycloudInFlight,
+                    }),
+                    value: "paycloud" as const,
+                  }]
+                : []),
             ].map((option) => {
               const active = recordPaymentMethod === option.value;
               return (
@@ -1317,11 +1352,28 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </TouchableOpacity>
               );
             })}
+            {paycloudEnabled && !paycloudCollectEnabled ? (
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
+                style={[
+                  twStyle("mb-2 rounded-full border border-dashed border-gray-300 bg-white px-3 py-2"),
+                  { marginRight: 8 },
+                ]}
+              >
+                <Text style={twStyle("text-xs font-semibold text-gray-600")}>{PAYCLOUD_SETUP_LABEL}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           <TextInput
             value={recordPaymentReference}
             onChangeText={setRecordPaymentReference}
-            placeholder={recordPaymentMethod === "yoco" ? "Yoco reference required" : "Reference optional"}
+            placeholder={
+              recordPaymentMethod === "yoco"
+                ? "Yoco reference required"
+                : recordPaymentMethod === "paycloud"
+                  ? "Reference optional (terminal settles automatically)"
+                  : "Reference optional"
+            }
             placeholderTextColor="#9ca3af"
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             accessibilityLabel="Payment reference"
@@ -1334,13 +1386,22 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               fullWidth
             />
           ) : null}
-          <ActionButton
-            label={postingOrderMutation ? "Recording…" : "Record payment"}
-            onPress={handleRecordCollectionPayment}
-            loading={postingOrderMutation}
-            disabled={postingOrderMutation}
-            fullWidth
-          />
+          {recordPaymentMethod === "paycloud" ? (
+            <ActionButton
+              label="Charge on card machine"
+              onPress={() => setShowPaycloudPaymentSheet(true)}
+              fullWidth
+            />
+          ) : null}
+          {recordPaymentMethod !== "paycloud" ? (
+            <ActionButton
+              label={postingOrderMutation ? "Recording…" : "Record payment"}
+              onPress={handleRecordCollectionPayment}
+              loading={postingOrderMutation}
+              disabled={postingOrderMutation}
+              fullWidth
+            />
+          ) : null}
           {paystackTerminalEnabled ? (
             <ActionButton
               label="Collect via Paystack Terminal"
@@ -1373,6 +1434,19 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         description={`Product order ${activeOrder?.order_number ?? activeOrder?.id ?? ""}`}
         onPaymentSuccess={(result) => void handleYocoCollectionSuccess(result)}
       />
+
+      {activeOrder ? (
+        <PayCloudPaymentSheet
+          visible={showPaycloudPaymentSheet}
+          onClose={() => setShowPaycloudPaymentSheet(false)}
+          amount={Number(activeOrder.total_amount ?? 0)}
+          currency={activeOrder.currency ?? currency}
+          entityType="product_order"
+          entityId={activeOrder.id}
+          bookingLocationId={unwrapOne(activeOrder.collection_location)?.id ?? selectedLocationId ?? null}
+          onPaymentSuccess={() => void handlePaycloudCollectionSuccess()}
+        />
+      ) : null}
 
       <BottomSheet
         visible={trackingSheetOpen}
