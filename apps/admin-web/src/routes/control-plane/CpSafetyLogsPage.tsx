@@ -129,7 +129,7 @@ export function CpSafetyLogsPage() {
       <CpBack />
       <AdminPageHeader
         title="Safety logs"
-        description="Panic, check-in, and escalation events. Use tenant vs global scope in the header to switch all-tenants vs one tenant. Mark resolved after you have triaged Aura / field response."
+        description="Safety incidents raised from the apps (currently panic-button events; check-in and escalation types are reserved). Use tenant vs global scope in the header to switch all-tenants vs one tenant. Mark resolved after you have triaged Aura / field response."
       />
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">

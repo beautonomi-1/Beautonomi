@@ -28,6 +28,37 @@ export function slackNotifyDisputeOpened(params: {
   });
 }
 
+/**
+ * Panic button pressed (`safety_events` panic row). Highest-signal safety alert —
+ * routes to `safety.panic.created`, falling back to the user-report / dispute channels.
+ */
+export function slackNotifySafetyPanic(params: {
+  tenantId: string;
+  eventId: string;
+  userId: string;
+  bookingId?: string | null;
+  source?: string | null;
+  auraDispatched?: boolean;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.SAFETY_PANIC,
+    dedupeKey: `safety_event:${params.eventId}:panic`,
+    entityType: "safety_event",
+    entityId: params.eventId,
+    title: "🚨 Panic button pressed",
+    detailLines: [
+      `User ${params.userId.slice(0, 8)}…`,
+      params.bookingId ? `Booking ${params.bookingId.slice(0, 8)}…` : "No booking attached",
+      params.source ? `Source: ${params.source}` : "",
+      params.auraDispatched ? "Aura: dispatched" : "Aura: not dispatched — manual follow-up required",
+      "Action: triage in Admin → Trust & Safety → Safety logs",
+    ],
+    actionUrl: "/control-plane/safety-logs",
+  });
+}
+
 /** User-submitted report (`user_reports`) pending triage. */
 export function slackNotifyUserReportCreated(params: {
   tenantId: string;

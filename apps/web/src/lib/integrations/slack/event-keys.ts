@@ -28,6 +28,7 @@ export const SLACK_EVENT_KEYS = {
   DISPUTE_OVERDUE: "dispute.overdue",
   SAFETY_USER_REPORT: "safety.user_report.pending",
   SAFETY_ADVERSE_REPORT: "safety.user_report.adverse",
+  SAFETY_PANIC: "safety.panic.created",
   VERIFICATION_PENDING: "verification.pending_review",
   VERIFICATION_STUCK: "verification.stuck_review",
   VERIFICATION_REJECTED: "verification.rejected_outcome",
