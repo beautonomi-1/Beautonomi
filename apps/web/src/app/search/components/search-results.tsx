@@ -16,6 +16,53 @@ import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { SearchQueryBarWithSuggestions } from "./search-query-bar";
 
+const PRICE_RANGE_OPTIONS = [
+  { label: "Any", value: "" },
+  { label: "Under R100", value: "under-100" },
+  { label: "R100-R500", value: "100-500" },
+  { label: "R500+", value: "500-plus" },
+] as const;
+
+const PRICE_RANGE_TO_BOUNDS: Record<
+  string,
+  { price_min?: string; price_max?: string }
+> = {
+  "": {},
+  "under-100": { price_min: "0", price_max: "100" },
+  "100-500": { price_min: "100", price_max: "500" },
+  "500-plus": { price_min: "500" },
+};
+
+function derivePriceRangeValue(priceMin?: string, priceMax?: string): string {
+  if (!priceMin && !priceMax) return "";
+  if (priceMin === "0" && priceMax === "100") return "under-100";
+  if (priceMin === "100" && priceMax === "500") return "100-500";
+  if (priceMin === "500" && !priceMax) return "500-plus";
+  return "";
+}
+
+const SEARCH_FILTER_GROUPS = [
+  {
+    label: "Category",
+    key: "category",
+    options: [] as { label: string; value: string }[],
+  },
+  {
+    label: "Price Range",
+    key: "price_range",
+    options: PRICE_RANGE_OPTIONS.map((option) => ({ ...option })),
+  },
+  {
+    label: "Rating",
+    key: "rating_min",
+    options: [
+      { label: "Any", value: "" },
+      { label: "4+ Stars", value: "4" },
+      { label: "3+ Stars", value: "3" },
+    ],
+  },
+];
+
 interface SearchResultsProps {
   initialResults?: SearchResult;
   /** When set, skips client fetch for categories (same as /api/public/categories). */
@@ -103,6 +150,16 @@ export default function SearchResults({
     return options;
   }, [categories]);
 
+  const filterGroups = useMemo(
+    () =>
+      SEARCH_FILTER_GROUPS.map((group) =>
+        group.key === "category"
+          ? { ...group, options: categoryFilterOptions }
+          : group,
+      ),
+    [categoryFilterOptions],
+  );
+
   // Initialize filters from URL params
   useEffect(() => {
     const filters: Record<string, string | string[]> = {};
@@ -115,6 +172,13 @@ export default function SearchResults({
         filters[key] = value === "true" ? "true" : "";
       }
     });
+    const priceRange = derivePriceRangeValue(
+      filters.price_min as string | undefined,
+      filters.price_max as string | undefined,
+    );
+    if (priceRange) {
+      filters.price_range = priceRange;
+    }
     setSelectedFilters(filters);
   }, [searchParams]);
 
@@ -226,12 +290,36 @@ export default function SearchResults({
   }, [viewMode, results]);
 
   const handleFilterChange = (key: string, value: string | string[]) => {
+    const normalizedValue = Array.isArray(value) ? value[0] ?? "" : value;
+
+    if (key === "price_range") {
+      const bounds = PRICE_RANGE_TO_BOUNDS[normalizedValue] ?? {};
+      const newFilters = { ...selectedFilters };
+      delete newFilters.price_min;
+      delete newFilters.price_max;
+      if (bounds.price_min) newFilters.price_min = bounds.price_min;
+      if (bounds.price_max) newFilters.price_max = bounds.price_max;
+      if (normalizedValue) newFilters.price_range = normalizedValue;
+      else delete newFilters.price_range;
+      setSelectedFilters(newFilters);
+
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("price_min");
+      params.delete("price_max");
+      params.delete("page");
+      if (bounds.price_min) params.set("price_min", bounds.price_min);
+      if (bounds.price_max) params.set("price_max", bounds.price_max);
+      router.push(`/search?${params.toString()}`);
+      return;
+    }
+
     const newFilters = { ...selectedFilters, [key]: value };
     setSelectedFilters(newFilters);
 
     // Update URL params
     const params = new URLSearchParams(searchParams.toString());
-    if (value === "" || (Array.isArray(value) && value.length === 0)) {
+    params.delete("page");
+    if (normalizedValue === "" || (Array.isArray(value) && value.length === 0)) {
       params.delete(key);
     } else if (Array.isArray(value)) {
       params.delete(key);
@@ -302,32 +390,7 @@ export default function SearchResults({
           onApply={applySearchQuery}
         />
         <FilterBar
-          filters={[
-            {
-              label: "Category",
-              key: "category",
-              options: categoryFilterOptions,
-            },
-            {
-              label: "Price Range",
-              key: "price_min",
-              options: [
-                { label: "Any", value: "" },
-                { label: "Under R100", value: "0" },
-                { label: "R100-R500", value: "100" },
-                { label: "R500+", value: "500" },
-              ],
-            },
-            {
-              label: "Rating",
-              key: "rating_min",
-              options: [
-                { label: "Any", value: "" },
-                { label: "4+ Stars", value: "4" },
-                { label: "3+ Stars", value: "3" },
-              ],
-            },
-          ]}
+          filters={filterGroups}
           selectedFilters={selectedFilters}
           onFilterChange={handleFilterChange}
           onClearFilters={handleClearFilters}
@@ -351,32 +414,7 @@ export default function SearchResults({
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">
           <FilterBar
-            filters={[
-              {
-                label: "Category",
-                key: "category",
-                options: categoryFilterOptions,
-              },
-              {
-                label: "Price Range",
-                key: "price_min",
-                options: [
-                  { label: "Any", value: "" },
-                  { label: "Under R100", value: "0" },
-                  { label: "R100-R500", value: "100" },
-                  { label: "R500+", value: "500" },
-                ],
-              },
-              {
-                label: "Rating",
-                key: "rating_min",
-                options: [
-                  { label: "Any", value: "" },
-                  { label: "4+ Stars", value: "4" },
-                  { label: "3+ Stars", value: "3" },
-                ],
-              },
-            ]}
+            filters={filterGroups}
             selectedFilters={selectedFilters}
             onFilterChange={handleFilterChange}
             onClearFilters={handleClearFilters}

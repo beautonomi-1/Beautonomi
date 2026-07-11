@@ -55,6 +55,23 @@ if (syncAdmin.status !== 0 && syncAdmin.status !== null) {
   process.exit(syncAdmin.status);
 }
 
+const isProdOrPreview =
+  process.env.VERCEL_ENV === "production" ||
+  process.env.VERCEL_ENV === "preview" ||
+  process.env.NODE_ENV === "production";
+
+if (isProdOrPreview) {
+  console.log("[security-env] Running production security environment gate…");
+  const securityCheck = spawnSync(
+    process.execPath,
+    [join(root, "scripts", "check-security-env.mjs")],
+    { cwd: root, stdio: "inherit", env: process.env },
+  );
+  if (securityCheck.status !== 0 && securityCheck.status !== null) {
+    process.exit(securityCheck.status);
+  }
+}
+
 // Use Turbopack by default — webpack `next build` can exceed 8GB heap on this app.
 // Override: NEXT_WEB_FORCE_WEBPACK=1 to force webpack when debugging a Turbopack-only issue.
 const useTurbopack = process.env.NEXT_WEB_FORCE_WEBPACK !== "1";

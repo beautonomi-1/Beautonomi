@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
+  getProviderIdForUser,
   successResponse,
   handleApiError,
   errorResponse,
+  notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { registerDevice } from "@/lib/notifications/onesignal";
@@ -25,6 +27,11 @@ export async function POST(request: NextRequest) {
       ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
       request
     );
+    const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, admin);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
 
     const body = await request.json();
     const validationResult = deviceSchema.safeParse(body);
@@ -40,7 +47,6 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    const admin = getSupabaseAdmin();
     const result = await registerDevice(admin, user.id, player_id, platform, "provider");
     if (!result.success) {
       return errorResponse(
@@ -67,13 +73,17 @@ export async function DELETE(request: NextRequest) {
       ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
       request
     );
+    const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, admin);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
     const body = await request.json().catch(() => ({}));
     const playerId = typeof body?.player_id === "string" ? body.player_id.trim() : "";
     if (!playerId) {
       return errorResponse("player_id is required", "VALIDATION_ERROR", 400);
     }
 
-    const admin = getSupabaseAdmin();
     const { error } = await admin
       .from("user_devices")
       .delete()

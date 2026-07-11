@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -55,7 +55,16 @@ export default function ReportsIndex() {
   const { selectedLocationId } = useProvider();
   const [search, setSearch] = useState("");
   const analyticsUrl = appendReportLocation("/api/provider/analytics?period=month", selectedLocationId);
-  const { data: analytics, loading: analyticsLoading, error: analyticsError } = useApi<AnalyticsSummary>(analyticsUrl);
+  const { data: analytics, loading: analyticsLoading, error: analyticsError, refresh } = useApi<AnalyticsSummary>(analyticsUrl);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     trackScreenView("provider_reports");
@@ -82,7 +91,7 @@ export default function ReportsIndex() {
   const bookingsGrowth = analytics?.bookings?.growth ?? "0";
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
         title="Reports"
         showBack

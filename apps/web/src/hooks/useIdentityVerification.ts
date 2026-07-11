@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { validateLegalDobParts } from "@beautonomi/utils";
 import type { NormalizedVerificationStatus } from "@/lib/identity-verification/types";
+import { formatDiditLaunchError } from "@/lib/identity-verification/user-facing-didit-errors";
+import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
 
 export type VerificationPersona = "customer" | "provider";
 
@@ -223,8 +225,20 @@ export function useIdentityVerification(
         return;
       }
       if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as { message?: string };
-        throw new Error(json.message ?? "Failed to start verification");
+        const json = await res.json().catch(() => ({})) as {
+          message?: string;
+          error?: { message?: string; code?: string } | null;
+        };
+        const code = extractErrorCode(json) ?? json.error?.code;
+        const raw =
+          json.error?.message ?? json.message ?? "Failed to start verification";
+        // Prefer Didit-specific copy; avoid booking's PROVIDER_UNAVAILABLE message.
+        const safe = formatDiditLaunchError(raw);
+        throw new Error(
+          code === "DIDIT_SESSION_CREATE_FAILED"
+            ? getUserFacingMessage(code, safe)
+            : safe,
+        );
       }
       const data = await res.json() as {
         session_token?: string; url?: string; is_existing?: boolean;
@@ -233,7 +247,11 @@ export function useIdentityVerification(
       setSessionUrl(data.url ?? null);
       setIsExisting(data.is_existing ?? false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start verification. Please try again.");
+      setError(
+        formatDiditLaunchError(
+          err instanceof Error ? err.message : null,
+        ),
+      );
     } finally {
       setLaunching(false);
     }

@@ -2841,7 +2841,7 @@ function Step4PaymentSetup({
       {noOrPlanning && (
         <div className="space-y-3 rounded-[1.5rem] border border-slate-100 bg-slate-50/60 p-6">
           <p className="text-sm font-semibold text-slate-800">Would you be interested in getting a platform-supported card machine in future?</p>
-          <p className="text-xs text-slate-500">This could include once-off purchase, rental, or subscription bundle options when available.</p>
+          <p className="text-xs text-slate-500">You can buy a card machine outright or include one in your plan when available.</p>
           {renderRadioGroup(
             TERMINAL_INTEREST_OPTIONS,
             data.interested_in_platform_terminal as any,

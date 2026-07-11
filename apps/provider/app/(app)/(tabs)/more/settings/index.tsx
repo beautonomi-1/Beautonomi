@@ -60,6 +60,8 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "ribbon-outline", label: "Subscription", subtitle: "Plan, upgrade, cancel, renew", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
       { icon: "receipt-outline", label: "Billing & Invoices", subtitle: "Invoices, payment methods", route: "/(app)/(tabs)/more/settings/billing", color: "#6366f1" },
       { icon: "hardware-chip-outline", label: "Yoco Devices", subtitle: "Manage card terminals & Web POS", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#3b82f6" },
+      { icon: "hardware-chip-outline", label: "Card machines", subtitle: "Manage terminals, shop & payments", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
+      { icon: "cart-outline", label: "Terminal Shop", subtitle: "Order card machines from the catalog", route: "/(app)/(tabs)/more/terminal-shop", color: "#db2777" },
       { icon: "qr-code-outline", label: "Paystack Terminal", subtitle: "QR/link in-person payments", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
       { icon: "wallet-outline", label: "Payout Accounts", subtitle: "Bank accounts for payouts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#22c55e" },
       { icon: "pricetag-outline", label: "Sales Settings", subtitle: "Tips on by default, taxes & receipts", route: "/(app)/(tabs)/more/settings/sales-settings", color: "#ec4899" },
@@ -167,7 +169,11 @@ export default function SettingsScreen() {
   const { themeMode, setThemeMode } = useTheme();
   const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const terminalEcommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
+  const terminalCatalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
+  const terminalShopEnabled = terminalEcommerceEnabled || terminalCatalogEnabled;
 
   return (
     <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
@@ -199,6 +205,8 @@ export default function SettingsScreen() {
         {SETTINGS_SECTIONS.map((section) => {
           const items = section.items.filter((item) => {
             if (!yocoEnabled && item.route.includes("yoco")) return false;
+            if (!paycloudEnabled && item.route.includes("card-machines")) return false;
+            if (!terminalShopEnabled && item.route.includes("terminal-shop")) return false;
             if (!paystackTerminalEnabled && item.route.includes("paystack-terminal")) return false;
             return true;
           });

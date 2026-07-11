@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
-import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Calendar, TrendingUp, DollarSign, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { format, subMonths } from "date-fns";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { EmptyReportState } from "@/app/provider/reports/components/EmptyReportState";
 
 interface ZoneAnalytics {
   zone_id: string;
@@ -48,16 +50,12 @@ interface AnalyticsData {
 export default function ServiceZoneAnalyticsPage() {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const localeTag = useTenantLocaleTag();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - 1);
-    return date.toISOString().split("T")[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    return new Date().toISOString().split("T")[0];
-  });
+  const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(() => format(subMonths(new Date(), 1), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
 
   useEffect(() => {
     loadAnalytics();
@@ -68,20 +66,22 @@ export default function ServiceZoneAnalyticsPage() {
   const loadAnalytics = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const response = await fetcher.get<{ data: AnalyticsData }>(
         `/api/provider/service-zones/analytics?start_date=${startDate}&end_date=${endDate}`
       );
       setAnalytics(response.data);
-    } catch (error) {
-      toast.error("Failed to load analytics");
-      console.error("Error loading analytics:", error);
+    } catch (err) {
+      setAnalytics(null);
+      setError(err instanceof Error ? err.message : "Failed to load analytics");
+      console.error("Error loading analytics:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(localeTag, {
       style: "currency",
       currency: tenantCurrency,
     }).format(amount);
@@ -139,8 +139,22 @@ export default function ServiceZoneAnalyticsPage() {
           </div>
         </SectionCard>
 
-        {/* Summary Cards */}
-        {analytics && (
+        {error ? (
+          <SectionCard>
+            <EmptyReportState
+              title="Could not load zone analytics"
+              description={error}
+              action={{ label: "Try again", onClick: loadAnalytics }}
+            />
+          </SectionCard>
+        ) : !analytics ? (
+          <SectionCard>
+            <EmptyReportState
+              title="No analytics data"
+              description="Adjust the date range or add service zones to see performance."
+            />
+          </SectionCard>
+        ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <SectionCard>

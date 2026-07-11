@@ -66,6 +66,7 @@ export { Money } from "./Money";
 // QR Code
 export { QRCodeDisplay } from "./QRCodeDisplay";
 export { QRCodeScanner } from "./QRCodeScanner";
+export { ArrivalQrScanDialog } from "@/components/provider/ArrivalQrScanDialog";
 
 // Layout Components
 export { ProviderShell } from "./ProviderShell";

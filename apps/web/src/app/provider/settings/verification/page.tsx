@@ -101,7 +101,12 @@ export default function VerificationPage() {
   const verificationRequired =
     statusData?.required_for_providers ??
     verificationRequiredForProviders(bundle?.verification);
-  const canSkip = canSkipProviderVerification({ required: verificationRequired, status });
+  const planComplete = statusData?.verification_plan?.is_complete === true;
+  const canSkip = canSkipProviderVerification({
+    required: verificationRequired,
+    status,
+    planComplete: statusData?.verification_plan ? planComplete : undefined,
+  });
 
   const goToDashboard = () => {
     if (!canSkip) {

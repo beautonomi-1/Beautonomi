@@ -75,6 +75,11 @@ function tomorrow() {
   return d.toISOString().split("T")[0];
 }
 
+function firstAvailableSlot(slots) {
+  if (!Array.isArray(slots)) return null;
+  return slots.find((slot) => slot && slot.is_available !== false && slot.start && slot.end) ?? null;
+}
+
 // ── Test scenario ───────────────────────────────────────────────────────────
 
 export default function () {
@@ -94,20 +99,20 @@ export default function () {
   });
   failRate.add(!searchOk);
 
-  // Parse a provider ID from the response (use first result)
   let providerId;
+  let providerSlug;
   try {
     const body = JSON.parse(searchRes.body);
-    const results = body.data || body.results || body;
-    if (Array.isArray(results) && results.length > 0) {
-      providerId = results[0].id || results[0].provider_id;
+    const providers = body.data?.providers ?? body.providers ?? [];
+    if (Array.isArray(providers) && providers.length > 0) {
+      providerId = providers[0].id || providers[0].provider_id;
+      providerSlug = providers[0].slug || providerId;
     }
   } catch {
-    // If parsing fails, use a placeholder
+    // If parsing fails, skip remaining steps
   }
 
-  if (!providerId) {
-    // Skip remaining steps if no provider found
+  if (!providerSlug) {
     sleep(1);
     return;
   }
@@ -116,7 +121,7 @@ export default function () {
 
   // ──────── Step 2: View provider profile ────────
   const profileRes = http.get(
-    `${BASE_URL}/api/public/providers/${providerId}`,
+    `${BASE_URL}/api/public/providers/${encodeURIComponent(providerSlug)}`,
     { headers: headers(), tags: { step: "provider_view" } }
   );
   providerViewDuration.add(profileRes.timings.duration);
@@ -126,11 +131,29 @@ export default function () {
   });
   failRate.add(!profileOk);
 
+  let offeringId;
+  try {
+    const body = JSON.parse(profileRes.body);
+    const detail = body.data ?? body;
+    providerId = providerId || detail.id;
+    const services = detail.services ?? detail.offerings ?? [];
+    if (Array.isArray(services) && services.length > 0) {
+      offeringId = services[0].id || services[0].offering_id;
+    }
+  } catch {
+    // no-op
+  }
+
+  if (!providerId || !offeringId) {
+    sleep(1);
+    return;
+  }
+
   sleep(0.5);
 
   // ──────── Step 3: Check availability ────────
   const availRes = http.get(
-    `${BASE_URL}/api/public/providers/${providerId}/availability?date=${date}`,
+    `${BASE_URL}/api/public/providers/${encodeURIComponent(providerSlug)}/availability?date=${date}&service_id=${offeringId}`,
     { headers: headers(), tags: { step: "availability" } }
   );
   availabilityDuration.add(availRes.timings.duration);
@@ -140,19 +163,16 @@ export default function () {
   });
   failRate.add(!availOk);
 
-  // Pick a time slot (if available)
-  let timeSlot;
+  let slot;
   try {
     const body = JSON.parse(availRes.body);
-    const slots = body.data?.slots || body.slots || [];
-    if (slots.length > 0) {
-      timeSlot = slots[0].start_time || slots[0].time;
-    }
+    const slots = body.data?.slots ?? body.slots ?? [];
+    slot = firstAvailableSlot(slots);
   } catch {
     // no-op
   }
 
-  if (!timeSlot) {
+  if (!slot) {
     sleep(1);
     return;
   }
@@ -161,11 +181,13 @@ export default function () {
 
   // ──────── Step 4: Create booking hold ────────
   const holdRes = http.post(
-    `${BASE_URL}/api/bookings/hold`,
+    `${BASE_URL}/api/public/booking-holds`,
     JSON.stringify({
       provider_id: providerId,
-      date,
-      start_time: timeSlot,
+      services: [{ offering_id: offeringId }],
+      start_at: slot.start,
+      end_at: slot.end,
+      location_type: "at_salon",
     }),
     { headers: headers(), tags: { step: "booking_hold" } }
   );
@@ -188,12 +210,14 @@ export default function () {
 
   // ──────── Step 5: Create booking ────────
   const bookingRes = http.post(
-    `${BASE_URL}/api/bookings`,
+    `${BASE_URL}/api/public/bookings`,
     JSON.stringify({
       provider_id: providerId,
       hold_id: holdId,
-      date,
-      start_time: timeSlot,
+      services: [{ offering_id: offeringId }],
+      start_at: slot.start,
+      end_at: slot.end,
+      location_type: "at_salon",
       notes: "k6 load test booking",
     }),
     { headers: headers(), tags: { step: "create_booking" } }

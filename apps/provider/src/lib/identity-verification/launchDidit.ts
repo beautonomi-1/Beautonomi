@@ -13,6 +13,7 @@
 
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
+import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 
 /**
  * Minimal shape of the native SDK we depend on. Matches
@@ -114,7 +115,9 @@ export async function launchDidit(
       if (res.error.status === 409) return { ok: true, sdkResult: "completed" };
       return {
         ok: false,
-        error: res.error.message ?? "Failed to create verification session",
+        error: formatDiditLaunchError(
+          res.error.message ?? "Failed to create verification session",
+        ),
       };
     }
 

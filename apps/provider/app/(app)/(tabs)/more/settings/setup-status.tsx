@@ -14,6 +14,12 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
+import {
+  GUIDED_WIZARD_ROUTE,
+  resolveNextIncompleteRoute,
+  resolveSetupStepRoute,
+  type SetupNavStep,
+} from "@/lib/setup-step-navigation";
 
 interface SetupStep {
   id: string;
@@ -64,33 +70,17 @@ export default function SetupStatusScreen() {
 
   function openStep(step: SetupStep) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // §provider-onboarding-2026-05: guard router.push against a stale or
-    // broken native_route from the server. Without this, a single 404-ish
-    // route would surface a hard error toast instead of letting providers
-    // continue setup via the wizard fallback.
-    const pushSafely = (target: string) => {
+    const target = resolveSetupStepRoute(step as SetupNavStep);
+    try {
+      router.push(target as never);
+    } catch (err) {
+      console.warn("Setup step navigation failed:", err);
       try {
-        router.push(target as never);
-      } catch (err) {
-        console.warn("Setup step navigation failed:", err);
-        try {
-          router.push(
-            `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
-          );
-        } catch {
-          router.push("/(app)/onboarding/wizard" as never);
-        }
+        router.push(resolveSetupStepRoute(step as SetupNavStep) as never);
+      } catch {
+        router.push(GUIDED_WIZARD_ROUTE as never);
       }
-    };
-    if (step.native_route && step.native_route.startsWith("/(app)/")) {
-      pushSafely(step.native_route);
-      return;
     }
-    // §provider-setup-seamless-ux 2026-05: defer to the wizard with a `focus`
-    // hint so the provider lands on the right step instead of restarting from
-    // step 1. Server should always return a native_route for known step ids,
-    // but this guarantees the deep link still works for new/unknown ids.
-    pushSafely(`/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`);
   }
 
   if (loading && !status) {
@@ -182,46 +172,73 @@ export default function SetupStatusScreen() {
             </View>
           </View>
 
-          {/* ── Quick wizard CTA ───────────────────────────── */}
+          {/* ── Continue setup + wizard ──────────────────── */}
           {!status.isComplete && (
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(app)/onboarding/wizard" as never);
-              }}
-              style={twStyle(
-                "mb-5 flex-row items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4"
-              )}
-              accessibilityRole="button"
-              accessibilityLabel="Open quick setup wizard"
-            >
-              <View
+            <>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push(
+                    resolveNextIncompleteRoute(steps as SetupNavStep[]) as never,
+                  );
+                }}
                 style={twStyle(
-                  "h-10 w-10 items-center justify-center rounded-xl bg-primary/10"
+                  "mb-3 flex-row items-center gap-3 rounded-2xl border border-primary/30 bg-primary p-4",
                 )}
+                accessibilityRole="button"
+                accessibilityLabel="Continue setup"
               >
-                <Ionicons
-                  name="rocket-outline"
-                  size={20}
-                  color={Colors.primary}
-                />
-              </View>
-              <View style={twStyle("flex-1")}>
-                <Text
-                  style={twStyle("text-sm font-semibold text-gray-900")}
+                <View
+                  style={twStyle(
+                    "h-10 w-10 items-center justify-center rounded-xl bg-white/20",
+                  )}
                 >
-                  Quick setup wizard
-                </Text>
-                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                  Complete everything in one guided flow
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color="#9ca3af"
-              />
-            </TouchableOpacity>
+                  <Ionicons name="arrow-forward-circle-outline" size={22} color="#fff" />
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-white")}>
+                    Continue setup
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-white/80")}>
+                    Go to your next incomplete step
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push(GUIDED_WIZARD_ROUTE as never);
+                }}
+                style={twStyle(
+                  "mb-5 flex-row items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4",
+                )}
+                accessibilityRole="button"
+                accessibilityLabel="Open quick setup wizard"
+              >
+                <View
+                  style={twStyle(
+                    "h-10 w-10 items-center justify-center rounded-xl bg-primary/10",
+                  )}
+                >
+                  <Ionicons
+                    name="rocket-outline"
+                    size={20}
+                    color={Colors.primary}
+                  />
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    Or use the full guided wizard
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                    Complete everything in one guided flow
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+            </>
           )}
 
           {/* ── Required steps ────────────────────────────── */}

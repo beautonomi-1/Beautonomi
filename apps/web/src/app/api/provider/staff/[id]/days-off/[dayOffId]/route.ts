@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 
 export async function DELETE(
   request: NextRequest,
@@ -41,8 +42,8 @@ export async function DELETE(
       .eq("staff_id", id);
 
     if (deleteError) {
-      if (deleteError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(deleteError)) {
+        return migrationRequiredResponse("Staff days off");
       }
       throw deleteError;
     }

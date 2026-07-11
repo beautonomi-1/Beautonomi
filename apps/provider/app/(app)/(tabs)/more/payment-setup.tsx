@@ -27,7 +27,7 @@ const SETUP_ITEMS = [
   {
     icon: "hardware-chip-outline" as const,
     label: "Card machines",
-    subtitle: "Beautonomi in-person card machines",
+    subtitle: "Manage terminals, shop & payments",
     route: "/(app)/(tabs)/more/card-machines",
     color: "#7c3aed",
     flag: "payment_paycloud",

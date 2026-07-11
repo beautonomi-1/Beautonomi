@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 
 /**
  * POST /api/provider/staff/[id]/time-clock/clock-out
@@ -48,9 +49,8 @@ export async function POST(
       if (findError?.code === 'PGRST116') {
         return errorResponse("No active clock-in found", "NO_ACTIVE_CLOCK_IN", 400);
       }
-      // If table doesn't exist, return success
-      if (findError?.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(findError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw findError;
     }
@@ -68,8 +68,8 @@ export async function POST(
       .single();
 
     if (updateError) {
-      if (updateError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(updateError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw updateError;
     }

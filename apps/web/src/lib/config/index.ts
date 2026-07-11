@@ -249,7 +249,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
         guides_enabled: amplitudeRes.data.guides_enabled ?? false,
         surveys_enabled: amplitudeRes.data.surveys_enabled ?? false,
         sampling_rate: Number(amplitudeRes.data.sampling_rate ?? 1),
-        debug_mode: amplitudeRes.data.debug_mode ?? false,
+        debug_mode: environment === "production" ? false : (amplitudeRes.data.debug_mode ?? false),
       }
     : { ...DEFAULT_AMPLITUDE, environment };
 

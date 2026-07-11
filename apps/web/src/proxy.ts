@@ -4,6 +4,11 @@ import { createServerClient } from '@supabase/ssr';
 import { csrfCheck, setCsrfCookie } from '@/lib/csrf';
 import { maybeMarketGeoRedirect } from '@/lib/seo/maybe-market-geo-redirect';
 import { isProviderOnboardingRouteAllowed } from '@/lib/provider/onboarding-route-allowlist';
+import {
+  buildReportOnlyCsp,
+  CSP_NONCE_HEADER,
+  generateCspNonce,
+} from '@/lib/security/csp-nonce';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -111,10 +116,52 @@ function isAdminSpaBundledAsset(pathname: string): boolean {
   return /\.(?:js|mjs|css|map|ico|png|svg|webp|woff2?|ttf|eot|json)$/i.test(pathname);
 }
 
+/** Lightweight edge check: Supabase SSR stores session in cookies containing `auth-token`. */
+function hasSupabaseAuthSessionCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some(
+    (cookie) => cookie.name.includes('auth-token') && Boolean(cookie.value?.length),
+  );
+}
+
 /** Admin UI (all roles, including superadmin) and admin APIs must not be indexed. */
 function withNoIndexAdmin(response: NextResponse): NextResponse {
   response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   return response;
+}
+
+function isHtmlDocumentPath(pathname: string): boolean {
+  if (pathname.startsWith('/api')) return false;
+  if (isFrameworkOrStaticPath(pathname)) return false;
+  if (pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|mjs|map|woff2?|ttf|eot|json)$/i)) return false;
+  return true;
+}
+
+/** Attach report-only nonce CSP and forward the nonce to RSC via request headers. */
+function withCspReportOnly(request: NextRequest, response: NextResponse): NextResponse {
+  const nonce = generateCspNonce();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(CSP_NONCE_HEADER, nonce);
+
+  const out = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+
+  response.cookies.getAll().forEach((cookie) => {
+    out.cookies.set(cookie);
+  });
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== 'set-cookie') {
+      out.headers.set(key, value);
+    }
+  });
+  out.headers.set('Content-Security-Policy-Report-Only', buildReportOnlyCsp(nonce));
+  return out;
+}
+
+function finalizePageResponse(request: NextRequest, response: NextResponse): NextResponse {
+  const withCsrf = setCsrfCookie(response);
+  if (!isHtmlDocumentPath(request.nextUrl.pathname)) return withCsrf;
+  return withCspReportOnly(request, withCsrf);
 }
 
 export async function proxy(request: NextRequest) {
@@ -212,8 +259,20 @@ export async function proxy(request: NextRequest) {
       if (isAdminSpaBundledAsset(pathname)) {
         return NextResponse.next();
       }
+      const isAdminLoginPath =
+        pathname === '/admin/login' || pathname.startsWith('/admin/login/');
+      if (!isAdminLoginPath && !hasSupabaseAuthSessionCookie(request)) {
+        const loginUrl = new URL('/admin/login', request.url);
+        if (pathname !== '/admin') {
+          loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
+        }
+        return withNoIndexAdmin(NextResponse.redirect(loginUrl));
+      }
       /** SPA shell bypasses `/api` — still need CSRF cookie before client mutations race bootstrap GETs */
-      return setCsrfCookie(withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url))));
+      return finalizePageResponse(
+        request,
+        withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url))),
+      );
     }
 
     // Handle CORS preflight for API routes
@@ -328,7 +387,7 @@ export async function proxy(request: NextRequest) {
                 response.headers.set('X-Robots-Tag', 'noindex, nofollow');
               }
               
-              return response;
+              return finalizePageResponse(request, response);
             }
           }
         } catch (error) {
@@ -338,7 +397,7 @@ export async function proxy(request: NextRequest) {
       }
       
       // Continue with normal flow if no slug or error
-      return NextResponse.next();
+      return finalizePageResponse(request, NextResponse.next());
     }
     
     if (isPublicRoute) {
@@ -346,7 +405,7 @@ export async function proxy(request: NextRequest) {
       if (pathname === '/admin/login' || pathname.startsWith('/admin/login/')) {
         res.headers.set('X-Robots-Tag', 'noindex, nofollow');
       }
-      return res;
+      return finalizePageResponse(request, res);
     }
 
   // Skip static files and Next.js internals
@@ -370,7 +429,7 @@ export async function proxy(request: NextRequest) {
     });
 
     // Ensure CSRF cookie is set on page loads so it's available for API calls
-    setCsrfCookie(response);
+    // (CSP report-only nonce is applied in finalizePageResponse on HTML paths)
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -483,7 +542,7 @@ export async function proxy(request: NextRequest) {
         return redirectToLogin(pathname);
       }
       // All authenticated users can access customer routes
-      return response;
+      return finalizePageResponse(request, response);
     }
 
     // Provider routes - require provider role (except onboarding which allows customers)
@@ -491,7 +550,7 @@ export async function proxy(request: NextRequest) {
       try {
         // Public: marketing/login entry and OAuth flows
         if (pathname === '/provider' || pathname.startsWith('/provider/auth')) {
-          return response;
+          return finalizePageResponse(request, response);
         }
 
         if (!user) {
@@ -500,7 +559,7 @@ export async function proxy(request: NextRequest) {
 
         // Allow customers to access onboarding page
         if (pathname === '/provider/onboarding' || pathname.startsWith('/provider/onboarding/')) {
-          return response;
+          return finalizePageResponse(request, response);
         }
 
         const userRole = await getUserRole(user.id);
@@ -511,7 +570,7 @@ export async function proxy(request: NextRequest) {
 
         if (userRole === 'provider_onboarding') {
           if (isProviderOnboardingRouteAllowed(pathname)) {
-            return response;
+            return finalizePageResponse(request, response);
           }
           return NextResponse.redirect(new URL('/provider/get-started', request.url));
         }
@@ -520,7 +579,7 @@ export async function proxy(request: NextRequest) {
         if (!['provider_owner', 'provider_staff', 'superadmin'].includes(userRole)) {
           return NextResponse.redirect(new URL('/provider/onboarding', request.url));
         }
-        return response;
+        return finalizePageResponse(request, response);
       } catch (error) {
         console.error("Error in provider route proxy:", error);
         return redirectToHome();
@@ -563,7 +622,7 @@ export async function proxy(request: NextRequest) {
         }
 
         response.headers.set('X-Robots-Tag', 'noindex, nofollow');
-        return response;
+        return finalizePageResponse(request, response);
       } catch (error) {
         console.error("Error in admin route proxy:", error);
         // On error, redirect to home instead of causing 500
@@ -572,7 +631,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // Default: allow through (for any other routes we haven't explicitly handled)
-    return response;
+    return finalizePageResponse(request, response);
   } catch (innerError) {
     console.error("Error in proxy auth logic:", innerError);
     const failUrl = new URL('/', request.nextUrl.origin);

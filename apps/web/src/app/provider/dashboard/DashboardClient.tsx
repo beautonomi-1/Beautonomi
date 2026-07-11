@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 // Force fresh module evaluation
 import { fetcher, FetchError, FetchTimeoutError, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
+import { computeGrowthPercent, formatGrowthLabel } from "@beautonomi/utils";
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -472,7 +473,7 @@ export function DashboardClient({
         <StatCard
           title="Revenue This Month"
           value={formatCurrency(stats.revenue_this_month, tenantCurrency)}
-          subtitle={`${stats.revenue_growth > 0 ? "+" : ""}${stats.revenue_growth}% vs last month`}
+          subtitle={`${stats.revenue_growth > 0 ? "+" : ""}${stats.revenue_growth}% vs last month · gross recognized (refunds separate)`}
           icon={ICON_DOLLAR_5}
           color="green"
           href="/provider/finance"
@@ -480,9 +481,16 @@ export function DashboardClient({
         <StatCard
           title="Travel Fees This Month"
           value={formatCurrency(stats?.travel_fees_this_month ?? 0, tenantCurrency)}
-          subtitle={stats?.travel_fees_last_month ? 
-            `${stats.travel_fees_this_month > stats.travel_fees_last_month ? "+" : ""}${Math.round(((stats.travel_fees_this_month - stats.travel_fees_last_month) / Math.max(stats.travel_fees_last_month, 1)) * 100)}% vs last month` :
-            "From at-home bookings"}
+          subtitle={(() => {
+            const growth = computeGrowthPercent(
+              stats?.travel_fees_this_month ?? 0,
+              stats?.travel_fees_last_month ?? 0,
+            );
+            if ((stats?.travel_fees_this_month ?? 0) === 0 && (stats?.travel_fees_last_month ?? 0) === 0) {
+              return "From at-home bookings";
+            }
+            return `${formatGrowthLabel(growth)} vs last month`;
+          })()}
           icon={ICON_HOME_5}
           color="purple"
           href="/provider/finance"

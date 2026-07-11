@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -15,6 +15,25 @@ import { cn } from "@/lib/cn";
 
 type Channel = "push" | "sms" | "email";
 type RecipientType = "all_users" | "all_providers" | "custom";
+type CustomAppType = "customer" | "provider";
+
+/**
+ * Audience preset passed via router state from other admin pages
+ * (e.g. Terminal Insights → "Send broadcast" for an upsell segment).
+ */
+export type BroadcastAudiencePreset = {
+  user_ids: string[];
+  app_type: CustomAppType;
+  /** Human label shown in the audience banner, e.g. "Terminal upsell opportunities". */
+  label?: string;
+  /** Optional content prefills. */
+  title?: string;
+  message?: string;
+  announcement_type?: "general" | "promotion" | "event" | "news";
+  deep_link?: string;
+  cta_label?: string;
+  cta_url?: string;
+};
 type AnnouncementType = "general" | "promotion" | "event" | "news";
 type MediaType = "" | "image" | "video";
 
@@ -64,12 +83,17 @@ export function BroadcastComposePage() {
   useAdminDocumentTitle("Compose Broadcast");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const [sp] = useSearchParams();
+  const location = useLocation();
   const fromId = sp.get("from")?.trim() ?? "";
+  const audiencePreset =
+    (location.state as { audience?: BroadcastAudiencePreset } | null)?.audience ?? null;
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [channel, setChannel] = useState<Channel>("push");
   const [recipientType, setRecipientType] = useState<RecipientType>("all_users");
   const [customIds, setCustomIds] = useState("");
+  const [customAppType, setCustomAppType] = useState<CustomAppType>("customer");
+  const [presetLabel, setPresetLabel] = useState<string | null>(null);
 
   // Core content
   const [title, setTitle] = useState("");
@@ -144,6 +168,25 @@ export function BroadcastComposePage() {
     setStep(2);
   }, [fromQ.data]);
 
+  // Apply audience preset from router state (e.g. Terminal Insights → Send broadcast)
+  useEffect(() => {
+    if (!audiencePreset || audiencePreset.user_ids.length === 0) return;
+    setRecipientType("custom");
+    setCustomIds(audiencePreset.user_ids.join("\n"));
+    setCustomAppType(audiencePreset.app_type);
+    setPresetLabel(audiencePreset.label ?? null);
+    if (audiencePreset.title) setTitle(audiencePreset.title);
+    if (audiencePreset.message) setMessage(audiencePreset.message);
+    if (audiencePreset.announcement_type) setAnnouncementType(audiencePreset.announcement_type);
+    if (audiencePreset.deep_link) setUrl(audiencePreset.deep_link);
+    if (audiencePreset.cta_label || audiencePreset.cta_url) {
+      setCtaLabel(audiencePreset.cta_label ?? "");
+      setCtaUrl(audiencePreset.cta_url ?? "");
+      setShowCta(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const configQ = useQuery({
     queryKey: adminQueryKeys.notificationsConfig(),
     queryFn: () => adminApi.getJson<NotificationConfig>("/api/admin/notifications/config", { timeoutMs: 30_000 }),
@@ -165,7 +208,9 @@ export function BroadcastComposePage() {
       ? configQ.data?.onesignal_apps?.provider
       : recipientType === "all_users"
         ? configQ.data?.onesignal_apps?.customer
-        : null;
+        : customAppType === "provider"
+          ? configQ.data?.onesignal_apps?.provider
+          : configQ.data?.onesignal_apps?.customer;
 
   const m = useMutation({
     mutationFn: async () => {
@@ -205,6 +250,7 @@ export function BroadcastComposePage() {
           message: message.trim(),
           recipient_type: recipientType,
           user_ids,
+          app_type: recipientType === "custom" ? customAppType : undefined,
           url: url.trim() || undefined,
           name: internalName.trim() || undefined,
           subtitle: subtitle.trim() || undefined,
@@ -233,7 +279,7 @@ export function BroadcastComposePage() {
           message: message.trim(),
           recipient_type: recipientType,
           user_ids,
-          app_type: recipientType === "custom" ? "customer" : undefined,
+          app_type: recipientType === "custom" ? customAppType : undefined,
           url: url.trim() || undefined,
         });
       }
@@ -249,7 +295,7 @@ export function BroadcastComposePage() {
         message: message.trim(),
         recipient_type: recipientType,
         user_ids,
-        app_type: recipientType === "custom" ? "customer" : undefined,
+        app_type: recipientType === "custom" ? customAppType : undefined,
         url: url.trim() || undefined,
       });
     },
@@ -338,7 +384,9 @@ export function BroadcastComposePage() {
       ? "All customers"
       : recipientType === "all_providers"
         ? "All providers"
-        : `${parseUserIds(customIds).length} custom ID(s)`;
+        : presetLabel
+          ? `${presetLabel} — ${parseUserIds(customIds).length} ${customAppType === "provider" ? "provider" : "customer"} account(s)`
+          : `${parseUserIds(customIds).length} custom ${customAppType === "provider" ? "provider" : "customer"} ID(s)`;
 
   /* ------------------------------------------------------------------ */
   /* Render                                                               */
@@ -439,14 +487,14 @@ export function BroadcastComposePage() {
             {channel === "push" && (
               <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
                 <div className="font-medium">OneSignal config check</div>
-                {recipientType === "custom" ? (
-                  <p className="mt-1 text-xs">Custom audiences may span both apps — ensure both OneSignal App IDs and REST keys are configured.</p>
-                ) : configQ.isLoading ? (
+                {configQ.isLoading ? (
                   <p className="mt-1 text-xs">Checking OneSignal credentials…</p>
                 ) : activeOneSignalConfig ? (
                   <p className="mt-1 text-xs">
-                    {recipientType === "all_providers" ? "Provider" : "Customer"} App ID{" "}
-                    {activeOneSignalConfig.app_id ? "✓ set" : "✗ missing"}; REST API key{" "}
+                    {(recipientType === "all_providers" || (recipientType === "custom" && customAppType === "provider"))
+                      ? "Provider"
+                      : "Customer"}{" "}
+                    App ID {activeOneSignalConfig.app_id ? "✓ set" : "✗ missing"}; REST API key{" "}
                     {activeOneSignalConfig.rest_api_key_configured ? "✓ set" : "✗ missing"}.
                   </p>
                 ) : (
@@ -461,14 +509,52 @@ export function BroadcastComposePage() {
             )}
 
             {recipientType === "custom" && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">User IDs (comma or whitespace separated)</label>
-                <textarea
-                  className="w-full min-h-[88px] rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm"
-                  value={customIds}
-                  onChange={(e) => setCustomIds(e.target.value)}
-                  placeholder="uuid-one, uuid-two"
-                />
+              <div className="space-y-4">
+                {presetLabel ? (
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
+                    <div>
+                      <span className="font-semibold">Targeted audience: </span>
+                      {presetLabel} ({parseUserIds(customIds).length}{" "}
+                      {customAppType === "provider" ? "provider" : "customer"} account(s))
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-medium text-indigo-700 hover:underline"
+                      onClick={() => setPresetLabel(null)}
+                    >
+                      Edit manually
+                    </button>
+                  </div>
+                ) : null}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Target app</label>
+                  <div className="flex gap-2">
+                    {(["customer", "provider"] as CustomAppType[]).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={adminTabButtonClass(customAppType === t)}
+                        onClick={() => setCustomAppType(t)}
+                      >
+                        {t === "customer" ? "Customer app" : "Provider app"}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Push, SMS, and email routing use this app's device registrations and OneSignal config.
+                  </p>
+                </div>
+                {presetLabel ? null : (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">User IDs (comma or whitespace separated)</label>
+                    <textarea
+                      className="w-full min-h-[88px] rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm"
+                      value={customIds}
+                      onChange={(e) => setCustomIds(e.target.value)}
+                      placeholder="uuid-one, uuid-two"
+                    />
+                  </div>
+                )}
               </div>
             )}
 

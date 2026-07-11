@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dispatchTemplateNotification, withTenantVariable } from "@/lib/notifications/dispatch-template-notification";
+import { insertNotification } from "@/lib/notifications/insert-notification";
 
 type CampaignRow = {
   id: string;
@@ -8,6 +9,9 @@ type CampaignRow = {
   message_body: string | null;
   cta_label: string | null;
   cta_url: string | null;
+  announcement_type?: string | null;
+  media_url?: string | null;
+  expires_at?: string | null;
 };
 
 type RecipientRow = {
@@ -16,6 +20,9 @@ type RecipientRow = {
   user_id: string;
   providers?: { business_name?: string | null } | null;
 };
+
+/** Deep link the provider app resolves for announcement rows and push taps. */
+const ANNOUNCEMENTS_DEEP_LINK = "/(app)/announcements";
 
 export async function sendTerminalCampaignNotifications(
   supabase: SupabaseClient,
@@ -42,6 +49,25 @@ export async function sendTerminalCampaignNotifications(
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   const ctaUrl = campaign.cta_url || `${appUrl}/provider/settings/sales/terminal-shop`;
+  const ctaLabel = campaign.cta_label ?? "View terminals";
+  const announcementType = campaign.announcement_type || "promotion";
+
+  // Rich announcement payload — same shape the admin broadcast push route
+  // writes, so the provider Announcements screen renders media/CTA/expiry
+  // and deep-link routing works identically.
+  const announcementData: Record<string, unknown> = {
+    type: "admin_broadcast",
+    source: "terminal_campaign",
+    campaign_id: campaign.id,
+    announcement_type: announcementType,
+    cta_label: ctaLabel,
+    cta_url: ctaUrl,
+    url: ANNOUNCEMENTS_DEEP_LINK,
+    deep_link: ANNOUNCEMENTS_DEEP_LINK,
+    ...(campaign.media_url ? { media_url: campaign.media_url, media_type: "image" } : {}),
+    ...(campaign.expires_at ? { expires_at: campaign.expires_at } : {}),
+  };
+
   let sent = 0;
 
   for (const recipient of eligible) {
@@ -49,21 +75,34 @@ export async function sendTerminalCampaignNotifications(
       business_name: recipient.providers?.business_name ?? "Provider",
       headline: campaign.name,
       body: campaign.message_body ?? "",
-      cta_label: campaign.cta_label ?? "View terminals",
+      cta_label: ctaLabel,
       cta_url: ctaUrl,
       app_url: appUrl,
     });
 
+    // skipInApp: the auto bell row would be typed `terminal_upsell_announcement`,
+    // which the notifications enum downgrades to `system` and the provider
+    // Announcements screen (filter: admin_broadcast) never shows. We insert our
+    // own `admin_broadcast` row below so the campaign lands in the announcement
+    // inbox + banner with the full rich payload.
     const result = await dispatchTemplateNotification(
       "terminal_upsell_announcement",
       [recipient.user_id],
       vars,
       ["push", "email"],
-      { appType: "provider" },
+      { appType: "provider", skipInApp: true },
     );
 
     if (result.success) {
       sent += 1;
+      await insertNotification({
+        user_id: recipient.user_id,
+        type: "admin_broadcast",
+        title: campaign.name,
+        message: campaign.message_body ?? "",
+        data: announcementData,
+        link: ANNOUNCEMENTS_DEEP_LINK,
+      });
       await (supabase.from("terminal_campaign_recipients") as any)
         .update({ delivered_at: new Date().toISOString() })
         .eq("id", recipient.id);

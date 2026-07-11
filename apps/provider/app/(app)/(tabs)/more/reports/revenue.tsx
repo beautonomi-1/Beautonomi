@@ -135,6 +135,15 @@ export default function RevenueReport() {
     revenueReportUrl,
     { timeoutMs: 15000 }
   );
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -161,7 +170,7 @@ export default function RevenueReport() {
   }, [data, from, to]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Revenue" showBack subtitle="Ledger totals, splits, and booking-linked breakdowns" />
 
       <View style={twStyle("mb-3")}>

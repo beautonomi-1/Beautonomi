@@ -75,7 +75,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
       { title: "Payment Methods", description: "Enable or disable cash, online, and gift card payment options", href: "/provider/settings/payments" },
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
-      { title: "Card machines", description: "Beautonomi in-person terminals — add, manage, and accept card payments", href: "/provider/settings/sales/card-machines" },
+      { title: "Card machines", description: "Beautonomi in-person terminals — add, manage, and accept card payments", href: "/provider/settings/sales/card-machines", featureFlag: "payment_paycloud" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration", featureFlag: "payment_yoco" },
       { title: "Terminal Integrations", description: "Connect Wappoint, iKhokha, and other card machine vendors", href: "/provider/settings/sales/terminal-integrations" },
       { title: "Terminal Shop", description: "Order card machines and payment terminals from the platform catalog", href: "/provider/settings/sales/terminal-shop" },
@@ -141,12 +141,8 @@ export default function ProviderSettings() {
   const terminalIntegrationsEnabled = useFeatureFlag("terminal_integrations_enabled");
   const terminalShopEnabled =
     useFeatureFlag("terminal_ecommerce_enabled") || useFeatureFlag("terminal_product_catalog_enabled");
-  const cardMachinesHubVisible =
-    paycloudEnabled ||
-    yocoEnabled ||
-    paystackTerminalEnabled ||
-    terminalIntegrationsEnabled ||
-    terminalShopEnabled;
+  // Card machines hub requires PayCloud; Terminal Shop is a separate Settings entry.
+  const cardMachinesHubVisible = paycloudEnabled;
 
   useEffect(() => {
     loadProviderInfo();

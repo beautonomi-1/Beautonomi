@@ -80,6 +80,11 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
 
   const progress = plan?.progress ?? { completed: 0, total: 0 };
   const allSteps = plan?.steps ?? [];
+  const businessVerificationPending =
+    !!plan &&
+    !plan.is_complete &&
+    (plan.required_steps.includes("business_kyb") ||
+      plan.required_steps.includes("manual_business_review"));
 
   return (
     <div className="space-y-8">
@@ -150,7 +155,13 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                   {expanded && step.step === "person_kyc" && (
                     <div className="border-t px-4 pb-4">
                       {statusData.didit_available ? (
-                        <IdentityVerificationPanel persona="provider" isProvider onApproved={() => void onRefresh()} />
+                        <IdentityVerificationPanel
+                          persona="provider"
+                          isProvider
+                          businessVerificationPending={businessVerificationPending}
+                          businessVerificationSummary={plan.effective_summary}
+                          onApproved={() => void onRefresh()}
+                        />
                       ) : (
                         manualUploadSection
                       )}

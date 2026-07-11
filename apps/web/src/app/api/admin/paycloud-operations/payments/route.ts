@@ -81,13 +81,17 @@ export async function GET(request: NextRequest) {
     if (to) query = query.lte("created_at", to);
     if (search) {
       const safe = search.replace(/[%_]/g, "");
-      query = query.or(
-        [
-          `merchant_order_no.ilike.%${safe}%`,
-          `paycloud_order_id.ilike.%${safe}%`,
-          `entity_id.ilike.%${safe}%`,
-        ].join(","),
-      );
+      const uuidLike =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          search,
+        );
+      const clauses = [
+        `merchant_order_no.ilike.%${safe}%`,
+        `paycloud_order_id.ilike.%${safe}%`,
+        `entity_id.ilike.%${safe}%`,
+      ];
+      if (uuidLike) clauses.push(`id.eq.${search}`);
+      query = query.or(clauses.join(","));
     }
 
     const { data, error, count } = await query;

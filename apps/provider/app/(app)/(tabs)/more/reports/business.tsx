@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Alert,
   View,
@@ -27,7 +27,6 @@ import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 interface BusinessReport {
   revenue: {
     total: number;
-    previous_period: number;
     growth_percentage: number;
   };
   bookings: {
@@ -96,6 +95,7 @@ type OverviewResponse = {
   cancellationRate?: number;
   noShowRate?: number;
   revenueGrowth?: number;
+  revenueGrowthIsNew?: boolean;
   periodStart?: string;
   periodEnd?: string;
   new_this_period?: number;
@@ -117,7 +117,6 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
   return {
     revenue: {
       total: overview.totalRevenue ?? 0,
-      previous_period: 0,
       growth_percentage: overview.revenueGrowth ?? 0,
     },
     bookings: {
@@ -159,6 +158,15 @@ export default function BusinessReportScreen() {
     businessUrl,
     { timeoutMs: 15000 }
   );
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
   const report = mapOverviewToBusinessReport(overview);
 
   async function handleExport() {
@@ -219,7 +227,7 @@ export default function BusinessReportScreen() {
   const r = report;
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
         title="Business Overview"
         showBack
@@ -279,10 +287,30 @@ export default function BusinessReportScreen() {
           ) : null}
           <StatCard
             title="Vs prior window"
-            value={`${(r?.revenue.growth_percentage ?? 0) >= 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`}
+            value={
+              overview?.revenueGrowthIsNew
+                ? "New"
+                : `${(r?.revenue.growth_percentage ?? 0) > 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`
+            }
             icon="trending-up-outline"
-            iconColor={(r?.revenue.growth_percentage ?? 0) >= 0 ? "#22c55e" : "#ef4444"}
-            iconBg={(r?.revenue.growth_percentage ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}
+            iconColor={
+              overview?.revenueGrowthIsNew
+                ? "#22c55e"
+                : (r?.revenue.growth_percentage ?? 0) > 0
+                  ? "#22c55e"
+                  : (r?.revenue.growth_percentage ?? 0) < 0
+                    ? "#ef4444"
+                    : "#6b7280"
+            }
+            iconBg={
+              overview?.revenueGrowthIsNew
+                ? "bg-green-50"
+                : (r?.revenue.growth_percentage ?? 0) > 0
+                  ? "bg-green-50"
+                  : (r?.revenue.growth_percentage ?? 0) < 0
+                    ? "bg-red-50"
+                    : "bg-gray-50"
+            }
             compact
           />
         </ReportResponsiveStatRow>

@@ -74,7 +74,9 @@ type ProductForm = {
 };
 
 const VENDORS = ["yoco", "ikhokha", "capitec", "fnb", "nedbank", "absa", "standard_bank", "beautonomi", "other"];
-const ACCOUNTING_MODELS = ["once_off_purchase", "rental", "subscription_bundle", "lease_to_own", "promotional"];
+// Rental is intentionally not selectable: providers can only buy or include a terminal in
+// their plan (Option C). The DB enum keeps "rental" for legacy products/accounting.
+const ACCOUNTING_MODELS = ["once_off_purchase", "subscription_bundle", "lease_to_own", "promotional"];
 const STOCK_STATUSES = ["in_stock", "low_stock", "out_of_stock", "discontinued", "coming_soon"];
 const FULFILLMENT_TYPES = ["shipping", "courier", "collection", "digital_activation"];
 
@@ -192,13 +194,19 @@ function ProductFormFields({
         <label className="mb-1 block text-sm font-medium text-gray-700">Monthly price</label>
         <input type="number" min="0" step="0.01" className={inputClass} value={form.monthly_price} onChange={(e) => setForm((f) => ({ ...f, monthly_price: e.target.value }))} />
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Rental price</label>
-        <input type="number" min="0" step="0.01" className={inputClass} value={form.rental_price} onChange={(e) => setForm((f) => ({ ...f, rental_price: e.target.value }))} />
-      </div>
+      {form.rental_price.trim() !== "" && (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Rental price (legacy)</label>
+          <input type="number" className={`${inputClass} bg-gray-50 text-gray-500`} value={form.rental_price} readOnly disabled />
+          <p className="mt-1 text-xs text-gray-400">Rental is no longer offered; value kept for legacy records.</p>
+        </div>
+      )}
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-700">Commercial model</label>
         <select className={inputClass} value={form.accounting_model} onChange={(e) => setForm((f) => ({ ...f, accounting_model: e.target.value }))}>
+          {form.accounting_model === "rental" && (
+            <option value="rental" disabled>rental (legacy — not selectable)</option>
+          )}
           {ACCOUNTING_MODELS.map((m) => (
             <option key={m} value={m}>{m.replace(/_/g, " ")}</option>
           ))}

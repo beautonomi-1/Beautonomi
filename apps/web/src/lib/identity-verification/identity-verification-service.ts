@@ -20,6 +20,7 @@ import {
   normalizeDiditStatus,
   sanitiseDecisionForStorage,
 } from "./provider/didit-provider";
+import { userFacingDiditSessionCreateMessage } from "./user-facing-didit-errors";
 import type {
   CreateSessionInput,
   CreateSessionOutput,
@@ -172,8 +173,9 @@ export async function createVerificationSession(
         isExisting:        true,
       };
     } catch (err) {
+      console.error("[identity-verification] Didit session recover failed:", err);
       throw new IdentityVerificationError(
-        `Failed to recover Didit session: ${err instanceof Error ? err.message : String(err)}`,
+        userFacingDiditSessionCreateMessage(err),
         IV_ERROR.SESSION_CREATE_FAILED,
         502,
       );
@@ -204,8 +206,9 @@ export async function createVerificationSession(
   try {
     diditResult = await createDiditSession(params);
   } catch (err) {
+    console.error("[identity-verification] Didit session create failed:", err);
     throw new IdentityVerificationError(
-      `Failed to create Didit session: ${err instanceof Error ? err.message : String(err)}`,
+      userFacingDiditSessionCreateMessage(err),
       IV_ERROR.SESSION_CREATE_FAILED,
       502,
     );
@@ -442,8 +445,9 @@ export async function createBusinessVerificationSession(
       },
     });
   } catch (err) {
+    console.error("[identity-verification] Didit KYB session create failed:", err);
     throw new IdentityVerificationError(
-      `Failed to create Didit KYB session: ${err instanceof Error ? err.message : String(err)}`,
+      userFacingDiditSessionCreateMessage(err),
       IV_ERROR.SESSION_CREATE_FAILED,
       502,
     );
@@ -891,7 +895,13 @@ async function syncLegacyColumns(
   if (persona === "customer") {
     await syncCustomerVerificationState(supabase, userId, normalized, sessionId);
   } else if (persona === "provider" && providerId) {
-    await syncProviderVerificationStateFromDidit(providerId, normalized, rejectionReason, sessionId);
+    await syncProviderVerificationStateFromDidit(
+      providerId,
+      normalized,
+      rejectionReason,
+      sessionId,
+      { kycCredentialExpired: kycExpiry },
+    );
     // KYC expiry: re-lock provider gates (but preserve manual admin override)
     if (kycExpiry) {
       await handleKycExpiryForProvider(supabase, providerId, userId);

@@ -1047,7 +1047,7 @@ function FeeConfigFormModal({
             value={gatewayName}
             onChange={(e) => setGatewayName(e.target.value)}
             required
-            placeholder="paystack, stripe, …"
+            placeholder="paystack, yoco, …"
           />
         </div>
         <div>

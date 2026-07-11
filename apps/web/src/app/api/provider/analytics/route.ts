@@ -401,8 +401,8 @@ export async function GET(request: NextRequest) {
         all_time: {
           recognized_revenue_net: totalRevenue,
           service_earnings: allTimeServiceEarnings.totalRevenue,
-          /** @deprecated use recognized_revenue_net */
-          service_earnings_net: totalRevenue,
+          /** @deprecated use service_earnings */
+          service_earnings_net: allTimeServiceEarnings.totalRevenue,
           tips_net: allTimeLB.tips_net,
           cancellation_fees: allTimeLB.cancellation_fees,
           refunds: allTimeLB.refunds,
@@ -414,8 +414,8 @@ export async function GET(request: NextRequest) {
           period,
           recognized_revenue_net: thisMonthRevenue,
           service_earnings: currentServiceEarnings.totalRevenue,
-          /** @deprecated use recognized_revenue_net */
-          service_earnings_net: thisMonthRevenue,
+          /** @deprecated use service_earnings */
+          service_earnings_net: currentServiceEarnings.totalRevenue,
           tips_net: currentLB.tips_net,
           cancellation_fees: currentLB.cancellation_fees,
           refunds: currentLB.refunds,

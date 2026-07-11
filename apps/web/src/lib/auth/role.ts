@@ -12,12 +12,21 @@ import type { UserRole } from "@/types/beautonomi";
 
 export type Portal = "customer" | "provider" | "admin" | "provider_onboarding";
 
+/**
+ * Legacy value that may still exist in `public.users.role` for users mid-onboarding.
+ * Not part of {@link UserRole}; use only for portal routing and API allow-lists.
+ */
+export type LegacyUsersRole = "provider_onboarding";
+
+/** Role string read from the database — canonical roles plus legacy onboarding. */
+export type UsersRoleFromDb = UserRole | LegacyUsersRole;
+
 /** Provider status from DB (providers.status enum) */
 export type ProviderStatus = "draft" | "pending_approval" | "active" | "suspended" | null;
 
 export interface UserRoleResult {
   userId: string;
-  role: UserRole;
+  role: UsersRoleFromDb;
   provider_id: string | null;
   provider_status: ProviderStatus;
 }
@@ -26,7 +35,7 @@ export interface UserRoleResult {
  * Map role + provider status to a portal identifier for routing.
  */
 export function getPortalForUser(params: {
-  role: UserRole;
+  role: UsersRoleFromDb;
   provider_status?: ProviderStatus | null;
 }): Portal {
   const { role, provider_status } = params;

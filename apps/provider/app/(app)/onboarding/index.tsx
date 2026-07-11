@@ -18,6 +18,12 @@ import {
   isBiometricSetupPromptDismissed,
   setBiometricPromptPending,
 } from "@/lib/biometric-setup-prompt";
+import {
+  GUIDED_WIZARD_ROUTE,
+  resolveNextIncompleteRoute,
+  resolveSetupStepRoute,
+  type SetupNavStep,
+} from "@/lib/setup-step-navigation";
 
 type SetupStep = {
   id: string;
@@ -79,12 +85,13 @@ export default function OnboardingHubScreen() {
 
   const startNativeWizard = () => {
     hapticLight();
-    const nextStep = pendingRequired[0] || optionalPending[0];
-    if (nextStep) {
-      router.push(`/(app)/onboarding/wizard?focus=${encodeURIComponent(nextStep.id)}` as never);
-    } else {
-      router.push("/(app)/onboarding/wizard" as never);
-    }
+    const target = resolveNextIncompleteRoute(allSteps as SetupNavStep[]);
+    router.push(target as never);
+  };
+
+  const openGuidedWizard = () => {
+    hapticLight();
+    router.push(GUIDED_WIZARD_ROUTE as never);
   };
 
   const confirmSignOut = () => {
@@ -118,25 +125,17 @@ export default function OnboardingHubScreen() {
   // checklist UI — we silently fall back to the wizard instead.
   const openStep = (step: SetupStep) => {
     hapticLight();
-    const pushSafely = (target: string) => {
+    const target = resolveSetupStepRoute(step);
+    try {
+      router.push(target as never);
+    } catch (err) {
+      console.warn("Setup step navigation failed, falling back:", err);
       try {
-        router.push(target as never);
-      } catch (err) {
-        console.warn("Setup step navigation failed, falling back to wizard:", err);
-        try {
-          router.push(
-            `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
-          );
-        } catch {
-          router.push("/(app)/onboarding/wizard" as never);
-        }
+        router.push(resolveSetupStepRoute(step) as never);
+      } catch {
+        router.push(GUIDED_WIZARD_ROUTE as never);
       }
-    };
-    if (step.native_route && step.native_route.startsWith("/(app)/")) {
-      pushSafely(step.native_route);
-      return;
     }
-    pushSafely(`/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`);
   };
 
   // Refresh on focus so completing a step elsewhere updates the hub immediately.
@@ -456,11 +455,25 @@ export default function OnboardingHubScreen() {
               </View>
               <Text style={twStyle("mt-1 px-6 text-center text-[13px] text-slate-300")}>
                 {hasSetupSteps
-                  ? "Pick up where you left off"
+                  ? "Jump to your next incomplete task"
                   : "Walks you through every step end-to-end"}
               </Text>
             </TouchableOpacity>
           )}
+
+          {!isComplete && hasSetupSteps ? (
+            <TouchableOpacity
+              onPress={openGuidedWizard}
+              style={twStyle("mb-4 items-center py-2")}
+              activeOpacity={0.85}
+              accessibilityLabel="Open full guided setup wizard"
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-[14px] font-medium text-primary")}>
+                Or use the full guided wizard
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {!isComplete && hasSetupSteps ? (
             <TouchableOpacity

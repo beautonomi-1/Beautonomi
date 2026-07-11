@@ -1,0 +1,90 @@
+{
+  "agent": 19,
+  "name": "Adversarial Go-Live Challenger",
+  "reviewed_at": "2026-07-11T14:52:00.000Z",
+  "overall_confidence_adjustment": -12,
+  "challenged_findings": [
+    {
+      "finding_id": "FND-P0-001",
+      "original_severity": "P0",
+      "challenger_severity": "P0",
+      "verdict": "confirmed",
+      "rationale": "csrf.ts explicitly disables protection when CSRF_SECRET unset; GO_LIVE_NOW.md lists CSRF_SECRET as required but no deploy-time enforcement found"
+    },
+    {
+      "finding_id": "FND-P0-002",
+      "original_severity": "P0",
+      "challenger_severity": "P0",
+      "verdict": "confirmed",
+      "rationale": "Only 2 E2E specs for entire platform; 565 unit tests do not substitute for money-path E2E"
+    },
+    {
+      "finding_id": "FND-P0-003",
+      "original_severity": "P0",
+      "challenger_severity": "P0",
+      "verdict": "confirmed",
+      "rationale": "resolveTenantIdWithZaFallback in 100+ routes; tenant strict tests exist but no live cross-tenant attempt; multi-market day-one is high risk"
+    },
+    {
+      "finding_id": "FND-P0-004",
+      "original_severity": "P0",
+      "challenger_severity": "P0",
+      "verdict": "confirmed",
+      "rationale": "LAUNCH_READINESS_100 claims 100% parity but search map uses fake London coordinates — direct contradiction"
+    },
+    {
+      "finding_id": "FND-P0-005",
+      "original_severity": "P0",
+      "challenger_severity": "P1",
+      "verdict": "reclassified",
+      "rationale": "Shipping is P0 only if ecommerce delivery is in launch scope; for booking-only pilot can be gated. Remains P0 for full multi-market platform including ecommerce."
+    },
+    {
+      "finding_id": "FND-P1-015",
+      "original_severity": "P1",
+      "challenger_severity": "P1",
+      "verdict": "confirmed",
+      "rationale": "LAUNCH_READINESS_100 unsigned sign-off table; 7-day drift gate not executed — engineering 100% claim is not evidence-backed"
+    },
+    {
+      "finding_id": "FND-P1-012",
+      "original_severity": "P1",
+      "challenger_severity": "P1",
+      "verdict": "confirmed",
+      "rationale": "Service-role bypass is architectural; 53 provider routes flagged by readiness heuristic lack getProviderIdForUser — defense relies on route-level patterns"
+    }
+  ],
+  "rejected_findings": [
+    {
+      "heuristic": "admin routes without requireRoleInApi",
+      "verdict": "rejected_as_false_positive",
+      "rationale": "Admin ads/gods-eye routes use requireSuperadminPlatform or requireSuperadmin — heuristic under-counts alternate guard functions"
+    }
+  ],
+  "additional_blockers": [
+    {
+      "id": "FND-P1-018",
+      "title": "Web typecheck failure blocks release:check",
+      "severity": "P1",
+      "evidence": "EVD-036",
+      "description": "apps/web typecheck fails on terminal-shop/page.tsx TS2339 — release:check cannot pass"
+    },
+    {
+      "id": "FND-P1-019",
+      "title": "53 provider API routes flagged missing tenant guard heuristic",
+      "severity": "P1",
+      "evidence": "EVD-037",
+      "description": "readiness-check.mjs flags provider routes with requireRole but no getProviderIdForUser; some may resolve via booking ID — requires manual review"
+    }
+  ],
+  "payment_integrity_challenge": {
+    "verdict": "partial_pass",
+    "notes": "95 payment/ledger unit tests pass; webhook idempotency and reconciliation-drift tests exist; no live double-payout or drift observed in code review; cannot verify Paystack transfer E2E without staging"
+  },
+  "parity_matrix_challenge": {
+    "verdict": "fail",
+    "notes": "PARITY_CONTRACT screen parity passes (32/32) but functional parity gaps remain: search map fake coords, shipping stubs, custom offer image upload"
+  },
+  "final_recommendation": "no_go_pending_critical_remediation",
+  "pilot_recommendation": "controlled_pilot_single_tenant_za_after_wave_0_1_and_staging"
+}

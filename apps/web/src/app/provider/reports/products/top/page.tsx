@@ -13,6 +13,7 @@ import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface TopProductsData {
@@ -65,8 +66,7 @@ export default function TopProductsReport() {
       setError(null);
 
       const params = new URLSearchParams();
-      if (dateRange.from) params.append("from", dateRange.from.toISOString());
-      if (dateRange.to) params.append("to", dateRange.to.toISOString());
+      appendReportDateParams(params, dateRange);
       params.append("limit", "50");
       appendLocation(params);
 

@@ -77,7 +77,7 @@ export async function loadProviderVerificationState(
   const supabase = getSupabaseAdmin();
   const { data: providerRow } = await supabase
     .from("providers")
-    .select("user_id, tenant_id, payee_kind, kyb_verification_status")
+    .select("user_id, tenant_id, payee_kind, kyb_verification_status, is_verified")
     .eq("id", providerId)
     .maybeSingle();
 
@@ -93,17 +93,43 @@ export async function loadProviderVerificationState(
     registrationCountry: entity.business_registration_country,
   });
 
-  const [personKycStatus, businessKybStatus, manualRow] = await Promise.all([
-    getVerificationStatus(ownerUserId, "provider", providerId, "user"),
-    getBusinessVerificationStatus(providerId),
-    supabase
-      .from("user_verifications")
-      .select("status")
-      .eq("user_id", ownerUserId)
-      .order("submitted_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  const [sessionPersonKycStatus, businessKybStatus, manualRow, legacyPersonRow, legacyKycRow] =
+    await Promise.all([
+      getVerificationStatus(ownerUserId, "provider", providerId, "user"),
+      getBusinessVerificationStatus(providerId),
+      supabase
+        .from("user_verifications")
+        .select("status")
+        .eq("user_id", ownerUserId)
+        .order("submitted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("users")
+        .select("identity_verified, identity_verification_status")
+        .eq("id", ownerUserId)
+        .maybeSingle(),
+      supabase
+        .from("provider_verification_status")
+        .select("status")
+        .eq("provider_id", providerId)
+        .maybeSingle(),
+    ]);
+
+  let personKycStatus = sessionPersonKycStatus;
+  const legacyPersonApproved =
+    (legacyPersonRow.data as { identity_verified?: boolean | null } | null)?.identity_verified ===
+      true ||
+    (legacyPersonRow.data as { identity_verification_status?: string | null } | null)
+      ?.identity_verification_status === "approved" ||
+    (legacyKycRow.data as { status?: string | null } | null)?.status === "approved" ||
+    (providerRow as { is_verified?: boolean | null }).is_verified === true;
+
+  // Legacy Sumsub/admin approvals without a Didit user session still satisfy person KYC.
+  // Never infer KYB approval from person-only legacy badges.
+  if (personKycStatus !== "approved" && legacyPersonApproved) {
+    personKycStatus = "approved";
+  }
 
   const manualStatus =
     (manualRow.data as { status?: string | null } | null)?.status ?? null;

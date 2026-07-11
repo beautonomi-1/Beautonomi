@@ -1,6 +1,5 @@
 /**
  * Fetch global service categories from /api/public/categories/global.
- * Falls back to hardcoded defaults if API fails.
  *
  * `icon` matches web/DB (`/images/...`, `https://...`, or legacy Lucide-style keys).
  * Use `getGlobalCategoryImageUri` + Expo Image in native UI; `getCategoryIcon` is the Ionicons fallback.
@@ -22,13 +21,6 @@ export interface GlobalCategory {
   provider_count?: number;
   is_featured?: boolean;
 }
-
-const FALLBACK_CATEGORIES: GlobalCategory[] = [
-  { id: "hair", slug: "hair", name: "Hair" },
-  { id: "nails", slug: "nails", name: "Nails" },
-  { id: "face", slug: "face", name: "Face" },
-  { id: "body", slug: "body", name: "Body" },
-];
 
 const ICON_MAP: Record<string, string> = {
   hair: "cut-outline",
@@ -53,27 +45,33 @@ export function getGlobalCategoryImageUri(icon: string | null | undefined): stri
 }
 
 export function useGlobalCategories() {
-  const [categories, setCategories] = useState<GlobalCategory[]>(FALLBACK_CATEGORIES);
+  const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.get<GlobalCategory[] | { data?: GlobalCategory[] }>(
         "/api/public/categories/global"
       );
       if (res.error) {
-        setCategories(FALLBACK_CATEGORIES);
+        setCategories([]);
+        setError(res.error.message ?? "Failed to load categories");
         return;
       }
       const raw = res.data;
-      const list = Array.isArray(raw) ? raw : (raw as any)?.data;
+      const list = Array.isArray(raw) ? raw : (raw as { data?: GlobalCategory[] })?.data;
       if (Array.isArray(list) && list.length > 0) {
         setCategories(list);
       } else {
-        setCategories(FALLBACK_CATEGORIES);
+        setCategories([]);
+        setError("No categories available");
       }
-    } catch {
-      setCategories(FALLBACK_CATEGORIES);
+    } catch (e) {
+      setCategories([]);
+      setError(e instanceof Error ? e.message : "Failed to load categories");
     } finally {
       setLoading(false);
     }
@@ -83,5 +81,5 @@ export function useGlobalCategories() {
     load();
   }, [load]);
 
-  return { categories, loading, reload: load };
+  return { categories, loading, error, reload: load };
 }

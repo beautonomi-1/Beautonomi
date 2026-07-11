@@ -42,6 +42,21 @@ describe("resolve-integration-setup-url", () => {
     );
   });
 
+  it("routes paycloud to card machines hub", () => {
+    expect(resolveIntegrationSetupPath({ vendor: "paycloud" })).toBe(
+      "/provider/settings/sales/card-machines",
+    );
+    expect(
+      resolveIntegrationSetupPath({ integration_vendor_slug: "paycloud" }),
+    ).toBe("/provider/settings/sales/card-machines");
+  });
+
+  it("includes order id for paycloud card-machines setup", () => {
+    const url = resolveIntegrationSetupUrl({ vendor: "paycloud" }, "order-456");
+    expect(url).toContain("/provider/settings/sales/card-machines");
+    expect(url).toContain("order=order-456");
+  });
+
   it("routes generic vendors to terminal integrations hub", () => {
     expect(resolveIntegrationSetupPath({ vendor: "wappoint" })).toBe(
       "/provider/settings/sales/terminal-integrations/wappoint",

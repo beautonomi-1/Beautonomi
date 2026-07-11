@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import Image from "next/image";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, X, Upload, Loader2 } from "lucide-react";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -69,6 +69,8 @@ export default function CustomOfferModal({
   const [notes, setNotes] = useState("");
   const [preferredStartAt, setPreferredStartAt] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
@@ -223,18 +225,52 @@ export default function CustomOfferModal({
     setDescription(templates[template] || "");
   };
 
-  const _handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    if (imageUrls.length + files.length > 6) {
+    const imageFiles = Array.from(files);
+    const maxBytes = 5 * 1024 * 1024;
+
+    for (const file of imageFiles) {
+      if (file.size > maxBytes) {
+        toast.error(`"${file.name}" is over 5MB. Choose a smaller image.`);
+        return;
+      }
+    }
+
+    if (imageUrls.length + imageFiles.length > 6) {
       toast.error("Maximum 6 images allowed");
       return;
     }
 
-    // For now, we'll need to upload images to get URLs
-    // This is a simplified version - you may need to implement actual image upload
-    toast.info("Image upload functionality needs to be implemented");
+    setUploadingImages(true);
+    try {
+      const formData = new FormData();
+      imageFiles.forEach((file) => formData.append("files", file));
+
+      const response = await fetcher.post<{ data: { urls: string[]; count: number; partial?: boolean } }>(
+        "/api/provider/custom-offers/upload",
+        formData,
+      );
+
+      if (response.data?.urls?.length) {
+        setImageUrls((prev) => [...prev, ...response.data.urls].slice(0, 6));
+        const count = response.data.count || response.data.urls.length;
+        toast.success(`${count} image${count > 1 ? "s" : ""} uploaded successfully`);
+        if (response.data.partial) {
+          toast.warning("Some images could not be uploaded");
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof FetchError ? err.message : "Failed to upload images";
+      toast.error(msg);
+    } finally {
+      setUploadingImages(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   const removeImage = (index: number) => {
@@ -759,11 +795,39 @@ export default function CustomOfferModal({
           {/* Image Upload (optional) */}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Inspiration Images (optional)</Label>
-            {/*
-              Image upload placeholder hidden — no upload API wired yet.
-              Re-enable when /api/me/uploads (or equivalent) is available and
-              the storage bucket policy is configured.
-            */}
+            <div
+              onClick={() => !uploadingImages && imageUrls.length < 6 && fileInputRef.current?.click()}
+              className={cn(
+                "relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all",
+                uploadingImages || imageUrls.length >= 6
+                  ? "border-gray-300 bg-gray-50 cursor-not-allowed opacity-60"
+                  : "border-gray-200 hover:border-gray-400 hover:bg-gray-50",
+              )}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                multiple
+                onChange={handleImageUpload}
+                disabled={uploadingImages || imageUrls.length >= 6}
+                className="hidden"
+              />
+              {uploadingImages ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                  <span className="text-sm text-gray-600">Uploading images...</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700">
+                    {imageUrls.length >= 6 ? "Maximum 6 images reached" : "Click to upload inspiration photos"}
+                  </span>
+                  <span className="text-xs text-gray-500">PNG, JPG, WebP, GIF up to 5MB each</span>
+                </div>
+              )}
+            </div>
             {imageUrls.length > 0 && (
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {imageUrls.map((url, index) => (

@@ -24,6 +24,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
+import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -102,6 +103,11 @@ export function ProviderVerificationPanel({
     verification_mode?: string;
     rejection_reason?: string | null;
     required_for_providers?: boolean;
+    verification_plan?: {
+      is_complete?: boolean;
+      required_steps?: string[];
+      effective_summary?: string;
+    } | null;
   }>(`/api/provider/verification/status?environment=${encodeURIComponent(env)}`);
 
   useFocusEffect(
@@ -130,6 +136,37 @@ export function ProviderVerificationPanel({
   const isUnderReview   = status === "in_progress" || status === "pending_review";
   const canAct          = !isApproved && !isUnderReview;
   const needsRetry      = status === "rejected" || status === "expired" || status === "abandoned" || status === "requires_retry";
+
+  const planIncomplete = legacyStatus?.verification_plan?.is_complete === false;
+  const businessVerificationPending =
+    planIncomplete &&
+    (legacyStatus?.verification_plan?.required_steps?.includes("business_kyb") ||
+      legacyStatus?.verification_plan?.required_steps?.includes("manual_business_review"));
+  const displayConfig =
+    businessVerificationPending && status !== "rejected"
+      ? {
+          label: "Business verification pending",
+          icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
+          color: "#3b82f6",
+          bg: "bg-blue-100",
+        }
+      : config;
+  const statusLabel = displayConfig.label;
+  const statusMessage = businessVerificationPending
+    ? legacyStatus?.verification_plan?.effective_summary
+      ? `Your personal identity is verified. ${legacyStatus.verification_plan.effective_summary}`
+      : "Your personal identity is verified. Complete business verification to finish setup and go live."
+    : isApproved
+      ? "Your identity is verified."
+      : isUnderReview
+        ? "Your verification is under review. We'll notify you once it's confirmed."
+        : status === "rejected"
+          ? "Verification was not approved. Please try again."
+          : status === "expired" || status === "abandoned"
+            ? "Your session ended. Start a new verification."
+            : verificationRequired
+              ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
+              : "Optional — verify with your government ID or passport to earn the Verified trust badge.";
 
   // Notify parent on status transitions (useRef so stale closures don't block)
   const prevStatusRef = useRef<NormalizedVerificationStatus>(status);
@@ -162,7 +199,7 @@ export function ProviderVerificationPanel({
       if (!result.ok && result.error) {
         Alert.alert(
           "Verification unavailable",
-          result.error + " Please use the manual upload below."
+          formatDiditLaunchError(result.error, { manualAvailable }),
         );
         return;
       }
@@ -176,7 +213,7 @@ export function ProviderVerificationPanel({
     } finally {
       setLaunching(false);
     }
-  }, [validateAndGetErrors, legalDetails, bundle, startPolling, refreshStatus]);
+  }, [validateAndGetErrors, legalDetails, bundle, startPolling, refreshStatus, manualAvailable]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
@@ -240,23 +277,13 @@ export function ProviderVerificationPanel({
     >
       <View style={twStyle("px-4 pt-6")}>
         {/* Status badge */}
-        <View style={[twStyle(`rounded-2xl p-6 items-center ${config.bg}`)]}>
-          <View style={[twStyle("w-16 h-16 rounded-full items-center justify-center mb-4"), { backgroundColor: `${config.color}30` }]}>
-            <Ionicons name={config.icon} size={32} color={config.color} />
+        <View style={[twStyle(`rounded-2xl p-6 items-center ${displayConfig.bg}`)]}>
+          <View style={[twStyle("w-16 h-16 rounded-full items-center justify-center mb-4"), { backgroundColor: `${displayConfig.color}30` }]}>
+            <Ionicons name={displayConfig.icon} size={32} color={displayConfig.color} />
           </View>
-          <Text style={twStyle("text-lg font-semibold text-gray-900")}>{config.label}</Text>
+          <Text style={twStyle("text-lg font-semibold text-gray-900")}>{statusLabel}</Text>
           <Text style={twStyle("mt-2 text-center text-gray-600 text-sm")}>
-            {isApproved
-              ? "Your identity is verified."
-              : isUnderReview
-                ? "Your verification is under review. We'll notify you once it's confirmed."
-                : status === "rejected"
-                  ? "Verification was not approved. Please try again."
-                  : status === "expired" || status === "abandoned"
-                    ? "Your session ended. Start a new verification."
-                    : verificationRequired
-                      ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
-                      : "Optional — verify with your government ID or passport to earn the Verified trust badge."}
+            {statusMessage}
           </Text>
         </View>
 

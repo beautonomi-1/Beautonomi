@@ -15,6 +15,20 @@ Supabase Pro plans and above include PITR with WAL-G:
 1. Confirm Supabase plan includes PITR
 2. Test a restore to a **new project** (never restore over production)
 3. Verify restored data integrity: row counts, recent transactions, storage objects
+4. **Optional:** run post-restore row-count script against the restored database:
+
+```bash
+# Capture baseline from production (read-only) before a drill, then compare after restore
+SUPABASE_DB_URL="postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres" \
+  node tooling/dr/verify-restore-row-counts.mjs
+
+# With baseline snapshot (copy tooling/dr/baseline-row-counts.example.json and fill counts)
+SUPABASE_DB_URL="postgresql://..." \
+  BASELINE_JSON=tooling/dr/baseline-row-counts.json \
+  node tooling/dr/verify-restore-row-counts.mjs
+```
+
+Script: `tooling/dr/verify-restore-row-counts.mjs` + `tooling/dr/verify-restore-row-counts.sql` — checks `users`, `providers`, `bookings`, `booking_payments`, `finance_transactions`, `notification_delivery_queue`, `feature_flags`. Requires `psql` on PATH. Fails when any table drops below 90% of baseline (`MIN_COUNT_RATIO` override optional).
 
 ### What Is Backed Up
 

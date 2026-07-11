@@ -53,6 +53,7 @@ interface BusinessOverviewData {
   cancellationRate: number;
   noShowRate: number;
   revenueGrowth: number;
+  revenueGrowthIsNew?: boolean;
   locationAttribution?: { scopedByLocation?: boolean; excludedUnattributedRows?: number; note?: string };
 }
 
@@ -267,15 +268,26 @@ export default function BusinessOverviewReport() {
                 <div>
                   <p className="text-2xl font-semibold tabular-nums text-emerald-950">{fmt(data.totalRevenue)}</p>
                   <div className="mt-1 flex items-center gap-1">
-                    {data.revenueGrowth >= 0 ? (
-                      <TrendingUp className="h-4 w-4 text-green-700" />
+                    {data.revenueGrowthIsNew ? (
+                      <>
+                        <TrendingUp className="h-4 w-4 text-emerald-700" />
+                        <p className="text-xs text-emerald-700">New vs prior window</p>
+                      </>
+                    ) : data.revenueGrowth === 0 ? (
+                      <p className="text-xs text-gray-500">0% vs prior window</p>
                     ) : (
-                      <TrendingDown className="h-4 w-4 text-red-600" />
+                      <>
+                        {data.revenueGrowth > 0 ? (
+                          <TrendingUp className="h-4 w-4 text-green-700" />
+                        ) : (
+                          <TrendingDown className="h-4 w-4 text-red-600" />
+                        )}
+                        <p className={`text-xs ${data.revenueGrowth > 0 ? "text-green-700" : "text-red-600"}`}>
+                          {data.revenueGrowth > 0 ? "+" : ""}
+                          {data.revenueGrowth.toFixed(1)}% vs prior window
+                        </p>
+                      </>
                     )}
-                    <p className={`text-xs ${data.revenueGrowth >= 0 ? "text-green-700" : "text-red-600"}`}>
-                      {data.revenueGrowth >= 0 ? "+" : ""}
-                      {data.revenueGrowth.toFixed(1)}% vs prior window
-                    </p>
                   </div>
                 </div>
                 <DollarSign className="h-8 w-8 shrink-0 text-emerald-600 opacity-90" />

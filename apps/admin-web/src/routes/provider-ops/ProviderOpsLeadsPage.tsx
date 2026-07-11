@@ -81,6 +81,7 @@ interface Lead {
   whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   whatsapp_checked_at?: string | null;
   updated_at?: string;
+  overdue_task_count?: number;
 }
 
 /** Shows whether the lead phone was verified on WhatsApp (Wasender check). */
@@ -1531,6 +1532,11 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
                     <span className={cn("mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", badge)}>
                       {getLeadStageLabel(lead.commercial_stage)}
                     </span>
+                    {(lead.overdue_task_count ?? 0) > 0 ? (
+                      <span className="ml-1 inline-flex rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                        {lead.overdue_task_count} overdue
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <span className="inline-block rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">{lead.source}</span>

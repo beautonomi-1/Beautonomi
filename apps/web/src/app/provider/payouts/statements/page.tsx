@@ -31,6 +31,10 @@ interface StatementData {
 }
 
 function downloadCSV(data: StatementData) {
+  const quote = (v: string | number) => {
+    const s = String(v ?? "");
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
   const rows = [
     ["Payout statement", `${data.period.from} to ${data.period.to}`],
     [],
@@ -50,7 +54,7 @@ function downloadCSV(data: StatementData) {
       p.processed_at ? format(new Date(p.processed_at), "yyyy-MM-dd") : "",
     ]),
   ];
-  const csv = rows.map((r) => r.join(",")).join("\n");
+  const csv = rows.map((r) => r.map(quote).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -66,22 +70,26 @@ export default function ProviderPayoutStatements() {
   const [to, setTo] = useState(format(now, "yyyy-MM-dd"));
   const [data, setData] = useState<StatementData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetcher.get<{ data: StatementData }>(
+        `/api/provider/payouts/statements?from=${from}&to=${to}`
+      );
+      setData(res.data ?? null);
+    } catch (err) {
+      setData(null);
+      setError(err instanceof Error ? err.message : "Could not load statement");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const res = await fetcher.get<{ data: StatementData }>(
-          `/api/provider/payouts/statements?from=${from}&to=${to}`
-        );
-        setData(res.data ?? null);
-      } catch {
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    void load();
   }, [from, to]);
 
   return (
@@ -178,9 +186,19 @@ export default function ProviderPayoutStatements() {
               )}
             </SectionCard>
           </>
+        ) : error ? (
+          <SectionCard title="Could not load statement">
+            <p className="text-sm text-red-600">{error}</p>
+            <Button onClick={() => void load()} className="mt-4" variant="outline">
+              Try again
+            </Button>
+          </SectionCard>
         ) : (
           <SectionCard>
             <p className="text-sm text-gray-500">Could not load statement. Try another date range.</p>
+            <Button onClick={() => void load()} className="mt-4" variant="outline">
+              Try again
+            </Button>
           </SectionCard>
         )}
 

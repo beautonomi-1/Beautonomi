@@ -2,11 +2,12 @@
  * Terminal checkout eligibility — which commercial models a provider can select
  * for a given product and subscription entitlements.
  *
- * Rental model notes (intentional — no recurring terminal billing):
+ * Shop options (Option C):
+ * - once_off_purchase: buy and own the device outright.
  * - subscription_bundle: terminal included in platform subscription (terminal_bundle plan feature).
- *   Allocated via allocate-from-subscription; no Paystack, no separate rental invoices.
- * - rental: one-time Paystack charge when bundle is not offered (standalone rental fee).
- * - Recurring terminal rental billing is NOT implemented; ongoing rental is via platform subscription.
+ *   Allocated via allocate-from-subscription; no Paystack, no separate terminal fee.
+ * - rental is NOT offered in checkout; non-ownership economics live in plan pricing only.
+ *   Legacy rental orders remain in history/accounting.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
@@ -216,16 +217,6 @@ export async function getTerminalCheckoutEligibility(
       description: bundle.planName
         ? `Included in ${bundle.planName}${bundle.remainingCount != null ? ` (${bundle.remainingCount} remaining)` : ""}.`
         : "Included in your subscription plan.",
-    });
-  } else if (product.rental_price != null || product.monthly_price != null) {
-    const rentalPrice = Number(product.rental_price ?? product.monthly_price ?? 0);
-    options.push({
-      commercial_model: "rental",
-      label: "Rental",
-      price: rentalPrice,
-      currency,
-      requires_payment: true,
-      description: "Pay rental fee for this device.",
     });
   }
 

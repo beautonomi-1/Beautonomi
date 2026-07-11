@@ -42,12 +42,13 @@ if (existsSync(envPath)) {
 const isProd =
   process.env.NODE_ENV === "production" ||
   process.env.VERCEL_ENV === "production" ||
+  process.env.VERCEL_ENV === "preview" ||
   process.env.CI_PRODUCTION === "true";
 
 const vars = [
   {
     key: "CSRF_SECRET",
-    required: true,
+    required: false,
     desc: "HMAC secret for CSRF token generation/verification. Generate with: openssl rand -hex 32",
   },
   {
@@ -94,11 +95,21 @@ if (!hasCsrf && hasCron) {
   );
 }
 
+// CSRF requires at least one secret; dedicated CSRF_SECRET is strongly preferred.
+if (!hasCsrf && !hasCron) {
+  missingRequired = true;
+  console.error(
+    "  ✗ CSRF protection: neither CSRF_SECRET nor CRON_SECRET is set.\n" +
+      "    Cookie-authenticated mutations will have no CSRF protection.\n",
+  );
+}
+
 if (missingRequired && isProd) {
   console.error(
-    "FATAL: Required security env vars are missing in production.\n" +
-      "Set CSRF_SECRET, CRON_SECRET, NEXT_PUBLIC_SUPABASE_URL, and\n" +
-      "SUPABASE_SERVICE_ROLE_KEY before deploying.\n",
+    "FATAL: Required security env vars are missing in production/preview.\n" +
+      "Set CRON_SECRET, NEXT_PUBLIC_SUPABASE_URL, and\n" +
+      "SUPABASE_SERVICE_ROLE_KEY before deploying.\n" +
+      "Set CSRF_SECRET (recommended) or ensure CRON_SECRET is present for CSRF.\n",
   );
   process.exit(1);
 }

@@ -1,5 +1,7 @@
 # PayCloud same-terminal Intent — hardware spike checklist
 
+**Launch gate (July 2026 audit):** Production launch is **PayCloud Cloud Mode only**. Same-terminal native (`payment_paycloud_same_terminal`) stays **off** until this spike passes on physical hardware. Do not enable the flag for go-live based on code completeness alone.
+
 Run on a **Wiseasy P5/P5L** with **WiseCashier** installed before enabling `payment_paycloud_same_terminal`.
 
 ## Prerequisites
@@ -7,6 +9,7 @@ Run on a **Wiseasy P5/P5L** with **WiseCashier** installed before enabling `paym
 - Migration `772_paycloud_initiation_channel.sql` applied
 - Sandbox merchant + terminal assigned
 - Beautonomi provider APK on device (dev client or release)
+- `payment_paycloud` enabled; `payment_paycloud_same_terminal` **disabled** in production until spike sign-off
 
 ## Spike steps
 
@@ -27,10 +30,19 @@ Run on a **Wiseasy P5/P5L** with **WiseCashier** installed before enabling `paym
 
 - Steps 1–5 documented with screenshots/logs
 - `orderquery` returns nested `data.trans_status=2` (parser in `paycloud-client.ts` handles this)
+- Ops + payments sign-off recorded before enabling `payment_paycloud_same_terminal` in any production tenant
 
 ## Fail criteria
 
-- Intent sale not visible to Cloud `orderquery` → keep flag off; production stays **Cloud Mode only**
+- Intent sale not visible to Cloud `orderquery` → keep flag off; production stays **Cloud Mode only** (current launch default)
+
+## Cloud-only launch (no spike required)
+
+| Flow | Launch status |
+|------|----------------|
+| PayCloud Cloud Mode (`channel: "cloud"`) | **In scope** — ECR order + webhook/poll settle |
+| Same-terminal Intent on device | **Out of scope** until spike passes |
+| Provider UI copy | “Pay on this device” / “Send to card machine” — never “Intent” or “SDK” |
 
 ## Implementation notes
 

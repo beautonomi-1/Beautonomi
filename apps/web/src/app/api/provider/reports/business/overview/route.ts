@@ -23,6 +23,7 @@ import {
   computeProviderRevenueBreakdown,
   type ProviderRevenueBreakdown,
 } from "@/lib/reports/provider-revenue-semantics";
+import { computeGrowthPercent } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Recognized-revenue + refund rows for one window, location-filtered, summarized via the canonical module. */
@@ -238,7 +239,9 @@ export async function GET(request: NextRequest) {
       periodStart,
     );
     const prevRevenue = prevBreakdown.recognizedRevenue;
-    const revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    const revenueGrowthResult = computeGrowthPercent(totalRevenue, prevRevenue);
+    const revenueGrowth = revenueGrowthResult.percent ?? 0;
+    const revenueGrowthIsNew = revenueGrowthResult.kind === "new";
 
     const reportBasis =
       `Calendar in ${timezone}: ${fromYmd} through ${todayYmd}. ` +
@@ -307,6 +310,7 @@ export async function GET(request: NextRequest) {
       cancellationRate,
       noShowRate,
       revenueGrowth,
+      revenueGrowthIsNew,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       reportBasis,

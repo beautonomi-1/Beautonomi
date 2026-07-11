@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
+const mockGetProviderIdForUser = vi.fn();
 const mockRegisterDevice = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -10,6 +11,7 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   return {
     ...actual,
     requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+    getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
   };
 });
 
@@ -25,6 +27,7 @@ describe("POST /api/provider/devices", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "provider-user-1" } });
+    mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn() });
     mockRegisterDevice.mockResolvedValue({ success: true });
   });

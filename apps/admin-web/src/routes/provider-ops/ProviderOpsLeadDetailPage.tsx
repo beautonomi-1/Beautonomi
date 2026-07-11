@@ -134,6 +134,71 @@ export function ProviderOpsLeadDetailPage() {
     refetchOnWindowFocus: true,
   });
 
+  const tasksQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.leadDetail(id!), "tasks"],
+    queryFn: () =>
+      adminApi.getJson<{
+        tasks: Array<{
+          id: string;
+          title: string;
+          description: string | null;
+          due_at: string | null;
+          completed_at: string | null;
+          assigned_to: string | null;
+          assignee?: { full_name?: string | null; email?: string | null } | null;
+        }>;
+      }>(`/api/admin/provider-ops/leads/${id}/tasks`),
+    enabled: allowed && !!id,
+    refetchInterval: OPS_DETAIL_REFETCH_MS,
+  });
+
+  const commsQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.leadDetail(id!), "communications"],
+    queryFn: () =>
+      adminApi.getJson<{
+        communications: Array<{
+          id: string;
+          channel: string;
+          direction: string;
+          status: string | null;
+          subject: string | null;
+          body: string | null;
+          created_at: string;
+        }>;
+      }>(`/api/admin/provider-ops/leads/${id}/communications?limit=20`),
+    enabled: allowed && !!id,
+    refetchInterval: OPS_DETAIL_REFETCH_MS,
+  });
+
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueAt, setTaskDueAt] = useState("");
+
+  const createTaskMut = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${id}/tasks`, {
+        title: taskTitle.trim(),
+        due_at: taskDueAt ? new Date(taskDueAt).toISOString() : null,
+      }),
+    onSuccess: () => {
+      adminToast.success("Task created");
+      setTaskTitle("");
+      setTaskDueAt("");
+      void tasksQ.refetch();
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to create task"),
+  });
+
+  const completeTaskMut = useMutation({
+    mutationFn: (taskId: string) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/tasks/${taskId}`, { completed: true }),
+    onSuccess: () => {
+      void tasksQ.refetch();
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to complete task"),
+  });
+
   const stageChange = useMutation({
     mutationFn: (stage: string) => {
       const d = q.data as Record<string, unknown> | undefined;
@@ -699,6 +764,116 @@ export function ProviderOpsLeadDetailPage() {
               <p className="text-sm italic text-gray-400">No description provided</p>
             )}
             {Boolean(lead.notes) ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm italic text-amber-800">{String(lead.notes)}</p> : null}
+          </AdminPanel>
+
+          {/* Follow-up tasks */}
+          <AdminPanel>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-800">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              Follow-up tasks
+              <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                {(tasksQ.data?.tasks ?? []).length}
+              </span>
+            </h3>
+            <div className="space-y-2">
+              {(tasksQ.data?.tasks ?? []).map((task) => {
+                const overdue =
+                  !task.completed_at &&
+                  task.due_at &&
+                  new Date(task.due_at).getTime() < Date.now();
+                return (
+                  <div
+                    key={task.id}
+                    className={cn(
+                      "flex items-start justify-between gap-3 rounded-lg border px-3 py-2",
+                      overdue ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50",
+                    )}
+                  >
+                    <div>
+                      <p className={cn("text-sm font-medium", task.completed_at ? "text-gray-400 line-through" : "text-gray-900")}>
+                        {task.title}
+                      </p>
+                      {task.due_at ? (
+                        <p className={cn("text-xs", overdue ? "text-red-700" : "text-gray-500")}>
+                          Due {new Date(task.due_at).toLocaleString()}
+                        </p>
+                      ) : null}
+                    </div>
+                    {!task.completed_at ? (
+                      <button
+                        type="button"
+                        onClick={() => completeTaskMut.mutate(task.id)}
+                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-100"
+                      >
+                        Complete
+                      </button>
+                    ) : (
+                      <span className="text-xs text-green-700">Done</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <form
+              className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!taskTitle.trim()) return;
+                createTaskMut.mutate();
+              }}
+            >
+              <input
+                type="text"
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                placeholder="New follow-up task…"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <input
+                type="datetime-local"
+                value={taskDueAt}
+                onChange={(e) => setTaskDueAt(e.target.value)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={createTaskMut.isPending || !taskTitle.trim()}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+              >
+                Add task
+              </button>
+            </form>
+          </AdminPanel>
+
+          {/* Communications log */}
+          <AdminPanel>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-800">
+              <MessageSquare className="h-4 w-4 text-gray-500" />
+              Communications
+            </h3>
+            {(commsQ.data?.communications ?? []).length > 0 ? (
+              <ul className="max-h-64 space-y-2 overflow-y-auto">
+                {(commsQ.data?.communications ?? []).map((comm) => (
+                  <li key={comm.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium capitalize text-gray-800">
+                        {comm.channel} · {comm.direction}
+                      </span>
+                      <span className="text-xs text-gray-500">{comm.status ?? "sent"}</span>
+                    </div>
+                    {comm.subject ? <p className="mt-1 text-xs font-medium text-gray-700">{comm.subject}</p> : null}
+                    {comm.body ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-gray-600">{comm.body}</p>
+                    ) : null}
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      {new Date(comm.created_at).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400">No outbound communications logged yet.</p>
+            )}
           </AdminPanel>
 
           {/* Activity timeline */}

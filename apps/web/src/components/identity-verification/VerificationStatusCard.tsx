@@ -27,6 +27,8 @@ interface Props {
   loading?: boolean;
   launching?: boolean;
   isProvider?: boolean;
+  businessVerificationPending?: boolean;
+  businessVerificationSummary?: string;
 }
 
 const STATUS_CONFIG: Record<
@@ -135,9 +137,22 @@ export function VerificationStatusCard({
   loading,
   launching,
   isProvider = false,
+  businessVerificationPending = false,
+  businessVerificationSummary,
 }: Props) {
   const liveRef = useRef<HTMLDivElement>(null);
-  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
+  const baseConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
+  const config =
+    businessVerificationPending && status === "approved"
+      ? {
+          ...baseConfig,
+          badgeLabel: "Identity verified",
+          title: "Identity verified",
+          description:
+            businessVerificationSummary ??
+            "Your personal identity is verified. Complete business verification to finish setup and go live.",
+        }
+      : baseConfig;
   const Icon = config.icon;
 
   // Announce status changes for screen readers

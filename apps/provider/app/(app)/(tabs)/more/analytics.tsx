@@ -15,6 +15,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
 import { trackScreenView } from "@/lib/analytics";
@@ -360,7 +361,7 @@ export default function AnalyticsScreen() {
           </>
         )}
 
-        {services.length > 0 && (
+        {services.length > 0 ? (
           <>
             <SectionHeader
               title="Top offerings"
@@ -385,9 +386,15 @@ export default function AnalyticsScreen() {
               ))}
             </View>
           </>
+        ) : (
+          <EmptyState
+            icon="cube-outline"
+            title="No offerings yet"
+            description="Completed appointments with catalog lines will appear here."
+          />
         )}
 
-        {trends.length > 0 && (
+        {trends.length > 0 ? (
           <>
             <SectionHeader
               title={trendsSectionTitle(apiPeriod)}
@@ -410,6 +417,12 @@ export default function AnalyticsScreen() {
               ))}
             </View>
           </>
+        ) : (
+          <EmptyState
+            icon="stats-chart-outline"
+            title="No trend data yet"
+            description="Ledger and booking activity will chart here once you have history in this period."
+          />
         )}
       </ScrollView>
     </ScreenContainer>

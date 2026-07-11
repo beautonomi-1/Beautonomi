@@ -136,7 +136,7 @@ export const FEATURE_FLAG_KEYS = {
   TERMINAL_PRODUCT_CATALOG: "terminal_product_catalog_enabled",
 
   /**
-   * Allow providers to place terminal orders (purchase / rental / bundle).
+   * Allow providers to place terminal orders (purchase / plan-included bundle).
    * Requires TERMINAL_PRODUCT_CATALOG to also be enabled.
    */
   TERMINAL_ECOMMERCE: "terminal_ecommerce_enabled",

@@ -68,6 +68,15 @@ export default function StaffReport() {
   const rangeCaption = formatReportRangeCaption(from, to);
   const staffReportUrl = appendReportLocation(`/api/provider/reports/staff?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<StaffData>(staffReportUrl);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const selected = data?.staff.find((s) => (s.id ?? s.name) === selectedStaff) || null;
 
@@ -102,7 +111,7 @@ export default function StaffReport() {
   }, [data, from, to]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Staff" showBack subtitle="Ledger net & visits by team member" />
 
       <View style={twStyle("mb-3")}>

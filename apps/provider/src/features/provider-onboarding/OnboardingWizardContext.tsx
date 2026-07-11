@@ -131,9 +131,52 @@ interface OnboardingWizardProviderProps {
    * one missing field instead of restarting the whole wizard).
    */
   initialStep?: number;
+  /**
+   * When true, `?focus=` was present but did not map to a wizard step.
+   * Do not resume the draft at an arbitrary step (often step 2 phone/email).
+   */
+  focusUnmapped?: boolean;
 }
 
-export function OnboardingWizardProvider({ children, initialStep }: OnboardingWizardProviderProps) {
+function resolveWizardEntryStep(
+  draftStep: number,
+  initialStep: number | undefined,
+  focusUnmapped: boolean,
+  form: Partial<OnboardingFormData>,
+): number {
+  let resolved: number;
+  if (
+    focusUnmapped &&
+    !(typeof initialStep === "number" && initialStep >= 1 && initialStep <= STEPS.length)
+  ) {
+    resolved = 1;
+  } else if (
+    typeof initialStep === "number" &&
+    initialStep >= 1 &&
+    initialStep <= STEPS.length
+  ) {
+    resolved = initialStep;
+  } else {
+    resolved = draftStep;
+  }
+
+  if (
+    resolved === 2 &&
+    form.email_verified === true &&
+    form.phone_verified === true
+  ) {
+    const next = getNextStep(2, form);
+    if (next) resolved = next;
+  }
+
+  return resolved;
+}
+
+export function OnboardingWizardProvider({
+  children,
+  initialStep,
+  focusUnmapped = false,
+}: OnboardingWizardProviderProps) {
   const router = useRouter();
   const { user } = useAuth();
   const { refresh: refreshProvider } = useProvider();
@@ -151,6 +194,12 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
   // open after navigation. We capture it once so later renders don't bounce
   // the user back when the draft loader resolves.
   const initialStepRef = useRef<number | undefined>(initialStep);
+  const focusUnmappedRef = useRef(focusUnmapped);
+
+  useEffect(() => {
+    initialStepRef.current = initialStep;
+    focusUnmappedRef.current = focusUnmapped;
+  }, [initialStep, focusUnmapped]);
   const paystackCheckout = useInAppPaystackCheckout();
 
   const updateFormData = useCallback((u: Partial<OnboardingFormData>) => {
@@ -227,13 +276,12 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
 
         if (!cancelled) {
           setFormData(merged);
-          // Deep-link override: when the wizard route received `?step=` or
-          // `?focus=`, honor that instead of the draft's persisted step.
-          const override = initialStepRef.current;
-          const resolved =
-            typeof override === "number" && override >= 1 && override <= STEPS.length
-              ? override
-              : step;
+          const resolved = resolveWizardEntryStep(
+            step,
+            initialStepRef.current,
+            focusUnmappedRef.current,
+            merged,
+          );
           setCurrentStepState(resolved);
 
           // Do not auto-submit on load — the provider must tap Submit on the
@@ -251,7 +299,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialStep, focusUnmapped]);
 
   const persistDraft = useCallback(async (data: Partial<OnboardingFormData>, step: number) => {
     setSavingDraft(true);

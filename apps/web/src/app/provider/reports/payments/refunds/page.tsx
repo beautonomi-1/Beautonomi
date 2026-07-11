@@ -22,6 +22,7 @@ import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { ProviderRefundsReportResponse } from "@/app/api/provider/reports/payments/refunds/route";
@@ -66,12 +67,7 @@ export default function RefundsReport() {
       setError(null);
 
       const params = new URLSearchParams();
-      if (dateRange.from) {
-        params.append("from", dateRange.from.toISOString());
-      }
-      if (dateRange.to) {
-        params.append("to", dateRange.to.toISOString());
-      }
+      appendReportDateParams(params, dateRange);
       appendLocation(params);
 
       const response = await fetcher.get<{ data: RefundsData }>(

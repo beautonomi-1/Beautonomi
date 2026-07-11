@@ -59,6 +59,15 @@ export default function ProductsReport() {
   const rangeCaption = formatReportRangeCaption(from, to);
   const productsReportUrl = appendReportLocation(`/api/provider/reports/products?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<ProductsData>(productsReportUrl);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -78,7 +87,7 @@ export default function ProductsReport() {
   }, [data, from, to]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Products" showBack subtitle="Top sellers, stock & packages" />
 
       <View style={twStyle("mb-3")}>

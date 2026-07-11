@@ -82,7 +82,7 @@ export const SUPPORT_TICKET_CATEGORY_GROUPS: TicketCategoryGroup[] = [
   {
     label: "For beauty partners (providers)",
     items: [
-      { value: "provider_payouts", label: "Payouts, bank account, or Stripe" },
+      { value: "provider_payouts", label: "Payouts, bank account, or Paystack" },
       { value: "provider_dashboard", label: "Dashboard, analytics, or staff access" },
       { value: "provider_catalog", label: "Services, add-ons, or pricing in catalogue" },
       { value: "provider_booking_settings", label: "Online booking, hours, or buffers" },

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
 
 const createDayOffSchema = z.object({
@@ -61,9 +62,8 @@ export async function GET(
     const { data: daysOff, error } = await query;
 
     if (error) {
-      // If table doesn't exist, return empty array
-      if (error.code === '42P01') {
-        return successResponse([]);
+      if (isMissingRelationError(error)) {
+        return migrationRequiredResponse("Staff days off");
       }
       throw error;
     }
@@ -147,15 +147,8 @@ export async function POST(
       .single();
 
     if (insertError) {
-      // If table doesn't exist, return success with mock data
-      if (insertError.code === '42P01') {
-        return successResponse({
-          id: `temp-${Date.now()}`,
-          staff_id: id,
-          date: validationResult.data.date,
-          reason: validationResult.data.reason,
-          type: validationResult.data.type,
-        });
+      if (isMissingRelationError(insertError)) {
+        return migrationRequiredResponse("Staff days off");
       }
       throw insertError;
     }

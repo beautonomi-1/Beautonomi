@@ -13,6 +13,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { EmptyReportState } from "@/app/provider/reports/components/EmptyReportState";
 
 interface AnalyticsData {
   period?: string;
@@ -359,16 +360,23 @@ export default function ProviderAnalyticsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analytics.trends}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                <Legend />
-                <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} name="Ledger net" />
-              </LineChart>
-            </ResponsiveContainer>
+            {analytics.trends.length === 0 ? (
+              <EmptyReportState
+                title="No trend data yet"
+                description="Complete bookings with ledger activity to populate this chart."
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={analytics.trends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  <Legend />
+                  <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} name="Ledger net" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -380,16 +388,23 @@ export default function ProviderAnalyticsPage() {
             <CardDescription>Counts when the booking record was created — same buckets as the line chart.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics.trends}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="bookings" fill="var(--primary)" name="Bookings created" />
-              </BarChart>
-            </ResponsiveContainer>
+            {analytics.trends.length === 0 ? (
+              <EmptyReportState
+                title="No booking trend data"
+                description="Scheduled appointments in the selected period will appear here."
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analytics.trends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="bookings" fill="var(--primary)" name="Bookings created" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -402,20 +417,27 @@ export default function ProviderAnalyticsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {analytics.services.slice(0, 10).map((service, index) => (
-                <div
-                  key={`${service.name}-${index}`}
-                  className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{service.name}</p>
-                    <p className="text-sm text-gray-600">{service.count} bookings · line total</p>
+            {analytics.services.length === 0 ? (
+              <EmptyReportState
+                title="No offering data yet"
+                description="Completed appointments with catalog lines will rank here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {analytics.services.slice(0, 10).map((service, index) => (
+                  <div
+                    key={`${service.name}-${index}`}
+                    className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">{service.name}</p>
+                      <p className="text-sm text-gray-600">{service.count} bookings · line total</p>
+                    </div>
+                    <p className="font-semibold tabular-nums text-gray-900">{formatCurrency(service.revenue)}</p>
                   </div>
-                  <p className="font-semibold tabular-nums text-gray-900">{formatCurrency(service.revenue)}</p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

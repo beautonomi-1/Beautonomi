@@ -1404,11 +1404,11 @@ export default function BookScreen() {
     const last = addDays(t, maxAdvanceDays);
     last.setHours(0, 0, 0, 0);
     const ws = addDays(t, weekOffset * 7);
-    const rawDays = [...Array(7)].map((_, i) => addDays(ws, i));
-    const days = rawDays.filter((d) => {
-      const ds = startOfLocalDay(d);
-      return ds.getTime() >= t.getTime() && ds.getTime() <= last.getTime();
-    });
+    // Always keep all 7 days so the strip renders 7 equal-width columns on
+    // every week; out-of-range days are shown disabled instead of removed
+    // (removing them made the remaining flex:1 cells stretch wider on the
+    // final selectable week).
+    const days = [...Array(7)].map((_, i) => addDays(ws, i));
     const mwo = Math.max(0, Math.floor(maxAdvanceDays / 7));
     return { todayStart: t, lastSelectableDay: last, weekStart: ws, weekDays: days, maxWeekOffset: mwo };
   }, [weekOffset, maxAdvanceDays, provider?.timezone]);
@@ -2180,6 +2180,16 @@ export default function BookScreen() {
   for (let i = 0; i < padStart; i++) calMonthCells.push(null);
   for (let day = 1; day <= daysInCalMonth; day++) {
     calMonthCells.push(new Date(calendarYear, calendarMonthIdx, day));
+  }
+  // Pad the tail to a full week and chunk into rows of 7. Rendering explicit
+  // rows with flex:1 cells (instead of a flexWrap grid of 14.2857%-wide cells)
+  // keeps every column pixel-aligned with the flex:1 weekday header on
+  // Android, where percentage-width rounding can otherwise push the 7th cell
+  // onto the next line.
+  while (calMonthCells.length % 7 !== 0) calMonthCells.push(null);
+  const calMonthRows: (Date | null)[][] = [];
+  for (let i = 0; i < calMonthCells.length; i += 7) {
+    calMonthRows.push(calMonthCells.slice(i, i + 7));
   }
 
   const canGoCalPrev =
@@ -3262,19 +3272,25 @@ export default function BookScreen() {
                   </TouchableOpacity>
 
                   <View style={{ flex: 1, flexDirection: "row", marginHorizontal: 6 }}>
-                    {weekDays.map((d) => (
-                      <DateCell
-                        key={d.toISOString()}
-                        date={d}
-                        isSelected={selectedDay ? isSameDay(d, selectedDay) : false}
-                        isToday={isSameDay(d, todayStart)}
-                        onPress={() => {
-                          haptic.medium();
-                          setSelectedDate(d);
-                          setStep("time");
-                        }}
-                      />
-                    ))}
+                    {weekDays.map((d) => {
+                      const ds = startOfLocalDay(d);
+                      const outOfRange =
+                        ds.getTime() < todayStart.getTime() || ds.getTime() > lastSelectableDay.getTime();
+                      return (
+                        <DateCell
+                          key={d.toISOString()}
+                          date={d}
+                          isSelected={selectedDay ? isSameDay(d, selectedDay) : false}
+                          isToday={isSameDay(d, todayStart)}
+                          disabled={outOfRange}
+                          onPress={() => {
+                            haptic.medium();
+                            setSelectedDate(d);
+                            setStep("time");
+                          }}
+                        />
+                      );
+                    })}
                   </View>
 
                   <TouchableOpacity
@@ -3691,42 +3707,65 @@ export default function BookScreen() {
                     </Text>
                   ))}
                 </View>
-                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                  {calMonthCells.map((cell, idx) => {
-                    if (!cell) {
-                      return <View key={`pad-${idx}`} style={{ width: `${100 / 7}%`, minHeight: 40 }} />;
-                    }
-                    const ds = startOfLocalDay(cell);
-                    const outOfRange = ds.getTime() < todayStart.getTime() || ds.getTime() > lastSelectableDay.getTime();
-                    const sel = selectedDay ? isSameDay(cell, selectedDay) : false;
-                    return (
-                      <TouchableOpacity
-                        key={cell.toISOString()}
-                        disabled={outOfRange}
-                        onPress={() => handleCalendarSelectDay(cell)}
-                        style={{
-                          width: `${100 / 7}%`,
-                          minHeight: 40,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginBottom: 4,
-                          borderRadius: 10,
-                          backgroundColor: sel ? Colors.primary : "transparent",
-                        }}
-                        accessibilityLabel={`${cell.toDateString()}`}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            fontWeight: "600",
-                            color: outOfRange ? "#D1D5DB" : sel ? "#fff" : "#111827",
-                          }}
-                        >
-                          {cell.getDate()}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <View>
+                  {calMonthRows.map((row, rowIdx) => (
+                    <View key={`week-${rowIdx}`} style={{ flexDirection: "row", marginBottom: 4 }}>
+                      {row.map((cell, idx) => {
+                        if (!cell) {
+                          return <View key={`pad-${rowIdx}-${idx}`} style={{ flex: 1, height: 44 }} />;
+                        }
+                        const ds = startOfLocalDay(cell);
+                        const outOfRange = ds.getTime() < todayStart.getTime() || ds.getTime() > lastSelectableDay.getTime();
+                        const sel = selectedDay ? isSameDay(cell, selectedDay) : false;
+                        const isCalToday = isSameDay(cell, todayStart);
+                        return (
+                          <TouchableOpacity
+                            key={cell.toISOString()}
+                            disabled={outOfRange}
+                            onPress={() => handleCalendarSelectDay(cell)}
+                            style={{
+                              flex: 1,
+                              height: 44,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: sel, disabled: outOfRange }}
+                            accessibilityLabel={cell.toLocaleDateString("en-US", {
+                              weekday: "long",
+                              month: "long",
+                              day: "numeric",
+                            })}
+                          >
+                            {/* Fixed-size circle so the highlight is identical in
+                                every column regardless of cell width. */}
+                            <View
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 19,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: sel ? Colors.primary : "transparent",
+                                borderWidth: isCalToday && !sel ? 1.5 : 0,
+                                borderColor: isCalToday && !sel ? `${Colors.primary}55` : "transparent",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: "600",
+                                  color: outOfRange ? "#D1D5DB" : sel ? "#fff" : isCalToday ? Colors.primary : "#111827",
+                                }}
+                              >
+                                {cell.getDate()}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
                 </View>
                 <TouchableOpacity
                   onPress={() => setCalendarModalVisible(false)}

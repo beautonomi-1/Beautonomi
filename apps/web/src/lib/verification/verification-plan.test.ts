@@ -9,6 +9,7 @@ vi.mock("@/lib/identity-verification/provider/didit-provider", () => ({
 import { kybEnvPresent } from "@/lib/identity-verification/provider/didit-provider";
 import {
   isVerificationPlanComplete,
+  planRequiresBusinessVerification,
   resolveProviderVerificationPlan,
   verificationPlanProgress,
 } from "@/lib/verification/verification-plan";
@@ -83,6 +84,26 @@ describe("resolveProviderVerificationPlan", () => {
     });
     expect(plan.required_steps).toEqual(["person_kyc", "business_kyb"]);
     expect(plan.kyb_country_unsupported).toBe(false);
+  });
+});
+
+describe("planRequiresBusinessVerification", () => {
+  it("is true when business_kyb or manual_business_review is required", () => {
+    const kybPlan = resolveProviderVerificationPlan(
+      basePolicy({ kybEnabled: true, kybRequiredForBusiness: true }),
+      "business",
+      { registrationCountry: "ZA" },
+    );
+    const manualPlan = resolveProviderVerificationPlan(
+      basePolicy({ kybEnabled: true, kybRequiredForBusiness: true }),
+      "business",
+      { registrationCountry: "XX" },
+    );
+    const individualPlan = resolveProviderVerificationPlan(basePolicy(), "individual");
+
+    expect(planRequiresBusinessVerification(kybPlan)).toBe(true);
+    expect(planRequiresBusinessVerification(manualPlan)).toBe(true);
+    expect(planRequiresBusinessVerification(individualPlan)).toBe(false);
   });
 });
 

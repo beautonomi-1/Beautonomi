@@ -8,6 +8,8 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,8 +22,12 @@ export async function GET(request: NextRequest) {
     if (gate) return gate;
 
     const { searchParams } = new URL(request.url);
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
+    const reportContext = await getProviderReportContext(getSupabaseAdmin(), providerId);
+    const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(
+      searchParams,
+      reportContext.timezone,
+      { defaultDays: 30 },
+    );
 
     let query = (supabase.from("provider_paystack_terminal_payments") as any)
       .select(
@@ -32,10 +38,9 @@ export async function GET(request: NextRequest) {
         `,
       )
       .eq("provider_id", providerId)
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString())
       .order("created_at", { ascending: false });
-
-    if (from) query = query.gte("created_at", from);
-    if (to) query = query.lte("created_at", to);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -62,6 +67,9 @@ export async function GET(request: NextRequest) {
       rows,
       totals,
       count: rows.length,
+      fromYmd,
+      toYmd,
+      timezone: reportContext.timezone,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load Paystack Terminal reconciliation");

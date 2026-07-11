@@ -18,6 +18,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useYocoIntegration } from "@/hooks/useYoco";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
@@ -122,7 +123,9 @@ function ToggleRow({
 export default function PaymentSettingsScreen() {
   const router = useRouter();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const { settings: paycloudSettings } = usePayCloudSettings();
   const {
     data: settings,
     loading,
@@ -150,6 +153,17 @@ export default function PaymentSettingsScreen() {
       : yocoCredentialMode === "checkout"
         ? "Hosted checkout links and QR"
         : "Card & tap-to-pay";
+  const paycloudStatusLabel = paycloudSettings?.ready
+    ? "Ready"
+    : paycloudSettings?.accept_paycloud
+      ? "Setup"
+      : "Off";
+  const paycloudConnected = paycloudSettings?.ready === true;
+  const paycloudSubtitle = paycloudSettings?.ready
+    ? "Terminals active — collect at checkout"
+    : paycloudSettings?.accept_paycloud
+      ? "Finish machine setup to start collecting"
+      : "Manage terminals, shop & payments";
 
   const [form, setForm] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
@@ -255,9 +269,9 @@ export default function PaymentSettingsScreen() {
     <ScreenContainer>
       <ScreenHeader title="Payment Settings" showBack />
 
-      {(yocoEnabled || paystackTerminalEnabled) && (
+      {(yocoEnabled || paycloudEnabled || paystackTerminalEnabled) && (
         <>
-          {/* ─── Yoco Integration ─── */}
+          {/* ─── Payment Gateway ─── */}
           <SectionHeader title="Payment Gateway" />
           {yocoEnabled && (
             <TouchableOpacity
@@ -297,6 +311,41 @@ export default function PaymentSettingsScreen() {
                   Tap to connect your Yoco account →
                 </Text>
               )}
+            </TouchableOpacity>
+          )}
+          {paycloudEnabled && (
+            <TouchableOpacity
+              style={twStyle(`${yocoEnabled ? "mt-3 " : ""}rounded-2xl border border-gray-100 bg-white p-4`)}
+              onPress={() => router.push("/(app)/(tabs)/more/card-machines")}
+              accessibilityLabel="Card machines — tap to manage"
+              accessibilityRole="button"
+            >
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-row items-center")}>
+                  <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-violet-50")}>
+                    <Ionicons name="hardware-chip-outline" size={20} color="#7c3aed" />
+                  </View>
+                  <View style={twStyle("ml-3")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Card machines</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{paycloudSubtitle}</Text>
+                  </View>
+                </View>
+                <View style={twStyle("flex-row items-center")}>
+                  <View
+                    style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${paycloudConnected ? "bg-green-50" : "bg-gray-100"}`)}
+                  >
+                    <View
+                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${paycloudConnected ? "bg-green-500" : "bg-gray-400"}`)}
+                    />
+                    <Text
+                      style={twStyle(`text-xs font-medium ${paycloudConnected ? "text-green-700" : "text-gray-500"}`)}
+                    >
+                      {paycloudStatusLabel}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </View>
             </TouchableOpacity>
           )}
           {paystackTerminalEnabled && (

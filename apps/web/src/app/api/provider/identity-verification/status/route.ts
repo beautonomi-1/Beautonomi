@@ -10,8 +10,10 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { getVerificationStatus } from "@/lib/identity-verification/identity-verification-service";
+import { resolveEffectiveVerificationDisplayStatus } from "@/lib/identity-verification/resolve-effective-verification-display-status";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { loadProviderVerificationState } from "@/lib/verification/provider-verification-state";
+import { planRequiresBusinessVerification } from "@/lib/verification/verification-plan";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,8 +27,23 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     const providerId = (providerRow as { id?: string } | null)?.id ?? null;
 
-    const status = await getVerificationStatus(user.id, "provider", providerId);
-    return successResponse({ status });
+    const status = await resolveEffectiveVerificationDisplayStatus(
+      user.id,
+      "provider",
+      providerId,
+    );
+
+    const verificationState = providerId
+      ? await loadProviderVerificationState(providerId)
+      : null;
+
+    return successResponse({
+      status,
+      business_verification_required: verificationState
+        ? planRequiresBusinessVerification(verificationState.plan)
+        : false,
+      verification_plan_complete: verificationState?.isComplete ?? false,
+    });
   } catch (err) {
     return handleApiError(err);
   }

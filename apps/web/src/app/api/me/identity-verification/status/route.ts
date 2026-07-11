@@ -13,7 +13,7 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { getVerificationStatus } from "@/lib/identity-verification/identity-verification-service";
+import { resolveEffectiveVerificationDisplayStatus } from "@/lib/identity-verification/resolve-effective-verification-display-status";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       request,
     );
 
-    const status = await getVerificationStatus(user.id, "customer");
+    const status = await resolveEffectiveVerificationDisplayStatus(user.id, "customer");
     return successResponse({ status });
   } catch (err) {
     return handleApiError(err);

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
 
 const _clockInSchema = z.object({
@@ -74,17 +75,8 @@ export async function POST(
       .single();
 
     if (insertError) {
-      // If table doesn't exist, create a simple response
-      if (insertError.code === '42P01') {
-        // Table doesn't exist - return success with mock data for now
-        return successResponse({
-          id: `temp-${Date.now()}`,
-          staff_id: id,
-          date: today,
-          clock_in_time: now.toISOString(),
-          clock_out_time: null,
-          status: "clocked_in",
-        });
+      if (isMissingRelationError(insertError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw insertError;
     }
@@ -148,9 +140,8 @@ export async function PATCH(
       if (findError?.code === 'PGRST116') {
         return errorResponse("No active clock-in found", "NO_ACTIVE_CLOCK_IN", 400);
       }
-      // If table doesn't exist, return success
-      if (findError?.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(findError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw findError;
     }
@@ -168,8 +159,8 @@ export async function PATCH(
       .single();
 
     if (updateError) {
-      if (updateError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(updateError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw updateError;
     }
@@ -241,9 +232,8 @@ export async function GET(
     const { data: timeCards, error } = await query;
 
     if (error) {
-      // If table doesn't exist, return empty array
-      if (error.code === '42P01') {
-        return successResponse([]);
+      if (isMissingRelationError(error)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw error;
     }
@@ -321,8 +311,8 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      if (updateError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(updateError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw updateError;
     }

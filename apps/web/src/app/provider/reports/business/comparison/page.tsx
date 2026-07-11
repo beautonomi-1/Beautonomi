@@ -62,11 +62,31 @@ const BASIS_LABELS: Record<string, string> = {
 function GrowthRow({
   value,
   suffix = "%",
+  isNew = false,
 }: {
   value: number;
   suffix?: string;
+  isNew?: boolean;
 }) {
-  const up = value >= 0;
+  if (isNew) {
+    return (
+      <div className="flex items-center gap-2 border-t pt-3">
+        <TrendingUp className="h-5 w-5 shrink-0 text-emerald-600" />
+        <p className="text-lg font-semibold text-emerald-700">New</p>
+        <span className="text-xs text-gray-500">vs previous column</span>
+      </div>
+    );
+  }
+  if (value === 0) {
+    return (
+      <div className="flex items-center gap-2 border-t pt-3">
+        <span className="h-5 w-5 shrink-0 text-center text-gray-500">—</span>
+        <p className="text-lg font-semibold tabular-nums text-gray-600">0{suffix}</p>
+        <span className="text-xs text-gray-500">vs previous column</span>
+      </div>
+    );
+  }
+  const up = value > 0;
   return (
     <div className="flex items-center gap-2 border-t pt-3">
       {up ? <TrendingUp className="h-5 w-5 shrink-0 text-green-600" /> : <TrendingDown className="h-5 w-5 shrink-0 text-red-600" />}

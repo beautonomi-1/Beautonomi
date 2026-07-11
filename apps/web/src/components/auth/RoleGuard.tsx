@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/providers/AuthProvider";
 import type { UserRole } from "@/types/beautonomi";
+import type { UsersRoleFromDb } from "@/lib/auth/role";
 import { useRouter, usePathname } from "next/navigation";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -9,7 +10,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 interface RoleGuardProps {
   children: React.ReactNode;
   /** Required roles (user must have one of these) */
-  allowedRoles: UserRole[];
+  allowedRoles: UsersRoleFromDb[];
   /** Redirect path when role doesn't match (default: "/") */
   redirectTo?: string;
   /** Show loading while checking (default: true) */
@@ -27,7 +28,7 @@ const SESSION_CACHE_DURATION_SUPERADMIN = 5 * 60 * 1000; // 5 minutes for admin 
 
 // Use a hook to safely access localStorage only after mount (prevents hydration mismatch)
 function useSessionCache() {
-  const [cache, setCache] = React.useState<{ userId: string; role: UserRole; timestamp: number } | null>(null);
+  const [cache, setCache] = React.useState<{ userId: string; role: UsersRoleFromDb; timestamp: number } | null>(null);
   const [isHydrated, setIsHydrated] = React.useState(false);
   
   React.useEffect(() => {
@@ -49,7 +50,7 @@ function useSessionCache() {
   return { cache, isHydrated };
 }
 
-function setSessionCache(userId: string, role: UserRole) {
+function setSessionCache(userId: string, role: UsersRoleFromDb) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify({

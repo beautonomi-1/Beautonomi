@@ -14,6 +14,13 @@ import {
 } from "@/lib/search/fuzzy-rank";
 import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 import { applyPublicProviderVisibility } from "@/lib/providers/public-provider-visibility";
+import {
+  getProviderIdsAvailableOnDate,
+  getProviderIdsForOfferingFilters,
+  getProviderIdsWithinRadius,
+  intersectProviderIds,
+  resolveSubcategoryId,
+} from "@/lib/search/public-search-filters";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -36,6 +43,20 @@ function finiteNumberParam(value: string | null): number | undefined {
   if (value == null || value.trim() === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function emptySearchResult(page: number, limit: number) {
+  return NextResponse.json({
+    data: {
+      providers: [],
+      services: [],
+      total: 0,
+      page,
+      limit,
+      has_more: false,
+    },
+    error: null,
+  });
 }
 
 function isUsableCoordinatePair(latitude?: number, longitude?: number): boolean {
@@ -89,7 +110,9 @@ export async function GET(request: Request) {
       service: searchParams.get("service") || undefined,
       at_home: searchParams.get("at_home") === "true" ? true : undefined,
       date: searchParams.get("date") || undefined,
-      time_preference: (searchParams.get("time_preference") as any) || undefined,
+      time_preference: (searchParams.get("time_preference") as SearchFilters["time_preference"]) || undefined,
+      custom_time_start: searchParams.get("custom_time_start") || undefined,
+      custom_time_end: searchParams.get("custom_time_end") || undefined,
       price_min: finiteNumberParam(searchParams.get("price_min")),
       price_max: finiteNumberParam(searchParams.get("price_max")),
       rating_min: finiteNumberParam(searchParams.get("rating_min")),
@@ -122,6 +145,13 @@ export async function GET(request: Request) {
     const page = Number.isFinite(filters.page) ? filters.page || 1 : 1;
     const limit = Number.isFinite(filters.limit) ? filters.limit || 20 : 20;
     const offset = (page - 1) * limit;
+
+    let constrainedProviderIds: string[] | undefined;
+
+    const applyProviderIdConstraint = (nextIds: string[] | null): boolean => {
+      constrainedProviderIds = intersectProviderIds(constrainedProviderIds, nextIds);
+      return constrainedProviderIds !== undefined && constrainedProviderIds.length === 0;
+    };
 
     let query = applyPublicProviderVisibility(
       supabase
@@ -236,6 +266,7 @@ export async function GET(request: Request) {
       }
     }
 
+    let resolvedCategoryId: string | null = null;
     if (filters.category) {
       let categoryId = isUuid(filters.category) ? filters.category : null;
       if (!categoryId) {
@@ -248,33 +279,51 @@ export async function GET(request: Request) {
         categoryId = (categoryRow as { id?: string } | null)?.id ?? null;
       }
 
+      resolvedCategoryId = categoryId;
+
       if (categoryId) {
         const categoryProviderIds = await getProviderIdsForGlobalCategory({
           supabase,
           globalCategoryId: categoryId,
           tenantId,
         });
-        if (categoryProviderIds.length === 0) {
-          return NextResponse.json({
-            data: {
-              providers: [],
-              services: [],
-              total: 0,
-              page,
-              limit,
-              has_more: false,
-            },
-            error: null,
-          });
+        if (applyProviderIdConstraint(categoryProviderIds)) {
+          return emptySearchResult(page, limit);
         }
-        query = query.in("id", categoryProviderIds);
+      }
+    }
+
+    if (filters.subcategory || filters.service || filters.price_min != null || filters.price_max != null) {
+      let subcategoryId: string | undefined;
+      if (filters.subcategory) {
+        const resolved = await resolveSubcategoryId(
+          supabase,
+          filters.subcategory,
+          resolvedCategoryId ?? undefined,
+        );
+        if (!resolved) {
+          return emptySearchResult(page, limit);
+        }
+        subcategoryId = resolved;
+      }
+
+      const offeringProviderIds = await getProviderIdsForOfferingFilters({
+        supabase,
+        tenantId,
+        priceMin: filters.price_min,
+        priceMax: filters.price_max,
+        subcategoryId,
+        service: filters.service,
+        globalCategoryId: resolvedCategoryId ?? undefined,
+      });
+
+      if (applyProviderIdConstraint(offeringProviderIds)) {
+        return emptySearchResult(page, limit);
       }
     }
 
     // Apply filters
     // Location filtering needs to go through provider_locations
-    // We'll filter by provider IDs that match the location criteria
-    let locationProviderIds: string[] | undefined;
     if (filters.location?.city || filters.location?.country) {
       const locationQuery = supabase
         .from("provider_locations")
@@ -296,29 +345,51 @@ export async function GET(request: Request) {
       
       if (locationError) {
         console.error("Error querying provider_locations:", locationError);
-        // Continue without location filter if there's an error
-        locationProviderIds = undefined;
       } else {
-        locationProviderIds = locations?.map((loc: any) => loc.provider_id) || [];
+        const locationProviderIds = uniqueStrings(
+          (locations ?? []).map((loc: { provider_id?: string }) => loc.provider_id),
+        );
+        if (applyProviderIdConstraint(locationProviderIds)) {
+          return emptySearchResult(page, limit);
+        }
       }
-      
-      if (locationProviderIds && locationProviderIds.length === 0) {
-        // No providers match location criteria, return empty result
-        return NextResponse.json({
-          data: {
-            providers: [],
-            services: [],
-            total: 0,
-            page: page,
-            limit: limit,
-            has_more: false,
-          },
-          error: null,
-        });
+    }
+
+    if (
+      hasUsableCoords &&
+      filters.location?.radius_km != null &&
+      Number.isFinite(filters.location.radius_km) &&
+      filters.location.radius_km > 0
+    ) {
+      const radiusProviderIds = await getProviderIdsWithinRadius({
+        supabase,
+        tenantId,
+        latitude: latitude!,
+        longitude: longitude!,
+        radiusKm: filters.location.radius_km,
+      });
+      if (applyProviderIdConstraint(radiusProviderIds)) {
+        return emptySearchResult(page, limit);
       }
-      
-      if (locationProviderIds && locationProviderIds.length > 0) {
-        query = query.in("id", locationProviderIds);
+    }
+
+    const availabilityDate =
+      filters.date ||
+      (filters.sort_by === "soonest"
+        ? new Date().toISOString().slice(0, 10)
+        : undefined);
+
+    if (availabilityDate) {
+      const availableProviderIds = await getProviderIdsAvailableOnDate({
+        supabase,
+        tenantId,
+        date: availabilityDate,
+        timePreference: filters.time_preference,
+        customTimeStart: filters.custom_time_start,
+        customTimeEnd: filters.custom_time_end,
+      });
+      if (applyProviderIdConstraint(availableProviderIds)) {
+        return emptySearchResult(page, limit);
       }
     }
     
@@ -334,48 +405,38 @@ export async function GET(request: Request) {
         .eq("is_active", true)
         .eq("supports_at_home", true)
         .eq("providers.tenant_id", tenantId);
-      const atHomeProviderIds = [...new Set((atHomeOfferings ?? []).map((o: any) => o.provider_id))];
-      if (atHomeProviderIds.length === 0) {
-        return NextResponse.json({
-          data: {
-            providers: [],
-            services: [],
-            total: 0,
-            page: page,
-            limit: limit,
-            has_more: false,
-          },
-          error: null,
-        });
+      const atHomeProviderIds = uniqueStrings(
+        (atHomeOfferings ?? []).map((o: { provider_id?: string }) => o.provider_id),
+      );
+      if (applyProviderIdConstraint(atHomeProviderIds)) {
+        return emptySearchResult(page, limit);
       }
-      query = query.in("id", atHomeProviderIds);
+    }
+
+    if (constrainedProviderIds && constrainedProviderIds.length > 0) {
+      query = query.in("id", constrainedProviderIds);
     }
 
     const sortInMemory =
-      filters.sort_by === "rating" ||
       filters.sort_by === "relevance" ||
       filters.sort_by === "distance" ||
       filters.sort_by === "price_low" ||
-      filters.sort_by === "price_high";
+      filters.sort_by === "price_high" ||
+      filters.sort_by === "soonest";
 
-    // Apply sorting. Rating/relevance/price/distance are sorted after card enrichment
+    // Apply sorting. Rating/relevance/price/distance/soonest are sorted after card enrichment
     // to avoid fragile PostgREST order clauses and to include derived fields.
     switch (filters.sort_by) {
-      case "price_low":
-        query = query.order("created_at", { ascending: false });
-        break;
-      case "price_high":
-        query = query.order("created_at", { ascending: false });
-        break;
       case "rating":
-        query = query.order("created_at", { ascending: false });
+        query = query.order("rating_average", { ascending: false });
         break;
       case "newest":
         query = query.order("created_at", { ascending: false });
         break;
+      case "price_low":
+      case "price_high":
       case "distance":
-        query = query.order("created_at", { ascending: false });
-        break;
+      case "soonest":
       case "relevance":
       default:
         query = query.order("created_at", { ascending: false });
@@ -437,12 +498,27 @@ export async function GET(request: Request) {
 
     // Create a map of provider_id -> location (prefer primary)
     const locationMap = new Map<string, { city: string; country: string }>();
+    const coordMap = new Map<string, { latitude: number; longitude: number }>();
     const distanceMap = new Map<string, number>();
     if (locations) {
       const byProvider = new Map<string, any[]>();
       locations.forEach((loc: any) => {
         if (!locationMap.has(loc.provider_id)) {
           locationMap.set(loc.provider_id, { city: loc.city || "", country: loc.country || "" });
+        }
+        const lat = loc.latitude ?? loc.address_lat;
+        const lng = loc.longitude ?? loc.address_lng;
+        if (
+          lat != null &&
+          lng != null &&
+          Number.isFinite(Number(lat)) &&
+          Number.isFinite(Number(lng)) &&
+          !(Number(lat) === 0 && Number(lng) === 0)
+        ) {
+          const existing = coordMap.get(loc.provider_id);
+          if (!existing || loc.is_primary) {
+            coordMap.set(loc.provider_id, { latitude: Number(lat), longitude: Number(lng) });
+          }
         }
         if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
         byProvider.get(loc.provider_id)!.push(loc);
@@ -498,6 +574,7 @@ export async function GET(request: Request) {
     // Transform providers to match PublicProviderCard type
     let transformedProviders = providers.map((provider: any) => {
       const location = locationMap.get(provider.id);
+      const coords = coordMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
       const distance_km = distanceMap.get(provider.id) ?? null;
       const supports_house_calls = supportsHouseCallsMap.get(provider.id) ?? false;
@@ -520,6 +597,7 @@ export async function GET(request: Request) {
         currency: priceInfo?.currency || provider.currency || defaultCurrency,
         supports_house_calls,
         supports_salon,
+        ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
         ...(distance_km != null ? { distance_km } : {}),
       };
     });
@@ -546,6 +624,14 @@ export async function GET(request: Request) {
             (a: any, b: any) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
           );
         }
+        break;
+      case "soonest":
+        transformedProviders = [...transformedProviders].sort((a: any, b: any) => {
+          if (hasUserCoords && a.distance_km != null && b.distance_km != null) {
+            if (a.distance_km !== b.distance_km) return a.distance_km - b.distance_km;
+          }
+          return (b.rating ?? 0) - (a.rating ?? 0) || (b.review_count ?? 0) - (a.review_count ?? 0);
+        });
         break;
       case "relevance":
       default:
@@ -633,8 +719,23 @@ export async function GET(request: Request) {
             if (Number.isFinite(minKm)) sponsoredDistanceMap.set(providerId, Math.round(minKm * 10) / 10);
           });
         }
+        const sponsoredCoordMap = new Map<string, { latitude: number; longitude: number }>();
         (sponsoredLocations ?? []).forEach((loc: any) => {
           if (!locMap.has(loc.provider_id)) locMap.set(loc.provider_id, { city: loc.city || "", country: loc.country || "" });
+          const lat = loc.latitude ?? loc.address_lat;
+          const lng = loc.longitude ?? loc.address_lng;
+          if (
+            lat != null &&
+            lng != null &&
+            Number.isFinite(Number(lat)) &&
+            Number.isFinite(Number(lng)) &&
+            !(Number(lat) === 0 && Number(lng) === 0)
+          ) {
+            const existing = sponsoredCoordMap.get(loc.provider_id);
+            if (!existing || loc.is_primary) {
+              sponsoredCoordMap.set(loc.provider_id, { latitude: Number(lat), longitude: Number(lng) });
+            }
+          }
         });
         const priceMapSponsored = new Map<string, { price: number; currency: string }>();
         (sponsoredOfferings ?? []).forEach((o: any) => {
@@ -644,6 +745,7 @@ export async function GET(request: Request) {
         const sponsoredCards = (sponsoredProviders ?? []).map((p: any) => {
           sponsoredProviderIds.add(p.id);
           const loc = locMap.get(p.id);
+          const coords = sponsoredCoordMap.get(p.id);
           const priceInfo = priceMapSponsored.get(p.id);
           const distance_km = sponsoredDistanceMap.get(p.id) ?? null;
           return {
@@ -665,6 +767,7 @@ export async function GET(request: Request) {
             campaign_id: winnerToCampaign.get(p.id) ?? null,
             supports_house_calls: supportsHouseCallsMap.get(p.id) ?? false,
             supports_salon: supportsSalonMap.get(p.id) ?? true,
+            ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
             ...(distance_km != null ? { distance_km } : {}),
           };
         });
@@ -744,13 +847,17 @@ export async function GET(request: Request) {
       ? finalProviders.slice(offset, offset + limit)
       : finalProviders;
 
+    const resultTotal = postPaginateAfterEnrichment
+      ? finalProviders.length
+      : count || 0;
+
     const result: SearchResult = {
       providers: visibleProviders,
       services: services,
-      total: count || 0,
+      total: resultTotal,
       page: page,
       limit: limit,
-      has_more: (count || 0) > offset + limit,
+      has_more: resultTotal > offset + limit,
     };
 
     const response = NextResponse.json({

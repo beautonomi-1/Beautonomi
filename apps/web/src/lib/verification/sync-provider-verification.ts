@@ -238,18 +238,22 @@ export async function syncProviderVerificationStateFromDidit(
   normalizedStatus: string,
   rejectionReason: string | null,
   diditSessionId: string,
+  options?: { kycCredentialExpired?: boolean },
 ): Promise<void> {
   const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
   const admin = getSupabaseAdmin();
 
-  // Map normalized status to outcome
+  // Map normalized status to outcome.
+  // Session expiry (Didit "Expired") resets so the provider can restart;
+  // credential lapse ("Kyc Expired") revokes the approved state.
   const outcome: ProviderVerificationOutcome =
     normalizedStatus === "approved"     ? "approved" :
     normalizedStatus === "rejected"     ? "rejected"  :
     normalizedStatus === "in_progress"  ? "in_progress" :
     normalizedStatus === "pending_review"? "in_progress" :
-    normalizedStatus === "expired"      ? "rejected"  :
-    "reset";
+    normalizedStatus === "expired"
+      ? (options?.kycCredentialExpired ? "rejected" : "reset")
+      : "reset";
 
   // Resolve owner user id for this provider
   const { data: provRow } = await admin

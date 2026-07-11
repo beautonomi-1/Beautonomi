@@ -5,6 +5,10 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { getAppNativeVersion } from "@/lib/app-native-version";
+import {
+  resolveSetupStepRoute,
+  type SetupNavStep,
+} from "@/lib/setup-step-navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
@@ -16,6 +20,7 @@ import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePayCloudSettings } from "@/hooks/usePayCloud";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -96,10 +101,7 @@ function formatBadgeCount(count: number): string | null {
  * the missing field — matching the setup-status and Dashboard cards.
  */
 function getStepNativeRoute(step: SetupStatusStep): string {
-  if (step.native_route && step.native_route.startsWith("/(app)/")) {
-    return step.native_route;
-  }
-  return `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`;
+  return resolveSetupStepRoute(step as SetupNavStep);
 }
 
 interface MenuItem {
@@ -218,6 +220,7 @@ export default function MoreScreen() {
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { settings: paycloudSettings } = usePayCloudSettings();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     "Grow your business": true,
     Operations: true,
@@ -717,6 +720,11 @@ export default function MoreScreen() {
                 <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
                   {action.label}
                 </Text>
+                {action.route.includes("card-machines") && paycloudEnabled ? (
+                  <Text style={{ marginTop: 2, fontSize: 10, color: Colors.gray[500], textAlign: "center" }}>
+                    {paycloudSettings?.ready ? "Ready" : paycloudSettings?.accept_paycloud ? "Set up" : "Off"}
+                  </Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}

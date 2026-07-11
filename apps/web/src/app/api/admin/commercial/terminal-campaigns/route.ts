@@ -153,6 +153,9 @@ export async function POST(request: NextRequest) {
           message_body: validation.data.message_body,
           cta_label: validation.data.cta_label ?? null,
           cta_url: validation.data.cta_url ?? null,
+          announcement_type: validation.data.announcement_type ?? null,
+          media_url: validation.data.media_url ?? null,
+          expires_at: validation.data.expires_at ?? null,
         },
         (insertedRecipients ?? []).map((r: any) => ({
           id: r.id,
