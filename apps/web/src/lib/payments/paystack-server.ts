@@ -33,9 +33,9 @@ function normalizeTenantId(tenantId?: string | null): string | null {
 }
 
 /**
- * When `region_payment_gateways` has a primary online row for this tenant's region,
- * ensure it is Paystack before calling Paystack APIs (migration 379 seeds ZA → paystack).
- * If no row exists, allow (legacy / not migrated yet).
+ * When a tenant is supplied, ensure its region's primary online gateway is Paystack
+ * before calling Paystack APIs (migration 379 seeds ZA → paystack).
+ * Fail closed when the tenant resolves but region or gateway configuration is missing.
  */
 export async function ensurePaystackPrimaryGatewayForTenant(
   tenantId?: string | null,
@@ -44,10 +44,18 @@ export async function ensurePaystackPrimaryGatewayForTenant(
   if (!tid) return;
 
   const rc = await getTenantRegionConfig(tid);
-  if (!rc?.regionId) return;
+  if (!rc?.regionId) {
+    throw new Error(
+      "No region configuration for this tenant; cannot determine primary online payment gateway.",
+    );
+  }
 
   const primary = await getPrimaryOnlinePaymentGatewayForRegion(rc.regionId);
-  if (!primary) return;
+  if (!primary) {
+    throw new Error(
+      "No primary online payment gateway configured for this region. Configure region_payment_gateways before accepting Paystack payments.",
+    );
+  }
 
   const name = primary.gateway.trim().toLowerCase();
   if (name !== "paystack") {

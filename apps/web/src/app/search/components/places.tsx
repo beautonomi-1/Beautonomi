@@ -44,12 +44,21 @@ interface Listing {
 
 // Helper function to convert provider data to listing format
 const createListingsFromProviders = (providers: PublicProviderCard[], userLat?: number, userLng?: number): Listing[] => {
-  return providers.map((provider) => {
-    // Use provider distance_km to estimate location, or default to London
-    // Note: The API doesn't return lat/lng in PublicProviderCard, so we'll use a default
-    // In a real implementation, you'd want to fetch location data separately or include it in the API response
-    const lat = 51.5074 + (Math.random() - 0.5) * 0.1; // Random location near London for now
-    const lng = -0.1278 + (Math.random() - 0.5) * 0.1;
+  return providers
+    .filter((provider) => {
+      const lat = provider.latitude;
+      const lng = provider.longitude;
+      return (
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        !(lat === 0 && lng === 0)
+      );
+    })
+    .map((provider) => {
+    const lat = provider.latitude!;
+    const lng = provider.longitude!;
     
     // Calculate distance if user location is provided
     let distance: string | undefined;
@@ -85,7 +94,7 @@ const createListingsFromProviders = (providers: PublicProviderCard[], userLat?: 
         subtitle: distance || provider.city || "",
         dates: provider.business_type || "",
         amountstatus: provider.starting_price 
-          ? `${provider.currency || "£"}${provider.starting_price}+`
+          ? `${provider.currency || "ZAR"}${provider.starting_price}+`
           : "Price on request",
         ratings: provider.rating?.toFixed(1) || "0.0",
         ratingsVisible: provider.review_count && provider.review_count > 0 ? "true" : "false",
@@ -179,6 +188,9 @@ export default function Places() {
             userLocation?.lng
           );
           setListings(providerListings);
+          if (providerListings.length === 0 && response.data.providers.length > 0) {
+            setError("Map view unavailable — providers lack location coordinates. Try list view.");
+          }
         } else {
           setListings([]);
         }
@@ -202,7 +214,7 @@ export default function Places() {
       ? [userLocation.lng, userLocation.lat]
       : listings.length > 0
       ? [listings[0].lng, listings[0].lat]
-      : [-0.1278, 51.5074]; // Default to London
+      : [28.0473, -26.2041]; // Johannesburg fallback when no pins
 
     const map = new Map({
       target: "map",
@@ -389,8 +401,13 @@ export default function Places() {
       overlayRef.current.setPosition(undefined);
     }
     if (mapRef.current) {
+      const fallback = userLocation
+        ? [userLocation.lng, userLocation.lat]
+        : listings.length > 0
+        ? [listings[0].lng, listings[0].lat]
+        : [28.0473, -26.2041];
       mapRef.current.getView().animate({
-        center: fromLonLat([-0.1278, 51.5074]),
+        center: fromLonLat(fallback as [number, number]),
         zoom: 13,
         duration: 500,
       });

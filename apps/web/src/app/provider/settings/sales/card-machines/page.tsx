@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   paycloudApi,
   type PaycloudReadinessBlocker,
@@ -18,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
@@ -35,16 +35,29 @@ import {
   Smartphone,
   ShoppingBag,
   CheckCircle2,
-  XCircle,
   Circle,
   AlertTriangle,
   RefreshCw,
   Pencil,
   ArrowUpRight,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { paycloudAccountEnvironmentLabel } from "@/lib/payments/paycloud-account-label";
+import { parseHighlightedOrderId } from "@/lib/terminal/terminal-shop-cta";
+import { fetcher } from "@/lib/http/fetcher";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const SETUP_STEPS: Array<{
   code: PaycloudReadinessBlocker["code"];
@@ -57,7 +70,18 @@ const SETUP_STEPS: Array<{
   { code: "NO_MERCHANT", label: "Merchant setup complete" },
 ];
 
+type PendingTerminalOrder = {
+  id: string;
+  order_status: string;
+  invoice_status: string;
+  integration_setup_status?: string | null;
+  fulfillment_type?: string | null;
+  terminal_products?: { name?: string; vendor?: string };
+};
+
 export default function CardMachinesPage() {
+  const searchParams = useSearchParams();
+  const activationOrderId = parseHighlightedOrderId(searchParams);
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
   const cashbackFlagEnabled = useFeatureFlag("payment_paycloud_cashback");
@@ -80,10 +104,60 @@ export default function CardMachinesPage() {
   const [reconcileLoading, setReconcileLoading] = useState(false);
   const [reconcilePayments, setReconcilePayments] = useState<PaycloudReconciliationPayment[]>([]);
   const [reconcileExceptions, setReconcileExceptions] = useState(0);
+  const [pendingOrder, setPendingOrder] = useState<PendingTerminalOrder | null>(null);
+  const [activationSerial, setActivationSerial] = useState("");
+  const [activationName, setActivationName] = useState("");
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
     void loadData();
   }, [paycloudEnabled, yocoEnabled]);
+
+  useEffect(() => {
+    if (!terminalEcommerceEnabled) {
+      setPendingOrder(null);
+      return;
+    }
+
+    const isPendingActivation = (order: PendingTerminalOrder | undefined | null) => {
+      if (!order) return false;
+      if (order.invoice_status !== "paid" || order.integration_setup_status !== "pending") {
+        return false;
+      }
+      const vendor = (order.terminal_products?.vendor ?? "").toLowerCase();
+      // Prefer PayCloud / Beautonomi card-machine orders; allow unknown vendor when deep-linked.
+      return !vendor || vendor === "paycloud" || Boolean(activationOrderId);
+    };
+
+    void (async () => {
+      try {
+        if (activationOrderId) {
+          const res = await fetcher.get<{ data: { order: PendingTerminalOrder } }>(
+            `/api/provider/terminal-orders/${encodeURIComponent(activationOrderId)}`,
+          );
+          const order = res.data?.order;
+          if (isPendingActivation(order)) {
+            setPendingOrder(order!);
+            setActivationName(order!.terminal_products?.name ?? "Card machine");
+            return;
+          }
+        }
+
+        const listRes = await fetcher.get<{ data: { orders: PendingTerminalOrder[] } }>(
+          "/api/provider/terminal-orders",
+        );
+        const pending = (listRes.data?.orders ?? []).find((o) => isPendingActivation(o));
+        if (pending) {
+          setPendingOrder(pending);
+          setActivationName(pending.terminal_products?.name ?? "Card machine");
+        } else {
+          setPendingOrder(null);
+        }
+      } catch {
+        setPendingOrder(null);
+      }
+    })();
+  }, [activationOrderId, terminalEcommerceEnabled]);
 
   const loadData = async () => {
     setLoading(true);
@@ -205,6 +279,54 @@ export default function CardMachinesPage() {
     }
   };
 
+  const handleToggleActive = async (terminal: PaycloudTerminal, checked: boolean) => {
+    try {
+      await paycloudApi.updateTerminal(terminal.id, { is_active: checked });
+      setPaycloudTerminals((prev) =>
+        prev.map((t) => (t.id === terminal.id ? { ...t, is_active: checked } : t)),
+      );
+      toast.success(checked ? "Card machine is now active" : "Card machine hidden from checkout");
+      await loadData();
+    } catch {
+      toast.error("Failed to update card machine");
+    }
+  };
+
+  const handleDeleteTerminal = async (terminal: PaycloudTerminal) => {
+    try {
+      await paycloudApi.deleteTerminal(terminal.id);
+      toast.success("Card machine removed");
+      await loadData();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to remove card machine");
+    }
+  };
+
+  const handleActivateOrder = async () => {
+    if (!activationSerial.trim()) {
+      toast.error("Enter the serial number from your device label");
+      return;
+    }
+    setActivating(true);
+    try {
+      await paycloudApi.createTerminal({
+        terminal_sn: activationSerial.trim(),
+        display_name: activationName.trim() || `Card machine ${activationSerial.trim().slice(-4)}`,
+      });
+      toast.success("Card machine activated");
+      setActivationSerial("");
+      setPendingOrder(null);
+      await loadData();
+      if (!paycloudSettings?.accept_paycloud) {
+        toast.message("Turn on Accept in-person card payments to start collecting.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to activate card machine");
+    } finally {
+      setActivating(false);
+    }
+  };
+
   const handleAcceptToggle = async (checked: boolean) => {
     try {
       await paycloudApi.updateSettings({ accept_paycloud: checked });
@@ -278,6 +400,12 @@ export default function CardMachinesPage() {
   const acceptPaycloud = paycloudSettings?.accept_paycloud ?? false;
   const activePaycloud = paycloudTerminals.filter((t) => t.is_active).length;
   const activeYoco = yocoDevices.filter((d) => d.is_active).length;
+  const statusLabel = paycloudSettings?.ready
+    ? "Ready"
+    : acceptPaycloud
+      ? "Setup incomplete"
+      : "Not accepting";
+  const recentPayments = reconcilePayments.slice(0, 10);
   const exceptionPayments = reconcilePayments.filter(
     (p) =>
       p.amount_match_status &&
@@ -293,10 +421,23 @@ export default function CardMachinesPage() {
     >
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <SectionCard className="p-4">
-          <div className="text-xs text-gray-500">Beautonomi machines</div>
-          <div className="text-2xl font-semibold">{activePaycloud}</div>
+          <div className="text-xs text-gray-500">Status</div>
+          <div className="text-2xl font-semibold">{statusLabel}</div>
           <div className="text-sm text-gray-600">
-            {paycloudSettings?.ready ? "Ready for checkout" : acceptPaycloud ? "Setup incomplete" : "Not accepting"}
+            {activePaycloud} active machine{activePaycloud === 1 ? "" : "s"}
+            {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)
+              ? ` · ${paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}`
+              : ""}
+          </div>
+        </SectionCard>
+        <SectionCard className="p-4 sm:col-span-2">
+          <div className="text-xs text-gray-500">Beautonomi card machines</div>
+          <div className="text-sm text-gray-600">
+            {paycloudSettings?.ready
+              ? "Ready for checkout at bookings and sales"
+              : acceptPaycloud
+                ? "Finish setup below to start collecting"
+                : "Turn on acceptance to show Card machine at checkout"}
           </div>
         </SectionCard>
         {yocoEnabled ? (
@@ -336,6 +477,52 @@ export default function CardMachinesPage() {
                     Upgrade plan
                   </Link>
                 </Button>
+              </div>
+            </SectionCard>
+          ) : null}
+
+          {pendingOrder ? (
+            <SectionCard className="mb-6 border-pink-200 bg-pink-50/40">
+              <PageHeader
+                title="Activate your new card machine"
+                subtitle={
+                  pendingOrder.terminal_products?.name
+                    ? `Order: ${pendingOrder.terminal_products.name}`
+                    : "Enter the serial number to finish setup"
+                }
+              />
+              <p className="mt-2 text-sm text-gray-600">
+                Find the serial number on the device label or in your activation email, then add it below.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Serial number</Label>
+                  <Input
+                    className="mt-1"
+                    value={activationSerial}
+                    onChange={(e) => setActivationSerial(e.target.value)}
+                    placeholder="From device label"
+                  />
+                </div>
+                <div>
+                  <Label>Display name</Label>
+                  <Input
+                    className="mt-1"
+                    value={activationName}
+                    onChange={(e) => setActivationName(e.target.value)}
+                    placeholder="Front desk, Portable, etc."
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onClick={() => void handleActivateOrder()} disabled={activating}>
+                  {activating ? "Activating…" : "Activate machine"}
+                </Button>
+                {!acceptPaycloud ? (
+                  <Button variant="outline" onClick={() => void handleAcceptToggle(true)}>
+                    Enable acceptance
+                  </Button>
+                ) : null}
               </div>
             </SectionCard>
           ) : null}
@@ -463,14 +650,6 @@ export default function CardMachinesPage() {
               subtitle="Add, name, and assign machines for checkout and house calls"
               actions={
                 <div className="flex flex-wrap gap-2">
-                  {terminalShopEnabled ? (
-                    <Button variant="outline" asChild>
-                      <Link href="/provider/settings/sales/terminal-shop">
-                        <ShoppingBag className="mr-2 h-4 w-4" />
-                        Shop terminals
-                      </Link>
-                    </Button>
-                  ) : null}
                   <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                     <DialogTrigger asChild>
                       <Button>
@@ -592,26 +771,114 @@ export default function CardMachinesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">Active</span>
+                        <Switch
+                          checked={t.is_active}
+                          onCheckedChange={(checked) => void handleToggleActive(t, checked)}
+                        />
+                      </div>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(t)} aria-label="Edit card machine">
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Badge variant={t.is_active ? "default" : "secondary"}>
-                        {t.is_active ? (
-                          <span className="inline-flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <XCircle className="h-3 w-3" /> Hidden
-                          </span>
-                        )}
-                      </Badge>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="Remove card machine">
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove card machine?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Remove &quot;{t.display_name}&quot; from your account. You can add it again later with the same serial number.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => void handleDeleteTerminal(t)}>
+                              Remove
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 ))
               )}
             </div>
           </SectionCard>
+
+          <SectionCard className="mb-6">
+            <PageHeader
+              title="Recent card payments"
+              subtitle="Latest charges sent to your card machines"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleReconcile()}
+                  disabled={reconcileLoading}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${reconcileLoading ? "animate-spin" : ""}`} />
+                  Check payment status
+                </Button>
+              }
+            />
+            {recentPayments.length === 0 ? (
+              <p className="mt-4 text-sm text-gray-500">
+                No card machine payments yet. Collect at a booking or sale to see them here.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-gray-500">
+                      <th className="py-2 pr-2">Time</th>
+                      <th className="py-2 pr-2">Order</th>
+                      <th className="py-2 pr-2">Amount</th>
+                      <th className="py-2 pr-2">Status</th>
+                      <th className="py-2">Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentPayments.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-100">
+                        <td className="py-2 pr-2 text-xs text-gray-500">
+                          {new Date(p.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-2 pr-2 font-mono text-xs">{p.merchant_order_no}</td>
+                        <td className="py-2 pr-2">
+                          {p.currency} {Number(p.amount).toFixed(2)}
+                        </td>
+                        <td className="py-2 pr-2 capitalize">{p.status.replace(/_/g, " ")}</td>
+                        <td className="py-2 text-xs text-gray-600">{p.amount_match_status ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+
+          {terminalShopEnabled ? (
+            <SectionCard className="mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium text-gray-900">Shop card machines</div>
+                  <p className="text-sm text-gray-600">
+                    Order from the Beautonomi catalog, then activate with the serial number here.
+                  </p>
+                </div>
+                <Button asChild>
+                  <Link href="/provider/settings/sales/terminal-shop">
+                    <ShoppingBag className="mr-2 h-4 w-4" />
+                    Open terminal shop
+                  </Link>
+                </Button>
+              </div>
+            </SectionCard>
+          ) : null}
 
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogContent>
@@ -659,6 +926,14 @@ export default function CardMachinesPage() {
       ) : (
         <SectionCard>
           <p className="text-sm text-gray-600">Beautonomi card machines are not available in your market yet.</p>
+          {terminalShopEnabled ? (
+            <Button asChild className="mt-4" variant="outline">
+              <Link href="/provider/settings/sales/terminal-shop">
+                <ShoppingBag className="mr-2 h-4 w-4" />
+                Order from Terminal Shop
+              </Link>
+            </Button>
+          ) : null}
         </SectionCard>
       )}
 

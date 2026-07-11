@@ -10,6 +10,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
 import { getReportDateRange } from "@/lib/reportDateRanges";
@@ -52,7 +53,7 @@ export default function ServiceZonesAnalyticsScreen() {
     timezone: provider?.timezone,
   });
 
-  const { data, loading, refresh } = useApi<AnalyticsResponse>(
+  const { data, loading, error, refresh } = useApi<AnalyticsResponse>(
     `/api/provider/service-zones/analytics?start_date=${startStr}&end_date=${endStr}`
   );
 
@@ -69,6 +70,15 @@ export default function ServiceZonesAnalyticsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <LoadingState message="Loading zone analytics..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Zone analytics" showBack subtitle="At-home booking performance" />
+        <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
   }

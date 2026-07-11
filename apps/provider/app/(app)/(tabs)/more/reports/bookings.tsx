@@ -85,6 +85,15 @@ export default function BookingsReport() {
   const rangeCaption = formatReportRangeCaption(from, to);
   const bookingsReportUrl = appendReportLocation(`/api/provider/reports/bookings?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<BookingsData>(bookingsReportUrl);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -112,7 +121,7 @@ export default function BookingsReport() {
   }, [data, from, to]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Bookings" showBack subtitle="Booking analytics & trends" />
 
       <View style={twStyle("mb-3")}>

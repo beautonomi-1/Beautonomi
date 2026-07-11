@@ -33,6 +33,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
@@ -76,6 +77,13 @@ interface SupportTicket {
   agent_unread?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+function assigneeInitials(name: string | null | undefined, email: string | null | undefined): string {
+  const source = (name || email || "?").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return source.slice(0, 2).toUpperCase();
 }
 
 /** Returns badge JSX for the attention state returned by the server. */
@@ -271,6 +279,9 @@ export function SupportTicketsPage() {
   const [newContextType, setNewContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
   const [newContextLabel, setNewContextLabel] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkAssignee, setBulkAssignee] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("");
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -345,6 +356,39 @@ export function SupportTicketsPage() {
 
   const [qDraft, setQDraft] = useDebouncedUrlParam(qFromUrl, setSearchParams, { param: "q", delayMs: 400 });
 
+  const attentionFilter =
+    needsResponseFilter
+      ? "needs_response"
+      : firstResponseOverdueFilter
+        ? "first_response_overdue"
+        : slaStateFilter === "at_risk"
+          ? "sla_at_risk"
+          : slaStateFilter === "breached" || slaOverdueFilter
+            ? "sla_breached"
+            : "";
+
+  const setAttentionFilter = useCallback(
+    (value: string) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("needs_response");
+          n.delete("first_response_overdue");
+          n.delete("sla_state");
+          n.delete("sla_overdue");
+          if (value === "needs_response") n.set("needs_response", "1");
+          else if (value === "first_response_overdue") n.set("first_response_overdue", "1");
+          else if (value === "sla_at_risk") n.set("sla_state", "at_risk");
+          else if (value === "sla_breached") n.set("sla_state", "breached");
+          n.set("page", "1");
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const setFilter = useCallback(
     (key: string, value: string) => {
       setSearchParams(
@@ -374,7 +418,7 @@ export function SupportTicketsPage() {
 
   const queryString = useMemo(
     () =>
-      buildSupportTicketsSearchParams({
+      `${buildSupportTicketsSearchParams({
         pageIndex,
         status: statusFilter,
         priority: priorityFilter,
@@ -387,7 +431,7 @@ export function SupportTicketsPage() {
         needsResponse: needsResponseFilter,
         slaState: slaStateFilter,
         firstResponseOverdue: firstResponseOverdueFilter,
-      }),
+      })}&include_counts=1`,
     [
       pageIndex,
       statusFilter,
@@ -407,7 +451,16 @@ export function SupportTicketsPage() {
   const q = useQuery({
     queryKey: adminQueryKeys.supportTickets.list(queryString),
     queryFn: () =>
-      adminApi.getJson<{ tickets: SupportTicket[]; total: number }>(`/api/admin/support-tickets?${queryString}`, {
+      adminApi.getJson<{
+        tickets: SupportTicket[];
+        total: number;
+        counts?: {
+          open: number;
+          unassigned: number;
+          breaching_sla: number;
+          awaiting_reply: number;
+        };
+      }>(`/api/admin/support-tickets?${queryString}`, {
         timeoutMs: 45_000,
       }),
     enabled: allowed,
@@ -415,7 +468,30 @@ export function SupportTicketsPage() {
     refetchOnWindowFocus: true,
   });
 
+  const { data: assignees } = useQuery({
+    queryKey: adminQueryKeys.supportTicketAssignees(),
+    queryFn: () =>
+      adminApi.getJson<{ assignees: Array<{ id: string; full_name: string | null; email: string | null }> }>(
+        "/api/admin/support-ticket-assignees",
+      ),
+    enabled: allowed && isTableView,
+  });
+
+  const bulkMut = useMutation({
+    mutationFn: (body: { ticket_ids: string[]; assigned_to?: string | null; status?: string }) =>
+      adminApi.postJson("/api/admin/support-tickets/bulk", body),
+    onSuccess: () => {
+      adminToast.success("Tickets updated");
+      setSelectedIds([]);
+      setBulkAssignee("");
+      setBulkStatus("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Bulk update failed"),
+  });
+
   const tickets = q.data?.tickets ?? [];
+  const counts = q.data?.counts;
   const total = q.data?.total ?? 0;
   const pageSize = supportTicketsPageSize();
   const offset = pageIndex * pageSize;
@@ -573,15 +649,38 @@ export function SupportTicketsPage() {
             : "Filters sync to the URL; the queue refreshes when you return to this tab and about every minute while it stays open."
         }
         actions={
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            + New ticket
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={adminSpaTo("/admin/reports/support-performance")}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              Performance report
+            </Link>
+            <Link
+              to={adminSpaTo("/admin/reports/support-workload")}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              Workload report
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              + New ticket
+            </button>
+          </div>
         }
       />
+
+      {counts ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <AdminMetricCard label="Open tickets" value={counts.open.toLocaleString()} variant="slate" />
+          <AdminMetricCard label="Unassigned" value={counts.unassigned.toLocaleString()} variant="amber" />
+          <AdminMetricCard label="Breaching SLA" value={counts.breaching_sla.toLocaleString()} variant="rose" />
+          <AdminMetricCard label="Awaiting reply" value={counts.awaiting_reply.toLocaleString()} variant="violet" />
+        </div>
+      ) : null}
 
       <AdminModal open={showCreate} title="Create support ticket" onClose={() => setShowCreate(false)} footer={null}>
         <div className="space-y-4">
@@ -627,7 +726,22 @@ export function SupportTicketsPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
-              <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="e.g. billing, booking" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" />
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+              >
+                <option value="">Uncategorized</option>
+                {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.items.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
@@ -764,14 +878,17 @@ export function SupportTicketsPage() {
               <option value="sla_asc">Sort: SLA due (soonest)</option>
               <option value="priority_asc">Sort: Priority</option>
             </select>
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-              <input
-                type="checkbox"
-                checked={slaOverdueFilter}
-                onChange={(e) => setFilter("sla_overdue", e.target.checked ? "1" : "all")}
-              />
-              SLA overdue
-            </label>
+            <select
+              value={attentionFilter}
+              onChange={(e) => setAttentionFilter(e.target.value)}
+              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
+            >
+              <option value="">All attention states</option>
+              <option value="needs_response">Needs response</option>
+              <option value="first_response_overdue">First reply overdue</option>
+              <option value="sla_at_risk">SLA at risk</option>
+              <option value="sla_breached">SLA breached</option>
+            </select>
           </div>
         </div>
       </AdminPanel>
@@ -830,8 +947,66 @@ export function SupportTicketsPage() {
           ) : null}
 
           <AdminDataTable className={isTableView ? "" : "hidden"}>
+            {selectedIds.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
+                <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
+                <select
+                  value={bulkAssignee}
+                  onChange={(e) => setBulkAssignee(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                >
+                  <option value="">Bulk assign…</option>
+                  {(assignees?.assignees ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.full_name || a.email}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!bulkAssignee || bulkMut.isPending}
+                  onClick={() =>
+                    bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })
+                  }
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Assign
+                </button>
+                <select
+                  value={bulkStatus}
+                  onChange={(e) => setBulkStatus(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                >
+                  <option value="">Bulk status…</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="waiting_customer">Waiting on customer</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={!bulkStatus || bulkMut.isPending}
+                  onClick={() =>
+                    bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })
+                  }
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Update status
+                </button>
+              </div>
+            ) : null}
             <AdminTableHead>
               <tr>
+                <AdminTh>
+                  <input
+                    type="checkbox"
+                    checked={tickets.length > 0 && selectedIds.length === tickets.length}
+                    onChange={(e) =>
+                      setSelectedIds(e.target.checked ? tickets.map((t) => t.id) : [])
+                    }
+                    aria-label="Select all tickets on page"
+                  />
+                </AdminTh>
                 <AdminTh>Ticket #</AdminTh>
                 <AdminTh>Subject</AdminTh>
                 <AdminTh>User</AdminTh>
@@ -850,6 +1025,20 @@ export function SupportTicketsPage() {
             <AdminTableBody>
               {tickets.map((ticket) => (
                 <tr key={ticket.id}>
+                  <AdminTd>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(ticket.id)}
+                      onChange={(e) =>
+                        setSelectedIds((prev) =>
+                          e.target.checked
+                            ? [...prev, ticket.id]
+                            : prev.filter((id) => id !== ticket.id),
+                        )
+                      }
+                      aria-label={`Select ${ticket.ticket_number}`}
+                    />
+                  </AdminTd>
                   <AdminTd className="font-mono text-xs">{ticket.ticket_number}</AdminTd>
                   <AdminTd>
                     <div className="max-w-xs">
@@ -928,7 +1117,12 @@ export function SupportTicketsPage() {
                   </AdminTd>
                   <AdminTd>
                     {ticket.assigned_user ? (
-                      <span className="text-sm">{ticket.assigned_user.full_name || ticket.assigned_user.email}</span>
+                      <span className="inline-flex items-center gap-2 text-sm">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                          {assigneeInitials(ticket.assigned_user.full_name, ticket.assigned_user.email)}
+                        </span>
+                        {ticket.assigned_user.full_name || ticket.assigned_user.email}
+                      </span>
                     ) : (
                       <span className="text-gray-400">Unassigned</span>
                     )}

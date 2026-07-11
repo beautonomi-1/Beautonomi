@@ -23,6 +23,18 @@ import {
   validateTerminalOrderFulfillment,
   type TerminalFulfillmentType,
 } from "@/lib/terminal/terminal-order-fulfillment";
+import {
+  canConfirmTerminalCheckout,
+  parseHighlightedOrderId,
+  resolveTerminalShopOrderCta,
+} from "@/lib/terminal/terminal-shop-cta";
+import { resolveIntegrationSetupPath } from "@/lib/terminal/resolve-integration-setup-url";
+import { usePermissions } from "@/hooks/usePermissions";
+import {
+  TERMINAL_ASSET_OWNERSHIP_LABELS,
+  TERMINAL_COMMERCIAL_MODEL_LABELS,
+  type TerminalCommercialModel,
+} from "@/lib/terminal/types";
 
 type CheckoutOption = {
   commercial_model: string;
@@ -65,7 +77,7 @@ type TerminalOrder = {
   integration_setup_url?: string | null;
   tracking_reference?: string | null;
   courier_name?: string | null;
-  terminal_products?: { name?: string; vendor?: string };
+  terminal_products?: { name?: string; vendor?: string; integration_vendor_slug?: string | null };
   terminal_collection_locations?: { name?: string } | null;
 };
 
@@ -189,6 +201,8 @@ export default function TerminalShopPage() {
   const searchParams = useSearchParams();
   const catalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
   const ecommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const { isOwner } = usePermissions();
 
   const [products, setProducts] = useState<TerminalProduct[]>([]);
   const [orders, setOrders] = useState<TerminalOrder[]>([]);
@@ -203,7 +217,7 @@ export default function TerminalShopPage() {
   const [submitting, setSubmitting] = useState(false);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
 
-  const highlightedOrderId = searchParams.get("order");
+  const highlightedOrderId = parseHighlightedOrderId(searchParams);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -262,6 +276,36 @@ export default function TerminalShopPage() {
 
   const selectedOption = checkoutOptions.find((o) => o.commercial_model === commercialModel);
   const fulfillmentType = checkoutProduct?.fulfillment_type ?? "courier";
+
+  const checkoutConfirmState = useMemo(
+    () =>
+      canConfirmTerminalCheckout({
+        selectedOption,
+        checkoutOptionsCount: checkoutOptions.length,
+        fulfillmentType,
+        collectionLocationsCount: collectionLocations.length,
+        collectionLocationId,
+        addressLine1: deliveryForm.line1,
+        city: deliveryForm.city,
+        postalCode: deliveryForm.postal_code,
+      }),
+    [
+      selectedOption,
+      checkoutOptions.length,
+      fulfillmentType,
+      collectionLocations.length,
+      collectionLocationId,
+      deliveryForm.line1,
+      deliveryForm.city,
+      deliveryForm.postal_code,
+    ],
+  );
+
+  function integrationSetupHref(order: TerminalOrder): string {
+    const product = order.terminal_products ?? {};
+    const path = resolveIntegrationSetupPath(product);
+    return `${path}?order=${encodeURIComponent(order.id)}`;
+  }
 
   function openCheckout(product: TerminalProduct) {
     setCheckoutProduct(product);
@@ -362,7 +406,11 @@ export default function TerminalShopPage() {
         await payForOrder(order.id);
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to place order");
+      if (err instanceof FetchError && err.status === 403) {
+        toast.error("Only the business owner can place terminal orders");
+      } else {
+        toast.error(err instanceof FetchError ? err.message : "Failed to place order");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -390,7 +438,14 @@ export default function TerminalShopPage() {
 
   if (!catalogEnabled && !ecommerceEnabled) {
     return (
-      <SettingsDetailLayout title="Terminal Shop" backHref="/provider/settings/sales/terminal-integrations">
+      <SettingsDetailLayout
+        title="Terminal Shop"
+        backHref={
+          paycloudEnabled
+            ? "/provider/settings/sales/card-machines"
+            : "/provider/settings/sales/terminal-integrations"
+        }
+      >
         <SectionCard>
           <p className="text-sm text-gray-600">Terminal e-commerce is not enabled for your account yet.</p>
         </SectionCard>
@@ -451,11 +506,29 @@ export default function TerminalShopPage() {
                           </p>
                         ))}
                       </div>
-                      {ecommerceEnabled && p.stock_status !== "out_of_stock" && (
-                        <Button size="sm" onClick={() => openCheckout(p)}>
-                          Order
-                        </Button>
-                      )}
+                      {(() => {
+                        const cta = resolveTerminalShopOrderCta({
+                          ecommerceEnabled,
+                          stockStatus: p.stock_status,
+                          checkoutOptionsCount: (p.checkout_options ?? []).length,
+                          isOwner: isOwner ? true : isOwner === false ? false : undefined,
+                        });
+                        if (cta.kind === "order") {
+                          return (
+                            <Button size="sm" onClick={() => openCheckout(p)}>
+                              Order
+                            </Button>
+                          );
+                        }
+                        return (
+                          <div className="space-y-1">
+                            <Button size="sm" disabled>
+                              Order
+                            </Button>
+                            <p className="text-xs text-gray-500">{cta.message}</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -479,8 +552,10 @@ export default function TerminalShopPage() {
                       <div className="space-y-1">
                         <p className="font-medium text-gray-900">{o.terminal_products?.name ?? "Terminal order"}</p>
                         <p className="text-xs text-gray-500">
-                          {new Date(o.created_at).toLocaleDateString()} · {o.commercial_model.replace(/_/g, " ")} ·{" "}
-                          {o.currency} {Number(o.total_amount).toLocaleString()}
+                          {new Date(o.created_at).toLocaleDateString()} ·{" "}
+                          {TERMINAL_COMMERCIAL_MODEL_LABELS[o.commercial_model as TerminalCommercialModel] ??
+                            o.commercial_model.replace(/_/g, " ")}{" "}
+                          · {o.currency} {Number(o.total_amount).toLocaleString()}
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="outline" className="text-xs capitalize">{o.order_status.replace(/_/g, " ")}</Badge>
@@ -503,8 +578,8 @@ export default function TerminalShopPage() {
                           </p>
                         )}
                         <OrderProgress order={o} />
-                        {o.integration_setup_status === "pending" && o.integration_setup_url && (
-                          <Link href={o.integration_setup_url} className="inline-flex items-center gap-1 text-xs font-medium text-pink-600 underline">
+                        {o.integration_setup_status === "pending" && (
+                          <Link href={integrationSetupHref(o)} className="inline-flex items-center gap-1 text-xs font-medium text-pink-600 underline">
                             <Wrench className="h-3 w-3" />
                             Complete brand integration setup
                           </Link>
@@ -538,7 +613,15 @@ export default function TerminalShopPage() {
               <div className="space-y-2">
                 {assets.map((a) => (
                   <div key={a.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm">
-                    <span>{a.terminal_products?.name ?? "Terminal device"}</span>
+                    <div>
+                      <p>{a.terminal_products?.name ?? "Terminal device"}</p>
+                      {a.ownership_model && (
+                        <p className="text-xs text-gray-500">
+                          {TERMINAL_ASSET_OWNERSHIP_LABELS[a.ownership_model] ??
+                            a.ownership_model.replace(/_/g, " ")}
+                        </p>
+                      )}
+                    </div>
                     <Badge variant="outline" className="capitalize">{a.status.replace(/_/g, " ")}</Badge>
                   </div>
                 ))}
@@ -547,10 +630,16 @@ export default function TerminalShopPage() {
           )}
 
           <p className="text-xs text-gray-500">
-            After purchase, complete vendor integration in{" "}
-            <Link href="/provider/settings/sales/terminal-integrations" className="underline">
-              Terminal Integrations
-            </Link>
+            After purchase, complete setup in{" "}
+            {paycloudEnabled ? (
+              <Link href="/provider/settings/sales/card-machines" className="underline">
+                Card machines
+              </Link>
+            ) : (
+              <Link href="/provider/settings/sales/terminal-integrations" className="underline">
+                Terminal Integrations
+              </Link>
+            )}
             .
           </p>
         </div>
@@ -564,25 +653,31 @@ export default function TerminalShopPage() {
 
             {checkoutStep === 1 && (
               <div className="mt-4 space-y-2">
-                {checkoutOptions.map((opt) => (
-                  <label key={opt.commercial_model} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="commercial_model"
-                      value={opt.commercial_model}
-                      checked={commercialModel === opt.commercial_model}
-                      onChange={() => setCommercialModel(opt.commercial_model)}
-                      className="mt-1"
-                    />
-                    <span className="flex-1 text-sm">
-                      <span className="font-medium">{opt.label}</span>
-                      <span className="block text-gray-500">
-                        {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "No payment required"}
+                {checkoutOptions.length === 0 ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    This product isn&apos;t configured for checkout. Contact Beautonomi support.
+                  </p>
+                ) : (
+                  checkoutOptions.map((opt) => (
+                    <label key={opt.commercial_model} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="commercial_model"
+                        value={opt.commercial_model}
+                        checked={commercialModel === opt.commercial_model}
+                        onChange={() => setCommercialModel(opt.commercial_model)}
+                        className="mt-1"
+                      />
+                      <span className="flex-1 text-sm">
+                        <span className="font-medium">{opt.label}</span>
+                        <span className="block text-gray-500">
+                          {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "No payment required"}
+                        </span>
+                        {opt.description && <span className="block text-xs text-gray-400 mt-1">{opt.description}</span>}
                       </span>
-                      {opt.description && <span className="block text-xs text-gray-400 mt-1">{opt.description}</span>}
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  ))
+                )}
               </div>
             )}
 
@@ -668,12 +763,19 @@ export default function TerminalShopPage() {
               {checkoutStep < 3 ? (
                 <Button
                   onClick={advanceCheckoutStep}
-                  disabled={checkoutStep === 1 && !selectedOption}
+                  disabled={
+                    (checkoutStep === 1 && !selectedOption) ||
+                    (checkoutStep === 1 && checkoutOptions.length === 0)
+                  }
                 >
                   Continue
                 </Button>
               ) : (
-                <Button onClick={() => void placeOrder()} disabled={submitting}>
+                <Button
+                  onClick={() => void placeOrder()}
+                  disabled={submitting || !checkoutConfirmState.ok}
+                  title={checkoutConfirmState.message}
+                >
                   {submitting
                     ? "Placing…"
                     : selectedOption?.requires_payment
@@ -682,6 +784,9 @@ export default function TerminalShopPage() {
                 </Button>
               )}
             </div>
+            {checkoutStep === 3 && !checkoutConfirmState.ok && checkoutConfirmState.message ? (
+              <p className="mt-2 text-xs text-amber-700">{checkoutConfirmState.message}</p>
+            ) : null}
           </div>
         </div>
       )}

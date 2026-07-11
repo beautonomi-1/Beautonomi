@@ -1,0 +1,69 @@
+{
+  "audit_id": "AUDIT-2026-07-11",
+  "executed_at": "2026-07-11T14:50:00.000Z",
+  "evidence_mode": "local_static_only",
+  "commands": [
+    {
+      "command": "node scripts/audit/generate-go-live-audit.mjs",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "Generated all JSON registers"
+    },
+    {
+      "command": "pnpm parity:check",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "32/32 contract screens implemented on mobile; provider core 7 files OK"
+    },
+    {
+      "command": "pnpm audit:routes",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "ROUTES_WEB.md 1587 entries, ROUTES_CUSTOMER.md 95, ROUTES_PROVIDER.md 234"
+    },
+    {
+      "command": "pnpm audit:multi-tenant",
+      "exit_code": 0,
+      "result": "pass_with_review",
+      "notes": "16 admin routes flagged for tenant scope review; 0 non-admin routes flagged by heuristic"
+    },
+    {
+      "command": "node scripts/prod/readiness-check.mjs --skip-runtime",
+      "exit_code": 1,
+      "result": "fail",
+      "notes": "web typecheck failed: terminal-shop/page.tsx TS2339; 53 provider routes missing getProviderIdForUser heuristic"
+    },
+    {
+      "command": "pnpm --filter web exec vitest run (payments/ledger)",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "18 test files, 95 tests passed; reconciliation-drift warns loyalty_discount allowlist unused"
+    },
+    {
+      "command": "pnpm --filter customer test",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "32 suites, 213 tests passed"
+    },
+    {
+      "command": "pnpm --filter provider test",
+      "exit_code": 0,
+      "result": "pass",
+      "notes": "67 suites, 335 tests passed"
+    }
+  ],
+  "test_totals": {
+    "test_files": 565,
+    "e2e_specs": 2,
+    "web_vitest_payment_ledger": 95,
+    "customer_jest": 213,
+    "provider_jest": 335
+  },
+  "limitations": [
+    "No staging or production runtime access",
+    "Paystack webhook confirmation not tested live",
+    "Cross-tenant isolation not penetration-tested live",
+    "Backup restore not executed",
+    "Game-day drills not executed"
+  ]
+}

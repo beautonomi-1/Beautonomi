@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  handleApiError,
+  notFoundResponse,
+} from "@/lib/supabase/api-helpers";
 import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
@@ -17,6 +23,10 @@ export async function POST(
     const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff'], request);
     const supabase = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
 
     // Verify notification belongs to this user (ownership check)
     const { data: notification, error: fetchError } = await supabase

@@ -158,12 +158,14 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
 
   const stats = useMemo(() => {
     const t = salesPayload?.totals;
+    const hasRangeTotals = Boolean(t);
     return {
       count: salesPayload?.total ?? sales.length,
-      gross: t?.total_gross ?? sales.reduce((s, r) => s + r.gross_total, 0),
-      net: t?.total_provider_net ?? sales.reduce((s, r) => s + r.provider_net, 0),
-      platform: t?.total_platform_fee ?? sales.reduce((s, r) => s + r.platform_fee, 0),
-      commission: t?.total_commission ?? sales.reduce((s, r) => s + r.commission, 0),
+      hasRangeTotals,
+      gross: hasRangeTotals ? t!.total_gross : null,
+      net: hasRangeTotals ? t!.total_provider_net : null,
+      platform: hasRangeTotals ? t!.total_platform_fee : null,
+      commission: hasRangeTotals ? t!.total_commission : null,
     };
   }, [sales, salesPayload]);
 
@@ -251,24 +253,33 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard title="Count" value={String(stats.count)} icon="list-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-          <StatCard title="Gross" value={formatCurrency(stats.gross)} icon="cash-outline" iconColor="#0d9488" iconBg="bg-teal-50" compact />
-          <StatCard
-            title="Net to you"
-            value={formatCurrency(stats.net)}
-            icon="wallet-outline"
-            iconColor="#15803d"
-            iconBg="bg-green-50"
-            compact
-          />
-          <StatCard
-            title="Platform fees"
-            value={formatCurrency(stats.platform)}
-            icon="shield-outline"
-            iconColor="#c2410c"
-            iconBg="bg-orange-50"
-            compact
-          />
+          {stats.hasRangeTotals ? (
+            <>
+              <StatCard title="Gross" value={formatCurrency(stats.gross!)} icon="cash-outline" iconColor="#0d9488" iconBg="bg-teal-50" compact />
+              <StatCard
+                title="Net to you"
+                value={formatCurrency(stats.net!)}
+                icon="wallet-outline"
+                iconColor="#15803d"
+                iconBg="bg-green-50"
+                compact
+              />
+              <StatCard
+                title="Platform fees"
+                value={formatCurrency(stats.platform!)}
+                icon="shield-outline"
+                iconColor="#c2410c"
+                iconBg="bg-orange-50"
+                compact
+              />
+            </>
+          ) : null}
         </ReportResponsiveStatRow>
+        {!stats.hasRangeTotals && sales.length > 0 ? (
+          <Text style={twStyle("px-4 text-xs text-gray-500")}>
+            Range totals unavailable — open a row or export CSV for full-period figures.
+          </Text>
+        ) : null}
       </View>
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search ref or client..." />

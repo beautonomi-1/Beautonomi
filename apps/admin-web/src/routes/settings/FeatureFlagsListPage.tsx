@@ -67,14 +67,17 @@ const FLAG_CATEGORIES = [
 ];
 
 /**
+ * Flag keys hidden from operator toggles — legacy or unwired rows kept in DB for
+ * reporting but not actionable in this UI.
+ */
+const HIDDEN_OPERATOR_FLAG_KEYS = new Set(["payment_stripe"]);
+
+/**
  * Flag keys that exist in the DB but have NO runtime reader in application code.
  * The DB row is inert; the feature is controlled by a different mechanism.
  * Displayed as a muted badge so operators are not misled.
  */
-const UNWIRED_FLAG_KEYS: Record<string, string> = {
-  payment_stripe:
-    "Not enforced in code — Stripe is not the processor. Online card payments are gated by payment_paystack.",
-};
+const UNWIRED_FLAG_KEYS: Record<string, string> = {};
 
 /**
  * Normalise the category field so that legacy `'payment'` (singular, from migration 092)
@@ -305,10 +308,11 @@ export function FeatureFlagsListPage() {
   });
 
   const rows: FlagRow[] = (Array.isArray(q.data) ? q.data : []).filter((r) =>
-    !search ||
+    !HIDDEN_OPERATOR_FLAG_KEYS.has(r.feature_key ?? "") &&
+    (!search ||
     r.feature_name.toLowerCase().includes(search.toLowerCase()) ||
     (r.feature_key ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (r.description ?? "").toLowerCase().includes(search.toLowerCase())
+    (r.description ?? "").toLowerCase().includes(search.toLowerCase()))
   );
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.featureFlags() });

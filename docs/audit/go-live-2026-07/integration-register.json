@@ -1,0 +1,178 @@
+{
+  "integrations": [
+    {
+      "id": "INT-001",
+      "name": "Paystack",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/lib/payments/paystack-server.ts",
+        "apps/web/src/app/api/payments/webhook/route.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": true
+    },
+    {
+      "id": "INT-002",
+      "name": "PayCloud",
+      "status": "partial",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/lib/payments/paycloud-client.ts",
+        "apps/web/src/app/api/provider/paycloud/webhook/route.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": true,
+      "gap": "same-terminal native module missing"
+    },
+    {
+      "id": "INT-003",
+      "name": "Yoco",
+      "status": "full",
+      "owner": "provider",
+      "paths": [
+        "apps/web/src/app/api/provider/yoco/webhook/route.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": true
+    },
+    {
+      "id": "INT-004",
+      "name": "Didit",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/app/api/webhooks/didit/route.ts",
+        "apps/web/src/lib/identity-verification/identity-verification-service.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": true
+    },
+    {
+      "id": "INT-005",
+      "name": "Wasender",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/app/api/webhooks/wasender/route.ts",
+        "apps/web/src/lib/whatsapp/wasender-client.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-006",
+      "name": "Amplitude",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "packages/analytics/",
+        "apps/web/src/lib/analytics/amplitude/"
+      ],
+      "monitoring": false,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-007",
+      "name": "Gemini",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/lib/ai/gemini.ts"
+      ],
+      "monitoring": false,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-008",
+      "name": "Aura",
+      "status": "partial",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/app/api/me/safety/panic/route.ts"
+      ],
+      "monitoring": false,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-009",
+      "name": "OneSignal",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/lib/notifications/onesignal.ts"
+      ],
+      "monitoring": true,
+      "reconciliation": true
+    },
+    {
+      "id": "INT-010",
+      "name": "Mapbox",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/app/api/mapbox/"
+      ],
+      "monitoring": false,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-011",
+      "name": "Stripe",
+      "status": "mock",
+      "owner": "none",
+      "paths": [
+        "apps/admin-web/src/routes/settings/FeatureFlagsListPage.tsx"
+      ],
+      "monitoring": false,
+      "reconciliation": false,
+      "gap": "flag only, no processor code"
+    },
+    {
+      "id": "INT-012",
+      "name": "Flutterwave",
+      "status": "mock",
+      "owner": "none",
+      "paths": [
+        "supabase/migrations/126_booking_payments_and_refunds.sql"
+      ],
+      "monitoring": false,
+      "reconciliation": false,
+      "gap": "enum only"
+    },
+    {
+      "id": "INT-013",
+      "name": "Aramex/BobGo/CourierGuy",
+      "status": "stub",
+      "owner": "platform",
+      "paths": [
+        "packages/shipping/src/providers/"
+      ],
+      "monitoring": false,
+      "reconciliation": false,
+      "gap": "createShipment throws"
+    },
+    {
+      "id": "INT-014",
+      "name": "Slack",
+      "status": "full",
+      "owner": "ops",
+      "paths": [
+        "apps/web/src/lib/integrations/slack/"
+      ],
+      "monitoring": true,
+      "reconciliation": false
+    },
+    {
+      "id": "INT-015",
+      "name": "Twilio",
+      "status": "full",
+      "owner": "platform",
+      "paths": [
+        "apps/web/src/app/api/webhooks/twilio/route.ts"
+      ],
+      "monitoring": false,
+      "reconciliation": false
+    }
+  ]
+}

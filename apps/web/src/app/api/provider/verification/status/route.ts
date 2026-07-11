@@ -12,6 +12,7 @@ import { loadProviderVerificationState } from "@/lib/verification/provider-verif
 import {
   verificationPlanProgress,
   VERIFICATION_STEP_LABELS,
+  planRequiresBusinessVerification,
   type VerificationStep,
 } from "@/lib/verification/verification-plan";
 
@@ -113,10 +114,9 @@ export async function GET(request: NextRequest) {
     let effectiveStatus = kycStatus;
 
     const planComplete = verificationState?.isComplete === true;
-    const kybRequired =
-      verificationState?.plan.kybRequiredForBusiness === true &&
-      verificationState.plan.payeeKind === "business" &&
-      verificationState.plan.required_steps.includes("business_kyb");
+    const businessVerificationRequired = verificationState
+      ? planRequiresBusinessVerification(verificationState.plan)
+      : false;
     const personApproved =
       kycStatus === "approved" ||
       manualStatus === "approved" ||
@@ -124,8 +124,8 @@ export async function GET(request: NextRequest) {
       identityVerified ||
       providerIsVerified;
 
-    // When KYB is required, overall status is approved only if the full plan is complete.
-    if (kybRequired) {
+    // When business verification is required, overall status is approved only if the full plan is complete.
+    if (businessVerificationRequired) {
       if (planComplete) {
         effectiveStatus = "approved";
       } else if (

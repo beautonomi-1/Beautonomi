@@ -53,7 +53,11 @@ function heuristicProviderRoutesMissingGuard() {
         else if (e.name === "route.ts") {
           const content = readFileSync(full, "utf8");
           const hasRequireRole = /requireRoleInApi|requireRole\s*\(/.test(content);
-          const hasGetProviderId = /getProviderIdForUser/.test(content);
+          const hasGetProviderId =
+            /getProviderIdForUser/.test(content) ||
+            /userHasProviderAccessAdmin/.test(content) ||
+            /requireProviderSupportTicketAccess/.test(content) ||
+            /resourceTenantMatchesHostTenant/.test(content);
           const hasProviderByUserId = /\.from\s*\(\s*["']providers["']\s*\)[\s\S]*?user_id[\s\S]*?user\.id/.test(content);
           if (hasRequireRole && !hasGetProviderId && !hasProviderByUserId && !content.includes("superadmin-only")) {
             results.push(normalize(full));
@@ -121,6 +125,17 @@ async function main() {
   const providerMissingGuard = apps.includes("web") ? heuristicProviderRoutesMissingGuard() : [];
   if (providerMissingGuard.length > 0) {
     report.push({ check: "provider-guard", status: "warn", routes: providerMissingGuard });
+  }
+
+  if (apps.includes("web") && process.env.VERCEL_ENV === "production") {
+    const upstashOk =
+      Boolean(process.env.UPSTASH_REDIS_REST_URL) && Boolean(process.env.UPSTASH_REDIS_REST_TOKEN);
+    report.push({
+      check: "upstash-rate-limit",
+      status: upstashOk ? "ok" : "fail",
+      reason: upstashOk ? null : "UPSTASH_REDIS_REST_URL/TOKEN required in production",
+    });
+    if (!upstashOk) failed = true;
   }
 
   console.log(JSON.stringify({ report, failed, providerRoutesMissingGuard: providerMissingGuard }, null, 2));

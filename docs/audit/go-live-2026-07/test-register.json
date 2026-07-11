@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-07-11T14:50:00.000Z",
+  "total_test_files": 565,
+  "total_e2e_specs": 2,
+  "frameworks": {
+    "web": "Vitest 4 + Playwright",
+    "admin_web": "Vitest + Playwright",
+    "customer": "Jest 29 + jest-expo",
+    "provider": "Jest 29 + jest-expo",
+    "packages": "Vitest/Jest"
+  },
+  "execution_results": {
+    "web_payment_ledger": { "files": 18, "tests": 95, "passed": 95, "failed": 0 },
+    "customer": { "suites": 32, "tests": 213, "passed": 213, "failed": 0 },
+    "provider": { "suites": 67, "tests": 335, "passed": 335, "failed": 0 },
+    "release_check": { "passed": false, "reason": "web typecheck failure" }
+  },
+  "critical_journey_coverage": [
+    { "journey_id": "JRN-001", "risk": "high", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-002", "risk": "high", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-003", "risk": "critical", "unit_tests": true, "e2e": true, "coverage": "partial", "note": "E2E happy path only; map coords broken" },
+    { "journey_id": "JRN-004", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "insufficient" },
+    { "journey_id": "JRN-006", "risk": "high", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-011", "risk": "high", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-016", "risk": "high", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-017", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-025", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-026", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "insufficient" },
+    { "journey_id": "JRN-034", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-047", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "partial", "note": "reconciliation-drift.test.ts passes" },
+    { "journey_id": "JRN-052", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "insufficient" },
+    { "journey_id": "JRN-053", "risk": "critical", "unit_tests": true, "e2e": false, "coverage": "partial" },
+    { "journey_id": "JRN-054", "risk": "critical", "unit_tests": false, "e2e": false, "coverage": "none" }
+  ],
+  "missing_tests": [
+    { "id": "TST-GAP-001", "description": "Paystack webhook E2E with HMAC and idempotency replay", "journeys": ["JRN-004", "JRN-013"] },
+    { "id": "TST-GAP-002", "description": "Payout request to Paystack transfer E2E", "journeys": ["JRN-026", "JRN-027"] },
+    { "id": "TST-GAP-003", "description": "Cross-tenant access penetration tests", "journeys": ["JRN-052"] },
+    { "id": "TST-GAP-004", "description": "Mobile Detox/Maestro E2E", "journeys": ["JRN-014", "JRN-015"] },
+    { "id": "TST-GAP-005", "description": "Backup restore drill", "journeys": ["JRN-054"] },
+    { "id": "TST-GAP-006", "description": "Admin section RBAC negative tests (admin_finance accessing trust routes)", "journeys": ["JRN-038"] },
+    { "id": "TST-GAP-007", "description": "Shipping courier integration tests", "journeys": ["JRN-003"] }
+  ],
+  "flaky_skipped": [],
+  "readiness_score": 52,
+  "confidence": "high"
+}

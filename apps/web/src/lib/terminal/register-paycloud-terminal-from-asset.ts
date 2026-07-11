@@ -38,6 +38,14 @@ export async function registerPaycloudTerminalFromAsset(
         updated_at: new Date().toISOString(),
       })
       .eq("id", existing.id);
+    try {
+      const { markPendingIntegrationOrdersComplete } = await import(
+        "@/lib/terminal/terminal-integration-setup"
+      );
+      await markPendingIntegrationOrdersComplete(supabase, params.providerId, "paycloud");
+    } catch (err) {
+      console.warn("[paycloud] markPendingIntegrationOrdersComplete after asset rebind:", err);
+    }
     return { terminalId: existing.id };
   }
 
@@ -93,6 +101,15 @@ export async function registerPaycloudTerminalFromAsset(
       },
       { onConflict: "provider_id", ignoreDuplicates: true },
     );
+
+  try {
+    const { markPendingIntegrationOrdersComplete } = await import(
+      "@/lib/terminal/terminal-integration-setup"
+    );
+    await markPendingIntegrationOrdersComplete(supabase, params.providerId, "paycloud");
+  } catch (err) {
+    console.warn("[paycloud] markPendingIntegrationOrdersComplete after asset register:", err);
+  }
 
   return { terminalId: terminal.id };
 }

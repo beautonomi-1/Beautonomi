@@ -14,8 +14,6 @@
 export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   // Business identity → wizard "Business details"
   "profile-details": 3,
-  // Personal profile (freelancer bio) is closest to identity step.
-  "personal-profile": 2,
   // Address / service area → wizard "Location"
   "service-address": 7,
   // Profile photo + gallery → wizard "Photos"
@@ -29,15 +27,10 @@ export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   availability: 13,
   // Card machine / payment terminal → wizard "Payment setup"
   payment: 4,
-  // §provider-onboarding-2026-05: `payment-methods` and `payout` are now
-  // handled exclusively by their native screens (returned via the server's
-  // `native_route` field). Intentionally omitted here so we never land
-  // providers on a misleading wizard step (which previously mapped both to
-  // unrelated screens 4/13) when their native route is unavailable; the
-  // checklist UI now falls back to the onboarding wizard root instead.
-  // Identity verification is post-onboarding admin flow; nearest wizard
-  // surface is "Your identity" so the provider can confirm details first.
-  "identity-verification": 2,
+  // `personal-profile`, `identity-verification`, `payment-methods`, and
+  // `payout` have dedicated native screens — intentionally omitted so
+  // resolveSetupStepRoute falls back to the setup hub instead of wizard
+  // step 2 (phone/email OTP).
 };
 
 /**

@@ -7,10 +7,11 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { UserRole } from "@/types/beautonomi";
+import type { UsersRoleFromDb } from "@/lib/auth/role";
 import { NextResponse } from "next/server";
 
 export interface RequireRoleOptions {
-  allowedRoles: UserRole[];
+  allowedRoles: UsersRoleFromDb[];
   redirectTo?: string;
 }
 
@@ -30,10 +31,10 @@ function getErrorCause(err: unknown): { code?: string } | undefined {
  * @throws Redirects to login if not authenticated
  */
 export async function requireRole(
-  allowedRoles: UserRole[],
+  allowedRoles: UsersRoleFromDb[],
   /** When set (e.g. mobile `Authorization: Bearer`), resolves the session from the token instead of cookies only. */
   request?: Pick<Request, "headers">,
-): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: Record<string, unknown>; full_name?: string | null } } | null> {
+): Promise<{ user: { id: string; role: UsersRoleFromDb; email?: string; user_metadata?: Record<string, unknown>; full_name?: string | null } } | null> {
   const supabase = await getSupabaseServer(request);
 
   try {
@@ -121,7 +122,7 @@ export async function requireRole(
 
     type UserRow = { id: string; role: string | null; full_name: string | null };
     const u = userData as UserRow;
-    const userRole = u.role as UserRole;
+    const userRole = u.role as UsersRoleFromDb;
 
     if (!userRole) {
       console.error(`User ${authUser.id} has no role assigned in users table`);
@@ -130,7 +131,7 @@ export async function requireRole(
 
     // Align with requireRoleInApi Bearer path: business owner may still have users.role = customer
     // (OAuth / web cookie session before /api/me/role persists provider_owner).
-    let effectiveRole = userRole as UserRole;
+    let effectiveRole = userRole;
     if (
       effectiveRole === "customer" &&
       (allowedRoles.includes("provider_owner") || allowedRoles.includes("provider_staff"))

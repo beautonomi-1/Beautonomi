@@ -582,11 +582,12 @@ export default function DashboardScreen() {
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
   const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
-  const topServices = normalizeTopServicesPayload(fallbackTopServices) ?? null;
+  const topServices =
+    normalizeTopServicesPayload(metrics?.insights?.top_services ?? fallbackTopServices) ?? null;
   const recentActivity =
     metrics?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
   const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
-  const topServicesError = fallbackTopServicesError;
+  const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
   const activityError = hasBundledInsights ? null : fallbackActivityError;
 
   const refreshRealtimeDashboardData = useCallback(() => {
@@ -597,7 +598,7 @@ export default function DashboardScreen() {
         tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
       }
     }
-    if (secondaryEnabled) {
+    if (secondaryEnabled && !hasBundledInsights) {
       tasks.push(refreshFallbackTopServices());
     }
     if (!hasBundledBookingEligibility) {
@@ -626,7 +627,7 @@ export default function DashboardScreen() {
           tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
         }
       }
-      if (secondaryEnabled) {
+      if (secondaryEnabled && !hasBundledInsights) {
         tasks.push(refreshFallbackTopServices());
       }
       if (!hasBundledBookingEligibility) {

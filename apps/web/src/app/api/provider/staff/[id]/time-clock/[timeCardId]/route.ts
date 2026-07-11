@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
 
 const updateTimeCardSchema = z.object({
@@ -53,8 +54,8 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return notFoundResponse("Time card not found");
       }
-      if (error.code === '42P01') {
-        return successResponse(null);
+      if (isMissingRelationError(error)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw error;
     }
@@ -120,20 +121,25 @@ export async function PUT(
     }
 
     // Verify time card exists and belongs to staff
-    const { data: existingCard } = await supabase
+    const { data: existingCard, error: existingError } = await supabase
       .from("staff_time_cards")
       .select("id")
       .eq("id", timeCardId)
       .eq("staff_id", id)
       .single();
 
-    if (!existingCard) {
-      if (existingCard === null) {
+    if (existingError) {
+      if (existingError.code === "PGRST116") {
         return notFoundResponse("Time card not found");
       }
-      // Table might not exist
-      const error: any = { code: '42P01' };
-      throw error;
+      if (isMissingRelationError(existingError)) {
+        return migrationRequiredResponse("Staff time tracking");
+      }
+      throw existingError;
+    }
+
+    if (!existingCard) {
+      return notFoundResponse("Time card not found");
     }
 
     // Build update data
@@ -163,8 +169,8 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      if (updateError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(updateError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw updateError;
     }
@@ -225,8 +231,8 @@ export async function DELETE(
       .eq("staff_id", id);
 
     if (deleteError) {
-      if (deleteError.code === '42P01') {
-        return successResponse({ success: true });
+      if (isMissingRelationError(deleteError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw deleteError;
     }

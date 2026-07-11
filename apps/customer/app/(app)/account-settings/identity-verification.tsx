@@ -43,6 +43,7 @@ import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import { LegalDetailsConfirmForm } from "@/components/LegalDetailsConfirmForm";
 import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
+import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
 
 const DOCUMENT_TYPE_OPTIONS = [
@@ -212,7 +213,12 @@ export default function IdentityVerificationScreen() {
         confirmedLegalDetails: legalDetails.firstName ? legalDetails : undefined,
       });
       if (!result.ok) {
-        Alert.alert(errTitle, result.error ?? iv("startError"));
+        Alert.alert(
+          errTitle,
+          formatDiditLaunchError(result.error ?? iv("startError"), {
+            manualAvailable: statusData?.manual_available !== false,
+          }),
+        );
       } else {
         startPolling();
         void load({ silent: true });
@@ -223,7 +229,7 @@ export default function IdentityVerificationScreen() {
     } finally {
       setLaunching(false);
     }
-  }, [errTitle, iv, load, returnTo, legalDetails, validateAndGetErrors, startPolling, refreshIvStatus]);
+  }, [errTitle, iv, load, returnTo, legalDetails, validateAndGetErrors, startPolling, refreshIvStatus, statusData?.manual_available]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {

@@ -3,16 +3,20 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, admin);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
 
-    const supabase = getSupabaseAdmin();
     const env = process.env.NODE_ENV === "production" ? "production" : "development";
-    const { data: config } = await supabase
+    const { data: config } = await admin
       .from("ads_module_config")
       .select("enabled, available_models, default_model")
       .eq("environment", env)
@@ -26,10 +30,10 @@ export async function GET(request: NextRequest) {
 
     const [impressionRes, timeRes] = await Promise.all([
       availableModels.includes("impression_pack")
-        ? supabase.from("ads_impression_packs").select("id, impressions, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin.from("ads_impression_packs").select("id, impressions, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       availableModels.includes("time_based")
-        ? supabase.from("ads_time_packs").select("id, duration_days, label, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin.from("ads_time_packs").select("id, duration_days, label, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
 

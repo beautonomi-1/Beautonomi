@@ -8,7 +8,8 @@ const mockLocationHasOperatingHours = vi.fn();
 const mockCreateClient = vi.fn();
 const mockIsFeatureEnabledServer = vi.fn();
 const mockCheckMultipleFeaturesServer = vi.fn();
-const mockIsProviderVerificationPlanComplete = vi.fn();
+const mockLoadProviderVerificationState = vi.fn();
+const mockResolveVerificationPolicy = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireAuthInApi: (...args: unknown[]) => mockRequireAuthInApi(...args),
@@ -43,8 +44,12 @@ vi.mock("@/lib/server/feature-flags", () => ({
 }));
 
 vi.mock("@/lib/verification/provider-verification-state", () => ({
-  isProviderVerificationPlanComplete: (...args: unknown[]) =>
-    mockIsProviderVerificationPlanComplete(...args),
+  loadProviderVerificationState: (...args: unknown[]) =>
+    mockLoadProviderVerificationState(...args),
+}));
+
+vi.mock("@/lib/verification/verification-policy", () => ({
+  resolveVerificationPolicy: (...args: unknown[]) => mockResolveVerificationPolicy(...args),
 }));
 
 type Fixture = {
@@ -143,6 +148,8 @@ function emptyFixture(overrides: Partial<Fixture> = {}): Fixture {
       phone: "+27000000000",
       email: "shop@example.com",
       is_verified: false,
+      tenant_id: "tenant-1",
+      payee_kind: "individual",
     },
     accountUser: { identity_verified: false, identity_verification_status: null, email: "u@example.com", phone: "+27" },
     providerKyc: null,
@@ -179,7 +186,6 @@ async function callRoute(fixture: Fixture) {
   );
   mockIsFeatureEnabledServer.mockResolvedValue(true);
   mockCheckMultipleFeaturesServer.mockResolvedValue({});
-  mockIsProviderVerificationPlanComplete.mockResolvedValue(false);
   const { GET } = await import("../route");
   const req = new NextRequest("https://app.example.com/api/provider/setup-status");
   const res = await GET(req);
@@ -190,6 +196,12 @@ describe("GET /api/provider/setup-status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    mockLoadProviderVerificationState.mockResolvedValue(null);
+    mockResolveVerificationPolicy.mockResolvedValue({
+      requiredForProviders: true,
+      kybEnabled: false,
+      kybRequiredForBusiness: false,
+    });
   });
 
   it("does not auto-complete payment-methods when no accept_* flag is true", async () => {
@@ -250,5 +262,79 @@ describe("GET /api/provider/setup-status", () => {
     const ids = res.data.steps.map((s: any) => s.id);
     expect(ids).not.toContain("paystack-terminal");
     expect(ids).not.toContain("paystack-terminal-assets");
+  });
+
+  it("keeps identity incomplete when business KYB is required but only person KYC is approved", async () => {
+    mockLoadProviderVerificationState.mockResolvedValue({
+      isComplete: false,
+      plan: {
+        required_steps: ["person_kyc", "business_kyb"],
+        effective_summary: "Registered business: Person identity (KYC); Business verification (KYB) — required",
+      },
+    });
+    const fixture = emptyFixture({
+      providerKyc: { status: "approved" },
+      accountUser: { identity_verified: true, identity_verification_status: "approved" },
+    });
+    (fixture.provider as any).payee_kind = "business";
+    const res = await callRoute(fixture);
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(false);
+    expect(idStep.title).toBe("Identity & business verification");
+  });
+
+  it("marks identity complete when the full verification plan is complete", async () => {
+    mockLoadProviderVerificationState.mockResolvedValue({
+      isComplete: true,
+      plan: {
+        required_steps: ["person_kyc", "business_kyb"],
+        effective_summary: "Registered business: Person identity (KYC); Business verification (KYB) — required",
+      },
+    });
+    const res = await callRoute(emptyFixture());
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(true);
+  });
+
+  it("uses legacy person approval when business verification is not required", async () => {
+    mockLoadProviderVerificationState.mockResolvedValue({
+      isComplete: false,
+      plan: { required_steps: ["person_kyc"], effective_summary: "Individual provider: Person identity (KYC)" },
+    });
+    const res = await callRoute(
+      emptyFixture({
+        accountUser: { identity_verified: true, identity_verification_status: "approved" },
+      }),
+    );
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(true);
+  });
+
+  it("requires manual business review completion when plan includes manual_business_review", async () => {
+    mockLoadProviderVerificationState.mockResolvedValue({
+      isComplete: false,
+      plan: {
+        required_steps: ["person_kyc", "manual_business_review"],
+        effective_summary: "Registered business: Person identity (KYC); Manual business document review",
+      },
+    });
+    const fixture = emptyFixture({
+      accountUser: { identity_verified: true, identity_verification_status: "approved" },
+    });
+    (fixture.provider as any).payee_kind = "business";
+    const res = await callRoute(fixture);
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(false);
+  });
+
+  it("does not use legacy person approval for business payee when verification state fails to load", async () => {
+    mockLoadProviderVerificationState.mockResolvedValue(null);
+    const fixture = emptyFixture({
+      accountUser: { identity_verified: true, identity_verification_status: "approved" },
+    });
+    (fixture.provider as any).payee_kind = "business";
+    const res = await callRoute(fixture);
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(false);
   });
 });

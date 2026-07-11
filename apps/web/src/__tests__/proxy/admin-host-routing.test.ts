@@ -75,17 +75,29 @@ describe("proxy admin host routing", () => {
     expect(supabaseMocks.getUser).not.toHaveBeenCalled();
   });
 
-  it("serves unauthenticated admin pages via the SPA shell (client-side auth)", async () => {
-    // Post-cutover: /admin/* rewrites to the SPA shell (HTTP 200). The shell holds
-    // no sensitive data; the SPA performs the auth redirect client-side, and all
-    // /api/admin/* data endpoints remain server-protected by requireAdminSection.
+  it("redirects unauthenticated admin dashboard requests to /admin/login", async () => {
     const response = await proxy(request("/admin/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://admin.beautonomi.com/admin/login?next=%2Fadmin%2Fdashboard",
+    );
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(supabaseMocks.getUser).not.toHaveBeenCalled();
+  });
+
+  it("serves authenticated admin pages via the SPA shell when session cookie present", async () => {
+    const req = new NextRequest("https://admin.beautonomi.com/admin/dashboard", {
+      headers: { host: "admin.beautonomi.com" },
+    });
+    req.cookies.set("sb-example-auth-token", "session-payload");
+
+    const response = await proxy(req);
 
     expect(response.headers.get("x-middleware-rewrite")).toBe(
       "https://admin.beautonomi.com/admin/index.html",
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
-    // No server-side auth check — the SPA bootstrap handles it.
     expect(supabaseMocks.getUser).not.toHaveBeenCalled();
   });
 

@@ -157,6 +157,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (customOfferIdRaw && !productOrderIdRaw && !bookingIdForCallback) {
+      const { data: offerRow, error: offerErr } = await supabase
+        .from("custom_offers")
+        .select("id, status, provider_id, request:custom_requests(customer_id, provider_id)")
+        .eq("id", customOfferIdRaw)
+        .maybeSingle();
+      if (offerErr || !offerRow) {
+        return errorResponse("Custom offer not found", "NOT_FOUND", 404);
+      }
+      const offer = offerRow as {
+        provider_id?: string | null;
+        request?: { customer_id?: string | null; provider_id?: string | null } | null;
+      };
+      const customerId =
+        offer.request?.customer_id ?? null;
+      if (customerId !== user.id) {
+        return errorResponse(
+          "You do not have permission to pay for this offer",
+          "FORBIDDEN",
+          403,
+        );
+      }
+      const providerIdForTenant = offer.provider_id ?? offer.request?.provider_id ?? null;
+      if (providerIdForTenant) {
+        const { data: provRow } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerIdForTenant)
+          .maybeSingle();
+        if (
+          !resourceTenantMatchesHostTenant(
+            tenantId,
+            (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+          )
+        ) {
+          return errorResponse(
+            "This offer belongs to a different market. Open checkout from the correct site or app for this offer.",
+            "TENANT_MISMATCH",
+            403,
+          );
+        }
+      }
+    }
+
     const bookingIdFromMeta = bookingIdForCallback;
     if (bookingIdFromMeta && !productOrderIdRaw) {
       const { data: bookingRow, error: bookingErr } = await supabase

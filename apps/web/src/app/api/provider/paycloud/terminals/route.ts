@@ -157,6 +157,18 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    try {
+      const { markPendingIntegrationOrdersComplete } = await import(
+        "@/lib/terminal/terminal-integration-setup"
+      );
+      await markPendingIntegrationOrdersComplete(supabase, providerId, "paycloud");
+    } catch (completeErr) {
+      console.error(
+        "POST /api/provider/paycloud/terminals: markPendingIntegrationOrdersComplete failed",
+        completeErr,
+      );
+    }
+
     return NextResponse.json({ data: terminal, error: null }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/provider/paycloud/terminals:", error);

@@ -344,8 +344,29 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
+    const leadIds = (data ?? []).map((row) => (row as { id: string }).id);
+    const overdueByLead = new Map<string, number>();
+    if (leadIds.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { data: overdueTasks } = await supabase
+        .from("provider_lead_tasks")
+        .select("lead_id")
+        .in("lead_id", leadIds)
+        .is("completed_at", null)
+        .lt("due_at", nowIso);
+      for (const row of overdueTasks ?? []) {
+        const lid = (row as { lead_id: string }).lead_id;
+        overdueByLead.set(lid, (overdueByLead.get(lid) ?? 0) + 1);
+      }
+    }
+
+    const enrichedData = (data ?? []).map((row) => ({
+      ...row,
+      overdue_task_count: overdueByLead.get((row as { id: string }).id) ?? 0,
+    }));
+
     return successResponse({
-      data: data || [],
+      data: enrichedData,
       meta: { page, limit, total, has_more: total > page * limit },
       stage_counts: stageCounts,
       filter_options: {

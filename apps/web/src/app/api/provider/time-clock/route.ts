@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 
 type StaffTimeCardRow = {
   id: string;
@@ -53,9 +54,8 @@ export async function GET(request: NextRequest) {
     const { data: timeCards, error } = await query;
 
     if (error) {
-      // If table doesn't exist, return empty array
-      if (error.code === '42P01') {
-        return successResponse([]);
+      if (isMissingRelationError(error)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw error;
     }
@@ -149,17 +149,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      // If table doesn't exist, return success with mock data
-      if (insertError.code === '42P01') {
-        return successResponse({
-          id: `temp-${Date.now()}`,
-          staff_id: staff.id,
-          team_member_name: staff.name,
-          date: today,
-          clock_in_time: now.toISOString(),
-          clock_out_time: null,
-          status: "clocked_in",
-        });
+      if (isMissingRelationError(insertError)) {
+        return migrationRequiredResponse("Staff time tracking");
       }
       throw insertError;
     }

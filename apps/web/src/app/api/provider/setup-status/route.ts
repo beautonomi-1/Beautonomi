@@ -11,7 +11,8 @@ import { locationHasOperatingHours } from "@/lib/provider/location-operating-hou
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
-import { isProviderVerificationPlanComplete } from "@/lib/verification/provider-verification-state";
+import { loadProviderVerificationState } from "@/lib/verification/provider-verification-state";
+import { planRequiresBusinessVerification } from "@/lib/verification/verification-plan";
 
 export interface SetupStatusStep {
   id: string;
@@ -129,7 +130,7 @@ export async function GET(request: NextRequest) {
     const { data: provider } = await supabaseAdmin
       .from("providers")
       .select(
-        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, payee_kind, accept_cash, accept_card, accept_online, phone, email, is_verified"
+        "id, status, tenant_id, business_name, description, gallery, thumbnail_url, avatar_url, business_type, payee_kind, accept_cash, accept_card, accept_online, phone, email, is_verified"
       )
       .eq("id", providerId)
       .single();
@@ -275,24 +276,39 @@ export async function GET(request: NextRequest) {
     const hasPaymentMethods =
       acceptCash || acceptCard || acceptOnline || effectiveGiftCardsEnabled === true;
 
-    // Identity verification — use the full verification plan (person KYC + KYB
-    // when required). Legacy person-only signals must not mark the step complete
-    // when KYB is still outstanding.
-    const providerTenantId = (provider as { tenant_id?: string | null }).tenant_id ?? tenantId;
+    // Identity verification — use the full verification plan (person KYC + KYB /
+    // manual business review when required). Legacy person-only signals must not
+    // mark the step complete when business verification is still outstanding.
+    const providerTenantId =
+      (provider as { tenant_id?: string | null }).tenant_id ?? tenantId;
     const verificationPolicy = await resolveVerificationPolicy(providerTenantId);
-    const kybRequired =
-      verificationPolicy.kybRequiredForBusiness &&
-      verificationPolicy.kybEnabled &&
-      (provider as { payee_kind?: string | null }).payee_kind === "business";
+    const verificationState = await loadProviderVerificationState(providerId);
+    const planVerified = verificationState?.isComplete ?? false;
+    const businessVerificationRequired = verificationState
+      ? planRequiresBusinessVerification(verificationState.plan)
+      : false;
 
-    const planVerified = await isProviderVerificationPlanComplete(providerId);
     const kycStatus = (providerKycRow as { status?: string | null } | null)?.status ?? null;
-    const isIdentityVerified = kybRequired
+    const legacyPersonApproved =
+      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified ===
+        true ||
+      kycStatus === "approved" ||
+      (provider as { is_verified?: boolean | null }).is_verified === true;
+
+    const isIdentityVerified = businessVerificationRequired
       ? planVerified
-      : planVerified ||
-        (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
-        kycStatus === "approved" ||
-        (provider as { is_verified?: boolean | null }).is_verified === true;
+      : verificationState
+        ? planVerified || legacyPersonApproved
+        : (provider as { payee_kind?: string | null }).payee_kind !== "business" &&
+          legacyPersonApproved;
+
+    const identityStepTitle = businessVerificationRequired
+      ? "Identity & business verification"
+      : "Identity Verification";
+    const identityStepDescription = businessVerificationRequired
+      ? verificationState?.plan.effective_summary ??
+        "Verify your identity and business details to earn the Verified badge and go live"
+      : "Verify your identity to earn the 'Verified' marketplace badge and increase customer trust";
 
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin
@@ -454,9 +470,8 @@ export async function GET(request: NextRequest) {
       },
       {
         id: "identity-verification",
-        title: "Identity Verification",
-        description:
-          "Verify your identity to earn the 'Verified' marketplace badge and increase customer trust",
+        title: identityStepTitle,
+        description: identityStepDescription,
         completed: isIdentityVerified,
         required: verificationPolicy.requiredForProviders,
         link: "/provider/settings/verification",

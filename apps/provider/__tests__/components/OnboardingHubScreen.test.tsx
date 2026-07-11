@@ -149,8 +149,20 @@ describe("OnboardingHubScreen", () => {
         isComplete: false,
         completionPercentage: 40,
         steps: [
-          { id: "profile-details", title: "Business Details", completed: true, required: true },
-          { id: "services", title: "Services", completed: false, required: true },
+          {
+            id: "profile-details",
+            title: "Business Details",
+            completed: true,
+            required: true,
+            native_route: "/(app)/(tabs)/more/settings/business",
+          },
+          {
+            id: "services",
+            title: "Services",
+            completed: false,
+            required: true,
+            native_route: "/(app)/(tabs)/more/catalogue",
+          },
         ],
       },
       loading: false,
@@ -161,9 +173,45 @@ describe("OnboardingHubScreen", () => {
     const screen = render(<OnboardingHubScreen />);
 
     expect(screen.getByText("Continue setup")).toBeTruthy();
-    expect(screen.getByText("Pick up where you left off")).toBeTruthy();
+    expect(screen.getByText("Jump to your next incomplete task")).toBeTruthy();
     expect(screen.getByText("Go to dashboard")).toBeTruthy();
     expect(screen.queryByText("Start business setup")).toBeNull();
+  });
+
+  it("continue setup navigates to the next incomplete native screen", () => {
+    mockUseApi.mockReturnValue({
+      data: {
+        isComplete: false,
+        completionPercentage: 40,
+        steps: [
+          {
+            id: "profile-details",
+            title: "Business Details",
+            completed: true,
+            required: true,
+            native_route: "/(app)/(tabs)/more/settings/business",
+          },
+          {
+            id: "services",
+            title: "Services",
+            completed: false,
+            required: true,
+            native_route: "/(app)/(tabs)/more/catalogue",
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    const screen = render(<OnboardingHubScreen />);
+    fireEvent.press(screen.getByText("Continue setup"));
+
+    expect(mockPush).toHaveBeenCalledWith("/(app)/(tabs)/more/catalogue");
+    expect(mockPush).not.toHaveBeenCalledWith(
+      expect.stringContaining("wizard?focus=identity-verification"),
+    );
   });
 
   it("routes complete providers to the dashboard", () => {

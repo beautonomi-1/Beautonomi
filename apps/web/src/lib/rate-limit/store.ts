@@ -2,6 +2,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 let redis: Redis | null = null;
+let warnedMissingUpstash = false;
 
 function getRedis(): Redis | null {
   if (redis) return redis;
@@ -71,6 +72,32 @@ function checkInMemory(
   return { allowed: true, remaining: config.limit - entry.count };
 }
 
+function warnMissingUpstashInProduction(config: RateLimitConfig): void {
+  if (warnedMissingUpstash) return;
+  if (process.env.VERCEL_ENV !== "production") return;
+  if (getRedis()) return;
+  warnedMissingUpstash = true;
+  try {
+    console.error(
+      JSON.stringify({
+        metric: "rate_limit_upstash_missing",
+        severity: "critical",
+        ts: new Date().toISOString(),
+        message:
+          "UPSTASH_REDIS_REST_URL/TOKEN not configured in production; rate limits fall back to per-instance memory.",
+      }),
+    );
+  } catch {
+    // ignore
+  }
+}
+
+function shouldFailClosedWithoutUpstash(config: RateLimitConfig): boolean {
+  if (process.env.VERCEL_ENV !== "production" || getRedis()) return false;
+  if (config.prefix === "sign-in" || config.prefix === "payment-init") return true;
+  return config.prefix.startsWith("payout-request");
+}
+
 export async function checkRateLimit(
   config: RateLimitConfig,
   key: string,
@@ -78,6 +105,10 @@ export async function checkRateLimit(
   const client = getRedis();
 
   if (!client) {
+    warnMissingUpstashInProduction(config);
+    if (shouldFailClosedWithoutUpstash(config)) {
+      return { allowed: false, remaining: 0, retryAfterSeconds: 60 };
+    }
     return checkInMemory(config, key);
   }
 

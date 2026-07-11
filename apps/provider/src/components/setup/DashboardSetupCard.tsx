@@ -14,6 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
+import {
+  GUIDED_WIZARD_ROUTE,
+  resolveNextIncompleteRoute,
+  resolveSetupStepRoute,
+  type SetupNavStep,
+} from "@/lib/setup-step-navigation";
 
 export type DashboardSetupStep = {
   id: string;
@@ -32,16 +38,10 @@ export type DashboardSetupStatus = {
 /**
  * Prefer a dedicated native screen when the server returned one (so the
  * provider lands directly on the form that fixes the missing field). Fall
- * back to the onboarding hub which already knows how to deep-link by id.
+ * back to the shared setup-step resolver.
  */
 function pickRouteForStep(step: DashboardSetupStep): string {
-  if (step.native_route && step.native_route.startsWith("/(app)/")) {
-    return step.native_route;
-  }
-  // §provider-setup-seamless-ux 2026-05: when a setup-status step has no
-  // dedicated native screen, fall through to the wizard with a `focus`
-  // hint so we don't dump the provider back at step 1.
-  return `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`;
+  return resolveSetupStepRoute(step as SetupNavStep);
 }
 
 export function DashboardSetupCard() {
@@ -65,7 +65,12 @@ export function DashboardSetupCard() {
 
   const openWizard = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push("/(app)/onboarding/wizard" as never);
+    router.push(GUIDED_WIZARD_ROUTE as never);
+  };
+
+  const continueSetup = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(resolveNextIncompleteRoute(steps as SetupNavStep[]) as never);
   };
 
   if (!hasSetupSteps) {
@@ -136,11 +141,6 @@ export function DashboardSetupCard() {
   const pct = Math.max(0, Math.min(100, data.completionPercentage));
   const requiredTotal = steps.filter((s) => s.required).length;
   const requiredDone = steps.filter((s) => s.required && s.completed).length;
-
-  const openHub = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push("/(app)/onboarding" as never);
-  };
 
   const openStep = (step: DashboardSetupStep) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -275,7 +275,7 @@ export function DashboardSetupCard() {
       )}
 
       <TouchableOpacity
-        onPress={openHub}
+        onPress={continueSetup}
         activeOpacity={0.88}
         style={{
           marginTop: 16,
@@ -287,7 +287,7 @@ export function DashboardSetupCard() {
           justifyContent: "center",
         }}
         accessibilityRole="button"
-        accessibilityLabel="Open setup hub"
+        accessibilityLabel="Continue setup"
       >
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: 0.2 }}>
           Continue setup

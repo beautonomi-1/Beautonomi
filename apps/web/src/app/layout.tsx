@@ -7,6 +7,8 @@ import { OrganizationSchema, WebSiteSchema } from "@/components/seo/structured-d
 import { RootErrorBoundary } from "@/components/global/RootErrorBoundary";
 import GlobalErrorLogger from "@/components/global/GlobalErrorLogger";
 import ClientAppShellLoader from "@/components/global/ClientAppShellLoader";
+import { CspNonceProvider } from "@/providers/CspNonceProvider";
+import { CSP_NONCE_HEADER } from "@/lib/security/csp-nonce";
 import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
 import {
   getPublicSiteOriginFromHeaders,
@@ -172,6 +174,7 @@ export default async function RootLayout({
   const organizationBaseUrl = await getPublicSiteOriginFromHeaders();
   const lang = await resolveTenantLang(headersList);
   const supabaseStorageOrigin = getSupabaseStorageOrigin();
+  const cspNonce = headersList.get(CSP_NONCE_HEADER) ?? undefined;
 
   return (
     <html lang={lang} className="overflow-x-hidden max-w-full">
@@ -192,14 +195,16 @@ export default async function RootLayout({
         ) : null}
       </head>
       <body className="font-beautonomi overflow-x-hidden max-w-full" suppressHydrationWarning>
-        <OrganizationSchema baseUrl={organizationBaseUrl} />
-        <WebSiteSchema baseUrl={organizationBaseUrl} />
+        <OrganizationSchema baseUrl={organizationBaseUrl} nonce={cspNonce} />
+        <WebSiteSchema baseUrl={organizationBaseUrl} nonce={cspNonce} />
         <GlobalErrorLogger />
         {process.env.NODE_ENV !== "production" ? (
           <SuppressConsoleWarningsWrapper />
         ) : null}
         <RootErrorBoundary>
-          <ClientAppShellLoader osType={osType}>{children}</ClientAppShellLoader>
+          <CspNonceProvider nonce={cspNonce}>
+            <ClientAppShellLoader osType={osType}>{children}</ClientAppShellLoader>
+          </CspNonceProvider>
         </RootErrorBoundary>
       </body>
     </html>

@@ -172,6 +172,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  categoryLoadingText: {
+    fontSize: 13,
+    color: Colors.gray[500],
+    paddingHorizontal: 4,
+  },
+  categoryErrorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  categoryErrorText: {
+    fontSize: 13,
+    color: "#B91C1C",
+    flexShrink: 1,
+  },
+  categoryRetryButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+  },
+  categoryRetryText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   mainScroll: {
     flex: 1,
     backgroundColor: Colors.white,
@@ -421,7 +448,7 @@ export default function HomeScreen() {
     ? [styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }]
     : styles.contentWrapper;
 
-  const { categories: globalCategories } = useGlobalCategories();
+  const { categories: globalCategories, loading: categoriesLoading, error: categoriesError, reload: reloadCategories } = useGlobalCategories();
 
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
   const [notificationsDropdownVisible, setNotificationsDropdownVisible] = useState(false);
@@ -710,24 +737,46 @@ export default function HomeScreen() {
               ionIcon="apps-outline"
               onPress={() => handleCategoryPress("All")}
             />
-            {globalCategories.map((cat, idx) => {
-              const remote = getGlobalCategoryImageUri(cat.icon ?? cat.icon_name);
-              return (
-                <CategoryPill
-                  key={cat.id}
-                  label={cat.name}
-                  active={activeCategory === cat.name}
-                  imageUri={remote}
-                  imagePriority={idx < 4 ? "high" : "normal"}
-                  ionIcon={
-                    remote
-                      ? undefined
-                      : (getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap)
-                  }
-                  onPress={() => handleCategoryPress(cat.name)}
-                />
-              );
-            })}
+            {categoriesLoading ? (
+              <Text style={styles.categoryLoadingText}>Loading categories…</Text>
+            ) : categoriesError && globalCategories.length === 0 ? (
+              <View style={styles.categoryErrorRow}>
+                <Text style={styles.categoryErrorText} numberOfLines={2}>
+                  {categoriesError === "Failed to fetch"
+                    ? "Can't load categories. Check your connection."
+                    : categoriesError}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => void reloadCategories()}
+                  style={styles.categoryRetryButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading categories"
+                >
+                  <Text style={styles.categoryRetryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : globalCategories.length === 0 ? (
+              <Text style={styles.categoryLoadingText}>No categories available</Text>
+            ) : (
+              globalCategories.map((cat, idx) => {
+                const remote = getGlobalCategoryImageUri(cat.icon ?? cat.icon_name);
+                return (
+                  <CategoryPill
+                    key={cat.id}
+                    label={cat.name}
+                    active={activeCategory === cat.name}
+                    imageUri={remote}
+                    imagePriority={idx < 4 ? "high" : "normal"}
+                    ionIcon={
+                      remote
+                        ? undefined
+                        : (getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap)
+                    }
+                    onPress={() => handleCategoryPress(cat.name)}
+                  />
+                );
+              })
+            )}
           </ScrollView>
         </View>
 

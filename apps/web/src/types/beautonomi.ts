@@ -5,6 +5,7 @@ export type UserRole =
   | 'customer'
   | 'provider_owner'
   | 'provider_staff'
+  /** Legacy/in-flight role while a provider account completes onboarding. */
   | 'provider_onboarding'
   | 'superadmin'
   | 'support_agent'
@@ -130,6 +131,8 @@ export interface PublicProviderCard {
   currency: string;
   description?: string | null;
   distance_km?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
   supports_house_calls?: boolean;
   supports_salon?: boolean;
   current_badge?: ProviderBadge | null;
@@ -644,25 +647,34 @@ export interface Review {
 }
 
 // Search & Filter Types
+/** Query params supported by GET /api/public/search */
 export interface SearchFilters {
+  /** Global category id or slug */
   category?: string;
+  /** Global subcategory id or slug (scoped to category when provided) */
   subcategory?: string;
+  /** Offering id, master_service id, or service name match */
   service?: string;
   location?: {
     city?: string;
     country?: string;
     latitude?: number;
     longitude?: number;
+    /** Applied via haversine on provider_locations when latitude/longitude are set */
     radius_km?: number;
   };
   at_home?: boolean;
-  date?: string; // YYYY-MM-DD
+  /** YYYY-MM-DD — providers with location or staff hours on that day */
+  date?: string;
   time_preference?: 'any' | 'morning' | 'afternoon' | 'evening' | 'custom';
   custom_time_start?: string; // HH:mm
   custom_time_end?: string; // HH:mm
+  /** Minimum active offering price (provider must have a matching offering) */
   price_min?: number;
+  /** Maximum active offering price (provider must have a matching offering) */
   price_max?: number;
   rating_min?: number;
+  /** Reserved for future use; not applied by /api/public/search today */
   availability?: 'now' | 'soon' | 'any';
   sort_by?: 'relevance' | 'price_low' | 'price_high' | 'rating' | 'distance' | 'soonest' | 'newest';
   page?: number;

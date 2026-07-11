@@ -102,8 +102,14 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
     case "cash": return "cash-outline";
     case "eft": return "swap-horizontal-outline";
     case "yoco": return "hardware-chip-outline";
+    case "paycloud": return "hardware-chip-outline";
     default: return "wallet-outline";
   }
+}
+
+function paymentMethodLabel(method: string | null): string {
+  if (method === "paycloud") return "Card machine";
+  return method ?? "Other";
 }
 
 export function TransactionsContent({ embedded = false }: { embedded?: boolean } = {}) {
@@ -195,9 +201,11 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
 
   const totalOut = useMemo(() => {
     if (useServerSummary) return serverSummary!.total_out;
-    return filtered
-      .filter((t) => t.type === "payout" || t.type === "refund")
+    const inn = filtered
+      .filter((t) => t.type === "earning" || t.type === "tip")
       .reduce((s, t) => s + t.amount, 0);
+    const net = filtered.reduce((s, t) => s + signedContributionForSummary(t), 0);
+    return Math.max(0, inn - net);
   }, [filtered, useServerSummary, serverSummary]);
 
   const netAmount = useMemo(() => {
@@ -486,10 +494,23 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
                       color="#6b7280"
                     />
                     <Text style={twStyle("ml-1 text-sm capitalize text-gray-900")}>
-                      {selectedTxn.payment_method}
+                      {paymentMethodLabel(selectedTxn.payment_method)}
                     </Text>
                   </View>
                 </View>
+              )}
+              {selectedTxn.payment_method === "paycloud" && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedTxn(null);
+                    router.push("/(app)/(tabs)/more/card-machines" as never);
+                  }}
+                  style={twStyle("mb-3 self-end")}
+                >
+                  <Text style={twStyle("text-xs font-medium text-violet-700")}>
+                    Manage card machines →
+                  </Text>
+                </TouchableOpacity>
               )}
               {selectedTxn.reference && (
                 <View style={twStyle("flex-row justify-between")}>

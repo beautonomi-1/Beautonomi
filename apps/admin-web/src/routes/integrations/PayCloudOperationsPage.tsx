@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, RefreshCw, Terminal } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
@@ -26,6 +26,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { formatPaycloudMerchantOptionLabel } from "@/lib/formatPaycloudMerchantLabel";
+import { AdminProviderPicker } from "@/components/AdminProviderPicker";
 
 type PaycloudProvider = {
   id?: string;
@@ -100,6 +101,9 @@ type PaycloudTerminalsResponse = {
   items: PaycloudTerminalRow[];
   total: number;
   summary: PaycloudFleetSummary;
+  hasMore?: boolean;
+  limit?: number;
+  offset?: number;
 };
 
 function money(amount: number | string | null | undefined, currency = "ZAR") {
@@ -132,7 +136,7 @@ function providerLink(provider?: PaycloudProvider | null) {
   if (!provider?.id) return <span className="text-gray-500">Unknown provider</span>;
   return (
     <Link
-      to={adminSpaTo(`/admin/providers/${encodeURIComponent(provider.id)}`)}
+      to={adminSpaTo(`/admin/providers/${encodeURIComponent(provider.id)}?tab=commercial`)}
       className="font-medium text-gray-900 underline-offset-2 hover:underline"
     >
       {provider.business_name || provider.id}
@@ -146,6 +150,7 @@ function buildPaymentsQuery(filters: {
   environment: string;
   exceptionsOnly: boolean;
   offset: number;
+  providerId: string;
 }) {
   const params = new URLSearchParams();
   params.set("limit", "50");
@@ -154,6 +159,22 @@ function buildPaymentsQuery(filters: {
   if (filters.status) params.set("status", filters.status);
   if (filters.environment) params.set("environment", filters.environment);
   if (filters.exceptionsOnly) params.set("exceptions_only", "true");
+  if (filters.providerId.trim()) params.set("provider_id", filters.providerId.trim());
+  return params.toString();
+}
+
+function buildFleetQuery(filters: {
+  search: string;
+  status: string;
+  providerId: string;
+  offset: number;
+}) {
+  const params = new URLSearchParams();
+  params.set("limit", "50");
+  params.set("offset", String(filters.offset));
+  if (filters.search.trim()) params.set("search", filters.search.trim());
+  if (filters.status) params.set("status", filters.status);
+  if (filters.providerId.trim()) params.set("provider_id", filters.providerId.trim());
   return params.toString();
 }
 
@@ -162,12 +183,18 @@ export function PayCloudOperationsPage() {
   const { allowed, denied } = useSuperadminPage("PayCloud operations console is superadmin-only.");
   void allowed;
   const qc = useQueryClient();
+  const [sp] = useSearchParams();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => sp.get("search") ?? "");
   const [status, setStatus] = useState("");
   const [environment, setEnvironment] = useState("");
-  const [exceptionsOnly, setExceptionsOnly] = useState(true);
+  const [exceptionsOnly, setExceptionsOnly] = useState(() => sp.get("exceptions_only") !== "false");
   const [offset, setOffset] = useState(0);
+  const [paymentProviderId, setPaymentProviderId] = useState(() => sp.get("provider_id") ?? "");
+  const [fleetSearch, setFleetSearch] = useState("");
+  const [fleetStatus, setFleetStatus] = useState("");
+  const [fleetProviderId, setFleetProviderId] = useState(() => sp.get("provider_id") ?? "");
+  const [fleetOffset, setFleetOffset] = useState(0);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<PaycloudTerminalRow | null>(null);
   const [reassignForm, setReassignForm] = useState({
@@ -182,8 +209,27 @@ export function PayCloudOperationsPage() {
   });
 
   const filterSignature = useMemo(
-    () => buildPaymentsQuery({ search, status, environment, exceptionsOnly, offset }),
-    [search, status, environment, exceptionsOnly, offset],
+    () =>
+      buildPaymentsQuery({
+        search,
+        status,
+        environment,
+        exceptionsOnly,
+        offset,
+        providerId: paymentProviderId,
+      }),
+    [search, status, environment, exceptionsOnly, offset, paymentProviderId],
+  );
+
+  const fleetSignature = useMemo(
+    () =>
+      buildFleetQuery({
+        search: fleetSearch,
+        status: fleetStatus,
+        providerId: fleetProviderId,
+        offset: fleetOffset,
+      }),
+    [fleetSearch, fleetStatus, fleetProviderId, fleetOffset],
   );
 
   const paymentsQ = useQuery({
@@ -197,12 +243,13 @@ export function PayCloudOperationsPage() {
   });
 
   const fleetQ = useQuery({
-    queryKey: adminQueryKeys.paycloudOperations.terminals("fleet-50"),
+    queryKey: adminQueryKeys.paycloudOperations.terminals(fleetSignature),
     enabled: allowed,
     queryFn: () =>
-      adminApi.getJson<PaycloudTerminalsResponse>("/api/admin/paycloud-operations/terminals?limit=50", {
-        timeoutMs: 30_000,
-      }),
+      adminApi.getJson<PaycloudTerminalsResponse>(
+        `/api/admin/paycloud-operations/terminals?${fleetSignature}`,
+        { timeoutMs: 30_000 },
+      ),
   });
 
   const summaryQ = useQuery({
@@ -215,7 +262,7 @@ export function PayCloudOperationsPage() {
   });
 
   const merchantsQ = useQuery({
-    queryKey: adminQueryKeys.paycloudOperations.merchants(),
+    queryKey: adminQueryKeys.paycloudOperations.merchants("active-100"),
     enabled: allowed,
     queryFn: () =>
       adminApi.getJson<{
@@ -226,7 +273,7 @@ export function PayCloudOperationsPage() {
           store_no: string;
           environment: string;
         }>;
-      }>("/api/admin/paycloud-operations/merchants?limit=100", {
+      }>("/api/admin/paycloud-operations/merchants?limit=100&active_only=true", {
         timeoutMs: 30_000,
       }),
   });
@@ -275,6 +322,8 @@ export function PayCloudOperationsPage() {
   const hasMore = paymentsQ.data?.hasMore ?? false;
   const fleet = summaryQ.data?.summary;
   const fleetItems = fleetQ.data?.items ?? [];
+  const fleetTotal = fleetQ.data?.total ?? 0;
+  const fleetHasMore = fleetQ.data?.hasMore ?? fleetOffset + fleetItems.length < fleetTotal;
 
   const terminalActionMut = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -401,15 +450,13 @@ export function PayCloudOperationsPage() {
         </div>
         {showAssignForm ? (
           <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Provider ID</label>
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                value={assignForm.provider_id}
-                onChange={(e) => setAssignForm((f) => ({ ...f, provider_id: e.target.value }))}
-                placeholder="UUID"
-              />
-            </div>
+            <AdminProviderPicker
+              label="Provider"
+              value={assignForm.provider_id}
+              onChange={(providerId) =>
+                setAssignForm((f) => ({ ...f, provider_id: providerId }))
+              }
+            />
             <div>
               <label className="block text-sm font-medium text-gray-700">Merchant</label>
               <select
@@ -472,7 +519,50 @@ export function PayCloudOperationsPage() {
           </p>
         ) : null}
 
+        <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Fleet search</label>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="Name, serial, or model"
+              value={fleetSearch}
+              onChange={(event) => {
+                setFleetSearch(event.target.value);
+                setFleetOffset(0);
+              }}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Fleet status</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              value={fleetStatus}
+              onChange={(event) => {
+                setFleetStatus(event.target.value);
+                setFleetOffset(0);
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="assigned">Assigned</option>
+              <option value="in_stock">In stock</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <AdminProviderPicker
+              label="Filter by provider"
+              value={fleetProviderId}
+              onChange={(providerId) => {
+                setFleetProviderId(providerId);
+                setFleetOffset(0);
+              }}
+            />
+          </div>
+        </div>
+
         {fleetItems.length > 0 ? (
+          <>
           <AdminDataTable className="mt-6">
             <AdminTableHead>
               <tr>
@@ -498,6 +588,7 @@ export function PayCloudOperationsPage() {
                         <div className="font-mono text-gray-500">
                           {t.merchant.merchant_no} / {t.merchant.store_no}
                         </div>
+                        <div className="capitalize text-gray-600">{t.merchant.environment}</div>
                       </div>
                     ) : (
                       <span className="text-amber-700">No merchant</span>
@@ -569,13 +660,37 @@ export function PayCloudOperationsPage() {
               ))}
             </AdminTableBody>
           </AdminDataTable>
+          <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
+            <span>
+              Showing {fleetItems.length} of {fleetTotal} terminal{fleetTotal === 1 ? "" : "s"}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-50"
+                disabled={fleetOffset <= 0}
+                onClick={() => setFleetOffset((v) => Math.max(0, v - 50))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-50"
+                disabled={!fleetHasMore}
+                onClick={() => setFleetOffset((v) => v + 50)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          </>
         ) : fleetQ.isLoading ? (
           <p className="mt-4 text-sm text-gray-500">Loading terminals…</p>
         ) : (
           <div className="mt-4">
             <EmptyState
               title="No terminals in fleet"
-              description="Register merchants and assign terminals from provider detail or POST assign API."
+              description="Register merchants on PayCloud setup, then assign terminals here or from the provider commercial tab."
             />
           </div>
         )}
@@ -586,16 +701,15 @@ export function PayCloudOperationsPage() {
               Reassign {reassignTarget.display_name}
             </h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-medium text-gray-700">Provider ID</label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
-                  value={reassignForm.provider_id}
-                  onChange={(e) =>
-                    setReassignForm((f) => ({ ...f, provider_id: e.target.value }))
-                  }
-                />
-              </div>
+              <AdminProviderPicker
+                label="Provider"
+                labelClassName="block text-xs font-medium text-gray-700"
+                value={reassignForm.provider_id}
+                selectedLabel={reassignTarget.provider?.business_name}
+                onChange={(providerId) =>
+                  setReassignForm((f) => ({ ...f, provider_id: providerId }))
+                }
+              />
               <div>
                 <label className="block text-xs font-medium text-gray-700">Merchant</label>
                 <select
@@ -649,8 +763,8 @@ export function PayCloudOperationsPage() {
       <AdminPanel>
         <h2 className="text-base font-semibold text-gray-900">Payment search</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Search PayCloud captures by order reference, provider, or linked entity. Use amount exceptions to
-          surface under/over/mismatch payments that did not auto-settle.
+          Search by merchant order no, PayCloud order id, or entity id. Filter by provider for a specific
+          salon. Use amount exceptions to surface under/over/mismatch payments that did not auto-settle.
         </p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -699,6 +813,16 @@ export function PayCloudOperationsPage() {
               <option value="live">Live</option>
               <option value="sandbox">Sandbox</option>
             </select>
+          </div>
+          <div className="md:col-span-2 lg:col-span-4">
+            <AdminProviderPicker
+              label="Provider"
+              value={paymentProviderId}
+              onChange={(providerId) => {
+                setPaymentProviderId(providerId);
+                setOffset(0);
+              }}
+            />
           </div>
         </div>
 

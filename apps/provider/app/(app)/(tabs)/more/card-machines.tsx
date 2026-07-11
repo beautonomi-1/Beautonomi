@@ -10,7 +10,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -37,6 +37,23 @@ interface Location {
   name: string;
 }
 
+type ReconciliationPayment = {
+  id: string;
+  merchant_order_no: string;
+  amount: number;
+  currency: string;
+  status: string;
+  amount_match_status: string | null;
+  created_at: string;
+};
+
+type PendingTerminalOrder = {
+  id: string;
+  invoice_status: string;
+  integration_setup_status?: string | null;
+  terminal_products?: { name?: string; vendor?: string };
+};
+
 function formatLastUsedShort(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return "recently";
@@ -55,6 +72,14 @@ function formatLastUsedShort(iso: string): string {
 export default function CardMachinesScreen() {
   const router = useRouter();
   const handleBack = useProviderStackBack();
+  const { order: orderParam, order_id: orderIdParam } = useLocalSearchParams<{
+    order?: string;
+    order_id?: string;
+  }>();
+  const activationOrderId =
+    (Array.isArray(orderParam) ? orderParam[0] : orderParam) ||
+    (Array.isArray(orderIdParam) ? orderIdParam[0] : orderIdParam) ||
+    null;
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
   const cashbackFlagEnabled = useFeatureFlag("payment_paycloud_cashback");
@@ -90,6 +115,11 @@ export default function CardMachinesScreen() {
   const [savingCashback, setSavingCashback] = useState(false);
   const [reconcileLoading, setReconcileLoading] = useState(false);
   const [reconcileExceptions, setReconcileExceptions] = useState(0);
+  const [recentPayments, setRecentPayments] = useState<ReconciliationPayment[]>([]);
+  const [pendingOrder, setPendingOrder] = useState<PendingTerminalOrder | null>(null);
+  const [activationSerial, setActivationSerial] = useState("");
+  const [activationName, setActivationName] = useState("");
+  const [activating, setActivating] = useState(false);
 
   const resetForm = useCallback(() => {
     setFormName("");
@@ -198,14 +228,89 @@ export default function CardMachinesScreen() {
 
   async function loadReconciliation() {
     try {
-      const res = await api.get<{ summary?: { exceptions?: number } }>(
-        "/api/provider/paycloud/reconciliation",
-      );
-      if (!res.error && res.data?.summary) {
-        setReconcileExceptions(Number(res.data.summary.exceptions ?? 0));
+      const res = await api.get<{
+        payments?: ReconciliationPayment[];
+        summary?: { exceptions?: number };
+      }>("/api/provider/paycloud/reconciliation");
+      if (!res.error && res.data) {
+        setRecentPayments((res.data.payments ?? []).slice(0, 10));
+        setReconcileExceptions(Number(res.data.summary?.exceptions ?? 0));
       }
     } catch {
       /* non-blocking */
+    }
+  }
+
+  useEffect(() => {
+    if (!terminalEcommerceEnabled) {
+      setPendingOrder(null);
+      return;
+    }
+
+    const isPendingActivation = (order: PendingTerminalOrder | undefined | null) => {
+      if (!order) return false;
+      if (order.invoice_status !== "paid" || order.integration_setup_status !== "pending") {
+        return false;
+      }
+      const vendor = (order.terminal_products?.vendor ?? "").toLowerCase();
+      return !vendor || vendor === "paycloud" || Boolean(activationOrderId);
+    };
+
+    void (async () => {
+      try {
+        if (activationOrderId) {
+          const res = await api.get<{ order?: PendingTerminalOrder }>(
+            `/api/provider/terminal-orders/${encodeURIComponent(activationOrderId)}`,
+          );
+          const order = res.data?.order;
+          if (isPendingActivation(order)) {
+            setPendingOrder(order!);
+            setActivationName(order!.terminal_products?.name ?? "Card machine");
+            return;
+          }
+        }
+
+        const listRes = await api.get<{ orders?: PendingTerminalOrder[] }>(
+          "/api/provider/terminal-orders",
+        );
+        const pending = (listRes.data?.orders ?? []).find((o) => isPendingActivation(o));
+        if (pending) {
+          setPendingOrder(pending);
+          setActivationName(pending.terminal_products?.name ?? "Card machine");
+        } else {
+          setPendingOrder(null);
+        }
+      } catch {
+        setPendingOrder(null);
+      }
+    })();
+  }, [activationOrderId, terminalEcommerceEnabled]);
+
+  async function handleActivateOrder() {
+    if (!activationSerial.trim()) {
+      Alert.alert("Required", "Enter the serial number from your device label.");
+      return;
+    }
+    setActivating(true);
+    try {
+      const result = await addTerminal({
+        terminal_sn: activationSerial.trim(),
+        display_name: activationName.trim() || `Card machine ${activationSerial.trim().slice(-4)}`,
+      });
+      if (result) {
+        setActivationSerial("");
+        setPendingOrder(null);
+        void reloadTerminals();
+        void reloadSettings();
+        if (!settings?.accept_paycloud) {
+          Alert.alert(
+            "Machine added",
+            "Turn on Accept in-person card payments to start collecting.",
+          );
+        }
+      }
+    } finally {
+      setActivating(false);
     }
   }
 
@@ -255,6 +360,18 @@ export default function CardMachinesScreen() {
           title="Card machines unavailable"
           description="Beautonomi card machines aren't available in your market yet."
         />
+        {terminalShopEnabled ? (
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/terminal-shop" as never)}
+            style={twStyle("mx-4 mt-4 flex-row items-center rounded-2xl border border-pink-200 bg-pink-50 p-4")}
+          >
+            <Ionicons name="cart-outline" size={20} color="#db2777" />
+            <Text style={twStyle("ml-3 flex-1 text-sm font-semibold text-pink-900")}>
+              Order terminals from the shop
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#db2777" />
+          </TouchableOpacity>
+        ) : null}
       </ScreenContainer>
     );
   }
@@ -280,6 +397,11 @@ export default function CardMachinesScreen() {
   const acceptPaycloud = settings?.accept_paycloud === true;
   const inFlight = settings?.terminals?.inFlight ?? 0;
   const needsAttention = inFlight > 0 || reconcileExceptions > 0;
+  const statusLabel = settings?.ready
+    ? "Ready"
+    : acceptPaycloud
+      ? "Setup incomplete"
+      : "Not accepting";
 
   return (
     <ScreenContainer>
@@ -289,6 +411,64 @@ export default function CardMachinesScreen() {
         showBack
         onBack={handleBack}
       />
+
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <Text style={twStyle("text-xs text-gray-500")}>Status</Text>
+        <Text style={twStyle("text-xl font-semibold text-gray-900")}>{statusLabel}</Text>
+        <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+          {settings?.active_terminal_count ?? 0} active machine
+          {(settings?.active_terminal_count ?? 0) === 1 ? "" : "s"}
+          {settings?.account_environment
+            ? ` · ${settings.account_environment === "sandbox" ? "Test" : settings.account_environment === "live" ? "Live" : "Test & Live"}`
+            : ""}
+        </Text>
+      </View>
+
+      {pendingOrder ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-pink-200 bg-pink-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-pink-900")}>Activate your new card machine</Text>
+          <Text style={twStyle("mt-1 text-xs text-pink-800")}>
+            {pendingOrder.terminal_products?.name
+              ? `Order: ${pendingOrder.terminal_products.name}`
+              : "Enter the serial number to finish setup"}
+          </Text>
+          <TextInput
+            style={twStyle("mt-3 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm text-gray-900")}
+            value={activationSerial}
+            onChangeText={setActivationSerial}
+            placeholder="Serial number from device label"
+            placeholderTextColor="#9ca3af"
+            autoCapitalize="characters"
+          />
+          <TextInput
+            style={twStyle("mt-2 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm text-gray-900")}
+            value={activationName}
+            onChangeText={setActivationName}
+            placeholder="Display name"
+            placeholderTextColor="#9ca3af"
+          />
+          <TouchableOpacity
+            onPress={() => void handleActivateOrder()}
+            disabled={activating}
+            style={twStyle("mt-3 self-start rounded-xl bg-pink-600 px-4 py-2")}
+          >
+            <Text style={twStyle("text-sm font-semibold text-white")}>
+              {activating ? "Activating…" : "Activate machine"}
+            </Text>
+          </TouchableOpacity>
+          {!acceptPaycloud ? (
+            <TouchableOpacity
+              onPress={() => void handleAcceptToggle(true)}
+              disabled={savingAccept}
+              style={twStyle("mt-2 self-start rounded-xl border border-pink-300 bg-white px-4 py-2")}
+            >
+              <Text style={twStyle("text-sm font-semibold text-pink-800")}>
+                Enable acceptance
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       <SectionHeader title="Acceptance" />
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -328,11 +508,29 @@ export default function CardMachinesScreen() {
       {settings?.blockers && settings.blockers.length > 0 ? (
         <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
           <Text style={twStyle("text-sm font-semibold text-amber-950")}>Setup checklist</Text>
-          {settings.blockers.map((b) => (
-            <Text key={b.code} style={twStyle("mt-2 text-xs text-amber-900")}>
-              • {b.title}
-            </Text>
-          ))}
+          {(
+            [
+              { code: "PLAN_REQUIRED", label: "Plan includes card machines" },
+              { code: "NOT_ACCEPTED", label: "Accept in-person card payments" },
+              { code: "NO_TERMINALS", label: "Add a card machine" },
+              { code: "ALL_SUSPENDED", label: "At least one active machine" },
+              { code: "NO_MERCHANT", label: "Merchant setup complete" },
+            ] as const
+          ).map((step) => {
+            const blocker = settings.blockers?.find((b) => b.code === step.code);
+            const done = !blocker;
+            return (
+              <View key={step.code} style={twStyle("mt-2 flex-row items-center justify-between")}>
+                <Text
+                  style={twStyle(
+                    `flex-1 text-xs ${done ? "text-emerald-800" : "text-amber-900"}`,
+                  )}
+                >
+                  {done ? "✓" : "○"} {step.label}
+                </Text>
+              </View>
+            );
+          })}
           {settings.blockers.find((b) => b.code === "PLAN_REQUIRED") ? (
             <TouchableOpacity
               style={twStyle("mt-3 self-start rounded-full bg-amber-900 px-3 py-2")}
@@ -341,6 +539,20 @@ export default function CardMachinesScreen() {
               <Text style={twStyle("text-xs font-semibold text-white")}>Upgrade plan</Text>
             </TouchableOpacity>
           ) : null}
+        </View>
+      ) : settings && !settings.ready ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-amber-950")}>Setup checklist</Text>
+          <Text style={twStyle("mt-2 text-xs text-amber-900")}>
+            Finish acceptance and add an active machine to start collecting.
+          </Text>
+        </View>
+      ) : settings?.ready ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-emerald-900")}>Setup complete</Text>
+          <Text style={twStyle("mt-1 text-xs text-emerald-800")}>
+            Ready to collect with Beautonomi card machines.
+          </Text>
         </View>
       ) : null}
 
@@ -432,27 +644,6 @@ export default function CardMachinesScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      ) : null}
-
-      {terminalShopEnabled ? (
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(tabs)/more/terminal-shop" as never)}
-          style={twStyle("mb-4 flex-row items-center rounded-2xl border border-pink-200 bg-pink-50 p-4")}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Order card machines from terminal shop"
-        >
-          <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-pink-100")}>
-            <Ionicons name="cart-outline" size={20} color="#db2777" />
-          </View>
-          <View style={twStyle("ml-3 flex-1")}>
-            <Text style={twStyle("text-sm font-semibold text-pink-900")}>Shop card machines</Text>
-            <Text style={twStyle("text-xs text-pink-700")}>
-              Order from the Beautonomi catalog
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#db2777" />
-        </TouchableOpacity>
       ) : null}
 
       <SectionHeader title="Your machines" actionLabel="Add" onAction={openAdd} />
@@ -578,6 +769,68 @@ export default function CardMachinesScreen() {
           ))}
         </View>
       )}
+
+      <SectionHeader title="Recent card payments" />
+      {recentPayments.length === 0 ? (
+        <EmptyState
+          icon="card-outline"
+          title="No card payments yet"
+          description="Collect at a booking or sale to see recent card machine payments here."
+        />
+      ) : (
+        <View style={twStyle("mb-4")}>
+          {recentPayments.map((payment, idx) => (
+            <View
+              key={payment.id}
+              style={[
+                twStyle("rounded-2xl border border-gray-100 bg-white p-4"),
+                idx > 0 ? { marginTop: 8 } : undefined,
+              ]}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                {payment.currency} {Number(payment.amount).toFixed(2)}
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                {new Date(payment.created_at).toLocaleString()} · {payment.status.replace(/_/g, " ")}
+              </Text>
+              <Text style={twStyle("text-xs text-gray-400")}>
+                {payment.merchant_order_no}
+                {payment.amount_match_status ? ` · ${payment.amount_match_status}` : ""}
+              </Text>
+            </View>
+          ))}
+          <TouchableOpacity
+            onPress={() => void handleReconcile()}
+            disabled={reconcileLoading}
+            style={twStyle("mt-3 self-start rounded-xl border border-gray-200 px-4 py-2")}
+          >
+            <Text style={twStyle("text-xs font-medium text-gray-700")}>
+              {reconcileLoading ? "Checking…" : "Check payment status"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {terminalShopEnabled ? (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/terminal-shop" as never)}
+          style={twStyle("mb-4 flex-row items-center rounded-2xl border border-pink-200 bg-pink-50 p-4")}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Order card machines from terminal shop"
+        >
+          <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-pink-100")}>
+            <Ionicons name="cart-outline" size={20} color="#db2777" />
+          </View>
+          <View style={twStyle("ml-3 flex-1")}>
+            <Text style={twStyle("text-sm font-semibold text-pink-900")}>Shop card machines</Text>
+            <Text style={twStyle("text-xs text-pink-700")}>
+              Order from the Beautonomi catalog
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#db2777" />
+        </TouchableOpacity>
+      ) : null}
 
       <View style={twStyle("h-8")} />
 

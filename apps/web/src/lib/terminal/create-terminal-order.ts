@@ -28,14 +28,11 @@ function computeUnitPrice(
   commercialModel: TerminalCommercialModel,
   product: {
     upfront_price?: number | null;
-    rental_price?: number | null;
-    monthly_price?: number | null;
   },
 ): number {
   if (commercialModel === "once_off_purchase") return Number(product.upfront_price ?? 0);
-  if (commercialModel === "rental") return Number(product.rental_price ?? product.monthly_price ?? 0);
   if (commercialModel === "subscription_bundle") return 0;
-  return Number(product.monthly_price ?? product.upfront_price ?? 0);
+  return Number(product.upfront_price ?? 0);
 }
 
 export async function createTerminalOrderForProvider(
@@ -46,6 +43,12 @@ export async function createTerminalOrderForProvider(
 ): Promise<{ order: Record<string, unknown>; requires_payment: boolean }> {
   if (input.commercial_model === "subscription_bundle") {
     throw new Error("Use allocate-from-subscription for subscription-included terminals.");
+  }
+
+  if (input.commercial_model === "rental") {
+    throw new Error(
+      "Rental is no longer offered; use a plan that includes a terminal or buy the device outright.",
+    );
   }
 
   const { data: product, error: productErr } = await supabase

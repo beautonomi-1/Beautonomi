@@ -275,3 +275,10 @@ export {
   type AtHomeLinePricing,
   type AtHomeSnapshotLine,
 } from "./booking/at-home-pricing";
+export {
+  computeGrowthPercent,
+  formatGrowthLabel,
+  growthTrendColor,
+  type GrowthKind,
+  type GrowthResult,
+} from "./reports/growth-display";

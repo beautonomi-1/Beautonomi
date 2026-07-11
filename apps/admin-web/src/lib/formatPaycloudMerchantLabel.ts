@@ -10,5 +10,6 @@ export function formatPaycloudMerchantOptionLabel(merchant: {
       : merchant.environment === "live"
         ? "Live"
         : merchant.environment ?? "—";
-  return `${merchant.label} · ${env} · ${merchant.merchant_no}`;
+  const store = merchant.store_no?.trim() ? ` / ${merchant.store_no.trim()}` : "";
+  return `${merchant.label} · ${env} · ${merchant.merchant_no}${store}`;
 }

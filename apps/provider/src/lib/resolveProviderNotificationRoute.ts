@@ -93,6 +93,13 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
       return true;
     }
 
+    // Terminal upsell campaign pushes land in the announcements inbox
+    // (their in-app rows are written as admin_broadcast with the campaign payload).
+    if (type === "terminal_upsell_announcement" || templateKey === "terminal_upsell_announcement") {
+      router.push("/(app)/announcements" as never);
+      return true;
+    }
+
     if (
       typeLc === "ads_payment_confirmed" ||
       actionUrlLc.includes("/provider/settings/ads") ||

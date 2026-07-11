@@ -22,6 +22,25 @@ interface NearbyCursor {
   id: string;
 }
 
+/** Cursor for fuzzy search pagination: search_rank, published_at, id */
+interface SearchCursor {
+  search_rank: number;
+  published_at: string;
+  id: string;
+}
+
+/** Cursor for client-sorted search pages (trending / for_you): skip offset into ranked pool */
+interface SearchSkipCursor {
+  search_skip: number;
+}
+
+function sanitizeExploreSearch(raw: string | null): string | null {
+  if (!raw) return null;
+  const safe = raw.replace(/[%*\\(),."']/g, "").trim();
+  if (safe.length < 2) return null;
+  return safe;
+}
+
 function mapToExplorePost(
   row: any,
   savedIds: Set<string>,
@@ -88,7 +107,7 @@ function calculateTrendingScore(post: {
  *   - city       — optional; for sort=nearby when lat/lng not provided (uses first provider_location in city as center)
  *   - radius_km  — optional; for sort=nearby (default 50)
  *   - category   — global service category slug (e.g. "hair") - filters by provider's categories
- *   - search     — text search on caption and provider name
+ *   - search     — fuzzy text search on caption, tags, provider name, and linked service
  *   - tags       — comma-separated tags to filter by (e.g. "braids,balayage")
  */
 export async function GET(request: NextRequest) {
@@ -114,18 +133,35 @@ export async function GET(request: NextRequest) {
     );
     const categorySlug = searchParams.get("category")?.trim().toLowerCase() || null;
     const searchQuery = searchParams.get("search")?.trim() || null;
+    const sanitizedSearch = sanitizeExploreSearch(searchQuery);
     const tagsParam = searchParams.get("tags")?.trim() || null;
     const filterTags = tagsParam ? tagsParam.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) : null;
 
     let cursorPublishedAt: string | null = null;
     let cursorId: string | null = null;
     let cursorNearby: NearbyCursor | null = null;
+    let cursorSearch: SearchCursor | null = null;
+    let cursorSearchSkip: number | null = null;
     if (cursorEncoded) {
       try {
         const cursor = JSON.parse(
           Buffer.from(cursorEncoded, "base64url").toString()
-        ) as { published_at?: string; id?: string; distance_km?: number };
-        if (cursor.distance_km != null && cursor.published_at && cursor.id) {
+        ) as {
+          published_at?: string;
+          id?: string;
+          distance_km?: number;
+          search_rank?: number;
+          search_skip?: number;
+        };
+        if (typeof cursor.search_skip === "number" && cursor.search_skip >= 0) {
+          cursorSearchSkip = cursor.search_skip;
+        } else if (cursor.search_rank != null && cursor.published_at && cursor.id) {
+          cursorSearch = {
+            search_rank: cursor.search_rank,
+            published_at: cursor.published_at,
+            id: cursor.id,
+          };
+        } else if (cursor.distance_km != null && cursor.published_at && cursor.id) {
           cursorNearby = {
             distance_km: cursor.distance_km,
             published_at: cursor.published_at,
@@ -163,9 +199,246 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- sort=nearby: location-based feed ---
-    const hasLatLng = latParam != null && lngParam != null && Number.isFinite(Number(latParam)) && Number.isFinite(Number(lngParam));
+    const hasLatLng =
+      latParam != null &&
+      lngParam != null &&
+      Number.isFinite(Number(latParam)) &&
+      Number.isFinite(Number(lngParam));
     const hasCity = !!cityParam;
+
+    // --- Fuzzy search path (caption, tags, provider name, offering title) ---
+    if (sanitizedSearch) {
+      let nearbyProviderIds: string[] | null = null;
+      let providerDistanceKm: Map<string, number> | null = null;
+
+      if (sortMode === "nearby" && (hasLatLng || hasCity)) {
+        let centerLat: number;
+        let centerLng: number;
+        if (hasLatLng) {
+          centerLat = Number(latParam);
+          centerLng = Number(lngParam);
+        } else {
+          const { data: locRow } = await supabaseAdmin
+            .from("provider_locations")
+            .select("latitude, longitude")
+            .eq("is_active", true)
+            .not("latitude", "is", null)
+            .not("longitude", "is", null)
+            .ilike("city", cityParam!)
+            .limit(1)
+            .maybeSingle();
+          if (!locRow?.latitude || !locRow?.longitude) {
+            return successResponse({ data: [], next_cursor: undefined, has_more: false });
+          }
+          centerLat = Number(locRow.latitude);
+          centerLng = Number(locRow.longitude);
+        }
+
+        const { data: locations } = await supabaseAdmin
+          .from("provider_locations")
+          .select("provider_id, latitude, longitude")
+          .eq("is_active", true)
+          .not("latitude", "is", null)
+          .not("longitude", "is", null);
+
+        providerDistanceKm = new Map<string, number>();
+        (locations || []).forEach((loc: any) => {
+          const km = haversineDistanceKmFromCoords(
+            centerLat,
+            centerLng,
+            Number(loc.latitude),
+            Number(loc.longitude),
+          );
+          const existing = providerDistanceKm!.get(loc.provider_id);
+          if (existing == null || km < existing) providerDistanceKm!.set(loc.provider_id, km);
+        });
+        nearbyProviderIds = [...providerDistanceKm.entries()]
+          .filter(([, km]) => km <= radiusKm)
+          .map(([id]) => id);
+        if (nearbyProviderIds.length === 0) {
+          return successResponse({ data: [], next_cursor: undefined, has_more: false });
+        }
+      }
+
+      const clientSortedSearch = sortMode === "trending" || sortMode === "for_you";
+      const useRpcRankCursor = sortMode === "chronological" && cursorSearch != null;
+
+      const searchFetchLimit =
+        clientSortedSearch || sortMode === "nearby"
+          ? Math.min(200, Math.max(limit * 4, 100))
+          : limit + 1;
+
+      const { data: searchRows, error: searchErr } = await supabaseAdmin.rpc("explore_search_posts", {
+        p_query: sanitizedSearch,
+        p_category_id: categoryId,
+        p_category_provider_ids:
+          categoryProviderIds && categoryProviderIds.length > 0 ? categoryProviderIds : null,
+        p_tags: filterTags && filterTags.length > 0 ? filterTags : null,
+        p_provider_ids: nearbyProviderIds,
+        p_limit: searchFetchLimit,
+        p_cursor_rank: useRpcRankCursor ? cursorSearch!.search_rank : null,
+        p_cursor_published_at: useRpcRankCursor ? cursorSearch!.published_at : null,
+        p_cursor_id: useRpcRankCursor ? cursorSearch!.id : null,
+      });
+
+      if (searchErr) {
+        console.error("[explore/posts] Fuzzy search error:", searchErr);
+        return handleApiError(searchErr, "Failed to search posts");
+      }
+
+      let items: any[] = searchRows || [];
+
+      if (sortMode === "nearby" && providerDistanceKm) {
+        items = items.map((r: any) => ({
+          ...r,
+          distance_km: providerDistanceKm!.get(r.provider_id) ?? Infinity,
+        }));
+        items.sort((a: any, b: any) => {
+          if (a.distance_km !== b.distance_km) return a.distance_km - b.distance_km;
+          if (b.search_rank !== a.search_rank) return b.search_rank - a.search_rank;
+          const tA = new Date(a.published_at).getTime();
+          const tB = new Date(b.published_at).getTime();
+          if (tB !== tA) return tB - tA;
+          return a.id.localeCompare(b.id);
+        });
+        if (cursorNearby) {
+          const after = (r: any) => {
+            if (r.distance_km !== cursorNearby!.distance_km) return r.distance_km > cursorNearby!.distance_km;
+            const t = new Date(r.published_at).getTime();
+            const ct = new Date(cursorNearby!.published_at).getTime();
+            if (t !== ct) return t < ct;
+            return r.id > cursorNearby!.id;
+          };
+          items = items.filter(after);
+        }
+      } else if (sortMode === "trending") {
+        items.sort((a: any, b: any) => calculateTrendingScore(b) - calculateTrendingScore(a));
+      } else if (sortMode === "for_you" && user && items.length > 0) {
+        const [savedRes, likedRes] = await Promise.all([
+          supabaseAdmin.from("explore_saved").select("post_id").eq("user_id", user.id),
+          supabaseAdmin
+            .from("explore_events")
+            .select("post_id")
+            .eq("actor_type", "authed")
+            .eq("actor_key", user.id)
+            .eq("event_type", "like"),
+        ]);
+        const preferredPostIds = [
+          ...(savedRes.data || []).map((r: any) => r.post_id),
+          ...(likedRes.data || []).map((r: any) => r.post_id),
+        ].filter(Boolean);
+        const preferredProviderIds = new Set<string>();
+        const preferredCategoryIds = new Set<string>();
+        if (preferredPostIds.length > 0) {
+          const { data: prefPosts } = await supabaseAdmin
+            .from("explore_posts")
+            .select("provider_id, primary_category_id")
+            .in("id", [...new Set(preferredPostIds)].slice(0, 500));
+          (prefPosts || []).forEach((p: any) => {
+            if (p.provider_id) preferredProviderIds.add(p.provider_id);
+            if (p.primary_category_id) preferredCategoryIds.add(p.primary_category_id);
+          });
+        }
+        const now = Date.now();
+        items.sort((a: any, b: any) => {
+          const score = (r: any) => {
+            let s = r.search_rank ?? 0;
+            if (preferredProviderIds.has(r.provider_id)) s += 2;
+            if (r.primary_category_id && preferredCategoryIds.has(r.primary_category_id)) s += 1;
+            const hours = (now - new Date(r.published_at).getTime()) / (1000 * 60 * 60);
+            s += 1 / (1 + hours / 24);
+            return s;
+          };
+          return score(b) - score(a);
+        });
+      }
+
+      if (clientSortedSearch) {
+        const skip = cursorSearchSkip ?? 0;
+        items = items.slice(skip);
+      }
+
+      const hasMoreSearch = items.length > limit;
+      const sliceSearch = hasMoreSearch ? items.slice(0, limit) : items;
+      const lastSearch = sliceSearch[sliceSearch.length - 1];
+
+      const postIdsSearch = sliceSearch.map((r: any) => r.id);
+      const savedIdsSearch = new Set<string>();
+      const likedIdsSearch = new Set<string>();
+      if (user && postIdsSearch.length > 0) {
+        const [savedRes, likedRes] = await Promise.all([
+          supabaseAdmin.from("explore_saved").select("post_id").eq("user_id", user.id).in("post_id", postIdsSearch),
+          supabaseAdmin
+            .from("explore_events")
+            .select("post_id")
+            .eq("actor_type", "authed")
+            .eq("actor_key", user.id)
+            .eq("event_type", "like")
+            .in("post_id", postIdsSearch),
+        ]);
+        (savedRes.data || []).forEach((r: any) => savedIdsSearch.add(r.post_id));
+        (likedRes.data || []).forEach((r: any) => likedIdsSearch.add(r.post_id));
+      }
+
+      const offeringIdsSearch = [...new Set(sliceSearch.map((r: any) => r.offering_id).filter(Boolean))];
+      const offeringMapSearch = new Map<
+        string,
+        { id: string; name: string; price?: number; duration_minutes?: number }
+      >();
+      if (offeringIdsSearch.length > 0) {
+        const { data: offDataSearch } = await supabaseAdmin
+          .from("offerings")
+          .select("id, title, price, duration_minutes")
+          .in("id", offeringIdsSearch);
+        (offDataSearch || []).forEach((o: any) =>
+          offeringMapSearch.set(o.id, {
+            id: o.id,
+            name: o.title ?? "",
+            price: o.price != null ? Number(o.price) : undefined,
+            duration_minutes: o.duration_minutes ?? undefined,
+          }),
+        );
+      }
+
+      const dataSearch: ExplorePost[] = sliceSearch.map((r: any) =>
+        mapToExplorePost(r, savedIdsSearch, likedIdsSearch, offeringMapSearch.get(r.offering_id) ?? null),
+      );
+
+      let nextCursorSearch: string | undefined;
+      if (hasMoreSearch && lastSearch) {
+        if (sortMode === "nearby" && lastSearch.distance_km != null) {
+          nextCursorSearch = Buffer.from(
+            JSON.stringify({
+              distance_km: lastSearch.distance_km,
+              published_at: lastSearch.published_at,
+              id: lastSearch.id,
+            }),
+          ).toString("base64url");
+        } else if (clientSortedSearch) {
+          nextCursorSearch = Buffer.from(
+            JSON.stringify({
+              search_skip: (cursorSearchSkip ?? 0) + limit,
+            }),
+          ).toString("base64url");
+        } else {
+          nextCursorSearch = Buffer.from(
+            JSON.stringify({
+              search_rank: lastSearch.search_rank,
+              published_at: lastSearch.published_at,
+              id: lastSearch.id,
+            }),
+          ).toString("base64url");
+        }
+      }
+
+      return successResponse({
+        data: dataSearch,
+        next_cursor: nextCursorSearch,
+        has_more: hasMoreSearch,
+      });
+    }
+
+    // --- sort=nearby: location-based feed (no text search) ---
     if (sortMode === "nearby" && (hasLatLng || hasCity)) {
       let centerLat: number;
       let centerLng: number;
@@ -226,9 +499,6 @@ export async function GET(request: NextRequest) {
       if (filterTags && filterTags.length > 0) {
         nearbyQuery = nearbyQuery.overlaps("tags", filterTags);
       }
-      if (searchQuery) {
-        nearbyQuery = nearbyQuery.ilike("caption", `%${searchQuery}%`);
-      }
 
       const { data: nearbyRows, error: nearbyError } = await nearbyQuery;
       if (nearbyError) return handleApiError(nearbyError, "Failed to fetch posts");
@@ -267,24 +537,6 @@ export async function GET(request: NextRequest) {
         .in("id", providerIdsNearby);
       const provMapNearby = new Map((provDataNearby || []).map((p: any) => [p.id, p]));
 
-      const itemsNearby = sliceNearby.map((r: any) => ({
-        ...r,
-        provider_business_name: provMapNearby.get(r.provider_id)?.business_name ?? "",
-        provider_slug: provMapNearby.get(r.provider_id)?.slug ?? "",
-      }));
-
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const filtered = itemsNearby.filter(
-          (r: any) =>
-            (r.caption && r.caption.toLowerCase().includes(q)) ||
-            (r.provider_business_name && r.provider_business_name.toLowerCase().includes(q))
-        );
-        if (filtered.length < itemsNearby.length) {
-          // already sliced; keep as is to avoid pagination mismatch
-        }
-      }
-
       const postIdsNearby = sliceNearby.map((r: any) => r.id);
       const savedIdsNearby = new Set<string>();
       const likedIdsNearby = new Set<string>();
@@ -311,7 +563,11 @@ export async function GET(request: NextRequest) {
 
       const dataNearby: ExplorePost[] = sliceNearby.map((r: any) =>
         mapToExplorePost(
-          { ...r, provider_business_name: (r as any).provider_business_name, provider_slug: (r as any).provider_slug },
+          {
+            ...r,
+            provider_business_name: provMapNearby.get(r.provider_id)?.business_name ?? "",
+            provider_slug: provMapNearby.get(r.provider_id)?.slug ?? "",
+          },
           savedIdsNearby,
           likedIdsNearby,
           offeringMapNearby.get(r.offering_id) ?? null
@@ -370,11 +626,6 @@ export async function GET(request: NextRequest) {
       query = query.overlaps("tags", filterTags);
     }
 
-    // Search by caption text
-    if (searchQuery) {
-      query = query.ilike("caption", `%${searchQuery}%`);
-    }
-
     const { data: rows, error } = await query;
 
     if (error) {
@@ -428,16 +679,6 @@ export async function GET(request: NextRequest) {
         provider_business_name: provMap.get(r.provider_id)?.business_name ?? "",
         provider_slug: provMap.get(r.provider_id)?.slug ?? "",
       }));
-
-      // If search includes provider name (not just caption), re-filter
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        items = items.filter(
-          (r: any) =>
-            (r.caption && r.caption.toLowerCase().includes(q)) ||
-            (r.provider_business_name && r.provider_business_name.toLowerCase().includes(q)),
-        );
-      }
     }
 
     // Apply trending sort when requested

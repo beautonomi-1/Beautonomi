@@ -120,11 +120,20 @@ export type TerminalCommercialModel =
 
 export const TERMINAL_COMMERCIAL_MODEL_LABELS: Record<TerminalCommercialModel, string> = {
   once_off_purchase: "Once-off purchase",
-  rental: "Monthly rental",
-  subscription_bundle: "Subscription bundle",
+  rental: "Rental (legacy)",
+  subscription_bundle: "Included with plan",
   lease_to_own: "Lease to own",
   financed: "Financed",
   promotional: "Promotional / free",
+};
+
+/** Labels for terminal asset ownership (shop "Your devices"); mirrors terminal_asset_ownership_model enum */
+export const TERMINAL_ASSET_OWNERSHIP_LABELS: Record<string, string> = {
+  provider_owned: "Owned",
+  subscription_included: "Included with plan",
+  platform_owned: "Platform-owned",
+  leased: "Leased",
+  rented: "Rented (legacy)",
 };
 
 /** Finance transaction types for terminal commerce */

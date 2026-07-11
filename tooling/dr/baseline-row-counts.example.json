@@ -1,0 +1,9 @@
+{
+  "users": 0,
+  "providers": 0,
+  "bookings": 0,
+  "booking_payments": 0,
+  "finance_transactions": 0,
+  "notification_delivery_queue": 0,
+  "feature_flags": 0
+}

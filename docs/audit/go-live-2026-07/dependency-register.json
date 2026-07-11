@@ -1,0 +1,34 @@
+{
+  "dependencies": [
+    {
+      "id": "DEP-001",
+      "from": "FND-P0-002",
+      "to": "REM-006",
+      "type": "remediation"
+    },
+    {
+      "id": "DEP-002",
+      "from": "JRN-004",
+      "to": "FND-P0-002",
+      "type": "blocked_by"
+    },
+    {
+      "id": "DEP-003",
+      "from": "JRN-052",
+      "to": "FND-P0-003",
+      "type": "blocked_by"
+    },
+    {
+      "id": "DEP-004",
+      "from": "REM-010",
+      "to": "staging_access",
+      "type": "requires"
+    },
+    {
+      "id": "DEP-005",
+      "from": "REM-011",
+      "to": "staging_access",
+      "type": "requires"
+    }
+  ]
+}

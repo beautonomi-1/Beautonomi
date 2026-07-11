@@ -60,6 +60,7 @@ const EVENT_LABELS: Record<string, string> = {
   "dispute.overdue": "Disputes: overdue dispute",
   "safety.user_report.pending": "Safety: user report pending",
   "safety.user_report.adverse": "Safety: adverse report pending",
+  "safety.panic.created": "Safety: panic button pressed (urgent)",
   "verification.pending_review": "Verifications: pending review",
   "verification.stuck_review": "Verifications: stuck review",
   "compliance.account_deletion.succeeded": "Compliance: self-service account deleted",

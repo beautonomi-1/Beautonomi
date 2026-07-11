@@ -9,8 +9,13 @@ export function verificationRequiredForProviders(
 export function canSkipProviderVerification(options: {
   required: boolean;
   status: string;
+  /** When set, required providers can skip only if the full verification plan is complete. */
+  planComplete?: boolean;
 }): boolean {
   if (!options.required) return true;
+  if (options.planComplete !== undefined) {
+    return options.planComplete;
+  }
   return (
     options.status === "approved" ||
     options.status === "in_progress" ||

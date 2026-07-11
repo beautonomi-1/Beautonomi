@@ -8,6 +8,7 @@ import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import * as WebBrowser from "expo-web-browser";
+import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { ProviderEntityTypeSelector, type PayeeEntityData } from "./ProviderEntityTypeSelector";
 import { ProviderVerificationPanel } from "./ProviderVerificationPanel";
 
@@ -95,7 +96,10 @@ export function ProviderVerificationHub({
       });
       await onRefresh();
     } catch (err) {
-      Alert.alert("Business verification", getApiErrorMessage(err));
+      Alert.alert(
+        "Business verification",
+        formatDiditLaunchError(getApiErrorMessage(err), { manualAvailable: false }),
+      );
     } finally {
       setKybLaunching(false);
     }

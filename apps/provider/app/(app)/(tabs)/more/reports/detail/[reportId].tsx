@@ -164,6 +164,15 @@ export default function ReportDetailScreen() {
   }, [def, from, to, periodMQY, periodDMWY, eodDate, selectedLocationId]);
 
   const { data, loading, error, refresh } = useApi<unknown>(path, { enabled: !!def && !!path });
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleShare = useCallback(async () => {
     if (data == null || !reportId) return;
@@ -184,7 +193,7 @@ export default function ReportDetailScreen() {
   }
 
   return (
-    <ScreenContainer refreshing={loading && data != null} onRefresh={refresh}>
+    <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
         title={def.title}
         showBack

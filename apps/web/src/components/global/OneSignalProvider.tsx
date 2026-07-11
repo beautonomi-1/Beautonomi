@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Script from "next/script";
 import { useOneSignal } from "@/hooks/useOneSignal";
 import { useCookieConsent } from "@/providers/CookieConsentProvider";
+import { useCspNonce } from "@/providers/CspNonceProvider";
 
 // Track if we've already warned about missing App ID (module-level to persist across renders)
 let hasWarnedAboutAppId = false;
@@ -15,6 +16,7 @@ let hasWarnedAboutAppId = false;
  */
 export default function OneSignalProvider() {
   const { isReady, allowsFunctional } = useCookieConsent();
+  const nonce = useCspNonce();
   // Call the hook - it will wait for OneSignal to be available
   useOneSignal();
   const hasWarnedRef = useRef(false);
@@ -43,6 +45,7 @@ export default function OneSignalProvider() {
     <Script
       src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
       strategy="afterInteractive"
+      nonce={nonce}
       onLoad={() => {
         if (process.env.NODE_ENV === "development") {
           console.log("OneSignal SDK loaded successfully");

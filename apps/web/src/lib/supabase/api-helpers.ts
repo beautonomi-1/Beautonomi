@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 import { getSupabaseServer, createSupabaseClientFromToken } from "./server";
 import { getSupabaseAdmin } from "./admin";
 import { requireRole as requireRoleAuth } from '@/lib/auth/requireRole';
+import type { UsersRoleFromDb } from '@/lib/auth/role';
 import type { UserRole } from '@/types/beautonomi';
 import {
   ALL_ADMIN_ROLES,
@@ -269,7 +270,7 @@ function isAdminApiRequest(request?: NextRequest | Request): boolean {
   }
 }
 
-function rolesIncludeAdmin(roles: UserRole[]): boolean {
+function rolesIncludeAdmin(roles: UsersRoleFromDb[]): boolean {
   return roles.some((role) => (ALL_ADMIN_ROLES as readonly string[]).includes(role as string));
 }
 
@@ -390,7 +391,7 @@ export async function requireAdminMfaIfRequired(
 }
 
 export async function requireRoleInApi(
-  role: UserRole | UserRole[],
+  role: UsersRoleFromDb | UsersRoleFromDb[],
   request?: NextRequest | Request
 ) {
   const roles = Array.isArray(role) ? role : [role];
@@ -398,7 +399,7 @@ export async function requireRoleInApi(
   if (request) {
     const cached = REQUIRE_ROLE_CACHE.get(request);
     if (cached) {
-      const userRole = cached.user?.role as UserRole | undefined;
+      const userRole = cached.user?.role as UsersRoleFromDb | undefined;
       const cacheMatches = userRole && roles.includes(userRole);
       // Only reuse when the role authorized the first caller is also in the
       // role list for this caller — guarantees we never widen permissions.
@@ -426,7 +427,7 @@ export async function requireRoleInApi(
  * may lose cookies even though the charge is valid.
  */
 export async function optionalAuthInApi(
-  role: UserRole | UserRole[],
+  role: UsersRoleFromDb | UsersRoleFromDb[],
   request?: NextRequest | Request,
 ) {
   try {
@@ -437,7 +438,7 @@ export async function optionalAuthInApi(
 }
 
 async function requireRoleInApiImpl(
-  roles: UserRole[],
+  roles: UsersRoleFromDb[],
   request?: NextRequest | Request,
 ) {
 
@@ -488,7 +489,7 @@ async function requireRoleInApiImpl(
             .upsert({ user_id: authUser.id, currency: "ZAR" }, { onConflict: "user_id", ignoreDuplicates: true });
         }
 
-        let userRole = resolvedUserData!.role as UserRole;
+        let userRole = resolvedUserData!.role as UsersRoleFromDb;
         const admin = getSupabaseAdmin();
 
         // Owner registered in providers but users.role still "customer" (common before /api/me/role
@@ -530,7 +531,7 @@ async function requireRoleInApiImpl(
         // admin/superadmin-scoped: require at least one of customer / provider_owner / provider_staff
         // in the allowed list (never treat as superadmin-only).
         const routeAcceptsProviderOnboarding =
-          userRole === ("provider_onboarding" as UserRole) &&
+          userRole === "provider_onboarding" &&
           roles.some((r) =>
             ["customer", "provider_owner", "provider_staff"].includes(r as string)
           );
@@ -670,7 +671,7 @@ export async function getEffectiveAdminSectionRoles(
 export async function requireAdminSection(
   section: AdminSection,
   request?: NextRequest | Request
-): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+): Promise<{ user: { id: string; role: UsersRoleFromDb; email?: string; user_metadata?: any; full_name?: string | null } }> {
   const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
   if (!user) throw new Error('Authentication required');
   const effectiveRoles = await getEffectiveAdminSectionRoles(request);
@@ -709,7 +710,7 @@ export async function requireAdminSection(
  */
 export async function requireSuperadmin(
   request?: NextRequest | Request
-): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+): Promise<{ user: { id: string; role: UsersRoleFromDb; email?: string; user_metadata?: any; full_name?: string | null } }> {
   const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
   if (!user) throw new Error("Authentication required");
   if ((user.role as string) !== "superadmin") {
@@ -725,7 +726,7 @@ export async function requireSuperadmin(
 export async function requireAdminSectionAny(
   sections: AdminSection[],
   request?: NextRequest | Request
-): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+): Promise<{ user: { id: string; role: UsersRoleFromDb; email?: string; user_metadata?: any; full_name?: string | null } }> {
   const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
   if (!user) throw new Error("Authentication required");
   const effectiveRoles = await getEffectiveAdminSectionRoles(request);

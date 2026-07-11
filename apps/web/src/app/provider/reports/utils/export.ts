@@ -4,6 +4,7 @@
 
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { toast } from "sonner";
 
 /** Generic report row shape for export formatters */
 export type ReportRow = Record<string, unknown>;
@@ -29,38 +30,52 @@ export function fm(amount: unknown, currencyCode: string): string {
   return formatCurrency(Number.isFinite(n) ? n : 0, currencyCode);
 }
 
+/** Human-readable CSV column titles from camelCase / snake_case keys. */
+export function humanizeExportHeader(key: string): string {
+  const known: Record<string, string> = {
+    totalBookings: "Total bookings",
+    totalRevenue: "Total revenue",
+    serviceName: "Service name",
+    staffName: "Staff name",
+    clientName: "Client name",
+    created_at: "Created at",
+    paystack_reference: "Paystack reference",
+    paid_amount: "Paid amount",
+    allocation_status: "Allocation status",
+    amount_match_status: "Amount match status",
+    payout_eligibility_status: "Payout eligibility",
+  };
+  if (known[key]) return known[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function escapeCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  if (value instanceof Date) return `"${value.toISOString()}"`;
+  if (typeof value === "object") {
+    return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+  }
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (!data || data.length === 0) {
-    alert("No data to export");
+    toast.error("No data to export");
     return;
   }
 
-  // Get headers from first object
   const headers = Object.keys(data[0]);
-  
-  // Create CSV content
+  const headerLabels = headers.map(humanizeExportHeader);
+
   const csvContent = [
-    // Headers
-    headers.map((h) => `"${h}"`).join(","),
-    // Data rows
+    headerLabels.map((h) => escapeCsvCell(h)).join(","),
     ...data.map((row) =>
-      headers
-        .map((header) => {
-          const value = row[header];
-          // Handle null/undefined
-          if (value === null || value === undefined) return '""';
-          // Handle dates
-          if (value instanceof Date) {
-            return `"${value.toISOString()}"`;
-          }
-          // Handle objects/arrays
-          if (typeof value === "object") {
-            return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
-          }
-          // Handle strings with quotes
-          return `"${String(value).replace(/"/g, '""')}"`;
-        })
-        .join(",")
+      headers.map((header) => escapeCsvCell(row[header])).join(",")
     ),
   ].join("\n");
 
@@ -76,8 +91,9 @@ export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  
+
   URL.revokeObjectURL(url);
+  toast.success("CSV downloaded");
 }
 
 /**
@@ -85,11 +101,17 @@ export function exportToCSV(data: Record<string, unknown>[], filename: string) {
  * Can export either from a report element ID or from data array
  */
 export function exportToPDF(reportIdOrData: string | unknown[], filename?: string, title: string = "Report") {
+  const toastId = toast.loading("Preparing PDF…");
+  const finish = (ok: boolean, message?: string) => {
+    toast.dismiss(toastId);
+    if (!ok && message) toast.error(message);
+  };
+
   // If first parameter is a string, it's a report ID - export the HTML element
   if (typeof reportIdOrData === "string") {
     const reportElement = document.getElementById(reportIdOrData);
     if (!reportElement) {
-      alert("Report element not found");
+      finish(false, "Report element not found");
       return;
     }
 
@@ -158,17 +180,17 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
     // Open in new window and print
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert("Please allow popups to export PDF");
+      finish(false, "Allow popups to export PDF");
       return;
     }
-    
+
     printWindow.document.write(html);
     printWindow.document.close();
-    
-    // Wait for content to load, then print
+
     printWindow.onload = () => {
       setTimeout(() => {
         printWindow.print();
+        finish(true);
       }, 250);
     };
     return;
@@ -177,12 +199,12 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   // Otherwise, treat as data array (legacy support)
   const data = reportIdOrData;
   if (!data || data.length === 0) {
-    alert("No data to export");
+    finish(false, "No data to export");
     return;
   }
 
-  // Get headers from first object
   const headers = Object.keys(data[0]);
+  const headerLabels = headers.map(humanizeExportHeader);
   
   // Create HTML table
   const tableRows = data.map((row) => {
@@ -206,7 +228,7 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
     return `<tr>${cells}</tr>`;
   }).join("");
 
-  const headerCells = headers.map((h) => `<th>${h}</th>`).join("");
+  const headerCells = headerLabels.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
 
   const html = `
     <!DOCTYPE html>
@@ -272,17 +294,17 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   // Open in new window and print
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert("Please allow popups to export PDF");
+    finish(false, "Allow popups to export PDF");
     return;
   }
-  
+
   printWindow.document.write(html);
   printWindow.document.close();
-  
-  // Wait for content to load, then print
+
   printWindow.onload = () => {
     setTimeout(() => {
       printWindow.print();
+      finish(true);
     }, 250);
   };
 }
@@ -1039,6 +1061,32 @@ export function formatReportDataForExport(
           Method: r.method,
           Count: r.count || 0,
           Amount: fm(((r.amount as number) || 0), currencyCode),
+        })),
+      ];
+    }
+
+    case "paystack-terminal-reconciliation": {
+      const d = data as ReportRow;
+      const totals = (d.totals as Record<string, number>) || {};
+      return [
+        ...(typeof d.fromYmd === "string" && typeof d.toYmd === "string"
+          ? [{ Metric: "Capture window", Value: `${d.fromYmd} → ${d.toYmd}` }]
+          : []),
+        { Metric: "Rows returned", Value: d.count ?? (d.rows as ReportRow[])?.length ?? 0 },
+        { Metric: "Received", Value: fm(Number(totals.received ?? 0), currencyCode) },
+        { Metric: "Allocated", Value: fm(Number(totals.allocated ?? 0), currencyCode) },
+        { Metric: "Unallocated", Value: fm(Number(totals.unallocated ?? 0), currencyCode) },
+        { Metric: "Held", Value: fm(Number(totals.held ?? 0), currencyCode) },
+        { Metric: "Eligible", Value: fm(Number(totals.eligible ?? 0), currencyCode) },
+        { Metric: "Declined", Value: fm(Number(totals.declined ?? 0), currencyCode) },
+        ...((d.rows as ReportRow[]) || []).map((row) => ({
+          Reference: row.paystack_reference,
+          Amount: fm(Number(row.paid_amount ?? 0), currencyCode),
+          Allocation: row.allocation_status,
+          "Amount match": row.amount_match_status,
+          "Payout eligibility": row.payout_eligibility_status,
+          Terminal: (row.terminal as { name?: string })?.name ?? "",
+          "Created at": row.created_at,
         })),
       ];
     }

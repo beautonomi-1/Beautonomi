@@ -6,6 +6,7 @@ export type UserRole =
   | "customer"
   | "provider_owner"
   | "provider_staff"
+  /** Legacy/in-flight role while a provider account completes onboarding. */
   | "provider_onboarding"
   | "superadmin"
   | "support_agent"

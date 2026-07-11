@@ -1,6 +1,6 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-export function OrganizationSchema({ baseUrl }: { baseUrl: string }) {
+export function OrganizationSchema({ baseUrl, nonce }: { baseUrl: string; nonce?: string }) {
   const origin = baseUrl.replace(/\/$/, "");
 
   const organizationSchema = {
@@ -27,6 +27,7 @@ export function OrganizationSchema({ baseUrl }: { baseUrl: string }) {
   return (
     <script
       type="application/ld+json"
+      nonce={nonce}
       dangerouslySetInnerHTML={{
         __html: JSON.stringify(organizationSchema),
       }}
@@ -34,7 +35,7 @@ export function OrganizationSchema({ baseUrl }: { baseUrl: string }) {
   );
 }
 
-export function WebSiteSchema({ baseUrl }: { baseUrl: string }) {
+export function WebSiteSchema({ baseUrl, nonce }: { baseUrl: string; nonce?: string }) {
   const origin = baseUrl.replace(/\/$/, "");
 
   const websiteSchema = {
@@ -53,6 +54,7 @@ export function WebSiteSchema({ baseUrl }: { baseUrl: string }) {
   return (
     <script
       type="application/ld+json"
+      nonce={nonce}
       dangerouslySetInnerHTML={{
         __html: JSON.stringify(websiteSchema),
       }}

@@ -45,6 +45,7 @@ export const adminQueryKeys = {
     all: () => [...adminQueryKeys.root, "providers"] as const,
     distanceList: () => [...adminQueryKeys.providers.all(), "distance-list"] as const,
     list: (q: string) => [...adminQueryKeys.providers.all(), "list", q] as const,
+    search: (q: string) => [...adminQueryKeys.providers.all(), "search", q] as const,
     detail: (id: string) => [...adminQueryKeys.providers.all(), "detail", id] as const,
     payoutAccounts: (providerId: string) =>
       [...adminQueryKeys.providers.all(), "payout-accounts", providerId] as const,
@@ -250,7 +251,8 @@ export const adminQueryKeys = {
     terminalsSummary: () => [...adminQueryKeys.paycloudOperations.all(), "terminals-summary"] as const,
     terminals: (signature: string) =>
       [...adminQueryKeys.paycloudOperations.all(), "terminals", signature] as const,
-    merchants: () => [...adminQueryKeys.paycloudOperations.all(), "merchants"] as const,
+    merchants: (signature = "default") =>
+      [...adminQueryKeys.paycloudOperations.all(), "merchants", signature] as const,
   },
 
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,
@@ -340,6 +342,8 @@ export const adminQueryKeys = {
   // NOTE: Use hardcoded roots here (not adminQueryKeys.root) to avoid a
   // circular initializer reference that breaks TypeScript inference.
   commercialTerminalInsights: ["admin", "commercial", "terminal-insights"] as const,
+  commercialTerminalUpsellLead: ["admin", "commercial", "terminal-upsell-lead"] as const,
+  commercialAssignableUsers: ["admin", "commercial", "assignable-users"] as const,
   commercialTerminalProducts: ["admin", "commercial", "terminal-products"] as const,
   commercialTerminalOrders: ["admin", "commercial", "terminal-orders"] as const,
   commercialTerminalCampaigns: ["admin", "commercial", "terminal-campaigns"] as const,

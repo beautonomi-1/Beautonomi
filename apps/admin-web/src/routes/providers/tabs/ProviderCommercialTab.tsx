@@ -65,6 +65,7 @@ type PaycloudReadiness = {
   terminals: { active: number; suspended: number; inFlight: number; withoutMerchant: number };
   settings: { accept: boolean; qr: boolean; cashback: boolean };
   plan?: { enabled: boolean; maxTerminals: number | null; usedTerminals: number };
+  account_environment?: "sandbox" | "live" | "mixed" | null;
 };
 
 type PaycloudMerchant = {
@@ -265,11 +266,11 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
   });
 
   const paycloudMerchantsQ = useQuery({
-    queryKey: adminQueryKeys.paycloudOperations.merchants(),
+    queryKey: adminQueryKeys.paycloudOperations.merchants("active-100"),
     enabled: !!providerCanonicalId && isSuperadmin,
     queryFn: () =>
       adminApi.getJson<{ items: PaycloudMerchant[] }>(
-        "/api/admin/paycloud-operations/merchants?limit=100",
+        "/api/admin/paycloud-operations/merchants?limit=100&active_only=true",
         { timeoutMs: 30_000 },
       ),
   });
@@ -279,6 +280,8 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
     display_name: "",
     paycloud_merchant_id: "",
   });
+  const [paycloudReassignTerminalId, setPaycloudReassignTerminalId] = useState<string | null>(null);
+  const [paycloudReassignMerchantId, setPaycloudReassignMerchantId] = useState("");
 
   const assignPaycloudTerminal = useMutation({
     mutationFn: () =>
@@ -300,8 +303,12 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
   const paycloudTerminalAction = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       adminApi.patchJson("/api/admin/paycloud-operations/terminals", body),
-    onSuccess: async () => {
-      adminToast.success("Terminal updated");
+    onSuccess: async (_data, variables) => {
+      adminToast.success(
+        variables.action === "reassign" ? "Terminal reassigned" : "Terminal updated",
+      );
+      setPaycloudReassignTerminalId(null);
+      setPaycloudReassignMerchantId("");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.paycloud(providerCanonicalId) });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.paycloudOperations.all() });
     },
@@ -925,30 +932,26 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                       Open feature flags
                     </Link>
                   ) : paycloudReadiness.blockers[0].code === "NO_MERCHANT" ? (
-                    <Link
-                      to={adminSpaTo("/admin/integrations/paycloud")}
-                      className={adminToolbarButtonClass(false) + " inline-flex"}
-                    >
-                      Open PayCloud setup
-                    </Link>
+                    <a href="#paycloud-terminals" className={adminToolbarButtonClass(false) + " inline-flex"}>
+                      Link merchant on terminal
+                    </a>
                   ) : paycloudReadiness.blockers[0].code === "NO_TERMINALS" ? (
                     <a href="#paycloud-assign" className={adminToolbarButtonClass(false) + " inline-flex"}>
                       Assign machine
                     </a>
                   ) : paycloudReadiness.blockers[0].code === "PLAN_REQUIRED" ? (
                     <Link
-                      to={adminSpaTo(`/admin/providers/${encodeURIComponent(providerCanonicalId || id)}`)}
+                      to={adminSpaTo(
+                        `/admin/providers/${encodeURIComponent(providerCanonicalId || id)}?tab=finance`,
+                      )}
                       className={adminToolbarButtonClass(false) + " inline-flex"}
                     >
                       Open provider subscription
                     </Link>
                   ) : paycloudReadiness.blockers[0].code === "ALL_SUSPENDED" ? (
-                    <Link
-                      to={adminSpaTo("/admin/integrations/paycloud-operations")}
-                      className={adminToolbarButtonClass(false) + " inline-flex"}
-                    >
-                      Open PayCloud operations
-                    </Link>
+                    <a href="#paycloud-terminals" className={adminToolbarButtonClass(false) + " inline-flex"}>
+                      Review terminals
+                    </a>
                   ) : null}
                 </div>
               </div>
@@ -988,7 +991,7 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
 
             {/* Accept toggle + summary stats */}
             <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-              <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
                 <div>
                   <dt className="text-gray-500">Accept PayCloud</dt>
                   <dd className="font-medium">
@@ -997,6 +1000,12 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                     ) : (
                       <span className="text-gray-500">Disabled</span>
                     )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Account environment</dt>
+                  <dd className="font-medium capitalize">
+                    {paycloudReadiness?.account_environment ?? "—"}
                   </dd>
                 </div>
                 <div>
@@ -1056,9 +1065,17 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
             </div>
 
             {/* Merchant strip */}
-            {(paycloud.merchants ?? []).length > 0 ? (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-900">Merchants</h3>
+            <div className="mt-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-gray-900">Merchants on this provider</h3>
+                <Link
+                  to={adminSpaTo("/admin/integrations/paycloud")}
+                  className="text-xs font-medium text-primary underline"
+                >
+                  Add / edit merchants →
+                </Link>
+              </div>
+              {(paycloud.merchants ?? []).length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {paycloud.merchants.map((m) => (
                     <div
@@ -1073,20 +1090,26 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <p className="mt-6 text-sm text-gray-500">No PayCloud merchants linked to terminals yet.</p>
-            )}
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">
+                  No merchants linked via terminals yet. Register merchants on{" "}
+                  <Link to={adminSpaTo("/admin/integrations/paycloud")} className="text-primary underline">
+                    PayCloud setup
+                  </Link>
+                  , then assign a terminal below.
+                </p>
+              )}
+            </div>
 
             {/* Assign terminal */}
             <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4" id="paycloud-assign">
               <h3 className="text-sm font-semibold text-gray-900">Assign card machine</h3>
               <p className="mt-1 text-xs text-gray-600">
-                Requires a registered PayCloud merchant. Create one on{" "}
+                Requires an active PayCloud merchant. Create or edit merchants on{" "}
                 <Link to={adminSpaTo("/admin/integrations/paycloud")} className="text-primary underline">
                   PayCloud setup
-                </Link>{" "}
-                if needed.
+                </Link>
+                .
               </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
@@ -1145,6 +1168,7 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
             </div>
 
             {/* Terminals table */}
+            <div id="paycloud-terminals">
             {(paycloud.terminals ?? []).length > 0 ? (
               <AdminDataTable className="mt-6">
                 <AdminTableHead>
@@ -1191,7 +1215,15 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                       </AdminTd>
                       <AdminTd>
                         {t.in_flight_payment_id ? (
-                          <span className="text-xs font-mono text-amber-700">{t.in_flight_payment_id.slice(0, 8)}…</span>
+                          <Link
+                            to={adminSpaTo(
+                              `/admin/integrations/paycloud-operations?search=${encodeURIComponent(t.in_flight_payment_id)}&exceptions_only=false`,
+                            )}
+                            className="text-xs font-mono text-amber-700 underline"
+                            title={t.in_flight_payment_id}
+                          >
+                            {t.in_flight_payment_id.slice(0, 8)}…
+                          </Link>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
                         )}
@@ -1234,6 +1266,17 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                             className="rounded border border-gray-200 px-2 py-0.5 text-xs"
                             disabled={paycloudTerminalAction.isPending}
                             onClick={() => {
+                              setPaycloudReassignTerminalId(t.id);
+                              setPaycloudReassignMerchantId(t.merchant?.id ?? "");
+                            }}
+                          >
+                            Reassign merchant
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-gray-200 px-2 py-0.5 text-xs"
+                            disabled={paycloudTerminalAction.isPending}
+                            onClick={() => {
                               if (window.confirm(`Unassign ${t.display_name}?`)) {
                                 paycloudTerminalAction.mutate({ action: "unassign", terminal_id: t.id });
                               }
@@ -1242,6 +1285,51 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                             Unassign
                           </button>
                         </div>
+                        {paycloudReassignTerminalId === t.id ? (
+                          <div className="mt-2 space-y-2 rounded border border-gray-200 bg-white p-2">
+                            <select
+                              className="w-full rounded border border-gray-200 px-2 py-1 text-xs"
+                              value={paycloudReassignMerchantId}
+                              onChange={(e) => setPaycloudReassignMerchantId(e.target.value)}
+                            >
+                              <option value="">Select merchant…</option>
+                              {(paycloudMerchantsQ.data?.items ?? []).map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {formatPaycloudMerchantOptionLabel(m)}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                className="rounded bg-gray-900 px-2 py-0.5 text-xs text-white disabled:opacity-50"
+                                disabled={
+                                  paycloudTerminalAction.isPending || !paycloudReassignMerchantId
+                                }
+                                onClick={() =>
+                                  paycloudTerminalAction.mutate({
+                                    action: "reassign",
+                                    terminal_id: t.id,
+                                    provider_id: providerCanonicalId,
+                                    paycloud_merchant_id: paycloudReassignMerchantId,
+                                  })
+                                }
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded border border-gray-200 px-2 py-0.5 text-xs"
+                                onClick={() => {
+                                  setPaycloudReassignTerminalId(null);
+                                  setPaycloudReassignMerchantId("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </AdminTd>
                     </tr>
                   ))}
@@ -1251,14 +1339,25 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
               <div className="mt-6">
                 <EmptyState
                   title="No PayCloud terminals"
-                  description="Assign card machines from PayCloud Operations or provider onboarding."
+                  description="Assign a card machine above, or manage the fleet from PayCloud Operations."
                 />
               </div>
             )}
+            </div>
 
             {/* Recent payments */}
             <div className="mt-6">
-              <h3 className="text-sm font-semibold text-gray-900">Recent payments</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-gray-900">Recent payments</h3>
+                <Link
+                  to={adminSpaTo(
+                    `/admin/integrations/paycloud-operations?provider_id=${encodeURIComponent(providerCanonicalId)}&exceptions_only=false`,
+                  )}
+                  className="text-xs font-medium text-primary underline"
+                >
+                  View all in Operations →
+                </Link>
+              </div>
               {(paycloud.recent_payments ?? []).length > 0 ? (
                 <AdminDataTable className="mt-3">
                   <AdminTableHead>

@@ -2147,13 +2147,36 @@ export function NewSaleDialog({
                   }
                   
                   try {
-                    // Create client - for now, just use as walk-in with full details
+                    const response = await providerPortalFetch("/api/provider/clients/create", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        first_name: newClientForm.first_name.trim(),
+                        last_name: newClientForm.last_name.trim(),
+                        full_name: `${newClientForm.first_name.trim()} ${newClientForm.last_name.trim()}`.trim(),
+                        email: newClientForm.email.trim() || undefined,
+                        phone: newClientForm.phone.trim() || undefined,
+                      }),
+                    });
+                    if (!response.ok) {
+                      const errJson = await response.json().catch(() => ({}));
+                      throw new Error(errJson?.error?.message ?? "Failed to create client");
+                    }
+                    const data = await response.json();
+                    const created = data?.data;
+                    const customer = created?.customer ?? created;
+                    const customerId = customer?.id ?? created?.customer_id;
+                    if (!customerId) {
+                      throw new Error("Client created but no customer id returned");
+                    }
+                    const fullName = customer?.full_name ?? `${newClientForm.first_name.trim()} ${newClientForm.last_name.trim()}`.trim();
+                    const nameParts = fullName.trim().split(/\s+/);
                     const newClient: Client = {
-                      id: `new-client-${Date.now()}`,
-                      first_name: newClientForm.first_name.trim(),
-                      last_name: newClientForm.last_name.trim(),
-                      email: newClientForm.email.trim() || undefined,
-                      phone: newClientForm.phone.trim() || undefined,
+                      id: customerId,
+                      first_name: nameParts[0] || newClientForm.first_name.trim(),
+                      last_name: nameParts.slice(1).join(" ") || newClientForm.last_name.trim(),
+                      email: customer?.email ?? (newClientForm.email.trim() || undefined),
+                      phone: customer?.phone ?? (newClientForm.phone.trim() || undefined),
                     };
                     
                     handleSelectClient(newClient);
@@ -2162,7 +2185,7 @@ export function NewSaleDialog({
                     toast.success("Client added successfully");
                   } catch (error) {
                     console.error("Error creating client:", error);
-                    toast.error("Failed to create client");
+                    toast.error(error instanceof Error ? error.message : "Failed to create client");
                   }
                 }}
                 className="flex-1 bg-primary hover:bg-primary-hover"

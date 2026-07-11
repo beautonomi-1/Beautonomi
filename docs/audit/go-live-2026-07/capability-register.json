@@ -1,0 +1,201 @@
+{
+  "capabilities": [
+    {
+      "id": "CAP-BOOK-001",
+      "name": "Public booking hold and checkout",
+      "status": "full",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/public/booking-holds",
+        "/api/payments/initialize"
+      ],
+      "db": [
+        "bookings",
+        "booking_holds"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-PAY-001",
+      "name": "Paystack online payments",
+      "status": "full",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/payments/webhook"
+      ],
+      "db": [
+        "booking_payments",
+        "payment_transactions"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-PAY-002",
+      "name": "PayCloud terminal payments",
+      "status": "partial",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/paycloud"
+      ],
+      "db": [
+        "paycloud_webhook_events"
+      ],
+      "tests": true,
+      "gap": "same-terminal incomplete"
+    },
+    {
+      "id": "CAP-PAYOUT-001",
+      "name": "Provider payout requests",
+      "status": "full",
+      "apps": [
+        "APP-001",
+        "APP-002"
+      ],
+      "apis": [
+        "/api/provider/payouts",
+        "/api/admin/payouts"
+      ],
+      "db": [
+        "payouts",
+        "finance_transactions"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-KYC-001",
+      "name": "Didit identity verification",
+      "status": "full",
+      "apps": [
+        "APP-001",
+        "APP-002"
+      ],
+      "apis": [
+        "/api/webhooks/didit"
+      ],
+      "db": [
+        "identity_verification_sessions"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-KYB-001",
+      "name": "Provider KYB verification",
+      "status": "partial",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/provider/identity-verification/business-session"
+      ],
+      "db": [
+        "providers.kyb_verification_status"
+      ],
+      "tests": false,
+      "gap": "flags off by default"
+    },
+    {
+      "id": "CAP-SEARCH-001",
+      "name": "Provider search and discovery",
+      "status": "partial",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/public/search"
+      ],
+      "db": [
+        "providers"
+      ],
+      "tests": true,
+      "gap": "fake map coords, no-op filters"
+    },
+    {
+      "id": "CAP-ECOM-001",
+      "name": "Product shipping",
+      "status": "stub",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "packages/shipping"
+      ],
+      "db": [
+        "product_orders"
+      ],
+      "tests": true,
+      "gap": "courier stubs"
+    },
+    {
+      "id": "CAP-ADMIN-001",
+      "name": "Superadmin operations portal",
+      "status": "full",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/*"
+      ],
+      "db": [
+        "audit_logs"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-TENANT-001",
+      "name": "Multi-tenant isolation",
+      "status": "partial",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "tenant resolution"
+      ],
+      "db": [
+        "tenants",
+        "tenant_domains"
+      ],
+      "tests": true,
+      "gap": "runtime unverified"
+    },
+    {
+      "id": "CAP-NOTIF-001",
+      "name": "Notification delivery queue",
+      "status": "full",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/cron/process-notification-queue"
+      ],
+      "db": [
+        "notification_delivery_queue"
+      ],
+      "tests": true
+    },
+    {
+      "id": "CAP-POS-001",
+      "name": "Provider POS walk-in sales",
+      "status": "partial",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/provider/product-sales"
+      ],
+      "db": [
+        "sales"
+      ],
+      "tests": true,
+      "gap": "unpersisted clients"
+    }
+  ]
+}

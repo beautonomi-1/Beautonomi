@@ -27,6 +27,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { getCsrfHeaders } from "@/lib/csrf";
 
 type VendorConfig = {
   vendor: string;
@@ -156,7 +157,8 @@ export default function VendorIntegrationPage() {
 
       const res = await fetch(`/api/provider/terminal-integrations/${vendor}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const json = await res.json();
@@ -176,7 +178,11 @@ export default function VendorIntegrationPage() {
     if (!window.confirm(`Disconnect ${vendorConfig?.display_name ?? vendor} integration? Your credentials will be permanently removed.`)) return;
     setIsDisconnecting(true);
     try {
-      const res = await fetch(`/api/provider/terminal-integrations/${vendor}`, { method: "DELETE" });
+      const res = await fetch(`/api/provider/terminal-integrations/${vendor}`, {
+        method: "DELETE",
+        headers: getCsrfHeaders(),
+        credentials: "include",
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error?.message ?? "Disconnect failed");
       toast.success("Integration disconnected");

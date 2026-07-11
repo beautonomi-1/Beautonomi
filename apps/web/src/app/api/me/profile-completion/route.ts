@@ -5,6 +5,7 @@ import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-p
 import { resolveProfileEmailVerificationState } from "@beautonomi/utils";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resolveEffectiveVerificationDisplayStatus } from "@/lib/identity-verification/resolve-effective-verification-display-status";
 
 /**
  * GET /api/me/profile-completion
@@ -72,6 +73,15 @@ export async function GET(request: NextRequest) {
     const verificationPolicy = await resolveVerificationPolicy(tenantId, env);
     const identityRequiredForCustomer = isCustomer && verificationPolicy.requiredForCustomers;
 
+    const sessionIdentityStatus = isCustomer
+      ? await resolveEffectiveVerificationDisplayStatus(user.id, "customer")
+      : null;
+    const identityChecklistComplete =
+      userData.identity_verified === true ||
+      userData.identity_verification_status === "approved" ||
+      verification?.status === "approved" ||
+      sessionIdentityStatus === "approved";
+
     const checklistItems = [
       {
         id: "photo",
@@ -108,7 +118,7 @@ export async function GET(request: NextRequest) {
         id: "identity",
         label: "Verify identity",
         timeEstimate: "5 min",
-        completed: Boolean(userData.identity_verified),
+        completed: identityChecklistComplete,
         required: identityRequiredForCustomer,
       },
       {

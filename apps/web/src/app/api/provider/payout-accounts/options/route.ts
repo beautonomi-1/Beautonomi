@@ -2,8 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
+  getProviderIdForUser,
   successResponse,
   handleApiError,
+  notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import {
@@ -18,9 +20,13 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, admin);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { skip } = await getEffectiveSkipPayoutAccountVerification(admin, tenantId);
 
     return successResponse({

@@ -96,6 +96,83 @@ function isVideoUrl(url: string): boolean {
   return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v");
 }
 
+type PickedAsset = { uri: string; mimeType?: string; fileName?: string; isVideo?: boolean };
+
+function isVideoAsset(asset: PickedAsset): boolean {
+  return asset.isVideo === true || (asset.mimeType?.startsWith("video/") ?? false);
+}
+
+function mapPickerAsset(a: {
+  uri: string;
+  type?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+}): PickedAsset {
+  const isVideo = a.type === "video" || a.type === "pairedVideo" || (a.mimeType?.startsWith("video/") ?? false);
+  return {
+    uri: a.uri,
+    mimeType: a.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg"),
+    fileName: a.fileName ?? (isVideo ? "video.mp4" : "image.jpg"),
+    isVideo,
+  };
+}
+
+/** Local file preview for create/edit strips — uses expo-av for video, expo-image for photos. */
+function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const video = isVideoAsset(asset);
+  if (video) {
+    return (
+      <View style={{ width: size, height: size, backgroundColor: "#111" }}>
+        <Video
+          source={{ uri: asset.uri }}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={false}
+          isMuted
+          useNativeControls={false}
+        />
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
+            ]}
+          >
+            <Ionicons name="play-circle" size={Math.round(size * 0.42)} color="rgba(255,255,255,0.95)" />
+          </View>
+        </View>
+      </View>
+    );
+  }
+  if (imageFailed) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: "#e5e7eb",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="image-outline" size={Math.round(size * 0.35)} color="#9ca3af" />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: asset.uri }}
+      style={{ width: size, height: size, backgroundColor: "#f3f4f6" } as ExpoImageStyle}
+      contentFit="cover"
+      transition={200}
+      recyclingKey={asset.uri}
+      accessibilityLabel="Selected photo preview"
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
+
 function formatPublishedLine(post: ExplorePost): string {
   if (post.status !== "published") return "Draft — not on Explore yet";
   if (typeof post.published_at === "string" && post.published_at) {
@@ -153,8 +230,6 @@ function ExploreFeedMediaThumb({
   );
 }
 
-type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
-
 export default function ExplorePostsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -183,7 +258,7 @@ export default function ExplorePostsScreen() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<PickedAsset[]>([]);
   const [caption, setCaption] = useState("");
-  const [publishNow, setPublishNow] = useState(true);
+  const [submittingMode, setSubmittingMode] = useState<"publish" | "draft" | null>(null);
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(null);
   const [offeringId, setOfferingId] = useState<string | null>(null);
   const [alsoAddToGallery, setAlsoAddToGallery] = useState(true);
@@ -196,7 +271,7 @@ export default function ExplorePostsScreen() {
   const [viewPost, setViewPost] = useState<ExplorePost | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editCaption, setEditCaption] = useState("");
-  const [editPublishNow, setEditPublishNow] = useState(true);
+  const [editSubmittingMode, setEditSubmittingMode] = useState<"publish" | "draft" | null>(null);
   const [editPrimaryCategorySlug, setEditPrimaryCategorySlug] = useState<string | null>(null);
   const [editTagInput, setEditTagInput] = useState("");
   const [editOfferingId, setEditOfferingId] = useState<string | null>(null);
@@ -342,7 +417,6 @@ export default function ExplorePostsScreen() {
     setViewPost(post);
     setEditMode(false);
     setEditCaption(post.caption ?? "");
-    setEditPublishNow(post.status === "published");
     const cat = post.primary_category_id
       ? categories.find((c) => c.id === post.primary_category_id)
       : null;
@@ -388,7 +462,7 @@ export default function ExplorePostsScreen() {
 
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
 
-  const handleSaveEdit = useCallback(async () => {
+  const handleSaveEdit = useCallback(async (publish: boolean) => {
     if (!viewPost) return;
     if (!canCreateExplorePosts) {
       Alert.alert("Permission", "You do not have permission to manage Explore posts.");
@@ -404,15 +478,23 @@ export default function ExplorePostsScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditSubmittingMode(publish ? "publish" : "draft");
     setEditUploading(true);
     try {
       const uploadedPaths: string[] = [];
-      for (const asset of editLocalAssets) {
+      for (let i = 0; i < editLocalAssets.length; i++) {
+        const asset = editLocalAssets[i];
         const formData = new FormData();
+        const fallbackName =
+          asset.fileName ??
+          (isVideoAsset(asset) ? `video-${i}.mp4` : `image-${i}.jpg`);
+        const safeType =
+          asset.mimeType ??
+          (isVideoAsset(asset) ? "video/mp4" : "image/jpeg");
         appendFormDataFileNative(formData, "file", {
           uri: asset.uri,
-          type: asset.mimeType ?? "image/jpeg",
-          name: asset.fileName ?? "image.jpg",
+          type: safeType,
+          name: fallbackName,
         });
         const res = await api.fetch<{ path: string }>("/api/explore/upload", {
           method: "POST",
@@ -436,7 +518,7 @@ export default function ExplorePostsScreen() {
 
       const payload: Record<string, unknown> = {
         caption: editCaption.trim() || null,
-        status: editPublishNow ? "published" : "draft",
+        status: publish ? "published" : "draft",
         primary_category_slug: editPrimaryCategorySlug ?? null,
         tags,
         media_urls,
@@ -448,7 +530,7 @@ export default function ExplorePostsScreen() {
         payload,
       );
       if (err) {
-        Alert.alert("Error", err);
+        Alert.alert(publish ? "Couldn't publish post" : "Couldn't save draft", err);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -458,11 +540,11 @@ export default function ExplorePostsScreen() {
       refresh();
     } finally {
       setEditUploading(false);
+      setEditSubmittingMode(null);
     }
   }, [
     viewPost,
     editCaption,
-    editPublishNow,
     editPrimaryCategorySlug,
     editTagInput,
     editOfferingId,
@@ -488,11 +570,7 @@ export default function ExplorePostsScreen() {
     );
     if (!result) return;
     if (result.canceled) return;
-    const newAssets: PickedAsset[] = result.assets.map((a) => ({
-      uri: a.uri,
-      mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
-      fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
-    }));
+    const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
     setEditLocalAssets((prev) => {
       const room = 5 - editRemoteUrls.length - prev.length;
       if (room <= 0) {
@@ -518,11 +596,7 @@ export default function ExplorePostsScreen() {
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
-    const asset: PickedAsset = {
-      uri: a.uri,
-      mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
-      fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
-    };
+    const asset = mapPickerAsset(a);
     setEditLocalAssets((prev) => {
       const room = 5 - editRemoteUrls.length - prev.length;
       if (room <= 0) {
@@ -541,18 +615,28 @@ export default function ExplorePostsScreen() {
     setEditLocalAssets((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const openCreate = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const resetCreateForm = useCallback(() => {
     setSelectedAssets([]);
     setCaption("");
-    setPublishNow(true);
+    setSubmittingMode(null);
     setPrimaryCategorySlug(null);
     setOfferingId(null);
     setAlsoAddToGallery(true);
     setPreseedBookingId(null);
     setTagInput("");
-    setCreateOpen(true);
   }, []);
+
+  const openCreate = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    resetCreateForm();
+    setCreateOpen(true);
+  }, [resetCreateForm]);
+
+  const closeCreate = useCallback(() => {
+    if (uploading || creating) return;
+    resetCreateForm();
+    setCreateOpen(false);
+  }, [uploading, creating, resetCreateForm]);
 
   const pickMedia = useCallback(async () => {
     const result = await launchImageLibraryWithPermission(
@@ -569,11 +653,7 @@ export default function ExplorePostsScreen() {
     );
     if (!result) return;
     if (result.canceled) return;
-    const newAssets: PickedAsset[] = result.assets.map((a) => ({
-      uri: a.uri,
-      mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
-      fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
-    }));
+    const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
     setSelectedAssets((prev) => [...prev, ...newAssets].slice(0, 5));
   }, []);
 
@@ -592,23 +672,14 @@ export default function ExplorePostsScreen() {
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
-    setSelectedAssets((prev) =>
-      [
-        ...prev,
-        {
-          uri: a.uri,
-          mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
-          fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
-        },
-      ].slice(0, 5),
-    );
+    setSelectedAssets((prev) => [...prev, mapPickerAsset(a)].slice(0, 5));
   }, []);
 
   const removeAsset = useCallback((index: number) => {
     setSelectedAssets((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleCreatePost = useCallback(async () => {
+  const submitPost = useCallback(async (publish: boolean) => {
     if (!canCreateExplorePosts) {
       Alert.alert("Permission", "You do not have permission to create Explore posts.");
       return;
@@ -618,26 +689,19 @@ export default function ExplorePostsScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSubmittingMode(publish ? "publish" : "draft");
     setUploading(true);
     const paths: string[] = [];
     try {
       for (let i = 0; i < selectedAssets.length; i++) {
         const asset = selectedAssets[i];
         const formData = new FormData();
-        // §Provider-audit 2026-05: pin a sensible mime/name based on the
-        // asset shape so HEIC photos and Android videos that arrive without
-        // a type don't get rejected by the server. The upload endpoint also
-        // now accepts heic/heif/gif/avif so iPhone library uploads work.
         const fallbackName =
           asset.fileName ??
-          (asset.mimeType?.startsWith("video/") ? `video-${i}.mp4` : `image-${i}.jpg`);
+          (isVideoAsset(asset) ? `video-${i}.mp4` : `image-${i}.jpg`);
         const safeType =
           asset.mimeType ??
-          (fallbackName.toLowerCase().endsWith(".mp4") ||
-          fallbackName.toLowerCase().endsWith(".mov") ||
-          fallbackName.toLowerCase().endsWith(".m4v")
-            ? "video/mp4"
-            : "image/jpeg");
+          (isVideoAsset(asset) ? "video/mp4" : "image/jpeg");
         appendFormDataFileNative(formData, "file", {
           uri: asset.uri,
           type: safeType,
@@ -654,6 +718,7 @@ export default function ExplorePostsScreen() {
               : null) ?? "Could not upload file.";
           Alert.alert("Upload failed", `${msg}\n(Item ${i + 1} of ${selectedAssets.length})`);
           setUploading(false);
+          setSubmittingMode(null);
           return;
         }
         paths.push(res.data.path);
@@ -665,7 +730,7 @@ export default function ExplorePostsScreen() {
       const { error: createErr } = await createPost("/api/explore/posts", {
         caption: caption.trim() || null,
         media_urls: paths,
-        status: publishNow ? "published" : "draft",
+        status: publish ? "published" : "draft",
         ...(primaryCategorySlug ? { primary_category_slug: primaryCategorySlug } : {}),
         ...(tags.length ? { tags } : {}),
         ...(offeringId ? { offering_id: offeringId } : {}),
@@ -673,24 +738,27 @@ export default function ExplorePostsScreen() {
         ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
       });
       setUploading(false);
+      setSubmittingMode(null);
       if (createErr) {
         Alert.alert(
-          publishNow ? "Couldn't publish post" : "Couldn't save draft",
+          publish ? "Couldn't publish post" : "Couldn't save draft",
           createErr,
         );
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      resetCreateForm();
       setCreateOpen(false);
       refresh();
     } catch (e) {
       setUploading(false);
+      setSubmittingMode(null);
       Alert.alert(
-        publishNow ? "Couldn't publish post" : "Couldn't save draft",
+        publish ? "Couldn't publish post" : "Couldn't save draft",
         e instanceof Error ? e.message : "Something went wrong.",
       );
     }
-  }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, tagInput, createPost, refresh]);
+  }, [canCreateExplorePosts, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, tagInput, createPost, refresh, resetCreateForm]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (!canCreateExplorePosts) {
@@ -962,7 +1030,7 @@ export default function ExplorePostsScreen() {
 
       <BottomSheet
         visible={createOpen}
-        onClose={() => !uploading && setCreateOpen(false)}
+        onClose={closeCreate}
         title="New post"
         subtitle="Add photos or videos from your library or camera (up to 5)"
       >
@@ -991,15 +1059,12 @@ export default function ExplorePostsScreen() {
             style={twStyle("-mx-1 mb-4")}
           >
             {selectedAssets.map((asset, i) => (
-              <View key={i} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
-                <Image
-                  source={{ uri: asset.uri }}
-                  style={twStyle("h-full w-full") as ExpoImageStyle}
-                  contentFit="cover"
-                />
+              <View key={`${asset.uri}-${i}`} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
+                <LocalMediaPreview asset={asset} size={80} />
                 <TouchableOpacity
                   onPress={() => removeAsset(i)}
                   style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                  accessibilityLabel="Remove media"
                 >
                   <Ionicons name="close" size={14} color="#fff" />
                 </TouchableOpacity>
@@ -1107,40 +1172,42 @@ export default function ExplorePostsScreen() {
             <View style={twStyle("h-5 w-5 rounded-full bg-white shadow-sm")} />
           </View>
         </TouchableOpacity>
-        <View style={twStyle("mb-4 flex-row")}>
-          <TouchableOpacity
-            onPress={() => setPublishNow(true)}
-            style={[twStyle(`flex-1 rounded-xl py-3 ${publishNow ? "bg-green-600" : "bg-gray-100"}`), { marginRight: 12 }]}
-          >
-            <Text
-              style={twStyle(`text-center text-sm font-medium ${publishNow ? "text-white" : "text-gray-600"}`)}
-            >
-              Publish now
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setPublishNow(false)}
-            style={twStyle(`flex-1 rounded-xl py-3 ${!publishNow ? "bg-gray-700" : "bg-gray-100"}`)}
-          >
-            <Text
-              style={twStyle(`text-center text-sm font-medium ${!publishNow ? "text-white" : "text-gray-600"}`)}
-            >
-              Save as draft
-            </Text>
-          </TouchableOpacity>
+        <View style={twStyle("mb-2 flex-row gap-3")}>
+          <View style={twStyle("flex-1")}>
+            <ActionButton
+              label={
+                uploading && submittingMode === "publish"
+                  ? "Publishing…"
+                  : creating && submittingMode === "publish"
+                    ? "Publishing…"
+                    : "Publish"
+              }
+              onPress={() => void submitPost(true)}
+              loading={(uploading || creating) && submittingMode === "publish"}
+              disabled={(uploading || creating) && submittingMode !== "publish"}
+              fullWidth
+            />
+          </View>
+          <View style={twStyle("flex-1")}>
+            <ActionButton
+              label={
+                uploading && submittingMode === "draft"
+                  ? "Saving…"
+                  : creating && submittingMode === "draft"
+                    ? "Saving…"
+                    : "Save draft"
+              }
+              onPress={() => void submitPost(false)}
+              loading={(uploading || creating) && submittingMode === "draft"}
+              disabled={(uploading || creating) && submittingMode !== "draft"}
+              variant="secondary"
+              fullWidth
+            />
+          </View>
         </View>
-        <ActionButton
-          label={
-            uploading
-              ? "Uploading…"
-              : creating
-                ? "Creating…"
-                : "Create post"
-          }
-          onPress={handleCreatePost}
-          loading={uploading || creating}
-          fullWidth
-        />
+        <Text style={twStyle("text-center text-xs text-gray-500")}>
+          Publish shares your post on Explore. Save draft keeps it private until you publish.
+        </Text>
       </BottomSheet>
 
       {viewPost && (
@@ -1223,11 +1290,7 @@ export default function ExplorePostsScreen() {
                   ))}
                   {editLocalAssets.map((asset, i) => (
                     <View key={`l-${asset.uri}-${i}`} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
-                      <Image
-                        source={{ uri: asset.uri }}
-                        style={twStyle("h-full w-full") as ExpoImageStyle}
-                        contentFit="cover"
-                      />
+                      <LocalMediaPreview asset={asset} size={80} />
                       <TouchableOpacity
                         onPress={() => removeEditLocal(i)}
                         style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
@@ -1340,56 +1403,52 @@ export default function ExplorePostsScreen() {
                   </ScrollView>
                 </>
               ) : null}
-              <View style={twStyle("mb-4 flex-row")}>
-                <TouchableOpacity
-                  onPress={() => setEditPublishNow(true)}
-                  style={[twStyle(`flex-1 rounded-xl py-3 ${editPublishNow ? "bg-green-600" : "bg-gray-100"}`), { marginRight: 12 }]}
-                >
-                  <Text
-                    style={twStyle(`text-center text-sm font-medium ${editPublishNow ? "text-white" : "text-gray-600"}`)}
-                  >
-                    Publish
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setEditPublishNow(false)}
-                  style={twStyle(`flex-1 rounded-xl py-3 ${!editPublishNow ? "bg-gray-700" : "bg-gray-100"}`)}
-                >
-                  <Text
-                    style={twStyle(`text-center text-sm font-medium ${!editPublishNow ? "text-white" : "text-gray-600"}`)}
-                  >
-                    Draft
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <View style={twStyle("flex-row")}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditMode(false);
-                    setEditLocalAssets([]);
-                    if (viewPost) {
-                      setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
-                      setEditTagInput(
-                        Array.isArray(viewPost.tags) && viewPost.tags.length ? viewPost.tags.join(", ") : "",
-                      );
-                      setEditOfferingId(viewPost.offering_id ?? null);
-                    }
-                  }}
-                  style={[twStyle("flex-1 rounded-xl border border-gray-300 py-3"), { marginRight: 12 }]}
-                >
-                  <Text style={twStyle("text-center text-sm font-medium text-gray-700")}>Cancel</Text>
-                </TouchableOpacity>
+              <View style={twStyle("mb-2 flex-row gap-3")}>
                 <View style={twStyle("flex-1")}>
                   <ActionButton
                     label={
-                      editUploading ? "Uploading…" : updating ? "Saving…" : "Save"
+                      (editUploading || updating) && editSubmittingMode === "publish"
+                        ? "Publishing…"
+                        : "Publish"
                     }
-                    onPress={handleSaveEdit}
-                    loading={updating || editUploading}
+                    onPress={() => void handleSaveEdit(true)}
+                    loading={(editUploading || updating) && editSubmittingMode === "publish"}
+                    disabled={(editUploading || updating) && editSubmittingMode !== "publish"}
+                    fullWidth
+                  />
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <ActionButton
+                    label={
+                      (editUploading || updating) && editSubmittingMode === "draft"
+                        ? "Saving…"
+                        : "Save draft"
+                    }
+                    onPress={() => void handleSaveEdit(false)}
+                    loading={(editUploading || updating) && editSubmittingMode === "draft"}
+                    disabled={(editUploading || updating) && editSubmittingMode !== "draft"}
+                    variant="secondary"
                     fullWidth
                   />
                 </View>
               </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditMode(false);
+                  setEditLocalAssets([]);
+                  setEditSubmittingMode(null);
+                  if (viewPost) {
+                    setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
+                    setEditTagInput(
+                      Array.isArray(viewPost.tags) && viewPost.tags.length ? viewPost.tags.join(", ") : "",
+                    );
+                    setEditOfferingId(viewPost.offering_id ?? null);
+                  }
+                }}
+                style={twStyle("mt-2 rounded-xl border border-gray-300 py-3")}
+              >
+                <Text style={twStyle("text-center text-sm font-medium text-gray-700")}>Cancel</Text>
+              </TouchableOpacity>
             </ScrollView>
           ) : (
             <>
@@ -1544,7 +1603,6 @@ export default function ExplorePostsScreen() {
                   <TouchableOpacity
                     onPress={() => {
                       setEditCaption(viewPost.caption ?? "");
-                      setEditPublishNow(viewPost.status === "published");
                       const cat = viewPost.primary_category_id
                         ? categories.find((c) => c.id === viewPost.primary_category_id)
                         : null;

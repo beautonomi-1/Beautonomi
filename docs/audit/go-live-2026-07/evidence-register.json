@@ -1,0 +1,217 @@
+{
+  "evidence": [
+    {
+      "id": "EVD-001",
+      "type": "source_code",
+      "path": "apps/web/src/lib/csrf.ts",
+      "lines": "10-18",
+      "description": "CSRF disabled when secret unset"
+    },
+    {
+      "id": "EVD-002",
+      "type": "test_file",
+      "path": "apps/web/e2e/booking-happy-path.spec.ts",
+      "description": "Only web E2E spec"
+    },
+    {
+      "id": "EVD-003",
+      "type": "test_file",
+      "path": "apps/admin-web/e2e/login-shell.spec.ts",
+      "description": "Only admin E2E spec"
+    },
+    {
+      "id": "EVD-004",
+      "type": "source_code",
+      "path": "apps/web/src/lib/tenant/resolve-tenant-from-db.ts",
+      "description": "ZA fallback tenant resolution"
+    },
+    {
+      "id": "EVD-005",
+      "type": "test_file",
+      "path": "apps/web/src/__tests__/api/public-home-tenant-strict.test.ts",
+      "description": "Tenant strict mode unit tests exist but no E2E"
+    },
+    {
+      "id": "EVD-006",
+      "type": "source_code",
+      "path": "apps/web/src/app/search/components/places.tsx",
+      "description": "Random London map coordinates"
+    },
+    {
+      "id": "EVD-007",
+      "type": "source_code",
+      "path": "packages/shipping/src/providers/aramex.ts",
+      "description": "createShipment throws"
+    },
+    {
+      "id": "EVD-008",
+      "type": "source_code",
+      "path": "apps/web/src/components/provider-portal/NewSaleDialog.tsx",
+      "description": "Unpersisted client ID"
+    },
+    {
+      "id": "EVD-009",
+      "type": "source_code",
+      "path": "apps/web/src/app/api/provider/time-clock/route.ts",
+      "description": "Fake success on missing table"
+    },
+    {
+      "id": "EVD-010",
+      "type": "documentation",
+      "path": "docs/PAYCLOUD_SAME_TERMINAL_SPIKE.md",
+      "description": "Same-terminal spike incomplete"
+    },
+    {
+      "id": "EVD-011",
+      "type": "source_code",
+      "path": "apps/web/src/app/api/search/advanced/route.ts",
+      "description": "No-op filters"
+    },
+    {
+      "id": "EVD-012",
+      "type": "migration",
+      "path": "supabase/migrations/294_seed_postal_areas_za.sql",
+      "description": "Placeholder postal seed"
+    },
+    {
+      "id": "EVD-013",
+      "type": "migration",
+      "path": "supabase/migrations/773_provider_kyb_verification.sql",
+      "description": "KYB flags off by default"
+    },
+    {
+      "id": "EVD-014",
+      "type": "source_code",
+      "path": "apps/web/src/lib/rate-limit/store.ts",
+      "description": "In-memory fallback"
+    },
+    {
+      "id": "EVD-015",
+      "type": "source_code",
+      "path": "apps/web/next.config.mjs",
+      "lines": "287-289",
+      "description": "CSP unsafe-inline eval"
+    },
+    {
+      "id": "EVD-016",
+      "type": "source_code",
+      "path": "apps/admin-web/src/routes/settings/FeatureFlagsListPage.tsx",
+      "description": "Stripe not enforced"
+    },
+    {
+      "id": "EVD-017",
+      "type": "documentation",
+      "path": "docs/LAUNCH_READINESS_100.md",
+      "description": "Unsigned 7-day gate"
+    },
+    {
+      "id": "EVD-018",
+      "type": "documentation",
+      "path": "docs/GAME_DAY_RUNBOOK.md",
+      "description": "Drills documented not executed"
+    },
+    {
+      "id": "EVD-019",
+      "type": "source_code",
+      "path": "apps/web/src/components/messaging/custom-offer-modal.tsx",
+      "description": "Image upload not implemented"
+    },
+    {
+      "id": "EVD-020",
+      "type": "source_code",
+      "path": "apps/web/src/proxy.ts",
+      "lines": "211-216",
+      "description": "Admin HTML without role gate"
+    },
+    {
+      "id": "EVD-021",
+      "type": "source_code",
+      "path": "apps/web/src/lib/supabase/api-helpers.ts",
+      "description": "Service role admin client pattern"
+    },
+    {
+      "id": "EVD-022",
+      "type": "source_code",
+      "path": "apps/web/src/components/provider-portal/QRCodeScanner.tsx",
+      "description": "Manual input only"
+    },
+    {
+      "id": "EVD-023",
+      "type": "source_code",
+      "path": "apps/web/src/app/api/provider/service-zones/analytics/route.ts",
+      "description": "Polygon/radius skipped"
+    },
+    {
+      "id": "EVD-024",
+      "type": "documentation",
+      "path": "docs/BACKUP_AND_DR_RUNBOOK.md",
+      "description": "DR runbook without test evidence"
+    },
+    {
+      "id": "EVD-025",
+      "type": "documentation",
+      "path": "docs/compliance/DATA_RETENTION_AND_ERASURE.md",
+      "description": "POPIA controls documented"
+    },
+    {
+      "id": "EVD-026",
+      "type": "source_code",
+      "path": "packages/types/src/domain.ts",
+      "description": "provider_onboarding TS-only role"
+    },
+    {
+      "id": "EVD-027",
+      "type": "source_code",
+      "path": "apps/customer/src/features/home/useGlobalCategories.ts",
+      "description": "Hardcoded fallback categories"
+    },
+    {
+      "id": "EVD-028",
+      "type": "test_script",
+      "path": "tooling/load-test/k6-booking-flow.js",
+      "description": "k6 script without stored results"
+    },
+    {
+      "id": "EVD-029",
+      "type": "source_code",
+      "path": "apps/web/src/lib/support/supportTicketCategories.ts",
+      "description": "Stripe label mismatch"
+    },
+    {
+      "id": "EVD-030",
+      "type": "test_count",
+      "path": "repository",
+      "description": "1010 test files across monorepo"
+    },
+    {
+      "id": "EVD-031",
+      "type": "api_count",
+      "path": "apps/web/src/app/api",
+      "description": "1228 API route handlers"
+    },
+    {
+      "id": "EVD-032",
+      "type": "migration_count",
+      "path": "supabase/migrations",
+      "description": "781 SQL migrations"
+    },
+    {
+      "id": "EVD-033",
+      "type": "documentation",
+      "path": "docs/PAYMENT_ACCOUNTING_CONTRACT.md",
+      "description": "Financial chain contract"
+    },
+    {
+      "id": "EVD-034",
+      "type": "source_code",
+      "path": "apps/web/src/lib/payment/webhook-idempotency.ts",
+      "description": "Webhook dedup mechanism"
+    },
+    {
+      "id": "EVD-035",
+      "type": "test_file",
+      "path": "apps/web/src/lib/ledger/__tests__/reconciliation-drift.test.ts",
+      "description": "Ledger drift unit tests"
+    }
+  ]
+}

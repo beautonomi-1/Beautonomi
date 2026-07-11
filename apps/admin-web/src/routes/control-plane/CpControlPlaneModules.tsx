@@ -400,8 +400,39 @@ export function CpModuleSafetyPage() {
   return (
     <div className="space-y-6">
       <CpBack />
-      <AdminPageHeader title="Safety module" description="Check-in, escalation, cooldown, UI copy." />
+      <AdminPageHeader
+        title="Safety module"
+        description="Master switch for the in-app safety (panic) button on booking detail in the customer app, provider app, and web."
+      />
       <EnvSelect value={env} onChange={setEnv} />
+      <AdminPanel className="border-indigo-200 bg-indigo-50/60">
+        <p className="text-sm text-indigo-950">
+          <span className="font-semibold">To go live:</span> enable this module for the environment{" "}
+          <em>and</em> turn on the{" "}
+          <Link
+            to={adminSpaTo("/admin/control-plane/feature-flags")}
+            className="font-medium underline hover:text-indigo-700"
+          >
+            safety.panic.enabled
+          </Link>{" "}
+          feature flag — the panic button and its API require both. To auto-dispatch incidents to a
+          response partner, also configure the{" "}
+          <Link
+            to={adminSpaTo("/admin/control-plane/integrations/aura")}
+            className="font-medium underline hover:text-indigo-700"
+          >
+            Aura integration
+          </Link>
+          . Incidents land in{" "}
+          <Link
+            to={adminSpaTo("/admin/control-plane/safety-logs")}
+            className="font-medium underline hover:text-indigo-700"
+          >
+            Safety logs
+          </Link>{" "}
+          and alert Slack when a channel is mapped for “Safety: panic button pressed”.
+        </p>
+      </AdminPanel>
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>
@@ -411,31 +442,56 @@ export function CpModuleSafetyPage() {
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (
         <AdminPanel className="space-y-4">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
+              className="mt-0.5"
               checked={form.enabled}
               onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked }))}
             />
-            Enabled
+            <span>
+              <span className="font-medium">Enabled</span>
+              <span className="block text-xs text-gray-500">
+                Master switch. Off hides the panic button in all apps and blocks the panic API for this
+                environment.
+              </span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
-              checked={form.check_in_enabled}
-              onChange={(e) => setForm((p) => ({ ...p, check_in_enabled: e.target.checked }))}
-            />
-            Check-in enabled
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+              className="mt-0.5"
               checked={form.escalation_enabled}
               onChange={(e) => setForm((p) => ({ ...p, escalation_enabled: e.target.checked }))}
             />
-            Escalation enabled
+            <span>
+              <span className="font-medium">Escalation enabled</span>
+              <span className="block text-xs text-gray-500">
+                When on, each panic event is dispatched to Aura (requires the Aura integration to be
+                enabled with an API key). When off, events are logged for manual triage only.
+              </span>
+            </span>
           </label>
-          <CpField label="Cooldown (seconds)">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-xs font-semibold text-amber-900">Not yet live in apps</p>
+            <p className="text-xs text-amber-800">
+              The settings below are stored and published in the config bundle, but the check-in flow is
+              not yet built into the customer/provider apps. They have no runtime effect today.
+            </p>
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={form.check_in_enabled}
+              onChange={(e) => setForm((p) => ({ ...p, check_in_enabled: e.target.checked }))}
+            />
+            <span>
+              <span className="font-medium">Check-in enabled</span>
+              <span className="block text-xs text-gray-500">Reserved for the safety check-in flow.</span>
+            </span>
+          </label>
+          <CpField label="Cooldown (seconds) — reserved for check-in">
             <input
               type="number"
               className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
@@ -443,7 +499,7 @@ export function CpModuleSafetyPage() {
               onChange={(e) => setForm((p) => ({ ...p, cooldown_seconds: parseInt(e.target.value, 10) || 0 }))}
             />
           </CpField>
-          <CpField label="UI copy (JSON)">
+          <CpField label="UI copy (JSON) — reserved">
             <textarea
               className="min-h-[100px] w-full rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs"
               value={form.ui_copy}

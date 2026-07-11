@@ -29,6 +29,7 @@ import Link from "next/link";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { getCsrfHeaders } from "@/lib/csrf";
 
 export default function YocoIntegrationPage() {
   const searchParams = useSearchParams();
@@ -149,7 +150,8 @@ export default function YocoIntegrationPage() {
     try {
       const res = await fetch("/api/provider/yoco/reconnect-banner", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        credentials: "include",
         body: JSON.stringify({ action: "dismiss" }),
       });
       if (!res.ok) throw new Error("Dismiss failed");
@@ -193,7 +195,11 @@ export default function YocoIntegrationPage() {
     }
     try {
       setIsSaving(true);
-      const res = await fetch("/api/provider/yoco/oauth/disconnect", { method: "POST" });
+      const res = await fetch("/api/provider/yoco/oauth/disconnect", {
+        method: "POST",
+        headers: getCsrfHeaders(),
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Disconnect failed");
       toast.success("Yoco disconnected");
       await loadData();

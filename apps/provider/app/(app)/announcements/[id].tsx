@@ -82,6 +82,30 @@ export default function ProviderAnnouncementDetailScreen() {
   const ctaUrl = typeof data.cta_url === "string" ? data.cta_url.trim() : "";
   const annType = String(data.announcement_type ?? "general");
 
+  // Deep link carried on the row (push route sets both `url` and `deep_link`).
+  // Ignore the default announcements route — routing back to this screen is a no-op.
+  const rawDeepLink =
+    (typeof data.url === "string" && data.url.trim()) ||
+    (typeof data.deep_link === "string" && data.deep_link.trim()) ||
+    "";
+  const deepLink = rawDeepLink.includes("announcements") ? "" : rawDeepLink;
+
+  const isExternalCta = /^https?:\/\//i.test(ctaUrl);
+  // Resolve the button's action target. External CTA URLs open in the browser;
+  // otherwise fall back to an in-app route (CTA app-route or the row deep link),
+  // so inbox viewers can act even when the CTA points at an internal screen.
+  const inAppTarget = !isExternalCta ? (ctaUrl.startsWith("/") ? ctaUrl : deepLink) : "";
+  const actionLabel = ctaLabel || "View";
+  const showAction = isExternalCta ? Boolean(ctaLabel) : Boolean(inAppTarget);
+
+  const handleAction = useCallback(() => {
+    if (isExternalCta) {
+      void Linking.openURL(ctaUrl);
+      return;
+    }
+    if (inAppTarget) router.push(inAppTarget as never);
+  }, [isExternalCta, ctaUrl, inAppTarget, router]);
+
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
@@ -139,9 +163,9 @@ export default function ProviderAnnouncementDetailScreen() {
             </View>
           ) : null}
 
-          {ctaUrl && ctaLabel ? (
+          {showAction ? (
             <TouchableOpacity
-              onPress={() => void Linking.openURL(ctaUrl)}
+              onPress={handleAction}
               style={{
                 marginTop: 24,
                 backgroundColor: "#4f46e5",
@@ -154,8 +178,13 @@ export default function ProviderAnnouncementDetailScreen() {
               }}
               accessibilityRole="button"
             >
-              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{ctaLabel}</Text>
-              <Ionicons name="open-outline" size={18} color="#fff" style={{ marginLeft: 8 }} />
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{actionLabel}</Text>
+              <Ionicons
+                name={isExternalCta ? "open-outline" : "arrow-forward"}
+                size={18}
+                color="#fff"
+                style={{ marginLeft: 8 }}
+              />
             </TouchableOpacity>
           ) : null}
         </ScrollView>

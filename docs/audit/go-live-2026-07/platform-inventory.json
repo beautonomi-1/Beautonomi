@@ -1,0 +1,147 @@
+{
+  "audit_id": "AUDIT-2026-07-11",
+  "generated_at": "2026-07-11T15:51:12.572Z",
+  "scope": "multi_market_day_one",
+  "evidence_mode": "local_static_only",
+  "applications": [
+    {
+      "id": "APP-001",
+      "name": "Web + API",
+      "path": "apps/web",
+      "stack": "Next.js 16, React 19",
+      "role": "Customer web, provider web, all backend APIs"
+    },
+    {
+      "id": "APP-002",
+      "name": "Admin SPA",
+      "path": "apps/admin-web",
+      "stack": "Vite 6, React Router 7",
+      "role": "Superadmin portal embedded at /admin/"
+    },
+    {
+      "id": "APP-003",
+      "name": "Customer Mobile",
+      "path": "apps/customer",
+      "stack": "Expo 54, RN 0.81",
+      "role": "Customer iOS/Android"
+    },
+    {
+      "id": "APP-004",
+      "name": "Provider Mobile",
+      "path": "apps/provider",
+      "stack": "Expo 54, RN 0.81",
+      "role": "Provider iOS/Android"
+    }
+  ],
+  "packages": [
+    {
+      "id": "PKG-001",
+      "name": "admin-access",
+      "path": "packages/admin-access"
+    },
+    {
+      "id": "PKG-002",
+      "name": "admin-api-client",
+      "path": "packages/admin-api-client"
+    },
+    {
+      "id": "PKG-003",
+      "name": "analytics",
+      "path": "packages/analytics"
+    },
+    {
+      "id": "PKG-004",
+      "name": "api",
+      "path": "packages/api"
+    },
+    {
+      "id": "PKG-005",
+      "name": "config",
+      "path": "packages/config"
+    },
+    {
+      "id": "PKG-006",
+      "name": "expo-sms-user-consent",
+      "path": "packages/expo-sms-user-consent"
+    },
+    {
+      "id": "PKG-007",
+      "name": "i18n",
+      "path": "packages/i18n"
+    },
+    {
+      "id": "PKG-008",
+      "name": "learning-mockups",
+      "path": "packages/learning-mockups"
+    },
+    {
+      "id": "PKG-009",
+      "name": "maintenance-paths",
+      "path": "packages/maintenance-paths"
+    },
+    {
+      "id": "PKG-010",
+      "name": "phone",
+      "path": "packages/phone"
+    },
+    {
+      "id": "PKG-011",
+      "name": "shipping",
+      "path": "packages/shipping"
+    },
+    {
+      "id": "PKG-012",
+      "name": "subscription-features",
+      "path": "packages/subscription-features"
+    },
+    {
+      "id": "PKG-013",
+      "name": "types",
+      "path": "packages/types"
+    },
+    {
+      "id": "PKG-014",
+      "name": "ui",
+      "path": "packages/ui"
+    },
+    {
+      "id": "PKG-015",
+      "name": "ui-tokens",
+      "path": "packages/ui-tokens"
+    },
+    {
+      "id": "PKG-016",
+      "name": "utils",
+      "path": "packages/utils"
+    }
+  ],
+  "infrastructure": {
+    "hosting": {
+      "provider": "Vercel",
+      "region": "cpt1",
+      "config": "apps/web/vercel.json"
+    },
+    "database": {
+      "provider": "Supabase PostgreSQL",
+      "migrations": 781,
+      "path": "supabase/migrations"
+    },
+    "mobile": {
+      "provider": "EAS",
+      "config": "eas.json"
+    },
+    "cache": {
+      "provider": "Upstash Redis",
+      "fallback": "in-memory per instance"
+    },
+    "ci": {
+      "workflows": 9,
+      "path": ".github/workflows"
+    },
+    "terraform": false,
+    "edge_functions": false
+  },
+  "api_route_count": 1228,
+  "test_file_count": 1010,
+  "cron_count": 41
+}

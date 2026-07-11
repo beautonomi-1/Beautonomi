@@ -1,0 +1,184 @@
+{
+  "agents": [
+    {
+      "agent": 0,
+      "name": "Audit Coordinator",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 0,
+      "evidence": 35,
+      "confidence": "medium"
+    },
+    {
+      "agent": 1,
+      "name": "Repository Discovery",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 0,
+      "evidence": 5,
+      "confidence": "high"
+    },
+    {
+      "agent": 2,
+      "name": "Customer Web",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 6,
+      "evidence": 8,
+      "confidence": "medium"
+    },
+    {
+      "agent": 3,
+      "name": "Customer Mobile",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 2,
+      "evidence": 4,
+      "confidence": "medium"
+    },
+    {
+      "agent": 4,
+      "name": "Provider Web",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 5,
+      "evidence": 7,
+      "confidence": "medium"
+    },
+    {
+      "agent": 5,
+      "name": "Provider Mobile",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 3,
+      "confidence": "medium"
+    },
+    {
+      "agent": 6,
+      "name": "Superadmin Operations",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 2,
+      "evidence": 5,
+      "confidence": "medium"
+    },
+    {
+      "agent": 7,
+      "name": "Identity Permissions",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 4,
+      "evidence": 6,
+      "confidence": "medium"
+    },
+    {
+      "agent": 8,
+      "name": "Security Privacy",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 3,
+      "evidence": 5,
+      "confidence": "medium"
+    },
+    {
+      "agent": 9,
+      "name": "Payments Finance",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 0,
+      "evidence": 6,
+      "confidence": "medium"
+    },
+    {
+      "agent": 10,
+      "name": "Integrations",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 3,
+      "evidence": 5,
+      "confidence": "medium"
+    },
+    {
+      "agent": 11,
+      "name": "Data Reporting",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 2,
+      "evidence": 4,
+      "confidence": "medium"
+    },
+    {
+      "agent": 12,
+      "name": "UX Accessibility",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 2,
+      "evidence": 3,
+      "confidence": "low"
+    },
+    {
+      "agent": 13,
+      "name": "QA Testing",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 4,
+      "confidence": "high"
+    },
+    {
+      "agent": 14,
+      "name": "Performance",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 2,
+      "confidence": "low"
+    },
+    {
+      "agent": 15,
+      "name": "DevOps",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 2,
+      "evidence": 4,
+      "confidence": "low"
+    },
+    {
+      "agent": 16,
+      "name": "Operations",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 2,
+      "confidence": "low"
+    },
+    {
+      "agent": 17,
+      "name": "Legal Compliance",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 2,
+      "confidence": "low"
+    },
+    {
+      "agent": 18,
+      "name": "False Completeness",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 3,
+      "evidence": 5,
+      "confidence": "high"
+    },
+    {
+      "agent": 19,
+      "name": "Adversarial Challenger",
+      "status": "complete",
+      "completion_percent": 100,
+      "findings": 1,
+      "evidence": 3,
+      "confidence": "high"
+    }
+  ]
+}

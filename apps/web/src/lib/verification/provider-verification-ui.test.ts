@@ -20,4 +20,21 @@ describe("provider verification UI helpers", () => {
     expect(canSkipProviderVerification({ required: true, status: "pending" })).toBe(true);
     expect(canSkipProviderVerification({ required: true, status: "not_started" })).toBe(false);
   });
+
+  it("blocks skip when verification plan is incomplete even if status is in_progress", () => {
+    expect(
+      canSkipProviderVerification({
+        required: true,
+        status: "in_progress",
+        planComplete: false,
+      }),
+    ).toBe(false);
+    expect(
+      canSkipProviderVerification({
+        required: true,
+        status: "in_progress",
+        planComplete: true,
+      }),
+    ).toBe(true);
+  });
 });

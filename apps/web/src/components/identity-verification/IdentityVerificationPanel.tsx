@@ -27,6 +27,9 @@ interface Props extends UseIdentityVerificationOptions {
   isProvider?: boolean;
   /** Optional callback when status becomes approved */
   onApproved?: () => void;
+  /** Person KYC done but business KYB/manual review still required */
+  businessVerificationPending?: boolean;
+  businessVerificationSummary?: string;
 }
 
 export function IdentityVerificationPanel({
@@ -35,6 +38,8 @@ export function IdentityVerificationPanel({
   returnTo,
   isProvider = false,
   onApproved,
+  businessVerificationPending = false,
+  businessVerificationSummary,
 }: Props) {
   const {
     status, loading, launching, sessionToken, sessionUrl, isExisting,
@@ -84,6 +89,8 @@ export function IdentityVerificationPanel({
             loading={loading}
             launching={launching}
             isProvider={isProvider}
+            businessVerificationPending={businessVerificationPending}
+            businessVerificationSummary={businessVerificationSummary}
           />
           <ConfirmLegalDetailsForm
             legalDetails={legalDetails}
@@ -100,6 +107,8 @@ export function IdentityVerificationPanel({
           loading={loading}
           launching={launching}
           isProvider={isProvider}
+          businessVerificationPending={businessVerificationPending}
+          businessVerificationSummary={businessVerificationSummary}
           onStart={startVerification}
           onContinue={() => {
             if (sessionUrl) {

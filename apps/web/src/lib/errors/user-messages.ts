@@ -79,6 +79,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Something went wrong on our end. Please try again in a moment.",
   SERVICE_UNAVAILABLE:
     "This feature is temporarily unavailable. Please try again shortly.",
+  DIDIT_SESSION_CREATE_FAILED:
+    "Online verification is temporarily unavailable. Please try again later or contact support.",
   VALIDATION_ERROR:
     "Some of the information you provided is invalid. Please review and try again.",
 };
@@ -117,6 +119,10 @@ function looksLikeTechnical(message: string): boolean {
     lower.includes("stack trace") ||
     lower.includes("exception") ||
     /error at line \d+/i.test(lower) ||
+    lower.includes("enough credits") ||
+    lower.includes("business.didit.me") ||
+    lower.includes("didit api") ||
+    lower.includes("failed to create didit") ||
     // UUID-heavy messages
     /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i.test(message)
   );

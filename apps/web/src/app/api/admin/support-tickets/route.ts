@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
     const firstResponseOverdue =
       searchParams.get("first_response_overdue") === "1" ||
       searchParams.get("first_response_overdue") === "true";
+    const includeCounts =
+      searchParams.get("include_counts") === "1" ||
+      searchParams.get("include_counts") === "true";
 
     // Build the list query. `agentQueue` gates every column introduced by
     // migration 726 (needs_agent_response, first_response_due_at). When that
@@ -193,10 +196,62 @@ export async function GET(request: NextRequest) {
       total: count ?? 0,
       limit,
       offset,
+      ...(includeCounts
+        ? {
+            counts: await loadSupportTicketCounts(supabase, true),
+          }
+        : {}),
     });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch support tickets");
   }
+}
+
+async function loadSupportTicketCounts(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  agentQueue: boolean,
+) {
+  const nowIso = new Date().toISOString();
+  const openStatuses = ["open", "in_progress", "waiting_customer"];
+
+  const { count: open } = await supabase
+    .from("support_tickets")
+    .select("id", { count: "exact", head: true })
+    .in("status", openStatuses);
+
+  const { count: unassigned } = await supabase
+    .from("support_tickets")
+    .select("id", { count: "exact", head: true })
+    .in("status", openStatuses)
+    .is("assigned_to", null);
+
+  const { count: breachingSla } = await supabase
+    .from("support_tickets")
+    .select("id", { count: "exact", head: true })
+    .lt("sla_resolution_due_at", nowIso)
+    .in("status", openStatuses);
+
+  let awaitingReply = 0;
+  if (agentQueue) {
+    const { count } = await supabase
+      .from("support_tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("needs_agent_response", true);
+    awaitingReply = count ?? 0;
+  } else {
+    const { count } = await supabase
+      .from("support_tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open");
+    awaitingReply = count ?? 0;
+  }
+
+  return {
+    open: open ?? 0,
+    unassigned: unassigned ?? 0,
+    breaching_sla: breachingSla ?? 0,
+    awaiting_reply: awaitingReply,
+  };
 }
 
 export async function POST(request: NextRequest) {

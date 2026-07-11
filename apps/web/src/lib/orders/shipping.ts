@@ -63,6 +63,11 @@ export async function bookShippingForOrder(
     return { ok: true, skipped: "not_delivery_order" };
   }
 
+  // REM-005: courier integrations are stubbed until day-one launch gate is lifted.
+  if (process.env.ECOMMERCE_SHIPPING_ENABLED !== "true") {
+    return { ok: true, skipped: "shipping_globally_disabled" };
+  }
+
   const { data: shippingConfig } = await supabase
     .from("provider_shipping_config")
     .select("shipping_provider_preference")

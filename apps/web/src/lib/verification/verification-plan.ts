@@ -167,6 +167,14 @@ function isSatisfiedStep(step: VerificationStep, input: StepCompletionInput): bo
   }
 }
 
+/** True when the plan still requires business KYB or manual business review. */
+export function planRequiresBusinessVerification(plan: VerificationPlan): boolean {
+  return (
+    plan.required_steps.includes("business_kyb") ||
+    plan.required_steps.includes("manual_business_review")
+  );
+}
+
 /** Whether all required steps in the plan are complete. */
 export function isVerificationPlanComplete(
   plan: VerificationPlan,

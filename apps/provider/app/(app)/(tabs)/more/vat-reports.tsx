@@ -126,6 +126,10 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
 
   const exportReport = useCallback(
     (report: VATReport) => {
+      const quote = (v: string | number) => {
+        const s = String(v ?? "");
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
       const rows = [
         ["VAT Remittance Report", ""],
         ["Period", report.period_label],
@@ -143,7 +147,7 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
           t.description || "",
         ]),
       ];
-      const csv = rows.map((r) => r.join(",")).join("\n");
+      const csv = rows.map((r) => r.map(quote).join(",")).join("\n");
       const filename = `vat-report-${report.period_start}-${report.period_end}.csv`;
       Share.share({
         message: csv,

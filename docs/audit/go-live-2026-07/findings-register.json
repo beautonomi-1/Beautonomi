@@ -1,0 +1,635 @@
+{
+  "findings": [
+    {
+      "id": "FND-P0-001",
+      "severity": "P1",
+      "title": "CSRF uses CRON_SECRET fallback; dedicated CSRF_SECRET recommended",
+      "agent": 8,
+      "application": "APP-001",
+      "capability": "CAP-SEC-001",
+      "environment": "production",
+      "status": "mitigated",
+      "description": "Production CSRF active via CRON_SECRET fallback; build gate wired",
+      "expected": "Dedicated CSRF_SECRET in production",
+      "actual": "CSRF enforced; shared secret fallback",
+      "evidence": [
+        "EVD-001"
+      ],
+      "remediation": "REM-001",
+      "owner": "platform-engineering",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-002",
+      "severity": "P0",
+      "title": "E2E coverage critically thin for money paths",
+      "agent": 13,
+      "application": "APP-001",
+      "capability": "CAP-QA-001",
+      "environment": "local",
+      "status": "open",
+      "description": "Only 2 Playwright E2E specs exist; no payment webhook or payout E2E",
+      "expected": "Critical journeys have automated E2E coverage",
+      "actual": "booking-happy-path and admin login-shell only",
+      "evidence": [
+        "EVD-002",
+        "EVD-003"
+      ],
+      "remediation": "REM-006",
+      "owner": "qa-engineering",
+      "go_live_impact": "blocker",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-003",
+      "severity": "P0",
+      "title": "Multi-market tenant isolation unverified at runtime",
+      "agent": 7,
+      "application": "APP-001",
+      "capability": "CAP-TENANT-001",
+      "environment": "local",
+      "status": "open",
+      "description": "resolveTenantIdWithZaFallback used in 100+ routes; no live cross-tenant penetration test",
+      "expected": "Strict tenant isolation under real Host headers for all markets",
+      "actual": "Static traces show ZA fallback paths; runtime isolation not proven",
+      "evidence": [
+        "EVD-004",
+        "EVD-005"
+      ],
+      "remediation": "REM-007",
+      "owner": "platform-security",
+      "go_live_impact": "blocker",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P0-004",
+      "severity": "P0",
+      "title": "Search map displays fake coordinates",
+      "agent": 2,
+      "application": "APP-001",
+      "capability": "CAP-SEARCH-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Map pins use random London coordinates when API lacks lat/lng",
+      "expected": "Map shows accurate provider locations",
+      "actual": "Misleading random pins near 51.5074",
+      "evidence": [
+        "EVD-006"
+      ],
+      "remediation": "REM-003",
+      "owner": "customer-web",
+      "go_live_impact": "blocker",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-005",
+      "severity": "P0",
+      "title": "Shipping integration fully stubbed",
+      "agent": 10,
+      "application": "APP-001",
+      "capability": "CAP-ECOM-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "All courier providers throw on createShipment",
+      "expected": "Product delivery orders create real shipments",
+      "actual": "createShipment throws not yet implemented",
+      "evidence": [
+        "EVD-007"
+      ],
+      "remediation": "REM-005",
+      "owner": "ecommerce",
+      "go_live_impact": "blocker",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-006",
+      "severity": "P0",
+      "title": "POS creates unpersisted client IDs",
+      "agent": 4,
+      "application": "APP-001",
+      "capability": "CAP-POS-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "NewSaleDialog creates local-only client with temp ID",
+      "expected": "New clients persisted via API before sale",
+      "actual": "id: new-client-${Date.now()} without API call",
+      "evidence": [
+        "EVD-008"
+      ],
+      "remediation": "REM-004",
+      "owner": "provider-web",
+      "go_live_impact": "blocker",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-007",
+      "severity": "P0",
+      "title": "Time-clock returns fake success on missing tables",
+      "agent": 4,
+      "application": "APP-001",
+      "capability": "CAP-STAFF-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Clock-in returns success with temp ID when staff_time_cards missing",
+      "expected": "Error or migration-required response",
+      "actual": "Fake success masks migration failures",
+      "evidence": [
+        "EVD-009"
+      ],
+      "remediation": "REM-002",
+      "owner": "provider-web",
+      "go_live_impact": "blocker",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-001",
+      "severity": "P1",
+      "title": "PayCloud same-terminal incomplete",
+      "agent": 10,
+      "application": "APP-004",
+      "capability": "CAP-PAY-002",
+      "environment": "local",
+      "status": "mitigated",
+      "description": "Native module missing; cloud-only launch gate formalized",
+      "expected": "Same-device terminal payments on provider mobile",
+      "actual": "Cloud-only for launch; flag off by default",
+      "evidence": [
+        "EVD-010"
+      ],
+      "remediation": "REM-013",
+      "owner": "payments",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-002",
+      "severity": "P1",
+      "title": "Advanced search filters no-op",
+      "agent": 2,
+      "application": "APP-001",
+      "capability": "CAP-SEARCH-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "date/time availability and price filters unused in advanced search",
+      "expected": "Filters narrow provider results",
+      "actual": "Filters are no-ops returning all providers",
+      "evidence": [
+        "EVD-011"
+      ],
+      "remediation": "REM-014",
+      "owner": "customer-web",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-003",
+      "severity": "P1",
+      "title": "ZA postal areas placeholder seed only",
+      "agent": 11,
+      "application": "APP-001",
+      "capability": "CAP-ZONE-001",
+      "environment": "local",
+      "status": "open",
+      "description": "Migration 294 is tiny placeholder sample not production coverage",
+      "expected": "Full postal area dataset for service zones",
+      "actual": "Placeholder sample only",
+      "evidence": [
+        "EVD-012"
+      ],
+      "remediation": "REM-008",
+      "owner": "data-ops",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-004",
+      "severity": "P1",
+      "title": "KYB verification flags off by default",
+      "agent": 4,
+      "application": "APP-001",
+      "capability": "CAP-KYB-001",
+      "environment": "local",
+      "status": "open",
+      "description": "Provider KYB verification disabled by default in migration 773",
+      "expected": "KYB enforced for provider go-live per market policy",
+      "actual": "Flags off; manual decision required",
+      "evidence": [
+        "EVD-013"
+      ],
+      "remediation": "REM-012",
+      "owner": "compliance",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-005",
+      "severity": "P1",
+      "title": "Rate limiting in-memory fallback on multi-instance",
+      "agent": 8,
+      "application": "APP-001",
+      "capability": "CAP-SEC-002",
+      "environment": "local",
+      "status": "partial",
+      "description": "Production guard and fail-closed on sensitive limiters; Upstash env still manual",
+      "expected": "Distributed rate limiting in production",
+      "actual": "Code warns and blocks sign-in/payment/payout without Upstash in prod",
+      "evidence": [
+        "EVD-014"
+      ],
+      "remediation": "REM-009",
+      "owner": "platform-engineering",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-006",
+      "severity": "P1",
+      "title": "CSP allows unsafe-inline and unsafe-eval",
+      "agent": 8,
+      "application": "APP-001",
+      "capability": "CAP-SEC-003",
+      "environment": "local",
+      "status": "partial",
+      "description": "Report-only nonce CSP shipped; enforced policy unchanged pending staging verification",
+      "expected": "Nonce-based CSP in production",
+      "actual": "Content-Security-Policy-Report-Only with per-request nonce",
+      "evidence": [
+        "EVD-015"
+      ],
+      "remediation": "REM-015",
+      "owner": "security",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-007",
+      "severity": "P1",
+      "title": "Stripe and Flutterwave appear but not implemented",
+      "agent": 10,
+      "application": "APP-002",
+      "capability": "CAP-PAY-003",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Feature flags and enums reference unimplemented gateways",
+      "expected": "Only implemented gateways exposed to operators",
+      "actual": "Stripe hidden from operator toggles",
+      "evidence": [
+        "EVD-016"
+      ],
+      "remediation": "REM-019",
+      "owner": "product",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-008",
+      "severity": "P1",
+      "title": "7-day staging drift gate unsigned",
+      "agent": 15,
+      "application": "APP-001",
+      "capability": "CAP-FIN-001",
+      "environment": "local",
+      "status": "open",
+      "description": "LAUNCH_READINESS_100 sign-off table empty",
+      "expected": "7 consecutive days zero drift with sign-off",
+      "actual": "Human gate not executed",
+      "evidence": [
+        "EVD-017"
+      ],
+      "remediation": "REM-010",
+      "owner": "finance",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-009",
+      "severity": "P1",
+      "title": "Game-day drills documented but unverified",
+      "agent": 16,
+      "application": "APP-001",
+      "capability": "CAP-OPS-001",
+      "environment": "local",
+      "status": "open",
+      "description": "GAME_DAY_RUNBOOK exists but no evidence of completed drills",
+      "expected": "All drill scenarios executed with evidence",
+      "actual": "Runbook only; no drill completion records",
+      "evidence": [
+        "EVD-018"
+      ],
+      "remediation": "REM-011",
+      "owner": "sre",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-010",
+      "severity": "P1",
+      "title": "Custom offer image upload not implemented",
+      "agent": 2,
+      "application": "APP-001",
+      "capability": "CAP-MSG-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Image upload shows toast that functionality needs implementation",
+      "expected": "Providers can attach images to custom offers",
+      "actual": "Toast blocks feature",
+      "evidence": [
+        "EVD-019"
+      ],
+      "remediation": "REM-020",
+      "owner": "messaging",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-011",
+      "severity": "P1",
+      "title": "Admin SPA HTML served without edge role gate",
+      "agent": 7,
+      "application": "APP-002",
+      "capability": "CAP-ADMIN-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "proxy.ts rewrites /admin HTML without server role check",
+      "expected": "Admin shell requires authentication at edge",
+      "actual": "HTML served; API routes gated separately",
+      "evidence": [
+        "EVD-020"
+      ],
+      "remediation": "REM-021",
+      "owner": "platform-security",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-012",
+      "severity": "P1",
+      "title": "API authorization relies on service-role bypass",
+      "agent": 7,
+      "application": "APP-001",
+      "capability": "CAP-SEC-004",
+      "environment": "local",
+      "status": "open",
+      "description": "Most API routes use getSupabaseAdmin bypassing RLS",
+      "expected": "Defense in depth with RLS + API guards",
+      "actual": "API middleware is sole boundary for most routes",
+      "evidence": [
+        "EVD-021"
+      ],
+      "remediation": "REM-022",
+      "owner": "platform-security",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-013",
+      "severity": "P1",
+      "title": "QR scanner manual input only",
+      "agent": 4,
+      "application": "APP-001",
+      "capability": "CAP-POS-002",
+      "environment": "local",
+      "status": "resolved",
+      "description": "QRCodeScanner has no camera library integrated",
+      "expected": "Camera-based QR scanning for POS",
+      "actual": "Manual input fallback only",
+      "evidence": [
+        "EVD-022"
+      ],
+      "remediation": "REM-023",
+      "owner": "provider-web",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-014",
+      "severity": "P1",
+      "title": "Service zone analytics ignores polygon/radius zones",
+      "agent": 4,
+      "application": "APP-001",
+      "capability": "CAP-ZONE-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Analytics route returns false for polygon and radius zone types",
+      "expected": "Accurate zone analytics for all zone types",
+      "actual": "Polygon/radius skipped",
+      "evidence": [
+        "EVD-023"
+      ],
+      "remediation": "REM-024",
+      "owner": "provider-web",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-015",
+      "severity": "P1",
+      "title": "LAUNCH_READINESS_100 contradicts discovered gaps",
+      "agent": 19,
+      "application": "APP-001",
+      "capability": "CAP-DOC-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Internal doc claims 100% engineering complete",
+      "expected": "Readiness doc reflects verified evidence",
+      "actual": "Claims 100% while P0 gaps exist in code",
+      "evidence": [
+        "EVD-017",
+        "EVD-006",
+        "EVD-007"
+      ],
+      "remediation": "REM-025",
+      "owner": "release-captain",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-016",
+      "severity": "P1",
+      "title": "Backup restore not verified",
+      "agent": 15,
+      "application": "APP-001",
+      "capability": "CAP-DR-001",
+      "environment": "local",
+      "status": "partial",
+      "description": "Post-restore row-count script added; actual restore still manual",
+      "expected": "Documented and tested backup restore",
+      "actual": "Cannot verify without staging restore",
+      "evidence": [
+        "EVD-024"
+      ],
+      "remediation": "REM-026",
+      "owner": "sre",
+      "go_live_impact": "high",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P1-017",
+      "severity": "P1",
+      "title": "Legal documents not verifiable in repository",
+      "agent": 17,
+      "application": "APP-001",
+      "capability": "CAP-LEGAL-001",
+      "environment": "local",
+      "status": "open",
+      "description": "Privacy policy and T&Cs likely CMS-hosted; not audited in repo",
+      "expected": "Per-market legal documents published and linked",
+      "actual": "Cannot verify from codebase alone",
+      "evidence": [
+        "EVD-025"
+      ],
+      "remediation": "REM-018",
+      "owner": "legal",
+      "go_live_impact": "high",
+      "confidence": "low"
+    },
+    {
+      "id": "FND-P2-001",
+      "severity": "P2",
+      "title": "provider_onboarding role not in PG enum",
+      "agent": 7,
+      "application": "APP-001",
+      "capability": "CAP-AUTH-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "TS role provider_onboarding absent from database enum",
+      "expected": "Role enum consistency between TS and DB",
+      "actual": "Type/DB drift",
+      "evidence": [
+        "EVD-026"
+      ],
+      "remediation": "REM-027",
+      "owner": "platform-engineering",
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-002",
+      "severity": "P2",
+      "title": "Hardcoded category fallback on mobile",
+      "agent": 3,
+      "application": "APP-003",
+      "capability": "CAP-HOME-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "useGlobalCategories falls back to hardcoded categories on API failure",
+      "expected": "Graceful empty state without misleading data",
+      "actual": "Shows hardcoded hair/nails/face/body",
+      "evidence": [
+        "EVD-027"
+      ],
+      "remediation": "REM-028",
+      "owner": "customer-mobile",
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-003",
+      "severity": "P2",
+      "title": "No recent load test results in repository",
+      "agent": 14,
+      "application": "APP-001",
+      "capability": "CAP-PERF-001",
+      "environment": "local",
+      "status": "partial",
+      "description": "k6 scripts exist but no stored results from recent runs",
+      "expected": "Load test baselines documented",
+      "actual": "Scripts only; endpoint paths fixed",
+      "evidence": [
+        "EVD-028"
+      ],
+      "remediation": "REM-029",
+      "owner": "sre",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P3-001",
+      "severity": "P3",
+      "title": "Support ticket labels mention Stripe for payouts",
+      "agent": 18,
+      "application": "APP-002",
+      "capability": "CAP-UX-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Cosmetic mismatch with Paystack-only payouts",
+      "expected": "Accurate payment provider labels",
+      "actual": "Stripe mentioned in support categories",
+      "evidence": [
+        "EVD-029"
+      ],
+      "remediation": "REM-030",
+      "owner": "content",
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-018",
+      "severity": "P1",
+      "title": "Web typecheck failure blocks release:check",
+      "agent": 15,
+      "application": "APP-001",
+      "capability": "CAP-DEVOPS-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "terminal-shop CTA narrowed with cta.kind === 'order'; tsc passes",
+      "expected": "release:check passes on main branch",
+      "actual": "tsc --noEmit exits with code 2",
+      "evidence": [
+        "EVD-036"
+      ],
+      "remediation": "REM-031",
+      "owner": "provider-web",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-019",
+      "severity": "P1",
+      "title": "Provider API routes missing tenant guard heuristic",
+      "agent": 7,
+      "application": "APP-001",
+      "capability": "CAP-TENANT-001",
+      "environment": "local",
+      "status": "resolved",
+      "description": "Heuristic improved; regression script added; 12 genuinely unguarded routes fixed",
+      "expected": "All provider routes scope data to authenticated provider tenant",
+      "actual": "check-provider-tenant-guards.mjs passes with 0 failures",
+      "evidence": [
+        "EVD-037"
+      ],
+      "remediation": "REM-032",
+      "owner": "platform-security",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-020",
+      "severity": "P1",
+      "title": "Production config-bundle exposes test Paystack key",
+      "agent": 8,
+      "application": "APP-001",
+      "capability": "CAP-SEC-001",
+      "environment": "production",
+      "status": "partial",
+      "description": "pk_test_ in region_settings_public; requires DB/admin fix for pk_live_",
+      "expected": "Production bundle uses pk_live_ keys",
+      "actual": "Test key in production region settings",
+      "evidence": [
+        "EVD-038"
+      ],
+      "remediation": "REM-033",
+      "owner": "platform-engineering",
+      "go_live_impact": "high",
+      "confidence": "high"
+    }
+  ],
+  "summary": {
+    "P0": 6,
+    "P1": 21,
+    "P2": 3,
+    "P3": 1,
+    "total": 31
+  }
+}

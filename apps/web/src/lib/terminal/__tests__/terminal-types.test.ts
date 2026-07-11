@@ -17,6 +17,8 @@ import {
   TERMINAL_COUNT_RANGE_LABELS,
   TERMINAL_INTEREST_LEVEL_LABELS,
   TERMINAL_TRANSACTION_TYPES,
+  TERMINAL_COMMERCIAL_MODEL_LABELS,
+  TERMINAL_ASSET_OWNERSHIP_LABELS,
 } from "@/lib/terminal/types";
 
 // ── 1. Feature flag keys exist ────────────────────────────────────────────────
@@ -126,6 +128,17 @@ describe("Terminal accounting transaction types", () => {
     expect(TERMINAL_TRANSACTION_TYPES.RENTAL).toBe("terminal_rental");
     expect(TERMINAL_TRANSACTION_TYPES.BUNDLE_ALLOC).toBe("terminal_bundle_alloc");
     expect(TERMINAL_TRANSACTION_TYPES.PROMOTION).toBe("terminal_promotion");
+  });
+
+  it("labels rental as legacy for historical orders", () => {
+    expect(TERMINAL_COMMERCIAL_MODEL_LABELS.rental).toBe("Rental (legacy)");
+    expect(TERMINAL_COMMERCIAL_MODEL_LABELS.subscription_bundle).toBe("Included with plan");
+  });
+
+  it("labels asset ownership honestly", () => {
+    expect(TERMINAL_ASSET_OWNERSHIP_LABELS.provider_owned).toBe("Owned");
+    expect(TERMINAL_ASSET_OWNERSHIP_LABELS.subscription_included).toBe("Included with plan");
+    expect(TERMINAL_ASSET_OWNERSHIP_LABELS.rented).toBe("Rented (legacy)");
   });
 });
 

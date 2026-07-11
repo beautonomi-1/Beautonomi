@@ -1080,7 +1080,7 @@ function Step4Payment() {
       {noOrPlanning && (
         <View style={twStyle("gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5")}>
           <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Would you be interested in getting a platform-supported card machine in future?</Text>
-          <Text style={twStyle("text-[13px] text-slate-500")}>Could include purchase, rental, or subscription bundle options when available.</Text>
+          <Text style={twStyle("text-[13px] text-slate-500")}>Buy it outright or include it in your plan when available.</Text>
           <ChipRow opts={TERMINAL_INTEREST_OPTS} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
         </View>
       )}

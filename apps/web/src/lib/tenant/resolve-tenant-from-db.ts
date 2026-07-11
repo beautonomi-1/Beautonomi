@@ -36,12 +36,16 @@ function strictTenantResolutionEnabled(): boolean {
 }
 
 /** Structured log for dashboards / log drains (disable with LOG_TENANT_RESOLUTION_FALLBACK=false). */
+let tenantResolutionFallbackCount = 0;
+
 function logTenantResolutionFallback(event: Record<string, unknown>): void {
   if (process.env.LOG_TENANT_RESOLUTION_FALLBACK === "false") return;
+  tenantResolutionFallbackCount += 1;
   try {
     console.warn(
       JSON.stringify({
         metric: "tenant_resolution_fallback",
+        count: tenantResolutionFallbackCount,
         ts: new Date().toISOString(),
         ...event,
       }),
