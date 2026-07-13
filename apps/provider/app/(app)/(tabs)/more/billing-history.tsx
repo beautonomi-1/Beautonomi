@@ -3,8 +3,8 @@ import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
 import { useApi } from "@/hooks/useApi";
-import { api } from "@/lib/api-client";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { downloadPdf } from "@/lib/pdf-file";
 import { useResponsive } from "@/hooks/useResponsive";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -63,40 +63,19 @@ export function BillingHistoryContent() {
   const openInvoice = async (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
-    // Ads receipt PDFs are session-protected; the native in-app browser can't
-    // attach the bearer token, so mint a short-lived signed URL first.
-    const adsMatch = url.match(/\/api\/provider\/ads\/orders\/([^/]+)\/receipt\/pdf/);
-    if (adsMatch?.[1]) {
-      try {
-        const res = await api.post<{ url?: string }>(
-          `/api/provider/ads/orders/${adsMatch[1]}/receipt/signed-url`,
-          {},
-        );
-        const signed = res.data?.url?.trim();
-        if (signed) {
-          pushInAppBrowser(router, signed, "Receipt");
-          return;
-        }
-      } catch {
-        // Fall through to a best-effort direct open below.
-      }
-    }
-    // Subscription receipts are also session-protected — mint a signed URL.
-    const subMatch = url.match(/\/api\/provider\/subscription\/receipts\/([^/]+)\/pdf/);
-    if (subMatch?.[1]) {
-      try {
-        const res = await api.post<{ url?: string }>(
-          `/api/provider/subscription/receipts/${subMatch[1]}/signed-url`,
-          {},
-        );
-        const signed = res.data?.url?.trim();
-        if (signed) {
-          pushInAppBrowser(router, signed, "Receipt");
-          return;
-        }
-      } catch {
-        // Fall through to a best-effort direct open below.
-      }
+    // Every provider receipt/invoice PDF endpoint follows the same
+    // `.../pdf` (bearer) + `.../signed-url` (fallback) convention, so a
+    // single native save/preview flow covers ads, subscription, and any
+    // future receipt type without per-type branching.
+    if (/\/pdf$/.test(url)) {
+      await downloadPdf({
+        router,
+        pdfPath: url,
+        signedUrlPath: url.replace(/\/pdf$/, "/signed-url"),
+        filename: `receipt-${item.id}.pdf`,
+        title: "Receipt",
+      });
+      return;
     }
     pushInAppBrowser(router, url, "Invoice");
   };
@@ -222,7 +201,7 @@ export function BillingHistoryContent() {
                   backgroundColor: "#eef2ff",
                 }}
               >
-                <Ionicons name="open-outline" size={18} color="#6366f1" />
+                <Ionicons name="download-outline" size={18} color="#6366f1" />
               </TouchableOpacity>
             ) : null}
           </View>

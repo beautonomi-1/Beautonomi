@@ -307,6 +307,8 @@ export function StepReview({
             <p className="opacity-75">{policyContent.storeCreditNote}</p>
           </div>
           <div className="flex items-start gap-3 pt-2">
+            {policyContent.requiresAck && (
+            <>
             <Checkbox
               id="accept-policy"
               checked={policyAccepted}
@@ -325,6 +327,8 @@ export function StepReview({
             >
               {policyContent.ackText}
             </Label>
+            </>
+            )}
           </div>
         </div>
       )}

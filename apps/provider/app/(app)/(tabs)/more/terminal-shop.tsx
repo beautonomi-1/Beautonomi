@@ -29,6 +29,10 @@ import {
   formatTerminalAssetOwnership,
   formatTerminalCommercialModel,
 } from "@/lib/terminal-commerce-labels";
+import {
+  getTerminalOrderProgressSteps,
+  resolveTerminalOrderPrimaryAction,
+} from "@/lib/terminal-order-progress";
 
 type CheckoutOption = {
   commercial_model: string;
@@ -84,6 +88,72 @@ type TerminalAsset = {
 };
 
 type AssetsResponse = { assets: TerminalAsset[] };
+
+const FULFILLMENT_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  shipping: { label: "Shipped to you", icon: "cube-outline" },
+  courier: { label: "Courier delivery", icon: "cube-outline" },
+  collection: { label: "Collect in person", icon: "location-outline" },
+  digital_activation: { label: "Instant digital activation", icon: "flash-outline" },
+};
+
+function formatMoney(currency: string, amount: number | null | undefined) {
+  if (amount == null) return "—";
+  return `${currency} ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+}
+
+function FulfillmentChip({ type }: { type: string | null | undefined }) {
+  const meta = FULFILLMENT_META[type ?? ""];
+  if (!meta) return null;
+  return (
+    <View style={twStyle("mt-2 flex-row items-center self-start rounded-full bg-gray-50 border border-gray-200 px-2.5 py-1")}>
+      <Ionicons name={meta.icon} size={12} color="#6b7280" />
+      <Text style={twStyle("ml-1 text-[11px] text-gray-600")}>{meta.label}</Text>
+    </View>
+  );
+}
+
+function OrderTimeline({ order }: { order: TerminalOrder }) {
+  const steps = getTerminalOrderProgressSteps(order);
+  return (
+    <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
+      {steps.map((step, idx) => (
+        <View key={step.label} style={twStyle("flex-row items-center")}>
+          {idx > 0 ? (
+            <View
+              style={twStyle(
+                `mx-1 h-px w-4 ${step.state === "upcoming" ? "bg-gray-200" : "bg-pink-300"}`,
+              )}
+            />
+          ) : null}
+          {step.state === "done" ? (
+            <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
+          ) : step.state === "current" ? (
+            <View style={twStyle("h-3.5 w-3.5 items-center justify-center")}>
+              <View style={twStyle("h-2 w-2 rounded-full bg-pink-500")} />
+            </View>
+          ) : (
+            <View style={twStyle("h-3.5 w-3.5 items-center justify-center")}>
+              <View style={twStyle("h-1.5 w-1.5 rounded-full bg-gray-300")} />
+            </View>
+          )}
+          <Text
+            style={twStyle(
+              `ml-1 text-[10px] font-medium ${
+                step.state === "done"
+                  ? "text-green-700"
+                  : step.state === "current"
+                    ? "text-pink-700"
+                    : "text-gray-400"
+              }`,
+            )}
+          >
+            {step.label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function TerminalShopScreen() {
   const router = useRouter();
@@ -177,6 +247,21 @@ export default function TerminalShopScreen() {
       city,
       postalCode,
     ],
+  );
+
+  const activeDeviceCount = useMemo(
+    () => assets.filter((a) => a.status === "active").length,
+    [assets],
+  );
+
+  const pendingActivationOrder = useMemo(
+    () =>
+      orders.find((o) => {
+        if (o.invoice_status !== "paid" || o.integration_setup_status !== "pending") return false;
+        const vendor = (o.terminal_products?.vendor ?? "").toLowerCase();
+        return !vendor || vendor === "paycloud";
+      }) ?? null,
+    [orders],
   );
 
   function openIntegrationSetup(order: TerminalOrder) {
@@ -324,7 +409,7 @@ export default function TerminalShopScreen() {
     <ScreenContainer>
       <ScreenHeader
         title="Terminal Shop"
-        subtitle="Order platform card machines"
+        subtitle="Card machines by Beautonomi"
         showBack
         onBack={handleBack}
       />
@@ -333,142 +418,318 @@ export default function TerminalShopScreen() {
           <ActivityIndicator style={twStyle("my-8")} />
         ) : (
           <>
+            {/* Hero / value strip */}
+            <View style={twStyle("mb-5 rounded-2xl border border-pink-100 bg-pink-50 p-4")}>
+              <View style={twStyle("flex-row items-center self-start rounded-full bg-white px-2.5 py-1")}>
+                <Ionicons name="sparkles-outline" size={12} color="#db2777" />
+                <Text style={twStyle("ml-1 text-[11px] font-semibold text-pink-700")}>
+                  Beautonomi card machines
+                </Text>
+              </View>
+              <Text style={twStyle("mt-2.5 text-lg font-bold text-gray-900")}>
+                Get paid in person — tap, insert, swipe, and QR
+              </Text>
+              <Text style={twStyle("mt-1 text-xs text-gray-600")}>
+                Order a machine, activate it with its serial number, and charges flow straight from
+                your bookings and sales checkout.
+              </Text>
+              <View style={twStyle("mt-3 flex-row flex-wrap")}>
+                {[
+                  { icon: "flash-outline" as const, label: "Charges from checkout" },
+                  { icon: "checkmark-done-outline" as const, label: "Auto-reconciled" },
+                  { icon: "shield-checkmark-outline" as const, label: "Beautonomi support" },
+                ].map((chip) => (
+                  <View
+                    key={chip.label}
+                    style={[
+                      twStyle("flex-row items-center rounded-full bg-white px-2.5 py-1"),
+                      { marginRight: 6, marginBottom: 6 },
+                    ]}
+                  >
+                    <Ionicons name={chip.icon} size={11} color="#db2777" />
+                    <Text style={twStyle("ml-1 text-[10px] font-medium text-gray-700")}>{chip.label}</Text>
+                  </View>
+                ))}
+              </View>
+              {activeDeviceCount > 0 ? (
+                <View style={twStyle("mt-1 flex-row items-center")}>
+                  <Ionicons name="checkmark-circle" size={13} color="#16a34a" />
+                  <Text style={twStyle("ml-1 text-[11px] font-medium text-green-700")}>
+                    {activeDeviceCount} device{activeDeviceCount === 1 ? "" : "s"} active on your account
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Pending activation nudge */}
+            {pendingActivationOrder && paycloudEnabled ? (
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    `/(app)/(tabs)/more/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}` as never,
+                  )
+                }
+                style={twStyle("mb-5 flex-row items-center rounded-2xl border border-pink-200 bg-white p-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Activate your card machine"
+              >
+                <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-pink-50")}>
+                  <Ionicons name="cube-outline" size={20} color="#db2777" />
+                </View>
+                <View style={twStyle("ml-3 flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    {pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is ready to activate
+                  </Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>
+                    Enter the serial number from the device label to finish setup.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#db2777" />
+              </TouchableOpacity>
+            ) : null}
+
             {catalogEnabled && (
               <View style={twStyle("mb-6")}>
-                <Text style={twStyle("mb-3 text-base font-semibold text-gray-900")}>Catalog</Text>
+                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>Choose your machine</Text>
+                <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+                  Every machine works with Beautonomi checkout out of the box.
+                </Text>
                 {products.length === 0 ? (
-                  <Text style={twStyle("text-sm text-gray-500")}>No products available.</Text>
+                  <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 p-8")}>
+                    <Ionicons name="phone-portrait-outline" size={28} color="#d1d5db" />
+                    <Text style={twStyle("mt-2 text-sm text-gray-500")}>
+                      No products available yet — check back soon.
+                    </Text>
+                  </View>
                 ) : (
-                  products.map((p) => (
-                    <View key={p.id} style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
-                      <View style={twStyle("flex-row items-start justify-between")}>
-                        <View style={twStyle("flex-1 pr-2")}>
-                          <Text style={twStyle("font-semibold text-gray-900")}>{p.name}</Text>
-                          <Text style={twStyle("text-xs capitalize text-gray-500")}>
-                            {p.vendor}
-                            {p.model ? ` · ${p.model}` : ""}
-                          </Text>
-                        </View>
-                        <View
-                          style={twStyle(
-                            `rounded-full px-2 py-0.5 ${
-                              p.stock_status === "out_of_stock" ? "bg-rose-50" : "bg-gray-100"
-                            }`,
-                          )}
-                        >
-                          <Text
-                            style={twStyle(
-                              `text-[10px] font-semibold capitalize ${
-                                p.stock_status === "out_of_stock" ? "text-rose-700" : "text-gray-600"
-                              }`,
-                            )}
-                          >
-                            {p.stock_status.replace(/_/g, " ")}
-                          </Text>
-                        </View>
-                      </View>
-                      {(p.checkout_options ?? []).map((opt) => (
-                        <Text key={opt.commercial_model} style={twStyle("mt-1 text-sm text-gray-700")}>
-                          {opt.label}: {opt.requires_payment ? `${opt.currency} ${opt.price}` : "Included in plan"}
-                        </Text>
-                      ))}
-                      {(() => {
-                        const cta = resolveTerminalShopOrderCta({
-                          ecommerceEnabled,
-                          stockStatus: p.stock_status,
-                          checkoutOptionsCount: (p.checkout_options ?? []).length,
-                          isOwner,
-                        });
-                        if (cta.enabled) {
-                          return (
-                            <TouchableOpacity
-                              onPress={() => openCheckout(p)}
-                              style={twStyle("mt-3 self-start rounded-xl bg-gray-900 px-4 py-2")}
-                            >
-                              <Text style={twStyle("text-sm font-medium text-white")}>Order</Text>
-                            </TouchableOpacity>
-                          );
-                        }
-                        return (
-                          <View style={twStyle("mt-3")}>
-                            <View style={twStyle("self-start rounded-xl bg-gray-200 px-4 py-2")}>
-                              <Text style={twStyle("text-sm font-medium text-gray-500")}>Order</Text>
-                            </View>
-                            <Text style={twStyle("mt-1 text-xs text-gray-500")}>{cta.message}</Text>
+                  products.map((p) => {
+                    const options = p.checkout_options ?? [];
+                    const includedOption = options.find((o) => !o.requires_payment);
+                    const cta = resolveTerminalShopOrderCta({
+                      ecommerceEnabled,
+                      stockStatus: p.stock_status,
+                      checkoutOptionsCount: options.length,
+                      isOwner,
+                    });
+                    return (
+                      <View key={p.id} style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
+                        <View style={twStyle("flex-row items-start justify-between")}>
+                          <View style={twStyle("flex-1 pr-2")}>
+                            <Text style={twStyle("text-base font-semibold text-gray-900")}>{p.name}</Text>
+                            <Text style={twStyle("text-xs capitalize text-gray-500")}>
+                              {p.vendor}
+                              {p.model ? ` · ${p.model}` : ""}
+                            </Text>
                           </View>
-                        );
-                      })()}
-                    </View>
-                  ))
+                          {includedOption ? (
+                            <View style={twStyle("rounded-full bg-pink-600 px-2.5 py-1")}>
+                              <Text style={twStyle("text-[10px] font-semibold text-white")}>In your plan</Text>
+                            </View>
+                          ) : p.stock_status !== "in_stock" ? (
+                            <View
+                              style={twStyle(
+                                `rounded-full px-2 py-0.5 ${
+                                  p.stock_status === "out_of_stock" ? "bg-rose-50" : "bg-gray-100"
+                                }`,
+                              )}
+                            >
+                              <Text
+                                style={twStyle(
+                                  `text-[10px] font-semibold capitalize ${
+                                    p.stock_status === "out_of_stock" ? "text-rose-700" : "text-gray-600"
+                                  }`,
+                                )}
+                              >
+                                {p.stock_status.replace(/_/g, " ")}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        {p.description ? (
+                          <Text style={twStyle("mt-1.5 text-xs text-gray-600")} numberOfLines={2}>
+                            {p.description}
+                          </Text>
+                        ) : null}
+                        <FulfillmentChip type={p.fulfillment_type} />
+                        {options.length > 0 ? (
+                          <View style={twStyle("mt-3")}>
+                            {options.map((opt, idx) => (
+                              <View
+                                key={opt.commercial_model}
+                                style={[
+                                  twStyle(
+                                    `flex-row items-center justify-between rounded-xl border px-3 py-2 ${
+                                      !opt.requires_payment
+                                        ? "border-pink-200 bg-pink-50"
+                                        : "border-gray-100 bg-gray-50"
+                                    }`,
+                                  ),
+                                  idx > 0 ? { marginTop: 6 } : undefined,
+                                ]}
+                              >
+                                <Text
+                                  style={twStyle(
+                                    `text-xs font-medium ${
+                                      !opt.requires_payment ? "text-pink-900" : "text-gray-700"
+                                    }`,
+                                  )}
+                                >
+                                  {opt.label}
+                                </Text>
+                                <Text
+                                  style={twStyle(
+                                    `text-xs font-semibold ${
+                                      !opt.requires_payment ? "text-pink-700" : "text-gray-900"
+                                    }`,
+                                  )}
+                                >
+                                  {opt.requires_payment
+                                    ? formatMoney(opt.currency, opt.price)
+                                    : "R 0 — in plan"}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                        {cta.enabled ? (
+                          <TouchableOpacity
+                            onPress={() => openCheckout(p)}
+                            style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-pink-600 px-4 py-3")}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Order ${p.name}`}
+                          >
+                            <Text style={twStyle("text-sm font-semibold text-white")}>Order this machine</Text>
+                            <Ionicons name="arrow-forward" size={15} color="#ffffff" style={{ marginLeft: 6 }} />
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={twStyle("mt-3")}>
+                            <View style={twStyle("items-center rounded-xl bg-gray-200 px-4 py-3")}>
+                              <Text style={twStyle("text-sm font-semibold text-gray-500")}>
+                                {cta.kind === "out_of_stock" ? "Out of stock" : "Order this machine"}
+                              </Text>
+                            </View>
+                            {cta.kind !== "out_of_stock" ? (
+                              <Text style={twStyle("mt-1 text-center text-xs text-gray-500")}>{cta.message}</Text>
+                            ) : null}
+                          </View>
+                        )}
+                        <Text style={twStyle("mt-2 text-center text-[10px] text-gray-400")}>
+                          Sold and supported by Beautonomi
+                        </Text>
+                      </View>
+                    );
+                  })
                 )}
               </View>
             )}
 
             {ecommerceEnabled && (
-              <View>
-                <Text style={twStyle("mb-3 text-base font-semibold text-gray-900")}>Your orders</Text>
+              <View style={twStyle("mb-6")}>
+                <Text style={twStyle("mb-1 text-base font-semibold text-gray-900")}>Your orders</Text>
+                <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+                  Track payment, integration, and delivery.
+                </Text>
                 {orders.length === 0 ? (
-                  <Text style={twStyle("text-sm text-gray-500")}>No orders yet.</Text>
+                  <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 p-8")}>
+                    <Ionicons name="cube-outline" size={28} color="#d1d5db" />
+                    <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
+                      No orders yet — pick a machine above to get started.
+                    </Text>
+                  </View>
                 ) : (
-                  orders.map((o) => (
-                    <View
-                      key={o.id}
-                      style={twStyle(
-                        `mb-3 rounded-2xl border bg-white p-4 ${
-                          highlightedOrderId === o.id
-                            ? "border-pink-300 bg-pink-50"
-                            : "border-gray-200"
-                        }`,
-                      )}
-                    >
-                      <Text style={twStyle("font-medium text-gray-900")}>{o.terminal_products?.name ?? "Terminal order"}</Text>
-                      <Text style={twStyle("text-xs text-gray-500")}>
-                        {formatTerminalCommercialModel(o.commercial_model)} · {o.order_status.replace(/_/g, " ")} · {o.invoice_status.replace(/_/g, " ")}
-                      </Text>
-                      {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name && (
-                        <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                          Pickup: {o.terminal_collection_locations.name}
+                  orders.map((o) => {
+                    const primaryAction = resolveTerminalOrderPrimaryAction(o);
+                    const highlighted = highlightedOrderId === o.id;
+                    return (
+                      <View
+                        key={o.id}
+                        style={twStyle(
+                          `mb-3 rounded-2xl border bg-white p-4 ${
+                            highlighted ? "border-pink-300 bg-pink-50" : "border-gray-200"
+                          }`,
+                        )}
+                      >
+                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                          {o.terminal_products?.name ?? "Terminal order"}
                         </Text>
-                      )}
-                      {o.tracking_reference && (
-                        <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                          {o.courier_name ? `${o.courier_name}: ` : ""}{o.tracking_reference}
+                        <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                          {new Date(o.created_at).toLocaleDateString()} ·{" "}
+                          {formatTerminalCommercialModel(o.commercial_model)} · {o.currency}{" "}
+                          {Number(o.total_amount).toLocaleString()}
                         </Text>
-                      )}
-                      {o.integration_setup_status === "pending" && (
-                        <TouchableOpacity
-                          onPress={() => openIntegrationSetup(o)}
-                          style={twStyle("mt-2")}
-                        >
-                          <Text style={twStyle("text-sm font-medium text-pink-600")}>
-                            Complete brand integration setup
+                        <OrderTimeline order={o} />
+                        {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name ? (
+                          <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
+                            Pickup: {o.terminal_collection_locations.name}
                           </Text>
-                        </TouchableOpacity>
-                      )}
-                      {o.invoice_status !== "paid" &&
-                        !["cancelled", "refunded", "failed"].includes(o.order_status) &&
-                        o.commercial_model !== "subscription_bundle" && (
-                        <TouchableOpacity
-                          onPress={() => payExisting(o.id)}
-                          style={twStyle("mt-2 self-start rounded-xl border border-gray-300 px-3 py-1.5")}
-                        >
-                          <Text style={twStyle("text-sm text-gray-900")}>Pay now</Text>
-                        </TouchableOpacity>
-                      )}
-                      {o.invoice_status === "paid" && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            void downloadTerminalOrderReceipt(o.id, router, {
-                              productName: o.terminal_products?.name ?? "Terminal order",
-                            })
-                          }
-                          style={twStyle("mt-2 self-start rounded-xl border border-gray-300 px-3 py-1.5")}
-                        >
-                          <Text style={twStyle("text-sm text-gray-900")}>Receipt</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))
+                        ) : null}
+                        {o.tracking_reference ? (
+                          <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
+                            {o.courier_name ? `${o.courier_name}: ` : "Tracking: "}
+                            {o.tracking_reference}
+                          </Text>
+                        ) : null}
+                        {["cancelled", "refunded", "failed"].includes(o.order_status) ? (
+                          <Text style={twStyle("mt-1.5 text-xs capitalize text-rose-600")}>
+                            {o.order_status.replace(/_/g, " ")}
+                          </Text>
+                        ) : null}
+                        <View style={twStyle("mt-3 flex-row flex-wrap items-center")}>
+                          {primaryAction === "pay" ? (
+                            <TouchableOpacity
+                              onPress={() => payExisting(o.id)}
+                              disabled={paying}
+                              style={[
+                                twStyle("flex-row items-center rounded-xl bg-pink-600 px-4 py-2"),
+                                { marginRight: 8, marginBottom: 4 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel="Pay for this order"
+                            >
+                              <Ionicons name="card-outline" size={14} color="#ffffff" />
+                              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
+                                {paying ? "Starting…" : "Pay now"}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {primaryAction === "setup" ? (
+                            <TouchableOpacity
+                              onPress={() => openIntegrationSetup(o)}
+                              style={[
+                                twStyle("flex-row items-center rounded-xl bg-pink-600 px-4 py-2"),
+                                { marginRight: 8, marginBottom: 4 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel="Complete integration setup"
+                            >
+                              <Ionicons name="construct-outline" size={14} color="#ffffff" />
+                              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
+                                Complete setup
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {o.invoice_status === "paid" ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                void downloadTerminalOrderReceipt(o.id, router, {
+                                  productName: o.terminal_products?.name ?? "Terminal order",
+                                })
+                              }
+                              style={[
+                                twStyle("flex-row items-center rounded-xl border border-gray-300 px-4 py-2"),
+                                { marginBottom: 4 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel="Download receipt"
+                            >
+                              <Ionicons name="download-outline" size={14} color="#374151" />
+                              <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>Receipt</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })
                 )}
               </View>
             )}
@@ -481,21 +742,56 @@ export default function TerminalShopScreen() {
                     key={a.id}
                     style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}
                   >
-                    <View>
-                      <Text style={twStyle("text-sm text-gray-900")}>
-                        {a.terminal_products?.name ?? "Terminal device"}
-                      </Text>
-                      {a.ownership_model ? (
+                    <View style={twStyle("flex-row items-center flex-1 pr-2")}>
+                      <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
+                        <Ionicons name="phone-portrait-outline" size={16} color="#9ca3af" />
+                      </View>
+                      <View style={twStyle("ml-3 flex-1")}>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                          {a.terminal_products?.name ?? "Terminal device"}
+                        </Text>
                         <Text style={twStyle("text-xs text-gray-500")}>
                           {formatTerminalAssetOwnership(a.ownership_model)}
+                          {a.serial_number ? ` · ${a.serial_number}` : ""}
                         </Text>
-                      ) : null}
+                      </View>
                     </View>
-                    <Text style={twStyle("text-xs capitalize text-gray-500")}>{a.status.replace(/_/g, " ")}</Text>
+                    <View
+                      style={twStyle(
+                        `rounded-full px-2 py-0.5 ${a.status === "active" ? "bg-green-50" : "bg-gray-100"}`,
+                      )}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-[10px] font-semibold capitalize ${
+                            a.status === "active" ? "text-green-700" : "text-gray-500"
+                          }`,
+                        )}
+                      >
+                        {a.status.replace(/_/g, " ")}
+                      </Text>
+                    </View>
                   </View>
                 ))}
               </View>
             )}
+
+            {/* What happens after purchase */}
+            <View style={twStyle("mb-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4")}>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>What happens after purchase</Text>
+              {[
+                "Pay for your order — we prepare it for delivery, pickup, or instant activation.",
+                "Activate the machine with its serial number in Card machines.",
+                "Turn on in-person acceptance and start charging at bookings and sales.",
+              ].map((step, idx) => (
+                <View key={step} style={twStyle("mt-2.5 flex-row items-start")}>
+                  <View style={twStyle("h-5 w-5 items-center justify-center rounded-full bg-pink-100")}>
+                    <Text style={twStyle("text-[10px] font-bold text-pink-700")}>{idx + 1}</Text>
+                  </View>
+                  <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>{step}</Text>
+                </View>
+              ))}
+            </View>
 
             <TouchableOpacity
               onPress={() =>
@@ -507,9 +803,11 @@ export default function TerminalShopScreen() {
                       "Terminal integrations",
                     )
               }
-              style={twStyle("mt-4")}
+              style={twStyle("mb-2 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3")}
+              accessibilityRole="button"
             >
-              <Text style={twStyle("text-sm text-gray-600 underline")}>
+              <Ionicons name="settings-outline" size={15} color="#374151" />
+              <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>
                 {paycloudEnabled ? "Manage card machines" : "Manage terminal integrations on web"}
               </Text>
             </TouchableOpacity>
@@ -519,100 +817,179 @@ export default function TerminalShopScreen() {
 
       <Modal visible={!!checkoutProduct} animationType="slide" transparent onRequestClose={() => setCheckoutProduct(null)}>
         <View style={twStyle("flex-1 justify-end bg-black/40")}>
-          <View style={twStyle("rounded-t-3xl bg-white p-5")}>
-            <Text style={twStyle("text-lg font-semibold text-gray-900")}>Order {checkoutProduct?.name}</Text>
-            {(checkoutProduct?.checkout_options ?? []).length === 0 ? (
-              <Text style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800")}>
-                This product isn&apos;t configured for checkout. Contact Beautonomi support.
+          <View style={twStyle("max-h-[85%] rounded-t-3xl bg-white")}>
+            <ScrollView contentContainerStyle={twStyle("p-5 pb-8")}>
+              <Text style={twStyle("text-lg font-semibold text-gray-900")}>Order {checkoutProduct?.name}</Text>
+              <Text style={twStyle("mt-0.5 text-xs capitalize text-gray-500")}>
+                {checkoutProduct?.vendor}
+                {checkoutProduct?.model ? ` · ${checkoutProduct.model}` : ""}
               </Text>
-            ) : (
-              (checkoutProduct?.checkout_options ?? []).map((opt) => (
-                <TouchableOpacity
-                  key={opt.commercial_model}
-                  onPress={() => setCommercialModel(opt.commercial_model)}
-                  style={twStyle(
-                    `mt-2 rounded-xl border p-3 ${
-                      commercialModel === opt.commercial_model ? "border-gray-900 bg-gray-50" : "border-gray-200"
-                    }`,
+
+              {(checkoutProduct?.checkout_options ?? []).length === 0 ? (
+                <Text style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800")}>
+                  This product isn&apos;t configured for checkout. Contact Beautonomi support.
+                </Text>
+              ) : (
+                <>
+                  <Text style={twStyle("mt-4 mb-1 text-sm font-medium text-gray-900")}>
+                    How would you like to get it?
+                  </Text>
+                  {(checkoutProduct?.checkout_options ?? []).map((opt) => {
+                    const selected = commercialModel === opt.commercial_model;
+                    return (
+                      <TouchableOpacity
+                        key={opt.commercial_model}
+                        onPress={() => setCommercialModel(opt.commercial_model)}
+                        style={twStyle(
+                          `mt-2 flex-row items-start rounded-xl border p-3 ${
+                            selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
+                          }`,
+                        )}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                      >
+                        <View
+                          style={twStyle(
+                            `mt-0.5 h-4 w-4 items-center justify-center rounded-full border-2 ${
+                              selected ? "border-pink-600" : "border-gray-300"
+                            }`,
+                          )}
+                        >
+                          {selected ? <View style={twStyle("h-2 w-2 rounded-full bg-pink-600")} /> : null}
+                        </View>
+                        <View style={twStyle("ml-2.5 flex-1")}>
+                          <View style={twStyle("flex-row items-center justify-between")}>
+                            <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
+                            <Text
+                              style={twStyle(
+                                `text-sm font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`,
+                              )}
+                            >
+                              {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "R 0 — in plan"}
+                            </Text>
+                          </View>
+                          {opt.description ? (
+                            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{opt.description}</Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+
+              {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
+                <View style={twStyle("mt-4")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Delivery address</Text>
+                  <TextInput
+                    placeholder="Address line 1"
+                    placeholderTextColor="#9ca3af"
+                    value={addressLine1}
+                    onChangeText={setAddressLine1}
+                    style={twStyle("mt-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+                  />
+                  <TextInput
+                    placeholder="City"
+                    placeholderTextColor="#9ca3af"
+                    value={city}
+                    onChangeText={setCity}
+                    style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+                  />
+                  <TextInput
+                    placeholder="Postal code"
+                    placeholderTextColor="#9ca3af"
+                    value={postalCode}
+                    onChangeText={setPostalCode}
+                    style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+                  />
+                </View>
+              )}
+
+              {fulfillmentType === "collection" && (
+                <View style={twStyle("mt-4")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Pickup location</Text>
+                  {collectionLocations.length === 0 ? (
+                    <Text style={twStyle("text-sm text-gray-500")}>No pickup locations configured.</Text>
+                  ) : (
+                    collectionLocations.map((loc) => {
+                      const selected = collectionLocationId === loc.id;
+                      return (
+                        <TouchableOpacity
+                          key={loc.id}
+                          onPress={() => setCollectionLocationId(loc.id)}
+                          style={twStyle(
+                            `mt-2 flex-row items-center rounded-xl border p-3 ${
+                              selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
+                            }`,
+                          )}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
+                        >
+                          <Ionicons
+                            name="location-outline"
+                            size={15}
+                            color={selected ? "#db2777" : "#9ca3af"}
+                          />
+                          <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>{loc.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })
                   )}
+                </View>
+              )}
+
+              {fulfillmentType === "digital_activation" && (
+                <View style={twStyle("mt-4 flex-row items-start rounded-xl bg-gray-50 p-3")}>
+                  <Ionicons name="flash-outline" size={15} color="#db2777" />
+                  <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>
+                    This product activates digitally — nothing gets shipped. Complete brand integration
+                    after confirmation.
+                  </Text>
+                </View>
+              )}
+
+              {selectedOption ? (
+                <View style={twStyle("mt-4 flex-row items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Total today</Text>
+                  <Text style={twStyle("text-sm font-bold text-gray-900")}>
+                    {selectedOption.requires_payment
+                      ? formatMoney(selectedOption.currency, selectedOption.price)
+                      : "R 0 — in your plan"}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={twStyle("mt-4 flex-row justify-end")}>
+                <TouchableOpacity
+                  onPress={() => setCheckoutProduct(null)}
+                  style={[twStyle("rounded-xl border border-gray-200 px-4 py-2.5"), { marginRight: 8 }]}
+                  accessibilityRole="button"
                 >
-                  <Text style={twStyle("font-medium text-gray-900")}>{opt.label}</Text>
-                  <Text style={twStyle("text-sm text-gray-500")}>
-                    {opt.requires_payment ? `${opt.currency} ${opt.price}` : "Included in plan"}
+                  <Text style={twStyle("text-sm text-gray-700")}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void submitOrder()}
+                  disabled={posting || allocating || paying || !checkoutConfirmState.ok}
+                  style={twStyle(
+                    `rounded-xl px-4 py-2.5 ${checkoutConfirmState.ok ? "bg-pink-600" : "bg-gray-300"}`,
+                  )}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("text-sm font-semibold text-white")}>
+                    {posting || allocating || paying
+                      ? "Working…"
+                      : selectedOption?.requires_payment
+                        ? "Place & pay"
+                        : "Confirm"}
                   </Text>
                 </TouchableOpacity>
-              ))
-            )}
-
-            {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
-              <View style={twStyle("mt-3 gap-2")}>
-                <TextInput
-                  placeholder="Address line 1"
-                  value={addressLine1}
-                  onChangeText={setAddressLine1}
-                  style={twStyle("rounded-xl border border-gray-200 px-3 py-2 text-sm")}
-                />
-                <TextInput
-                  placeholder="City"
-                  value={city}
-                  onChangeText={setCity}
-                  style={twStyle("rounded-xl border border-gray-200 px-3 py-2 text-sm")}
-                />
-                <TextInput
-                  placeholder="Postal code"
-                  value={postalCode}
-                  onChangeText={setPostalCode}
-                  style={twStyle("rounded-xl border border-gray-200 px-3 py-2 text-sm")}
-                />
               </View>
-            )}
-
-            {fulfillmentType === "collection" && (
-              <View style={twStyle("mt-3")}>
-                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Pickup location</Text>
-                {collectionLocations.length === 0 ? (
-                  <Text style={twStyle("text-sm text-gray-500")}>No pickup locations configured.</Text>
-                ) : (
-                  collectionLocations.map((loc) => (
-                    <TouchableOpacity
-                      key={loc.id}
-                      onPress={() => setCollectionLocationId(loc.id)}
-                      style={twStyle(
-                        `mb-2 rounded-xl border p-3 ${
-                          collectionLocationId === loc.id ? "border-gray-900 bg-gray-50" : "border-gray-200"
-                        }`,
-                      )}
-                    >
-                      <Text style={twStyle("font-medium text-gray-900")}>{loc.name}</Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
-
-            {fulfillmentType === "digital_activation" && (
-              <Text style={twStyle("mt-3 text-sm text-gray-600")}>
-                This product activates digitally. Complete brand integration after confirmation.
-              </Text>
-            )}
-
-            <View style={twStyle("mt-4 flex-row justify-end gap-2")}>
-              <TouchableOpacity onPress={() => setCheckoutProduct(null)} style={twStyle("rounded-xl border border-gray-200 px-4 py-2")}>
-                <Text>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => void submitOrder()}
-                disabled={posting || allocating || paying || !checkoutConfirmState.ok}
-                style={twStyle(`rounded-xl px-4 py-2 ${checkoutConfirmState.ok ? "bg-gray-900" : "bg-gray-300"}`)}
-              >
-                <Text style={twStyle("font-medium text-white")}>
-                  {posting || allocating || paying ? "Working…" : selectedOption?.requires_payment ? "Place & pay" : "Confirm"}
+              {!checkoutConfirmState.ok && checkoutConfirmState.message ? (
+                <Text style={twStyle("mt-2 text-right text-xs text-amber-700")}>
+                  {checkoutConfirmState.message}
                 </Text>
-              </TouchableOpacity>
-            </View>
-            {!checkoutConfirmState.ok && checkoutConfirmState.message ? (
-              <Text style={twStyle("mt-2 text-xs text-amber-700")}>{checkoutConfirmState.message}</Text>
-            ) : null}
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>

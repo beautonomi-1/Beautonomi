@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
@@ -169,7 +169,9 @@ export function CustomerNotificationsDropdown() {
             "postgres_changes",
             { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
             () => {
-              void loadNotifications(true);
+              // Bypass the GET cache: a realtime event means the DB just
+              // changed, so a cached list/count is stale by definition.
+              void loadNotifications(true, { staleTimeMs: 0 });
             }
           )
           .subscribe();
@@ -204,6 +206,7 @@ export function CustomerNotificationsDropdown() {
     if (wasUnread) {
       try {
         await fetcher.post(`/api/me/notifications/${notification.id}/read`);
+        deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
       } catch (error) {
         console.error("Failed to mark notification as read:", error);
         setNotifications((prev) =>
@@ -230,7 +233,7 @@ export function CustomerNotificationsDropdown() {
       router.push(`/account-settings/bookings/${data.booking_id}`);
     } else if (data.request_id) {
       setOpen(false);
-      router.push('/account-settings/custom-requests');
+      router.push(`/account-settings/custom-requests?request=${encodeURIComponent(String(data.request_id))}`);
     } else {
       setOpen(false);
       router.push('/account-settings/notifications/inbox');
@@ -244,6 +247,7 @@ export function CustomerNotificationsDropdown() {
     setTotalUnread(0);
     try {
       await fetcher.post("/api/me/notifications/mark-all-read");
+      deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
       toast.success("All notifications marked as read");
     } catch (error) {
       console.error("Failed to mark all as read:", error);
@@ -274,6 +278,7 @@ export function CustomerNotificationsDropdown() {
     }
     try {
       await fetcher.delete(`/api/me/notifications/${encodeURIComponent(notification.id)}`);
+      deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
     } catch (error) {
       console.error("Failed to delete notification:", error);
       setNotifications(prevList);

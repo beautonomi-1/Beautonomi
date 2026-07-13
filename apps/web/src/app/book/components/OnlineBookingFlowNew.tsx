@@ -1037,24 +1037,9 @@ export default function OnlineBookingFlowNew({
       .then((res) => {
         const data = (res as { data?: CancellationPolicy[] })?.data;
         if (data && data.length > 0) setCancellationPolicy(data[0]);
-        else
-          setCancellationPolicy({
-            policy_text: "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
-            hours_before_cutoff: 24,
-            grace_window_minutes: 15,
-            late_cancellation_type: "no_refund",
-            refund_percentage: 0,
-          });
+        else setCancellationPolicy(null);
       })
-      .catch(() =>
-        setCancellationPolicy({
-          policy_text: "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
-          hours_before_cutoff: 24,
-          grace_window_minutes: 15,
-          late_cancellation_type: "no_refund",
-          refund_percentage: 0,
-        })
-      );
+      .catch(() => setCancellationPolicy(null));
   }, [provider.id, bookingData.venueType, step]);
 
   // Fetch addons for every selected service and merge (dedupe by id) so multi-service bookings show all applicable addons

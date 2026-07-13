@@ -5,7 +5,17 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getGroupBooking } from './group-booking';
+import type { CancellationPolicy } from './cancellation-policy';
 import type { CancellationSettledBy } from './settle-booking-cancellation';
+import {
+  computeReconciledCancellationAmounts,
+  settleBookingFinanceById,
+} from './settle-booking-cancellation';
+
+export interface GroupCancelFinanceContext {
+  policy: CancellationPolicy | null;
+  isLateCancellation?: boolean;
+}
 
 /**
  * Cancel entire group booking (all participants)
@@ -15,9 +25,12 @@ export async function cancelGroupBooking(
   groupBookingId: string,
   cancelledBy: string,
   reason?: string,
-  options?: { settleFinance?: boolean; financeActor?: CancellationSettledBy },
+  options?: {
+    settleFinance?: boolean;
+    financeActor?: CancellationSettledBy;
+    financeContext?: GroupCancelFinanceContext;
+  },
 ): Promise<void> {
-  const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
   const groupBooking = await getGroupBooking(supabase, groupBookingId);
   if (!groupBooking) {
     throw new Error('Group booking not found');
@@ -26,6 +39,27 @@ export async function cancelGroupBooking(
   // Cancel all bookings in the group
   const cancelledBookingIds: string[] = [];
   for (const booking of groupBooking.bookings) {
+    let cancellationFee = 0;
+    if (options?.settleFinance && options.financeContext?.policy) {
+      const amounts = computeReconciledCancellationAmounts({
+        booking: {
+          id: booking.id,
+          provider_id: booking.provider_id,
+          total_amount: booking.total_amount,
+          total_paid: booking.total_paid,
+          total_refunded: booking.total_refunded,
+          wallet_amount: booking.wallet_amount,
+          gift_card_amount: booking.gift_card_amount,
+        },
+        cancelledBy: options.financeActor ?? "customer",
+        currency: booking.currency || "ZAR",
+        policy: options.financeContext.policy,
+        isLateCancellation: options.financeContext.isLateCancellation,
+        refundBookingTotal: Number(booking.total_amount ?? 0),
+      });
+      cancellationFee = amounts.cancellationFeeApplied;
+    }
+
     const { error } = await supabase
       .from('bookings')
       .update({
@@ -33,6 +67,7 @@ export async function cancelGroupBooking(
         cancelled_at: new Date().toISOString(),
         cancelled_by: cancelledBy,
         cancellation_reason: reason || 'Group booking cancelled',
+        cancellation_fee: cancellationFee,
       })
       .eq('id', booking.id);
     if (!error) {
@@ -43,6 +78,10 @@ export async function cancelGroupBooking(
             supabase,
             booking.id,
             options.financeActor ?? "customer",
+            {
+              policy: options.financeContext?.policy,
+              isLateCancellation: options.financeContext?.isLateCancellation,
+            },
           );
         } catch (settleErr) {
           console.error("[group cancel] finance settlement failed for", booking.id, settleErr);

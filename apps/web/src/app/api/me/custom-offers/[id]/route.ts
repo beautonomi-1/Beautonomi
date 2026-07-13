@@ -27,6 +27,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         expiration_at,
         notes,
         travel_fee,
+        change_request_note,
+        changes_requested_at,
         staff_id,
         request:custom_requests(
           id,

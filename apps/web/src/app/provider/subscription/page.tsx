@@ -179,6 +179,8 @@ export default function SubscriptionPage() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   // Blocking overlay while we verify with Paystack on return from checkout.
   const [verifying, setVerifying] = useState(false);
+  // Loading state for the persistent "Manage billing / update card" action.
+  const [managingCard, setManagingCard] = useState(false);
 
   const visiblePlans = useMemo(() => {
     if (!plans.length) return [];
@@ -536,6 +538,31 @@ export default function SubscriptionPage() {
     await handleRenew();
   };
 
+  /**
+   * Persistent "Manage billing / update card" action for healthy paid
+   * subscribers — reuses the same Paystack-hosted manage link as the
+   * reactive past_due/billing_issue flow above, but is always available so a
+   * provider can proactively swap cards without first hitting a payment
+   * failure.
+   */
+  const handleManageCard = async () => {
+    setManagingCard(true);
+    try {
+      const res = await fetcher.get<{ data: { link: string } }>(
+        "/api/provider/subscription/manage-link"
+      );
+      if (res.data?.link) {
+        window.location.href = res.data.link;
+        return;
+      }
+      toast.error("Could not generate a card update link. Please try again.");
+    } catch (err) {
+      toast.error("Could not generate a card update link. Please try again.");
+    } finally {
+      setManagingCard(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <SettingsDetailLayout>
@@ -784,6 +811,16 @@ export default function SubscriptionPage() {
                         variant={subscription.status === "past_due" ? "default" : "outline"}
                       >
                         {billingLabel}
+                      </Button>
+                    ) : null}
+                    {isPaidPlan && !billingLabel ? (
+                      <Button
+                        onClick={handleManageCard}
+                        variant="outline"
+                        disabled={managingCard}
+                      >
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        {managingCard ? "Opening…" : "Manage billing / update card"}
                       </Button>
                     ) : null}
                     {showCancel ? (

@@ -61,6 +61,7 @@ describe("startPaidSubscriptionCheckout", () => {
       plan_id: "sub-plan-1",
       billing_period: "monthly",
       in_app: true,
+      callback_url: expect.stringMatching(/^https:\/\//),
     });
   });
 

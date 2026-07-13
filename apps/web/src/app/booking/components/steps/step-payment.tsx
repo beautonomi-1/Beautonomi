@@ -2267,12 +2267,12 @@ export default function StepPayment({
         </AnimatePresence>
       </div>
 
-      {/* Cancellation Policy Acceptance */}
-      {cancellationRequiresAckForPolicy && cancellationPolicy && (
+      {/* Cancellation Policy */}
+      {cancellationPolicy && cancellationPolicyContent.lines.length > 0 && (
         <div
           className={cn(
             "rounded-xl p-5 border-2 transition-all",
-            acceptedCancellationPolicy
+            !cancellationRequiresAckForPolicy || acceptedCancellationPolicy
               ? "border-primary/35 bg-white shadow-sm"
               : "border-amber-400 bg-amber-50/90 shadow-md ring-2 ring-amber-300/70"
           )}
@@ -2311,6 +2311,7 @@ export default function StepPayment({
               </div>
             </div>
           </div>
+          {cancellationRequiresAckForPolicy && (
           <div
             className={cn(
               "flex items-start gap-4 rounded-lg p-4 border-2 bg-white",
@@ -2335,7 +2336,8 @@ export default function StepPayment({
               {cancellationPolicyContent.ackText}
             </Label>
           </div>
-          {!acceptedCancellationPolicy && (
+          )}
+          {cancellationRequiresAckForPolicy && !acceptedCancellationPolicy && (
             <p className="mt-3 text-sm font-medium text-amber-900 flex items-center gap-2">
               <span
                 className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse"

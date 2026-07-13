@@ -36,7 +36,11 @@ export default async function TermsOfServicePage() {
     sidebarDescription:
       get("sidebar_description") || "We're here to help with any questions about our terms of service.",
     heroImage: get("hero_image") || null,
-    supplementalPolicies: safeJsonParse(get("supplemental_policies"), []),
+    supplementalPolicies: safeJsonParse(get("supplemental_policies"), [
+      { title: "Privacy Policy", link: "/privacy-policy" },
+      { title: "Cookie Policy", link: "/cookie-policy" },
+      { title: "Account & Data Deletion", link: "/data-deletion" },
+    ]),
     articles: safeJsonParse(get("related_articles"), []),
   };
 

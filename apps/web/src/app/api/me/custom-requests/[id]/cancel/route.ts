@@ -99,7 +99,7 @@ export async function POST(
         .from("custom_offers")
         .select("id, provider_id")
         .eq("request_id", id)
-        .in("status", ["pending", "payment_pending"]);
+        .in("status", ["pending", "changes_requested", "payment_pending"]);
 
       if (activeOffers && activeOffers.length > 0) {
         const offerIds = (activeOffers as { id: string; provider_id?: string }[]).map((o) => o.id);

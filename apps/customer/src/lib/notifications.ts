@@ -407,7 +407,20 @@ export function navigateFromNotification(n: Notification): void {
     router.push("/(app)/account-settings/custom-requests" as never);
     return;
   }
-  if (nType === "custom_request" || nType === "custom_offer" || nType === "custom_request_update" || nType === "custom_request_response") {
+  if (
+    nType === "custom_request" ||
+    nType === "custom_offer" ||
+    nType === "custom_request_update" ||
+    nType === "custom_request_response" ||
+    nType === "customer_custom_request_declined" ||
+    nType === "customer_custom_offer_updated" ||
+    nType === "customer_custom_request_expired" ||
+    nType === "customer_custom_offer_withdrawn" ||
+    nType === "customer_custom_offer_expired" ||
+    templateKeyEarly === "customer_custom_request_declined" ||
+    templateKeyEarly === "customer_custom_offer_updated" ||
+    templateKeyEarly === "customer_custom_request_expired"
+  ) {
     router.push("/(app)/account-settings/custom-requests" as never);
     return;
   }

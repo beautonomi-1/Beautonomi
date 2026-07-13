@@ -419,46 +419,72 @@ export default function CardMachinesPage() {
       subtitle="Beautonomi in-person terminals — tap, insert, swipe, and QR wallets"
       breadcrumbs={breadcrumbs}
     >
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        <SectionCard className="p-4">
-          <div className="text-xs text-gray-500">Status</div>
-          <div className="text-2xl font-semibold">{statusLabel}</div>
-          <div className="text-sm text-gray-600">
-            {activePaycloud} active machine{activePaycloud === 1 ? "" : "s"}
-            {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)
-              ? ` · ${paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}`
-              : ""}
+      <SectionCard className="mb-6 overflow-hidden border-pink-100 bg-gradient-to-br from-pink-50/70 via-white to-purple-50/50">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full ${
+                  paycloudSettings?.ready ? "bg-green-500" : acceptPaycloud ? "bg-amber-400" : "bg-gray-300"
+                }`}
+                aria-hidden
+              />
+              <span className="text-2xl font-semibold text-gray-900">{statusLabel}</span>
+            </div>
+            <p className="mt-1 text-sm text-gray-600">
+              {paycloudSettings?.ready
+                ? "Ready for checkout at bookings and sales"
+                : acceptPaycloud
+                  ? "Finish setup below to start collecting"
+                  : "Turn on acceptance to show Card machine at checkout"}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {activePaycloud} active machine{activePaycloud === 1 ? "" : "s"}
+              {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)
+                ? ` · ${paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}`
+                : ""}
+            </p>
           </div>
-        </SectionCard>
-        <SectionCard className="p-4 sm:col-span-2">
-          <div className="text-xs text-gray-500">Beautonomi card machines</div>
-          <div className="text-sm text-gray-600">
-            {paycloudSettings?.ready
-              ? "Ready for checkout at bookings and sales"
-              : acceptPaycloud
-                ? "Finish setup below to start collecting"
-                : "Turn on acceptance to show Card machine at checkout"}
+          {paycloudEnabled ? (
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="text-right">
+                <div className="text-xs text-gray-500">Setup</div>
+                <div className="text-lg font-semibold text-gray-900">
+                  {setupProgress.done}/{setupProgress.total}
+                </div>
+              </div>
+              <div className="h-1.5 w-28 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-pink-500 transition-all"
+                  style={{ width: `${(setupProgress.done / Math.max(setupProgress.total, 1)) * 100}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {(yocoEnabled || paystackTerminalEnabled) ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-pink-100/70 pt-3">
+            {yocoEnabled ? (
+              <Link
+                href="/provider/settings/sales/yoco-devices"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70 hover:text-pink-700"
+              >
+                Yoco devices: {activeYoco} active
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : null}
+            {paystackTerminalEnabled ? (
+              <Link
+                href="/provider/settings/sales/paystack-terminal"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70 hover:text-pink-700"
+              >
+                Paystack Terminal — QR &amp; link payments
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : null}
           </div>
-        </SectionCard>
-        {yocoEnabled ? (
-          <SectionCard className="p-4">
-            <div className="text-xs text-gray-500">Yoco devices</div>
-            <div className="text-2xl font-semibold">{activeYoco}</div>
-            <Link href="/provider/settings/sales/yoco-devices" className="text-sm text-pink-600 hover:underline">
-              Manage Yoco →
-            </Link>
-          </SectionCard>
         ) : null}
-        {paystackTerminalEnabled ? (
-          <SectionCard className="p-4">
-            <div className="text-xs text-gray-500">Paystack Terminal</div>
-            <div className="text-sm text-gray-600">QR & link payments</div>
-            <Link href="/provider/settings/sales/paystack-terminal" className="text-sm text-pink-600 hover:underline">
-              Open settings →
-            </Link>
-          </SectionCard>
-        ) : null}
-      </div>
+      </SectionCard>
 
       {paycloudEnabled ? (
         <>
@@ -526,22 +552,6 @@ export default function CardMachinesPage() {
               </div>
             </SectionCard>
           ) : null}
-
-          <SectionCard className="mb-6">
-            <details className="group">
-              <summary className="cursor-pointer list-none text-sm font-medium text-gray-700">
-                Account
-                {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment) ? (
-                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                    {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}
-                  </span>
-                ) : null}
-              </summary>
-              <p className="mt-2 text-xs text-gray-500">
-                Read-only. Beautonomi configures test or live card machine accounts — you cannot switch here.
-              </p>
-            </details>
-          </SectionCard>
 
           <SectionCard className="mb-6">
             <PageHeader
@@ -644,7 +654,31 @@ export default function CardMachinesPage() {
             </SectionCard>
           ) : null}
 
-          <SectionCard>
+          {terminalShopEnabled && paycloudTerminals.length === 0 && !pendingOrder ? (
+            <SectionCard className="mb-6 overflow-hidden border-pink-200 bg-gradient-to-r from-pink-50 to-purple-50/60">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-pink-100">
+                    <Smartphone className="h-6 w-6 text-pink-500" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">Get your first Beautonomi card machine</div>
+                    <p className="mt-0.5 text-sm text-gray-600">
+                      Order from the catalog — some plans include a machine at no extra cost.
+                    </p>
+                  </div>
+                </div>
+                <Button asChild>
+                  <Link href="/provider/settings/sales/terminal-shop">
+                    <ShoppingBag className="mr-2 h-4 w-4" />
+                    Browse machines
+                  </Link>
+                </Button>
+              </div>
+            </SectionCard>
+          ) : null}
+
+          <SectionCard className="mb-6">
             <PageHeader
               title="Beautonomi card machines"
               subtitle="Add, name, and assign machines for checkout and house calls"
@@ -747,7 +781,21 @@ export default function CardMachinesPage() {
               {paycloudTerminals.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-600">
                   <Smartphone className="mx-auto mb-2 h-8 w-8 text-gray-400" />
-                  Add a machine you already have, or order one from the terminal shop.
+                  <p>Add a machine you already have, or order one from the terminal shop.</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add existing machine
+                    </Button>
+                    {terminalShopEnabled ? (
+                      <Button size="sm" asChild>
+                        <Link href="/provider/settings/sales/terminal-shop">
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                          Order from shop
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 paycloudTerminals.map((t) => (
@@ -861,16 +909,16 @@ export default function CardMachinesPage() {
             )}
           </SectionCard>
 
-          {terminalShopEnabled ? (
+          {terminalShopEnabled && paycloudTerminals.length > 0 ? (
             <SectionCard className="mb-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-medium text-gray-900">Shop card machines</div>
+                  <div className="font-medium text-gray-900">Need another machine?</div>
                   <p className="text-sm text-gray-600">
                     Order from the Beautonomi catalog, then activate with the serial number here.
                   </p>
                 </div>
-                <Button asChild>
+                <Button variant="outline" asChild>
                   <Link href="/provider/settings/sales/terminal-shop">
                     <ShoppingBag className="mr-2 h-4 w-4" />
                     Open terminal shop
@@ -879,6 +927,22 @@ export default function CardMachinesPage() {
               </div>
             </SectionCard>
           ) : null}
+
+          <SectionCard className="mb-6">
+            <details className="group">
+              <summary className="cursor-pointer list-none text-sm font-medium text-gray-700">
+                Account
+                {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment) ? (
+                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {paycloudAccountEnvironmentLabel(paycloudSettings?.account_environment)}
+                  </span>
+                ) : null}
+              </summary>
+              <p className="mt-2 text-xs text-gray-500">
+                Read-only. Beautonomi configures test or live card machine accounts — you cannot switch here.
+              </p>
+            </details>
+          </SectionCard>
 
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogContent>

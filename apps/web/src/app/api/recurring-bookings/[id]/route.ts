@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { preferredTimeSchema } from "@/lib/recurring/preferred-time-schema";
 
 /**
  * GET /api/recurring-bookings/[id]
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 const updateRecurringSchema = z.object({
   is_active: z.boolean().optional(),
   end_date: z.string().date().optional().nullable(),
-  preferred_time: z.string().min(1).optional(),
+  preferred_time: preferredTimeSchema.optional(),
   frequency: z.enum(["weekly", "biweekly", "monthly"]).optional(),
 });
 

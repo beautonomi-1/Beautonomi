@@ -36,6 +36,19 @@ interface Subscription {
   paystack_sync_pending?: boolean | null;
   paystack_sync_note?: string | null;
   plan?: Plan | null;
+  billing_issue?: {
+    type: string;
+    message: string;
+    action: string;
+  } | null;
+}
+
+/** Mirrors the same gate the API applies server-side (billing_issue is
+ * already null for free-tier providers), so this is a defensive double-check
+ * rather than the source of truth. */
+function isFreeTierSubscription(sub: Subscription | null): boolean {
+  if (!sub?.plan) return true;
+  return sub.plan.is_free === true;
 }
 
 function featureLines(features: unknown): string[] {
@@ -117,6 +130,13 @@ export function SubscriptionContent() {
   const status = sub?.status ?? "none";
   const isCancelled = Boolean(sub?.cancelled_at);
   const bullets = sub ? currentPlanBullets(sub) : [];
+  const isPaidSubscriber = Boolean(sub) && !isFreeTierSubscription(sub);
+  // The API already nulls billing_issue for free-tier providers; the
+  // isPaidSubscriber check here is a defensive belt-and-suspenders guard so
+  // this screen never surfaces a billing issue to someone on the free plan.
+  const visibleBillingIssue = isPaidSubscriber ? sub?.billing_issue ?? null : null;
+  const isUrgentIssue =
+    status === "past_due" || visibleBillingIssue?.type === "payment_failed";
 
   return (
     <ScrollView
@@ -147,16 +167,31 @@ export function SubscriptionContent() {
         Same plans and features as our public pricing. Open Subscription for upgrades, billing period changes, and renewals.
       </Text>
 
-      {sub?.paystack_sync_pending ? (
+      {visibleBillingIssue ? (
         <View
-          style={[
-            twStyle("mt-4 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-4"),
-          ]}
+          style={twStyle(
+            `mt-4 overflow-hidden rounded-xl border p-4 ${
+              isUrgentIssue ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
+            }`
+          )}
         >
-          <Text style={twStyle("text-sm font-semibold text-amber-900")}>Billing sync needed</Text>
-          <Text style={twStyle("mt-1 text-xs leading-5 text-amber-900")}>
-            {(sub.paystack_sync_note ?? "").trim() ||
-              "Complete billing alignment in the full subscription screen if you pay by card."}
+          <Text
+            style={twStyle(
+              `text-sm font-semibold ${isUrgentIssue ? "text-red-900" : "text-amber-900"}`
+            )}
+          >
+            {visibleBillingIssue.type === "payment_failed"
+              ? "Payment was not completed"
+              : visibleBillingIssue.type === "past_due"
+                ? "Payment action needed"
+                : "Billing action needed"}
+          </Text>
+          <Text
+            style={twStyle(
+              `mt-1 text-xs leading-5 ${isUrgentIssue ? "text-red-900" : "text-amber-900"}`
+            )}
+          >
+            {visibleBillingIssue.message}
           </Text>
         </View>
       ) : null}
@@ -164,13 +199,20 @@ export function SubscriptionContent() {
       <TouchableOpacity
         style={[
           twStyle("mt-6 flex-row items-center justify-center rounded-full py-4"),
-          { backgroundColor: ACCENT },
+          { backgroundColor: isUrgentIssue ? "#dc2626" : ACCENT },
         ]}
         onPress={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
         activeOpacity={0.9}
       >
-        <Ionicons name="settings-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-        <Text style={twStyle("text-base font-bold text-white")}>Manage plan & billing</Text>
+        <Ionicons
+          name={isUrgentIssue ? "alert-circle-outline" : "settings-outline"}
+          size={20}
+          color="#fff"
+          style={{ marginRight: 8 }}
+        />
+        <Text style={twStyle("text-base font-bold text-white")}>
+          {visibleBillingIssue ? "Resolve billing issue" : "Manage plan & billing"}
+        </Text>
       </TouchableOpacity>
 
       {!sub ? (
@@ -225,12 +267,28 @@ export function SubscriptionContent() {
             </View>
             <View
               style={twStyle(
-                `rounded-full px-3 py-1.5 ${isCancelled ? "bg-amber-100" : status === "active" ? "bg-green-100" : "bg-gray-100"}`
+                `rounded-full px-3 py-1.5 ${
+                  isCancelled
+                    ? "bg-amber-100"
+                    : status === "past_due"
+                      ? "bg-red-100"
+                      : status === "active"
+                        ? "bg-green-100"
+                        : "bg-gray-100"
+                }`
               )}
             >
               <Text
                 style={twStyle(
-                  `text-xs font-semibold ${isCancelled ? "text-amber-900" : status === "active" ? "text-green-800" : "text-gray-700"}`
+                  `text-xs font-semibold ${
+                    isCancelled
+                      ? "text-amber-900"
+                      : status === "past_due"
+                        ? "text-red-800"
+                        : status === "active"
+                          ? "text-green-800"
+                          : "text-gray-700"
+                  }`
                 )}
               >
                 {statusLabel(sub)}

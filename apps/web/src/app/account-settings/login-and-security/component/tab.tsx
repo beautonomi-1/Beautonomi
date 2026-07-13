@@ -119,7 +119,11 @@ const LoginAccount = ({
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [emailStep, setEmailStep] = useState<"enter_email" | "enter_otp">("enter_email");
+  const [pendingEmailForOtp, setPendingEmailForOtp] = useState("");
+  const [emailOtpCode, setEmailOtpCode] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
   const [phoneStep, setPhoneStep] = useState<"enter_phone" | "enter_otp">("enter_phone");
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
@@ -322,30 +326,51 @@ const LoginAccount = ({
   };
 
   const handleSendEmailVerification = async () => {
-    const email = newEmail.trim();
-    if (!email) {
-      toast.error("Enter a new email address");
+    const email = newEmail.trim().toLowerCase();
+    if (!email || !isMailableEmail(email)) {
+      toast.error("Enter a valid email address");
       return;
     }
     setIsSendingEmail(true);
     try {
-      const response = await fetcher.patch("/api/me/profile", { email });
-      const profile = (response as { data?: { email_change_pending?: boolean } })?.data;
-      if (profile?.email_change_pending) {
-        setShowEmailDialog(false);
-        setNewEmail("");
-        toast.success(
-          "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).",
-        );
-      } else {
-        toast.success("Verification email sent.");
-        setShowEmailDialog(false);
-        setNewEmail("");
-      }
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ email });
+      if (error) throw error;
+      setPendingEmailForOtp(email);
+      setEmailOtpCode("");
+      setEmailStep("enter_otp");
+      toast.success("Verification code sent to your email.");
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send verification email");
+      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtpCode);
+    if (!pendingEmailForOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsVerifyingEmailOtp(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingEmailForOtp,
+        token,
+        type: "email_change",
+      });
+      if (error) throw error;
+      await fetcher.post("/api/me/email/verify", { email: pendingEmailForOtp });
+      setProfileEmail(displayProfileEmail(pendingEmailForOtp));
+      setShowEmailDialog(false);
+      setEmailStep("enter_email");
+      setPendingEmailForOtp("");
+      setEmailOtpCode("");
+      setNewEmail("");
+      toast.success("Email address updated successfully.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Verification failed");
+    } finally {
+      setIsVerifyingEmailOtp(false);
     }
   };
 
@@ -791,37 +816,87 @@ const LoginAccount = ({
       </Tabs>
 
       {/* Change Email Dialog */}
-      <Dialog open={showEmailDialog} onOpenChange={(open) => { setShowEmailDialog(open); if (!open) setNewEmail(""); }}>
+      <Dialog open={showEmailDialog} onOpenChange={(open) => { if (!open) { setEmailStep("enter_email"); setPendingEmailForOtp(""); setEmailOtpCode(""); setNewEmail(""); } setShowEmailDialog(open); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change email</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
-              Enter your new email. We&apos;ll email confirmation links—you may need to confirm from your current
-              address and the new one.
+              {emailStep === "enter_email"
+                ? `Enter your new email. We'll send a ${SUPABASE_AUTH_OTP_LENGTH}-digit verification code.`
+                : `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to your email.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">New email address</label>
-              <Input
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="backdrop-blur-sm bg-white/60 border-white/40"
-              />
-            </div>
+            {emailStep === "enter_email" ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">New email address</label>
+                <Input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="backdrop-blur-sm bg-white/60 border-white/40"
+                />
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm font-medium text-gray-900 mb-1">Enter verification code</p>
+                <p className="mb-3 text-sm text-gray-600">
+                  {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmailForOtp}
+                </p>
+                <OtpDigitInput
+                  length={SUPABASE_AUTH_OTP_LENGTH}
+                  value={emailOtpCode}
+                  onChange={setEmailOtpCode}
+                  onComplete={(code) => {
+                    if (!isVerifyingEmailOtp && isCompleteSupabaseSmsOtp(code)) {
+                      void handleVerifyEmailOtp(code);
+                    }
+                  }}
+                  disabled={isVerifyingEmailOtp}
+                  autoFocus
+                  label="Email verification code"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-3">
-            <Button type="button" variant="outline" onClick={() => setShowEmailDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
-            <Button
-              type="button"
-              onClick={handleSendEmailVerification}
-              disabled={isSendingEmail || !newEmail.trim()}
-              className="bg-primary hover:bg-primary-hover text-white"
-            >
-              {isSendingEmail ? "Sending…" : "Send verification email"}
-            </Button>
+            {emailStep === "enter_otp" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEmailStep("enter_email");
+                    setPendingEmailForOtp("");
+                    setEmailOtpCode("");
+                  }}
+                  className="border-gray-300 hover:bg-gray-50"
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleVerifyEmailOtp()}
+                  disabled={isVerifyingEmailOtp || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+                  className="bg-primary hover:bg-primary-hover text-white"
+                >
+                  {isVerifyingEmailOtp ? "Verifying…" : "Verify & save"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={() => setShowEmailDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleSendEmailVerification()}
+                  disabled={isSendingEmail || !newEmail.trim()}
+                  className="bg-primary hover:bg-primary-hover text-white"
+                >
+                  {isSendingEmail ? "Sending…" : "Send verification code"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

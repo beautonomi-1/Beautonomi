@@ -28,8 +28,10 @@ const DEFAULT_ARTICLES = [
 const DEFAULT_SUPPLEMENTAL_POLICIES = [
   { title: "Terms of Service", link: "/terms-and-condition" },
   { title: "Cookie Policy", link: "/cookie-policy" },
-  { title: "EEA, UK & Switzerland (GDPR summary in policy)", link: "/privacy-policy#rights-eea-uk" },
+  { title: "Account & Data Deletion", link: "/data-deletion" },
+  { title: "Identity verification & biometric data (in policy)", link: "/privacy-policy#identity-verification" },
   { title: "South Africa (POPIA summary in policy)", link: "/privacy-policy#rights-south-africa" },
+  { title: "EEA, UK & Switzerland (GDPR summary in policy)", link: "/privacy-policy#rights-eea-uk" },
   { title: "United States (state privacy rights in policy)", link: "/privacy-policy#rights-united-states" },
 ];
 

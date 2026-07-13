@@ -1,10 +1,11 @@
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
+import { useRef, useState, type RefObject } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { useState } from "react";
 import type { PricingOption, RefDataOption } from "./types";
 import {
   DEFAULT_PRICING_OPTION,
@@ -24,6 +25,7 @@ interface PricingOptionsEditorProps {
   serviceTitle?: string;
   /** When false, hides multi-tier UX (for standalone variant offerings). */
   allowMultipleTiers?: boolean;
+  onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }
 
 function OptionPickerSheet({
@@ -81,12 +83,15 @@ export function PricingOptionsEditor({
   parentPricingName,
   serviceTitle,
   allowMultipleTiers = true,
+  onFieldFocus,
 }: PricingOptionsEditorProps) {
   const [picker, setPicker] = useState<{
     rowId: string;
     field: "duration" | "priceType";
   } | null>(null);
   const [expandedPriceType, setExpandedPriceType] = useState<Record<string, boolean>>({});
+  const priceInputRefs = useRef<Map<string, TextInput | null>>(new Map());
+  const labelInputRefs = useRef<Map<string, TextInput | null>>(new Map());
 
   const currency = getTenantDefaultCurrency();
   const multiTier = allowMultipleTiers && options.length > 1;
@@ -143,6 +148,7 @@ export function PricingOptionsEditor({
         const previewName = resolveBookingTierName(row, index, parentPricingName);
         const showPriceType =
           multiTier || expandedPriceType[row.id] || row.priceType !== "fixed";
+        const priceAccessoryId = `provider-pricing-price-${row.id}`;
 
         return (
           <View
@@ -204,6 +210,9 @@ export function PricingOptionsEditor({
                       {currency}
                     </Text>
                     <TextInput
+                      ref={(r) => {
+                        priceInputRefs.current.set(row.id, r);
+                      }}
                       style={twStyle(
                         "rounded-xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-3 text-base text-gray-900",
                       )}
@@ -212,7 +221,14 @@ export function PricingOptionsEditor({
                       keyboardType="decimal-pad"
                       placeholder="0.00"
                       accessibilityLabel={`Price for ${previewName}`}
+                      onFocus={() =>
+                        onFieldFocus?.({
+                          current: priceInputRefs.current.get(row.id) ?? null,
+                        })
+                      }
+                      inputAccessoryViewID={priceAccessoryId}
                     />
+                    <KeyboardDoneAccessory nativeID={priceAccessoryId} />
                   </View>
                 </View>
               </View>
@@ -221,11 +237,19 @@ export function PricingOptionsEditor({
                 <View>
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Customer-facing label</Text>
                   <TextInput
+                    ref={(r) => {
+                      labelInputRefs.current.set(row.id, r);
+                    }}
                     style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-base text-gray-900")}
                     value={row.pricingName}
                     onChangeText={(t) => updateRow(row.id, { pricingName: t })}
                     placeholder={previewName}
                     accessibilityLabel={`Label for booking option ${index + 1}`}
+                    onFocus={() =>
+                      onFieldFocus?.({
+                        current: labelInputRefs.current.get(row.id) ?? null,
+                      })
+                    }
                   />
                   {!row.pricingName.trim() ? (
                     <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>

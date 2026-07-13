@@ -114,6 +114,17 @@ export function getBookingLifecycleDisplay(input: {
     };
   }
 
+  if (status === "no_show") {
+    return {
+      label: "Marked as no-show",
+      title: "Marked as no-show",
+      description: "This appointment was marked as a no-show.",
+      tone: "warning",
+      isAwaitingProviderConfirmation: false,
+      isPaymentInProgress: false,
+    };
+  }
+
   if (status === "started" || status === "in_progress") {
     return {
       label: "In progress",

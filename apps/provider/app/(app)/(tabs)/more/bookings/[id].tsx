@@ -16,7 +16,6 @@ import {
   RefreshControl,
   Share,
 } from "react-native";
-import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, parseISO } from "date-fns";
 import * as Location from "expo-location";
@@ -36,11 +35,13 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
-import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
+import { APP_URL } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { downloadPdf } from "@/lib/pdf-file";
+import { formatCurrency } from "@/lib/format";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
-import { api, getApiBaseUrl } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
@@ -1229,6 +1230,9 @@ export default function BookingDetailScreen() {
   const [rateClientComment, setRateClientComment] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
+  const [noShowFeeEnabled, setNoShowFeeEnabled] = useState(false);
+  const [noShowFeeAmount, setNoShowFeeAmount] = useState(0);
   const [submittingRateClient, setSubmittingRateClient] = useState(false);
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
@@ -1293,6 +1297,26 @@ export default function BookingDetailScreen() {
       }
     }
   }, [data?.scheduled_at, showReschedule]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ noShowFeeEnabled?: boolean; noShowFeeAmount?: number }>("/api/provider/settings/payments")
+      .then((res) => {
+        if (cancelled || !res.data) return;
+        setNoShowFeeEnabled(Boolean(res.data.noShowFeeEnabled));
+        setNoShowFeeAmount(Number(res.data.noShowFeeAmount ?? 0));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNoShowFeeEnabled(false);
+          setNoShowFeeAmount(0);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Keep the selected reschedule time valid for the date currently in view.
   // Changing the date refetches slots; the previously chosen wall-clock time is
@@ -1656,62 +1680,14 @@ export default function BookingDetailScreen() {
     if (!id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const base = getApiBaseUrl().replace(/\/$/, "");
-      const safeName = `booking_${(b.booking_number ?? String(id).slice(0, 8)).replace(/[^\w.-]+/g, "_")}.pdf`;
-      const pdfPath = `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/pdf`;
-
-      const tryBearerDownload = async (): Promise<boolean> => {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token || !base) return false;
-        const pdfUrl = `${base}${pdfPath}`;
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${token}`,
-          ...webApiTenantHeaders(),
-        };
-        if (Platform.OS === "web") {
-          const response = await fetch(pdfUrl, { headers, credentials: "omit" });
-          if (!response.ok) return false;
-          const blob = await response.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          if (typeof window !== "undefined") {
-            window.open(objectUrl, "_blank", "noopener,noreferrer");
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
-          }
-          return true;
-        }
-        if (!cacheDirectory) return false;
-        const fileUri = `${cacheDirectory}${safeName}`;
-        const dl = await downloadAsync(pdfUrl, fileUri, { headers });
-        if (dl.status !== 200) return false;
-        await Share.share({
-          url: fileUri,
-          title: "Booking receipt",
-          message: `Booking ${b.booking_number ?? id}`,
-        });
-        return true;
-      };
-
-      if (await tryBearerDownload()) return;
-
-      const res = await api.post<{ url: string; expires_at: string }>(
-        `/api/provider/bookings/${id}/receipt/signed-url`,
-        {},
-      );
-      if (res.error) {
-        const msg =
-          typeof res.error === "object" && res.error && "message" in res.error
-            ? String((res.error as { message: string }).message)
-            : "Could not open the receipt right now. Please try again.";
-        Alert.alert("Receipt", msg);
-        return;
-      }
-      const signedUrl = res.data?.url;
-      if (!signedUrl) {
-        Alert.alert("Receipt", "Could not open the receipt right now. Please try again.");
-        return;
-      }
-      pushInAppBrowser(router, signedUrl, "Receipt");
+      await downloadPdf({
+        router,
+        pdfPath: `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/pdf`,
+        signedUrlPath: `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/signed-url`,
+        filename: `booking_${b.booking_number ?? String(id).slice(0, 8)}.pdf`,
+        title: "Booking receipt",
+        label: "receipt",
+      });
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Something went wrong while opening the receipt.";
@@ -2073,6 +2049,11 @@ export default function BookingDetailScreen() {
     if (dbTarget === "cancelled") {
       setCancelReason("");
       setShowCancelModal(true);
+      return;
+    }
+
+    if (dbTarget === "no_show") {
+      setShowNoShowModal(true);
       return;
     }
 
@@ -5174,7 +5155,10 @@ export default function BookingDetailScreen() {
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Cancel Booking</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>Please provide a reason for cancellation:</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Please provide a reason for cancellation:</Text>
+            <Text style={{ fontSize: 13, color: "#047857", backgroundColor: "#ecfdf5", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              The client will receive a full refund to their Beautonomi wallet for amounts already paid. Your cancellation policy does not apply to cancellations you initiate.
+            </Text>
             <TextInput
               value={cancelReason}
               onChangeText={setCancelReason}
@@ -5226,6 +5210,93 @@ export default function BookingDetailScreen() {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showNoShowModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowNoShowModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setShowNoShowModal(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Mark as no-show</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+              Mark {customerName || "this client"} as a no-show?
+            </Text>
+            {noShowFeeEnabled &&
+            Math.min(
+              noShowFeeAmount,
+              Number(b.total_amount ?? 0),
+              Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0)),
+            ) > 0 ? (
+              <Text style={{ fontSize: 13, color: "#92400e", backgroundColor: "#fffbeb", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                A no-show fee of{" "}
+                {formatCurrency(
+                  Math.min(
+                    noShowFeeAmount,
+                    Number(b.total_amount ?? 0),
+                    Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0)),
+                  ),
+                )}{" "}
+                will be retained (capped to the amount paid). Any remainder is refunded to their Beautonomi wallet.
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 13, color: Colors.gray[700], backgroundColor: Colors.gray[50], borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                No no-show fee is configured — the client will be fully refunded for amounts already paid.
+              </Text>
+            )}
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => setShowNoShowModal(false)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={patchLoading}
+                onPress={async () => {
+                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget("no_show"));
+                  const version = (b as BookingDetail & { version?: number }).version;
+                  const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+                    status: "no_show",
+                    ...(version !== undefined && { version }),
+                  });
+                  if (err) {
+                    setOptimisticBookingStatus(null);
+                    if (isConflictError(err)) {
+                      setShowNoShowModal(false);
+                      Alert.alert(
+                        "Conflict",
+                        "This booking was modified by another user. Please refresh and try again.",
+                        [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
+                      );
+                    } else {
+                      Alert.alert("Error", err);
+                    }
+                    return;
+                  }
+                  setOptimisticBookingStatus(null);
+                  setShowNoShowModal(false);
+                  await refresh();
+                }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: patchLoading ? "#fbbf24" : "#d97706", alignItems: "center" }}
+              >
+                {patchLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>Confirm no-show</Text>
                 )}
               </TouchableOpacity>
             </View>

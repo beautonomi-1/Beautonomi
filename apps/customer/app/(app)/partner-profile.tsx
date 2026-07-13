@@ -50,7 +50,7 @@ import {
   providerGalleryFrameHeight,
 } from "@beautonomi/utils";
 import { ProviderGalleryImage } from "@beautonomi/ui/native";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, buildCancellationPolicyLines } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
@@ -1838,6 +1838,24 @@ export default function PartnerProfileScreen() {
 
   const tenantFb = getTenantDefaultCurrency();
 
+  const partnerPolicyContent = provider.policies
+    ? buildCancellationPolicyLines(
+        {
+          cancellationWindowHours: provider.policies.cancellation_window_hours,
+          graceWindowMinutes: provider.policies.grace_window_minutes ?? 15,
+          lateRefundPercentage: provider.policies.late_refund_percentage ?? 0,
+          noShowFeeEnabled: provider.policies.no_show_fee_enabled,
+          noShowFeeAmount: provider.policies.no_show_fee_amount,
+          currency: provider.policies.currency ?? provider.currency ?? tenantFb,
+          policyText: provider.policies.policy_text ?? null,
+        },
+        {
+          t,
+          formatCurrency: (amount, currency) => formatMoney(amount, currency),
+        },
+      )
+    : null;
+
   /* ── Derived state ── */
   const activeCat = services?.categories?.find((c) => c.id === activeCategory);
   const acceptsCustom =
@@ -2881,46 +2899,33 @@ export default function PartnerProfileScreen() {
                     </View>
                   )}
 
-                  {/* Booking policies */}
-                  {provider.policies && (
+                  {partnerPolicyContent && partnerPolicyContent.lines.length > 0 && (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
                         <Ionicons name="document-text-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
                         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Booking policies</Text>
                       </View>
-                      {provider.policies.cancellation_window_hours != null && (
-                        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 10 }}>
-                          <Ionicons name="time-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Cancellation window</Text>
-                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                              Free cancellation up to {provider.policies.cancellation_window_hours} hour{provider.policies.cancellation_window_hours !== 1 ? "s" : ""} before appointment
-                            </Text>
-                          </View>
+                      {partnerPolicyContent.lines.map((line) => (
+                        <View key={line.id} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 8 }}>
+                          <Ionicons
+                            name={line.tone === "good" ? "checkmark-circle-outline" : "alert-circle-outline"}
+                            size={15}
+                            color={line.tone === "good" ? "#059669" : "#D97706"}
+                            style={{ marginRight: 8, marginTop: 1 }}
+                          />
+                          <Text style={{ flex: 1, fontSize: 12, color: "#374151", lineHeight: 18 }}>{line.text}</Text>
                         </View>
-                      )}
-                      {provider.policies.requires_deposit && (
-                        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 10 }}>
+                      ))}
+                      <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>{partnerPolicyContent.storeCreditNote}</Text>
+                      {provider.policies?.requires_deposit && (
+                        <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10 }}>
                           <Ionicons name="card-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Deposit required</Text>
                             <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                              {provider.policies.deposit_percentage != null
+                              {provider.policies?.deposit_percentage != null
                                 ? `${provider.policies.deposit_percentage}% deposit to confirm booking`
                                 : "A deposit is required to confirm your booking"}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-                      {provider.policies.no_show_fee_enabled && (
-                        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                          <Ionicons name="alert-circle-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>No-show fee</Text>
-                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                              {provider.policies.no_show_fee_amount != null
-                                ? `A no-show fee of ${formatMoney(provider.policies.no_show_fee_amount, provider.policies.currency ?? provider.currency ?? tenantFb)} applies`
-                                : "A no-show fee applies if you miss your appointment"}
                             </Text>
                           </View>
                         </View>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeCancellationFeeForSettlement,
   computeEffectiveCollectedAmount,
+  computeReconciledCancellationAmounts,
 } from "../settle-booking-cancellation";
 
 describe("computeEffectiveCollectedAmount", () => {
@@ -163,7 +164,7 @@ describe("customer/portal cancel wallet cap", () => {
       gift_card_amount: 0,
       total_refunded: 0,
     };
-    const { policyRefundAmount } = computeCancellationFeeForSettlement({
+    const { walletRefundAmount } = computeReconciledCancellationAmounts({
       booking,
       cancelledBy: "customer",
       currency: "ZAR",
@@ -179,9 +180,47 @@ describe("customer/portal cancel wallet cap", () => {
       },
       isLateCancellation: false,
     });
-    const collected = computeEffectiveCollectedAmount(booking);
-    const walletTarget = Math.min(policyRefundAmount, collected);
-    expect(walletTarget).toBe(80);
-    expect(collected).toBe(80);
+    expect(walletRefundAmount).toBe(80);
+  });
+
+  it("caps cancellation fee to collected minus wallet refund on deposit bookings", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 200,
+      total_paid: 60,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      total_refunded: 0,
+    };
+    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "customer",
+      currency: "ZAR",
+      policy: {
+        id: "p1",
+        name: "Strict",
+        hours_before: 24,
+        refund_percentage: 0,
+        fee_amount: 0,
+        fee_type: "fixed",
+        is_default: true,
+        late_cancellation_type: "no_refund",
+      },
+      isLateCancellation: true,
+    });
+    expect(walletRefundAmount).toBe(0);
+    expect(cancellationFeeApplied).toBe(60);
+  });
+
+  it("admin cancel defaults to full refund and zero fee", () => {
+    const result = computeCancellationFeeForSettlement({
+      booking: { id: "b1", provider_id: "p1", total_amount: 200 },
+      cancelledBy: "admin",
+      currency: "ZAR",
+      policy: null,
+    });
+    expect(result.cancellationFeeApplied).toBe(0);
+    expect(result.policyRefundAmount).toBe(200);
   });
 });

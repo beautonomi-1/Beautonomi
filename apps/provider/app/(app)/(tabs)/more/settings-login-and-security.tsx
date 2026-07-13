@@ -21,6 +21,7 @@ import {
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { isMailableEmail } from "@beautonomi/utils";
+import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 type AuthSecurityState = {
@@ -58,10 +59,13 @@ export default function SettingsLoginAndSecurityScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Email change
-  const [newEmail, setNewEmail] = useState("");
-  const [emailSending, setEmailSending] = useState(false);
-  const [emailChangePending, setEmailChangePending] = useState(false);
+  const emailChange = useEmailChangeOtp({
+    onVerified: () => load(),
+    strings: {
+      verifiedTitle: "Email updated",
+      verifiedBody: "Your email address has been verified and saved.",
+    },
+  });
 
   // Phone change
   const [phoneStep, setPhoneStep] = useState<PhoneStep>(null);
@@ -88,7 +92,6 @@ export default function SettingsLoginAndSecurityScreen() {
         if (!quiet) setError(res.error.message || "Failed to load profile");
       } else {
         setProfile(res.data ?? null);
-        setEmailChangePending(!!(res.data as { email_change_pending?: boolean } | null)?.email_change_pending);
         if (!quiet) setError(null);
         canUseQuietRefresh.current = true;
       }
@@ -108,36 +111,6 @@ export default function SettingsLoginAndSecurityScreen() {
       void load();
     }, [load]),
   );
-
-  const handleChangeEmail = async () => {
-    const email = newEmail.trim().toLowerCase();
-    if (!email) {
-      Alert.alert("Validation", "Please enter a new email address.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert("Validation", "Please enter a valid email address.");
-      return;
-    }
-    setEmailSending(true);
-    try {
-      const res = await api.patch<{ email?: string }>("/api/me/profile", { email });
-      if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Failed to send verification email.");
-      } else {
-        setEmailChangePending(true);
-        setNewEmail("");
-        Alert.alert(
-          "Verification sent",
-          "Check both your current and new email inbox for confirmation links. You may need to confirm in both.",
-        );
-      }
-    } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification email."));
-    } finally {
-      setEmailSending(false);
-    }
-  };
 
   const handleSendPhoneOtp = async () => {
     const digits = phoneNational.replace(/\D/g, "");
@@ -335,19 +308,7 @@ export default function SettingsLoginAndSecurityScreen() {
                 Current:{" "}
                 <Text style={{ fontWeight: "500", color: Colors.gray[800] }}>{currentEmail || "—"}</Text>
               </Text>
-              {emailChangePending ? (
-                <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 12 }}>
-                  <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
-                    Email change pending — check both your current and new inbox for confirmation links.
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setEmailChangePending(false)}
-                    style={{ marginTop: 8 }}
-                  >
-                    <Text style={{ fontSize: 13, color: "#D97706", fontWeight: "600" }}>Cancel change</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
+              {emailChange.step === null ? (
                 <>
                   <TextInput
                     style={{
@@ -361,8 +322,8 @@ export default function SettingsLoginAndSecurityScreen() {
                       color: Colors.gray[900],
                       marginBottom: 10,
                     }}
-                    value={newEmail}
-                    onChangeText={setNewEmail}
+                    value={emailChange.newEmail}
+                    onChangeText={emailChange.setNewEmail}
                     placeholder="New email address"
                     placeholderTextColor="#9ca3af"
                     keyboardType="email-address"
@@ -370,9 +331,12 @@ export default function SettingsLoginAndSecurityScreen() {
                     autoCorrect={false}
                     accessibilityLabel="New email address"
                   />
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
+                    We&apos;ll email a {emailChange.otpLength}-digit code to verify your new address.
+                  </Text>
                   <TouchableOpacity
-                    onPress={handleChangeEmail}
-                    disabled={emailSending}
+                    onPress={() => void emailChange.sendCode()}
+                    disabled={emailChange.sending}
                     style={{
                       backgroundColor: Colors.primary,
                       paddingVertical: 12,
@@ -380,14 +344,50 @@ export default function SettingsLoginAndSecurityScreen() {
                       alignItems: "center",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Send verification email"
+                    accessibilityLabel="Send verification code"
                   >
-                    {emailSending ? (
+                    {emailChange.sending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Send verification email</Text>
+                      <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Send verification code</Text>
                     )}
                   </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 8 }}>
+                    Code sent to {emailChange.pendingEmail}
+                  </Text>
+                  <OtpDigitRow
+                    value={emailChange.otpCode}
+                    onChange={emailChange.setOtpCode}
+                    onComplete={(code) => {
+                      if (!emailChange.verifying && isCompleteSupabaseSmsOtp(code))
+                        void emailChange.verifyCode(code);
+                    }}
+                    disabled={emailChange.verifying}
+                    autoFocus
+                    accessibilityLabelPrefix="Email change verification code"
+                  />
+                  <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                    <TouchableOpacity
+                      onPress={emailChange.reset}
+                      style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}
+                    >
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => void emailChange.verifyCode()}
+                      disabled={emailChange.verifying}
+                      style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12, alignItems: "center" }}
+                    >
+                      {emailChange.verifying ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: Colors.white, fontWeight: "600" }}>Verify & save</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </>
               )}
             </View>

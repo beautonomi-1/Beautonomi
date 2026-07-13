@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { invalidateSetupStatusCache } from "@/lib/setup-status-cache";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -85,6 +86,7 @@ export default function PersonalProfileScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidateSetupStatusCache();
       router.back();
     } catch (err) {
       const message =

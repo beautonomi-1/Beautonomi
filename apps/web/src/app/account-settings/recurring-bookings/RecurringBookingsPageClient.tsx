@@ -25,7 +25,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar, Clock, MapPin, Pause, Play, Pencil, X } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Pause, Play, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import BackButton from "../components/back-button";
 import type { RecurringBookingListItem, SimpleFrequency } from "./recurring-list-types";
@@ -57,6 +57,46 @@ type RecurringBookingsResponse = {
   error: unknown;
 };
 
+type SeriesVisit = {
+  id: string;
+  scheduled_at: string;
+  status: string;
+  payment_status: string;
+  booking_number?: string | null;
+};
+
+type RecurringDetailResponse = {
+  data: { series_bookings?: SeriesVisit[] } | null;
+  error: unknown;
+};
+
+function pickUpcomingVisits(visits: SeriesVisit[], limit = 5): SeriesVisit[] {
+  const now = Date.now();
+  const upcoming = visits.filter((v) => {
+    const ts = new Date(v.scheduled_at).getTime();
+    return Number.isFinite(ts) && ts >= now - 24 * 60 * 60 * 1000;
+  });
+  const sorted = [...upcoming].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+  if (sorted.length > 0) return sorted.slice(0, limit);
+  return [...visits]
+    .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
+    .slice(0, limit);
+}
+
+function formatVisitDate(iso: string): string {
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function RecurringBookingsPage({
   initialRecurring,
 }: {
@@ -74,6 +114,9 @@ export default function RecurringBookingsPage({
   const [editEndDate, setEditEndDate] = useState("");
   const [editSeriesNoEnd, setEditSeriesNoEnd] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [expandedVisitsId, setExpandedVisitsId] = useState<string | null>(null);
+  const [loadingVisitsId, setLoadingVisitsId] = useState<string | null>(null);
+  const [visitsBySeriesId, setVisitsBySeriesId] = useState<Record<string, SeriesVisit[]>>({});
 
   useEffect(() => {
     if (skipHydrateLoadOnce.current) {
@@ -148,6 +191,32 @@ export default function RecurringBookingsPage({
     setEditSeriesNoEnd(!booking.end_date);
     setScheduleSheetOpen(true);
   }, []);
+
+  const loadSeriesVisits = useCallback(async (seriesId: string) => {
+    if (visitsBySeriesId[seriesId]) return;
+    setLoadingVisitsId(seriesId);
+    try {
+      const response = await fetcher.get<RecurringDetailResponse>(
+        `/api/recurring-bookings/${seriesId}`,
+        { cache: "no-store", staleTimeMs: 0 },
+      );
+      const raw = Array.isArray(response.data?.series_bookings) ? response.data!.series_bookings! : [];
+      setVisitsBySeriesId((prev) => ({ ...prev, [seriesId]: pickUpcomingVisits(raw) }));
+    } catch {
+      setVisitsBySeriesId((prev) => ({ ...prev, [seriesId]: [] }));
+    } finally {
+      setLoadingVisitsId((current) => (current === seriesId ? null : current));
+    }
+  }, [visitsBySeriesId]);
+
+  const toggleUpcomingVisits = useCallback((seriesId: string) => {
+    if (expandedVisitsId === seriesId) {
+      setExpandedVisitsId(null);
+      return;
+    }
+    setExpandedVisitsId(seriesId);
+    void loadSeriesVisits(seriesId);
+  }, [expandedVisitsId, loadSeriesVisits]);
 
   const saveSchedule = async () => {
     if (!editingBooking) return;
@@ -229,9 +298,9 @@ export default function RecurringBookingsPage({
                         <p className="text-sm text-muted-foreground mt-1 truncate">{booking.service_name}</p>
                       )}
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <Badge variant={booking.is_active ? "default" : "secondary"}>
+                        <Badge variant={booking.status === "cancelled" ? "secondary" : booking.is_active ? "default" : "secondary"}>
                           {booking.status === "cancelled"
-                            ? "Ended"
+                            ? "Cancelled"
                             : booking.is_active
                               ? "Active"
                               : "Paused"}
@@ -304,44 +373,86 @@ export default function RecurringBookingsPage({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="touch-manipulation min-h-10"
-                      onClick={() => openScheduleEditor(booking)}
+                  <div className="pt-3 border-t">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-semibold text-foreground touch-manipulation"
+                      onClick={() => toggleUpcomingVisits(booking.id)}
                     >
-                      <Pencil className="w-4 h-4 mr-1" />
-                      Edit schedule
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="touch-manipulation min-h-10"
-                      onClick={() => handleToggle(booking.id, booking.is_active)}
-                    >
-                      {booking.is_active ? (
-                        <>
-                          <Pause className="w-4 h-4 mr-1" />
-                          Pause
-                        </>
+                      <span>Upcoming visits</span>
+                      {expandedVisitsId === booking.id ? (
+                        <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground" />
                       ) : (
-                        <>
-                          <Play className="w-4 h-4 mr-1" />
-                          Resume
-                        </>
+                        <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />
                       )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 touch-manipulation min-h-10"
-                      onClick={() => handleCancel(booking.id)}
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Cancel
-                    </Button>
+                    </button>
+                    {expandedVisitsId === booking.id && (
+                      <div className="pb-2">
+                        {loadingVisitsId === booking.id ? (
+                          <p className="text-sm text-muted-foreground py-2">Loading visits…</p>
+                        ) : (visitsBySeriesId[booking.id] ?? []).length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-2">No scheduled visits yet.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {(visitsBySeriesId[booking.id] ?? []).map((visit) => (
+                              <li
+                                key={visit.id}
+                                className="rounded-md border border-border px-3 py-2 text-sm"
+                              >
+                                <p className="font-medium text-foreground">{formatVisitDate(visit.scheduled_at)}</p>
+                                <p className="text-muted-foreground mt-0.5">
+                                  {visit.status}
+                                  {visit.payment_status ? ` · ${visit.payment_status}` : ""}
+                                  {visit.booking_number ? ` · #${visit.booking_number}` : ""}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {booking.status !== "cancelled" && (
+                    <div className="flex flex-wrap gap-2 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="touch-manipulation min-h-10"
+                        onClick={() => openScheduleEditor(booking)}
+                      >
+                        <Pencil className="w-4 h-4 mr-1" />
+                        Edit schedule
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="touch-manipulation min-h-10"
+                        onClick={() => handleToggle(booking.id, booking.is_active)}
+                      >
+                        {booking.is_active ? (
+                          <>
+                            <Pause className="w-4 h-4 mr-1" />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 mr-1" />
+                            Resume
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 touch-manipulation min-h-10"
+                        onClick={() => handleCancel(booking.id)}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))

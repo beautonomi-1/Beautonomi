@@ -10,9 +10,7 @@ import {
   ProviderPaymentSuccessCard,
   type ProviderPaymentSummaryRow,
 } from "@/components/payment/ProviderPaymentSuccessCard";
-import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
-import { pushInAppBrowser } from "@/lib/in-app-web";
+import { downloadPdf } from "@/lib/pdf-file";
 
 /** Auto-return delay so the user lands back in the app like the booking success flow. */
 const AUTO_RETURN_MS = 3200;
@@ -114,24 +112,15 @@ export default function AdsPaymentSuccessScreen() {
       return;
     }
     setDownloadingReceipt(true);
+    navigatedRef.current = true;
     try {
-      const res = await api.post<{ url?: string }>(
-        `/api/provider/ads/orders/${orderId}/receipt/signed-url`,
-        {},
-      );
-      if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't open the receipt"));
-        return;
-      }
-      const signed = res.data?.url?.trim();
-      if (!signed) {
-        Alert.alert("Error", "Couldn't open the receipt.");
-        return;
-      }
-      navigatedRef.current = true;
-      pushInAppBrowser(router, signed, "Receipt");
-    } catch (e: unknown) {
-      Alert.alert("Error", getApiErrorMessage(e, "Couldn't open the receipt"));
+      await downloadPdf({
+        router,
+        pdfPath: `/api/provider/ads/orders/${orderId}/receipt/pdf`,
+        signedUrlPath: `/api/provider/ads/orders/${orderId}/receipt/signed-url`,
+        filename: `ad-receipt-${orderId}.pdf`,
+        title: "Receipt",
+      });
     } finally {
       setDownloadingReceipt(false);
     }

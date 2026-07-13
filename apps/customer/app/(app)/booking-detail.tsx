@@ -24,6 +24,7 @@ import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
+import { downloadPdf } from "@/lib/pdf-file";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
@@ -49,6 +50,7 @@ import {
   matchesExpoReturnUrl,
   isCancelledPaystackUrl,
 } from "@/lib/paystack-webview-utils";
+import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { useSavedCards } from "@/hooks/useSavedCards";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
@@ -916,8 +918,8 @@ export default function BookingDetailScreen() {
       email: user.email,
       currency: booking.currency || getTenantDefaultCurrency(),
     });
-    if (result.dismissed) {
-      load();
+    if (result.success || result.dismissed) {
+      await load();
     }
   };
 
@@ -938,6 +940,7 @@ export default function BookingDetailScreen() {
         paystack_amount?: number;
         wallet_amount_applied?: number;
         gift_card_amount_applied?: number;
+        reference?: string;
       }>(`/api/me/bookings/${id}/pay-remaining`, {
         callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
         use_wallet: payRemainingUseWallet,
@@ -975,6 +978,9 @@ export default function BookingDetailScreen() {
         }
       } else {
         const returnUrl = ExpoLinking.createURL("book/paystack");
+        if (res.data?.reference) {
+          markReferenceProcessing(res.data.reference);
+        }
         await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay remaining balance",
           returnUrl,
@@ -1030,89 +1036,13 @@ export default function BookingDetailScreen() {
     if (!bid) return;
     haptic.light();
     try {
-      const base = getBackendUrl().replace(/\/$/, "");
-      const filename = `booking-${booking.booking_number ?? bid}.pdf`.replace(/[^\w.-]+/g, "_");
-      const pdfPath = `/api/bookings/${encodeURIComponent(bid)}/receipt/pdf`;
-
-      const tryBearerDownload = async (): Promise<boolean> => {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token || !base) return false;
-        const pdfUrl = `${base}${pdfPath}`;
-        const init = withWebApiTenantHeaders({
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "omit",
-        });
-
-        if (Platform.OS === "web") {
-          const response = await fetch(pdfUrl, init);
-          if (!response.ok) return false;
-          const blob = await response.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          if (typeof window !== "undefined") {
-            const a = document.createElement("a");
-            a.href = objectUrl;
-            a.download = filename;
-            a.rel = "noopener";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-          }
-          return true;
-        }
-
-        if (!FileSystem.cacheDirectory) return false;
-        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-        const headers = new Headers(init.headers as HeadersInit | undefined);
-        const dl = await FileSystem.downloadAsync(pdfUrl, fileUri, {
-          headers: Object.fromEntries(headers.entries()),
-        });
-        if (dl.status !== 200) return false;
-        await Share.share({
-          url: fileUri,
-          title: "Booking receipt",
-          message: `Booking ${booking.booking_number ?? bid}`,
-        });
-        return true;
-      };
-
-      if (await tryBearerDownload()) return;
-
-      const res = await api.post<{ url?: string }>(
-        `/api/bookings/${encodeURIComponent(bid)}/receipt/signed-url`,
-        {},
-      );
-      const url = res.data?.url;
-      if (res.error || !url) {
-        Alert.alert(
-          bd("downloadReceiptTitle"),
-          (res.error as { message?: string })?.message ?? bd("receiptGenerateFailed"),
-        );
-        return;
-      }
-      if (Platform.OS === "web") {
-        await Linking.openURL(url);
-        return;
-      }
-      if (!FileSystem.cacheDirectory) {
-        Alert.alert(bd("downloadReceiptTitle"), bd("storageUnavailable"));
-        return;
-      }
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      const dl = await FileSystem.downloadAsync(url, fileUri);
-      if (dl.status !== 200) {
-        const hint =
-          dl.status === 401 || dl.status === 403
-            ? "Your session may have expired. Please try again after refreshing the screen."
-            : `The server returned status ${dl.status}.`;
-        Alert.alert(bd("downloadReceiptTitle"), bd("downloadPdfFailed", { hint }));
-        return;
-      }
-      await Share.share({
-        url: fileUri,
-        title: "Booking receipt",
-        message: `Booking ${booking.booking_number ?? bid}`,
+      await downloadPdf({
+        router,
+        pdfPath: `/api/bookings/${encodeURIComponent(bid)}/receipt/pdf`,
+        signedUrlPath: `/api/bookings/${encodeURIComponent(bid)}/receipt/signed-url`,
+        filename: `booking-${booking.booking_number ?? bid}.pdf`,
+        title: bd("downloadReceiptTitle"),
+        label: bd("downloadReceiptTitle"),
       });
     } catch (e) {
       Alert.alert(bd("downloadReceiptTitle"), e instanceof Error ? e.message : bd("downloadReceiptGenericError"));
@@ -1590,6 +1520,7 @@ export default function BookingDetailScreen() {
       const res = await api.post<{
         authorization_url?: string;
         fully_settled?: boolean;
+        reference?: string;
       }>(`/api/me/bookings/${id}/additional-charges/${chargeId}/pay`, {
         callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
         use_wallet: additionalPayUseWallet,
@@ -1615,6 +1546,9 @@ export default function BookingDetailScreen() {
         window.open(url, "_blank", "noopener,noreferrer");
       } else {
         const returnUrl = ExpoLinking.createURL("book/paystack");
+        if (res.data?.reference) {
+          markReferenceProcessing(res.data.reference);
+        }
         await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay additional charge",
           returnUrl,
@@ -3412,12 +3346,19 @@ export default function BookingDetailScreen() {
         >
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonModalOpen(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Why are you cancelling?</Text>
-            {["Change of plans", "Found another provider", "Scheduling conflict", "Other"].map((reason) => (
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
+              {t("customer.mobile.screens.bookingDetail.cancelReasonTitle")}
+            </Text>
+            {[
+              t("customer.mobile.screens.bookingDetail.cancelReasonChangeOfPlans"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonFoundAnother"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonSchedulingConflict"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonOther"),
+            ].map((reason) => (
               <TouchableOpacity
                 key={reason}
                 onPress={() => {
-                  if (reason === "Other") {
+                  if (reason === t("customer.mobile.screens.bookingDetail.cancelReasonOther")) {
                     setCancelReasonText("");
                   } else {
                     setCancelReasonText(reason);
@@ -3431,27 +3372,35 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 14, color: cancelReasonText === reason ? Colors.primary : "#374151" }}>{reason}</Text>
               </TouchableOpacity>
             ))}
-            {!["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+            {![
+              t("customer.mobile.screens.bookingDetail.cancelReasonChangeOfPlans"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonFoundAnother"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonSchedulingConflict"),
+            ].includes(cancelReasonText) && (
               <TextInput
                 value={cancelReasonText}
                 onChangeText={setCancelReasonText}
-                placeholder="Tell us why (optional)"
+                placeholder={t("customer.mobile.screens.bookingDetail.cancelReasonOtherPlaceholder")}
                 multiline
                 style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 64, textAlignVertical: "top", marginTop: 6, marginBottom: 16 }}
               />
             )}
-            {["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+            {[
+              t("customer.mobile.screens.bookingDetail.cancelReasonChangeOfPlans"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonFoundAnother"),
+              t("customer.mobile.screens.bookingDetail.cancelReasonSchedulingConflict"),
+            ].includes(cancelReasonText) && (
               <View style={{ marginBottom: 16 }} />
             )}
             <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity onPress={() => setCancelReasonModalOpen(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
-                <Text style={{ fontWeight: "600", color: "#374151" }}>Back</Text>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>{t("customer.mobile.screens.bookingDetail.cancelReasonBack")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => submitCancellation(cancelReasonText)}
                 style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+                <Text style={{ fontWeight: "600", color: "#fff" }}>{t("customer.mobile.screens.bookingDetail.cancelBookingCta")}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

@@ -45,7 +45,7 @@ export async function POST(
         { currentStatus: status },
       );
     }
-    const allowedStatuses = ["pending"];
+    const allowedStatuses = ["pending", "changes_requested"];
     if (!allowedStatuses.includes(status)) {
       return errorResponse(
         `This offer can no longer be withdrawn. Current status: ${status}. Only pending offers can be withdrawn.`,
@@ -68,7 +68,7 @@ export async function POST(
         .from("custom_offers")
         .select("id")
         .eq("request_id", offerData.request_id)
-        .in("status", ["pending", "payment_pending"])
+        .in("status", ["pending", "changes_requested", "payment_pending"])
         .neq("id", offerId)
         .limit(1);
 

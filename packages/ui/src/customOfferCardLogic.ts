@@ -18,6 +18,7 @@ export type CustomOfferAttachmentBase = {
   expiration_at?: string | null;
   /** Paystack payment reference — surfaced on finalize_failed so the customer can quote it to support. */
   payment_reference?: string | null;
+  change_request_note?: string | null;
 };
 
 export type OfferStatusOverride = {
@@ -34,6 +35,7 @@ export type EffectiveOfferStatus = {
   isWithdrawn: boolean;
   isDeclined: boolean;
   isFinalizeFailed: boolean;
+  isChangesRequested: boolean;
   isInactive: boolean;
   isMuted: boolean;
   badge: OfferBadge | null;
@@ -45,7 +47,8 @@ export type OfferBadge =
   | { type: "expired"; label: string }
   | { type: "declined"; label: string }
   | { type: "withdrawn"; label: string }
-  | { type: "needs_support"; label: string };
+  | { type: "needs_support"; label: string }
+  | { type: "changes_requested"; label: string };
 
 export type StatusAccentColor =
   | "active"   // primary color
@@ -68,6 +71,7 @@ export function getOfferEffectiveStatus(
   const isExpired = attachment.expired === true || effStatus === "expired";
   const isWithdrawn = attachment.withdrawn === true || effStatus === "withdrawn";
   const isDeclined = effStatus === "declined";
+  const isChangesRequested = effStatus === "changes_requested";
   const isPaid = effStatus === "paid" || (!!effBookingId && effStatus !== "");
   const isPaymentPending = effStatus === "payment_pending";
   const isFinalizeFailed = effStatus === "finalize_failed";
@@ -80,6 +84,8 @@ export function getOfferEffectiveStatus(
     badge = { type: "withdrawn", label: "Withdrawn" };
   } else if (isDeclined) {
     badge = { type: "declined", label: "Declined" };
+  } else if (isChangesRequested) {
+    badge = { type: "changes_requested", label: "Changes requested" };
   } else if (isExpired) {
     badge = { type: "expired", label: "Expired" };
   } else if (isPaid) {
@@ -99,6 +105,7 @@ export function getOfferEffectiveStatus(
     isWithdrawn,
     isDeclined,
     isFinalizeFailed,
+    isChangesRequested,
     isInactive,
     isMuted,
     badge,
@@ -116,6 +123,20 @@ export function getStatusAccentColor(s: EffectiveOfferStatus): StatusAccentColor
 /** Whether a customer CTA (Accept & pay) should be shown. */
 export function shouldShowCustomerAcceptCta(s: EffectiveOfferStatus, isMe: boolean): boolean {
   return !isMe && !s.isInactive && !s.isPaymentPending && !s.isPaid;
+}
+
+/** Whether the customer "Request changes" CTA should be shown. */
+export function shouldShowCustomerRequestChangesCta(s: EffectiveOfferStatus, isMe: boolean): boolean {
+  return !isMe && s.effStatus === "pending" && !s.isInactive && !s.isPaymentPending;
+}
+
+/** Whether the provider "Edit offer" CTA should be shown. */
+export function shouldShowProviderEditCta(
+  s: EffectiveOfferStatus,
+  isMe: boolean,
+  role: "provider" | "customer",
+): boolean {
+  return role === "provider" && isMe && (s.effStatus === "pending" || s.isChangesRequested) && !s.isInactive && !s.isPaymentPending;
 }
 
 /** Whether the "Resume payment" CTA should be shown to the customer. */
@@ -136,5 +157,5 @@ export function shouldShowWithdrawCta(
 ): boolean {
   // Do not show retract while customer payment is in flight — the API now
   // rejects payment_pending retracts to prevent a charge-without-booking race.
-  return role === "provider" && isMe && !s.isInactive && !s.isPaymentPending;
+  return role === "provider" && isMe && (s.effStatus === "pending" || s.isChangesRequested) && !s.isInactive && !s.isPaymentPending;
 }

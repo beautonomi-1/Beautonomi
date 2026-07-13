@@ -108,21 +108,6 @@ const sections: Section[] = [
       },
     ],
   },
-  {
-    title: "Cancellation policy",
-    rules: [
-      "Free cancellation before Sep 4. Cancel before check-in on Sep 5 for a partial refund.",
-      "Review this Host's full policy for details.",
-    ],
-    popupContent: [
-      {
-        title: "",
-        description:
-          "Make sure you're comfortable with this Partner's policy. In rare cases, you may be eligible for a refund outside of this policy under Beautonomi's Major Disruptive Events Policy.",
-        items: [],
-      },
-    ],
-  },
 ];
 
 const AccommodationInfo: React.FC = () => {

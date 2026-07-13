@@ -99,6 +99,7 @@ export default function CardMachinesScreen() {
   const {
     settings,
     loading: settingsLoading,
+    error: settingsError,
     updateSettings,
     reload: reloadSettings,
   } = usePayCloudSettings();
@@ -242,7 +243,7 @@ export default function CardMachinesScreen() {
   }
 
   useEffect(() => {
-    if (!terminalEcommerceEnabled) {
+    if (!terminalShopEnabled) {
       setPendingOrder(null);
       return;
     }
@@ -284,7 +285,7 @@ export default function CardMachinesScreen() {
         setPendingOrder(null);
       }
     })();
-  }, [activationOrderId, terminalEcommerceEnabled]);
+  }, [activationOrderId, terminalShopEnabled]);
 
   async function handleActivateOrder() {
     if (!activationSerial.trim()) {
@@ -385,11 +386,18 @@ export default function CardMachinesScreen() {
     );
   }
 
-  if (terminalsError) {
+  const loadError = terminalsError ?? settingsError;
+  if (loadError) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Card machines" showBack onBack={handleBack} />
-        <ErrorState message={terminalsError} onRetry={reloadTerminals} />
+        <ErrorState
+          message={loadError}
+          onRetry={() => {
+            void reloadTerminals();
+            void reloadSettings();
+          }}
+        />
       </ScreenContainer>
     );
   }
@@ -423,6 +431,29 @@ export default function CardMachinesScreen() {
             : ""}
         </Text>
       </View>
+
+      {terminalShopEnabled && terminals.length === 0 && !pendingOrder ? (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/terminal-shop" as never)}
+          style={twStyle("mb-4 flex-row items-center rounded-2xl border border-pink-200 bg-pink-50 p-4")}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Get your first Beautonomi card machine"
+        >
+          <View style={twStyle("h-12 w-12 items-center justify-center rounded-xl bg-white")}>
+            <Ionicons name="phone-portrait-outline" size={22} color="#db2777" />
+          </View>
+          <View style={twStyle("ml-3 flex-1")}>
+            <Text style={twStyle("text-sm font-semibold text-pink-900")}>
+              Get your first Beautonomi card machine
+            </Text>
+            <Text style={twStyle("mt-0.5 text-xs text-pink-700")}>
+              Order from the catalog — some plans include a machine at no extra cost.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#db2777" />
+        </TouchableOpacity>
+      ) : null}
 
       {pendingOrder ? (
         <View style={twStyle("mb-4 rounded-2xl border border-pink-200 bg-pink-50 p-4")}>
@@ -534,7 +565,7 @@ export default function CardMachinesScreen() {
           {settings.blockers.find((b) => b.code === "PLAN_REQUIRED") ? (
             <TouchableOpacity
               style={twStyle("mt-3 self-start rounded-full bg-amber-900 px-3 py-2")}
-              onPress={() => router.push("/(app)/(tabs)/more/subscription" as never)}
+              onPress={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
             >
               <Text style={twStyle("text-xs font-semibold text-white")}>Upgrade plan</Text>
             </TouchableOpacity>
@@ -811,7 +842,7 @@ export default function CardMachinesScreen() {
         </View>
       )}
 
-      {terminalShopEnabled ? (
+      {terminalShopEnabled && terminals.length > 0 ? (
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/terminal-shop" as never)}
           style={twStyle("mb-4 flex-row items-center rounded-2xl border border-pink-200 bg-pink-50 p-4")}
@@ -823,7 +854,7 @@ export default function CardMachinesScreen() {
             <Ionicons name="cart-outline" size={20} color="#db2777" />
           </View>
           <View style={twStyle("ml-3 flex-1")}>
-            <Text style={twStyle("text-sm font-semibold text-pink-900")}>Shop card machines</Text>
+            <Text style={twStyle("text-sm font-semibold text-pink-900")}>Need another machine?</Text>
             <Text style={twStyle("text-xs text-pink-700")}>
               Order from the Beautonomi catalog
             </Text>

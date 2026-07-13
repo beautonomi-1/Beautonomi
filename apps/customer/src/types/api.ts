@@ -101,6 +101,9 @@ export interface PublicProviderDetail {
   current_badge?: ProviderBadge | null;
   policies?: {
     cancellation_window_hours?: number;
+    grace_window_minutes?: number;
+    late_refund_percentage?: number;
+    policy_text?: string | null;
     requires_deposit?: boolean;
     deposit_percentage?: number;
     no_show_fee_enabled?: boolean;

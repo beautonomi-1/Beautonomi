@@ -3,8 +3,8 @@
  * GET /api/provider/setup-status
  * Completion % is based on required steps only.
  */
-import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { useState, useCallback, useEffect } from "react";
+import { View, Text, TouchableOpacity, DeviceEventEmitter } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -20,6 +20,7 @@ import {
   resolveSetupStepRoute,
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 
 interface SetupStep {
   id: string;
@@ -67,6 +68,13 @@ export default function SetupStatusScreen() {
       void refresh();
     }, [refresh]),
   );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
+      void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   function openStep(step: SetupStep) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

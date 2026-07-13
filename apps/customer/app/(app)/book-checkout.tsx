@@ -2598,6 +2598,11 @@ export default function BookCheckoutScreen() {
           // Two RN modals competing can leave users stuck on "opening payment page".
           setProcessingPayment(false);
           const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
+          // Mark before opening browser so the deep-link return screen cooperates
+          // if Android mounts book/paystack before waitForCheckout resolves.
+          if (returnedPaymentReference) {
+            markReferenceProcessing(returnedPaymentReference);
+          }
           const authResult = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: t("checkout.securePaymentTitle", "Secure payment") as string,
             returnUrl: paystackReturnUrl,
@@ -2653,12 +2658,6 @@ export default function BookCheckoutScreen() {
         setProcessingPayment(true);
         setProcessingMessage(t("checkout.confirmingPayment"));
         if (saveCard) refreshCards();
-
-        // Mark reference so the deep-link route screen (book/paystack.tsx) skips
-        // a duplicate verify call if it also fires (cold-start / fast tap).
-        if (returnedPaymentReference) {
-          markReferenceProcessing(returnedPaymentReference);
-        }
 
         let paymentConfirmed = false;
         if (returnedPaymentReference) {

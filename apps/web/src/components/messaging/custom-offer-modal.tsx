@@ -356,11 +356,25 @@ export default function CustomOfferModal({
       }
 
       if (editOfferId) {
-        await fetcher.post(`/api/provider/custom-offers/${editOfferId}/retract`, {});
+        const expirationDate = new Date();
+        expirationDate.setDate(expirationDate.getDate() + parseInt(expirationDays));
+        await fetcher.patch(`/api/provider/custom-offers/${editOfferId}`, {
+          price: Number(price),
+          currency: currency || tenantCurrency,
+          duration_minutes: Number(durationMinutes),
+          expiration_at: expirationDate.toISOString(),
+          notes: notes.trim() || null,
+          staff_id: staffId || null,
+          location_id: locationType === "at_salon" && locationId ? locationId : null,
+          scheduled_at: preferredStartAtIso,
+          travel_fee: locationType === "at_home" ? (Number.isNaN(Number(travelFee)) ? 0 : Number(travelFee)) : null,
+        });
+        toast.success("Offer updated.");
+      } else {
+        await fetcher.post<{ data: { request: any; offer: any } }>("/api/provider/custom-offers/create", payload);
+        toast.success("Custom offer sent successfully!");
       }
-      await fetcher.post<{ data: { request: any; offer: any } }>("/api/provider/custom-offers/create", payload);
 
-      toast.success(isEditMode ? "Offer updated and resent." : "Custom offer sent successfully!");
       onSuccess?.();
       handleClose();
     } catch (err) {
@@ -413,7 +427,7 @@ export default function CustomOfferModal({
           </DialogTitle>
           <DialogDescription>
             {isEditMode
-              ? "Update the offer and resend. The previous offer will be withdrawn and a new message will appear in this conversation."
+              ? "Update the offer in place. The customer will be notified of the revised quote."
               : "Create a personalized service offer for this customer. The offer will be sent as a message in your conversation."}
           </DialogDescription>
         </DialogHeader>
@@ -862,7 +876,7 @@ export default function CustomOfferModal({
                 : "bg-gradient-to-r from-primary/70 to-primary-hover/80 hover:from-primary/80 hover:to-primary-hover/90 opacity-90",
             )}
           >
-            {isSubmitting ? "Sending..." : "Send Offer"}
+            {isSubmitting ? (isEditMode ? "Updating..." : "Sending...") : isEditMode ? "Update offer" : "Send Offer"}
           </Button>
         </div>
       </DialogContent>

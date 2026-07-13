@@ -36,6 +36,7 @@ type CustomRequest = {
   id: string;
   description?: string | null;
   status?: string | null;
+  declined_reason?: string | null;
   created_at: string;
   currency?: string | null;
   location_type?: string | null;
@@ -176,6 +177,7 @@ export default function CustomRequestDetailScreen() {
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<CrOfferDetail | null>(null);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);
   const isAtHome = request?.location_type === "at_home";
@@ -367,18 +369,20 @@ export default function CustomRequestDetailScreen() {
         const fee = Number(travelFee);
         if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
       }
-      const res = await api.post(`/api/provider/custom-requests/${requestId}/offers`, payload);
+      const res = editingOfferId
+        ? await api.patch(`/api/provider/custom-offers/${editingOfferId}`, payload)
+        : await api.post(`/api/provider/custom-requests/${requestId}/offers`, payload);
       if ((res as { error?: { message?: string } }).error) {
-        const msg = (res as { error: { message?: string } }).error.message ?? "Failed to send offer";
+        const msg = (res as { error: { message?: string } }).error.message ?? (editingOfferId ? "Failed to update offer" : "Failed to send offer");
         Alert.alert("Error", msg);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Offer sent", "The customer will be notified and can accept the offer.", [
-        { text: "OK", onPress: () => router.back() },
+      Alert.alert(editingOfferId ? "Offer updated" : "Offer sent", editingOfferId ? "The customer will be notified of your revised offer." : "The customer will be notified and can accept the offer.", [
+        { text: "OK", onPress: () => { setEditingOfferId(null); router.back(); } },
       ]);
     } catch (e: unknown) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to send offer");
+      Alert.alert("Error", e instanceof Error ? e.message : (editingOfferId ? "Failed to update offer" : "Failed to send offer"));
     } finally {
       setSubmitting(false);
     }
@@ -401,7 +405,58 @@ export default function CustomRequestDetailScreen() {
     tenantCurrency,
     requestCurrency,
     router,
+    editingOfferId,
   ]);
+
+  const declineRequest = useCallback(() => {
+    if (!requestId) return;
+    Alert.prompt?.(
+      "Decline request",
+      "Optionally tell the customer why you cannot fulfil this request.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Decline",
+          style: "destructive",
+          onPress: async (reason?: string) => {
+            try {
+              const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {
+                reason: reason?.trim() || null,
+              });
+              if (res.error) {
+                Alert.alert("Error", (res.error as { message?: string }).message ?? "Failed to decline request");
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.back();
+            } catch (e) {
+              Alert.alert("Error", e instanceof Error ? e.message : "Failed to decline request");
+            }
+          },
+        },
+      ],
+      "plain-text",
+    ) ?? Alert.alert("Decline request", "Are you sure you want to decline this custom request?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Decline",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {});
+            if (res.error) {
+              Alert.alert("Error", (res.error as { message?: string }).message ?? "Failed to decline request");
+              return;
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.back();
+          } catch (e) {
+            Alert.alert("Error", e instanceof Error ? e.message : "Failed to decline request");
+          }
+        },
+      },
+    ]);
+  }, [requestId, router]);
 
   const openOfferDetail = useCallback(async (offerId: string) => {
     setOfferDetailData(null);
@@ -475,7 +530,20 @@ export default function CustomRequestDetailScreen() {
               </View>
             ) : null}
           </View>
+          {canSendOffer ? (
+            <TouchableOpacity
+              onPress={declineRequest}
+              style={twStyle("mb-3 self-start rounded-lg border border-red-200 bg-red-50 px-3 py-2")}
+            >
+              <Text style={twStyle("text-sm font-semibold text-red-700")}>Decline request</Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={twStyle("mt-1 text-base text-gray-900")}>{request.description ?? "—"}</Text>
+          {request.status === "declined" && request.declined_reason ? (
+            <View style={twStyle("mt-3 rounded-lg border border-red-200 bg-red-50 p-3")}>
+              <Text style={twStyle("text-sm text-red-800")}>Declined: {request.declined_reason}</Text>
+            </View>
+          ) : null}
           {(request.service_name || request.service_category?.name) ? (
             <View style={twStyle("mt-2 flex-row flex-wrap")}>
               {request.service_category?.name ? (
@@ -620,7 +688,9 @@ export default function CustomRequestDetailScreen() {
           </View>
         ) : (
           <>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Send offer</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>
+              {editingOfferId ? "Edit offer" : "Send offer"}
+            </Text>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price ({requestCurrency}) *</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
@@ -834,6 +904,7 @@ export default function CustomRequestDetailScreen() {
               const isWithdrawn = d.status === "withdrawn";
               const isPaid = d.status === "paid";
               const isPending = d.status === "pending";
+              const isChangesRequested = d.status === "changes_requested";
 
               const fmtDate = (iso: string | null | undefined) => {
                 if (!iso) return "—";
@@ -848,6 +919,8 @@ export default function CustomRequestDetailScreen() {
                 ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"
                 ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
+                : isChangesRequested
+                ? { label: "Changes requested", bg: "#E0E7FF", text: "#3730A3" }
                 : { label: "Pending acceptance", bg: "#EFF6FF", text: "#1E40AF" };
 
               const locLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
@@ -892,7 +965,7 @@ export default function CustomRequestDetailScreen() {
                       <Text style={{ color: "#374151", fontSize: 14, lineHeight: 20 }}>📝 {d.notes}</Text>
                     ) : null}
                   </View>
-                  {isPending && d.id ? (
+                  {(isPending || isChangesRequested) && d.id ? (
                     <TouchableOpacity
                       onPress={() => {
                         setOfferDetailVisible(false);
@@ -917,6 +990,24 @@ export default function CustomRequestDetailScreen() {
                       style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center", paddingVertical: 14 }}
                     >
                       <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Withdraw offer</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {(isPending || isChangesRequested) && d.id ? (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        setOfferDetailVisible(false);
+                        setEditingOfferId(d.id);
+                        setPrice(String(d.price ?? ""));
+                        setDurationMinutes(String(d.duration_minutes ?? defaultDuration));
+                        setNotes(d.notes ?? "");
+                        if (d.expiration_at) {
+                          const daysLeft = Math.max(1, Math.ceil((new Date(d.expiration_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+                          setExpirationDays(String(daysLeft));
+                        }
+                      }}
+                      style={{ marginTop: 12, borderRadius: 12, backgroundColor: "#1D4ED8", alignItems: "center", paddingVertical: 14 }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Edit offer</Text>
                     </TouchableOpacity>
                   ) : null}
                 </ScrollView>

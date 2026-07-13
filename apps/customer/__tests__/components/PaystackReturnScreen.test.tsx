@@ -17,9 +17,11 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 const mockReplace = jest.fn();
+const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => false);
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: () => ({ replace: mockReplace, back: mockBack, canGoBack: mockCanGoBack }),
   useLocalSearchParams: jest.fn(() => ({})),
   Stack: {
     Screen: () => null,
@@ -37,6 +39,10 @@ jest.mock("@/lib/paystack-verify-guard", () => ({
   clearReferenceProcessing: jest.fn(),
 }));
 
+jest.mock("@/lib/haptics", () => ({
+  haptic: { success: jest.fn() },
+}));
+
 jest.mock("@expo/vector-icons", () => {
   const { Text } = require("react-native");
   return {
@@ -47,6 +53,7 @@ jest.mock("@expo/vector-icons", () => {
 // ── Import component under test ───────────────────────────────────────────────
 import { PaystackReturnScreen } from "@/components/payment/PaystackReturnScreen";
 import { useLocalSearchParams } from "expo-router";
+import { isReferenceProcessing } from "@/lib/paystack-verify-guard";
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
 
@@ -88,6 +95,8 @@ function renderScreen(paramOverrides: Record<string, string> = {}) {
 describe("PaystackReturnScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCanGoBack.mockReturnValue(false);
+    (isReferenceProcessing as jest.Mock).mockReturnValue(false);
     // Default: verify never resolves — keeps the component stuck in `verifying`.
     mockVerify.mockReturnValue(new Promise(() => {}));
   });
@@ -244,5 +253,70 @@ describe("PaystackReturnScreen", () => {
       expect(onSuccess).toHaveBeenCalledTimes(1);
       expect(mockReplace).toHaveBeenCalled();
     }, { timeout: 4000 });
+  });
+
+  // ── Cooperative branch (parent owns verify) ───────────────────────────────
+
+  it("dismisses cooperatively with router.back when parent owns verification", async () => {
+    jest.useFakeTimers();
+    try {
+      (isReferenceProcessing as jest.Mock).mockReturnValue(true);
+      mockCanGoBack.mockReturnValue(true);
+
+      renderScreen({ reference: "ref-cooperative" });
+
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(mockBack).toHaveBeenCalledTimes(1);
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(mockVerify).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // ── Watchdog (verify hang) ────────────────────────────────────────────────
+
+  it("transitions to pending and auto-navigates after verify watchdog expires", async () => {
+    jest.useFakeTimers();
+    try {
+      const { getByText } = renderScreen({ reference: "ref-hang" });
+
+      act(() => {
+        jest.advanceTimersByTime(30_000);
+      });
+
+      expect(getByText(/your payment is being confirmed/i)).toBeTruthy();
+
+      act(() => {
+        jest.advanceTimersByTime(1_600);
+      });
+
+      expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("shows Try again on failed verify and re-runs verification", async () => {
+    mockVerify
+      .mockResolvedValueOnce({
+        status: "failed",
+        data: null,
+        attempts: 5,
+        errorMessage: "Could not confirm payment",
+      })
+      .mockReturnValueOnce(new Promise(() => {}));
+
+    const { findByRole } = renderScreen({ reference: "ref-retry" });
+
+    const retryBtn = await findByRole("button", { name: "Try again" }, { timeout: 4000 });
+    fireEvent.press(retryBtn);
+
+    await waitFor(() => {
+      expect(mockVerify).toHaveBeenCalledTimes(2);
+    });
   });
 });

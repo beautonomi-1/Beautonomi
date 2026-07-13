@@ -27,7 +27,11 @@ export function AppHeader() {
   const showLocationSwitcher = (provider?.locations?.length ?? 0) > 0;
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const { totalUnread: unreadCount } = useNotificationsCount();
+  // Bell badge counts only notification rows — the dropdown it opens contains
+  // only notifications, so "Mark all read" must always clear this badge. Chat
+  // unreads keep their own badge on the Chats tab; the OS icon badge still
+  // uses the unified total.
+  const { notificationUnread: unreadCount } = useNotificationsCount();
 
   // Hide global brand chrome on chat threads (Chats tab or More → Messages)
   // so the conversation header and composer get full vertical space.

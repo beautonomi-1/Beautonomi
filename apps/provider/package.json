@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.75",
+  "version": "1.0.76",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -61,6 +61,7 @@
     "expo-image": "^3.0.11",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "^17.0.11",
+    "expo-intent-launcher": "~13.0.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
     "expo-local-authentication": "^17.0.8",

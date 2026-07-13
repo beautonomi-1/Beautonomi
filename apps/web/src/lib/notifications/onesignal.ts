@@ -706,13 +706,11 @@ async function sendOneSignalNotification(
     };
   }
 
-  // §Push-reliability dual targeting: when a single-recipient push has BOTH a
-  // registered subscription id and an external id, send to the subscription id
-  // (the path proven reliable by admin broadcasts) AND fan out by alias to catch
-  // devices we never registered. A shared collapse_id means the device only ever
-  // shows one banner, and the exact `SetTo` badge makes the duplicate delivery
-  // idempotent. Restricted to single-recipient so multi-recipient `Increase`
-  // badges can't double-count; broadcasts keep their existing alias fan-out.
+  // §Push-reliability dual targeting: when a push has BOTH registered subscription
+  // ids and external ids, prefer alias fan-out (reaches every subscribed device
+  // for that user). Only fall back to subscription-id targeting when the alias
+  // leg fails or OneSignal reports zero recipients — avoids duplicate banners on
+  // Android where collapse_id does not dedupe online deliveries.
   const dualPlayerIds = (payload.include_player_ids ?? []).filter(
     (x): x is string => typeof x === "string" && x.trim().length > 0,
   );
@@ -720,82 +718,82 @@ async function sendOneSignalNotification(
     (x): x is string => typeof x === "string" && x.trim().length > 0,
   );
   const isSinglePushChannel = chans.length === 1 && chans[0] === "push";
+
+  const readOneSignalRecipientCount = (result: SendNotificationResult): number => {
+    const raw = result.data?.recipients;
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+    if (typeof raw === "string" && raw.trim()) {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return result.success ? 1 : 0;
+  };
+
+  const sendAliasFirstWithSubscriptionFallback = async (
+    reconcileUserIds: string[],
+    badgeOpts?: { ios_badgeType?: "SetTo" | "Increase"; ios_badgeCount?: number },
+  ): Promise<SendNotificationResult> => {
+    const collapseId = payload.collapse_id || generateCollapseId();
+    const aliasLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: reconcileUserIds,
+        include_player_ids: undefined,
+        collapse_id: collapseId,
+        _dualLeg: "alias",
+        _reconcileUserIds: reconcileUserIds,
+        ...badgeOpts,
+      },
+      options,
+    );
+
+    const aliasRecipients = readOneSignalRecipientCount(aliasLeg);
+    if (aliasLeg.success && aliasRecipients > 0) {
+      return aliasLeg;
+    }
+
+    const subLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: undefined,
+        include_player_ids: dualPlayerIds,
+        collapse_id: collapseId,
+        _dualLeg: "sub",
+        _reconcileUserIds: reconcileUserIds,
+        ...badgeOpts,
+      },
+      options,
+    );
+
+    return {
+      success: subLeg.success || aliasLeg.success,
+      error: subLeg.success || aliasLeg.success ? undefined : (subLeg.error || aliasLeg.error),
+      notification_id: subLeg.notification_id || aliasLeg.notification_id,
+      data: subLeg.data ?? aliasLeg.data,
+    };
+  };
+
   if (
     !payload._dualLeg &&
     isSinglePushChannel &&
     dualExtIds.length === 1 &&
     dualPlayerIds.length > 0
   ) {
-    const collapseId = payload.collapse_id || generateCollapseId();
-    const subLeg = await sendOneSignalNotification(
-      {
-        ...payload,
-        include_external_user_ids: undefined,
-        include_player_ids: dualPlayerIds,
-        collapse_id: collapseId,
-        _dualLeg: "sub",
-        _reconcileUserIds: dualExtIds,
-      },
-      options,
-    );
-    const aliasLeg = await sendOneSignalNotification(
-      {
-        ...payload,
-        include_external_user_ids: dualExtIds,
-        include_player_ids: undefined,
-        collapse_id: collapseId,
-        _dualLeg: "alias",
-        _reconcileUserIds: dualExtIds,
-      },
-      options,
-    );
-    return {
-      success: subLeg.success || aliasLeg.success,
-      error: subLeg.success || aliasLeg.success ? undefined : (subLeg.error || aliasLeg.error),
-      notification_id: subLeg.notification_id || aliasLeg.notification_id,
-    };
+    return sendAliasFirstWithSubscriptionFallback(dualExtIds);
   }
 
-  // Multi-recipient: alias-only fan-out misses devices without external_id; also
-  // target registered subscription ids (same reliability as admin broadcast).
+  // Multi-recipient: alias fan-out first; subscription ids as fallback when alias
+  // reaches nobody (e.g. external_id not yet bound on OneSignal).
   if (
     !payload._dualLeg &&
     isSinglePushChannel &&
     dualExtIds.length > 1 &&
     dualPlayerIds.length > 0
   ) {
-    const collapseId = payload.collapse_id || generateCollapseId();
-    const subLeg = await sendOneSignalNotification(
-      {
-        ...payload,
-        include_external_user_ids: undefined,
-        include_player_ids: dualPlayerIds,
-        collapse_id: collapseId,
-        _dualLeg: "sub",
-        _reconcileUserIds: dualExtIds,
-        ios_badgeType: "Increase",
-        ios_badgeCount: 1,
-      },
-      options,
-    );
-    const aliasLeg = await sendOneSignalNotification(
-      {
-        ...payload,
-        include_external_user_ids: dualExtIds,
-        include_player_ids: undefined,
-        collapse_id: collapseId,
-        _dualLeg: "alias",
-        _reconcileUserIds: dualExtIds,
-        ios_badgeType: "Increase",
-        ios_badgeCount: 1,
-      },
-      options,
-    );
-    return {
-      success: subLeg.success || aliasLeg.success,
-      error: subLeg.success || aliasLeg.success ? undefined : (subLeg.error || aliasLeg.error),
-      notification_id: subLeg.notification_id || aliasLeg.notification_id,
-    };
+    return sendAliasFirstWithSubscriptionFallback(dualExtIds, {
+      ios_badgeType: "Increase",
+      ios_badgeCount: 1,
+    });
   }
 
   const appType = options?.appType;

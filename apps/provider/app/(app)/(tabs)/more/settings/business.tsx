@@ -31,6 +31,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
+import { invalidateSetupStatusCache } from "@/lib/setup-status-cache";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
@@ -256,6 +257,7 @@ export default function BusinessDetailsScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidateSetupStatusCache();
       Alert.alert("Saved", "Business details updated.");
       refresh();
     } catch {

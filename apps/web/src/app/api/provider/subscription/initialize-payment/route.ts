@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse({
       order_id: order.id,
+      reference,
       payment_url: paymentUrl,
       /** Same URL as `payment_url` — Paystack calls it `authorization_url` in their API response. */
       authorization_url: paymentUrl,

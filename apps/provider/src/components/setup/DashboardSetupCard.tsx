@@ -7,9 +7,9 @@
  * Hidden when isComplete (the celebration overlay handles the once-only
  * congratulations moment).
  */
-import { useMemo } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useMemo, useEffect, useCallback } from "react";
+import { Text, TouchableOpacity, View, DeviceEventEmitter } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -20,6 +20,7 @@ import {
   resolveSetupStepRoute,
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 
 export type DashboardSetupStep = {
   id: string;
@@ -48,9 +49,22 @@ export function DashboardSetupCard() {
   const router = useRouter();
   // Shares the same cache key as every other setup-status consumer — no
   // duplicate network call when this screen mounts alongside the More tab.
-  const { data, loading } = useApi<DashboardSetupStatus>(
+  const { data, loading, refresh } = useApi<DashboardSetupStatus>(
     "/api/provider/setup-status",
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
+      void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   const nextSteps = useMemo(() => {
     const steps = data?.steps ?? [];

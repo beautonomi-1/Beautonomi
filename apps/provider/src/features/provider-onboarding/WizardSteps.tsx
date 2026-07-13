@@ -99,6 +99,8 @@ const KEYBOARD_ACCESSORY = {
   vat: "provider-onboarding-vat",
   addonPrice: "provider-onboarding-addon-price",
   addonDuration: "provider-onboarding-addon-duration",
+  software: "provider-onboarding-software",
+  payroll: "provider-onboarding-payroll",
 } as const;
 
 // ─── Step 1: Team size ───────────────────────────────────────────────────────
@@ -190,6 +192,7 @@ const KEYBOARD_ACCESSORY_EMAIL = "step2-email-done";
 
 function Step2Identity() {
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
+  const onboardingScroll = useOnboardingScroll();
   const { bundle } = useConfigBundle();
   const identityVerificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
   const identityVerificationHint = identityVerificationRequired
@@ -238,6 +241,22 @@ function Step2Identity() {
     const t = setTimeout(() => setEmailResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearTimeout(t);
   }, [emailResendCooldown]);
+
+  useEffect(() => {
+    if (!emailCodeSent || !onboardingScroll) return;
+    const t = setTimeout(() => {
+      onboardingScroll.scrollToFocusedInput(emailRef, { offset: 140 });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [emailCodeSent, onboardingScroll]);
+
+  useEffect(() => {
+    if (!phoneCodeSent || !onboardingScroll) return;
+    const t = setTimeout(() => {
+      onboardingScroll.scrollToFocusedInput(phoneRef, { offset: 140 });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [phoneCodeSent, onboardingScroll]);
 
   // ── Persist phone helpers ────────────────────────────────────────────────────
   const persistPhoneVerified = useCallback(async (phone: string) => {
@@ -533,11 +552,15 @@ function Step2Identity() {
                 accessibilityLabel="Email address"
                 textContentType="emailAddress"
                 autoComplete="email"
-                returnKeyType="done"
+                returnKeyType="next"
+                blurOnSubmit={false}
                 inputAccessoryViewID={KEYBOARD_ACCESSORY_EMAIL}
-                onSubmitEditing={() => emailRef.current?.blur()}
+                onSubmitEditing={() => phoneRef.current?.focus()}
               />
-              <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY_EMAIL} />
+              <KeyboardDoneAccessory
+                nativeID={KEYBOARD_ACCESSORY_EMAIL}
+                onNext={() => phoneRef.current?.focus()}
+              />
             </View>
             <TouchableOpacity
               onPress={sendEmailCode}
@@ -1323,21 +1346,25 @@ function Step5Software() {
       )}
 
       {selectedId === "other" ? (
-        <OnboardingTextField
-          ref={customSoftwareRef}
-          label="Other software name"
-          value={customValue}
-          onChangeText={(t) => {
-            setCustomValue(t);
-            const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
-            updateFormData({
-              previous_software: "other",
-              previous_software_other: slug || undefined,
-            });
-          }}
-          placeholder="Type the software name…"
-          returnKeyType="done"
-        />
+        <>
+          <OnboardingTextField
+            ref={customSoftwareRef}
+            label="Other software name"
+            value={customValue}
+            onChangeText={(t) => {
+              setCustomValue(t);
+              const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
+              updateFormData({
+                previous_software: "other",
+                previous_software_other: slug || undefined,
+              });
+            }}
+            placeholder="Type the software name…"
+            returnKeyType="done"
+            inputAccessoryViewID={KEYBOARD_ACCESSORY.software}
+          />
+          <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.software} />
+        </>
       ) : null}
 
       {/* Show the currently-selected value for confirmation when it matches
@@ -1470,7 +1497,9 @@ function Step6Payroll() {
           onChangeText={(t) => updateFormData({ payroll_details: t })}
           placeholder="Optional details"
           returnKeyType="done"
+          inputAccessoryViewID={KEYBOARD_ACCESSORY.payroll}
         />
+        <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.payroll} />
       </View>
     </View>
   );
@@ -2823,6 +2852,7 @@ function Step11Services() {
             onNameFocus={() =>
               onboardingScroll?.scrollToFocusedInput(serviceNameRef, { offset: 120 })
             }
+            onFieldFocus={(ref) => onboardingScroll?.scrollToFocusedInput(ref)}
           />
         )}
 
@@ -3867,6 +3897,7 @@ function Step14Plan() {
 
 function StepTravelFees() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const onboardingScroll = useOnboardingScroll();
   const tf = formData.travel_fees ?? { enabled: true, use_platform_default: true };
   const currency = getTenantDefaultCurrency();
   const [limits, setLimits] = useState<PlatformTravelLimits | null>(null);
@@ -3899,6 +3930,7 @@ function StepTravelFees() {
         platformLimits={limits}
         currency={currency}
         mode="onboarding"
+        onFieldFocus={(ref) => onboardingScroll?.scrollToFocusedInput(ref)}
       />
       <Text style={twStyle("text-center text-xs text-gray-500")}>
         You can skip this step — we&apos;ll apply the platform standard and you can adjust it later.

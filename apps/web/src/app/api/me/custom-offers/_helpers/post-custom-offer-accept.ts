@@ -167,7 +167,8 @@ export async function postCustomOfferAccept(
     if (
       requestStatus === "cancelled" ||
       requestStatus === "fulfilled" ||
-      requestStatus === "expired"
+      requestStatus === "expired" ||
+      requestStatus === "declined"
     ) {
       return errorResponse(
         "This request is closed. You can no longer pay for this offer.",

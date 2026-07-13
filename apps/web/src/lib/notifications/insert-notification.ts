@@ -15,6 +15,7 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 
 // Enum values guaranteed available after migration 413 (already shipped).
 const VALID_TYPES_413 = new Set<string>([
@@ -46,6 +47,11 @@ const VALID_TYPES_413 = new Set<string>([
   "provider_custom_offer_declined",
   "customer_custom_offer_withdrawn",
   "customer_custom_offer_expired",
+  "customer_custom_request_declined",
+  "provider_custom_offer_changes_requested",
+  "customer_custom_offer_updated",
+  "customer_custom_request_expired",
+  "provider_custom_request_expired",
   "custom_request",
   "on_demand_accepted",
   "on_demand_declined",
@@ -197,7 +203,12 @@ export async function insertNotification(input: InsertNotificationInput): Promis
     const row = buildRow(input);
 
     const { error } = await supabase.from("notifications").insert(row);
-    if (!error) return;
+    if (!error) {
+      // New row must appear in the next bell list fetch (realtime clients
+      // refetch immediately) — drop any cached list for this user.
+      invalidateProviderNotificationsListCache(input.user_id);
+      return;
+    }
 
     if (isInvalidEnumError(error) && row.type !== fallbackTypeFor(row.type)) {
       // Migration 570 not yet applied: retry with a 413-safe type.
@@ -211,6 +222,8 @@ export async function insertNotification(input: InsertNotificationInput): Promis
           requested_type: row.type,
           downgraded_type: downgraded.type,
         });
+      } else {
+        invalidateProviderNotificationsListCache(input.user_id);
       }
       return;
     }
@@ -266,8 +279,17 @@ export async function insertNotifications(
     const supabase = getSupabaseAdmin();
     const rows = inputs.map(buildRow);
 
+    const invalidateAll = () => {
+      for (const userId of new Set(rows.map((r) => r.user_id))) {
+        invalidateProviderNotificationsListCache(userId);
+      }
+    };
+
     const { error } = await supabase.from("notifications").insert(rows);
-    if (!error) return;
+    if (!error) {
+      invalidateAll();
+      return;
+    }
 
     if (!isInvalidEnumError(error)) {
       console.warn("[insertNotifications] batch insert failed:", error.message);
@@ -279,6 +301,8 @@ export async function insertNotifications(
     const { error: retryErr } = await supabase.from("notifications").insert(downgraded);
     if (retryErr) {
       console.warn("[insertNotifications] downgrade retry failed:", retryErr.message);
+    } else {
+      invalidateAll();
     }
   } catch (err) {
     console.warn("[insertNotifications] unexpected error:", err);

@@ -62,6 +62,7 @@ export default function MembershipScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [cancellingSalonId, setCancellingSalonId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [updatingCardId, setUpdatingCardId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,6 +179,65 @@ export default function MembershipScreen() {
       Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to update auto-renew"));
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const updateMembershipCard = async (membership: ProviderMembership) => {
+    setUpdatingCardId(membership.id);
+    try {
+      const cardsRes = await api.get<Array<{ id: string; last4?: string; card_type?: string; expiry_label?: string; is_expired?: boolean }>>(
+        "/api/me/payment-methods",
+      );
+      if (cardsRes.error) {
+        Alert.alert("Error", getApiErrorMessage(cardsRes.error, "Could not load saved cards"));
+        return;
+      }
+      const cards = Array.isArray(cardsRes.data) ? cardsRes.data : [];
+      const usable = cards.filter((c) => !c.is_expired);
+      if (usable.length === 0) {
+        Alert.alert(
+          "No saved cards",
+          "Add a payment card in Payment Methods, then return here to update your membership billing.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Payment Methods",
+              onPress: () => router.push("/(app)/account-settings/payments" as never),
+            },
+          ],
+        );
+        return;
+      }
+      Alert.alert(
+        membership.status === "past_due" ? "Update payment card" : "Change payment card",
+        `Choose a card for ${membership.provider_name}.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          ...usable.map((card) => ({
+            text: `${(card.card_type ?? "Card").toUpperCase()} •••• ${card.last4 ?? "****"}${card.expiry_label ? ` (${card.expiry_label})` : ""}`,
+            onPress: async () => {
+              const res = await api.post<{ success?: boolean; message?: string }>(
+                "/api/me/membership/payment-method",
+                { membership_id: membership.id, payment_method_id: card.id },
+              );
+              if (res.error || !res.data?.success) {
+                Alert.alert("Error", res.data?.message ?? getApiErrorMessage(res.error, "Failed to update card"));
+              } else {
+                await load();
+                Alert.alert("Done", "Payment card updated.");
+              }
+            },
+          })),
+          {
+            text: "Add new card",
+            onPress: () => router.push("/(app)/account-settings/payments" as never),
+          },
+        ],
+      );
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to update card"));
+    } finally {
+      setUpdatingCardId(null);
     }
   };
 
@@ -319,17 +379,40 @@ export default function MembershipScreen() {
                     )}
                   </View>
 
-                  {/* Card info */}
-                  {pm.card && (
+                  {/* Card info + update */}
+                  {pm.card ? (
                     <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Ionicons name="card-outline" size={16} color={Colors.gray[500]} />
                       <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{cardLabel(pm.card)}</Text>
                     </View>
-                  )}
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => updateMembershipCard(pm)}
+                    disabled={updatingCardId === pm.id}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ fontSize: 13, color: isPastDue ? "#DC2626" : Colors.primary, fontWeight: "600" }}>
+                      {updatingCardId === pm.id
+                        ? "Loading cards…"
+                        : isPastDue
+                          ? "Update payment card"
+                          : "Change payment card"}
+                    </Text>
+                  </TouchableOpacity>
 
                   {/* Billing history link */}
                   <TouchableOpacity
-                    onPress={() => router.push({ pathname: "/(app)/account-settings/membership-billing-history", params: { membership_id: pm.id, provider_name: pm.provider_name } })}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/account-settings/membership-billing-history",
+                        params: {
+                          membership_id: pm.id,
+                          provider_id: pm.provider_id,
+                          provider_name: pm.provider_name,
+                          plan_id: pm.plan_id,
+                        },
+                      })
+                    }
                     style={{ marginTop: 8 }}
                   >
                     <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("billingHistoryTitle")} →</Text>

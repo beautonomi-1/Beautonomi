@@ -222,7 +222,11 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   if (
     nTypeLc === "custom_offer" ||
     nTypeLc === "custom_request" ||
-    nTypeLc.includes("custom_request")
+    nTypeLc.includes("custom_request") ||
+    nTypeLc === "provider_custom_offer_changes_requested" ||
+    nTypeLc === "provider_custom_request_expired" ||
+    templateKey === "provider_custom_offer_changes_requested" ||
+    templateKey === "provider_custom_request_expired"
   ) {
     router.push("/(app)/(tabs)/more/custom-requests" as never);
     return true;

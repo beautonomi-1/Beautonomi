@@ -579,6 +579,10 @@ export default function ProductCheckoutScreen() {
       // Important: close the blocking overlay before opening Paystack WebView.
       // Two RN modals competing can leave users stuck on "opening payment page".
       setProcessingPayment(false);
+      const reference = paystackRes.data.reference;
+      if (reference) {
+        markReferenceProcessing(reference);
+      }
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: pc("securePaymentTitle", undefined, "Secure payment"),
         returnUrl: paystackReturnPath,
@@ -595,7 +599,7 @@ export default function ProductCheckoutScreen() {
 
       setProcessingPayment(true);
       setProcessingMessage(pc("confirmingPayment", undefined, "Confirming your payment…"));
-      let reference = paystackRes.data.reference;
+      let resolvedReference = paystackRes.data.reference;
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
           setProcessingPayment(false);
@@ -603,11 +607,10 @@ export default function ProductCheckoutScreen() {
           return;
         }
         const extracted = extractPaystackReferenceFromUrl(pr.url);
-        if (extracted) reference = extracted;
+        if (extracted) resolvedReference = extracted;
       }
-      if (reference) {
-        markReferenceProcessing(reference);
-        await verifyPaystackWithRetry(reference);
+      if (resolvedReference) {
+        await verifyPaystackWithRetry(resolvedReference);
       }
 
       let paid = false;

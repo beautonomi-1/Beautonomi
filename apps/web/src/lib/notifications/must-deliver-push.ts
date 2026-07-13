@@ -54,7 +54,12 @@ const TRANSACTIONAL_PUSH_OVERRIDES = new Set<string>([
   "customer_custom_offer",
   "customer_custom_offer_withdrawn",
   "customer_custom_offer_expired",
+  "customer_custom_offer_updated",
+  "customer_custom_request_declined",
+  "customer_custom_request_expired",
   "provider_custom_offer_declined",
+  "provider_custom_offer_changes_requested",
+  "provider_custom_request_expired",
 ]);
 
 /** Prefixes for transactional keys that must not inherit marketing classification. */

@@ -3,12 +3,14 @@
  *
  * Strategy (in order):
  *   1. Try @didit-protocol/sdk-react-native native SDK
- *   2. Fall back to expo-web-browser  (in-app browser tab)
+ *   2. Fall back to system browser on iOS (Safari — reliable camera) or
+ *      expo-web-browser on Android (Custom Tabs)
  *
  * SDK result is OPTIMISTIC UI only. Authoritative gate-unlock comes from the webhook.
  */
 
 import * as WebBrowser from "expo-web-browser";
+import { Linking, Platform } from "react-native";
 import { api } from "@/lib/api-client";
 import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 
@@ -137,7 +139,7 @@ export async function launchDidit(
       }
     }
 
-    // WebBrowser fallback
+    // Browser fallback — iOS uses system Safari for reliable getUserMedia/camera.
     const urlToOpen = sessionUrl ?? null;
     if (!urlToOpen) {
       return {
@@ -146,9 +148,18 @@ export async function launchDidit(
       };
     }
 
+    if (Platform.OS === "ios") {
+      const canOpen = await Linking.canOpenURL(urlToOpen);
+      if (!canOpen) {
+        return { ok: false, error: "Could not open verification in Safari." };
+      }
+      await Linking.openURL(urlToOpen);
+      return { ok: true, sdkResult: "completed" };
+    }
+
     const browserResult = await WebBrowser.openBrowserAsync(urlToOpen, {
       dismissButtonStyle: "close",
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
     });
 
     const sdkResult: "completed" | "cancelled" =

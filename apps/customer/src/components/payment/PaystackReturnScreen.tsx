@@ -12,10 +12,13 @@
  *    manually at any point, even while the spinner is running.
  *  - Show a "taking longer than expected" hint after `SLOW_HINT_MS` ms of
  *    active verification.
+ *  - Hard watchdog so verification can never spin forever.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -25,6 +28,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { haptic } from "@/lib/haptics";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import {
   clearReferenceProcessing,
@@ -84,12 +88,17 @@ export interface PaystackReturnScreenProps {
 /** How long before we surface the "taking longer" hint (ms). */
 const SLOW_HINT_MS = 7_000;
 
+/** Hard cap — verification cannot spin longer than this (ms). */
+const VERIFY_WATCHDOG_MS = 30_000;
+
+/** Cooperative dismiss when parent owns verify (ms). */
+const COOPERATIVE_DISMISS_MS = 400;
+
 /** Auto-redirect delay after resolved states (mirrors existing screens). */
 const AUTO_REDIRECT_MS_SUCCESS = 1_500;
 const AUTO_REDIRECT_MS_PENDING = 1_500;
 const AUTO_REDIRECT_MS_FAILED = 2_000;
 const AUTO_REDIRECT_MS_CANCELLED = 800;
-const AUTO_REDIRECT_MS_PROCESSING = 5_000; // cooperative branch
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,9 +126,6 @@ export function PaystackReturnScreen({
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Keep router in a ref so the `navigate` callback stays stable across
-  // renders without listing `router` as a dependency (avoids effect re-runs
-  // when the router object reference changes, e.g. in test environments).
   const routerRef = useRef(router);
   routerRef.current = router;
 
@@ -129,30 +135,57 @@ export function PaystackReturnScreen({
   const [mode, setMode] = useState<ReturnMode>(reference ? "verifying" : "returning");
   const [resolvedTarget, setResolvedTarget] = useState<RouteTarget | null>(null);
   const [slow, setSlow] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
-  /**
-   * Guards against double-navigation: once either the auto-timer or the
-   * manual button triggers navigation, this ref prevents the other path
-   * from firing a second `router.replace`.
-   */
   const navigatedRef = useRef(false);
+  const successScale = useRef(new Animated.Value(0.85)).current;
 
-  /**
-   * Stable navigate function — safe to include in effect deps without
-   * triggering re-runs on every render.
-   */
   const navigate = useCallback((target: RouteTarget) => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
     routerRef.current.replace(target as never);
   }, []);
 
+  const dismissCooperative = useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    const r = routerRef.current as { canGoBack?: () => boolean; back?: () => void };
+    if (typeof r.canGoBack === "function" && r.canGoBack()) {
+      r.back?.();
+      return;
+    }
+    routerRef.current.replace(fallbackRoute as never);
+  }, [fallbackRoute]);
+
+  const handleRetry = useCallback(() => {
+    navigatedRef.current = false;
+    setSlow(false);
+    setResolvedTarget(null);
+    setMode("verifying");
+    setRetryCount((c) => c + 1);
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "success") return;
+    haptic.success();
+    successScale.setValue(0.85);
+    Animated.timing(successScale, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.back(1.4)),
+      useNativeDriver: true,
+    }).start();
+  }, [mode, successScale]);
+
   // ── Verify state machine ────────────────────────────────────────────────────
   useEffect(() => {
     let aborted = false;
+    let verifySettled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
     const addTimer = (fn: () => void, ms: number) => {
-      const t = setTimeout(() => { if (!aborted) fn(); }, ms);
+      const t = setTimeout(() => {
+        if (!aborted) fn();
+      }, ms);
       timers.push(t);
       return t;
     };
@@ -162,44 +195,50 @@ export function PaystackReturnScreen({
       timers.forEach(clearTimeout);
     };
 
-    // ── Cancelled ─────────────────────────────────────────────────────────────
     if (cancelled === "1") {
       setMode("cancelled");
       addTimer(() => navigate(cancelledRoute), AUTO_REDIRECT_MS_CANCELLED);
       return cleanup;
     }
 
-    // ── Cooperative branch: parent screen owns verification ───────────────────
-    // The parent already called markReferenceProcessing. We step aside and
-    // let it own navigation, but still show the button so the user can leave.
     if (reference && isReferenceProcessing(reference)) {
       clearReferenceProcessing(reference);
-      addTimer(() => navigate(fallbackRoute), AUTO_REDIRECT_MS_PROCESSING);
+      setMode("returning");
+      addTimer(() => dismissCooperative(), COOPERATIVE_DISMISS_MS);
       return cleanup;
     }
 
-    // ── No reference: redirect immediately ───────────────────────────────────
     if (!reference) {
       setMode("returning");
       addTimer(() => navigate(fallbackRoute), 200);
       return cleanup;
     }
 
-    // ── Primary verify path ───────────────────────────────────────────────────
     markReferenceProcessing(reference);
 
-    // Slow hint timer — fires only while still verifying.
     const slowTimer = setTimeout(() => {
       if (!aborted) setSlow(true);
     }, SLOW_HINT_MS);
     timers.push(slowTimer);
 
+    const watchdogTimer = setTimeout(() => {
+      if (aborted || verifySettled) return;
+      verifySettled = true;
+      setSlow(false);
+      clearTimeout(slowTimer);
+      setMode("pending");
+      addTimer(() => navigate(fallbackRoute), AUTO_REDIRECT_MS_PENDING);
+    }, VERIFY_WATCHDOG_MS);
+    timers.push(watchdogTimer);
+
     void (async () => {
       const result = await verifyPaystackWithRetry(reference, {
         endpoint: verifyEndpoint,
       });
-      if (aborted) return;
+      if (aborted || verifySettled) return;
+      verifySettled = true;
       clearTimeout(slowTimer);
+      clearTimeout(watchdogTimer);
       setSlow(false);
 
       const target = resolveTarget(result.data);
@@ -218,7 +257,6 @@ export function PaystackReturnScreen({
         return;
       }
 
-      // pending or unknown — optimistic: webhook will land soon.
       setMode("pending");
       addTimer(() => navigate(target ?? fallbackRoute), AUTO_REDIRECT_MS_PENDING);
     })();
@@ -227,7 +265,9 @@ export function PaystackReturnScreen({
   }, [
     reference,
     cancelled,
+    retryCount,
     navigate,
+    dismissCooperative,
     cancelledRoute,
     fallbackRoute,
     resolveTarget,
@@ -239,21 +279,31 @@ export function PaystackReturnScreen({
 
   const headline = (() => {
     switch (mode) {
-      case "success":  return "Payment confirmed";
-      case "failed":   return "Payment could not be confirmed";
-      case "pending":  return "Your payment is being confirmed";
-      case "cancelled": return "Payment cancelled";
-      case "verifying": return labels.verifying;
-      default:         return labels.returning;
+      case "success":
+        return "Payment confirmed";
+      case "failed":
+        return "Payment could not be confirmed";
+      case "pending":
+        return "Your payment is being confirmed";
+      case "cancelled":
+        return "Payment cancelled";
+      case "verifying":
+        if (slow) return "Confirming with your bank…";
+        return labels.verifying;
+      default:
+        return labels.returning;
     }
   })();
 
   const subtext = (() => {
     if (mode === "pending") {
-      return "We'll update your account within a few minutes. You can keep using the app while we confirm with your bank.";
+      return "We'll update your booking within a few minutes. You can keep using the app while we confirm with your bank.";
     }
     if (mode === "failed") {
       return "If you were charged, your booking will still be confirmed once the payment lands. Please check your Bookings tab.";
+    }
+    if (mode === "verifying" && slow) {
+      return "This usually takes a few seconds. You can leave this screen — we'll keep checking in the background.";
     }
     return null;
   })();
@@ -262,15 +312,19 @@ export function PaystackReturnScreen({
 
   const iconConfig = (() => {
     switch (mode) {
-      case "success":  return { name: "checkmark-circle" as const, color: Colors.success, bg: "#F0FDF4" };
-      case "pending":  return { name: "time-outline" as const,      color: "#D97706",     bg: "#FFFBEB" };
-      case "failed":   return { name: "close-circle" as const,      color: Colors.error,  bg: "#FEF2F2" };
-      case "cancelled": return { name: "close-circle-outline" as const, color: Colors.gray[400], bg: Colors.gray[100] };
-      default:         return null;
+      case "success":
+        return { name: "checkmark-circle" as const, color: Colors.success, bg: "#F0FDF4" };
+      case "pending":
+        return { name: "time-outline" as const, color: "#D97706", bg: "#FFFBEB" };
+      case "failed":
+        return { name: "close-circle" as const, color: Colors.error, bg: "#FEF2F2" };
+      case "cancelled":
+        return { name: "close-circle-outline" as const, color: Colors.gray[400], bg: Colors.gray[100] };
+      default:
+        return null;
     }
   })();
 
-  // Button destination: specific target when resolved, otherwise fallback/cancelled.
   const buttonTarget: RouteTarget = (() => {
     if (mode === "cancelled") return cancelledRoute;
     return resolvedTarget ?? fallbackRoute;
@@ -284,29 +338,30 @@ export function PaystackReturnScreen({
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.safe}>
         <View style={styles.content}>
-
-          {/* ── Icon area ─────────────────────────────────────────────── */}
           <View style={styles.iconArea}>
             {isSpinning ? (
               <ActivityIndicator size="large" color={Colors.primary} />
             ) : iconConfig ? (
-              <View style={[styles.iconCircle, { backgroundColor: iconConfig.bg }]}>
+              <Animated.View
+                style={[
+                  styles.iconCircle,
+                  { backgroundColor: iconConfig.bg },
+                  mode === "success" ? { transform: [{ scale: successScale }] } : null,
+                ]}
+              >
                 <Ionicons name={iconConfig.name} size={52} color={iconConfig.color} />
-              </View>
+              </Animated.View>
             ) : null}
           </View>
 
-          {/* ── Headline ──────────────────────────────────────────────── */}
           <Text style={styles.headline}>{headline}</Text>
 
-          {/* ── Subtext (pending / failed) ────────────────────────────── */}
           {subtext ? (
             <Text style={[styles.subtext, mode === "pending" && styles.subtextPending]}>
               {subtext}
             </Text>
           ) : null}
 
-          {/* ── Slow hint ─────────────────────────────────────────────── */}
           {slow && mode === "verifying" ? (
             <View style={styles.slowBanner}>
               <Ionicons
@@ -323,8 +378,17 @@ export function PaystackReturnScreen({
           ) : null}
         </View>
 
-        {/* ── Action button — always visible ────────────────────────────── */}
         <View style={styles.footer}>
+          {mode === "failed" ? (
+            <Pressable
+              style={({ pressed }) => [styles.secondaryCta, pressed && styles.ctaPressed]}
+              onPress={handleRetry}
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+            >
+              <Text style={styles.secondaryCtaText}>Try again</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
             onPress={() => navigate(buttonTarget)}
@@ -414,12 +478,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
     paddingTop: 12,
+    gap: 10,
   },
   cta: {
     backgroundColor: Colors.primary,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
+  },
+  secondaryCta: {
+    backgroundColor: Colors.gray[100],
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
   },
   ctaPressed: {
     opacity: 0.8,
@@ -429,5 +502,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     letterSpacing: 0.2,
+  },
+  secondaryCtaText: {
+    color: Colors.gray[800],
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

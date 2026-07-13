@@ -84,13 +84,34 @@ export function computeEffectiveCollectedAmount(booking: BookingFinancialSnapsho
   );
 }
 
+export function computeReconciledCancellationAmounts(
+  params: SettleBookingCancellationParams,
+): {
+  cancellationFeeApplied: number;
+  policyRefundAmount: number;
+  walletRefundAmount: number;
+  isLate: boolean;
+} {
+  const effectiveCollected =
+    params.maxWalletCredit ?? computeEffectiveCollectedAmount(params.booking);
+  const { cancellationFeeApplied: theoreticalFee, policyRefundAmount, isLate } =
+    computeCancellationFeeForSettlement(params);
+  const walletRefundAmount = roundCurrency2(
+    Math.min(policyRefundAmount, effectiveCollected),
+  );
+  const cancellationFeeApplied = roundCurrency2(
+    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundAmount)),
+  );
+  return { cancellationFeeApplied, policyRefundAmount, walletRefundAmount, isLate };
+}
+
 export function computeCancellationFeeForSettlement(
   params: SettleBookingCancellationParams,
 ): { cancellationFeeApplied: number; policyRefundAmount: number; isLate: boolean } {
   const bookingTotal = Number(params.refundBookingTotal ?? params.booking.total_amount ?? 0);
   const isLate = params.isLateCancellation === true;
 
-  if (params.cancelledBy === "provider") {
+  if (params.cancelledBy === "provider" || params.cancelledBy === "admin") {
     const explicit = params.explicitCancellationFee;
     if (explicit != null && Number.isFinite(Number(explicit))) {
       const fee = roundCurrency2(Math.max(0, Number(explicit)));
@@ -266,11 +287,16 @@ export async function settleBookingCancellation(
   const effectiveCollected =
     params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking);
 
-  const { cancellationFeeApplied, policyRefundAmount, isLate } =
+  const { cancellationFeeApplied: theoreticalFee, policyRefundAmount, isLate } =
     computeCancellationFeeForSettlement(params);
 
   const walletRefundTarget = roundCurrency2(
     Math.min(policyRefundAmount, effectiveCollected),
+  );
+
+  // Fee retained must reconcile with collected funds (deposit-only bookings).
+  const cancellationFeeApplied = roundCurrency2(
+    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget)),
   );
 
   let refundResult: RefundResult = { success: true, amount: 0 };
@@ -310,11 +336,16 @@ export async function settleBookingCancellation(
       params.policy,
       {
         isLateCancellation:
-          params.cancelledBy === "provider" ? false : isLate,
+          params.cancelledBy === "provider" || params.cancelledBy === "admin"
+            ? false
+            : isLate,
         maxWalletCredit: walletRefundTarget,
       },
     );
-  } else if (params.cancelledBy === "provider" && walletRefundTarget > 0) {
+  } else if (
+    (params.cancelledBy === "provider" || params.cancelledBy === "admin") &&
+    walletRefundTarget > 0
+  ) {
     const fullRefundPolicy: CancellationPolicy = {
       id: "provider_cancel_full",
       provider_id: booking.provider_id,
@@ -353,6 +384,8 @@ export async function settleBookingCancellation(
   const loyaltyReason =
     params.cancelledBy === "provider"
       ? "provider_cancel"
+      : params.cancelledBy === "admin"
+        ? "admin_cancel"
       : params.cancelledBy === "no_show"
         ? "no_show"
         : `${params.cancelledBy}_cancel`;
@@ -360,6 +393,7 @@ export async function settleBookingCancellation(
   const loyaltyRedeemedRestored = await restoreRedeemedLoyalty(admin, booking, loyaltyReason);
   const loyaltyEarnClawedBack =
     params.cancelledBy === "provider" ||
+    params.cancelledBy === "admin" ||
     params.cancelledBy === "no_show" ||
     params.cancelledBy === "customer" ||
     params.cancelledBy === "portal"
@@ -391,7 +425,11 @@ export async function settleBookingFinanceById(
   admin: SupabaseClient,
   bookingId: string,
   cancelledBy: CancellationSettledBy,
-  options?: { explicitCancellationFee?: number | null },
+  options?: {
+    explicitCancellationFee?: number | null;
+    isLateCancellation?: boolean;
+    policy?: CancellationPolicy | null;
+  },
 ): Promise<SettleBookingCancellationResult | null> {
   const { data: row, error } = await admin
     .from("bookings")
@@ -413,7 +451,10 @@ export async function settleBookingFinanceById(
   const { LAST_RESORT_CURRENCY } = await import("@/lib/regions/last-resort-currency");
 
   const locType = (b.location_type as "at_salon" | "at_home") || "at_salon";
-  const policy = await getCancellationPolicy(admin, b.provider_id, locType);
+  const policy =
+    options?.policy !== undefined
+      ? options.policy
+      : await getCancellationPolicy(admin, b.provider_id, locType);
   const tenantRegion = b.tenant_id ? await getTenantRegionConfig(b.tenant_id) : null;
   const currency = b.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
   const grossTotal = Number(b.total_amount ?? 0);
@@ -423,6 +464,7 @@ export async function settleBookingFinanceById(
     cancelledBy,
     currency,
     policy,
+    isLateCancellation: options?.isLateCancellation,
     explicitCancellationFee: options?.explicitCancellationFee,
     refundBookingTotal: grossTotal,
   });

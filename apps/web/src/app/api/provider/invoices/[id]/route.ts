@@ -122,7 +122,7 @@ export async function PATCH(
 
     const { data: existing, error: loadErr } = await admin
       .from("provider_invoices")
-      .select("id, provider_id, tax_rate")
+      .select("id, provider_id, tax_rate, status")
       .eq("id", id)
       .maybeSingle();
 
@@ -148,10 +148,14 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = {};
 
+    const existingStatus = (existing as { status?: string | null }).status;
     if (validated.status) {
       updates.status = validated.status;
       if (validated.status === "sent") {
         updates.sent_at = new Date().toISOString();
+      }
+      if (validated.status === "paid" && existingStatus !== "paid") {
+        updates.paid_at = new Date().toISOString();
       }
     }
 

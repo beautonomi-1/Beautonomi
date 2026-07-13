@@ -223,11 +223,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3) Savings from membership discounts applied on bookings
+    let savingsThisMonth = 0;
+    let savingsLifetime = 0;
+    let savingsCurrency = lastResortCurrency;
+    try {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { data: discountRows } = await supabase
+        .from("bookings")
+        .select("membership_discount_amount, currency, created_at")
+        .eq("customer_id", user.id)
+        .gt("membership_discount_amount", 0);
+
+      for (const row of (discountRows ?? []) as Array<{
+        membership_discount_amount?: number | string | null;
+        currency?: string | null;
+        created_at?: string | null;
+      }>) {
+        const amt = Number(row.membership_discount_amount ?? 0);
+        if (!Number.isFinite(amt) || amt <= 0) continue;
+        savingsLifetime += amt;
+        if (row.created_at && new Date(row.created_at) >= monthStart) {
+          savingsThisMonth += amt;
+        }
+        if (row.currency && typeof row.currency === "string") {
+          savingsCurrency = row.currency;
+        }
+      }
+      savingsThisMonth = Math.round(savingsThisMonth * 100) / 100;
+      savingsLifetime = Math.round(savingsLifetime * 100) / 100;
+    } catch {
+      // non-fatal — savings stay at 0
+    }
+
     return successResponse({
       has_membership: hasPlatformMembership,
       membership,
       benefits,
-      savings: { this_month: 0, lifetime: 0 },
+      savings: { this_month: savingsThisMonth, lifetime: savingsLifetime },
+      savings_currency: savingsCurrency,
       provider_memberships,
     });
   } catch (error) {

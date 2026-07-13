@@ -148,20 +148,52 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     );
 
     expect(result.success).toBe(true);
-    // Dual-target single-recipient push: one leg to the registered subscription
-    // and one alias fan-out leg (shared collapse_id), so push is NOT suppressed
-    // by quiet hours for a critical transactional template.
+    // Alias-first single-recipient push: one alias leg when recipients > 0.
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0][1] as { body?: string }).body ?? "{}"),
+    ) as Record<string, unknown>;
+    expect(body.include_aliases).toEqual({ external_id: [USER_ID] });
+    expect(body.include_subscription_ids).toBeUndefined();
+  });
+
+  it("falls back to subscription ids when alias leg reports zero recipients", async () => {
+    hoisted.getSupabaseAdminMock.mockReturnValue(
+      createSupabaseMock("provider_booking_request"),
+    );
+
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "alias-zero", recipients: 0 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "sub-fallback", recipients: 1 }),
+      });
+
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    const result = await sendTemplateNotification(
+      "provider_booking_request",
+      [USER_ID],
+      {},
+      ["push"],
+      { appType: "provider" },
+    );
+
+    expect(result.success).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const bodies = fetchMock.mock.calls.map(
       (c) => JSON.parse(String((c[1] as { body?: string }).body ?? "{}")) as Record<string, unknown>,
     );
-    const subLeg = bodies.find((b) => Array.isArray(b.include_subscription_ids));
     const aliasLeg = bodies.find((b) => b.include_aliases);
-    expect(subLeg?.include_subscription_ids).toEqual(["sub-1"]);
+    const subLeg = bodies.find((b) => Array.isArray(b.include_subscription_ids));
     expect(aliasLeg?.include_aliases).toEqual({ external_id: [USER_ID] });
-    expect(subLeg?.collapse_id).toBeDefined();
-    expect(subLeg?.collapse_id).toBe(aliasLeg?.collapse_id);
+    expect(subLeg?.include_subscription_ids).toEqual(["sub-1"]);
   });
 
   it("still sends custom offer template push during quiet hours", async () => {

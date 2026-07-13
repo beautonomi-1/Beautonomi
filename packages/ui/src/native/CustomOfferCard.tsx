@@ -21,6 +21,8 @@ import {
   getStatusAccentColor,
   shouldShowCustomerAcceptCta,
   shouldShowCustomerResumeCta,
+  shouldShowCustomerRequestChangesCta,
+  shouldShowProviderEditCta,
   shouldShowViewBookingCta,
   shouldShowWithdrawCta,
   type CustomOfferAttachmentBase,
@@ -49,6 +51,7 @@ function badgeBg(type: string): string {
   if (type === "expired") return "rgba(245,158,11,0.12)";
   if (type === "declined" || type === "needs_support") return "rgba(220,38,38,0.10)";
   if (type === "withdrawn") return "rgba(156,163,175,0.18)";
+  if (type === "changes_requested") return "rgba(37,99,235,0.12)";
   return "rgba(0,0,0,0.06)";
 }
 
@@ -58,6 +61,7 @@ function badgeText(type: string): string {
   if (type === "expired") return "#B45309";
   if (type === "declined" || type === "needs_support") return "#DC2626";
   if (type === "withdrawn") return "#6B7280";
+  if (type === "changes_requested") return "#1D4ED8";
   return TEXT_STRONG;
 }
 
@@ -103,8 +107,10 @@ export type CustomOfferCardProps = {
   onPress?: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
+  onRequestChanges?: () => void;
   onResume?: () => void;
   onWithdraw?: () => void;
+  onEdit?: () => void;
   onViewBooking?: () => void;
   /** Customer: tapped "Contact support" on a finalize_failed card. */
   onContactSupport?: () => void;
@@ -119,8 +125,10 @@ export function CustomOfferCard({
   onPress,
   onAccept,
   onDecline,
+  onRequestChanges,
   onResume,
   onWithdraw,
+  onEdit,
   onViewBooking,
   onContactSupport,
   style,
@@ -130,9 +138,11 @@ export function CustomOfferCard({
   const stripe = stripeColor(accentType);
 
   const showAccept = shouldShowCustomerAcceptCta(s, isMe);
+  const showRequestChanges = shouldShowCustomerRequestChangesCta(s, isMe);
   const showResume = shouldShowCustomerResumeCta(s, isMe);
   const showViewBooking = shouldShowViewBookingCta(s);
   const showWithdraw = shouldShowWithdrawCta(s, isMe, role);
+  const showEdit = shouldShowProviderEditCta(s, isMe, role);
 
   const preferredLabel = formatPreferredStart(attachment.preferred_start_at);
   const expiryLabel = !s.isInactive ? formatExpiry(attachment.expiration_at) : null;
@@ -189,6 +199,12 @@ export function CustomOfferCard({
           <Text style={[styles.secondary, { color: ACCENT_PENDING }]}>{expiryLabel}</Text>
         ) : null}
 
+        {s.isChangesRequested && attachment.change_request_note ? (
+          <Text style={[styles.secondary, { color: "#1D4ED8", marginTop: 8 }]}>
+            Requested changes: {attachment.change_request_note}
+          </Text>
+        ) : null}
+
         {/* finalize_failed: surface payment reference so the customer can quote it to support */}
         {s.isFinalizeFailed && attachment.payment_reference ? (
           <Text style={[styles.secondary, { fontSize: 10, marginTop: 6 }]}>
@@ -203,13 +219,18 @@ export function CustomOfferCard({
       </TouchableOpacity>
 
       {/* Footer CTAs */}
-      {(showAccept || showResume || showViewBooking || showWithdraw || s.isFinalizeFailed) ? (
+      {(showAccept || showRequestChanges || showResume || showViewBooking || showWithdraw || showEdit || s.isFinalizeFailed) ? (
         <View style={styles.footer}>
           {showAccept ? (
             <>
               <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnPrimary]} onPress={onAccept} activeOpacity={0.85}>
                 <Text style={styles.ctaBtnPrimaryText}>Accept &amp; pay</Text>
               </TouchableOpacity>
+              {showRequestChanges ? (
+                <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnOutlineBlue]} onPress={onRequestChanges} activeOpacity={0.85}>
+                  <Text style={styles.ctaBtnOutlineBlueText}>Request changes</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnGhost]} onPress={onDecline} activeOpacity={0.85}>
                 <Text style={styles.ctaBtnGhostText}>Decline</Text>
               </TouchableOpacity>
@@ -235,9 +256,16 @@ export function CustomOfferCard({
           ) : null}
 
           {showWithdraw && !showViewBooking ? (
-            <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnGhost]} onPress={onWithdraw} activeOpacity={0.85}>
-              <Text style={styles.ctaBtnGhostText}>Withdraw offer</Text>
-            </TouchableOpacity>
+            <View style={{ gap: 8 }}>
+              <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnGhost]} onPress={onWithdraw} activeOpacity={0.85}>
+                <Text style={styles.ctaBtnGhostText}>Withdraw offer</Text>
+              </TouchableOpacity>
+              {(showEdit || onEdit) ? (
+                <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnGhost]} onPress={onEdit} activeOpacity={0.85}>
+                  <Text style={styles.ctaBtnGhostText}>{s.isChangesRequested ? "Edit offer" : "Edit offer"}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -352,6 +380,16 @@ const styles = StyleSheet.create({
   },
   ctaBtnOutlineText: {
     color: ACCENT_ACTIVE,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  ctaBtnOutlineBlue: {
+    borderWidth: 1.5,
+    borderColor: "#2563EB",
+    backgroundColor: "rgba(37,99,235,0.08)",
+  },
+  ctaBtnOutlineBlueText: {
+    color: "#1D4ED8",
     fontSize: 13,
     fontWeight: "700",
   },

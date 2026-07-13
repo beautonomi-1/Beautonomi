@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { useCallback, useEffect } from "react";
+import { View, Text, TouchableOpacity, Alert, DeviceEventEmitter } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,6 +24,7 @@ import {
   resolveSetupStepRoute,
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 
 type SetupStep = {
   id: string;
@@ -144,6 +145,13 @@ export default function OnboardingHubScreen() {
       void refresh();
     }, [refresh]),
   );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
+      void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   if (loading && !data) {
     return (

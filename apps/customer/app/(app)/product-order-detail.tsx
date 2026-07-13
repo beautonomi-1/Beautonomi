@@ -14,7 +14,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import * as FileSystem from "expo-file-system/legacy";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
@@ -25,8 +24,7 @@ import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { supabase } from "@/lib/supabase/client";
-import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
+import { downloadPdf } from "@/lib/pdf-file";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
@@ -408,87 +406,13 @@ export default function ProductOrderDetailScreen() {
         <TouchableOpacity
           onPress={async () => {
             try {
-              const base = getBackendUrl().replace(/\/$/, "");
-              const safeName = `order_${(order.order_number || order.id).replace(/[^\w.-]+/g, "_")}.pdf`;
-              const pdfPath = `/api/me/orders/${encodeURIComponent(order.id)}/receipt/pdf`;
-
-              const tryBearerDownload = async (): Promise<boolean> => {
-                const { data } = await supabase.auth.getSession();
-                const token = data.session?.access_token;
-                if (!token || !base) return false;
-                const pdfUrl = `${base}${pdfPath}`;
-                const headers: Record<string, string> = {
-                  Authorization: `Bearer ${token}`,
-                  ...webApiTenantHeaders(),
-                };
-                if (Platform.OS === "web") {
-                  const r = await fetch(pdfUrl, { headers, credentials: "omit" });
-                  if (!r.ok) return false;
-                  const blob = await r.blob();
-                  const objUrl = URL.createObjectURL(blob);
-                  if (typeof window !== "undefined") {
-                    const a = document.createElement("a");
-                    a.href = objUrl;
-                    a.download = safeName;
-                    a.rel = "noopener";
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
-                  }
-                  return true;
-                }
-                if (!FileSystem.cacheDirectory) return false;
-                const fileUri = `${FileSystem.cacheDirectory}${safeName}`;
-                const dl = await FileSystem.downloadAsync(pdfUrl, fileUri, { headers });
-                if (dl.status !== 200) return false;
-                await Share.share({
-                  url: fileUri,
-                  message: `Order ${order.order_number}`,
-                });
-                return true;
-              };
-
-              if (await tryBearerDownload()) return;
-
-              const res = await api.post<{ url?: string }>(
-                `${pdfPath.replace("/receipt/pdf", "/receipt/signed-url")}`,
-                {},
-              );
-              const signedUrl = res.data?.url;
-              if (res.error || !signedUrl) {
-                const msg =
-                  (res.error as { message?: string } | null)?.message ?? pod("receiptGenerateFailed");
-                Alert.alert(pod("downloadReceiptTitle"), msg);
-                return;
-              }
-              if (Platform.OS === "web") {
-                router.push({
-                  pathname: "/(app)/in-app-browser",
-                  params: {
-                    url: encodeURIComponent(signedUrl),
-                    title: encodeURIComponent("Receipt"),
-                  },
-                } as never);
-                return;
-              }
-              if (!FileSystem.cacheDirectory) {
-                Alert.alert(pod("downloadReceiptTitle"), pod("storageUnavailable"));
-                return;
-              }
-              const fileUri = `${FileSystem.cacheDirectory}${safeName}`;
-              const dl = await FileSystem.downloadAsync(signedUrl, fileUri);
-              if (dl.status !== 200) {
-                const hint =
-                  dl.status === 401 || dl.status === 403
-                    ? "Your session may have expired. Please try again after refreshing the screen."
-                    : `The server returned status ${dl.status}.`;
-                Alert.alert(pod("downloadReceiptTitle"), pod("downloadPdfFailed", { hint }));
-                return;
-              }
-              await Share.share({
-                url: fileUri,
-                message: `Order ${order.order_number}`,
+              await downloadPdf({
+                router,
+                pdfPath: `/api/me/orders/${encodeURIComponent(order.id)}/receipt/pdf`,
+                signedUrlPath: `/api/me/orders/${encodeURIComponent(order.id)}/receipt/signed-url`,
+                filename: `order_${order.order_number || order.id}.pdf`,
+                title: `Order ${order.order_number}`,
+                label: pod("downloadReceiptTitle"),
               });
             } catch (e) {
               Alert.alert(pod("downloadReceiptTitle"), e instanceof Error ? e.message : pod("downloadUnknownError"));

@@ -339,6 +339,11 @@ export default function CustomRequestsPageClient({
   const [depositQuoteLoading, setDepositQuoteLoading] = useState(false);
   const [depositOfferCurrency, setDepositOfferCurrency] = useState<string | undefined>(undefined);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
+  const [requestChangesOfferId, setRequestChangesOfferId] = useState<string | null>(null);
+  const [requestChangesNote, setRequestChangesNote] = useState("");
+  const [requestingChanges, setRequestingChanges] = useState(false);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
 
   const openDepositDialog = async (offerId: string, currency?: string) => {
     setDepositChoiceOfferId(offerId);
@@ -416,14 +421,76 @@ export default function CustomRequestsPageClient({
     }
   };
 
+  const requestChanges = async () => {
+    if (!requestChangesOfferId || !requestChangesNote.trim()) {
+      toast.error("Please describe what you'd like changed");
+      return;
+    }
+    setRequestingChanges(true);
+    try {
+      await fetcher.post(`/api/me/custom-offers/${requestChangesOfferId}/request-changes`, {
+        note: requestChangesNote.trim(),
+      });
+      toast.success("Change request sent to the provider");
+      setRequestChangesOfferId(null);
+      setRequestChangesNote("");
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to request changes");
+    } finally {
+      setRequestingChanges(false);
+    }
+  };
+
+  const cancelRequest = async (requestId: string) => {
+    if (!window.confirm("Cancel this custom request? Any pending offers will be withdrawn.")) return;
+    setCancellingRequestId(requestId);
+    try {
+      await fetcher.post(`/api/me/custom-requests/${requestId}/cancel`, {});
+      toast.success("Request cancelled");
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel request");
+    } finally {
+      setCancellingRequestId(null);
+    }
+  };
+
+  const declineRequest = async (requestId: string) => {
+    const reason = window.prompt("Optional reason for declining this request:");
+    if (reason === null) return;
+    try {
+      await fetcher.post(`/api/provider/custom-requests/${requestId}/decline`, {
+        reason: reason.trim() || null,
+      });
+      toast.success("Request declined");
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to decline request");
+    }
+  };
+
   useEffect(() => {
-    if (deeplinkHandledRef.current || isLoading || isProvider) return;
+    if (deeplinkHandledRef.current || isLoading) return;
     const offerId = searchParams.get("offer") ?? searchParams.get("offer_id");
-    if (!offerId) return;
-    const offerExists = items.some((r) => r.offers?.some((o) => o.id === offerId));
-    if (!offerExists && items.length === 0) return;
-    deeplinkHandledRef.current = true;
-    void openDepositDialog(offerId);
+    const requestId = searchParams.get("request") ?? searchParams.get("request_id");
+
+    if (offerId) {
+      const offerExists = items.some((r) => r.offers?.some((o) => o.id === offerId));
+      if (!offerExists && items.length === 0) return;
+      deeplinkHandledRef.current = true;
+      void openDepositDialog(offerId);
+      return;
+    }
+
+    if (requestId && !isProvider) {
+      const requestExists = items.some((r) => r.id === requestId);
+      if (!requestExists && items.length === 0) return;
+      deeplinkHandledRef.current = true;
+      requestAnimationFrame(() => {
+        document.getElementById(`custom-request-${requestId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
   }, [isLoading, isProvider, items, searchParams]);
 
   const handleCreateOffer = async () => {
@@ -477,9 +544,28 @@ export default function CustomRequestsPageClient({
     }
   };
 
-  const openOfferModal = (requestId: string) => {
+  const openOfferModal = (requestId: string, editOfferId?: string) => {
     const selectedReq = items.find((r) => r.id === requestId);
     setSelectedRequestId(requestId);
+    setEditingOfferId(editOfferId ?? null);
+    if (editOfferId) {
+      const offer = selectedReq?.offers?.find((o) => o.id === editOfferId);
+      if (offer) {
+        setOfferFormData({
+          price: String(offer.price ?? ""),
+          currency: offer.currency ?? tenantCurrency,
+          duration_minutes: String(offer.duration_minutes ?? selectedReq?.duration_minutes ?? 60),
+          expiration_days: "7",
+          notes: offer.notes ?? "",
+          staff_id: offer.staff?.id ?? "",
+          location_id: offer.location?.id ?? "",
+          scheduled_at: selectedReq?.preferred_start_at ? selectedReq.preferred_start_at.slice(0, 16) : "",
+          travel_fee: offer.travel_fee != null ? String(offer.travel_fee) : "",
+        });
+        setShowOfferModal(true);
+        return;
+      }
+    }
     setOfferFormData({
       price: "",
       currency: tenantCurrency,
@@ -521,10 +607,16 @@ export default function CustomRequestsPageClient({
         if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
       }
 
-      await fetcher.post(`/api/provider/custom-requests/${selectedRequestId}/offers`, payload);
-      toast.success("Offer created successfully!");
+      if (editingOfferId) {
+        await fetcher.patch(`/api/provider/custom-offers/${editingOfferId}`, payload);
+        toast.success("Offer updated successfully!");
+      } else {
+        await fetcher.post(`/api/provider/custom-requests/${selectedRequestId}/offers`, payload);
+        toast.success("Offer created successfully!");
+      }
       setShowOfferModal(false);
       setSelectedRequestId(null);
+      setEditingOfferId(null);
       load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to create offer");
@@ -574,7 +666,7 @@ export default function CustomRequestsPageClient({
         ) : (
           <div className="space-y-4">
             {items.map((r) => (
-              <div key={r.id} className="border rounded-lg p-4 bg-white">
+              <div key={r.id} id={`custom-request-${r.id}`} className="border rounded-lg p-4 bg-white">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="text-sm text-gray-600">
@@ -591,6 +683,11 @@ export default function CustomRequestsPageClient({
                       )}
                     </div>
                     <div className="font-medium mt-1">{r.description}</div>
+                    {r.status === "declined" && r.declined_reason ? (
+                      <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-2 mt-2">
+                        Declined: {r.declined_reason}
+                      </div>
+                    ) : null}
                     <div className="text-sm text-gray-600 mt-2 space-y-0.5">
                       <span>
                         {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
@@ -606,13 +703,31 @@ export default function CustomRequestsPageClient({
                       )}
                     </div>
                   </div>
-                  {isProvider && r.status === "pending" && (!r.offers || r.offers.length === 0) && (
+                  {isProvider && ["pending", "offered"].includes(r.status) && (
+                    <div className="flex gap-2 shrink-0">
+                      {(!r.offers || r.offers.length === 0) && (
+                        <Button variant="outline" size="sm" onClick={() => openOfferModal(r.id)}>
+                          Create Offer
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => void declineRequest(r.id)}
+                      >
+                        Decline request
+                      </Button>
+                    </div>
+                  )}
+                  {!isProvider && ["pending", "offered"].includes(r.status) && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openOfferModal(r.id)}
+                      disabled={cancellingRequestId === r.id}
+                      onClick={() => void cancelRequest(r.id)}
                     >
-                      Create Offer
+                      {cancellingRequestId === r.id ? "Cancelling…" : "Cancel request"}
                     </Button>
                   )}
                 </div>
@@ -628,6 +743,7 @@ export default function CustomRequestsPageClient({
                         const isExpired = st === "expired";
                         const isFinalizeFailed = st === "finalize_failed";
                         const isPaymentPending = st === "payment_pending";
+                        const isChangesRequested = st === "changes_requested";
                         const isInactive = isPaid || isWithdrawn || isExpired || isDeclined || isFinalizeFailed;
                         const badgeClass = isPaid
                           ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
@@ -641,6 +757,8 @@ export default function CustomRequestsPageClient({
                               ? "bg-amber-100 text-amber-700 border border-amber-200"
                               : isPaymentPending
                                 ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+                                : isChangesRequested
+                                  ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
                                 : "bg-blue-50 text-blue-700 border border-blue-200";
                         const badgeLabel = isPaid
                           ? "Booked ✓"
@@ -654,6 +772,8 @@ export default function CustomRequestsPageClient({
                                   ? "Expired"
                                   : isPaymentPending
                                     ? "Processing…"
+                                    : isChangesRequested
+                                      ? "Changes requested"
                                     : "Pending";
                         return (
                           <div
@@ -682,6 +802,11 @@ export default function CustomRequestsPageClient({
                                 </div>
                               )}
                               {o.notes ? <div className="text-xs text-gray-600 mt-1 line-clamp-2">{o.notes}</div> : null}
+                              {isChangesRequested && o.change_request_note ? (
+                                <div className="text-xs text-indigo-700 mt-1 bg-indigo-50 rounded px-2 py-1">
+                                  Requested changes: {o.change_request_note}
+                                </div>
+                              ) : null}
                               <div className="text-[11px] text-gray-400 mt-1">Tap for details</div>
                             </div>
                             {!isProvider && (
@@ -694,6 +819,16 @@ export default function CustomRequestsPageClient({
                                   <Button variant="secondary" size="sm" disabled>Processing…</Button>
                                 ) : (
                                   <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setRequestChangesOfferId(o.id);
+                                        setRequestChangesNote("");
+                                      }}
+                                    >
+                                      Request changes
+                                    </Button>
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1337,6 +1472,7 @@ export default function CustomRequestsPageClient({
             const isExpired = rawStatus === "expired";
             const isFinalizeFailed = rawStatus === "finalize_failed";
             const isPaymentPending = rawStatus === "payment_pending";
+            const isChangesRequested = rawStatus === "changes_requested";
             const statusLabel = isPaid
               ? "Booked ✓"
               : isFinalizeFailed
@@ -1349,6 +1485,8 @@ export default function CustomRequestsPageClient({
                       ? "Expired"
                       : isPaymentPending
                         ? "Processing…"
+                        : isChangesRequested
+                          ? "Changes requested"
                         : "Pending";
             const statusClass = isPaid
               ? "bg-emerald-100 text-emerald-700"
@@ -1420,6 +1558,12 @@ export default function CustomRequestsPageClient({
                     <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
                   </div>
                 )}
+                {isChangesRequested && d.change_request_note && (
+                  <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                    <span className="font-semibold">Customer requested changes: </span>
+                    {d.change_request_note}
+                  </div>
+                )}
                 {isExpired && (
                   <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                     This offer has expired. The provider may send a new one.
@@ -1454,6 +1598,19 @@ export default function CustomRequestsPageClient({
                       >
                         Accept & Pay
                       </Button>
+                      {rawStatus === "pending" && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => {
+                            setOfferDetailOpen(false);
+                            setRequestChangesOfferId(d.id);
+                            setRequestChangesNote("");
+                          }}
+                        >
+                          Request changes
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         className="w-full"
@@ -1474,9 +1631,22 @@ export default function CustomRequestsPageClient({
                     </Button>
                   )}
                   {isProvider && !isPaid && !isWithdrawn && !isExpired && d.id && (
-                    <Button
-                      variant="outline"
-                      className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                    <>
+                      {(rawStatus === "pending" || isChangesRequested) && (
+                        <Button
+                          className="w-full"
+                          onClick={() => {
+                            setOfferDetailOpen(false);
+                            const reqId = d.request_id ?? items.find((r) => r.offers?.some((o) => o.id === d.id))?.id;
+                            if (reqId) openOfferModal(reqId, d.id);
+                          }}
+                        >
+                          Edit offer
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
                       onClick={async () => {
                         if (!confirm("Are you sure you want to withdraw this offer?")) return;
                         try {
@@ -1493,6 +1663,7 @@ export default function CustomRequestsPageClient({
                     >
                       Withdraw Offer
                     </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -1500,6 +1671,30 @@ export default function CustomRequestsPageClient({
           })() : (
             <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!requestChangesOfferId} onOpenChange={(open) => !open && setRequestChangesOfferId(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request changes</DialogTitle>
+            <DialogDescription>
+              Tell the provider what you would like adjusted on this offer.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={requestChangesNote}
+            onChange={(e) => setRequestChangesNote(e.target.value)}
+            placeholder="e.g. Can you adjust the price or move the appointment to Saturday afternoon?"
+            rows={4}
+            maxLength={4000}
+          />
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setRequestChangesOfferId(null)}>Cancel</Button>
+            <Button disabled={requestingChanges || !requestChangesNote.trim()} onClick={() => void requestChanges()}>
+              {requestingChanges ? "Sending…" : "Send request"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
       </div>

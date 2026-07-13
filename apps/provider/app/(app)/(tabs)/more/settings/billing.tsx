@@ -5,15 +5,12 @@ import {
   TextInput,
   Alert,
   TouchableOpacity,
-  Linking,
-  Share,
-  Platform,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as FileSystem from "expo-file-system/legacy";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { api } from "@/lib/api-client";
+import { downloadPdf, sharePdfFlow } from "@/lib/pdf-file";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -26,7 +23,6 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
-import { APP_URL } from "@/config/public-env";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 
@@ -104,6 +100,7 @@ function formatBillingAddress(value: BillingData["billingAddress"]): string {
 
 export default function BillingScreen() {
   useResponsive();
+  const router = useRouter();
   const {
     data: billing,
     loading,
@@ -150,38 +147,33 @@ export default function BillingScreen() {
   }, [refresh]);
 
   const handleDownloadInvoice = useCallback(async (inv: Invoice) => {
-    if (Platform.OS === "web") {
-      const base = (APP_URL || "").replace(/\/$/, "");
-      const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
-      if (!url) {
-        Alert.alert("Error", "App URL not configured");
-        return;
-      }
-      Linking.openURL(url).catch(() => {});
-      return;
-    }
     try {
-      const res = await api.post<{ url?: string }>(
-        `/api/provider/invoices/${inv.id}/signed-url`,
-        {}
-      );
-      const signedUrl = res.data?.url;
-      if (res.error || !signedUrl) {
-        const msg =
-          (res.error as { message?: string } | null)?.message ??
-          "Could not generate invoice. Please try again.";
-        Alert.alert("Download invoice", msg);
-        return;
-      }
-      const fileUri = `${FileSystem.cacheDirectory}invoice_${inv.invoice_number || inv.id}.pdf`;
-      await FileSystem.downloadAsync(signedUrl, fileUri);
-      await Share.share({
-        url: fileUri,
-        message: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,
+      await downloadPdf({
+        router,
+        pdfPath: `/api/provider/invoices/${inv.id}/download`,
+        signedUrlPath: `/api/provider/invoices/${inv.id}/signed-url`,
+        filename: `invoice_${inv.invoice_number || inv.id}.pdf`,
+        title: `Invoice ${inv.invoice_number}`,
+        label: "invoice",
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Download failed";
       Alert.alert("Download failed", msg);
+    }
+  }, [router]);
+
+  const handleShareInvoice = useCallback(async (inv: Invoice) => {
+    try {
+      await sharePdfFlow({
+        pdfPath: `/api/provider/invoices/${inv.id}/download`,
+        signedUrlPath: `/api/provider/invoices/${inv.id}/signed-url`,
+        filename: `invoice_${inv.invoice_number || inv.id}.pdf`,
+        title: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,
+        label: "invoice",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Share failed";
+      Alert.alert("Share failed", msg);
     }
   }, []);
 
@@ -561,7 +553,7 @@ export default function BillingScreen() {
                   ),
                   { marginBottom: 8 },
                 ]}
-                onPress={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
+                onPress={() => selectedInvoice && handleShareInvoice(selectedInvoice)}
                 accessibilityLabel="Share invoice"
                 accessibilityRole="button"
               >

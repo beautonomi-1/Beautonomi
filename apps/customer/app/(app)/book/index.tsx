@@ -442,9 +442,13 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
         fontSize: 9,
         color: isSelected ? "rgba(255,255,255,0.75)" : "#9CA3AF",
         fontWeight: "700",
-        letterSpacing: 0.5,
+        letterSpacing: 0.3,
         textTransform: "uppercase",
         marginBottom: 3,
+        textAlign: "center",
+        lineHeight: 12,
+        width: "100%",
+        includeFontPadding: false,
       }}>
         {dayNames[date.getDay()].slice(0, 3)}
       </Text>
@@ -453,6 +457,8 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
         fontWeight: "800",
         color: isSelected ? "#fff" : isToday ? Colors.primary : "#111827",
         lineHeight: 22,
+        textAlign: "center",
+        includeFontPadding: false,
       }}>
         {date.getDate()}
       </Text>

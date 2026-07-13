@@ -11,11 +11,16 @@ export type CustomOfferAttachmentMessageStatus =
   | "expired"
   | "withdrawn"
   | "declined"
-  | "finalize_failed";
+  | "finalize_failed"
+  | "changes_requested";
 
 export type PatchCustomOfferMessageAttachmentsInput = {
   status: CustomOfferAttachmentMessageStatus;
   bookingId?: string | null;
+  changeRequestNote?: string | null;
+  price?: number;
+  durationMinutes?: number;
+  expirationAt?: string | null;
 };
 
 /** @internal exported for unit tests */
@@ -38,6 +43,13 @@ export function applyCustomOfferAttachmentPatch(
     next.withdrawn = false;
     next.expired = false;
     next.booking_id = null;
+    next.change_request_note = null;
+  } else if (patch.status === "changes_requested") {
+    next.withdrawn = false;
+    next.expired = false;
+    if (patch.changeRequestNote !== undefined) {
+      next.change_request_note = patch.changeRequestNote;
+    }
   } else if (patch.status === "payment_pending") {
     next.withdrawn = false;
     next.expired = false;
@@ -51,6 +63,15 @@ export function applyCustomOfferAttachmentPatch(
 
   if (patch.bookingId !== undefined) {
     next.booking_id = patch.bookingId;
+  }
+  if (patch.price !== undefined) {
+    next.price = patch.price;
+  }
+  if (patch.durationMinutes !== undefined) {
+    next.duration_minutes = patch.durationMinutes;
+  }
+  if (patch.expirationAt !== undefined) {
+    next.expiration_at = patch.expirationAt;
   }
 
   return next;

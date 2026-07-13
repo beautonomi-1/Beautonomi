@@ -40,12 +40,13 @@ export async function POST(
       return notFoundResponse("Notification not found");
     }
 
-    // Mark as read
+    // Mark as read (idempotent — skip rows already read so read_at is stable)
     const { error: updateError } = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .eq("is_read", false);
 
     if (updateError) {
       throw updateError;

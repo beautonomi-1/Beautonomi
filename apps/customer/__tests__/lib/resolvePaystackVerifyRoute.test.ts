@@ -27,12 +27,12 @@ describe("resolvePaystackVerifyRoute", () => {
     });
   });
 
-  it("routes membership payloads (membership_order alias) to explore tab", () => {
+  it("routes membership payloads (membership_order alias) to membership screen", () => {
     expect(
       resolvePaystackVerifyRoute({ status: "success", type: "membership_order", membershipOrderId: "m1" }),
-    ).toEqual({ pathname: "/(app)/(tabs)/explore" });
+    ).toEqual({ pathname: "/(app)/account-settings/membership" });
     expect(resolvePaystackVerifyRoute({ status: "success", type: "membership" })).toEqual({
-      pathname: "/(app)/(tabs)/explore",
+      pathname: "/(app)/account-settings/membership",
     });
   });
 

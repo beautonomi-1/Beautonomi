@@ -41,7 +41,58 @@ import {
   applyProviderNotificationRoute,
   PROVIDER_BOOKING_TEMPLATE_KEYS,
 } from "@/lib/resolveProviderNotificationRoute";
+import { navigateFromProviderNotification } from "@/lib/provider-notification-navigation";
 import { useInAppBanner } from "@/providers/InAppBannerProvider";
+
+/** Suppress duplicate foreground banners within this window (ms). */
+const RECENT_FG_PUSH_TTL_MS = 10_000;
+const recentForegroundPushes = new Map<string, number>();
+
+function buildForegroundPushDedupeKey(
+  gn: unknown,
+  data: Record<string, unknown> | undefined,
+): string | null {
+  const notif = gn as {
+    collapseId?: string;
+    notificationId?: string;
+    title?: string;
+    body?: string;
+  } | null;
+  const collapseId =
+    (typeof notif?.collapseId === "string" && notif.collapseId.trim()) ||
+    (typeof data?.collapse_id === "string" && data.collapse_id.trim()) ||
+    (typeof data?.group_id === "string" && data.group_id.trim()) ||
+    "";
+  if (collapseId) return `collapse:${collapseId}`;
+  const notifId =
+    (typeof notif?.notificationId === "string" && notif.notificationId.trim()) ||
+    (typeof data?.notification_id === "string" && data.notification_id.trim()) ||
+    "";
+  const title = String(notif?.title ?? "");
+  const body = String(notif?.body ?? "");
+  if (notifId || title || body) {
+    return `content:${notifId}|${title}|${body}`;
+  }
+  return null;
+}
+
+function shouldSkipDuplicateForegroundPush(
+  gn: unknown,
+  data: Record<string, unknown> | undefined,
+): boolean {
+  const key = buildForegroundPushDedupeKey(gn, data);
+  if (!key) return false;
+  const now = Date.now();
+  const seenAt = recentForegroundPushes.get(key);
+  if (seenAt != null && now - seenAt < RECENT_FG_PUSH_TTL_MS) {
+    return true;
+  }
+  recentForegroundPushes.set(key, now);
+  for (const [k, t] of recentForegroundPushes) {
+    if (now - t >= RECENT_FG_PUSH_TTL_MS) recentForegroundPushes.delete(k);
+  }
+  return false;
+}
 
 /** Suppress visible banner for silent OS badge sync (including legacy in-flight payloads). */
 function isBadgeSyncPushData(data: unknown): boolean {
@@ -96,6 +147,14 @@ function handleNotificationRoute(data: Record<string, unknown>) {
   markPushNotificationRead(data);
   const routed = applyProviderNotificationRoute(router, data);
   if (!routed) {
+    const navPayload = {
+      id: String(data.notification_id ?? data.id ?? ""),
+      type: String(data.type ?? data.template_key ?? ""),
+      data,
+      link: String(data.url ?? data.action_url ?? ""),
+      action_url: String(data.action_url ?? data.url ?? ""),
+    };
+    if (navigateFromProviderNotification(router, navPayload)) return;
     router.push("/(app)/notifications");
   }
 }
@@ -355,6 +414,11 @@ function usePushRegistration() {
                   ? (gn as { additionalData?: Record<string, unknown> }).additionalData
                   : undefined;
               if (isBadgeSyncPushData(data)) {
+                event.preventDefault();
+                emitNotificationBadgeRefresh();
+                return;
+              }
+              if (shouldSkipDuplicateForegroundPush(gn, data)) {
                 event.preventDefault();
                 emitNotificationBadgeRefresh();
                 return;

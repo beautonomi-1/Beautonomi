@@ -258,7 +258,7 @@ export default function CancellationPoliciesScreen() {
         <EmptyState
           icon="close-circle-outline"
           title="No policies"
-          description="Set up cancellation policies to protect your business from no-shows."
+          description="Set up late-cancellation rules so customers know when refunds apply."
           actionLabel="Add Policy"
           onAction={openAddSheet}
         />
@@ -295,38 +295,25 @@ export default function CancellationPoliciesScreen() {
                 </View>
               </View>
 
-              {/* Details */}
-              <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
-                <View style={[twStyle("flex-row items-center"), { marginRight: 16 }]}>
-                  <Ionicons name="time-outline" size={12} color="#9ca3af" />
-                  <Text style={twStyle("ml-1 text-xs text-gray-500")}>
-                    Within {policy.hours_before}h of appointment
-                  </Text>
-                </View>
-                <View style={[twStyle("flex-row items-center"), { marginRight: 16 }]}>
-                  <Ionicons name="cash-outline" size={12} color="#9ca3af" />
-                  <Text style={twStyle("ml-1 text-xs text-gray-500")}>
+              <View style={twStyle("mt-2")}>
+                <Text style={twStyle("text-xs text-gray-600")}>
+                  More than {policy.hours_before}h before: full wallet refund
+                </Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+                  Within {policy.hours_before}h (late): {policy.refund_percentage}% refund of amounts paid
+                </Text>
+                {policy.refund_percentage === 0 && policy.fee_amount > 0 ? (
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+                    Late fee:{" "}
                     {policy.fee_type === "percentage"
                       ? `${policy.fee_amount}%`
-                      : formatCurrency(policy.fee_amount)}{" "}
-                    fee
+                      : formatCurrency(policy.fee_amount)}
                   </Text>
-                </View>
-                {(policy.refund_percentage ?? 0) > 0 && (
-                  <View style={twStyle("flex-row items-center")}>
-                    <Ionicons name="return-down-back-outline" size={12} color="#9ca3af" />
-                    <Text style={twStyle("ml-1 text-xs text-gray-500")}>
-                      {policy.refund_percentage}% refund
-                    </Text>
-                  </View>
-                )}
+                ) : null}
                 {policy.location_type ? (
-                  <View style={[twStyle("mt-1 flex-row items-center"), { marginRight: 16 }]}>
-                    <Ionicons name="location-outline" size={12} color="#9ca3af" />
-                    <Text style={twStyle("ml-1 text-xs text-gray-500")}>
-                      {LOCATION_LABELS[policy.location_type] ?? policy.location_type}
-                    </Text>
-                  </View>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                    Applies to: {LOCATION_LABELS[policy.location_type] ?? policy.location_type}
+                  </Text>
                 ) : null}
               </View>
 

@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  TextInput,
 } from "react-native";
 import { useFocusEffect, router } from "expo-router";
 import { Image } from "expo-image";
@@ -51,6 +52,7 @@ interface CustomRequestOffer {
   location?: { id: string; name: string } | null;
   scheduled_at?: string | null;
   travel_fee?: number | null;
+  change_request_note?: string | null;
 }
 
 type LocationType = "at_salon" | "at_home";
@@ -63,6 +65,7 @@ interface CustomRequest {
   budget_max?: number | null;
   location_type?: LocationType | null;
   status: string;
+  declined_reason?: string | null;
   preferred_start_at?: string | null;
   created_at: string;
   service_name?: string | null;
@@ -173,7 +176,7 @@ function canContinuePayment(offer: CustomRequestOffer): boolean {
 }
 
 function canCancelRequest(item: CustomRequest): boolean {
-  if (item.status === "cancelled") return false;
+  if (item.status === "cancelled" || item.status === "declined") return false;
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
   if (hasPaidOffer) return false;
   return item.status === "pending" || item.status === "offered";
@@ -192,6 +195,7 @@ function RequestCard({
   item,
   onPayOffer,
   onDeclineOffer,
+  onRequestChanges,
   onPressProvider,
   onCancel,
   onViewOfferDetail,
@@ -202,6 +206,7 @@ function RequestCard({
   /** Opens canonical checkout (Bearer verify + Paystack return), same as chat. */
   onPayOffer: (offerId: string) => void;
   onDeclineOffer: (offerId: string) => void;
+  onRequestChanges: (offerId: string) => void;
   onPressProvider: () => void;
   onCancel: (requestId: string) => void;
   onViewOfferDetail: (offerId: string) => void;
@@ -216,8 +221,11 @@ function RequestCard({
   const hasPendingPayment =
     actionsAllowed && !hasPaidOffer && item.offers?.some(canContinuePayment);
   const isCancelled = item.status === "cancelled";
+  const isDeclined = item.status === "declined";
   const statusLabel = isCancelled
     ? "Cancelled"
+    : isDeclined
+      ? "Declined"
     : hasPaidOffer
       ? "Paid"
       : hasPendingPayment
@@ -228,6 +236,8 @@ function RequestCard({
 
   const statusBg = isCancelled
     ? "#FEE2E2"
+    : isDeclined
+      ? "#FEE2E2"
     : hasPaidOffer
       ? "#DCFCE7"
       : hasPendingPayment
@@ -237,6 +247,8 @@ function RequestCard({
           : Colors.gray[100];
   const statusText = isCancelled
     ? "#B91C1C"
+    : isDeclined
+      ? "#B91C1C"
     : hasPaidOffer
       ? "#166534"
       : hasPendingPayment
@@ -265,6 +277,11 @@ function RequestCard({
         </View>
       </View>
       <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
+      {isDeclined && item.declined_reason ? (
+        <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: "#B91C1C" }}>Declined: {item.declined_reason}</Text>
+        </View>
+      ) : null}
       {item.attachments && item.attachments.length > 0 ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
           {item.attachments.slice(0, 6).map((att) => (
@@ -365,6 +382,8 @@ function RequestCard({
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
                   ) : o.status === "declined" ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Declined</Text>
+                  ) : o.status === "changes_requested" ? (
+                    <Text style={{ fontSize: 14, color: "#1D4ED8", fontWeight: "600" }}>Changes requested</Text>
                   ) : o.status === "finalize_failed" ? (
                     <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>Needs support</Text>
                   ) : canPayContinue ? (
@@ -375,7 +394,15 @@ function RequestCard({
                       <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
                     </TouchableOpacity>
                   ) : canAccept ? (
-                    <View style={{ flexDirection: "row", gap: 8 }}>
+                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {o.status === "pending" ? (
+                        <TouchableOpacity
+                          onPress={() => onRequestChanges(o.id)}
+                          style={{ borderWidth: 1, borderColor: "#BFDBFE", backgroundColor: "#EFF6FF", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#1D4ED8" }}>Request changes</Text>
+                        </TouchableOpacity>
+                      ) : null}
                       <TouchableOpacity
                         onPress={() => onDeclineOffer(o.id)}
                         disabled={decliningOfferId === o.id}
@@ -425,6 +452,9 @@ export default function CustomRequestsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
+  const [requestChangesOfferId, setRequestChangesOfferId] = useState<string | null>(null);
+  const [requestChangesNote, setRequestChangesNote] = useState("");
+  const [requestingChanges, setRequestingChanges] = useState(false);
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
@@ -531,6 +561,40 @@ export default function CustomRequestsScreen() {
     [errTitle, load],
   );
 
+  const handleRequestChanges = useCallback(
+    (offerId: string) => {
+      setRequestChangesOfferId(offerId);
+      setRequestChangesNote("");
+    },
+    [],
+  );
+
+  const submitRequestChanges = useCallback(async () => {
+    if (!requestChangesOfferId || !requestChangesNote.trim()) {
+      Alert.alert(errTitle, "Please describe what you'd like changed");
+      return;
+    }
+    setRequestingChanges(true);
+    try {
+      const res = await api.post(`/api/me/custom-offers/${requestChangesOfferId}/request-changes`, {
+        note: requestChangesNote.trim(),
+      });
+      if (res.error) {
+        Alert.alert(errTitle, (res.error as { message?: string })?.message ?? "Failed to request changes");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setRequestChangesOfferId(null);
+      setRequestChangesNote("");
+      setOfferDetailVisible(false);
+      await load(true);
+    } catch (e) {
+      Alert.alert(errTitle, e instanceof Error ? e.message : "Failed to request changes");
+    } finally {
+      setRequestingChanges(false);
+    }
+  }, [errTitle, load, requestChangesNote, requestChangesOfferId]);
+
   const handleCancelRequest = useCallback(
     (requestId: string) => {
       Alert.alert(crl("cancelRequestTitle"), crl("cancelRequestBody"), [
@@ -594,6 +658,7 @@ export default function CustomRequestsScreen() {
             item={item}
             onPayOffer={openCustomOfferCheckout}
             onDeclineOffer={handleDeclineOffer}
+            onRequestChanges={handleRequestChanges}
             onPressProvider={() => handlePressProvider(item)}
             onCancel={handleCancelRequest}
             onViewOfferDetail={openOfferDetail}
@@ -740,6 +805,15 @@ export default function CustomRequestsScreen() {
                         <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
+                        onPress={() => {
+                          setOfferDetailVisible(false);
+                          setTimeout(() => handleRequestChanges(d.id), 300);
+                        }}
+                        style={{ borderRadius: 12, borderWidth: 1, borderColor: "#BFDBFE", backgroundColor: "#EFF6FF", alignItems: "center", paddingVertical: 14 }}
+                      >
+                        <Text style={{ color: "#1D4ED8", fontSize: 15, fontWeight: "600" }}>Request changes</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
                         onPress={() => handleDeclineOffer(d.id)}
                         disabled={decliningOfferId === d.id}
                         style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], alignItems: "center", paddingVertical: 14, opacity: decliningOfferId === d.id ? 0.6 : 1 }}
@@ -773,6 +847,30 @@ export default function CustomRequestsScreen() {
                 </ScrollView>
               );
             })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={!!requestChangesOfferId} transparent animationType="fade" onRequestClose={() => setRequestChangesOfferId(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }} onPress={() => setRequestChangesOfferId(null)}>
+          <Pressable style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20 }} onPress={(e) => e.stopPropagation()}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Request changes</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>Tell the provider what you would like adjusted.</Text>
+            <TextInput
+              value={requestChangesNote}
+              onChangeText={setRequestChangesNote}
+              placeholder="e.g. lower price or different time"
+              multiline
+              style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, padding: 12, minHeight: 100, textAlignVertical: "top", marginBottom: 16 }}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity onPress={() => setRequestChangesOfferId(null)} style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], paddingVertical: 12, alignItems: "center" }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void submitRequestChanges()} disabled={requestingChanges} style={{ flex: 1, borderRadius: 12, backgroundColor: "#1D4ED8", paddingVertical: 12, alignItems: "center", opacity: requestingChanges ? 0.6 : 1 }}>
+                <Text style={{ fontWeight: "700", color: Colors.white }}>{requestingChanges ? "Sending…" : "Send"}</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

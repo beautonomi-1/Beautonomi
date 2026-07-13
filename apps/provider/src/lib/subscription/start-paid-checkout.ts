@@ -1,11 +1,18 @@
 import type { ApiError } from "@beautonomi/types";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getSubscriptionPaystackReturnUrl } from "@/lib/payments/providerPaystackReturn";
 
 export type BillingPeriod = "monthly" | "yearly";
 
 export type PaidCheckoutStartResult =
-  | { ok: true; authorizationUrl: string; orderId?: string; alreadyActive?: boolean }
+  | {
+      ok: true;
+      authorizationUrl: string;
+      orderId?: string;
+      reference?: string;
+      alreadyActive?: boolean;
+    }
   | { ok: false; error: string; errorCode?: string | null; status?: number };
 
 export function defaultBillingPeriod(
@@ -87,10 +94,12 @@ export async function startPaidSubscriptionCheckout(options: {
     authorization_url?: string;
     payment_url?: string;
     order_id?: string;
+    reference?: string;
   }>("/api/provider/subscription/initialize-payment", {
     plan_id: subscriptionPlanId,
     billing_period: billingPeriod,
     in_app: inApp,
+    callback_url: getSubscriptionPaystackReturnUrl(),
   });
 
   if (initRes.error) {
@@ -115,5 +124,7 @@ export async function startPaidSubscriptionCheckout(options: {
     ok: true,
     authorizationUrl: url,
     orderId: typeof initRes.data?.order_id === "string" ? initRes.data.order_id : undefined,
+    reference:
+      typeof initRes.data?.reference === "string" ? initRes.data.reference : undefined,
   };
 }
