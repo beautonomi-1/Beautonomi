@@ -67,6 +67,7 @@ import type {
   ProviderServicesResponse,
   ProviderService,
   ProviderLocation,
+  ProviderContactDisclosure,
   StaffMember,
   PublicProviderProduct,
 } from "@/types/api";
@@ -222,7 +223,16 @@ function openingTimeSectionsForAbout(locations: ProviderLocation[]): { placeLabe
   }));
 }
 
-function AboutOpeningTimes({ locations, contentPadding }: { locations: ProviderLocation[]; contentPadding: number }) {
+function AboutOpeningTimes({
+  locations,
+  contentPadding,
+  disclosureTier,
+}: {
+  locations: ProviderLocation[];
+  contentPadding: number;
+  disclosureTier: "anon" | "authed" | "booked";
+}) {
+  if (disclosureTier === "anon") return null;
   const sections = openingTimeSectionsForAbout(locations);
   if (sections.length === 0) return null;
   return (
@@ -609,25 +619,35 @@ function CategoryPill({ label, active, onPress, contentPadding }: { label: strin
 }
 
 /* ─── Location Card ─── */
-function LocationCard({ loc }: { loc: ProviderLocation }) {
+function LocationCard({
+  loc,
+  disclosureTier,
+}: {
+  loc: ProviderLocation;
+  disclosureTier: "anon" | "authed" | "booked";
+}) {
   const isPublicSalon = loc.location_type === "salon";
+  const canShowExactAddress = disclosureTier === "booked" && Boolean(loc.address_line1);
   const fullAddress = [loc.address_line1, loc.address_line2, loc.city, loc.state, loc.country].filter(Boolean).join(", ");
   const serviceArea = [loc.city, loc.state, loc.country].filter(Boolean).join(", ");
 
   const openDirections = () => {
-    if (!isPublicSalon) return;
+    if (!canShowExactAddress) return;
     if (loc.latitude != null && loc.longitude != null) {
       Linking.openURL(`https://www.mapbox.com/directions/?destination=${loc.longitude},${loc.latitude}`).catch(() => {});
     } else if (fullAddress) {
       Linking.openURL(`https://www.mapbox.com/directions/?query=${encodeURIComponent(fullAddress)}`).catch(() => {});
     }
   };
-  const callPhone = () => { if (loc.phone) Linking.openURL(`tel:${loc.phone.replace(/\s/g, "")}`).catch(() => {}); };
+  const callPhone = () => {
+    if (disclosureTier !== "booked" || !loc.phone) return;
+    Linking.openURL(`tel:${loc.phone.replace(/\s/g, "")}`).catch(() => {});
+  };
 
   return (
     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginBottom: 10 }}>
       <Text style={{ fontWeight: "600", color: "#111827" }}>{loc.name}</Text>
-      {isPublicSalon ? (
+      {isPublicSalon && canShowExactAddress ? (
         <>
           <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
             {loc.address_line1}{loc.address_line2 ? `, ${loc.address_line2}` : ""}
@@ -638,17 +658,21 @@ function LocationCard({ loc }: { loc: ProviderLocation }) {
         </>
       ) : (
         <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
-          {serviceArea ? `Service area: ${serviceArea}` : "Service area available after booking"}
+          {serviceArea
+            ? `Service area: ${serviceArea}`
+            : disclosureTier === "authed"
+              ? "Exact address available after booking confirmation"
+              : "Sign in to see location details"}
         </Text>
       )}
       <View style={{ flexDirection: "row", marginTop: 10 }}>
-        {isPublicSalon && (loc.latitude != null || fullAddress) && (
+        {canShowExactAddress && (loc.latitude != null || fullAddress) && (
           <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", marginRight: 16 }}>
             <Ionicons name="navigate-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
             <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Directions</Text>
           </TouchableOpacity>
         )}
-        {loc.phone && (
+        {disclosureTier === "booked" && loc.phone && (
           <TouchableOpacity onPress={callPhone} style={{ flexDirection: "row", alignItems: "center" }}>
             <Ionicons name="call-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
             <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Call</Text>
@@ -1105,6 +1129,7 @@ export default function PartnerProfileScreen() {
   const membershipPaystackCheckout = useInAppPaystackCheckout();
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
+  const [disclosureTier, setDisclosureTier] = useState<"anon" | "authed" | "booked">("anon");
   const [services, setServices] = useState<ProviderServicesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1220,7 +1245,9 @@ export default function PartnerProfileScreen() {
           setError(getApiErrorMessage(provRes.error, pp("loadFailed")));
         }
       } else {
-        setProvider(provRes.data);
+        const prov = provRes.data;
+        setProvider(prov);
+        setDisclosureTier(prov?.disclosure_tier ?? "anon");
       }
       if (!svcRes.error) {
         setServices(svcRes.data);
@@ -1244,6 +1271,33 @@ export default function PartnerProfileScreen() {
   ]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!user?.id || !provider?.slug) return;
+    let cancelled = false;
+    api
+      .get<ProviderContactDisclosure>(`/api/providers/${encodeURIComponent(provider.slug)}/contact`)
+      .then((res) => {
+        if (cancelled || res.error || !res.data) return;
+        const contact = res.data;
+        setDisclosureTier(contact.disclosure_tier);
+        setProvider((prev) =>
+          prev
+            ? {
+                ...prev,
+                description: contact.description ?? prev.description,
+                website: contact.website ?? prev.website,
+                locations: contact.locations ?? prev.locations,
+                disclosure_tier: contact.disclosure_tier,
+              }
+            : prev,
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, provider?.slug]);
 
   useEffect(() => {
     if (provider && user) {
@@ -2477,7 +2531,9 @@ export default function PartnerProfileScreen() {
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
                     {provider.locations.length === 1 ? "Location" : `${provider.locations.length} Locations`}
                   </Text>
-                  {provider.locations.map((loc) => <LocationCard key={loc.id} loc={loc} />)}
+                  {provider.locations.map((loc) => (
+                    <LocationCard key={loc.id} loc={loc} disclosureTier={disclosureTier} />
+                  ))}
                 </View>
               )}
 
@@ -2803,7 +2859,13 @@ export default function PartnerProfileScreen() {
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 }}>About</Text>
 
                   {/* Business description */}
-                  {aboutDescription ? (
+                  {disclosureTier === "anon" && !user ? (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+                        Sign in to read the full description, opening times, and location details.
+                      </Text>
+                    </View>
+                  ) : aboutDescription ? (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
                         <Ionicons name="information-circle-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
@@ -2863,7 +2925,11 @@ export default function PartnerProfileScreen() {
                     </View>
                   </View>
 
-                  <AboutOpeningTimes locations={provider.locations ?? []} contentPadding={contentPadding} />
+                  <AboutOpeningTimes
+                    locations={provider.locations ?? []}
+                    contentPadding={contentPadding}
+                    disclosureTier={disclosureTier}
+                  />
 
                   {/* Specialties / categories */}
                   {provider.categories?.length > 0 && (

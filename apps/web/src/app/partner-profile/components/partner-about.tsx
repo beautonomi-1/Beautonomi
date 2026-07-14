@@ -3,6 +3,7 @@ import React from "react";
 import { MapPin, Clock } from "lucide-react";
 import Link from "next/link";
 import { formatProviderDescriptionDisplay } from "@beautonomi/utils";
+import type { ViewerTier } from "@/lib/providers/provider-disclosure";
 
 interface PartnerAboutProps {
   description?: string | null;
@@ -22,6 +23,8 @@ interface PartnerAboutProps {
     working_hours?: Record<string, { open: string; close: string; is_closed?: boolean }> | unknown;
   }>;
   operating_hours?: Record<string, { open: string; close: string; is_closed?: boolean }>;
+  disclosureTier?: ViewerTier;
+  isAuthenticated?: boolean;
 }
 
 type DayHoursNormalized = {
@@ -71,23 +74,23 @@ const readDayValue = (hoursData: Record<string, unknown>, day: string): unknown 
   const target = day.toLowerCase();
   const direct = entries.find(([k]) => k.toLowerCase() === target);
   if (direct) return direct[1];
-  // Fallback: allow abbreviated keys like "mon", "tue", etc.
   const abbrev = target.slice(0, 3);
   const short = entries.find(([k]) => k.toLowerCase().slice(0, 3) === abbrev);
   return short?.[1];
 };
 
-const PartnerAbout: React.FC<PartnerAboutProps> = ({ 
-  description, 
+const PartnerAbout: React.FC<PartnerAboutProps> = ({
+  description,
   locations = [],
-  operating_hours 
+  operating_hours,
+  disclosureTier = "anon",
+  isAuthenticated = false,
 }) => {
-  // Format operating hours if available - check both operating_hours prop and location working_hours
   const formatOperatingHours = () => {
-    // First try operating_hours prop
+    if (disclosureTier === "anon") return null;
+
     let hoursData = parseHoursSource(operating_hours);
-    
-    // If not available, try to get from primary location
+
     if (!hasNonEmptyHours(hoursData) && locations.length > 0) {
       const locationWithHours = [
         ...locations.filter((loc) => loc.is_primary),
@@ -98,10 +101,10 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
         hoursData = parseHoursSource(locationWithHours.working_hours);
       }
     }
-    
+
     if (!hasNonEmptyHours(hoursData)) return null;
-    
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+    const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
     return days.map((day) => {
       const normalized = normalizeDayHours(readDayValue(hoursData, day));
       if (!normalized || normalized.closed || !normalized.open || !normalized.close) {
@@ -109,34 +112,46 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
       }
       return {
         day: day.charAt(0).toUpperCase() + day.slice(1),
-        hours: `${normalized.open} - ${normalized.close}`
+        hours: `${normalized.open} - ${normalized.close}`,
       };
     });
   };
 
   const formattedHours = formatOperatingHours();
   const aboutDescription = formatProviderDescriptionDisplay(description);
-  // Privacy-first: only explicitly salon locations can expose full public address.
   const salonLocations = locations.filter((loc) => loc.location_type === "salon");
   const publicLocation =
-    salonLocations.find((loc) => loc.is_primary) ||
-    salonLocations[0] ||
-    null;
-  const fallbackAreaLocation = locations.find((loc) => loc.city || loc.state || loc.country) || locations[0] || null;
+    disclosureTier === "booked"
+      ? salonLocations.find((loc) => loc.is_primary) || salonLocations[0] || null
+      : null;
+  const fallbackAreaLocation =
+    locations.find((loc) => loc.city || loc.state || loc.country) || locations[0] || null;
+
+  const showSignInGate = disclosureTier === "anon" && !isAuthenticated;
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
       <h2 className="text-2xl font-semibold mb-6">About</h2>
-      
-      <div className="prose max-w-none mb-8">
-        <p className="text-gray-700 leading-relaxed">
-          {aboutDescription || "This provider hasn't added a description yet."}
-        </p>
-      </div>
+
+      {showSignInGate ? (
+        <div className="prose max-w-none mb-8">
+          <p className="text-gray-600 leading-relaxed">
+            <Link href="/login" className="text-blue-600 hover:text-blue-800 underline">
+              Sign in
+            </Link>{" "}
+            to read the full description, opening times, and location details.
+          </p>
+        </div>
+      ) : (
+        <div className="prose max-w-none mb-8">
+          <p className="text-gray-700 leading-relaxed">
+            {aboutDescription || "This provider hasn't added a description yet."}
+          </p>
+        </div>
+      )}
 
       <div className="space-y-6">
-        {/* Opening Times */}
-        {formattedHours && formattedHours.length > 0 && (
+        {showSignInGate ? null : formattedHours && formattedHours.length > 0 ? (
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Clock className="h-5 w-5" />
@@ -144,16 +159,18 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
             </h3>
             <div className="space-y-2">
               {formattedHours.map((schedule, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                <div
+                  key={index}
+                  className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+                >
                   <span className="font-medium">{schedule.day}</span>
                   <span className="text-gray-600">{schedule.hours}</span>
                 </div>
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Additional Information */}
         <div>
           <h3 className="text-lg font-semibold mb-4">Additional information</h3>
           <div className="space-y-2">
@@ -161,8 +178,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
           </div>
         </div>
 
-        {/* Address / location privacy */}
-        {publicLocation ? (
+        {showSignInGate ? null : publicLocation && publicLocation.address_line1 ? (
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <MapPin className="h-5 w-5" />
@@ -175,8 +191,10 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
                 publicLocation.city,
                 publicLocation.state,
                 publicLocation.postal_code,
-                publicLocation.country
-              ].filter(Boolean).join(", ")}
+                publicLocation.country,
+              ]
+                .filter(Boolean)
+                .join(", ")}
             </p>
             {publicLocation.latitude != null && publicLocation.longitude != null && (
               <Link
@@ -196,11 +214,16 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
               Location
             </h3>
             <p className="text-gray-700 mb-2">
-              Service area: {[fallbackAreaLocation.city, fallbackAreaLocation.state, fallbackAreaLocation.country].filter(Boolean).join(", ")}
+              Service area:{" "}
+              {[fallbackAreaLocation.city, fallbackAreaLocation.state, fallbackAreaLocation.country]
+                .filter(Boolean)
+                .join(", ")}
             </p>
-            <p className="text-sm text-gray-500">
-              Exact address is shared after booking confirmation.
-            </p>
+            {disclosureTier === "authed" && (
+              <p className="text-sm text-gray-500">
+                Exact address is shared after booking confirmation.
+              </p>
+            )}
           </div>
         ) : null}
       </div>

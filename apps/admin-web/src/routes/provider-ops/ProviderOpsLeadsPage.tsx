@@ -306,6 +306,7 @@ export function ProviderOpsLeadsPage() {
     total_rows_in_file: number;
     skipped_empty: number;
     skipped_duplicates_count: number;
+    recovered_rows: number;
     warnings: { row: number; field: string; message: string }[];
     skipped_duplicates: {
       row: number;
@@ -694,13 +695,16 @@ export function ProviderOpsLeadsPage() {
         total_rows_in_file: data.total_rows_in_file,
         skipped_empty: data.skipped_empty,
         skipped_duplicates_count: data.skipped_duplicates_count ?? 0,
+        recovered_rows: data.recovered_rows ?? 0,
         warnings: data.warnings || [],
         skipped_duplicates: data.skipped_duplicates || [],
         error: data.error ?? null,
       });
       const dupCount = data.skipped_duplicates_count ?? 0;
+      const recoveredCount = data.recovered_rows ?? 0;
       const toastParts = [`Imported ${data.imported as number} leads`];
       if (dupCount > 0) toastParts.push(`${dupCount} duplicates skipped`);
+      if (recoveredCount > 0) toastParts.push(`${recoveredCount} rows auto-recovered`);
       if (data.error) toastParts.push("import partially completed");
       adminToast.success(toastParts.join(" · "));
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
@@ -930,6 +934,9 @@ export function ProviderOpsLeadsPage() {
                   {importResult.total_rows_in_file} rows · {importResult.skipped_empty} empty rows skipped
                   {importResult.skipped_duplicates_count > 0
                     ? ` · ${importResult.skipped_duplicates_count} duplicates skipped`
+                    : ""}
+                  {importResult.recovered_rows > 0
+                    ? ` · ${importResult.recovered_rows} rows auto-recovered`
                     : ""}
                   {importResult.warnings.length > 0 ? ` · ${importResult.warnings.length} warning(s)` : ""}
                 </p>

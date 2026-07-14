@@ -8,6 +8,44 @@ export const VALID_SOURCES = new Set([
   "manual", "import", "referral", "campaign", "outbound", "api", "form",
 ]);
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Tags commonly emitted by external lead enrichment exports (e.g. Malakyt). */
+export const KNOWN_IMPORT_TAGS = new Set([
+  "malakyt",
+  "unique-lead",
+  "enriched-from-search",
+  "has-phone",
+  "has-location",
+  "no-phone",
+  "not-found-in-search",
+]);
+
+const ENRICHMENT_BARE_TOKENS = new Set([
+  "username",
+  "min_price",
+  "house_cal",
+  "house_call",
+]);
+
+const COUNTRY_NAMES = new Set([
+  "south africa",
+  "united states",
+  "united kingdom",
+  "australia",
+  "canada",
+  "nigeria",
+  "kenya",
+  "ghana",
+  "zimbabwe",
+  "botswana",
+  "namibia",
+  "mozambique",
+  "zambia",
+  "tanzania",
+  "uganda",
+]);
+
 export const HEADER_ALIASES: Record<string, string[]> = {
   business_name: [
     "business_name", "business", "company", "company_name", "salon",
@@ -294,6 +332,297 @@ export function classifyName(raw: string): {
   return { business_name: trimmed, contact_person_name: null };
 }
 
+export function looksLikeEmail(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return EMAIL_RE.test(value.trim());
+}
+
+export function looksLikePhone(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return !!normalizePhone(value.trim()).phone_e164;
+}
+
+export function parseEnrichmentToken(
+  value: string,
+): { key: string; value: string | null } | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const lower = trimmed.toLowerCase();
+  if (ENRICHMENT_BARE_TOKENS.has(lower)) {
+    return { key: lower.replace("house_cal", "house_call"), value: null };
+  }
+
+  const kvMatch = trimmed.match(/^([a-z_][a-z0-9_]*)=(.*)$/i);
+  if (kvMatch) {
+    return { key: kvMatch[1].toLowerCase(), value: kvMatch[2].trim() || null };
+  }
+
+  return null;
+}
+
+export function isEnrichmentToken(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return parseEnrichmentToken(value) !== null;
+}
+
+function splitListTokens(value: string): string[] {
+  return value.split(/[,;|]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function looksLikeCountry(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return COUNTRY_NAMES.has(lower);
+}
+
+function looksLikeNotesText(value: string): boolean {
+  const listTokens = splitListTokens(value);
+  const knownTagCount = listTokens.filter((token) =>
+    KNOWN_IMPORT_TAGS.has(token.toLowerCase()),
+  ).length;
+  if (knownTagCount >= 2) return false;
+
+  return (
+    /enriched from|algolia|unavailable from public search|phone\/location unavailable/i.test(
+      value,
+    ) || (value.length >= 60 && knownTagCount === 0)
+  );
+}
+
+function looksLikeSource(value: string): boolean {
+  return VALID_SOURCES.has(value.trim().toLowerCase());
+}
+
+export interface SniffedRowFields {
+  business_name: string | null;
+  contact_person_name: string | null;
+  email: string | null;
+  phone_country_code: string | null;
+  phone_national: string | null;
+  phone_e164: string | null;
+  suggested_location_text: string | null;
+  country: string | null;
+  description: string | null;
+  notes: string | null;
+  source: string;
+  tags: string[];
+  categoryIds: string[];
+}
+
+/**
+ * Extract lead fields by scanning cell content instead of header positions.
+ * Used when enrichment exports add extra columns or unquoted commas shift values.
+ */
+export function sniffRowFields(
+  cells: string[],
+  catLookup: Map<string, string>,
+): SniffedRowFields {
+  const trimmedCells = cells.map((cell) => cell.trim());
+  const used = new Set<number>();
+  const enrichmentParts: string[] = [];
+  const tagCandidates: string[] = [];
+  const categoryNames: string[] = [];
+  const descriptionParts: string[] = [];
+
+  let email: string | null = null;
+  let phoneResult = normalizePhone("");
+  let location: string | null = null;
+  let country: string | null = null;
+  let notes: string | null = null;
+  let source = "import";
+
+  for (let i = 0; i < trimmedCells.length; i++) {
+    const cell = trimmedCells[i];
+    if (!cell) continue;
+
+    if (isEnrichmentToken(cell)) {
+      used.add(i);
+      enrichmentParts.push(cell);
+      continue;
+    }
+
+    if (!email && looksLikeEmail(cell)) {
+      email = cell.toLowerCase();
+      used.add(i);
+      continue;
+    }
+
+    if (!phoneResult.phone_e164 && looksLikePhone(cell)) {
+      phoneResult = normalizePhone(cell);
+      used.add(i);
+    }
+  }
+
+  for (let i = 0; i < trimmedCells.length; i++) {
+    if (used.has(i)) continue;
+    const cell = trimmedCells[i];
+    if (!cell) continue;
+
+    if (looksLikeSource(cell)) {
+      source = cell.toLowerCase();
+      used.add(i);
+      continue;
+    }
+
+    const listTokens = splitListTokens(cell);
+    const knownTags = listTokens.filter((token) =>
+      KNOWN_IMPORT_TAGS.has(token.toLowerCase()),
+    );
+    if (
+      knownTags.length >= 2 ||
+      (knownTags.length === 1 && listTokens.length === 1)
+    ) {
+      tagCandidates.push(...listTokens);
+      used.add(i);
+      continue;
+    }
+
+    if (looksLikeNotesText(cell)) {
+      notes = notes ? `${notes}; ${cell}` : cell;
+      used.add(i);
+      continue;
+    }
+
+    let matchedCategory = false;
+    for (const token of listTokens) {
+      if (catLookup.has(token.toLowerCase())) {
+        categoryNames.push(token);
+        matchedCategory = true;
+      }
+    }
+    if (matchedCategory) {
+      used.add(i);
+    }
+  }
+
+  for (let i = 0; i < trimmedCells.length; i++) {
+    if (used.has(i)) continue;
+    const cell = trimmedCells[i];
+    if (!cell) continue;
+
+    if (!country && looksLikeCountry(cell)) {
+      country = cell;
+      used.add(i);
+    }
+  }
+
+  let business_name: string | null = null;
+  let contact_person_name: string | null = null;
+  for (let i = 0; i < trimmedCells.length; i++) {
+    if (used.has(i)) continue;
+    const cell = trimmedCells[i];
+    if (!cell || cell.length > 80) continue;
+    const classified = classifyName(cell);
+    business_name = classified.business_name;
+    contact_person_name = classified.contact_person_name;
+    used.add(i);
+    break;
+  }
+
+  for (let i = 0; i < trimmedCells.length; i++) {
+    if (used.has(i)) continue;
+    const cell = trimmedCells[i];
+    if (!cell) continue;
+
+    if (!location && cell.length >= 3 && cell.length <= 120) {
+      location = cell;
+      used.add(i);
+      continue;
+    }
+
+    if (cell.length >= 12 && cell.length < 60) {
+      descriptionParts.push(cell);
+      used.add(i);
+    }
+  }
+
+  const categoryIds: string[] = [];
+  for (const catName of categoryNames) {
+    const id = catLookup.get(catName.toLowerCase());
+    if (id && !categoryIds.includes(id)) categoryIds.push(id);
+  }
+
+  const tags = [...new Set(tagCandidates.map((tag) => tag.trim()).filter(Boolean))];
+  if (enrichmentParts.length > 0) {
+    const enrichmentNote = enrichmentParts.join("; ");
+    notes = notes ? `${notes}; ${enrichmentNote}` : enrichmentNote;
+  }
+
+  return {
+    business_name,
+    contact_person_name,
+    email,
+    phone_country_code: phoneResult.phone_country_code,
+    phone_national: phoneResult.phone_national,
+    phone_e164: phoneResult.phone_e164,
+    suggested_location_text: location,
+    country: country || phoneResult.inferred_country,
+    description: descriptionParts.length > 0 ? descriptionParts.join("; ") : null,
+    notes,
+    source,
+    tags,
+    categoryIds,
+  };
+}
+
+function positionalNotesLooksWrong(value: string | null): boolean {
+  if (!value) return false;
+  return looksLikeSource(value) || isEnrichmentToken(value);
+}
+
+function mergeRecoveredNotes(
+  positionalNotes: string | null,
+  sniffedNotes: string | null,
+): string | null {
+  if (positionalNotesLooksWrong(positionalNotes)) {
+    return sniffedNotes ?? positionalNotes;
+  }
+  if (positionalNotes && sniffedNotes && sniffedNotes !== positionalNotes) {
+    return `${positionalNotes}; ${sniffedNotes}`;
+  }
+  return sniffedNotes ?? positionalNotes;
+}
+
+function isRowMisaligned(
+  fields: string[],
+  headerCount: number,
+  getField: (fields: string[], field: string) => string | null,
+): boolean {
+  if (fields.length > headerCount) return true;
+
+  const positionalEmail = getField(fields, "email");
+  const positionalPhone = getField(fields, "phone");
+  const positionalCategory = getField(fields, "category");
+
+  if (positionalEmail && isEnrichmentToken(positionalEmail)) return true;
+  if (positionalPhone && isEnrichmentToken(positionalPhone)) return true;
+  if (positionalCategory && isEnrichmentToken(positionalCategory)) return true;
+
+  const positionalEmailInvalid =
+    positionalEmail !== null && !looksLikeEmail(positionalEmail);
+  const positionalPhoneInvalid =
+    positionalPhone !== null && !looksLikePhone(positionalPhone);
+
+  const emailElsewhere = fields.some((cell) => looksLikeEmail(cell.trim()));
+  const phoneElsewhere = fields.some((cell) => looksLikePhone(cell.trim()));
+
+  if (
+    (positionalEmailInvalid || (!positionalEmail && emailElsewhere)) &&
+    emailElsewhere
+  ) {
+    return true;
+  }
+
+  if (
+    (positionalPhoneInvalid || (!positionalPhone && phoneElsewhere)) &&
+    phoneElsewhere
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function parseLeadImportFile(
   csvText: string,
   catLookup: Map<string, string>,
@@ -303,6 +632,7 @@ export function parseLeadImportFile(
   rawHeaders: string[];
   parsedRows: ParsedLeadRow[];
   skippedEmpty: number;
+  recoveredRows: number;
 } {
   const text = stripBom(csvText);
   const delimiter = detectDelimiterFromText(text);
@@ -329,6 +659,7 @@ export function parseLeadImportFile(
 
   const parsedRows: ParsedLeadRow[] = [];
   let skippedEmpty = 0;
+  let recoveredRows = 0;
 
   for (let i = 1; i < dataRows.length; i++) {
     const fields = dataRows[i];
@@ -353,37 +684,22 @@ export function parseLeadImportFile(
       contact_person_name = classified.contact_person_name;
     }
 
-    const email = getField(fields, "email")?.toLowerCase() || null;
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      warnings.push({
-        row: rowNum,
-        field: "email",
-        message: `Invalid email format "${email}", stored as-is`,
-      });
-    }
-
+    let email = getField(fields, "email")?.toLowerCase() || null;
     const rawPhone = getField(fields, "phone");
-    const phoneResult = normalizePhone(rawPhone || "");
-    if (rawPhone && !phoneResult.phone_e164) {
-      warnings.push({
-        row: rowNum,
-        field: "phone",
-        message: `Could not normalize phone "${rawPhone}", stored raw`,
-      });
-    }
+    let phoneResult = normalizePhone(rawPhone || "");
 
-    const location = getField(fields, "location");
+    let location = getField(fields, "location");
     const explicitCountry = getField(fields, "country");
-    const country = explicitCountry || phoneResult.inferred_country || null;
+    let country = explicitCountry || phoneResult.inferred_country || null;
 
     const rawCats = getField(fields, "category") || "";
     const categoryNames = rawCats.split(/[;,|]/).map((c) => c.trim()).filter(Boolean);
-    const categoryIds: string[] = [];
+    let categoryIds: string[] = [];
     for (const catName of categoryNames) {
       const id = catLookup.get(catName.toLowerCase());
       if (id) {
         if (!categoryIds.includes(id)) categoryIds.push(id);
-      } else {
+      } else if (catName) {
         warnings.push({
           row: rowNum,
           field: "category",
@@ -393,7 +709,7 @@ export function parseLeadImportFile(
     }
 
     const rawSource = getField(fields, "source") || "";
-    const source = VALID_SOURCES.has(rawSource.toLowerCase()) ? rawSource.toLowerCase() : "import";
+    let source = VALID_SOURCES.has(rawSource.toLowerCase()) ? rawSource.toLowerCase() : "import";
 
     const explicitSourceDetail = getField(fields, "source_detail");
     const referrerEmail = getField(fields, "referrer_email")?.toLowerCase() || null;
@@ -402,10 +718,65 @@ export function parseLeadImportFile(
       ? normalizePhone(referrerPhoneRaw).phone_e164 || referrerPhoneRaw.trim()
       : null;
 
-    const description = getField(fields, "description");
-    const notes = getField(fields, "notes");
+    let description = getField(fields, "description");
+    let notes = getField(fields, "notes");
     const rawTags = getField(fields, "tags") || "";
-    const tags = rawTags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean);
+    let tags = rawTags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean);
+
+    const misaligned = isRowMisaligned(fields, rawHeaders.length, getField);
+    if (misaligned) {
+      const sniffed = sniffRowFields(fields, catLookup);
+      recoveredRows++;
+
+      business_name = sniffed.business_name ?? business_name;
+      contact_person_name = sniffed.contact_person_name ?? contact_person_name;
+      email =
+        sniffed.email ??
+        (email && looksLikeEmail(email) && !isEnrichmentToken(email) ? email : null);
+      if (sniffed.phone_e164) {
+        phoneResult = {
+          phone_e164: sniffed.phone_e164,
+          phone_country_code: sniffed.phone_country_code,
+          phone_national: sniffed.phone_national,
+          inferred_country: sniffed.country,
+        };
+      } else if (!looksLikePhone(rawPhone ?? "")) {
+        phoneResult = normalizePhone("");
+      }
+      location = sniffed.suggested_location_text ?? location;
+      country = sniffed.country ?? country;
+      description = sniffed.description ?? description;
+      notes = mergeRecoveredNotes(notes, sniffed.notes);
+      source = sniffed.source || source;
+      tags =
+        sniffed.tags.length > 0
+          ? sniffed.tags
+          : tags.filter((tag) => !looksLikeSource(tag));
+      categoryIds = sniffed.categoryIds.length > 0 ? sniffed.categoryIds : categoryIds;
+
+      warnings.length = 0;
+      warnings.push({
+        row: rowNum,
+        field: "row",
+        message:
+          "Row auto-recovered from column misalignment (extra enrichment columns or unquoted commas)",
+      });
+    } else {
+      if (email && !looksLikeEmail(email)) {
+        warnings.push({
+          row: rowNum,
+          field: "email",
+          message: `Invalid email format "${email}", stored as-is`,
+        });
+      }
+      if (rawPhone && !phoneResult.phone_e164) {
+        warnings.push({
+          row: rowNum,
+          field: "phone",
+          message: `Could not normalize phone "${rawPhone}", stored raw`,
+        });
+      }
+    }
 
     parsedRows.push({
       rowNum,
@@ -437,6 +808,7 @@ export function parseLeadImportFile(
     rawHeaders,
     parsedRows,
     skippedEmpty,
+    recoveredRows,
   };
 }
 

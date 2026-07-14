@@ -9,6 +9,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
 import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
 import { cancellationRequiresAck } from "@beautonomi/i18n";
 import { toast } from "sonner";
@@ -782,7 +783,14 @@ export default function OnlineBookingFlowNew({
           robotsMeta.content = "noindex, nofollow";
         }
 
-        const locs = (providerRes as any)?.data?.locations ?? [];
+        let locs = (providerRes as any)?.data?.locations ?? [];
+        if (user?.id && Array.isArray(locs) && locs.length > 0) {
+          const contact = await fetchProviderContactDisclosure(provider.slug);
+          if (contact?.locations?.length) {
+            const byId = new Map(contact.locations.map((l) => [l.id, l]));
+            locs = locs.map((l: LocationOption) => ({ ...l, ...byId.get(l.id) }));
+          }
+        }
         setLocations(Array.isArray(locs) ? locs : []);
         const salonLocs = Array.isArray(locs) ? locs.filter((l: any) => (l.location_type || "salon") === "salon") : [];
         /** Express links pass location_type=at_home; must not be overwritten when provider also has salon locations. */
@@ -1026,6 +1034,7 @@ export default function OnlineBookingFlowNew({
     queryParams.location_type,
     queryParams.date,
     queryParams.package,
+    user?.id,
   ]);
 
   // Load cancellation policy when we have provider and venue (for review step)

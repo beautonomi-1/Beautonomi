@@ -7,6 +7,7 @@ import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beaut
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveActiveBadge } from "@/lib/provider/active-badge";
 import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
+import { redactProviderDetailForTier } from "@/lib/providers/provider-disclosure";
 
 function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
   if (!Array.isArray(rows)) return [];
@@ -428,8 +429,10 @@ export async function GET(
       profile_promotions,
     } as PublicProviderDetail;
 
+    const publicResult = redactProviderDetailForTier(result, "anon");
+
     const response = NextResponse.json({
-      data: result,
+      data: publicResult,
       error: null,
     });
     

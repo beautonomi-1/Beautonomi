@@ -207,7 +207,8 @@ export default function ProviderReferralsPage() {
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
                 <PhoneInput
-                  id="phone"
+                  inputId="phone"
+                  label=""
                   value={phone}
                   onChange={setPhone}
                   placeholder="Phone number"

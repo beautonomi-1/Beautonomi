@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    const { headerMap, rawHeaders, parsedRows, skippedEmpty, dataRows } = parsed;
+    const { headerMap, rawHeaders, parsedRows, skippedEmpty, dataRows, recoveredRows } = parsed;
 
     if (parsedRows.length === 0) {
       return errorResponse(
@@ -273,6 +273,7 @@ export async function POST(request: NextRequest) {
         skipped_duplicates_count: skippedDuplicates.length,
         skipped_duplicates: skippedDuplicates,
         warnings,
+        recovered_rows: recoveredRows,
         columns_detected: Object.keys(headerMap),
         columns_provided: rawHeaders,
         lead_ids: [],
@@ -353,6 +354,7 @@ export async function POST(request: NextRequest) {
         total_rows: dataRows.length - 1,
         skipped_empty: skippedEmpty,
         skipped_duplicates: skippedDuplicates.length,
+        recovered_rows: recoveredRows,
         columns_detected: columnsDetected,
         partial_error: partialError,
       },
@@ -366,6 +368,7 @@ export async function POST(request: NextRequest) {
       skipped_duplicates_count: skippedDuplicates.length,
       skipped_duplicates: skippedDuplicates,
       warnings,
+      recovered_rows: recoveredRows,
       columns_detected: columnsDetected,
       columns_provided: rawHeaders,
       lead_ids: allInsertedIds,

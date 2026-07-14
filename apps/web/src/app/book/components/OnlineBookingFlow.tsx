@@ -8,6 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { fetchProviderContactDisclosure, formatPublicLocationSubtitle } from "@/lib/providers/fetch-provider-contact";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -204,7 +205,20 @@ export default function OnlineBookingFlow({
         setServices(servicesList);
         const staffList = (staffRes.data as any)?.staff ?? (staffRes.data as any) ?? [];
         setStaff(Array.isArray(staffList) ? staffList : []);
-        const locs = (provRes.data as any)?.locations ?? [];
+        let locs = (provRes.data as any)?.locations ?? [];
+        if (user?.id && Array.isArray(locs) && locs.length > 0) {
+          fetchProviderContactDisclosure(provider.slug).then((contact) => {
+            if (!contact?.locations?.length) return;
+            const byId = new Map(contact.locations.map((l) => [l.id, l]));
+            const merged = locs.map((l: Location) => ({ ...l, ...byId.get(l.id) }));
+            setLocations(merged);
+            setSelectedLocation((prev) => {
+              if (!prev) return prev;
+              const enriched = byId.get(prev.id);
+              return enriched ? { ...prev, ...enriched } : prev;
+            });
+          });
+        }
         setLocations(Array.isArray(locs) ? locs : []);
         if (locs?.length > 0) {
           setSelectedLocation((prev) => {
@@ -244,7 +258,7 @@ export default function OnlineBookingFlow({
         toast.error(e instanceof FetchError ? e.message : "Failed to load");
       })
       .finally(() => setIsLoading(false));
-  }, [provider.slug, queryParams.service, queryParams.staff, queryParams.anyone, queryParams.location]);
+  }, [provider.slug, queryParams.service, queryParams.staff, queryParams.anyone, queryParams.location, user?.id]);
 
   useEffect(() => {
     if (queryParams.auth_return === "slots" && queryParams.date && user && selectedService && selectedStaff) {
@@ -502,7 +516,7 @@ export default function OnlineBookingFlow({
                       selectedLocation?.id === loc.id ? "border-primary" : ""
                     }`}
                   >
-                    {loc.name} · {loc.address_line1}, {loc.city}
+                    {loc.name} · {formatPublicLocationSubtitle(loc)}
                   </button>
                 ))}
               </div>

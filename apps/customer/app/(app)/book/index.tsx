@@ -58,6 +58,7 @@ import type {
   ProviderService,
   StaffMember,
   ProviderLocation,
+  ProviderContactDisclosure,
   AvailabilitySlot,
 } from "@/types/api";
 
@@ -628,6 +629,7 @@ export default function BookScreen() {
   const initialStep: Step = stepParam && validSteps.includes(stepParam as Step) ? (stepParam as Step) : "venue";
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
+  const [disclosureTier, setDisclosureTier] = useState<"anon" | "authed" | "booked">("anon");
   const [servicesData, setServicesData] = useState<ProviderServicesResponse | null>(null);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1024,6 +1026,7 @@ export default function BookScreen() {
         }
       } else {
         setProvider(provRes.data);
+        setDisclosureTier(provRes.data.disclosure_tier ?? "anon");
         const locs = provRes.data.locations || [];
         const salonLocs = locs.filter((loc) => loc.location_type === "salon");
 
@@ -1293,6 +1296,37 @@ export default function BookScreen() {
   ]);
 
   useEffect(() => { loadProviderAndServices(); }, [loadProviderAndServices]);
+
+  useEffect(() => {
+    if (!user?.id || !provider?.slug) return;
+    let cancelled = false;
+    api
+      .get<ProviderContactDisclosure>(`/api/providers/${encodeURIComponent(provider.slug)}/contact`)
+      .then((res) => {
+        if (cancelled || res.error || !res.data) return;
+        const contact = res.data;
+        setDisclosureTier(contact.disclosure_tier);
+        setProvider((prev) =>
+          prev
+            ? {
+                ...prev,
+                description: contact.description ?? prev.description,
+                website: contact.website ?? prev.website,
+                locations: contact.locations ?? prev.locations,
+                disclosure_tier: contact.disclosure_tier,
+              }
+            : prev,
+        );
+        if (contact.disclosure_tier === "booked" && selectedLocation?.id) {
+          const refreshed = contact.locations.find((l) => l.id === selectedLocation.id);
+          if (refreshed) setSelectedLocation(refreshed);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, provider?.slug]);
 
   useEffect(() => {
     if (!packageIdForCheckout) return;
@@ -2754,8 +2788,10 @@ export default function BookScreen() {
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{loc.name}</Text>
-                            {loc.address_line1 && (
-                              <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>{loc.address_line1}</Text>
+                            {(loc.address_line1 || loc.city) && (
+                              <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
+                                {loc.address_line1 ?? [loc.city, loc.state, loc.country].filter(Boolean).join(", ")}
+                              </Text>
                             )}
                           </View>
                           {isSelected && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}

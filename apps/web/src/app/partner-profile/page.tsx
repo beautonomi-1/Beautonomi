@@ -41,8 +41,8 @@ export async function generateMetadata({
 
   const lat = parseCoord(sp.lat);
   const lng = parseCoord(sp.lng);
-  const { provider } = await getPublicProviderDetail(slugDecoded, lat, lng);
-  if (!provider) {
+  const { provider, providerFull } = await getPublicProviderDetail(slugDecoded, lat, lng);
+  if (!provider || !providerFull) {
     return {
       title: "Provider Not Found | Beautonomi",
       description: "The provider you're looking for doesn't exist on Beautonomi.",
@@ -54,8 +54,8 @@ export async function generateMetadata({
     provider.city && provider.country
       ? `${provider.city}, ${provider.country}`
       : provider.city || provider.country || "";
-  const description = provider.description
-    ? `${provider.description.substring(0, 155)}${provider.description.length > 155 ? "..." : ""}`
+  const description = providerFull.description
+    ? `${providerFull.description.substring(0, 155)}${providerFull.description.length > 155 ? "..." : ""}`
     : `Discover ${provider.business_name} on Beautonomi${locationText ? ` in ${locationText}` : ""}. ${
         provider.rating ? `Rated ${provider.rating.toFixed(1)}/5` : ""
       }${provider.review_count ? ` with ${provider.review_count} reviews` : ""}.`;

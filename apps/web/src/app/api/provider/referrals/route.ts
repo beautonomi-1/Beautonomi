@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
     return successResponse({ lead });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(error.errors[0]?.message || "Invalid request", "VALIDATION_ERROR", 400);
+      return errorResponse(error.issues[0]?.message || "Invalid request", "VALIDATION_ERROR", 400);
     }
     return handleApiError(error, "Failed to submit referral");
   }

@@ -22,7 +22,7 @@ export interface ConsolidateLeadsOnSignupParams {
 export interface ConsolidateLeadsOnSignupResult {
   primaryLeadId: string | null;
   consolidatedLeadIds: string[];
-  matchType: LeadMatchRank | "auto_self_serve" | null;
+  matchType: LeadMatchRank | "auto_self_serve" | "admin_assisted" | null;
 }
 
 function rankValue(rank: LeadMatchRank): number {

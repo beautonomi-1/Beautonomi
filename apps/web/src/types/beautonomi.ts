@@ -182,6 +182,8 @@ export interface PublicProviderDetail extends PublicProviderCard {
   timezone?: string | null;
   /** Provider-owned discount codes currently valid—shown on profile for customers to use at checkout. */
   profile_promotions?: PublicProfilePromotion[];
+  /** Disclosure tier applied to this payload (anon / authed / booked). */
+  disclosure_tier?: "anon" | "authed" | "booked";
 }
 
 // Service/Offering Types
@@ -244,23 +246,24 @@ export interface ProviderProfile {
 
 export interface ProviderLocation {
   id: string;
-  provider_id: string;
+  provider_id?: string;
   name: string;
-  address_line1: string;
-  address_line2: string | null;
+  is_primary?: boolean;
+  address_line1?: string;
+  address_line2?: string | null;
   city: string;
-  state: string | null;
+  state?: string | null;
   country: string;
-  postal_code: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  phone: string | null;
-  is_active: boolean;
+  postal_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  phone?: string | null;
+  is_active?: boolean;
   /** 'salon' = physical venue, clients can book in-studio; 'base' = distance/travel reference only (mobile-only) */
   location_type?: "salon" | "base";
-  working_hours: WorkingHours;
-  created_at: string;
-  updated_at: string;
+  working_hours?: WorkingHours;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface WorkingHours {

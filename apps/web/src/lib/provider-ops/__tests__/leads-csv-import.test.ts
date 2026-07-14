@@ -4,8 +4,13 @@ import {
   applyInFileDedupe,
   buildHeaderMap,
   filterDataRows,
+  isEnrichmentToken,
+  looksLikeEmail,
+  looksLikePhone,
   parseCSVRecords,
+  parseEnrichmentToken,
   parseLeadImportFile,
+  sniffRowFields,
   type ExistingLeadMatch,
   type ParsedLeadRow,
 } from "../leads-csv-import";
@@ -13,6 +18,9 @@ import {
 const catLookup = new Map<string, string>([
   ["hair", "cat-hair"],
   ["nails", "cat-nails"],
+  ["makeup", "cat-makeup"],
+  ["brows & lashes", "cat-brows"],
+  ["braids", "cat-braids"],
 ]);
 
 describe("parseCSVRecords", () => {
@@ -95,6 +103,95 @@ describe("parseLeadImportFile", () => {
     expect(result.parsedRows[0].referrer_email).toBe("ref@test.com");
     expect(result.parsedRows[0].referrer_phone).toBe("+27710000000");
     expect(result.parsedRows[0].source_detail).toBe("Manual note");
+  });
+
+  it("recovers misaligned enrichment export rows instead of importing shifted values", () => {
+    const csv = [
+      "name,email,phone,location,country,category,description,source,notes,tags",
+      "Angel Artis,username,rating=4.9,+27711234567,Sandton,South Africa,Makeup,Brows & Lashes,Braids,outbound,Enriched from Malakyt search Algolia hits by email match,\"malakyt, unique-lead, enriched-from-search, has-phone, has-location\"",
+    ].join("\n");
+    const result = parseLeadImportFile(csv, catLookup);
+
+    expect(result.recoveredRows).toBe(1);
+    const row = result.parsedRows[0];
+    expect(row.contact_person_name).toBe("Angel Artis");
+    expect(row.email).toBeNull();
+    expect(row.phone_e164).toBe("+27711234567");
+    expect(row.suggested_location_text).toBe("Sandton");
+    expect(row.country).toBe("South Africa");
+    expect(row.source).toBe("outbound");
+    expect(row.categoryIds).toEqual(
+      expect.arrayContaining(["cat-makeup", "cat-brows", "cat-braids"]),
+    );
+    expect(row.tags).toEqual(
+      expect.arrayContaining([
+        "malakyt",
+        "unique-lead",
+        "enriched-from-search",
+        "has-phone",
+        "has-location",
+      ]),
+    );
+    expect(row.notes).toContain("Enriched from Malakyt search");
+    expect(row.notes).toContain("username");
+    expect(row.notes).toContain("rating=4.9");
+    expect(row.warnings.some((w) => w.field === "row")).toBe(true);
+  });
+
+  it("does not recover well-formed rows", () => {
+    const csv = [
+      "name,email,phone,location,country,category,description,source,notes,tags",
+      "Glow Salon,hello@glow.com,+27719876543,Sandton,South Africa,Hair,Great salon,outbound,Some notes,prospect",
+    ].join("\n");
+    const result = parseLeadImportFile(csv, catLookup);
+
+    expect(result.recoveredRows).toBe(0);
+    expect(result.parsedRows[0].business_name).toBe("Glow Salon");
+    expect(result.parsedRows[0].email).toBe("hello@glow.com");
+    expect(result.parsedRows[0].phone_e164).toBe("+27719876543");
+    expect(result.parsedRows[0].categoryIds).toEqual(["cat-hair"]);
+    expect(result.parsedRows[0].tags).toEqual(["prospect"]);
+    expect(result.parsedRows[0].warnings.some((w) => w.field === "row")).toBe(false);
+  });
+
+  it("preserves valid positional notes when trailing enrichment columns trigger recovery", () => {
+    const csv = [
+      "name,email,phone,location,country,category,description,source,notes,tags",
+      "Glow Salon,hello@glow.com,+27719876543,Sandton,South Africa,Hair,Great salon,outbound,Some notes,prospect,username,rating=4.9",
+    ].join("\n");
+    const result = parseLeadImportFile(csv, catLookup);
+    const row = result.parsedRows[0];
+
+    expect(result.recoveredRows).toBe(1);
+    expect(row.email).toBe("hello@glow.com");
+    expect(row.tags).toEqual(["prospect"]);
+    expect(row.notes).toContain("Some notes");
+    expect(row.notes).toContain("username");
+    expect(row.notes).toContain("rating=4.9");
+  });
+});
+
+describe("content sniffing helpers", () => {
+  it("detects enrichment tokens", () => {
+    expect(parseEnrichmentToken("username")).toEqual({ key: "username", value: null });
+    expect(parseEnrichmentToken("rating=4.9")).toEqual({ key: "rating", value: "4.9" });
+    expect(parseEnrichmentToken("social=https://instagram.com/angel")).toEqual({
+      key: "social",
+      value: "https://instagram.com/angel",
+    });
+    expect(isEnrichmentToken("hello@glow.com")).toBe(false);
+  });
+
+  it("sniffs email and phone from shifted cells", () => {
+    const sniffed = sniffRowFields(
+      ["Angel Artis", "username", "rating=4.9", "+27711234567", "Sandton"],
+      catLookup,
+    );
+    expect(sniffed.contact_person_name).toBe("Angel Artis");
+    expect(sniffed.phone_e164).toBe("+27711234567");
+    expect(sniffed.suggested_location_text).toBe("Sandton");
+    expect(looksLikeEmail("username")).toBe(false);
+    expect(looksLikePhone("rating=4.9")).toBe(false);
   });
 });
 

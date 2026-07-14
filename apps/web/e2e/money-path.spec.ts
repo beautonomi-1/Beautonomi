@@ -57,6 +57,14 @@ test.describe("money path APIs", () => {
     if (res.status() === 200) {
       const json = await res.json();
       expect(json.data?.slug ?? json.data?.id).toBeTruthy();
+      expect(json.data?.disclosure_tier).toBe("anon");
+      const loc = json.data?.locations?.[0];
+      if (loc) {
+        expect(loc.address_line1).toBeUndefined();
+        expect(loc.latitude).toBeUndefined();
+        expect(loc.working_hours).toBeUndefined();
+      }
+      expect(json.data?.description).toBe("");
     }
   });
 
