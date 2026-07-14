@@ -13,6 +13,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
+import { ProviderAppDownloadNudge } from "@/components/provider/ProviderAppDownloadNudge";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import {
   Dialog,
@@ -168,6 +169,8 @@ export default function SubscriptionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showInAppReturnBanner, setShowInAppReturnBanner] = useState(false);
+  const [showCheckoutSuccessNudge, setShowCheckoutSuccessNudge] = useState(false);
+  const [checkoutReturnToDashboard, setCheckoutReturnToDashboard] = useState(false);
   const [inAppReturnStatus, setInAppReturnStatus] = useState<
     "success" | "failed" | "pending" | null
   >(null);
@@ -286,7 +289,10 @@ export default function SubscriptionPage() {
       if (status === "success") {
         toast.success("Payment successful! Your subscription is being activated...");
         timeouts.push(setTimeout(() => loadData(), 2000));
-        if (!inApp && returnToDashboard) {
+        if (!inApp) {
+          setCheckoutReturnToDashboard(returnToDashboard);
+          setShowCheckoutSuccessNudge(true);
+        } else if (returnToDashboard) {
           timeouts.push(
             setTimeout(() => {
               router.replace("/provider/dashboard?subscription_success=1");
@@ -645,6 +651,22 @@ export default function SubscriptionPage() {
             </div>
           </div>
         </div>
+
+        {showCheckoutSuccessNudge && (
+          <ProviderAppDownloadNudge
+            successHeadline="Payment complete!"
+            subtitle="Your subscription is active. Download the provider app to manage bookings on the go."
+            showContinue
+            continueLabel={checkoutReturnToDashboard ? "Go to dashboard" : "View subscription"}
+            onContinue={() => {
+              setShowCheckoutSuccessNudge(false);
+              if (checkoutReturnToDashboard) {
+                router.replace("/provider/dashboard");
+              }
+            }}
+            className="mb-6"
+          />
+        )}
 
         {showInAppReturnBanner && (
           <div

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Modal, Pressable, FlatList, InteractionManager } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Modal, Pressable, FlatList, InteractionManager, Linking } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -30,7 +30,6 @@ import { trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import {
@@ -524,11 +523,11 @@ export default function SignupScreen() {
               </View>
               <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
                 I agree to the{" "}
-                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")}>
+                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}>
                   Terms of Service
                 </Text>{" "}
                 and{" "}
-                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}>
+                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}>
                   Privacy Policy
                 </Text>
                 .

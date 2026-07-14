@@ -11,6 +11,14 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyLeadCreated } from "@/lib/integrations/slack/lead-triggers";
+import {
+  applyAssignedToFilter,
+  applyActiveLeadFilter,
+  escapeLike,
+  LEADS_ASSIGNED_USER_EMBED,
+  parseCategoryIds,
+  parseDeletedFilter,
+} from "@/lib/provider-ops/lead-query-filters";
 
 const VALID_STAGES = [
   "new",
@@ -34,25 +42,6 @@ const VALID_SOURCES = [
   "form",
 ] as const;
 
-function escapeLike(value: string): string {
-  return value.replace(/[%_]/g, "");
-}
-
-function parseCategoryIds(searchParams: URLSearchParams): string[] {
-  const raw = [
-    ...searchParams.getAll("category_ids"),
-    ...searchParams.getAll("category_id"),
-  ];
-  const seen = new Set<string>();
-  for (const value of raw) {
-    for (const part of value.split(",")) {
-      const id = part.trim();
-      if (id) seen.add(id);
-    }
-  }
-  return [...seen];
-}
-
 function coerceRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -62,21 +51,12 @@ function coerceRecord(value: unknown): Record<string, unknown> | null {
 /** PostgREST embed for `provider_leads.assigned_to` → `users`. */
 const LEADS_LIST_SELECT = `
         *,
-        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
+        ${LEADS_ASSIGNED_USER_EMBED},
         provider_lead_categories (
           global_category_id,
           global_service_categories:global_category_id (id, name, slug, icon)
         )
       `;
-
-function applyAssignedToFilter<T extends { eq: (a: string, b: string) => T; is: (a: string, b: null) => T }>(
-  q: T,
-  assignedTo: string | null,
-): T {
-  if (!assignedTo) return q;
-  if (assignedTo === "unassigned") return q.is("assigned_to", null);
-  return q.eq("assigned_to", assignedTo);
-}
 
 function getProvinceFromLeadRow(row: {
   resolved_location?: unknown;
@@ -118,8 +98,9 @@ export async function GET(request: NextRequest) {
     const country = searchParams.get("country");
     const categoryIds = parseCategoryIds(searchParams);
     const province = searchParams.get("province")?.trim();
+    const deletedMode = parseDeletedFilter(searchParams);
 
-    // Pre-resolve lead IDs for category filter (join through provider_lead_categories).
+    // Pre-resolve lead IDs for category filter
     // Multiple selected categories use OR semantics: a lead matching any selected
     // global category is included.
     let categoryLeadIds: string[] | null = null;
@@ -139,6 +120,7 @@ export async function GET(request: NextRequest) {
       .select(LEADS_LIST_SELECT, { count: "exact" })
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
+    query = applyActiveLeadFilter(query, deletedMode);
 
     if (stage && stage !== "all") {
       query = query.eq("commercial_stage", stage);
@@ -177,6 +159,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId);
+      q = applyActiveLeadFilter(q, deletedMode);
       if (source && source !== "all") q = q.eq("source", source);
       q = applyAssignedToFilter(q, assignedTo);
       if (country) q = q.eq("country", country);
@@ -218,6 +201,7 @@ export async function GET(request: NextRequest) {
       .from("provider_leads")
       .select("id,country,suggested_location_text,resolved_location")
       .eq("tenant_id", tenantId);
+    optionsQuery = applyActiveLeadFilter(optionsQuery, deletedMode);
     if (stage && stage !== "all") optionsQuery = optionsQuery.eq("commercial_stage", stage);
     if (source && source !== "all") optionsQuery = optionsQuery.eq("source", source);
     if (assignedTo) optionsQuery = optionsQuery.eq("assigned_to", assignedTo);

@@ -12,6 +12,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTeamSizeFromOnboardingDraft } from "@/lib/provider-ops/resolve-team-size-from-draft";
+import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
 
 export async function POST(
   request: NextRequest,
@@ -280,46 +281,13 @@ async function matchLeadToProvider(
   targetUser: { id: string; email: string; phone: string },
   tenantId: string
 ) {
-  const conditions: string[] = [];
-  if (targetUser.email) {
-    conditions.push(`email.eq.${targetUser.email.toLowerCase()}`);
-  }
-  if (targetUser.phone) {
-    conditions.push(`phone_e164.eq.${targetUser.phone}`);
-  }
-  if (conditions.length === 0) return;
-
-  const { data: matchingLeads } = await supabase
-    .from("provider_leads")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .is("matched_provider_id", null)
-    .or(conditions.join(","))
-    .limit(1);
-
-  if (matchingLeads?.length) {
-    const leadId = matchingLeads[0].id;
-    await supabase
-      .from("provider_leads")
-      .update({
-        matched_provider_id: provider.id,
-        matched_user_id: targetUser.id,
-        match_confidence: 1.0,
-        matched_at: new Date().toISOString(),
-        commercial_stage: "matched",
-      })
-      .eq("id", leadId);
-
-    await supabase
-      .from("providers")
-      .update({ lead_id: leadId })
-      .eq("id", provider.id);
-
-    await supabase.from("provider_lead_activities").insert({
-      lead_id: leadId,
-      activity_type: "match_confirmed",
-      description: "Matched to provider via admin-assisted onboarding",
-      metadata: { provider_id: provider.id, match_type: "admin_assisted" },
-    });
-  }
+  await consolidateLeadsOnSignup({
+    supabase,
+    tenantId,
+    providerId: provider.id,
+    userId: targetUser.id,
+    email: targetUser.email,
+    phone: targetUser.phone,
+    matchContext: "admin_assisted",
+  });
 }

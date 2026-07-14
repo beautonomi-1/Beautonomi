@@ -57,6 +57,20 @@ export async function GET(request: NextRequest) {
 
     const sessionMap = new Map((sessions as any[] || []).map((s: any) => [s.id, s]));
 
+    // Preload DNC status for leads in this batch
+    const leadIds = [...new Set((messages as any[]).map((m) => m.lead_id).filter(Boolean))];
+    const dncLeadIds = new Set<string>();
+    if (leadIds.length > 0) {
+      const { data: dncLeads } = await supabase
+        .from("provider_leads")
+        .select("id")
+        .in("id", leadIds)
+        .or("do_not_contact.eq.true,deleted_at.not.is.null");
+      for (const row of dncLeads as { id: string }[] || []) {
+        dncLeadIds.add(row.id);
+      }
+    }
+
     // Load config
     const { data: cfgRow } = await supabase
       .from("wasender_integration_config")
@@ -77,6 +91,22 @@ export async function GET(request: NextRequest) {
 
     for (const msg of messages as any[]) {
       const session = sessionMap.get(msg.session_id);
+
+      // Do-not-contact gate
+      if (msg.lead_id && dncLeadIds.has(msg.lead_id)) {
+        await supabase
+          .from("whatsapp_message_queue")
+          .update({
+            status: "cancelled",
+            failure_reason: "do_not_contact",
+          })
+          .eq("id", msg.id);
+        if (msg.bulk_batch_id) {
+          await incrementBulkBatchCount(supabase, msg.bulk_batch_id, "cancelled_count");
+        }
+        processed++;
+        continue;
+      }
 
       // Session health gate
       if (!session || session.status !== "connected" || session.is_paused) {

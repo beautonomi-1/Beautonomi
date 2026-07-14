@@ -62,6 +62,7 @@ export type CustomOfferCardProps = {
   onClick?: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
+  onRequestChanges?: () => void;
   onResume?: () => void;
   onWithdraw?: () => void;
   onEdit?: () => void;

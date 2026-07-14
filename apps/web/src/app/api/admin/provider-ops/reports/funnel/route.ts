@@ -67,7 +67,8 @@ export async function GET(request: NextRequest) {
     const { count: totalLeads } = await supabase
       .from("provider_leads")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null);
 
     const leadsByStage: Record<string, number> = {};
     for (const stage of PROVIDER_LEAD_PIPELINE_STAGES) {
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .eq("commercial_stage", stage);
       leadsByStage[stage] = count ?? 0;
     }
@@ -85,6 +87,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("source")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .range(from, to);
       return { data: r.data as { source: string }[] | null, error: r.error };
     });

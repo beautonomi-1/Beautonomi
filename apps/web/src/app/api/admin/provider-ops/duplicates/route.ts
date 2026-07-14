@@ -136,7 +136,11 @@ export async function GET(request: NextRequest) {
         "id, business_name, contact_person_name, email, phone_e164, commercial_stage, source, created_at, matched_provider_id, updated_at",
       )
       .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
       .is("matched_provider_id", null)
+      // Leads matched to a user (assisted convert / create-account) are also
+      // spoken for — without this they show up as false-positive duplicates.
+      .is("matched_user_id", null)
       .not("commercial_stage", "eq", "lost")
       .order("created_at", { ascending: false })
       .limit(MAX_LEADS_SCAN);

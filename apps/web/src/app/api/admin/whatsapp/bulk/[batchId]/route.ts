@@ -31,9 +31,20 @@ export async function GET(
       .order("created_at", { ascending: true })
       .range(offset, offset + limit - 1);
 
+    const { data: statusRows } = await supabase
+      .from("whatsapp_message_queue")
+      .select("status")
+      .eq("bulk_batch_id", batchId);
+
+    const status_counts: Record<string, number> = {};
+    for (const row of statusRows as { status: string }[] || []) {
+      status_counts[row.status] = (status_counts[row.status] || 0) + 1;
+    }
+
     return successResponse({
       batch,
       messages: messages || [],
+      status_counts,
       meta: { page, limit, total: count || 0, has_more: (count || 0) > page * limit },
     });
   } catch (error) {

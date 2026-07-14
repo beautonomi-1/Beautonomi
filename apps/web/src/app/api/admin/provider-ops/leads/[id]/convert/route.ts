@@ -11,6 +11,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
+import { leadIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 import crypto from "crypto";
 
 function getPublicSiteBaseUrl(request: NextRequest): string {
@@ -251,7 +252,7 @@ async function handleAssistedConversion(
 
   const { error: actErr } = await supabase.from("provider_lead_activities").insert({
     lead_id: lead.id as string,
-    activity_type: "stage_change",
+    activity_type: "stage_changed",
     description: "Converted to provider via assisted onboarding",
     metadata: {
       from_stage: fromStage,
@@ -292,6 +293,10 @@ async function handleInviteConversion(
 ) {
   const email = lead.email as string | null | undefined;
   const phone = lead.phone_e164 as string | null | undefined;
+
+  if (leadIsDoNotContact(lead as { do_not_contact?: boolean })) {
+    return errorResponse("Lead is marked do-not-contact", "DO_NOT_CONTACT", 403);
+  }
 
   if (!email?.trim() && !phone?.trim()) {
     return errorResponse(

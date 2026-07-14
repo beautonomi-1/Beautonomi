@@ -9,6 +9,8 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveProviderAppLinks } from "@/lib/provider-ops/resolve-provider-app-links";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -427,11 +429,16 @@ export async function checkNumberOnWhatsApp(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Resolve template placeholders with lead data. */
-export function resolveTemplatePlaceholders(
+/** Resolve template placeholders with lead data and optional tenant app/onboarding links. */
+export async function resolveTemplatePlaceholders(
   template: string,
   lead: Record<string, unknown>,
-): string {
+  options?: {
+    supabase?: SupabaseClient;
+    tenantId?: string;
+    baseUrl?: string;
+  },
+): Promise<string> {
   const nameStr = String(lead.contact_person_name || lead.lead_name || lead.business_name || "");
   const parts = nameStr.trim().split(/\s+/);
   const firstName = parts[0] || "";
@@ -445,7 +452,27 @@ export function resolveTemplatePlaceholders(
     phone: String(lead.phone_e164 || ""),
     business_name: String(lead.business_name || ""),
     company: String(lead.business_name || ""),
+    app_link_ios: "",
+    app_link_android: "",
+    onboarding_link: "",
   };
+
+  if (options?.supabase && options?.tenantId) {
+    const appLinks = await resolveProviderAppLinks(options.supabase, options.tenantId);
+    vars.app_link_ios = appLinks.ios ?? "";
+    vars.app_link_android = appLinks.android ?? "";
+
+    const inviteToken =
+      typeof lead.invite_token === "string" && lead.invite_token.trim()
+        ? lead.invite_token.trim()
+        : "";
+    const base =
+      options.baseUrl?.replace(/\/$/, "") ||
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      "";
+    vars.onboarding_link =
+      inviteToken && base ? `${base}/provider/onboarding?invite=${inviteToken}` : "";
+  }
 
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
     return vars[key.toLowerCase()] ?? `{{${key}}}`;

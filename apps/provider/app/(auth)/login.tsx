@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Modal, Pressable, FlatList, InteractionManager } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Modal, Pressable, FlatList, InteractionManager, Linking } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -31,7 +31,6 @@ import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import {
@@ -909,14 +908,14 @@ export default function LoginScreen() {
                   {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                    onPress={() => pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")}
+                    onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
                   >
                     Terms of Service
                   </Text>
                   {" · "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                    onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+                    onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
                   >
                     Privacy Policy
                   </Text>
@@ -1343,14 +1342,14 @@ export default function LoginScreen() {
           By continuing, you agree to our{" "}
           <Text
             style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-            onPress={() => pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")}
+            onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
           >
             Terms of Service
           </Text>{" "}
           and{" "}
           <Text
             style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-            onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+            onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
           >
             Privacy Policy
           </Text>

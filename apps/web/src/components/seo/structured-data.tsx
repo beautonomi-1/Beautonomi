@@ -28,6 +28,9 @@ export function OrganizationSchema({ baseUrl, nonce }: { baseUrl: string; nonce?
     <script
       type="application/ld+json"
       nonce={nonce}
+      // Browsers hide the `nonce` attribute from the DOM after load (CSP spec),
+      // so hydration always sees "" vs the server value — benign, suppress it.
+      suppressHydrationWarning
       dangerouslySetInnerHTML={{
         __html: JSON.stringify(organizationSchema),
       }}
@@ -55,6 +58,9 @@ export function WebSiteSchema({ baseUrl, nonce }: { baseUrl: string; nonce?: str
     <script
       type="application/ld+json"
       nonce={nonce}
+      // Browsers hide the `nonce` attribute from the DOM after load (CSP spec),
+      // so hydration always sees "" vs the server value — benign, suppress it.
+      suppressHydrationWarning
       dangerouslySetInnerHTML={{
         __html: JSON.stringify(websiteSchema),
       }}

@@ -155,6 +155,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "integrations/paystack": { label: "Paystack", parentHref: null },
   "integrations/resend": { label: "Resend", parentHref: null },
   "integrations/slack": { label: "Slack", parentHref: null },
+  "integrations/calls": { label: "Calls", parentHref: null },
   "integrations/amplitude": { label: "Amplitude", parentHref: null },
   mapbox: { label: "Mapbox", parentHref: null },
   "iso-codes": { label: "ISO Codes", parentHref: null },

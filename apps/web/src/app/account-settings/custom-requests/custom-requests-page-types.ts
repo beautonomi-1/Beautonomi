@@ -12,6 +12,7 @@ export type CustomOfferSummary = {
   staff_id?: string | null;
   location_id?: string | null;
   scheduled_at?: string | null;
+  travel_fee?: number | null;
   staff?: { id: string; name: string } | null;
   location?: { id: string; name: string } | null;
 };

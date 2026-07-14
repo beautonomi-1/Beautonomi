@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("id, business_name, email, phone_e164")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .eq("email", email);
       if (excludeLeadId) query = query.neq("id", excludeLeadId);
       const { data: emailLeads } = await query;
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("id, business_name, email, phone_e164")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .eq("phone_e164", phone);
       if (excludeLeadId) query = query.neq("id", excludeLeadId);
       const { data: phoneLeads } = await query;
@@ -108,6 +110,28 @@ export async function GET(request: NextRequest) {
           phone: p.billing_phone,
           confidence: 1.0,
         });
+      }
+    }
+
+    if (phone) {
+      const { data: phoneProviders } = await supabase
+        .from("providers")
+        .select("id, business_name, billing_email, billing_phone")
+        .eq("tenant_id", tenantId)
+        .eq("billing_phone", phone);
+
+      for (const p of phoneProviders || []) {
+        if (!matches.some((m) => m.type === "provider" && m.id === p.id)) {
+          matches.push({
+            type: "provider",
+            id: p.id,
+            matched_on: "phone",
+            name: p.business_name,
+            email: p.billing_email,
+            phone: p.billing_phone,
+            confidence: 1.0,
+          });
+        }
       }
     }
 

@@ -10,6 +10,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 import { buildOnboardingCompletionResponse } from "@/lib/provider/build-onboarding-completion-response";
 import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark-provider-onboarding-lifecycle-complete";
+import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
 import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 
@@ -206,6 +207,9 @@ const onboardingSchema = z.object({
   no_show_fee_amount: z.number().min(0).optional().nullable(),
   include_in_search_engines: z.boolean().optional().default(true),
   selected_plan_id: z.string().uuid("Invalid plan ID").optional().nullable(),
+  // Provider Ops: invite token from an admin-sent onboarding invite link.
+  // Used to deterministically match this signup back to the originating lead.
+  invite_token: z.string().uuid().optional().nullable(),
 });/**
  * POST /api/provider/onboarding
  * 
@@ -287,6 +291,7 @@ export async function POST(request: NextRequest) {
       selected_plan_id,
       is_vat_registered,
       vat_number,
+      invite_token,
     } = validationResult.data;
 
     // Use service role client to bypass RLS for checking existing provider
@@ -1555,53 +1560,20 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Run lead matching by phone and email
-      const matchConditions: string[] = [];
+      // Run lead matching: invite token first, then email/phone; consolidate all duplicates.
       const userEmail = owner_email || legacyEmail;
       const userPhone = owner_phone || legacyPhone;
-      if (userEmail) matchConditions.push(`email.eq.${userEmail.toLowerCase()}`);
-      if (userPhone) matchConditions.push(`phone_e164.eq.${userPhone}`);
 
-      if (matchConditions.length > 0) {
-        const { data: matchingLeads } = await supabaseAdmin
-          .from("provider_leads")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .is("matched_provider_id", null)
-          .or(matchConditions.join(","))
-          .limit(1);
-
-        if (matchingLeads?.length) {
-          const leadId = matchingLeads[0].id;
-          await supabaseAdmin
-            .from("provider_leads")
-            .update({
-              matched_provider_id: providerId,
-              matched_user_id: user.id,
-              match_confidence: 1.0,
-              matched_at: new Date().toISOString(),
-              commercial_stage: "matched",
-            })
-            .eq("id", leadId);
-
-          await supabaseAdmin
-            .from("providers")
-            .update({ lead_id: leadId })
-            .eq("id", providerId);
-
-          await supabaseAdmin
-            .from("provider_onboarding_tracking")
-            .update({ lead_id: leadId })
-            .eq("user_id", user.id);
-
-          await supabaseAdmin.from("provider_lead_activities").insert({
-            lead_id: leadId,
-            activity_type: "match_confirmed",
-            description: "Auto-matched to self-serve signup",
-            metadata: { provider_id: providerId, match_type: "auto_self_serve" },
-          });
-        }
-      }
+      await consolidateLeadsOnSignup({
+        supabase: supabaseAdmin,
+        tenantId,
+        providerId,
+        userId: user.id,
+        inviteToken: invite_token,
+        email: userEmail,
+        phone: userPhone,
+        matchContext: "self_serve",
+      });
     } catch (trackingErr) {
       console.warn("Provider Ops tracking/matching (non-fatal):", trackingErr);
     }

@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface TwilioCredentials {
@@ -9,10 +10,128 @@ export interface TwilioCredentials {
   whatsappSandboxEnabled: boolean;
 }
 
+export interface TwilioVoiceCredentials {
+  accountSid: string;
+  authToken: string;
+  apiKeySid: string;
+  apiKeySecret: string;
+  twimlAppSid: string;
+  voiceFrom: string;
+}
+
+export interface TwilioPhoneLookupResult {
+  status: "valid" | "invalid" | "unknown";
+  lineType: string | null;
+  phoneNumber: string | null;
+  raw?: Record<string, unknown>;
+}
+
+/** Reuse cached Lookup results for 7 days to limit Twilio API spend. */
+export const PHONE_LOOKUP_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const VOICE_TOKEN_TTL_SECONDS = 3600;
+
+function appBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://beautonomi.com").replace(
+    /\/$/,
+    "",
+  );
+}
+
 function statusCallbackUrl(): string | undefined {
   const base = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (!base) return undefined;
   return `${base.replace(/\/$/, "")}/api/webhooks/twilio`;
+}
+
+export function voiceTwimlUrl(): string {
+  return `${appBaseUrl()}/api/webhooks/twilio/voice`;
+}
+
+export function voiceStatusCallbackUrl(
+  leadId: string,
+  tenantId: string,
+  adminUserId: string,
+): string {
+  const params = new URLSearchParams({
+    lead_id: leadId,
+    tenant_id: tenantId,
+    admin_id: adminUserId,
+  });
+  return `${appBaseUrl()}/api/webhooks/twilio/voice/status?${params.toString()}`;
+}
+
+function base64UrlEncode(input: Buffer | string): string {
+  const buf = typeof input === "string" ? Buffer.from(input, "utf8") : input;
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+/**
+ * Validate Twilio webhook signature (HMAC-SHA1 over URL + sorted params).
+ */
+export function validateTwilioWebhookSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: URLSearchParams,
+): boolean {
+  if (!signature) return false;
+  const sortedParams = Array.from(params.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}${v}`)
+    .join("");
+  const expected = createHmac("sha1", authToken)
+    .update(url + sortedParams)
+    .digest("base64");
+
+  const sigBuf = Buffer.from(signature, "base64");
+  const expectedBuf = Buffer.from(expected, "base64");
+  if (sigBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(sigBuf, expectedBuf);
+}
+
+/**
+ * Auth token used to validate Twilio webhook signatures.
+ * Priority: tenant platform_secrets → global platform_secrets → env.
+ */
+export async function resolveTwilioWebhookAuthToken(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<string | null> {
+  let authToken = "";
+
+  try {
+    if (tenantId) {
+      const { data } = await supabase
+        .from("platform_secrets")
+        .select("twilio_auth_token")
+        .eq("tenant_id", tenantId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      authToken = (data as { twilio_auth_token?: string } | null)?.twilio_auth_token || "";
+    }
+
+    if (!authToken) {
+      const { data: globalRow } = await supabase
+        .from("platform_secrets")
+        .select("twilio_auth_token")
+        .is("tenant_id", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      authToken =
+        (globalRow as { twilio_auth_token?: string } | null)?.twilio_auth_token || "";
+    }
+  } catch {
+    // dev partial DB
+  }
+
+  return authToken || process.env.TWILIO_AUTH_TOKEN || null;
 }
 
 async function readTwilioSettings(
@@ -239,6 +358,161 @@ export async function sendTwilioWhatsAppTemplate(
     throw new Error((data.message as string) || "Failed to send WhatsApp template via Twilio");
   }
   return data;
+}
+
+/**
+ * Resolve Twilio Voice credentials (API key + TwiML app + caller ID).
+ * Priority: platform_secrets (DB) → environment variables.
+ */
+export async function resolveTwilioVoiceCredentials(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<TwilioVoiceCredentials | null> {
+  const selectCols =
+    "twilio_account_sid, twilio_auth_token, twilio_api_key_sid, twilio_api_key_secret, twilio_twiml_app_sid, twilio_voice_from";
+
+  let accountSid = "";
+  let authToken = "";
+  let apiKeySid = "";
+  let apiKeySecret = "";
+  let twimlAppSid = "";
+  let voiceFrom = "";
+
+  try {
+    let query = supabase
+      .from("platform_secrets")
+      .select(selectCols)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    query = query.eq("tenant_id", tenantId);
+    const { data } = await query.maybeSingle();
+
+    const row =
+      data ??
+      (
+        await supabase
+          .from("platform_secrets")
+          .select(selectCols)
+          .is("tenant_id", null)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ).data;
+
+    if (row) {
+      const r = row as Record<string, string>;
+      accountSid = r.twilio_account_sid || "";
+      authToken = r.twilio_auth_token || "";
+      apiKeySid = r.twilio_api_key_sid || "";
+      apiKeySecret = r.twilio_api_key_secret || "";
+      twimlAppSid = r.twilio_twiml_app_sid || "";
+      voiceFrom = r.twilio_voice_from || "";
+    }
+  } catch {
+    // dev partial DB
+  }
+
+  accountSid = accountSid || process.env.TWILIO_ACCOUNT_SID || "";
+  authToken = authToken || process.env.TWILIO_AUTH_TOKEN || "";
+  apiKeySid = apiKeySid || process.env.TWILIO_API_KEY_SID || "";
+  apiKeySecret = apiKeySecret || process.env.TWILIO_API_KEY_SECRET || "";
+  twimlAppSid = twimlAppSid || process.env.TWILIO_TWIML_APP_SID || "";
+  voiceFrom = voiceFrom || process.env.TWILIO_VOICE_FROM || "";
+
+  if (!accountSid || !authToken || !apiKeySid || !apiKeySecret || !twimlAppSid || !voiceFrom) {
+    return null;
+  }
+
+  return {
+    accountSid,
+    authToken,
+    apiKeySid,
+    apiKeySecret,
+    twimlAppSid,
+    voiceFrom,
+  };
+}
+
+/**
+ * Twilio Lookup v2 — validates a number and returns line type intelligence.
+ */
+export async function lookupPhone(
+  creds: Pick<TwilioCredentials, "accountSid" | "authToken">,
+  phoneE164: string,
+): Promise<TwilioPhoneLookupResult> {
+  const encoded = encodeURIComponent(phoneE164);
+  const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encoded}?Fields=line_type_intelligence`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`,
+    },
+  });
+
+  const data = (await res.json()) as Record<string, unknown>;
+
+  if (!res.ok) {
+    const code = Number(data.code);
+    if (code === 20404) {
+      return { status: "invalid", lineType: null, phoneNumber: phoneE164, raw: data };
+    }
+    throw new Error((data.message as string) || "Twilio Lookup failed");
+  }
+
+  const valid = data.valid === true;
+  const lineIntel = data.line_type_intelligence as { type?: string } | undefined;
+  const lineType = lineIntel?.type?.trim() || null;
+
+  return {
+    status: valid ? "valid" : "invalid",
+    lineType,
+    phoneNumber: (data.phone_number as string) || phoneE164,
+    raw: data,
+  };
+}
+
+export function isPhoneLookupCacheFresh(lookupAt: string | null | undefined): boolean {
+  if (!lookupAt) return false;
+  const at = new Date(lookupAt).getTime();
+  if (Number.isNaN(at)) return false;
+  return Date.now() - at < PHONE_LOOKUP_CACHE_MS;
+}
+
+/**
+ * Generate a Twilio Voice SDK access token (JWT, HS256).
+ * Identity should be the admin user id so status callbacks can attribute calls.
+ */
+export function generateTwilioVoiceAccessToken(
+  creds: TwilioVoiceCredentials,
+  identity: string,
+  ttlSeconds: number = VOICE_TOKEN_TTL_SECONDS,
+): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { typ: "JWT", alg: "HS256", cty: "twilio-fpa;v=1" };
+  const payload = {
+    jti: `${creds.apiKeySid}-${creds.accountSid}-${now}`,
+    iss: creds.apiKeySid,
+    sub: creds.accountSid,
+    iat: now,
+    exp: now + ttlSeconds,
+    grants: {
+      identity,
+      voice: {
+        outgoing: { application_sid: creds.twimlAppSid },
+        incoming: { allow: true },
+      },
+    },
+  };
+
+  const headerB64 = base64UrlEncode(JSON.stringify(header));
+  const payloadB64 = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const signature = createHmac("sha256", creds.apiKeySecret)
+    .update(signingInput)
+    .digest();
+  return `${signingInput}.${base64UrlEncode(signature)}`;
 }
 
 /** Non-retryable WhatsApp skip (waterfall / dead-letter without infinite retry). */

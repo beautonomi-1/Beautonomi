@@ -3,28 +3,22 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
+import { arrayToCSV, csvWithBom, generateCSVFilename } from "@/lib/utils/csv";
 import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import {
+  applyAssignedToFilter,
+  applyActiveLeadFilter,
+  escapeLike,
+  LEADS_EXPORT_SELECT,
+  parseCategoryIds,
+  parseDeletedFilter,
+} from "@/lib/provider-ops/lead-query-filters";
+import { formatReferrerDisplayName } from "@/lib/provider-ops/resolve-referrer";
+import { chunkIds, fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
-function escapeLike(value: string): string {
-  return value.replace(/[%_]/g, "");
-}
-
-function parseCategoryIds(searchParams: URLSearchParams): string[] {
-  const raw = [
-    ...searchParams.getAll("category_ids"),
-    ...searchParams.getAll("category_id"),
-  ];
-  const seen = new Set<string>();
-  for (const value of raw) {
-    for (const part of value.split(",")) {
-      const id = part.trim();
-      if (id) seen.add(id);
-    }
-  }
-  return [...seen];
-}
+const CATEGORY_PREFILTER_PAGE_SIZE = 1000;
+const ID_CHUNK_SIZE = 200;
 
 /**
  * GET /api/admin/provider-ops/leads/export
@@ -39,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (!allowed) {
       return NextResponse.json(
         { data: null, error: { message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`, code: "RATE_LIMIT_EXCEEDED" } },
-        { status: 429, headers: retryAfter ? { "Retry-After": String(retryAfter) } : undefined }
+        { status: 429, headers: retryAfter ? { "Retry-After": String(retryAfter) } : undefined },
       );
     }
 
@@ -54,59 +48,93 @@ export async function GET(request: NextRequest) {
     const country = searchParams.get("country");
     const province = searchParams.get("province")?.trim();
     const categoryIds = parseCategoryIds(searchParams);
+    const deletedMode = parseDeletedFilter(searchParams);
 
     let categoryLeadIds: string[] | null = null;
     if (categoryIds.length > 0) {
-      const { data: catRows } = await supabase
-        .from("provider_lead_categories")
-        .select("lead_id")
-        .in("global_category_id", categoryIds);
-      categoryLeadIds = [...new Set((catRows ?? []).map((r: { lead_id: string }) => r.lead_id))];
+      const catRows = await fetchAllPaged(async (from, to) => {
+        return supabase
+          .from("provider_lead_categories")
+          .select("lead_id")
+          .in("global_category_id", categoryIds)
+          .range(from, to);
+      }, CATEGORY_PREFILTER_PAGE_SIZE * 50);
+
+      categoryLeadIds = [...new Set(catRows.map((r: { lead_id: string }) => r.lead_id))];
       if (categoryLeadIds.length === 0) {
         const filename = generateCSVFilename("provider-leads-export");
-        return new NextResponse("", {
+        return new NextResponse(csvWithBom(""), {
           headers: {
-            "Content-Type": "text/csv",
+            "Content-Type": "text/csv; charset=utf-8",
             "Content-Disposition": `attachment; filename="${filename}"`,
           },
         });
       }
     }
 
-    let query = supabase
-      .from("provider_leads")
-      .select(`
-        *,
-        provider_lead_categories (
-          global_category_id,
-          global_service_categories:global_category_id (name)
-        )
-      `)
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false });
-
-    if (stage && stage !== "all") query = query.eq("commercial_stage", stage);
-    if (source && source !== "all") query = query.eq("source", source);
-    if (country) query = query.eq("country", country);
-    if (categoryIds.length > 0 && categoryLeadIds) query = query.in("id", categoryLeadIds);
-    if (province) {
-      const safeProvince = escapeLike(province);
-      query = query.or(
-        `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
-      );
-    }
-    if (search) {
-      const safe = escapeLike(search);
-      query = query.or(
-        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
-      );
-    }
-
-    const { data: leads, error } = await query;
-    if (error) throw error;
+    const applyFilters = <
+      T extends {
+        eq: (a: string, b: string) => T;
+        is: (a: string, b: null) => T;
+        not: (a: string, op: string, b: null) => T;
+        in: (a: string, b: string[]) => T;
+        or: (a: string) => T;
+        order: (a: string, b: { ascending: boolean }) => T;
+        range: (from: number, to: number) => T;
+      },
+    >(query: T): T => {
+      let q = applyActiveLeadFilter(query, deletedMode);
+      if (stage && stage !== "all") q = q.eq("commercial_stage", stage);
+      if (source && source !== "all") q = q.eq("source", source);
+      q = applyAssignedToFilter(q, assignedTo);
+      if (country) q = q.eq("country", country);
+      if (province) {
+        const safeProvince = escapeLike(province);
+        q = q.or(
+          `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`,
+        );
+      }
+      if (search) {
+        const safe = escapeLike(search);
+        q = q.or(
+          `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`,
+        );
+      }
+      return q;
+    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const csvData = (leads || []).map((lead: any) => {
+    let leads: any[] = [];
+
+    if (categoryLeadIds && categoryLeadIds.length > 0) {
+      for (const idChunk of chunkIds(categoryLeadIds, ID_CHUNK_SIZE)) {
+        const chunkLeads = await fetchAllPaged(async (from, to) => {
+          let query = supabase
+            .from("provider_leads")
+            .select(LEADS_EXPORT_SELECT)
+            .eq("tenant_id", tenantId)
+            .in("id", idChunk)
+            .order("created_at", { ascending: false });
+          query = applyFilters(query);
+          return query.range(from, to);
+        });
+        leads.push(...chunkLeads);
+      }
+      leads.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    } else {
+      leads = await fetchAllPaged(async (from, to) => {
+        let query = supabase
+          .from("provider_leads")
+          .select(LEADS_EXPORT_SELECT)
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false });
+        query = applyFilters(query);
+        return query.range(from, to);
+      });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const csvData = leads.map((lead: any) => {
       const categories = (lead.provider_lead_categories || [])
         .map((c: { global_service_categories?: { name?: string } }) => c.global_service_categories?.name)
         .filter(Boolean)
@@ -127,6 +155,7 @@ export async function GET(request: NextRequest) {
         "Stage": lead.commercial_stage ?? "",
         "Source": lead.source ?? "",
         "Source Detail": lead.source_detail ?? "",
+        "Referrer": formatReferrerDisplayName(lead) ?? "",
         "Description": lead.description ?? "",
         "Notes": lead.notes ?? "",
         "Tags": Array.isArray(lead.tags) ? lead.tags.join(", ") : "",
@@ -144,12 +173,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const csv = arrayToCSV(csvData);
+    const csv = csvWithBom(arrayToCSV(csvData));
     const filename = generateCSVFilename("provider-leads-export");
 
     return new NextResponse(csv, {
       headers: {
-        "Content-Type": "text/csv",
+        "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
@@ -157,7 +186,7 @@ export async function GET(request: NextRequest) {
     console.error("[leads/export] error:", error);
     return NextResponse.json(
       { data: null, error: { message: "Failed to export leads", code: "INTERNAL_ERROR" } },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

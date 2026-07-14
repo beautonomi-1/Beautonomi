@@ -71,6 +71,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { currencySelectLabel } from "@/lib/locale/currency";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
+import { ProviderAppDownloadNudge } from "@/components/provider/ProviderAppDownloadNudge";
 
 interface GlobalCategory {
   id: string;
@@ -403,6 +404,53 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
 };
 
 const ONBOARDING_DRAFT_STORAGE_KEY = "beautonomi_provider_onboarding_draft";
+const ONBOARDING_INVITE_TOKEN_STORAGE_KEY = "beautonomi_onboarding_invite_token";
+
+function getStoredInviteToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(ONBOARDING_INVITE_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Redeem an admin-sent lead invite token: stamps invite_accepted_at on the
+ * lead (so Provider Ops sees the link was opened) and returns the lead's
+ * onboarding_data for prefilling the wizard.
+ */
+async function redeemInviteToken(token: string): Promise<Partial<OnboardingData> | null> {
+  try {
+    const response = await fetcher.post<{
+      data: {
+        lead_id: string;
+        already_matched: boolean;
+        prefill: {
+          business_name: string | null;
+          contact_person_name: string | null;
+          email: string | null;
+          phone_e164: string | null;
+          description: string | null;
+          onboarding_data: Partial<OnboardingData>;
+        };
+      };
+    }>("/api/provider/onboarding/invite/redeem", { invite_token: token });
+
+    const prefill = response.data?.prefill;
+    if (!prefill) return null;
+
+    const merged: Partial<OnboardingData> = { ...(prefill.onboarding_data || {}) };
+    if (!merged.business_name && prefill.business_name) merged.business_name = prefill.business_name;
+    if (!merged.owner_name && prefill.contact_person_name) merged.owner_name = prefill.contact_person_name;
+    if (!merged.owner_email && prefill.email) merged.owner_email = prefill.email;
+    if (!merged.owner_phone && prefill.phone_e164) merged.owner_phone = prefill.phone_e164;
+    if (!merged.description && prefill.description) merged.description = prefill.description;
+    return merged;
+  } catch {
+    // Invalid/expired token: continue with a blank wizard rather than blocking.
+    return null;
+  }
+}
 
 // New streamlined step order
 const STEPS = [
@@ -440,6 +488,7 @@ export default function ProviderOnboarding() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [inAppFromUrl, setInAppFromUrl] = useState(false);
+  const [onboardingSuccessMessage, setOnboardingSuccessMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<OnboardingData>>(() => ({
     ...INITIAL_ONBOARDING_DATA,
   }));
@@ -451,6 +500,16 @@ export default function ProviderOnboarding() {
       const planId = params.get("planId");
       const planName = params.get("planName");
       const inApp = params.get("in_app") === "1";
+      const invite = params.get("invite");
+      if (invite) {
+        // Persist so the token survives login redirects and refreshes; it is
+        // redeemed in loadDraft and sent with the final submit for matching.
+        try {
+          window.sessionStorage.setItem(ONBOARDING_INVITE_TOKEN_STORAGE_KEY, invite);
+        } catch {
+          /* ignore */
+        }
+      }
       const updates: Partial<OnboardingData> = {};
       if (planId) updates.selected_plan_id = planId;
       if (planName) updates.selected_plan_name = planName;
@@ -534,6 +593,38 @@ export default function ProviderOnboarding() {
       }
     }
 
+    // Admin-sent invite link: redeem the token (marks the lead's invite as
+    // accepted for Provider Ops visibility) and prefill from the lead.
+    let invitePrefilled = false;
+    const inviteToken =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("invite") || getStoredInviteToken()
+        : null;
+    if (inviteToken) {
+      const invitePrefill = await redeemInviteToken(inviteToken);
+      if (invitePrefill) {
+        if (!resumed) {
+          Object.assign(merged, invitePrefill);
+          invitePrefilled = true;
+        } else {
+          // An in-progress draft wins; only fill contact basics still empty.
+          for (const key of [
+            "business_name",
+            "owner_name",
+            "owner_email",
+            "owner_phone",
+            "description",
+          ] as const) {
+            const current = merged[key];
+            const incoming = invitePrefill[key];
+            if ((current == null || current === "") && typeof incoming === "string" && incoming) {
+              (merged as Record<string, unknown>)[key] = incoming;
+            }
+          }
+        }
+      }
+    }
+
     const prefill = await fetchProfilePrefillForOnboarding();
     if (prefill) {
       mergeAccountIntoOnboardingForm(merged, prefill);
@@ -547,6 +638,8 @@ export default function ProviderOnboarding() {
       toast.success("Resumed from saved draft");
     } else if (resumed === "session") {
       toast.success("Resumed from saved progress");
+    } else if (invitePrefilled) {
+      toast.success("Welcome! We've prefilled your details from your invite.");
     }
   };
 
@@ -858,6 +951,8 @@ export default function ProviderOnboarding() {
         no_show_fee_amount: formData.no_show_fee_amount || null,
         include_in_search_engines: formData.include_in_search_engines !== false, // Default to true
         selected_plan_id: formData.selected_plan_id || null,
+        // Provider Ops: deterministic lead matching for admin-sent invites.
+        invite_token: getStoredInviteToken(),
       };
 
       // Validate required fields before sending
@@ -911,6 +1006,7 @@ export default function ProviderOnboarding() {
       if (requiresCheckout && selectedPlanId) {
         try {
           sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+          sessionStorage.removeItem(ONBOARDING_INVITE_TOKEN_STORAGE_KEY);
         } catch {}
         toast.success("Onboarding complete. Complete your subscription below.", { duration: 3000 });
         const checkoutPath =
@@ -938,13 +1034,10 @@ export default function ProviderOnboarding() {
 
       try {
         sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+        sessionStorage.removeItem(ONBOARDING_INVITE_TOKEN_STORAGE_KEY);
       } catch {}
-      // Â§provider-launch (2026-06): no get-started detour. Send the provider to
-      // the optional, skippable identity-verification step (the verification
-      // settings screen in onboarding mode), which continues to the dashboard.
-      setTimeout(() => {
-        router.push("/provider/settings/verification?onboarding=1");
-      }, 1500);
+      // Show app-download nudge before the optional verification step.
+      setOnboardingSuccessMessage(successMessage);
     } catch (error) {
       let errorMessage = "Failed to submit onboarding. Please try again.";
 
@@ -1022,6 +1115,28 @@ export default function ProviderOnboarding() {
   const totalVisibleSteps = STEPS.filter(
     (s) => !s.conditional || (s.conditional && s.conditional(formData))
   ).length;
+
+  if (onboardingSuccessMessage) {
+    return (
+      <RoleGuard
+        allowedRoles={["customer", "provider_owner", "provider_onboarding"]}
+        redirectTo="/become-a-partner"
+        showLoading={true}
+      >
+        <div className={ONBOARDING_PAGE_BG}>
+          <div className={`${ONBOARDING_CONTAINER} max-w-2xl`}>
+            <ProviderAppDownloadNudge
+              successHeadline="You're all set!"
+              subtitle={onboardingSuccessMessage}
+              showContinue
+              continueLabel="Continue to verification"
+              onContinue={() => router.push("/provider/settings/verification?onboarding=1")}
+            />
+          </div>
+        </div>
+      </RoleGuard>
+    );
+  }
 
   return (
     <RoleGuard

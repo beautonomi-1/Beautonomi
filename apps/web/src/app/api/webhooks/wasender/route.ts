@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { incrementBulkBatchCount } from "@/lib/whatsapp/increment-bulk-batch-count";
 import { fetchAndPersistSessionApiKey } from "@/lib/whatsapp/wasender-client";
+import { isOptOutKeyword } from "@/lib/provider-ops/do-not-contact";
 import crypto from "crypto";
 
 /**
@@ -120,8 +121,9 @@ export async function POST(request: NextRequest) {
         const normalizedPhone = `+${fromNumber.replace(/[^\d]/g, "")}`;
         const { data: lead } = await supabase
           .from("provider_leads")
-          .select("id, tenant_id")
+          .select("id, tenant_id, do_not_contact")
           .eq("phone_e164", normalizedPhone)
+          .is("deleted_at", null)
           .limit(1)
           .maybeSingle();
 
@@ -144,6 +146,25 @@ export async function POST(request: NextRequest) {
             description: `WhatsApp reply received: "${messageText.slice(0, 80)}${messageText.length > 80 ? "..." : ""}"`,
             metadata: { from: normalizedPhone },
           });
+
+          if (isOptOutKeyword(messageText) && !leadRow.do_not_contact) {
+            const now = new Date().toISOString();
+            await supabase
+              .from("provider_leads")
+              .update({
+                do_not_contact: true,
+                do_not_contact_at: now,
+                do_not_contact_reason: "whatsapp_opt_out",
+              })
+              .eq("id", leadRow.id);
+
+            await supabase.from("provider_lead_activities").insert({
+              lead_id: leadRow.id,
+              activity_type: "do_not_contact_set",
+              description: "Lead opted out via WhatsApp (STOP/opt-out keyword)",
+              metadata: { source: "whatsapp_webhook", keyword: messageText.trim().slice(0, 32) },
+            });
+          }
         }
       }
     }

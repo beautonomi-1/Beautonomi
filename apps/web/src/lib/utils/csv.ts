@@ -92,3 +92,8 @@ export function generateCSVFilename(prefix: string): string {
 export function csvToBlob(csv: string): Blob {
   return new Blob([csv], { type: "text/csv;charset=utf-8;" });
 }
+
+/** Prepend UTF-8 BOM so Excel opens CSV with correct encoding. */
+export function csvWithBom(csv: string): string {
+  return `\uFEFF${csv}`;
+}

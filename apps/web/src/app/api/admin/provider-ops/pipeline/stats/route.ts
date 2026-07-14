@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
           .from("provider_leads")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .is("deleted_at", null)
           .eq("commercial_stage", stage);
         if (error) throw error;
         return [stage, count ?? 0] as const;
