@@ -441,6 +441,13 @@ export async function notifyBookingReminder2h(bookingId: string, channels?: Noti
   );
 }
 
+export interface BookingCancelledNotifyOptions {
+  cancellationReason?: string | null;
+  feeRetained?: number;
+  walletRefund?: number;
+  currency?: string;
+}
+
 /**
  * Send booking cancelled notification
  */
@@ -448,10 +455,21 @@ export async function notifyBookingCancelled(
   bookingId: string,
   cancelledBy: "customer" | "provider" | "system",
   refundInfo: string,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  options?: BookingCancelledNotifyOptions,
 ) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
+
+  const bookingCur = options?.currency || bookingCurrency(booking);
+  const feeRetained =
+    options?.feeRetained != null && Number.isFinite(options.feeRetained)
+      ? fmt(options.feeRetained, bookingCur)
+      : "";
+  const refundIssued =
+    options?.walletRefund != null && Number.isFinite(options.walletRefund)
+      ? fmt(options.walletRefund, bookingCur)
+      : "";
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
@@ -459,6 +477,9 @@ export async function notifyBookingCancelled(
     booking_number: booking.booking_number || bookingId,
     refund_info: refundInfo,
     booking_id: bookingId,
+    cancellation_reason: options?.cancellationReason?.trim() || "",
+    fee_retained: feeRetained,
+    refund_issued: refundIssued,
   };
 
   const templateKey = cancelledBy === "customer" 
@@ -488,6 +509,16 @@ export async function notifyBookingCancelled(
         booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
         services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
         booking_id: bookingId,
+        fee_retained: feeRetained,
+        refund_issued: refundIssued,
+        financial_summary:
+          feeRetained && refundIssued
+            ? `Fee retained: ${feeRetained}. Wallet refund: ${refundIssued}.`
+            : feeRetained
+              ? `Fee retained: ${feeRetained}.`
+              : refundIssued
+                ? `Wallet refund: ${refundIssued}.`
+                : "",
       }),
       channels,
       { appType: "provider" }

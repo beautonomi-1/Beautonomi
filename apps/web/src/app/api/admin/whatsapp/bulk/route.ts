@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTemplatePlaceholders, normalizePhoneForWasender } from "@/lib/whatsapp/wasender-client";
+import { leadIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 
 const ABSOLUTE_MAX_BATCH = 100;
 
@@ -81,11 +82,16 @@ export async function POST(request: NextRequest) {
     }
     if (!templateBody) return errorResponse("Message body is empty", "VALIDATION_ERROR", 400);
 
+    const siteBaseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      new URL(request.url).origin;
+
     // Load leads
     const { data: leads } = await supabase
       .from("provider_leads")
-      .select("id, phone_e164, contact_person_name, lead_name, business_name, email, whatsapp_status")
+      .select("id, phone_e164, contact_person_name, lead_name, business_name, email, whatsapp_status, do_not_contact, deleted_at")
       .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
       .in("id", lead_ids);
 
     const leadMap = new Map((leads as any[] || []).map((l: any) => [l.id, l]));
@@ -109,6 +115,8 @@ export async function POST(request: NextRequest) {
     for (const lid of lead_ids) {
       const lead = leadMap.get(lid);
       if (!lead) { skipped.push({ lead_id: lid, reason: "not_found" }); continue; }
+      if (lead.deleted_at) { skipped.push({ lead_id: lid, reason: "deleted" }); continue; }
+      if (leadIsDoNotContact(lead)) { skipped.push({ lead_id: lid, reason: "do_not_contact" }); continue; }
       if (!lead.phone_e164) { skipped.push({ lead_id: lid, reason: "no_phone" }); continue; }
       if (recentlyMessaged.has(lid)) { skipped.push({ lead_id: lid, reason: "messaged_within_24h" }); continue; }
       if (lead.whatsapp_status === "not_found") { skipped.push({ lead_id: lid, reason: "not_on_whatsapp" }); continue; }
@@ -116,7 +124,11 @@ export async function POST(request: NextRequest) {
       eligible.push({
         lead_id: lid,
         to_number: normalizePhoneForWasender(lead.phone_e164),
-        message_body: resolveTemplatePlaceholders(templateBody, lead),
+        message_body: await resolveTemplatePlaceholders(templateBody, lead, {
+          supabase,
+          tenantId,
+          baseUrl: siteBaseUrl,
+        }),
       });
     }
 

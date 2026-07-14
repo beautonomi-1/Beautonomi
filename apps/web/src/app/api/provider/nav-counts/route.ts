@@ -11,6 +11,10 @@ const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "re
  * refresh frequently without loading full booking/order/message lists.
  *
  * `pending_bookings`: statuses `pending` (confirm) and `pending_payment` (matches bookings list chips).
+ * `stale_pending_bookings`: subset of the above whose `scheduled_at` is before the start of
+ * today (UTC) — these have fallen outside the ±30-day date-strip window in the provider app's
+ * Day view and would otherwise be unreachable/un-actionable without the Overview "all dates"
+ * deep link. Not added to `critical_total` (it's already included via `pending_bookings`).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,9 +23,15 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const startOfTodayUtc = new Date();
+    startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+    const staleCutoffIso = startOfTodayUtc.toISOString();
+
     const [
       pendingBookings,
       pendingGroupBookings,
+      staleBookings,
+      staleGroupBookings,
       activeProductOrders,
       unreadConversations,
       waitingRoom,
@@ -39,6 +49,18 @@ export async function GET(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .in("status", ["pending"]),
+      supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .in("status", ["pending", "pending_payment"])
+        .lt("scheduled_at", staleCutoffIso),
+      supabase
+        .from("group_bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("status", "pending")
+        .lt("scheduled_at", staleCutoffIso),
       (supabase.from("product_orders") as any)
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
@@ -68,7 +90,7 @@ export async function GET(request: NextRequest) {
         .eq("status", "pending"),
     ]);
 
-    for (const result of [pendingBookings, pendingGroupBookings, activeProductOrders, unreadConversations, waitingRoom, pendingCustomRequests]) {
+    for (const result of [pendingBookings, pendingGroupBookings, staleBookings, staleGroupBookings, activeProductOrders, unreadConversations, waitingRoom, pendingCustomRequests]) {
       if (result.error) throw result.error;
     }
 
@@ -83,6 +105,7 @@ export async function GET(request: NextRequest) {
 
     const counts = {
       pending_bookings: (pendingBookings.count ?? 0) + (pendingGroupBookings.count ?? 0),
+      stale_pending_bookings: (staleBookings.count ?? 0) + (staleGroupBookings.count ?? 0),
       active_product_orders: activeProductOrders.count ?? 0,
       unread_messages: (unreadConversations.data ?? []).reduce(
         (sum: number, row: { unread_count_provider?: number | null }) => sum + Number(row.unread_count_provider ?? 0),

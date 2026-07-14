@@ -69,7 +69,7 @@ export async function POST(
     const tenantId = await resolveAdminApiTenantId(request);
     const { data: lead } = await supabase
       .from("provider_leads")
-      .select("id")
+      .select("id, phone_e164")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -87,6 +87,29 @@ export async function POST(
       .select()
       .single();
     if (error) throw error;
+
+    // Logged phone calls also land in the communications log so the comms
+    // history is complete alongside SMS/WhatsApp/email.
+    if (body.activity_type === "call_logged") {
+      const direction = body.metadata?.direction === "inbound" ? "inbound" : "outbound";
+      const { error: commErr } = await supabase
+        .from("provider_lead_communications")
+        .insert({
+          tenant_id: tenantId,
+          lead_id: id,
+          channel: "call",
+          direction,
+          to_number: direction === "outbound" ? lead.phone_e164 : null,
+          from_number: direction === "inbound" ? lead.phone_e164 : null,
+          body: body.description || null,
+          status: body.metadata?.outcome || "completed",
+          metadata: body.metadata || {},
+          sent_by: user.id,
+        });
+      if (commErr) {
+        console.error("[leads/activities] call comms insert error:", commErr);
+      }
+    }
 
     void writeAuditLog({
       actor_user_id: user.id,

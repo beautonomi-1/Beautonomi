@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { fetcher, FetchTimeoutError } from "@/lib/http/fetcher";
+import { fetcher, FetchTimeoutError, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -191,75 +191,31 @@ export function ProviderNotificationsDropdown() {
 
     if (user?.id && process.env.NODE_ENV === "production") {
       try {
-        // Subscribe to new notifications for this user
+        // Refetch on any change instead of hand-maintaining the count locally.
+        // Manual +1/-1 bookkeeping double-counted: our own mark-read POST also
+        // triggers a realtime UPDATE, decrementing a count the optimistic UI
+        // already decremented. The server count is authoritative; bypass the
+        // GET cache since a realtime event means cached data is stale.
         subscription = supabase
           .channel(`notifications:${user.id}:${realtimeChannelKey()}`)
           .on(
             'postgres_changes',
             {
-              event: 'INSERT',
+              event: '*',
               schema: 'public',
               table: 'notifications',
               filter: `user_id=eq.${user.id}`,
             },
             (payload) => {
-            // New notification received
-            const newNotification = payload.new as any;
-            setNotifications((prev) => {
-              // Check if notification already exists (avoid duplicates)
-              if (prev.find((n) => n.id === newNotification.id)) {
-                return prev;
+              if (payload.eventType === 'INSERT') {
+                const newNotification = payload.new as any;
+                if (!newNotification.is_read && newNotification.priority === 'high') {
+                  toast.info(newNotification.title, {
+                    description: newNotification.message,
+                  });
+                }
               }
-              return [{
-                id: newNotification.id,
-                type: newNotification.type,
-                title: newNotification.title,
-                message: newNotification.message,
-                timestamp: newNotification.created_at,
-                link: newNotification.link ?? newNotification.action_url ?? undefined,
-                priority: (newNotification.priority || 'low') as 'low' | 'medium' | 'high',
-                read: newNotification.is_read || false,
-                metadata: newNotification.metadata,
-                data: newNotification.data,
-              }, ...prev];
-            });
-            
-            if (!newNotification.is_read) {
-              setTotalUnread((prev) => prev + 1);
-              // Show toast for high priority notifications
-              if (newNotification.priority === 'high') {
-                toast.info(newNotification.title, {
-                  description: newNotification.message,
-                });
-              }
-            }
-            }
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'notifications',
-              filter: `user_id=eq.${user.id}`,
-            },
-            (payload) => {
-            // Notification updated (e.g., marked as read)
-            const updatedNotification = payload.new as any;
-            setNotifications((prev) =>
-              prev.map((n) =>
-                n.id === updatedNotification.id
-                  ? {
-                      ...n,
-                      read: updatedNotification.is_read || false,
-                    }
-                  : n
-              )
-            );
-            
-            if (updatedNotification.is_read) {
-              setTotalUnread((prev) => Math.max(0, prev - 1));
-            }
+              void loadNotifications(true, { staleTimeMs: 0 });
             }
           )
           .subscribe();
@@ -298,6 +254,7 @@ export function ProviderNotificationsDropdown() {
     if (wasUnread) {
       try {
         await fetcher.post(`/api/provider/notifications/${notification.id}/read`, {});
+        deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
       } catch (error) {
         console.error("Failed to mark notification as read:", error);
         setNotifications((prev) =>
@@ -348,6 +305,7 @@ export function ProviderNotificationsDropdown() {
       await fetcher.delete(
         `/api/provider/notifications/${encodeURIComponent(notification.id)}`,
       );
+      deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
     } catch (error) {
       console.error("Failed to delete notification:", error);
       setNotifications(prevList);
@@ -363,6 +321,7 @@ export function ProviderNotificationsDropdown() {
     setTotalUnread(0);
     try {
       await fetcher.post("/api/provider/notifications/mark-all-read", {});
+      deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
       toast.success("All notifications marked as read");
     } catch (error) {
       console.error("Failed to mark all as read:", error);

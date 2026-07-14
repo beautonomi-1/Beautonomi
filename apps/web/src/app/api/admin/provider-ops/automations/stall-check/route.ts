@@ -9,6 +9,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
+import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 
 /**
  * On-demand stall detection. Scans all in-progress onboarding drafts,
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
           const phone = entry.phone as string | null;
           const name = entry.full_name as string;
           if (!phone) continue;
+          if (await phoneIsDoNotContact(supabase, tenantId, phone)) continue;
 
           try {
             await sendTwilioSMS(

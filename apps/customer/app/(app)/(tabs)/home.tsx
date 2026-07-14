@@ -29,6 +29,7 @@ import { useGlobalCategories, getCategoryIcon, getGlobalCategoryImageUri } from 
 import { ProviderCard } from "@/components/ProviderCard";
 import { AddressPicker } from "@/components/AddressPicker";
 import { InstallAppBanner } from "@/components/InstallAppBanner";
+import { IdentityVerificationBanner } from "@/components/IdentityVerificationBanner";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { BeautonomiWordmark } from "@/components/BeautonomiWordmark";
 import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
@@ -621,6 +622,8 @@ export default function HomeScreen() {
         <InstallAppBanner />
 
         <AnnouncementBanner />
+
+        <IdentityVerificationBanner />
 
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
           {/* Left: wordmark — prominent brand lockup (D1 §Customer-audit 2026-04) */}

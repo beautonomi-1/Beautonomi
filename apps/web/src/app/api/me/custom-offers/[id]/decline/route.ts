@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return errorResponse("This offer is no longer active.", "OFFER_INACTIVE", 400);
     }
 
-    const allowed = ["pending"];
+    const allowed = ["pending", "changes_requested"];
     if (!allowed.includes(st)) {
       return errorResponse(`This offer cannot be declined (status: ${st}).`, "OFFER_NOT_DECLINABLE", 400);
     }

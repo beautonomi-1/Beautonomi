@@ -23,6 +23,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -58,9 +59,22 @@ export default function PersonalInfoScreen() {
 
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [emailSending, setEmailSending] = useState(false);
-  const [emailChangePending, setEmailChangePending] = useState(false);
+  const emailChange = useEmailChangeOtp({
+    onVerified: () => {
+      setShowEmailModal(false);
+      load();
+    },
+    errorTitle: errTitle,
+    strings: {
+      invalidEmail: ls("invalidEmail"),
+      enterOtp: ls("enterEmailOtp", { digits: String(SUPABASE_AUTH_OTP_LENGTH) }),
+      sendFailed: ls("sendVerificationFailed"),
+      verifyFailedTitle: ls("verificationFailedTitle"),
+      verifyFailedBody: ls("verificationFailedBody"),
+      verifiedTitle: ls("emailSavedTitle"),
+      verifiedBody: ls("emailSavedBody"),
+    },
+  });
   const [phoneStep, setPhoneStep] = useState<"enter_phone" | "enter_otp" | null>(null);
   const [phoneModalCountryCode, setPhoneModalCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneModalNational, setPhoneModalNational] = useState("");
@@ -90,7 +104,6 @@ export default function PersonalInfoScreen() {
       } else {
         const p = profileRes.data;
         setProfile(p);
-        setEmailChangePending(!!(p as { email_change_pending?: boolean })?.email_change_pending);
         setFullName(p?.full_name || [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "");
         const deviceDial = getDeviceDefaultCountryDial();
         const main = parsePhoneToCountryAndNational(p?.phone, deviceDial);
@@ -135,35 +148,6 @@ export default function PersonalInfoScreen() {
       }
     };
   }, [phoneResendCooldown]);
-
-  const handleChangeEmail = async () => {
-    const email = newEmail.trim().toLowerCase();
-    if (!email) {
-      Alert.alert(errTitle, ls("enterNewEmail"));
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert(errTitle, ls("invalidEmail"));
-      return;
-    }
-    setEmailSending(true);
-    try {
-      const res = await api.patch<any>("/api/me/profile", { email });
-      if (res.error) {
-        Alert.alert(errTitle, res.error.message ?? ls("sendVerificationFailed"));
-      } else {
-        setEmailChangePending(true);
-        setNewEmail("");
-        setShowEmailModal(false);
-        Alert.alert(ls("emailChangeSentTitle"), ls("emailChangeSentBody"));
-        load();
-      }
-    } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e, ls("sendVerificationFailed")));
-    } finally {
-      setEmailSending(false);
-    }
-  };
 
   const handleSendPhoneOtp = async () => {
     const fullPhone = `${phoneModalCountryCode}${phoneModalNational.replace(/\D/g, "")}`.trim();
@@ -275,15 +259,11 @@ export default function PersonalInfoScreen() {
       const parts = fullName.trim().split(/\s+/);
       const first = parts[0] || "";
       const last = parts.slice(1).join(" ") || "";
-      const fullPhone = phoneNational.trim()
-        ? `${phoneCountryCode}${phoneNational.replace(/\D/g, "")}`
-        : null;
       const emergencyPhoneDigits = emergencyPhoneNational.trim().replace(/\D/g, "");
       const profilePayload: Record<string, unknown> = {
         first_name: first,
         last_name: last,
         full_name: fullName.trim(),
-        phone: fullPhone,
         emergency_contact: {
           name: emergencyName.trim() || null,
           country_code: emergencyPhoneDigits ? emergencyCountryCode : null,
@@ -385,18 +365,13 @@ export default function PersonalInfoScreen() {
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pi("emailLabel")}</Text>
-                <TouchableOpacity onPress={() => { setNewEmail(""); setShowEmailModal(true); }} accessibilityLabel={pi("a11yChangeEmail")} accessibilityRole="button">
+                <TouchableOpacity onPress={() => { emailChange.reset(); emailChange.setStep("enter_email"); setShowEmailModal(true); }} accessibilityLabel={pi("a11yChangeEmail")} accessibilityRole="button">
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{pi("changeEmailCta")}</Text>
                 </TouchableOpacity>
               </View>
               <View style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}>
                 <Text style={{ fontSize: 16, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
               </View>
-              {emailChangePending && (
-                <View style={{ backgroundColor: "#FEF3C7", padding: 12, borderRadius: RADIUS_INPUT, marginTop: 8 }}>
-                  <Text style={{ fontSize: 13, color: "#92400E" }}>{pi("emailChangePendingBanner")}</Text>
-                </View>
-              )}
             </View>
             <View>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -405,15 +380,13 @@ export default function PersonalInfoScreen() {
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{pi("changePhoneCta")}</Text>
                 </TouchableOpacity>
               </View>
-              <PhoneInputWithCountry
-                label=""
-                countryCode={phoneCountryCode}
-                onCountryCodeChange={setPhoneCountryCode}
-                nationalValue={phoneNational}
-                onNationalChange={setPhoneNational}
-                placeholder={pi("phonePlaceholder")}
-                accessibilityLabel={pi("phonePlaceholder")}
-              />
+              <View style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ fontSize: 16, color: Colors.gray[600] }}>
+                  {profile.phone
+                    ? `${phoneCountryCode} ${phoneNational || getNationalFromStored(phoneCountryCode, profile.phone)}`
+                    : "-"}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -490,32 +463,62 @@ export default function PersonalInfoScreen() {
 
       {/* Change email modal */}
       <Modal visible={showEmailModal} transparent animationType="fade">
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} onPress={() => setShowEmailModal(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} onPress={() => { setShowEmailModal(false); emailChange.reset(); }}>
           <Pressable style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 24 }} onPress={(e) => e.stopPropagation()}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{pi("changeEmailModalTitle")}</Text>
-              <TouchableOpacity onPress={() => setShowEmailModal(false)} hitSlop={12} accessibilityLabel={t("common.close")}>
+              <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} hitSlop={12} accessibilityLabel={t("common.close")}>
                 <Ionicons name="close" size={24} color={Colors.gray[500]} />
               </TouchableOpacity>
             </View>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>{pi("changeEmailModalBody")}</Text>
-            <TextInput
-              style={{ borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: Colors.gray[900], marginBottom: 16 }}
-              value={newEmail}
-              onChangeText={setNewEmail}
-              placeholder={pi("newEmailPlaceholder")}
-              placeholderTextColor={Colors.gray[400]}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <View style={{ flexDirection: "row", marginTop: 4 }}>
-              <TouchableOpacity onPress={() => setShowEmailModal(false)} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleChangeEmail} disabled={emailSending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
-                {emailSending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>{pi("sendVerificationEmail")}</Text>}
-              </TouchableOpacity>
-            </View>
+            {emailChange.step === "enter_email" || emailChange.step === null ? (
+              <>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+                  {pi("changeEmailOtpIntro", { digits: String(emailChange.otpLength) })}
+                </Text>
+                <TextInput
+                  style={{ borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: Colors.gray[900], marginBottom: 16 }}
+                  value={emailChange.newEmail}
+                  onChangeText={emailChange.setNewEmail}
+                  placeholder={pi("newEmailPlaceholder")}
+                  placeholderTextColor={Colors.gray[400]}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <View style={{ flexDirection: "row", marginTop: 4 }}>
+                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void emailChange.sendCode()} disabled={emailChange.sending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                    {emailChange.sending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>{pi("sendVerificationCode")}</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+                  {pi("emailCodeSentTo", { email: emailChange.pendingEmail })}
+                </Text>
+                <OtpDigitRow
+                  value={emailChange.otpCode}
+                  onChange={emailChange.setOtpCode}
+                  onComplete={(code) => {
+                    if (!emailChange.verifying && isCompleteSupabaseSmsOtp(code)) void emailChange.verifyCode(code);
+                  }}
+                  disabled={emailChange.verifying}
+                  autoFocus
+                  accessibilityLabelPrefix="Email change verification code"
+                />
+                <View style={{ flexDirection: "row", marginTop: 16 }}>
+                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void emailChange.verifyCode()} disabled={emailChange.verifying} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                    {emailChange.verifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>{pi("verifyAndSave")}</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>

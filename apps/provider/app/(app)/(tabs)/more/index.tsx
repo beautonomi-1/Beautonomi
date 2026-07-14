@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
-import { View, Text, TouchableOpacity, Alert, Platform } from "react-native";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { View, Text, TouchableOpacity, Alert, Platform, DeviceEventEmitter } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,6 +21,7 @@ import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePayCloudSettings } from "@/hooks/usePayCloud";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -325,6 +326,13 @@ export default function MoreScreen() {
       void refreshNavCounts();
     }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts])
   );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
+      void refreshCompletion();
+    });
+    return () => sub.remove();
+  }, [refreshCompletion]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

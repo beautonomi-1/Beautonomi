@@ -17,6 +17,7 @@ import {
   isCancelledPaystackUrl,
   matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 
 interface PaystackInitResponse {
   authorization_url: string;
@@ -131,6 +132,10 @@ export function usePaystackPayment() {
           source: "customer_mobile",
           save_card: params.save_card ?? false,
         });
+
+        if (data.reference) {
+          markReferenceProcessing(data.reference);
+        }
 
         const pr = await checkout.waitForCheckout(data.authorization_url, {
           title: "Pay booking",

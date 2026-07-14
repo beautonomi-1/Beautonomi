@@ -24,6 +24,7 @@ import {
   Trophy,
   ShoppingBag,
   Undo2,
+  BadgePercent,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -43,6 +44,7 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: ShieldCheck, title: "Login & security", description: "Update your password and secure your account", link: "/account-settings/login-and-security" },
   { icon: CreditCard, title: "Payments & payouts", description: "Review payments, payouts, coupons, and gift cards", link: "/account-settings/payments" },
   { icon: Wallet, title: "Wallet", description: "Top up your wallet and view wallet activity", link: "/account-settings/wallet" },
+  { icon: BadgePercent, title: "Memberships", description: "Manage salon memberships, auto-renewal, and billing history", link: "/account-settings/membership" },
   { icon: Trophy, title: "Loyalty Points", description: "Earn points on every booking, unlock rewards and milestones, redeem for discounts", link: "/account-settings/loyalty" },
   { icon: FileText, title: "Taxes", description: "Manage taxpayer information and tax documents", link: "/account-settings/taxes" },
   { icon: MapPin, title: "Saved addresses", description: "Manage your saved addresses for faster checkout", link: "/account-settings/addresses" },

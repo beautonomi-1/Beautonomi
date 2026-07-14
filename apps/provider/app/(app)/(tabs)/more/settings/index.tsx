@@ -1,5 +1,6 @@
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { useRouter } from "expo-router";
+import { useEffect, useCallback } from "react";
+import { View, Text, TouchableOpacity, ScrollView, DeviceEventEmitter } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAppNativeVersion } from "@/lib/app-native-version";
@@ -10,6 +11,7 @@ import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 
 interface SetupStatus {
   isComplete: boolean;
@@ -167,7 +169,20 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const { themeMode, setThemeMode } = useTheme();
-  const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
+  const { data: setupStatus, refresh: refreshSetupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSetupStatus();
+    }, [refreshSetupStatus]),
+  );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
+      void refreshSetupStatus();
+    });
+    return () => sub.remove();
+  }, [refreshSetupStatus]);
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");

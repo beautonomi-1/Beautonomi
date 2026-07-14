@@ -13,6 +13,8 @@ import {
   getStatusAccentColor,
   shouldShowCustomerAcceptCta,
   shouldShowCustomerResumeCta,
+  shouldShowCustomerRequestChangesCta,
+  shouldShowProviderEditCta,
   shouldShowViewBookingCta,
   shouldShowWithdrawCta,
   type CustomOfferAttachmentBase,
@@ -34,6 +36,7 @@ const BADGE_BG: Record<string, string> = {
   declined: "bg-red-50 text-red-600",
   withdrawn: "bg-gray-100 text-gray-500",
   needs_support: "bg-red-50 text-red-600",
+  changes_requested: "bg-blue-50 text-blue-700",
 };
 
 function formatMoney(price: number, currency?: string): string {
@@ -78,6 +81,7 @@ export type CustomOfferCardProps = {
   onClick?: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
+  onRequestChanges?: () => void;
   onResume?: () => void;
   /** Provider: retract/withdraw the offer. */
   onWithdraw?: () => void;
@@ -99,6 +103,7 @@ export function CustomOfferCard({
   onClick,
   onAccept,
   onDecline,
+  onRequestChanges,
   onResume,
   onWithdraw,
   onEdit,
@@ -112,9 +117,11 @@ export function CustomOfferCard({
   const stripeColor = STRIPE[accentType] ?? STRIPE.active;
 
   const showAccept = shouldShowCustomerAcceptCta(s, isMe);
+  const showRequestChanges = shouldShowCustomerRequestChangesCta(s, isMe);
   const showResume = shouldShowCustomerResumeCta(s, isMe);
   const showViewBooking = shouldShowViewBookingCta(s);
   const showWithdraw = shouldShowWithdrawCta(s, isMe, role);
+  const showEdit = shouldShowProviderEditCta(s, isMe, role);
 
   const preferredLabel = formatPreferredStart(attachment.preferred_start_at);
   const expiryLabel = !s.isInactive ? formatExpiry(attachment.expiration_at) : null;
@@ -179,6 +186,13 @@ export function CustomOfferCard({
           <p className="text-xs text-amber-600 mt-1">{expiryLabel}</p>
         ) : null}
 
+        {s.isChangesRequested && attachment.change_request_note ? (
+          <p className="text-xs text-blue-700 mt-2 bg-blue-50 rounded-md px-2 py-1.5">
+            <span className="font-semibold">Requested changes: </span>
+            {attachment.change_request_note}
+          </p>
+        ) : null}
+
         {/* finalize_failed: surface payment reference so the customer can quote it to support */}
         {s.isFinalizeFailed && attachment.payment_reference ? (
           <p className="text-[10px] text-gray-400 mt-1.5">
@@ -193,7 +207,7 @@ export function CustomOfferCard({
       </div>
 
       {/* Footer CTAs */}
-      {(showAccept || showResume || showViewBooking || showWithdraw || s.isFinalizeFailed) ? (
+      {(showAccept || showRequestChanges || showResume || showViewBooking || showWithdraw || showEdit || s.isFinalizeFailed) ? (
         <div className="px-3.5 pb-3 pt-2 border-t border-gray-100 flex flex-col gap-2">
           {showAccept ? (
             <>
@@ -205,6 +219,15 @@ export function CustomOfferCard({
               >
                 Accept &amp; pay
               </button>
+              {showRequestChanges ? (
+                <button
+                  type="button"
+                  onClick={onRequestChanges}
+                  className="w-full rounded-lg py-2 text-xs font-semibold text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
+                >
+                  Request changes
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onDecline}
@@ -257,13 +280,13 @@ export function CustomOfferCard({
               >
                 Retract
               </button>
-              {onEdit ? (
+              {(showEdit || onEdit) ? (
                 <button
                   type="button"
                   onClick={onEdit}
                   className="flex-1 rounded-lg py-2 text-xs font-semibold text-gray-600 border border-gray-200 bg-transparent hover:bg-gray-50 transition-colors"
                 >
-                  Edit &amp; resend
+                  {s.isChangesRequested ? "Edit offer" : "Edit &amp; resend"}
                 </button>
               ) : null}
             </div>

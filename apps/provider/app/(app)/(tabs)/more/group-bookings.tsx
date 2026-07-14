@@ -67,7 +67,8 @@ import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
-import { api, getApiBaseUrl } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
+import { downloadPdf } from "@/lib/pdf-file";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
   paystackTerminalCollectionIntentPayload,
@@ -76,10 +77,8 @@ import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catal
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal, type ResolvedPinAddress } from "@/components/AddressMapPinModal";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
-import { webApiTenantHeaders } from "@/config/public-env";
 import {
   computeGroupFinancialBreakdown,
   countGroupParticipantsCheckedIn,
@@ -89,7 +88,6 @@ import {
   shouldRejectStaleListPaymentSync,
 } from "@/lib/group-booking-detail-helpers";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
-import { supabase } from "@/lib/supabase/client";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import {
@@ -676,6 +674,8 @@ export default function GroupBookingsScreen() {
   const paycloudReady =
     paycloudEnabled &&
     Boolean(paycloudSettings?.ready);
+  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
@@ -2864,60 +2864,15 @@ export default function GroupBookingsScreen() {
   }
 
   async function openGroupReceipt(group: GroupBooking) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const base = getApiBaseUrl().replace(/\/$/, "");
-      const pdfPath = `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/pdf`;
-
-      const tryBearerPdf = async (): Promise<boolean> => {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token || !base) return false;
-        const pdfUrl = `${base}${pdfPath}`;
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${token}`,
-          ...webApiTenantHeaders(),
-        };
-        const response = await fetch(pdfUrl, { headers, credentials: "omit" });
-        if (!response.ok) return false;
-        const contentType = response.headers.get("content-type") ?? "";
-        if (!contentType.includes("application/pdf")) return false;
-        if (Platform.OS === "web") {
-          const blob = await response.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          if (typeof window !== "undefined") {
-            window.open(objectUrl, "_blank", "noopener,noreferrer");
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
-          }
-          return true;
-        }
-        return true;
-      };
-
-      if (Platform.OS === "web" && (await tryBearerPdf())) {
-        return;
-      }
-
-      const res = await api.post<{ url: string; expires_at: string }>(
-        `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/signed-url`,
-        {}
-      );
-      const signedUrl = res.data?.url;
-      if (res.error || !signedUrl) {
-        const msg =
-          (res.error as { message?: string } | null)?.message ??
-          "Could not open the group receipt right now. Please try again.";
-        Alert.alert("Group receipt", msg);
-        return;
-      }
-
-      if (Platform.OS === "web") {
-        pushInAppBrowser(router, signedUrl, "Group receipt");
-        return;
-      }
-
-      // Native: open the signed PDF URL in the in-app browser (full document view).
-      pushInAppBrowser(router, signedUrl, "Group receipt");
+      await downloadPdf({
+        router,
+        pdfPath: `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/pdf`,
+        signedUrlPath: `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/signed-url`,
+        filename: `group_booking_${group.id}.pdf`,
+        title: "Group receipt",
+      });
     } catch (err) {
       const msg =
         err instanceof Error
@@ -3785,11 +3740,11 @@ export default function GroupBookingsScreen() {
               )}
               onPress={() => openGroupReceipt(selectedGroup)}
               accessibilityRole="button"
-              accessibilityLabel="Open group receipt"
+              accessibilityLabel="Download group receipt"
             >
-              <Ionicons name="document-text-outline" size={16} color="#4f46e5" />
+              <Ionicons name="download-outline" size={16} color="#4f46e5" />
               <Text style={[twStyle("text-sm font-medium text-indigo-700"), { marginLeft: 6 }]}>
-                Open group receipt
+                Download receipt
               </Text>
             </TouchableOpacity>
 
@@ -3880,7 +3835,7 @@ export default function GroupBookingsScreen() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {paycloudEnabled && paycloudReady ? (
+                  {paycloudEnabled && paycloudCollectEnabled ? (
                     <TouchableOpacity
                       style={[
                         twStyle("mb-2 mr-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5"),
@@ -3905,6 +3860,7 @@ export default function GroupBookingsScreen() {
                       <Text style={twStyle("text-xs font-medium text-slate-900")}>
                         {formatPaycloudCollectLabel({
                           context: "group_booking",
+                          inFlight: paycloudInFlight,
                           amount:
                             Number(selectedGroup.balance_due ?? 0) > 0
                               ? Number(selectedGroup.balance_due ?? 0)

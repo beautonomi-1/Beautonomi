@@ -893,7 +893,20 @@ export default function BookingConfirmationPage() {
               : lifecycleDisplay.isAwaitingProviderConfirmation
                 ? "Your booking is waiting for the provider to confirm. You'll receive a notification once it's confirmed — this usually happens within 8 hours. If you need to make changes, visit your bookings page."
                 : "You'll receive a confirmation email with all the details."}{" "}
-            {!lifecycleDisplay.isAwaitingProviderConfirmation && "If you need to make changes or cancel, please contact the provider directly or visit your bookings page."}
+            {!lifecycleDisplay.isAwaitingProviderConfirmation && (
+              <>
+                {" "}
+                Manage changes or cancellations from{" "}
+                <a href="/account-settings/bookings" className="text-primary underline">
+                  your bookings page
+                </a>
+                . See our{" "}
+                <a href="/learn/article/canceling-your-booking" className="text-primary underline">
+                  cancellation guide
+                </a>{" "}
+                for refund and fee details.
+              </>
+            )}
           </p>
         </div>
       </div>

@@ -102,7 +102,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // request is closed. Cancelled / fulfilled / expired requests should not
     // be re-opened by a late provider response — that confused customers and
     // produced "ghost" offers attached to abandoned requests.
-    const closedStatuses = new Set(["cancelled", "fulfilled", "expired"]);
+    const closedStatuses = new Set(["cancelled", "fulfilled", "expired", "declined"]);
     if (req.status && closedStatuses.has(req.status)) {
       return errorResponse(
         `This custom request is ${req.status} and can no longer receive offers.`,

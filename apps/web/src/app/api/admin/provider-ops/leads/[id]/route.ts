@@ -10,6 +10,11 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  LEADS_ASSIGNED_USER_EMBED,
+  LEADS_REFERRER_PROVIDER_EMBED,
+  LEADS_REFERRER_USER_EMBED,
+} from "@/lib/provider-ops/lead-query-filters";
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +31,9 @@ export async function GET(
       .select(
         `
         *,
-        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
+        ${LEADS_ASSIGNED_USER_EMBED},
+        ${LEADS_REFERRER_USER_EMBED},
+        ${LEADS_REFERRER_PROVIDER_EMBED},
         provider_lead_categories (
           global_category_id,
           global_service_categories:global_category_id (id, name, slug, icon)
@@ -83,9 +90,14 @@ export async function PATCH(
       "is_dormant",
       "lost_reason",
       "onboarding_data",
+      "source",
+      "source_detail",
+      "referrer_user_id",
+      "referrer_provider_id",
     ];
 
     const updates: Record<string, unknown> = {};
+    let dncToggle: boolean | undefined;
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updates[field] = body[field];
@@ -93,6 +105,24 @@ export async function PATCH(
     }
     if (body.email !== undefined) {
       updates.email = body.email?.toLowerCase()?.trim() || null;
+    }
+
+    if (body.do_not_contact !== undefined) {
+      if (typeof body.do_not_contact !== "boolean") {
+        return errorResponse("do_not_contact must be a boolean", "VALIDATION_ERROR", 400);
+      }
+      dncToggle = body.do_not_contact;
+      updates.do_not_contact = body.do_not_contact;
+      if (body.do_not_contact) {
+        updates.do_not_contact_at = new Date().toISOString();
+        updates.do_not_contact_reason =
+          typeof body.do_not_contact_reason === "string" && body.do_not_contact_reason.trim()
+            ? body.do_not_contact_reason.trim()
+            : "admin";
+      } else {
+        updates.do_not_contact_at = null;
+        updates.do_not_contact_reason = null;
+      }
     }
 
     if (Object.keys(updates).length === 0 && !body.category_ids) {
@@ -103,10 +133,14 @@ export async function PATCH(
 
     const { data: beforeRow } = await supabase
       .from("provider_leads")
-      .select("updated_at")
+      .select("updated_at, deleted_at")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
+
+    if (beforeRow?.deleted_at) {
+      return errorResponse("Cannot update a deleted lead. Restore it first.", "LEAD_DELETED", 400);
+    }
 
     if (
       expected_updated_at != null &&
@@ -153,8 +187,18 @@ export async function PATCH(
       .from("provider_lead_activities")
       .insert({
         lead_id: id,
-        activity_type: "lead_updated",
-        description: "Lead updated",
+        activity_type:
+          dncToggle === true
+            ? "do_not_contact_set"
+            : dncToggle === false
+              ? "do_not_contact_cleared"
+              : "lead_updated",
+        description:
+          dncToggle === true
+            ? "Do-not-contact enabled by admin"
+            : dncToggle === false
+              ? "Do-not-contact cleared by admin"
+              : "Lead updated",
         metadata: { updated_fields: Object.keys(updates) },
         performed_by: user.id,
       });
@@ -165,7 +209,9 @@ export async function PATCH(
       .select(
         `
         *,
-        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
+        ${LEADS_ASSIGNED_USER_EMBED},
+        ${LEADS_REFERRER_USER_EMBED},
+        ${LEADS_REFERRER_PROVIDER_EMBED},
         provider_lead_categories (
           global_category_id,
           global_service_categories:global_category_id (id, name, slug, icon)
@@ -223,17 +269,22 @@ export async function DELETE(
       );
     }
 
-    await supabase.from("provider_lead_activities").delete().eq("lead_id", id);
-    await supabase.from("provider_lead_categories").delete().eq("lead_id", id);
-    await supabase.from("provider_lead_communications").delete().eq("lead_id", id);
-    await supabase.from("provider_lead_tasks").delete().eq("lead_id", id);
-
+    const now = new Date().toISOString();
     const { error } = await supabase
       .from("provider_leads")
-      .delete()
+      .update({ deleted_at: now, deleted_by: user.id })
       .eq("id", id)
-      .eq("tenant_id", tenantId);
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null);
     if (error) throw error;
+
+    await supabase.from("provider_lead_activities").insert({
+      lead_id: id,
+      activity_type: "lead_deleted",
+      description: "Lead moved to trash",
+      metadata: { soft_delete: true },
+      performed_by: user.id,
+    });
 
     void writeAuditLog({
       actor_user_id: user.id,

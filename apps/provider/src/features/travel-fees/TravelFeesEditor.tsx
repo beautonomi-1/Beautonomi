@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { View, Text, TextInput, Switch, TouchableOpacity } from "react-native";
+import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { Ionicons } from "@expo/vector-icons";
 import { roundCurrency } from "@beautonomi/utils";
 import { formatCurrency } from "@/lib/format";
@@ -26,6 +27,8 @@ export interface TravelFeesEditorProps {
   mode: TravelFeesEditorMode;
   /** When false, provider-level customization is blocked (e.g. tenant policy). Defaults true. */
   providerCustomizationAllowed?: boolean;
+  /** Scroll focused field into view (e.g. onboarding wizard). */
+  onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }
 
 function numStr(n: number | null | undefined): string {
@@ -62,6 +65,14 @@ export function formatTravelFeesSummary(
   return parts.length > 0 ? parts.join(" · ") : "Custom per-km (incomplete)";
 }
 
+const TRAVEL_FEES_ACCESSORY = {
+  freeKm: "provider-travel-free-km",
+  rate: "provider-travel-rate",
+  minFee: "provider-travel-min-fee",
+  maxFee: "provider-travel-max-fee",
+  previewKm: "provider-travel-preview-km",
+} as const;
+
 export function TravelFeesEditor({
   value,
   onChange,
@@ -69,8 +80,19 @@ export function TravelFeesEditor({
   currency,
   mode,
   providerCustomizationAllowed = true,
+  onFieldFocus,
 }: TravelFeesEditorProps) {
   const [previewKm, setPreviewKm] = useState("10");
+  const freeKmRef = useRef<TextInput>(null);
+  const rateRef = useRef<TextInput>(null);
+  const minFeeRef = useRef<TextInput>(null);
+  const maxFeeRef = useRef<TextInput>(null);
+  const previewKmRef = useRef<TextInput>(null);
+
+  const focusProps = (ref: RefObject<TextInput | null>, accessoryId?: string) => ({
+    onFocus: () => onFieldFocus?.(ref),
+    ...(accessoryId ? { inputAccessoryViewID: accessoryId } : {}),
+  });
 
   const allowCustomization =
     providerCustomizationAllowed &&
@@ -256,6 +278,7 @@ export function TravelFeesEditor({
                       {mode === "onboarding" ? "Free within (km)" : "Free Within (km)"}
                     </Text>
                     <TextInput
+                      ref={freeKmRef}
                       style={twStyle(
                         "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
@@ -264,11 +287,14 @@ export function TravelFeesEditor({
                       placeholder="0 (charge from first km)"
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
+                      {...focusProps(freeKmRef, TRAVEL_FEES_ACCESSORY.freeKm)}
                     />
+                    <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.freeKm} />
                     <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                       {`Rate per km (${currency})`}
                     </Text>
                     <TextInput
+                      ref={rateRef}
                       style={twStyle(
                         "mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
@@ -277,7 +303,9 @@ export function TravelFeesEditor({
                       placeholder="0.00"
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
+                      {...focusProps(rateRef, TRAVEL_FEES_ACCESSORY.rate)}
                     />
+                    <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.rate} />
                     {rateHint ? (
                       <Text style={twStyle("mb-3 text-xs text-amber-700")}>{rateHint}</Text>
                     ) : (
@@ -287,6 +315,7 @@ export function TravelFeesEditor({
                       {`Minimum fee (${currency})`}
                     </Text>
                     <TextInput
+                      ref={minFeeRef}
                       style={twStyle(
                         "mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
@@ -295,7 +324,9 @@ export function TravelFeesEditor({
                       placeholder="0.00"
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
+                      {...focusProps(minFeeRef, TRAVEL_FEES_ACCESSORY.minFee)}
                     />
+                    <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.minFee} />
                     {minFeeHint ? (
                       <Text style={twStyle("mb-3 text-xs text-amber-700")}>{minFeeHint}</Text>
                     ) : (
@@ -305,6 +336,7 @@ export function TravelFeesEditor({
                       {`Maximum fee (${currency}, optional)`}
                     </Text>
                     <TextInput
+                      ref={maxFeeRef}
                       style={twStyle(
                         "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900",
                       )}
@@ -313,7 +345,9 @@ export function TravelFeesEditor({
                       placeholder="No maximum"
                       placeholderTextColor="#9ca3af"
                       keyboardType="decimal-pad"
+                      {...focusProps(maxFeeRef, TRAVEL_FEES_ACCESSORY.maxFee)}
                     />
+                    <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.maxFee} />
                   </>
                 )}
 
@@ -322,6 +356,7 @@ export function TravelFeesEditor({
                     tiers={tiers}
                     currency={currency}
                     onChange={(next) => set({ tiers: next })}
+                    onFieldFocus={onFieldFocus}
                   />
                 )}
               </>
@@ -335,6 +370,7 @@ export function TravelFeesEditor({
           <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>Fee Calculator</Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
+              ref={previewKmRef}
               style={[
                 twStyle(
                   "flex-1 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-base text-gray-900",
@@ -346,7 +382,9 @@ export function TravelFeesEditor({
               keyboardType="decimal-pad"
               placeholder="Distance (km)"
               placeholderTextColor="#9ca3af"
+              {...focusProps(previewKmRef, TRAVEL_FEES_ACCESSORY.previewKm)}
             />
+            <KeyboardDoneAccessory nativeID={TRAVEL_FEES_ACCESSORY.previewKm} />
             <View style={twStyle("items-center rounded-xl bg-indigo-600 px-4 py-2.5")}>
               <Text style={twStyle("text-base font-bold text-white")}>
                 {previewFee !== null ? formatCurrency(previewFee, currency) : "—"}
@@ -368,19 +406,30 @@ function TierEditor({
   tiers,
   currency,
   onChange,
+  onFieldFocus,
 }: {
   tiers: OnboardingTravelFeeTier[];
   currency: string;
   onChange: (tiers: OnboardingTravelFeeTier[]) => void;
+  onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }) {
+  const tierKmRefs = useRef<Map<number, TextInput | null>>(new Map());
+  const tierFeeRefs = useRef<Map<number, TextInput | null>>(new Map());
+
   return (
     <View style={twStyle("mb-3")}>
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
         {`Distance tiers (up to X km → fee in ${currency})`}
       </Text>
-      {tiers.map((tier, i) => (
+      {tiers.map((tier, i) => {
+        const kmAccessory = `provider-travel-tier-km-${i}`;
+        const feeAccessory = `provider-travel-tier-fee-${i}`;
+        return (
         <View key={i} style={twStyle("mb-2 flex-row items-center gap-2")}>
           <TextInput
+            ref={(r) => {
+              tierKmRefs.current.set(i, r);
+            }}
             style={[
               twStyle(
                 "flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900",
@@ -395,9 +444,18 @@ function TierEditor({
             placeholder="km"
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
+            onFocus={() => {
+              const ref = { current: tierKmRefs.current.get(i) ?? null };
+              onFieldFocus?.(ref);
+            }}
+            inputAccessoryViewID={kmAccessory}
           />
+          <KeyboardDoneAccessory nativeID={kmAccessory} />
           <Text style={twStyle("text-sm text-gray-500")}>km =</Text>
           <TextInput
+            ref={(r) => {
+              tierFeeRefs.current.set(i, r);
+            }}
             style={[
               twStyle(
                 "flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900",
@@ -412,7 +470,13 @@ function TierEditor({
             placeholder={currency}
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
+            onFocus={() => {
+              const ref = { current: tierFeeRefs.current.get(i) ?? null };
+              onFieldFocus?.(ref);
+            }}
+            inputAccessoryViewID={feeAccessory}
           />
+          <KeyboardDoneAccessory nativeID={feeAccessory} />
           <TouchableOpacity
             onPress={() => onChange(tiers.filter((_, j) => j !== i))}
             style={twStyle("rounded-full bg-gray-200 p-2")}
@@ -421,7 +485,8 @@ function TierEditor({
             <Ionicons name="trash-outline" size={18} color="#6b7280" />
           </TouchableOpacity>
         </View>
-      ))}
+        );
+      })}
       <TouchableOpacity
         style={twStyle("flex-row items-center rounded-xl border border-dashed border-gray-300 py-2.5")}
         onPress={() =>

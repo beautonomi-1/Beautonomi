@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.75",
+  "version": "1.0.76",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -60,6 +60,7 @@
     "expo-image": "^3.0.11",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "^17.0.11",
+    "expo-intent-launcher": "~13.0.8",
     "expo-linear-gradient": "^15.0.8",
     "expo-linking": "~8.0.12",
     "expo-local-authentication": "^17.0.8",
@@ -68,6 +69,7 @@
     "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.24",
     "expo-secure-store": "^15.0.8",
+    "expo-sharing": "~14.0.8",
     "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",

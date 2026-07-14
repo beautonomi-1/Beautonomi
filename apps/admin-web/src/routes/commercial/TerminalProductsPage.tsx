@@ -28,6 +28,7 @@ type TerminalProduct = {
   vendor: string;
   model: string | null;
   description: string | null;
+  image_url: string | null;
   upfront_price: number | null;
   monthly_price: number | null;
   rental_price: number | null;
@@ -53,6 +54,7 @@ type ProductForm = {
   vendor: string;
   model: string;
   description: string;
+  image_url: string;
   currency: string;
   upfront_price: string;
   monthly_price: string;
@@ -85,6 +87,7 @@ const defaultForm = (): ProductForm => ({
   vendor: "yoco",
   model: "",
   description: "",
+  image_url: "",
   currency: "ZAR",
   upfront_price: "",
   monthly_price: "",
@@ -111,6 +114,7 @@ function formFromProduct(p: TerminalProduct): ProductForm {
     vendor: p.vendor,
     model: p.model ?? "",
     description: p.description ?? "",
+    image_url: p.image_url ?? "",
     currency: p.currency,
     upfront_price: p.upfront_price != null ? String(p.upfront_price) : "",
     monthly_price: p.monthly_price != null ? String(p.monthly_price) : "",
@@ -139,6 +143,7 @@ function formToPayload(form: ProductForm) {
     vendor: form.vendor,
     model: form.model.trim() || null,
     description: form.description.trim() || null,
+    image_url: form.image_url.trim() || null,
     currency: form.currency.trim().toUpperCase() || "ZAR",
     upfront_price: parsePrice(form.upfront_price),
     monthly_price: parsePrice(form.monthly_price),
@@ -235,6 +240,34 @@ function ProductFormFields({
       <div className="sm:col-span-2">
         <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
         <textarea className={inputClass} rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-sm font-medium text-gray-700">Image URL</label>
+        <div className="flex items-start gap-3">
+          <input
+            className={inputClass}
+            type="url"
+            value={form.image_url}
+            onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+            placeholder="https://… (shown on the provider storefront)"
+          />
+          {form.image_url.trim() ? (
+            <img
+              src={form.image_url.trim()}
+              alt="Product preview"
+              className="h-16 w-16 flex-shrink-0 rounded-lg border border-gray-200 object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.visibility = "hidden";
+              }}
+              onLoad={(e) => {
+                (e.target as HTMLImageElement).style.visibility = "visible";
+              }}
+            />
+          ) : null}
+        </div>
+        <p className="mt-1 text-xs text-gray-400">
+          Providers see this image in the Terminal Shop catalog — a product photo on a light background works best.
+        </p>
       </div>
       <div className="sm:col-span-2 flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -382,7 +415,22 @@ export function TerminalProductsPage() {
             <AdminTableBody>
               {items.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50/60">
-                  <AdminTd className="font-medium text-slate-900">{p.name}</AdminTd>
+                  <AdminTd className="font-medium text-slate-900">
+                    <span className="flex items-center gap-2.5">
+                      {p.image_url ? (
+                        <img
+                          src={p.image_url}
+                          alt=""
+                          className="h-8 w-8 flex-shrink-0 rounded-md border border-gray-100 object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-[10px] font-medium text-gray-400">
+                          —
+                        </span>
+                      )}
+                      {p.name}
+                    </span>
+                  </AdminTd>
                   <AdminTd className="capitalize">{p.vendor}</AdminTd>
                   <AdminTd>{p.upfront_price != null ? `${p.currency} ${Number(p.upfront_price).toLocaleString()}` : "—"}</AdminTd>
                   <AdminTd>{p.monthly_price != null ? `${p.currency} ${Number(p.monthly_price).toLocaleString()}` : "—"}</AdminTd>

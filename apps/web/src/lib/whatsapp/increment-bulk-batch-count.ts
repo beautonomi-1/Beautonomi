@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function incrementBulkBatchCount(
   supabase: SupabaseClient,
   batchId: string,
-  field: "sent_count" | "failed_count" | "delivered_count",
+  field: "sent_count" | "failed_count" | "delivered_count" | "cancelled_count",
 ): Promise<void> {
   const { data: row, error: selErr } = await supabase
     .from("whatsapp_bulk_batches")

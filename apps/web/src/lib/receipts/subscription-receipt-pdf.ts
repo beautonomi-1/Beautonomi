@@ -16,6 +16,8 @@ import PDFDocument from "pdfkit";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getPlatformDefaultTaxRate } from "@/lib/platform-tax-settings";
+import { computeVatInclusiveBreakdown } from "@/lib/receipts/vat-inclusive-breakdown";
 import {
   drawPdfFooter,
   drawPdfHeader,
@@ -127,6 +129,8 @@ export async function generateSubscriptionReceiptPdf(opts: {
   const currency = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
   // GROSS the provider actually paid (net + gateway fees).
   const amount = Number(tx.net ?? 0) + Number(tx.fees ?? 0);
+  const vatRate = await getPlatformDefaultTaxRate();
+  const vatBreakdown = computeVatInclusiveBreakdown(amount, vatRate);
 
   const isRenewal = metadata.kind === "subscription_renewal";
   const productLabel = isRenewal
@@ -164,18 +168,40 @@ export async function generateSubscriptionReceiptPdf(opts: {
     [
       {
         description: productLabel,
-        detail: "Platform subscription — charged after payment was verified",
+        detail:
+          vatBreakdown.ratePercent > 0
+            ? "Platform subscription — VAT inclusive"
+            : "Platform subscription — charged after payment was verified",
         amount: moneyPdf(amount, currency),
       },
     ],
     { title: "Items" },
   );
 
-  drawPdfTotals(
-    doc,
-    [{ label: "Subtotal", value: moneyPdf(amount, currency) }],
-    { label: "Total paid", value: moneyPdf(amount, currency) },
-  );
+  if (vatBreakdown.ratePercent > 0) {
+    drawPdfTotals(
+      doc,
+      [
+        {
+          label: "Subtotal (excl. VAT)",
+          value: moneyPdf(vatBreakdown.subtotalExclVat, currency),
+        },
+        {
+          label: `VAT (${vatBreakdown.ratePercent}%)`,
+          value: moneyPdf(vatBreakdown.vatAmount, currency),
+        },
+      ],
+      { label: "Total paid", value: moneyPdf(amount, currency) },
+    );
+    doc.moveDown(0.5);
+    doc.fontSize(8).fillColor("#6b7280").text("All amounts are VAT inclusive.", { align: "left" });
+  } else {
+    drawPdfTotals(
+      doc,
+      [{ label: "Subtotal", value: moneyPdf(amount, currency) }],
+      { label: "Total paid", value: moneyPdf(amount, currency) },
+    );
+  }
 
   drawPdfFooter(doc, provider?.receipt_footer ?? null);
 

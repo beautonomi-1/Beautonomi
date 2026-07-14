@@ -242,6 +242,7 @@ export const adminQueryKeys = {
 
   paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
   resendConfig: () => [...adminQueryKeys.root, "integrations", "resend"] as const,
+  callsConfig: () => [...adminQueryKeys.root, "integrations", "calls"] as const,
   yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
   paycloudIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "paycloud"] as const,
   paycloudOperations: {
@@ -323,6 +324,8 @@ export const adminQueryKeys = {
     reportsLeadAssignees: () => [...adminQueryKeys.providerOps.all(), "reports", "lead-assignees"] as const,
     reportsPreviousSoftware: () => [...adminQueryKeys.providerOps.all(), "reports", "previous-software"] as const,
     assignableUsers: (q: string) => [...adminQueryKeys.providerOps.all(), "assignable-users", q] as const,
+    referrerSearch: (q: string) => [...adminQueryKeys.providerOps.all(), "referrers", "search", q] as const,
+    voiceConfig: () => [...adminQueryKeys.providerOps.all(), "voice", "config"] as const,
     settings: () => [...adminQueryKeys.providerOps.all(), "settings"] as const,
     categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,
     providerLifecycle: (id: string) => [...adminQueryKeys.providerOps.all(), "provider", id, "lifecycle"] as const,

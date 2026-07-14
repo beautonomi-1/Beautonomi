@@ -19,7 +19,6 @@ export { AppointmentStatusBadge } from "./AppointmentStatusBadge";
 export { AppointmentStatusManager, AppointmentStatusBadge as StatusBadge, QuickStatusActions } from "./AppointmentStatusManager";
 export { AppointmentHistoryPanel } from "./AppointmentHistoryPanel";
 export { AppointmentNotesPanel } from "./AppointmentNotesPanel";
-export { CancelAppointmentDialog } from "./CancelAppointmentDialog";
 export { RescheduleDialog } from "./RescheduleDialog";
 export { GroupBookingDialog } from "./GroupBookingDialog";
 

@@ -109,6 +109,64 @@ function formatFrequencyLabel(raw: string | undefined, rb: Rb): string {
   return raw ?? rb("freqRecurring");
 }
 
+const PREFERRED_TIME_HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function isValidPreferredTimeInput(value: string): boolean {
+  return PREFERRED_TIME_HH_MM.test(value.trim());
+}
+
+function isValidEndDateInput(value: string): { ok: boolean; message?: string } {
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return { ok: false, message: "Use YYYY-MM-DD for the end date." };
+  }
+  const parsed = new Date(`${trimmed}T12:00:00`);
+  if (!Number.isFinite(parsed.getTime())) {
+    return { ok: false, message: "That end date is not valid." };
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (parsed < today) {
+    return { ok: false, message: "End date cannot be in the past." };
+  }
+  return { ok: true };
+}
+
+type SeriesVisit = {
+  id: string;
+  scheduled_at: string;
+  status: string;
+  payment_status: string;
+  booking_number?: string | null;
+};
+
+function pickUpcomingVisits(visits: SeriesVisit[], limit = 5): SeriesVisit[] {
+  const now = Date.now();
+  const upcoming = visits.filter((v) => {
+    const ts = new Date(v.scheduled_at).getTime();
+    return Number.isFinite(ts) && ts >= now - 24 * 60 * 60 * 1000;
+  });
+  const sorted = [...upcoming].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+  if (sorted.length > 0) return sorted.slice(0, limit);
+  return [...visits]
+    .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
+    .slice(0, limit);
+}
+
+function formatVisitDate(iso: string, rb: Rb): string {
+  const parsed = parseValidDate(iso);
+  if (!parsed) return rb("dash");
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function humanizeRecurrenceRule(rule: string, rb: Rb): string {
   if (!rule) return rb("freqRecurring");
   const r = rule.toUpperCase();
@@ -266,6 +324,8 @@ export default function RecurringBookingsScreen() {
   const [editSeriesNoEnd, setEditSeriesNoEnd] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [detailItem, setDetailItem] = useState<RecurringBooking | null>(null);
+  const [seriesVisits, setSeriesVisits] = useState<SeriesVisit[]>([]);
+  const [loadingSeriesVisits, setLoadingSeriesVisits] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -295,6 +355,33 @@ export default function RecurringBookingsScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!detailItem?.id) {
+      setSeriesVisits([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSeriesVisits(true);
+    void (async () => {
+      try {
+        const res = await api.get<{ series_bookings?: SeriesVisit[] }>(
+          apiRecurringBookingPath(detailItem.id),
+          { cache: "no-store" },
+        );
+        if (cancelled) return;
+        const raw = Array.isArray(res.data?.series_bookings) ? res.data!.series_bookings! : [];
+        setSeriesVisits(pickUpcomingVisits(raw));
+      } catch {
+        if (!cancelled) setSeriesVisits([]);
+      } finally {
+        if (!cancelled) setLoadingSeriesVisits(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailItem?.id]);
+
   const openEdit = useCallback((booking: RecurringBooking) => {
     setEditing(booking);
     setEditPreferredTime(preferredTimeToInputValue(booking.preferred_time));
@@ -307,9 +394,20 @@ export default function RecurringBookingsScreen() {
 
   const saveSchedule = useCallback(async () => {
     if (!editing) return;
+    if (!isValidPreferredTimeInput(editPreferredTime)) {
+      Alert.alert(errTitle, "Enter a valid time in HH:MM format (e.g. 10:30).");
+      return;
+    }
     if (!editSeriesNoEnd && !editEndDate.trim()) {
       Alert.alert(rb("endDateTitle"), rb("endDateBody"));
       return;
+    }
+    if (!editSeriesNoEnd) {
+      const endCheck = isValidEndDateInput(editEndDate);
+      if (!endCheck.ok) {
+        Alert.alert(rb("endDateTitle"), endCheck.message ?? rb("endDateBody"));
+        return;
+      }
     }
     setSavingSchedule(true);
     try {
@@ -645,6 +743,33 @@ export default function RecurringBookingsScreen() {
                       {detailItem.currency}{" "}
                       {detailItem.price != null && detailItem.price > 0 ? detailItem.price.toFixed(2) : rb("dash")}
                     </Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Upcoming visits</Text>
+                    {loadingSeriesVisits ? (
+                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 8 }} />
+                    ) : seriesVisits.length === 0 ? (
+                      <Text style={detailValueStyle}>No scheduled visits yet.</Text>
+                    ) : (
+                      seriesVisits.map((visit) => (
+                        <View
+                          key={visit.id}
+                          style={{
+                            marginTop: 8,
+                            paddingVertical: 8,
+                            borderBottomWidth: 1,
+                            borderBottomColor: Colors.gray[100],
+                          }}
+                        >
+                          <Text style={detailValueStyle}>{formatVisitDate(visit.scheduled_at, rb)}</Text>
+                          <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>
+                            {visit.status}
+                            {visit.payment_status ? ` · ${visit.payment_status}` : ""}
+                            {visit.booking_number ? ` · #${visit.booking_number}` : ""}
+                          </Text>
+                        </View>
+                      ))
+                    )}
                   </View>
                   <View style={{ marginBottom: 16 }}>
                     <Text style={detailLabelStyle}>{rb("detailPayments")}</Text>

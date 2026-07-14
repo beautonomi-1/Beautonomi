@@ -5,11 +5,11 @@ const FALLBACK_VERSION = "1.0.0";
 
 /** Store binary version (Info.plist / Play versionName), then Expo config. */
 export function getAppNativeVersion(): string {
-  return (
-    Constants.nativeApplicationVersion ??
-    Constants.expoConfig?.version ??
-    FALLBACK_VERSION
-  );
+  const native = Constants.nativeApplicationVersion?.trim();
+  if (native) return native;
+  const config = Constants.expoConfig?.version?.trim();
+  if (config) return config;
+  return FALLBACK_VERSION;
 }
 
 export function compareVersions(a: string, b: string): number {

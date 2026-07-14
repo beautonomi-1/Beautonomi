@@ -10,10 +10,12 @@ import { Calendar, Clock } from "lucide-react";
 import type { Booking } from "@/types/beautonomi";
 import { toast } from "sonner";
 import AvailabilityCalendar from "@/app/checkout/components/availability-calendar";
-import Breadcrumb from "../../../components/breadcrumb";
+import { useTranslation } from "@beautonomi/i18n";
 import BackButton from "../../../components/back-button";
+import Breadcrumb from "../../../components/breadcrumb";
 
 export default function RescheduleBookingPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -24,6 +26,7 @@ export default function RescheduleBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [policyHoursBefore, setPolicyHoursBefore] = useState<number | null>(null);
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -42,6 +45,17 @@ export default function RescheduleBookingPage() {
         }
         if (response.data.scheduled_at) {
           setSelectedDateTime(new Date(response.data.scheduled_at));
+        }
+        if (response.data.provider_id) {
+          try {
+            const policyRes = await fetcher.get<{ data?: Array<{ hours_before_cutoff?: number }> }>(
+              `/api/public/cancellation-policy?provider_id=${response.data.provider_id}&location_type=${response.data.location_type || "at_salon"}`,
+            );
+            const hours = policyRes.data?.[0]?.hours_before_cutoff;
+            if (hours != null) setPolicyHoursBefore(Number(hours));
+          } catch {
+            setPolicyHoursBefore(24);
+          }
         }
       } catch (err) {
         const errorMessage =
@@ -167,6 +181,13 @@ export default function RescheduleBookingPage() {
       {/* New Date/Time Selection */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-4 md:mb-6">
         <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Select New Date & Time</h2>
+        {policyHoursBefore != null && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3 mb-4">
+            {t("customer.mobile.screens.bookingDetail.reschedulePolicyNote", {
+              hours: policyHoursBefore,
+            })}
+          </p>
+        )}
         <AvailabilityCalendar
           selectedProfessional={booking.services?.[0]?.staff_id || undefined}
           providerSlug={providerSlug}

@@ -15,7 +15,7 @@ import {
   View, Text, ScrollView, RefreshControl, Alert,
   TouchableOpacity, ActivityIndicator,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -35,6 +35,8 @@ import { Colors } from "@/constants/colors";
 import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 import { LegalDetailsConfirmForm } from "@/components/verification/LegalDetailsConfirmForm";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
+import { pushInAppBrowser } from "@/lib/in-app-web";
+import { webPrivacyPolicyUrl } from "@/lib/legal-web";
 
 export type NormalizedVerificationStatus =
   | "not_started" | "session_created" | "in_progress" | "pending_review"
@@ -78,6 +80,7 @@ export function ProviderVerificationPanel({
   onStatusChange,
   onApproved,
 }: ProviderVerificationPanelProps) {
+  const router = useRouter();
   const { bundle } = useConfigBundle();
   const [refreshing, setRefreshing] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -362,7 +365,14 @@ export function ProviderVerificationPanel({
         {/* Consent disclosure */}
         {diditAvailable && (canAct || needsRetry) && (
           <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
-            By proceeding you agree to our Privacy Policy and Didit&apos;s end-user terms.
+            By proceeding you agree to our{" "}
+            <Text
+              style={twStyle("font-semibold text-gray-600 underline")}
+              onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+            >
+              Privacy Policy
+            </Text>{" "}
+            and Didit&apos;s end-user terms.
           </Text>
         )}
 

@@ -232,6 +232,7 @@ async function runLeadAlerts(
     .from("provider_leads")
     .select(select)
     .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
     .in("commercial_stage", activeStages)
     .lt("updated_at", isoBefore(now, 7 * DAY))
     .order("updated_at", { ascending: true })
@@ -259,6 +260,7 @@ async function runLeadAlerts(
     .from("provider_leads")
     .select(select)
     .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
     .in("commercial_stage", ["proposal_sent", "negotiating"])
     .lt("updated_at", isoBefore(now, 3 * DAY))
     .order("updated_at", { ascending: true })
@@ -286,6 +288,7 @@ async function runLeadAlerts(
     .from("provider_leads")
     .select(select)
     .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
     .in("commercial_stage", ["new", "contacted", "qualified"])
     .lt("updated_at", isoBefore(now, 48 * HOUR))
     .order("updated_at", { ascending: true })
@@ -313,6 +316,7 @@ async function runLeadAlerts(
     .from("provider_leads")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
     .not("commercial_stage", "in", `(${CLOSED_LEAD_STAGES.join(",")})`);
 
   if ((activeCount ?? 0) >= 50 || (stale?.length ?? 0) >= 10) {
@@ -623,6 +627,7 @@ async function runDailyDigests(
       .from("provider_leads")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
       .not("commercial_stage", "in", `(${CLOSED_LEAD_STAGES.join(",")})`),
     supabase
       .from("booking_disputes")

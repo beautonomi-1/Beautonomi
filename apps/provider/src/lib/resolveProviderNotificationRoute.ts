@@ -32,7 +32,13 @@ export const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
   "provider_weather_alert",
   "provider_dispute_opened",
   "provider_dispute_resolved",
+]);
+
+export const PROVIDER_CUSTOM_REQUEST_TEMPLATE_KEYS = new Set([
   "provider_custom_request",
+  "provider_custom_offer_declined",
+  "provider_custom_offer_changes_requested",
+  "provider_custom_request_expired",
 ]);
 
 export function notificationPayloadToRouteData(
@@ -51,6 +57,8 @@ export function notificationPayloadToRouteData(
     on_demand_request_id: data.on_demand_request_id,
     ticket_id: data.ticket_id,
     custom_request_id: data.custom_request_id,
+    request_id: data.request_id,
+    offer_id: data.offer_id ?? data.custom_offer_id,
     link: n.link,
     action_url: n.action_url ?? n.link,
     url: n.link,
@@ -210,6 +218,19 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
       return true;
     }
 
+    if (PROVIDER_CUSTOM_REQUEST_TEMPLATE_KEYS.has(templateKey)) {
+      const requestId =
+        String(data.request_id ?? data.custom_request_id ?? "").trim() ||
+        getLinkParam(actionUrl, "request_id") ||
+        getLinkParam(actionUrl, "request");
+      if (requestId) {
+        router.push(`/(app)/(tabs)/more/custom-requests/${requestId}` as never);
+      } else {
+        router.push("/(app)/(tabs)/more/custom-requests" as never);
+      }
+      return true;
+    }
+
     if (PROVIDER_BOOKING_TEMPLATE_KEYS.has(templateKey)) {
       if (bookingId) {
         router.push({ pathname: "/(app)/(tabs)/bookings/[id]", params: { id: bookingId } });
@@ -336,6 +357,22 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
       case "subscription_renewed":
         router.push("/(app)/(tabs)/more/subscription");
         return true;
+      case "provider_custom_offer_declined":
+      case "provider_custom_offer_changes_requested":
+      case "provider_custom_request_expired":
+      case "custom_request":
+      case "custom_offer": {
+        const requestId =
+          String(data.request_id ?? data.custom_request_id ?? "").trim() ||
+          getLinkParam(actionUrl, "request_id") ||
+          getLinkParam(actionUrl, "request");
+        if (requestId) {
+          router.push(`/(app)/(tabs)/more/custom-requests/${requestId}` as never);
+        } else {
+          router.push("/(app)/(tabs)/more/custom-requests" as never);
+        }
+        return true;
+      }
       default:
         return false;
     }

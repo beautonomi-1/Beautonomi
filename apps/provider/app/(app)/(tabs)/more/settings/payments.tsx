@@ -156,7 +156,7 @@ export default function PaymentSettingsScreen() {
   const paycloudStatusLabel = paycloudSettings?.ready
     ? "Ready"
     : paycloudSettings?.accept_paycloud
-      ? "Setup"
+      ? "Set up"
       : "Off";
   const paycloudConnected = paycloudSettings?.ready === true;
   const paycloudSubtitle = paycloudSettings?.ready

@@ -20,6 +20,8 @@ import { twStyle } from "@/lib/twStyle";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { pushInAppBrowser } from "@/lib/in-app-web";
+import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 
 type SettingsItem = {
   title: string;
@@ -29,7 +31,7 @@ type SettingsItem = {
   mobileRoute?: string;
   isUpgrade?: boolean;
   /** Special action instead of navigation (e.g. signOut, globalSignOut) */
-  action?: "signOut" | "globalSignOut" | "rateStore";
+  action?: "signOut" | "globalSignOut" | "rateStore" | "openPrivacy" | "openTerms";
   /** Style as destructive (e.g. deactivate) */
   isDestructive?: boolean;
   /** Style as subtle/muted (e.g. delete account – less prominent) */
@@ -165,8 +167,8 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
         action: "rateStore" as const,
       },
       { title: "Login & security", description: "Email, phone, password, biometrics & sessions", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-login-and-security" },
-      { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", mobileRoute: "/(auth)/privacy" },
-      { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
+      { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", action: "openPrivacy" as const },
+      { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", action: "openTerms" as const },
       { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
       { title: "Sign out", description: "Sign out of your account", href: "#", action: "signOut" as const },
       { title: "Sign out from all devices", description: "End every active session on your account", href: "#", action: "globalSignOut" as const },
@@ -250,6 +252,14 @@ export default function SettingsAccountHubScreen() {
       if (item.action === "rateStore") {
         getAnalyticsClient()?.track("rate_app_store", { source: "settings_account_hub" });
         void openNativeStoreReview();
+        return;
+      }
+      if (item.action === "openPrivacy") {
+        pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy");
+        return;
+      }
+      if (item.action === "openTerms") {
+        pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service");
         return;
       }
       // §Provider-launch (audit 2026-04): the dynamically-injected

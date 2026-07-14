@@ -10,6 +10,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
+import { leadIsDoNotContact, phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 
 /**
  * POST /api/admin/provider-ops/comms/sms
@@ -27,6 +28,20 @@ export async function POST(request: NextRequest) {
 
     if (!to || !messageBody?.trim()) {
       return errorResponse("to and body are required", "VALIDATION_ERROR", 400);
+    }
+
+    if (lead_id) {
+      const { data: leadRow } = await supabase
+        .from("provider_leads")
+        .select("do_not_contact")
+        .eq("id", lead_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (leadIsDoNotContact(leadRow as { do_not_contact?: boolean } | null)) {
+        return errorResponse("Lead is marked do-not-contact", "DO_NOT_CONTACT", 403);
+      }
+    } else if (await phoneIsDoNotContact(supabase, tenantId, to)) {
+      return errorResponse("Phone number is marked do-not-contact", "DO_NOT_CONTACT", 403);
     }
 
     const creds = await resolveTwilioCredentials(supabase, tenantId);

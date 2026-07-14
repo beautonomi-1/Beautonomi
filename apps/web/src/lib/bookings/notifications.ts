@@ -20,11 +20,27 @@ export async function sendCancellationNotification(
   options: {
     cancelledBy?: 'customer' | 'provider' | 'system';
     refundInfo?: string;
+    cancellationReason?: string | null;
+    feeRetained?: number;
+    walletRefund?: number;
+    currency?: string;
   } = {}
 ): Promise<void> {
   try {
-    const { cancelledBy = 'customer', refundInfo = 'No refund applicable' } = options;
-    await notifyBookingCancelled(bookingId, cancelledBy, refundInfo, ['email', 'push']);
+    const {
+      cancelledBy = 'customer',
+      refundInfo = 'No refund applicable',
+      cancellationReason,
+      feeRetained,
+      walletRefund,
+      currency,
+    } = options;
+    await notifyBookingCancelled(bookingId, cancelledBy, refundInfo, ['email', 'push'], {
+      cancellationReason,
+      feeRetained,
+      walletRefund,
+      currency,
+    });
   } catch (error) {
     // Log but don't throw - notification failure shouldn't break booking cancellation
     console.error('Failed to send cancellation notification:', error);

@@ -24,6 +24,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics"
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -32,6 +33,7 @@ type BookingDetail = Booking & {
   location_name?: string;
   provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string };
   outstanding_balance?: number;
+  cancellation_fee?: number;
   display_time_zone?: string | null;
 };
 import { toast } from "sonner";
@@ -59,6 +61,7 @@ function formatPercent(value?: number | null): string {
 }
 
 export default function BookingDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -222,8 +225,7 @@ export default function BookingDetailPage() {
   const handleCancel = async () => {
     if (!booking) return;
 
-    let promptMessage =
-      "Are you sure you want to cancel this booking? This action cannot be undone.";
+    let promptMessage = t("customer.mobile.screens.bookingDetail.cancelDefaultConfirm");
     try {
       const preview = await fetcher.get<{
         data: {
@@ -239,27 +241,27 @@ export default function BookingDetailPage() {
       }>(`/api/me/bookings/${bookingId}/cancel-preview`, { cache: "no-store", staleTimeMs: 0 });
       const p = preview.data;
       if (!p?.allowed) {
-        toast.error(p?.reason || "Cancellation is not allowed for this booking.");
+        toast.error(p?.reason || t("customer.mobile.screens.bookingDetail.cancellationNotAllowed"));
         return;
       }
       const cur = p.currency || booking.currency;
       const fee = Number(p.expected_cancellation_fee ?? 0);
       const refund = Number(p.expected_wallet_refund ?? 0);
-      const capNote =
-        p.refund_capped_by_paid_amount === true
-          ? "\n\nYour wallet refund is capped by the amount you have already paid."
-          : "";
-      promptMessage =
-        `Cancel this booking now?\n\n` +
-        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}\n` +
-        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}` +
-        capNote +
-        `\n\n` +
-        (p.is_late_cancellation
-          ? "You are inside the late-cancellation window."
-          : "You are within the normal cancellation window.");
+      const capBlock = p.refund_capped_by_paid_amount
+        ? `\n\n${t("customer.mobile.screens.bookingDetail.cancelPreviewCapNote")}`
+        : "";
+      const windowLine = p.is_late_cancellation
+        ? t("customer.mobile.screens.bookingDetail.cancelPreviewLate")
+        : t("customer.mobile.screens.bookingDetail.cancelPreviewNormal");
+      promptMessage = t("customer.mobile.screens.bookingDetail.cancelPreviewMessage", {
+        currency: cur,
+        fee: fee.toFixed(2),
+        refund: refund.toFixed(2),
+        capBlock,
+        windowLine,
+      });
     } catch {
-      // Fallback to the generic confirmation text
+      // Fallback to generic confirmation text
     }
 
     const confirmed = window.confirm(promptMessage);
@@ -840,6 +842,14 @@ export default function BookingDetailPage() {
                     </span>
                   </div>
                 ))}
+            </div>
+          )}
+          {Number(booking.cancellation_fee ?? 0) > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Cancellation fee</span>
+              <span className="font-medium text-amber-700">
+                {booking.currency} {Number(booking.cancellation_fee).toFixed(2)}
+              </span>
             </div>
           )}
           <div className="border-t pt-2 mt-2">

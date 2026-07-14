@@ -19,6 +19,7 @@ interface BulkWhatsAppLeadRow {
   phone_e164?: string | null;
   email?: string | null;
   whatsapp_status?: string | null;
+  do_not_contact?: boolean | null;
 }
 
 interface Session {
@@ -104,8 +105,11 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
 
   const withPhone = leads.filter((l) => l.phone_e164);
   const noPhone = leads.filter((l) => !l.phone_e164);
+  const doNotContact = leads.filter((l) => l.do_not_contact);
   const notOnWhatsApp = leads.filter((l) => l.whatsapp_status === "not_found");
-  const ready = withPhone.filter((l) => l.whatsapp_status !== "not_found");
+  const ready = withPhone.filter(
+    (l) => l.whatsapp_status !== "not_found" && !l.do_not_contact,
+  );
   const overLimit = leads.length > 50;
 
   const selectedSession = (sessionsQuery.data || []).find((s) => s.id === sessionId);
@@ -186,11 +190,12 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
       {/* Step 1: Review */}
       {step === "review" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <AdminMetricCard label="Selected" value={leads.length} variant="slate" />
             <AdminMetricCard label="Ready" value={ready.length} variant="emerald" />
             <AdminMetricCard label="No Phone" value={noPhone.length} variant="rose" />
             <AdminMetricCard label="Not on WhatsApp" value={notOnWhatsApp.length} variant="amber" />
+            <AdminMetricCard label="Do not contact" value={doNotContact.length} variant="rose" />
           </div>
 
           {overLimit && (
@@ -203,6 +208,7 @@ export function BulkWhatsAppModal({ open, onClose, leads }: BulkWhatsAppModalPro
             <strong>{ready.length}</strong> leads are eligible to receive a WhatsApp message.
             {noPhone.length > 0 && ` ${noPhone.length} will be skipped (no phone).`}
             {notOnWhatsApp.length > 0 && ` ${notOnWhatsApp.length} will be skipped (not on WhatsApp).`}
+            {doNotContact.length > 0 && ` ${doNotContact.length} will be skipped (do not contact).`}
           </p>
         </div>
       )}

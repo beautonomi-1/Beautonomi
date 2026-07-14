@@ -5,6 +5,7 @@ import {
   successResponse,
   handleApiError,
   forbiddenResponse,
+  errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 
@@ -23,7 +24,7 @@ export async function POST(
 
     const { data: existing, error: loadErr } = await admin
       .from("provider_invoices")
-      .select("id, provider_id")
+      .select("id, provider_id, status")
       .eq("id", id)
       .maybeSingle();
 
@@ -31,12 +32,31 @@ export async function POST(
       return handleApiError(new Error("Invoice not found"), "Invoice not found", "NOT_FOUND", 404);
     }
 
-    const invPid = (existing as { provider_id?: string | null }).provider_id;
+    const inv = existing as { provider_id?: string | null; status?: string | null };
+    const invPid = inv.provider_id;
     if (!invPid) {
       return forbiddenResponse("Invalid invoice record");
     }
     if (!(await userHasProviderAccessAdmin(admin, user.id, invPid))) {
       return forbiddenResponse("You do not have access to this invoice");
+    }
+
+    if (inv.status === "sent") {
+      const { data: invoice } = await admin
+        .from("provider_invoices")
+        .select()
+        .eq("id", id)
+        .eq("provider_id", invPid)
+        .single();
+      return successResponse(invoice);
+    }
+
+    if (inv.status !== "draft") {
+      return errorResponse(
+        "Only draft invoices can be marked as sent",
+        "INVALID_STATUS",
+        409
+      );
     }
 
     const { data: invoice, error } = await admin

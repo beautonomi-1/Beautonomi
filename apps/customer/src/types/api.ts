@@ -44,7 +44,7 @@ export interface ProviderLocation {
   id: string;
   name: string;
   is_primary?: boolean;
-  address_line1: string;
+  address_line1?: string;
   address_line2?: string | null;
   city: string;
   state?: string | null;
@@ -101,6 +101,9 @@ export interface PublicProviderDetail {
   current_badge?: ProviderBadge | null;
   policies?: {
     cancellation_window_hours?: number;
+    grace_window_minutes?: number;
+    late_refund_percentage?: number;
+    policy_text?: string | null;
     requires_deposit?: boolean;
     deposit_percentage?: number;
     no_show_fee_enabled?: boolean;
@@ -108,6 +111,23 @@ export interface PublicProviderDetail {
     currency?: string;
   };
   profile_promotions?: PublicProfilePromotion[];
+  /** Disclosure tier applied to this payload (anon / authed / booked). */
+  disclosure_tier?: "anon" | "authed" | "booked";
+}
+
+/** Authenticated contact disclosure from GET /api/providers/[slug]/contact */
+export interface ProviderContactDisclosure {
+  disclosure_tier: "authed" | "booked";
+  description: string | null;
+  website: string | null;
+  social_media_links?: {
+    facebook?: string | null;
+    instagram?: string | null;
+    twitter?: string | null;
+    linkedin?: string | null;
+  };
+  operating_hours?: unknown;
+  locations: ProviderLocation[];
 }
 
 export interface ProviderService {

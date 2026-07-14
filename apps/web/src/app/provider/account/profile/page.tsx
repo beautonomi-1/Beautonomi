@@ -17,6 +17,23 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import {
+  SUPABASE_AUTH_OTP_LENGTH,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
+import { isMailableEmail } from "@beautonomi/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ProfileData {
   email: string;
@@ -50,6 +67,13 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialContactRef = useRef({ email: "", phone: "" });
+  const [emailOtpOpen, setEmailOtpOpen] = useState(false);
+  const [phoneOtpOpen, setPhoneOtpOpen] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [pendingPhone, setPendingPhone] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
 
   useEffect(() => {
     loadProfile();
@@ -96,6 +120,10 @@ export default function ProfilePage() {
         },
         plan: planName,
       });
+      initialContactRef.current = {
+        email: data.email || "",
+        phone: data.phone || "",
+      };
     } catch (error) {
       console.error("Error loading profile:", error);
       toast.error("Failed to load profile");
@@ -223,21 +251,69 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
-    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+    const trimmedPhone = formData.phone?.trim() || "";
+    if (trimmedPhone && !isCompleteE164(trimmedPhone)) {
       toast.error("Enter a valid phone number or leave the field blank.");
       return;
     }
+
+    const trimmedEmail = formData.email.trim();
+    const initialEmail = initialContactRef.current.email.trim();
+    const initialPhone = initialContactRef.current.phone.trim();
+    const emailChanged =
+      trimmedEmail.length > 0 && trimmedEmail.toLowerCase() !== initialEmail.toLowerCase();
+    const phoneChanged =
+      trimmedPhone.length > 0 && trimmedPhone !== initialPhone;
+
+    if (emailChanged) {
+      if (!isMailableEmail(trimmedEmail)) {
+        toast.error("Enter a valid email address.");
+        return;
+      }
+      try {
+        setIsSaving(true);
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.auth.updateUser({ email: trimmedEmail });
+        if (error) throw error;
+        setPendingEmail(trimmedEmail);
+        setEmailOtp("");
+        setEmailOtpOpen(true);
+        toast.success("Verification code sent to your email.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    if (phoneChanged) {
+      try {
+        setIsSaving(true);
+        const supabase = getSupabaseClient();
+        const normalized = normalizeSupabaseAuthPhone(trimmedPhone);
+        const { error } = await supabase.auth.updateUser({ phone: normalized });
+        if (error) throw error;
+        setPendingPhone(normalized);
+        setPhoneOtp("");
+        setPhoneOtpOpen(true);
+        toast.success("Verification code sent to your phone.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
     try {
       setIsSaving(true);
       
-      // Only send address if it has at least a line1
       const addressToSend = formData.address && formData.address.line1 
         ? formData.address 
         : undefined;
       
       await fetcher.patch("/api/me/profile", {
-        email: formData.email,
-        phone: formData.phone?.trim() || null,
         ...(addressToSend && { address: addressToSend }),
       });
 
@@ -251,6 +327,52 @@ export default function ProfilePage() {
           ? error.message
           : "Failed to update profile. Please try again.";
       toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const verifyEmailOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtp);
+    if (!pendingEmail || !isCompleteSupabaseSmsOtp(token)) return;
+    try {
+      setIsSaving(true);
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingEmail,
+        token,
+        type: "email_change",
+      });
+      if (error) throw error;
+      await fetcher.post("/api/me/email/verify", { email: pendingEmail });
+      setEmailOtpOpen(false);
+      toast.success("Email address updated successfully.");
+      await loadProfile();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Verification failed");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const verifyPhoneOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtp);
+    if (!pendingPhone || !isCompleteSupabaseSmsOtp(token)) return;
+    try {
+      setIsSaving(true);
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        phone: pendingPhone,
+        token,
+        type: "phone_change",
+      });
+      if (error) throw error;
+      await fetcher.patch("/api/me/profile", { phone: pendingPhone });
+      setPhoneOtpOpen(false);
+      toast.success("Phone number updated successfully.");
+      await loadProfile();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Verification failed");
     } finally {
       setIsSaving(false);
     }
@@ -523,6 +645,58 @@ export default function ProfilePage() {
           });
         }}
       />
+      <Dialog open={emailOtpOpen} onOpenChange={setEmailOtpOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Verify email</DialogTitle>
+            <DialogDescription>
+              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmail}.
+            </DialogDescription>
+          </DialogHeader>
+          <OtpDigitInput
+            length={SUPABASE_AUTH_OTP_LENGTH}
+            value={emailOtp}
+            onChange={setEmailOtp}
+            onComplete={(code) => {
+              setEmailOtp(code);
+              void verifyEmailOtp(code);
+            }}
+            disabled={isSaving}
+            autoFocus
+            label="Email verification code"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailOtpOpen(false)}>Cancel</Button>
+            <Button onClick={() => void verifyEmailOtp()} disabled={isSaving}>Verify & save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={phoneOtpOpen} onOpenChange={setPhoneOtpOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Verify phone</DialogTitle>
+            <DialogDescription>
+              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingPhone}.
+            </DialogDescription>
+          </DialogHeader>
+          <OtpDigitInput
+            length={SUPABASE_AUTH_OTP_LENGTH}
+            value={phoneOtp}
+            onChange={setPhoneOtp}
+            onComplete={(code) => {
+              setPhoneOtp(code);
+              void verifyPhoneOtp(code);
+            }}
+            disabled={isSaving}
+            autoFocus
+            label="Phone verification code"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPhoneOtpOpen(false)}>Cancel</Button>
+            <Button onClick={() => void verifyPhoneOtp()} disabled={isSaving}>Verify & save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SettingsDetailLayout>
   );
 }

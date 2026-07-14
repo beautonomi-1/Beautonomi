@@ -1288,6 +1288,10 @@ export async function PATCH(
     const updatedToCancelled = updateData.status === "cancelled";
     const updatedToNoShow = updateData.status === "no_show";
     const preCancelGrossTotal = Number((currentBooking as Record<string, unknown>)?.total_amount ?? 0);
+    let cancellationSettlementResult:
+      | import("@/lib/bookings/settle-booking-cancellation").SettleBookingCancellationResult
+      | null = null;
+    let cancelNotifyCurrency: string | undefined;
 
     if (updatedToCancelled || updatedToNoShow) {
       try {
@@ -1306,6 +1310,7 @@ export async function PATCH(
         const tenantRegion = bookingTenantId ? await getTenantRegionConfig(bookingTenantId) : null;
         const currency =
           (cb.currency as string) || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+        cancelNotifyCurrency = currency;
 
         const financialSnapshot = {
           id,
@@ -1335,7 +1340,7 @@ export async function PATCH(
             .select("no_show_fee_enabled, no_show_fee_amount")
             .eq("id", providerId)
             .maybeSingle();
-          await settleBookingNoShow({
+          cancellationSettlementResult = await settleBookingNoShow({
             booking: financialSnapshot,
             currency,
             noShowFeeEnabled: Boolean((provRow as { no_show_fee_enabled?: boolean } | null)?.no_show_fee_enabled),
@@ -1343,7 +1348,7 @@ export async function PATCH(
             policy,
           });
         } else {
-          await settleBookingCancellation({
+          cancellationSettlementResult = await settleBookingCancellation({
             booking: financialSnapshot,
             cancelledBy: "provider",
             currency,
@@ -1677,10 +1682,13 @@ export async function PATCH(
         }
 
         if (dbStatus === "cancelled") {
-          // Send cancellation notification (finance handled by settleBookingCancellation above)
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
-            refundInfo: 'A refund has been credited to the customer wallet when payment was collected through the platform.',
+            refundInfo: 'A full refund has been credited to the customer Beautonomi wallet for amounts already paid.',
+            cancellationReason: cancellation_reason || null,
+            walletRefund: cancellationSettlementResult?.walletRefundAmount,
+            feeRetained: cancellationSettlementResult?.cancellationFeeApplied,
+            currency: cancelNotifyCurrency,
           });
 
           try {
@@ -1741,10 +1749,11 @@ export async function PATCH(
             );
           }
         } else if (dbStatus === "no_show") {
-          await sendCancellationNotification(id, {
-            cancelledBy: 'provider',
-            refundInfo: 'Marked as no-show by provider',
-          });
+          const { notifyCustomerNoShow } = await import("@/lib/notifications/notification-service");
+          await notifyCustomerNoShow(
+            id,
+            cancellationSettlementResult?.cancellationFeeApplied ?? 0,
+          );
         } else if (
           dbStatus === "confirmed" &&
           previousStatus !== "confirmed" &&

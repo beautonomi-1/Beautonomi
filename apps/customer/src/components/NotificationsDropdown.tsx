@@ -96,7 +96,13 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
 
   const markRead = async (id: string, rollbackIfUnread: boolean) => {
     try {
-      await api.post(`/api/me/notifications/${id}/read`);
+      const res = await api.post(`/api/me/notifications/${id}/read`);
+      if (res.error) {
+        // api.post reports failures via res.error (it does not throw) — roll
+        // back the optimistic decrement so the badge matches the server.
+        if (rollbackIfUnread) adjustUnreadCount(1);
+        return;
+      }
       setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
       await refetchUnreadCount();
     } catch {

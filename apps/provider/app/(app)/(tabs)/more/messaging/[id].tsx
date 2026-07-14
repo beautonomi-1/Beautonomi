@@ -1110,6 +1110,15 @@ export default function ChatScreen() {
                           }
                         }}
                         onWithdraw={() => offer?.offer_id && handleWithdrawOffer(offer.offer_id)}
+                        onEdit={() => {
+                          if (!offer?.offer_id) return;
+                          const requestId = customRequestNavId;
+                          if (requestId) {
+                            router.push(`/(app)/(tabs)/more/custom-requests/${requestId}` as never);
+                          } else {
+                            router.push("/(app)/(tabs)/more/custom-requests" as never);
+                          }
+                        }}
                       />
                     ) : null}
 

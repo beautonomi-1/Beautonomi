@@ -87,9 +87,9 @@ export function matchesSubscriptionPaystackReturnUrl(url: string, opts: MatchOpt
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type PollOptions = {
-  /** Total poll attempts. Defaults to 6. */
+  /** Total poll attempts. Defaults to 12 (~24s at 2s delay). */
   maxAttempts?: number;
-  /** Delay between attempts (ms). Defaults to 1500. */
+  /** Delay between attempts (ms). Defaults to 2000. */
   delayMs?: number;
 };
 
@@ -189,8 +189,8 @@ function isSubscriptionProvisioned(
 export async function pollSubscriptionProvisioned(
   opts: PollOptions & { orderId?: string | null } = {},
 ): Promise<SubscriptionProvisionedResult> {
-  const maxAttempts = Math.max(1, opts.maxAttempts ?? 6);
-  const delayMs = Math.max(0, opts.delayMs ?? 1500);
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 12);
+  const delayMs = Math.max(0, opts.delayMs ?? 2000);
   let lastSub: SubscriptionSnapshot | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {

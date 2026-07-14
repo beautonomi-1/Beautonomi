@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookingState, BookingMode } from "../booking-flow";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { formatPublicLocationSubtitle, fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -42,9 +43,10 @@ interface StepVenueChoiceProps {
 interface ProviderLocation {
   id: string;
   name: string;
-  address_line1: string;
+  address_line1?: string;
   address_line2?: string;
   city: string;
+  state?: string;
   country: string;
   is_primary: boolean;
   location_type?: "salon" | "base";
@@ -141,6 +143,17 @@ export default function StepVenueChoice({
       // Only show locations where clients can visit (salon); base = distance-only
       const locations = allLocations.filter((l) => (l.location_type || "salon") === "salon");
       setProviderLocations(locations);
+
+      if (user?.id) {
+        const contact = await fetchProviderContactDisclosure(providerSlug);
+        if (contact?.locations?.length) {
+          const merged = locations.map((loc) => {
+            const enriched = contact.locations.find((c) => c.id === loc.id);
+            return enriched ? { ...loc, ...enriched, is_primary: loc.is_primary } : loc;
+          });
+          setProviderLocations(merged);
+        }
+      }
 
       // Auto-select location:
       // 1. If only one location, select it
@@ -591,11 +604,7 @@ export default function StepVenueChoice({
                           )}
                         </div>
                         <p className="text-sm text-gray-600">
-                          {location.address_line1}
-                          {location.address_line2 && `, ${location.address_line2}`}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {location.city}, {location.country}
+                          {formatPublicLocationSubtitle(location)}
                         </p>
                       </div>
                       {bookingState.selectedLocationId === location.id && (
@@ -613,7 +622,7 @@ export default function StepVenueChoice({
                 <div>
                   <p className="font-medium text-gray-900">{providerLocations[0].name}</p>
                   <p className="text-sm text-gray-600">
-                    {providerLocations[0].address_line1}, {providerLocations[0].city}
+                    {formatPublicLocationSubtitle(providerLocations[0])}
                   </p>
                 </div>
               </div>

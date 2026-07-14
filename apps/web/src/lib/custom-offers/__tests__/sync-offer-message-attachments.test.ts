@@ -31,6 +31,17 @@ describe("applyCustomOfferAttachmentPatch", () => {
     expect(out.booking_id).toBe("b1");
   });
 
+  it("stores change_request_note for changes_requested", () => {
+    const out = applyCustomOfferAttachmentPatch(
+      { type: "custom_offer", offer_id: "x" },
+      { status: "changes_requested", changeRequestNote: "Please adjust price" },
+    );
+    expect(out.status).toBe("changes_requested");
+    expect(out.change_request_note).toBe("Please adjust price");
+    expect(out.withdrawn).toBe(false);
+    expect(out.expired).toBe(false);
+  });
+
   it("clears booking_id when reset to pending", () => {
     const out = applyCustomOfferAttachmentPatch(
       { type: "custom_offer", offer_id: "x", booking_id: "b1" },
@@ -40,5 +51,14 @@ describe("applyCustomOfferAttachmentPatch", () => {
     expect(out.booking_id).toBe(null);
     expect(out.withdrawn).toBe(false);
     expect(out.expired).toBe(false);
+  });
+
+  it("applies price and duration patches when editing an offer", () => {
+    const out = applyCustomOfferAttachmentPatch(
+      { type: "custom_offer", offer_id: "x", price: 100, duration_minutes: 60 },
+      { status: "pending", price: 150, durationMinutes: 90 },
+    );
+    expect(out.price).toBe(150);
+    expect(out.duration_minutes).toBe(90);
   });
 });

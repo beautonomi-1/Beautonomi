@@ -8,13 +8,13 @@ import {
   Share,
   TextInput,
   ScrollView,
-  Linking,
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { downloadPdf } from "@/lib/pdf-file";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -88,7 +88,7 @@ interface InvoicesResponse {
 
 const STATUS_FILTERS = [
   { label: "All", value: "all" },
-  { label: "Pending", value: "pending" },
+  { label: "Sent", value: "sent" },
   { label: "Paid", value: "paid" },
   { label: "Overdue", value: "overdue" },
   { label: "Draft", value: "draft" },
@@ -160,6 +160,7 @@ function createDefaultInvoiceForm(): InvoiceForm {
 }
 
 export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -186,7 +187,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   const { execute: sendInvoice, loading: sending } = useApiMutation("post");
   const { execute: createInvoice, loading: creatingInvoice } = useApiMutation<Invoice>("post");
   const { execute: saveInvoice, loading: savingInvoice } = useApiMutation<Invoice>("patch");
-  const { execute: getSignedDownloadUrl, loading: downloadingInvoice } = useApiMutation<{ url: string }>("post");
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -224,7 +225,9 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
         overdueCount: summary.overdue_count,
       };
     }
-    const outstanding = filtered.filter((i) => i.status === "pending" || i.status === "overdue");
+    const outstanding = filtered.filter((i) =>
+      i.status === "sent" || i.status === "partially_paid" || i.status === "overdue"
+    );
     const paid = filtered.filter((i) => i.status === "paid");
     const overdue = filtered.filter((i) => i.status === "overdue");
     return {
@@ -322,17 +325,21 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   }
 
   async function handleDownloadInvoice(inv: Invoice) {
-    const { data, error } = await getSignedDownloadUrl(`/api/provider/invoices/${inv.id}/signed-url`, {});
-    if (error || !data?.url) {
-      Alert.alert("Download unavailable", error || "Could not create invoice download link.");
-      return;
+    setDownloadingInvoice(true);
+    try {
+      await downloadPdf({
+        router,
+        pdfPath: `/api/provider/invoices/${inv.id}/download`,
+        signedUrlPath: `/api/provider/invoices/${inv.id}/signed-url`,
+        filename: `invoice_${inv.invoice_number || inv.id}.pdf`,
+        title: `Invoice ${inv.invoice_number}`,
+        label: "invoice",
+      });
+    } catch (e) {
+      Alert.alert("Download unavailable", e instanceof Error ? e.message : "Could not download this invoice.");
+    } finally {
+      setDownloadingInvoice(false);
     }
-    const canOpen = await Linking.canOpenURL(data.url);
-    if (!canOpen) {
-      Alert.alert("Download unavailable", "Your device could not open the invoice PDF link.");
-      return;
-    }
-    await Linking.openURL(data.url);
   }
 
   async function handleMarkPaid(inv: Invoice) {
@@ -642,7 +649,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
 
             {/* Actions */}
             <View style={twStyle("flex-row flex-wrap")}>
-              {(["pending", "sent", "partially_paid", "overdue"].includes(selected.status)) && (
+              {(["sent", "partially_paid", "overdue"].includes(selected.status)) && (
                 <TouchableOpacity
                   style={[twStyle("items-center rounded-lg bg-green-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
                   onPress={() => handleMarkPaid(selected)}
@@ -653,15 +660,17 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
                   </Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                style={[twStyle("items-center rounded-lg bg-indigo-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
-                onPress={() => handleMarkAsSent(selected)}
-                disabled={sending}
-              >
-                <Text style={twStyle("text-sm font-medium text-indigo-700")}>
-                  {sending ? "Updating..." : "Mark as Sent"}
-                </Text>
-              </TouchableOpacity>
+              {selected.status === "draft" && (
+                <TouchableOpacity
+                  style={[twStyle("items-center rounded-lg bg-indigo-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
+                  onPress={() => handleMarkAsSent(selected)}
+                  disabled={sending}
+                >
+                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>
+                    {sending ? "Updating..." : "Mark as Sent"}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[twStyle("items-center rounded-lg bg-blue-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() => openEditInvoice(selected)}

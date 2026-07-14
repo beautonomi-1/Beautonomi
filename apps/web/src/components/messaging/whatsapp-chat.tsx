@@ -363,6 +363,24 @@ export default function WhatsAppChat({
     }
   };
 
+  const handleRequestChanges = async (offerId: string) => {
+    const note = window.prompt("What would you like changed on this offer?");
+    if (note === null) return;
+    if (!note.trim()) {
+      toast.error("Please describe the changes you want");
+      return;
+    }
+    try {
+      await fetcher.post(`/api/me/custom-offers/${offerId}/request-changes`, { note: note.trim() });
+      toast.success("Change request sent");
+      setOfferDetailOpen(false);
+      await loadMessages();
+      onConversationUpdate?.();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to request changes");
+    }
+  };
+
   const handleAcceptOffer = async (offerId: string, paymentOption: "full" | "deposit" = "full") => {
     setIsAcceptingOffer(true);
     try {
@@ -1285,6 +1303,7 @@ export default function WhatsAppChat({
                           void openPaymentDialog(att.offer_id!, att.currency);
                         }}
                         onDecline={() => att.offer_id && void handleDeclineOffer(att.offer_id)}
+                        onRequestChanges={() => att.offer_id && void handleRequestChanges(att.offer_id)}
                         isDeclineLoading={decliningOfferId === att.offer_id}
                         onResume={() => {
                           void openPaymentDialog(att.offer_id!, att.currency);
@@ -1791,6 +1810,7 @@ export default function WhatsAppChat({
             const isWithdrawnDetail = rawStatus === "withdrawn";
             const isExpiredDetail = rawStatus === "expired";
             const isDeclinedDetail = rawStatus === "declined";
+            const isChangesRequestedDetail = rawStatus === "changes_requested";
             const isPaymentPendingDetail = rawStatus === "payment_pending";
             const statusLabel = isPaidDetail
               ? "Booked ✓"
@@ -1802,6 +1822,8 @@ export default function WhatsAppChat({
                     ? "Expired"
                     : isPaymentPendingDetail
                       ? "Payment in progress"
+                      : isChangesRequestedDetail
+                        ? "Changes requested"
                       : "Pending";
             const statusClass = isPaidDetail
               ? "bg-emerald-100 text-emerald-700"
@@ -1813,6 +1835,8 @@ export default function WhatsAppChat({
                     ? "bg-amber-100 text-amber-700"
                     : isPaymentPendingDetail
                       ? "bg-yellow-100 text-yellow-700"
+                      : isChangesRequestedDetail
+                        ? "bg-indigo-100 text-indigo-700"
                       : "bg-blue-100 text-blue-700";
             return (
               <div className="space-y-4 pb-2">
@@ -1899,6 +1923,13 @@ export default function WhatsAppChat({
                   </div>
                 )}
 
+                {isChangesRequestedDetail && d.change_request_note && (
+                  <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                    <span className="font-semibold">Requested changes: </span>
+                    {d.change_request_note}
+                  </div>
+                )}
+
                 {/* Expired hint */}
                 {isExpiredDetail && (
                   <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
@@ -1929,6 +1960,7 @@ export default function WhatsAppChat({
                     !isDeclinedDetail &&
                     !isPaymentPendingDetail &&
                     d.id && (
+                    <>
                     <Button
                       className="w-full"
                       disabled={isAcceptingOffer}
@@ -1939,6 +1971,19 @@ export default function WhatsAppChat({
                     >
                       Accept & Pay
                     </Button>
+                    {rawStatus === "pending" && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          setOfferDetailOpen(false);
+                          void handleRequestChanges(d.id);
+                        }}
+                      >
+                        Request changes
+                      </Button>
+                    )}
+                    </>
                   )}
                   {!isProviderChat &&
                     !isPaidDetail &&
@@ -1975,6 +2020,19 @@ export default function WhatsAppChat({
                   )}
                   {/* Provider: Withdraw offer */}
                   {isProviderChat && !isPaidDetail && !isWithdrawnDetail && !isExpiredDetail && !isDeclinedDetail && d.id && (
+                    <>
+                    {(rawStatus === "pending" || isChangesRequestedDetail) && (
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setOfferDetailOpen(false);
+                          setEditOfferId(d.id);
+                          setShowCustomOfferModal(true);
+                        }}
+                      >
+                        Edit offer
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
@@ -1994,6 +2052,7 @@ export default function WhatsAppChat({
                       <Undo2 className="w-4 h-4 mr-2" />
                       Withdraw Offer
                     </Button>
+                    </>
                   )}
                 </div>
               </div>

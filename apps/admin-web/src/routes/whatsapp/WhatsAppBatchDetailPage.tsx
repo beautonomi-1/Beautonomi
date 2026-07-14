@@ -68,7 +68,7 @@ export function WhatsAppBatchDetailPage() {
   const batchQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.batchDetail(batchId || ""),
     queryFn: () =>
-      adminApi.getJson<{ batch: Batch; messages: QueueMsg[]; meta: { total: number; has_more: boolean } }>(
+      adminApi.getJson<{ batch: Batch; messages: QueueMsg[]; status_counts?: Record<string, number>; meta: { total: number; has_more: boolean } }>(
         `/api/admin/whatsapp/bulk/${batchId}?page=${page}&limit=20`,
       ),
     enabled: allowed && Boolean(batchId),
@@ -108,9 +108,10 @@ export function WhatsAppBatchDetailPage() {
     return <p className="py-12 text-center text-sm text-gray-500">Batch not found.</p>;
   }
 
-  const { batch, messages, meta } = data;
+  const { batch, messages, meta, status_counts } = data;
   const progress = batch.total_count > 0 ? ((batch.sent_count + batch.delivered_count) / batch.total_count) * 100 : 0;
   const statusStyle = STATUS_STYLES[batch.status] || STATUS_STYLES.queued;
+  const sendingCount = status_counts?.sending ?? messages.filter((m) => m.status === "sending").length;
 
   return (
     <div className="space-y-6">
@@ -166,7 +167,7 @@ export function WhatsAppBatchDetailPage() {
       {/* Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <AdminMetricCard label="Queued" value={batch.queued_count} variant="slate" />
-        <AdminMetricCard label="Sending" value={0} variant="violet" />
+        <AdminMetricCard label="Sending" value={sendingCount} variant="violet" />
         <AdminMetricCard label="Sent" value={batch.sent_count} variant="violet" />
         <AdminMetricCard label="Delivered" value={batch.delivered_count} variant="emerald" />
         <AdminMetricCard label="Failed" value={batch.failed_count} variant="rose" />

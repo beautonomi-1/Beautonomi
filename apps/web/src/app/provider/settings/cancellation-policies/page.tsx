@@ -84,6 +84,20 @@ export default function CancellationPoliciesPage() {
         return;
       }
 
+      if (policy.fee_amount != null && policy.fee_amount < 0) {
+        toast.error("Fee amount must be 0 or greater");
+        return;
+      }
+
+      if (
+        policy.fee_type === "percentage" &&
+        policy.fee_amount != null &&
+        policy.fee_amount > 100
+      ) {
+        toast.error("Percentage fee cannot exceed 100%");
+        return;
+      }
+
       if (policy.id) {
         await fetcher.patch(`/api/provider/cancellation-policies/${policy.id}`, policy);
         toast.success("Cancellation policy updated successfully");
@@ -186,9 +200,11 @@ export default function CancellationPoliciesPage() {
           <div>
             <p className="text-sm text-blue-800 font-medium mb-1">How Cancellation Policies Work</p>
             <p className="text-xs text-blue-700">
-              Cancellation policies determine refund amounts based on when a customer cancels. 
-              You can set different policies for different time periods before the appointment. 
-              One policy can be set as the default for all bookings.
+              Customers can cancel for free within 15 minutes of booking, or more than the hours
+              below before their appointment — they receive a full refund to their Beautonomi wallet.
+              Cancellations inside that window are late: the refund percentage below applies to
+              amounts already paid. A cancellation fee only applies when the late refund percentage
+              is 0%. No-show fees are configured separately under Payment Settings.
             </p>
           </div>
         </div>
@@ -217,12 +233,16 @@ export default function CancellationPoliciesPage() {
                     )}
                   </div>
                   <p className="text-sm text-gray-600">
-                    If cancelled {policy.hours_before} hours or more before appointment:{" "}
-                    <strong>{policy.refund_percentage}% refund</strong>
+                    More than {policy.hours_before} hours before:{" "}
+                    <strong>full refund</strong> to the customer&apos;s wallet
                   </p>
-                  {policy.fee_amount && policy.fee_amount > 0 && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Within {policy.hours_before} hours (late cancellation):{" "}
+                    <strong>{policy.refund_percentage}% refund</strong> of amounts paid
+                  </p>
+                  {policy.refund_percentage === 0 && policy.fee_amount && policy.fee_amount > 0 && (
                     <p className="text-sm text-gray-600 mt-1">
-                      Cancellation fee:{" "}
+                      Late cancellation fee (when refund is 0%):{" "}
                       {policy.fee_type === "percentage"
                         ? `${policy.fee_amount}%`
                         : formatCurrency(policy.fee_amount ?? 0, tenantCurrency)}
@@ -296,7 +316,7 @@ function PolicyDialog({
   const [formData, setFormData] = useState<CancellationPolicy>({
     name: "",
     hours_before: 24,
-    refund_percentage: 100,
+    refund_percentage: 0,
     fee_amount: 0,
     fee_type: "fixed",
     is_default: false,
@@ -310,7 +330,7 @@ function PolicyDialog({
         setFormData({
           name: "",
           hours_before: 24,
-          refund_percentage: 100,
+          refund_percentage: 0,
           fee_amount: 0,
           fee_type: "fixed",
           is_default: false,
@@ -340,6 +360,15 @@ function PolicyDialog({
     
     if (formData.fee_amount && formData.fee_amount < 0) {
       toast.error("Fee amount must be 0 or greater");
+      return;
+    }
+
+    if (
+      formData.fee_type === "percentage" &&
+      formData.fee_amount != null &&
+      formData.fee_amount > 100
+    ) {
+      toast.error("Percentage fee cannot exceed 100%");
       return;
     }
 
@@ -383,7 +412,8 @@ function PolicyDialog({
               required
             />
             <p className="text-xs text-gray-500 mt-1">
-              Minimum hours before appointment that this policy applies
+              Hours before the appointment when late-cancellation rules apply. Earlier cancellations
+              receive a full wallet refund.
             </p>
           </div>
 
@@ -406,6 +436,10 @@ function PolicyDialog({
               />
               <span className="text-sm text-gray-600">%</span>
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Percentage of amounts paid refunded to the customer&apos;s wallet for late cancellations
+              (inside the window above).
+            </p>
           </div>
 
           <div>
@@ -447,6 +481,10 @@ function PolicyDialog({
                   {formData.fee_type === "percentage" ? "%" : LAST_RESORT_CURRENCY}
                 </span>
               </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Only used when the late refund percentage is 0%. Retained from amounts the customer
+                has already paid (capped to collected funds).
+              </p>
             </div>
           )}
 

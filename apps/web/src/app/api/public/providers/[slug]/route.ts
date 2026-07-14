@@ -7,6 +7,7 @@ import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beaut
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveActiveBadge } from "@/lib/provider/active-badge";
 import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
+import { redactProviderDetailForTier } from "@/lib/providers/provider-disclosure";
 
 function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
   if (!Array.isArray(rows)) return [];
@@ -162,7 +163,6 @@ export async function GET(
       locationsResult,
       offeringsResult,
       staffCountResult,
-      policiesResult,
       pointsResult,
       publicRatings,
       providerPromotionsResult,
@@ -190,13 +190,6 @@ export async function GET(
             .eq("provider_id", providerData.id)
             .eq("is_active", true)
         : Promise.resolve({ count: 0 }),
-      
-      // Fetch policies
-      supabase
-        .from("provider_policies")
-        .select("*")
-        .eq("provider_id", providerData.id)
-        .maybeSingle(),
       
       // Fetch points and badge
       supabase
@@ -233,7 +226,8 @@ export async function GET(
     const locations = locationsResult.data || [];
     const offerings = offeringsResult.data || [];
     const staffCount = staffCountResult.count || undefined;
-    const policies = policiesResult.data;
+    const { getCancellationPolicy } = await import("@/lib/bookings/cancellation-policy");
+    const cancellationPolicy = await getCancellationPolicy(supabase, providerData.id, "at_salon");
     const pointsData = pointsResult.data;
     const profile_promotions = mapPublicProfilePromotions(
       providerPromotionsResult.data,
@@ -404,21 +398,17 @@ export async function GET(
         created_at: loc.created_at,
         updated_at: loc.updated_at,
       })),
-      policies: policies
-        ? {
-            cancellation_window_hours: (policies as any).cancellation_window_hours,
-            requires_deposit: (policies as any).requires_deposit,
-            deposit_percentage: (policies as any).deposit_percentage,
-            no_show_fee_enabled: (policies as any).no_show_fee_enabled,
-            no_show_fee_amount: (policies as any).no_show_fee_amount,
-            currency: (policies as any).currency,
-          }
-        : {
-            cancellation_window_hours: 24,
-            requires_deposit: false,
-            no_show_fee_enabled: false,
-            currency: providerData.currency,
-          },
+      policies: {
+        cancellation_window_hours: cancellationPolicy?.hours_before_cutoff ?? 24,
+        grace_window_minutes: cancellationPolicy?.grace_window_minutes ?? 15,
+        late_refund_percentage: cancellationPolicy?.refund_percentage ?? 0,
+        requires_deposit: Boolean(providerData.requires_deposit),
+        deposit_percentage: providerData.deposit_percentage ?? null,
+        no_show_fee_enabled: Boolean(providerData.no_show_fee_enabled),
+        no_show_fee_amount: providerData.no_show_fee_amount ?? null,
+        currency: providerData.currency,
+        policy_text: cancellationPolicy?.policy_text ?? null,
+      },
       staff_count: staffCount,
       years_in_business: providerData.years_in_business,
       accepts_custom_requests: acceptsCustomRequests,
@@ -439,8 +429,10 @@ export async function GET(
       profile_promotions,
     } as PublicProviderDetail;
 
+    const publicResult = redactProviderDetailForTier(result, "anon");
+
     const response = NextResponse.json({
-      data: result,
+      data: publicResult,
       error: null,
     });
     

@@ -873,7 +873,7 @@ function BookContinueContent() {
       return;
     }
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
-      setValidationError("Please confirm you have read the cancellation policy below.");
+      setValidationError(t("checkout.acceptCancellationPolicyRequired"));
       return;
     }
     setRequestingNow(true);
@@ -935,7 +935,7 @@ function BookContinueContent() {
       return;
     }
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
-      setValidationError("Please confirm you have read the cancellation policy below.");
+      setValidationError(t("checkout.acceptCancellationPolicyRequired"));
       return;
     }
 
@@ -1827,11 +1827,13 @@ function BookContinueContent() {
             </div>
           )}
 
-          {cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && hold.cancellation_policy && (() => {
+          {hold.cancellation_policy && (() => {
             const policyContent = buildCancellationPolicyLines(holdPolicyToView(hold.cancellation_policy), {
               t,
               formatCurrency: (amount, cur) => formatCurrency(amount, cur || currency),
             });
+            if (policyContent.lines.length === 0) return null;
+            const requiresAck = cancellationPolicyRequiresCustomerAck(hold.cancellation_policy);
             return (
               <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
                 <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
@@ -1856,6 +1858,7 @@ function BookContinueContent() {
                     {policyContent.storeCreditNote}
                   </p>
                 </div>
+                {requiresAck && (
                 <div className="flex items-start gap-3 pt-2">
                   <Checkbox
                     id="cancellation-policy-ack"
@@ -1867,6 +1870,7 @@ function BookContinueContent() {
                     {policyContent.ackText}
                   </Label>
                 </div>
+                )}
               </div>
             );
           })()}

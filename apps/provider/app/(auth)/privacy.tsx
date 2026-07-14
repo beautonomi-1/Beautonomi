@@ -1,17 +1,20 @@
 import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Linking } from "react-native";
 import { useRouter } from "expo-router";
-import { APP_URL } from "@/config/public-env";
-import { replaceInAppBrowser } from "@/lib/in-app-web";
+import { webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { Colors } from "@/constants/colors";
 
-/** Canonical legal text lives on the marketing site at `/privacy-policy`. */
+/**
+ * Canonical legal text lives on the marketing site at `/privacy-policy`.
+ * This `(auth)` route can be reached before sign-in (e.g. deep link), where the
+ * `(app)` in-app browser is not mounted — so open the public URL directly.
+ */
 export default function PrivacyScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    const url = `${APP_URL.replace(/\/$/, "")}/privacy-policy`;
-    replaceInAppBrowser(router, url, "Privacy Policy");
+    Linking.openURL(webPrivacyPolicyUrl()).catch(() => {});
+    if (router.canGoBack()) router.back();
   }, [router]);
 
   return (

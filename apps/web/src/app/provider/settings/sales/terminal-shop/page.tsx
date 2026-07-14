@@ -2,13 +2,29 @@
 
 /**
  * /provider/settings/sales/terminal-shop
- * Browse platform terminal catalog, place orders, pay via Paystack, view assets.
+ * Storefront for Beautonomi card machines: browse the catalog, place orders,
+ * pay via Paystack, track fulfillment, and jump to activation.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CreditCard, Download, Loader2, Wrench } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  MapPin,
+  Package,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Truck,
+  Wrench,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { FetchError } from "@/lib/http/fetcher";
@@ -16,6 +32,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -28,6 +52,10 @@ import {
   parseHighlightedOrderId,
   resolveTerminalShopOrderCta,
 } from "@/lib/terminal/terminal-shop-cta";
+import {
+  getTerminalOrderProgressSteps,
+  resolveTerminalOrderPrimaryAction,
+} from "@/lib/terminal/terminal-order-progress";
 import { resolveIntegrationSetupPath } from "@/lib/terminal/resolve-integration-setup-url";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
@@ -115,85 +143,155 @@ const EMPTY_DELIVERY: DeliveryForm = {
   contact_phone: "",
 };
 
+const FULFILLMENT_META: Record<string, { label: string; Icon: typeof Truck }> = {
+  shipping: { label: "Shipped to you", Icon: Truck },
+  courier: { label: "Courier delivery", Icon: Truck },
+  collection: { label: "Collect in person", Icon: MapPin },
+  digital_activation: { label: "Instant digital activation", Icon: Zap },
+};
+
+const CHECKOUT_STEPS = ["Plan", "Delivery", "Review"] as const;
+
 function formatMoney(currency: string, amount: number | null | undefined) {
   if (amount == null) return "—";
   return `${currency} ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
-type OrderProgressStep = { label: string; state: "done" | "current" | "upcoming" };
-
-function getOrderProgressSteps(order: TerminalOrder): OrderProgressStep[] {
-  const paid = order.invoice_status === "paid";
-  const setupRequired =
-    order.integration_setup_status != null && order.integration_setup_status !== "not_required";
-  const setupDone = !setupRequired || order.integration_setup_status === "completed";
-  const complete =
-    order.order_status === "delivered" ||
-    order.fulfillment_status === "delivered" ||
-    (order.fulfillment_type === "digital_activation" && paid && setupDone);
-
-  const fulfillmentLabel =
-    order.fulfillment_type === "collection"
-      ? "Ready for pickup"
-      : order.fulfillment_type === "digital_activation"
-        ? "Activated"
-        : "Delivered";
-
-  const steps: Array<{ label: string; reached: boolean; active: boolean }> = [
-    { label: "Placed", reached: true, active: !paid },
-    { label: "Paid", reached: paid, active: paid && !complete && (!setupRequired || setupDone) },
-  ];
-
-  if (setupRequired) {
-    steps.push({
-      label: "Integration",
-      reached: setupDone,
-      active: paid && !setupDone,
-    });
-  }
-
-  steps.push({
-    label: fulfillmentLabel,
-    reached: complete,
-    active: paid && setupDone && !complete,
-  });
-
-  let foundCurrent = false;
-  return steps.map((step) => {
-    if (step.active && !foundCurrent) {
-      foundCurrent = true;
-      return { label: step.label, state: "current" };
-    }
-    if (step.reached && !step.active) {
-      return { label: step.label, state: "done" };
-    }
-    if (step.reached && step.active) {
-      foundCurrent = true;
-      return { label: step.label, state: "current" };
-    }
-    return { label: step.label, state: "upcoming" };
-  });
+function formatCollectionAddress(address: Record<string, unknown> | null | undefined): string {
+  if (!address || typeof address !== "object") return "";
+  const parts = ["line1", "line2", "city", "province", "postal_code"]
+    .map((k) => address[k])
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  return parts.join(", ");
 }
 
-function OrderProgress({ order }: { order: TerminalOrder }) {
-  const steps = getOrderProgressSteps(order);
+function ProductImage({ product }: { product: TerminalProduct }) {
+  if (product.image_url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={product.image_url}
+        alt={product.name}
+        className="h-40 w-full rounded-xl object-cover"
+      />
+    );
+  }
   return (
-    <ol className="mt-2 flex flex-wrap gap-2">
-      {steps.map((step) => (
-        <li
-          key={step.label}
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            step.state === "done"
-              ? "bg-green-50 text-green-700"
-              : step.state === "current"
-                ? "bg-pink-50 text-pink-700 ring-1 ring-pink-200"
-                : "bg-gray-50 text-gray-400"
-          }`}
-        >
-          {step.label}
+    <div className="flex h-40 w-full items-center justify-center rounded-xl bg-gradient-to-br from-pink-50 via-white to-purple-50 border border-pink-100/60">
+      <Smartphone className="h-12 w-12 text-pink-300" />
+    </div>
+  );
+}
+
+function FulfillmentChip({ type }: { type: string | null | undefined }) {
+  const meta = FULFILLMENT_META[type ?? ""] ?? null;
+  if (!meta) return null;
+  const { label, Icon } = meta;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-600 ring-1 ring-gray-200/80">
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  );
+}
+
+function OrderTimeline({ order }: { order: TerminalOrder }) {
+  const steps = getTerminalOrderProgressSteps(order);
+  return (
+    <ol className="mt-3 flex items-center" aria-label="Order progress">
+      {steps.map((step, idx) => (
+        <li key={step.label} className="flex items-center">
+          {idx > 0 ? (
+            <span
+              className={`mx-1 h-px w-5 sm:w-8 ${
+                step.state === "upcoming" ? "bg-gray-200" : "bg-pink-300"
+              }`}
+              aria-hidden
+            />
+          ) : null}
+          <span className="flex items-center gap-1.5">
+            {step.state === "done" ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : step.state === "current" ? (
+              <span className="flex h-4 w-4 items-center justify-center" aria-hidden>
+                <span className="h-2.5 w-2.5 rounded-full bg-pink-500 ring-4 ring-pink-100" />
+              </span>
+            ) : (
+              <span className="flex h-4 w-4 items-center justify-center" aria-hidden>
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+              </span>
+            )}
+            <span
+              className={`text-[11px] font-medium ${
+                step.state === "done"
+                  ? "text-green-700"
+                  : step.state === "current"
+                    ? "text-pink-700"
+                    : "text-gray-400"
+              }`}
+            >
+              {step.label}
+            </span>
+          </span>
         </li>
       ))}
     </ol>
+  );
+}
+
+function CheckoutStepper({ step }: { step: 1 | 2 | 3 }) {
+  return (
+    <ol className="flex items-center gap-1" aria-label="Checkout steps">
+      {CHECKOUT_STEPS.map((label, idx) => {
+        const n = (idx + 1) as 1 | 2 | 3;
+        const state = n < step ? "done" : n === step ? "current" : "upcoming";
+        return (
+          <li key={label} className="flex items-center gap-1">
+            {idx > 0 ? <span className="mx-1 h-px w-6 bg-gray-200" aria-hidden /> : null}
+            <span
+              className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
+                state === "done"
+                  ? "bg-green-100 text-green-700"
+                  : state === "current"
+                    ? "bg-pink-600 text-white"
+                    : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              {state === "done" ? <Check className="h-3 w-3" /> : n}
+            </span>
+            <span
+              className={`text-xs font-medium ${
+                state === "current" ? "text-gray-900" : "text-gray-400"
+              }`}
+            >
+              {label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function ShopSkeleton() {
+  return (
+    <div className="space-y-8">
+      <Skeleton className="h-40 w-full rounded-2xl" />
+      <div className="grid gap-4 sm:grid-cols-2">
+        {[0, 1].map((i) => (
+          <div key={i} className="space-y-3 rounded-2xl border border-gray-100 p-4">
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+      </div>
+    </div>
   );
 }
 
@@ -216,6 +314,8 @@ export default function TerminalShopPage() {
   const [deliveryForm, setDeliveryForm] = useState<DeliveryForm>(EMPTY_DELIVERY);
   const [submitting, setSubmitting] = useState(false);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [paymentBanner, setPaymentBanner] = useState<"confirmed" | "processing" | null>(null);
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
 
   const highlightedOrderId = parseHighlightedOrderId(searchParams);
 
@@ -258,16 +358,25 @@ export default function TerminalShopPage() {
       void (async () => {
         try {
           await fetcher.get(`/api/paystack/verify-reference?reference=${encodeURIComponent(reference)}`);
+          setPaymentBanner("confirmed");
           toast.success("Payment confirmed.");
         } catch {
+          setPaymentBanner("processing");
           toast.message("Payment submitted — confirmation may take a moment.");
         }
         void loadAll();
       })();
     } else if (paymentSuccess === "1") {
+      setPaymentBanner("confirmed");
       void loadAll();
     }
   }, [searchParams, loadAll]);
+
+  useEffect(() => {
+    if (!loading && highlightedOrderId && highlightedRef.current) {
+      highlightedRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading, highlightedOrderId]);
 
   const checkoutOptions = useMemo(
     () => checkoutProduct?.checkout_options ?? [],
@@ -299,6 +408,21 @@ export default function TerminalShopPage() {
       deliveryForm.city,
       deliveryForm.postal_code,
     ],
+  );
+
+  const pendingActivationOrder = useMemo(
+    () =>
+      orders.find((o) => {
+        if (o.invoice_status !== "paid" || o.integration_setup_status !== "pending") return false;
+        const vendor = (o.terminal_products?.vendor ?? "").toLowerCase();
+        return !vendor || vendor === "paycloud";
+      }) ?? null,
+    [orders],
+  );
+
+  const activeDeviceCount = useMemo(
+    () => assets.filter((a) => a.status === "active").length,
+    [assets],
   );
 
   function integrationSetupHref(order: TerminalOrder): string {
@@ -453,343 +577,708 @@ export default function TerminalShopPage() {
     );
   }
 
+  const manageMachinesHref = paycloudEnabled
+    ? "/provider/settings/sales/card-machines"
+    : "/provider/settings/sales/terminal-integrations";
+
   return (
     <SettingsDetailLayout
       title="Terminal Shop"
-      description="Order card machines and payment terminals from the Beautonomi catalog."
+      description="Card machines sold and supported by Beautonomi."
       backHref="/provider/settings"
     >
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-gray-500">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Loading…
-        </div>
+        <ShopSkeleton />
       ) : (
         <div className="space-y-8">
+          {/* Hero / value strip */}
+          <div className="relative overflow-hidden rounded-2xl border border-pink-100 bg-gradient-to-br from-pink-50 via-white to-purple-50 p-5 sm:p-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="max-w-xl">
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Beautonomi card machines
+                </div>
+                <h2 className="mt-3 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+                  Get paid in person — tap, insert, swipe, and QR wallets
+                </h2>
+                <p className="mt-1.5 text-sm text-gray-600">
+                  Order a card machine, activate it with its serial number, and charges flow straight
+                  from your bookings and sales checkout.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
+                    <Zap className="h-3.5 w-3.5 text-pink-600" />
+                    Charges pushed from checkout
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
+                    <BadgeCheck className="h-3.5 w-3.5 text-pink-600" />
+                    Payments auto-reconciled
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
+                    <ShieldCheck className="h-3.5 w-3.5 text-pink-600" />
+                    Sold &amp; supported by Beautonomi
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                {activeDeviceCount > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {activeDeviceCount} device{activeDeviceCount === 1 ? "" : "s"} active
+                  </span>
+                ) : null}
+                <Button asChild variant="outline" size="sm" className="bg-white/80">
+                  <Link href={manageMachinesHref}>
+                    Manage machines
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment return banner */}
+          {paymentBanner ? (
+            <div
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${
+                paymentBanner === "confirmed"
+                  ? "border-green-200 bg-green-50"
+                  : "border-amber-200 bg-amber-50"
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2
+                  className={`mt-0.5 h-5 w-5 ${
+                    paymentBanner === "confirmed" ? "text-green-600" : "text-amber-600"
+                  }`}
+                />
+                <div>
+                  <p
+                    className={`text-sm font-medium ${
+                      paymentBanner === "confirmed" ? "text-green-900" : "text-amber-900"
+                    }`}
+                  >
+                    {paymentBanner === "confirmed"
+                      ? "Payment confirmed"
+                      : "Payment submitted — confirmation may take a moment"}
+                  </p>
+                  <p
+                    className={`text-xs ${
+                      paymentBanner === "confirmed" ? "text-green-700" : "text-amber-700"
+                    }`}
+                  >
+                    {paymentBanner === "confirmed"
+                      ? "Next step: activate your machine with its serial number."
+                      : "Check Your orders below — the status updates automatically."}
+                  </p>
+                </div>
+              </div>
+              {paymentBanner === "confirmed" && pendingActivationOrder && paycloudEnabled ? (
+                <Button asChild size="sm">
+                  <Link
+                    href={`/provider/settings/sales/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}`}
+                  >
+                    Activate machine
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Pending activation nudge */}
+          {!paymentBanner && pendingActivationOrder && paycloudEnabled ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-pink-200 bg-pink-50/60 p-4">
+              <div className="flex items-start gap-2.5">
+                <Package className="mt-0.5 h-5 w-5 text-pink-600" />
+                <div>
+                  <p className="text-sm font-medium text-pink-900">
+                    {pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is paid and
+                    waiting for activation
+                  </p>
+                  <p className="text-xs text-pink-700">
+                    Enter the serial number from the device label to finish setup.
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm">
+                <Link
+                  href={`/provider/settings/sales/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}`}
+                >
+                  Activate machine
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+
+          {/* Catalog */}
           {catalogEnabled && (
-            <SectionCard title="Catalog">
+            <SectionCard
+              title="Choose your machine"
+              description="Every machine works with Beautonomi checkout out of the box."
+            >
               {products.length === 0 ? (
-                <p className="text-sm text-gray-500">No terminal products available yet.</p>
+                <div className="rounded-xl border border-dashed p-10 text-center">
+                  <Smartphone className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+                  <p className="text-sm text-gray-500">No terminal products available yet — check back soon.</p>
+                </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {products.map((p) => (
-                    <div key={p.id} className="rounded-xl border border-gray-100 p-4 space-y-3">
-                      {p.image_url && (
-                        <img src={p.image_url} alt={p.name} className="h-32 w-full rounded-lg object-cover" />
-                      )}
-                      <div className="flex items-start justify-between gap-2">
+                  {products.map((p) => {
+                    const cta = resolveTerminalShopOrderCta({
+                      ecommerceEnabled,
+                      stockStatus: p.stock_status,
+                      checkoutOptionsCount: (p.checkout_options ?? []).length,
+                      isOwner: isOwner ? true : isOwner === false ? false : undefined,
+                    });
+                    const options = p.checkout_options ?? [];
+                    const includedOption = options.find((o) => !o.requires_payment);
+                    const outOfStock = p.stock_status === "out_of_stock";
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex flex-col gap-3 rounded-2xl border p-4 transition-shadow hover:shadow-md ${
+                          outOfStock ? "border-gray-100 opacity-75" : "border-gray-100"
+                        }`}
+                      >
+                        <div className="relative">
+                          <ProductImage product={p} />
+                          {includedOption ? (
+                            <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-pink-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm">
+                              <Sparkles className="h-3 w-3" />
+                              Included in your plan
+                            </span>
+                          ) : null}
+                          {p.stock_status !== "in_stock" ? (
+                            <Badge
+                              variant="outline"
+                              className="absolute right-2 top-2 bg-white/90 capitalize text-xs"
+                            >
+                              {p.stock_status.replace(/_/g, " ")}
+                            </Badge>
+                          ) : null}
+                        </div>
                         <div>
                           <h3 className="font-semibold text-gray-900">{p.name}</h3>
                           <p className="text-xs text-gray-500 capitalize">
-                            {p.vendor}{p.model ? ` · ${p.model}` : ""}
+                            {p.vendor}
+                            {p.model ? ` · ${p.model}` : ""}
                           </p>
                         </div>
-                        <Badge variant="outline" className="capitalize text-xs">
-                          {p.stock_status.replace(/_/g, " ")}
-                        </Badge>
-                      </div>
-                      {p.description && <p className="text-sm text-gray-600 line-clamp-2">{p.description}</p>}
-                      {p.fulfillment_type && (
-                        <p className="text-xs text-gray-500 capitalize">
-                          Fulfillment: {p.fulfillment_type.replace(/_/g, " ")}
-                        </p>
-                      )}
-                      <div className="text-sm space-y-1">
-                        {(p.checkout_options ?? []).map((opt) => (
-                          <p key={opt.commercial_model}>
-                            {opt.label}:{" "}
-                            <strong>
-                              {opt.requires_payment
-                                ? formatMoney(opt.currency, opt.price)
-                                : "Included in plan"}
-                            </strong>
-                          </p>
-                        ))}
-                      </div>
-                      {(() => {
-                        const cta = resolveTerminalShopOrderCta({
-                          ecommerceEnabled,
-                          stockStatus: p.stock_status,
-                          checkoutOptionsCount: (p.checkout_options ?? []).length,
-                          isOwner: isOwner ? true : isOwner === false ? false : undefined,
-                        });
-                        if (cta.kind === "order") {
-                          return (
-                            <Button size="sm" onClick={() => openCheckout(p)}>
-                              Order
-                            </Button>
-                          );
-                        }
-                        return (
-                          <div className="space-y-1">
-                            <Button size="sm" disabled>
-                              Order
-                            </Button>
-                            <p className="text-xs text-gray-500">{cta.message}</p>
+                        {p.description && (
+                          <p className="text-sm text-gray-600 line-clamp-2">{p.description}</p>
+                        )}
+                        <FulfillmentChip type={p.fulfillment_type} />
+                        {options.length > 0 ? (
+                          <div className="grid gap-1.5">
+                            {options.map((opt) => (
+                              <div
+                                key={opt.commercial_model}
+                                className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ring-1 ${
+                                  !opt.requires_payment
+                                    ? "bg-pink-50/60 ring-pink-200 text-pink-900"
+                                    : "bg-gray-50 ring-gray-200/70 text-gray-700"
+                                }`}
+                              >
+                                <span className="font-medium">{opt.label}</span>
+                                <span className="font-semibold">
+                                  {opt.requires_payment
+                                    ? formatMoney(opt.currency, opt.price)
+                                    : "R 0 — in plan"}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
+                        ) : null}
+                        <div className="mt-auto space-y-1.5 pt-1">
+                          {cta.kind === "order" ? (
+                            <Button className="w-full" onClick={() => openCheckout(p)}>
+                              Order this machine
+                              <ArrowRight className="ml-1.5 h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <>
+                              <Button className="w-full" disabled>
+                                {cta.kind === "out_of_stock" ? "Out of stock" : "Order this machine"}
+                              </Button>
+                              {cta.kind !== "out_of_stock" ? (
+                                <p className="text-center text-xs text-gray-500">{cta.message}</p>
+                              ) : null}
+                            </>
+                          )}
+                          <p className="text-center text-[11px] text-gray-400">
+                            Sold and supported by Beautonomi
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </SectionCard>
           )}
 
+          {/* Orders */}
           {ecommerceEnabled && (
-            <SectionCard title="Your orders">
+            <SectionCard title="Your orders" description="Track payment, integration, and delivery.">
               {orders.length === 0 ? (
-                <p className="text-sm text-gray-500">No orders yet.</p>
+                <div className="rounded-xl border border-dashed p-8 text-center">
+                  <Package className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+                  <p className="text-sm text-gray-500">
+                    No orders yet — pick a machine above to get started.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {orders.map((o) => (
-                    <div
-                      key={o.id}
-                      className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${
-                        highlightedOrderId === o.id ? "border-pink-300 bg-pink-50/40" : "border-gray-100"
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <p className="font-medium text-gray-900">{o.terminal_products?.name ?? "Terminal order"}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(o.created_at).toLocaleDateString()} ·{" "}
-                          {TERMINAL_COMMERCIAL_MODEL_LABELS[o.commercial_model as TerminalCommercialModel] ??
-                            o.commercial_model.replace(/_/g, " ")}{" "}
-                          · {o.currency} {Number(o.total_amount).toLocaleString()}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline" className="text-xs capitalize">{o.order_status.replace(/_/g, " ")}</Badge>
-                          <Badge variant="outline" className="text-xs capitalize">{o.invoice_status.replace(/_/g, " ")}</Badge>
-                          {o.fulfillment_type && (
-                            <Badge variant="outline" className="text-xs capitalize">{o.fulfillment_type.replace(/_/g, " ")}</Badge>
-                          )}
-                          {o.fulfillment_status && (
-                            <Badge variant="outline" className="text-xs capitalize">{o.fulfillment_status.replace(/_/g, " ")}</Badge>
-                          )}
+                  {orders.map((o) => {
+                    const primaryAction = resolveTerminalOrderPrimaryAction(o);
+                    const isHighlighted = highlightedOrderId === o.id;
+                    return (
+                      <div
+                        key={o.id}
+                        ref={isHighlighted ? highlightedRef : undefined}
+                        className={`flex flex-wrap items-start justify-between gap-3 rounded-xl border p-4 ${
+                          isHighlighted ? "border-pink-300 bg-pink-50/40 ring-1 ring-pink-200" : "border-gray-100"
+                        }`}
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <p className="font-medium text-gray-900">
+                            {o.terminal_products?.name ?? "Terminal order"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(o.created_at).toLocaleDateString()} ·{" "}
+                            {TERMINAL_COMMERCIAL_MODEL_LABELS[o.commercial_model as TerminalCommercialModel] ??
+                              o.commercial_model.replace(/_/g, " ")}{" "}
+                            · {o.currency} {Number(o.total_amount).toLocaleString()}
+                          </p>
+                          <OrderTimeline order={o} />
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-xs text-gray-500">
+                            {o.fulfillment_type ? (
+                              <span className="capitalize">
+                                {FULFILLMENT_META[o.fulfillment_type]?.label ??
+                                  o.fulfillment_type.replace(/_/g, " ")}
+                              </span>
+                            ) : null}
+                            {o.tracking_reference ? (
+                              <span>
+                                {o.courier_name ? `${o.courier_name}: ` : "Tracking: "}
+                                <span className="font-mono">{o.tracking_reference}</span>
+                              </span>
+                            ) : null}
+                            {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name ? (
+                              <span>Pickup: {o.terminal_collection_locations.name}</span>
+                            ) : null}
+                            {["cancelled", "refunded", "failed"].includes(o.order_status) ? (
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {o.order_status.replace(/_/g, " ")}
+                              </Badge>
+                            ) : null}
+                          </div>
                         </div>
-                        {o.tracking_reference && (
-                          <p className="text-xs text-gray-500">
-                            {o.courier_name ? `${o.courier_name}: ` : ""}{o.tracking_reference}
-                          </p>
-                        )}
-                        {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name && (
-                          <p className="text-xs text-gray-500">
-                            Pickup: {o.terminal_collection_locations.name}
-                          </p>
-                        )}
-                        <OrderProgress order={o} />
-                        {o.integration_setup_status === "pending" && (
-                          <Link href={integrationSetupHref(o)} className="inline-flex items-center gap-1 text-xs font-medium text-pink-600 underline">
-                            <Wrench className="h-3 w-3" />
-                            Complete brand integration setup
-                          </Link>
-                        )}
+                        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                          {primaryAction === "pay" ? (
+                            <Button size="sm" disabled={payingOrderId === o.id} onClick={() => payForOrder(o.id)}>
+                              <CreditCard className="mr-1.5 h-4 w-4" />
+                              {payingOrderId === o.id ? "Starting…" : "Pay now"}
+                            </Button>
+                          ) : null}
+                          {primaryAction === "setup" ? (
+                            <Button size="sm" asChild>
+                              <Link href={integrationSetupHref(o)}>
+                                <Wrench className="mr-1.5 h-4 w-4" />
+                                Complete setup
+                              </Link>
+                            </Button>
+                          ) : null}
+                          {o.invoice_status === "paid" ? (
+                            <Button size="sm" variant="outline" asChild>
+                              <a
+                                href={`/api/provider/terminal-orders/${o.id}/receipt/pdf`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Download className="mr-1.5 h-4 w-4" />
+                                Receipt
+                              </a>
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        {o.invoice_status !== "paid" && !["cancelled", "refunded"].includes(o.order_status) && o.commercial_model !== "subscription_bundle" && (
-                          <Button size="sm" disabled={payingOrderId === o.id} onClick={() => payForOrder(o.id)}>
-                            {payingOrderId === o.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                            Pay now
-                          </Button>
-                        )}
-                        {o.invoice_status === "paid" && (
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={`/api/provider/terminal-orders/${o.id}/receipt/pdf`} target="_blank" rel="noopener noreferrer">
-                              <Download className="h-4 w-4" />
-                              Receipt
-                            </a>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </SectionCard>
           )}
 
+          {/* Devices */}
           {assets.length > 0 && (
-            <SectionCard title="Your devices">
+            <SectionCard title="Your devices" description="Machines linked to your account.">
               <div className="space-y-2">
                 {assets.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm">
-                    <div>
-                      <p>{a.terminal_products?.name ?? "Terminal device"}</p>
-                      {a.ownership_model && (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-50">
+                        <Smartphone className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {a.terminal_products?.name ?? "Terminal device"}
+                        </p>
                         <p className="text-xs text-gray-500">
                           {TERMINAL_ASSET_OWNERSHIP_LABELS[a.ownership_model] ??
                             a.ownership_model.replace(/_/g, " ")}
+                          {a.serial_number ? (
+                            <>
+                              {" · Serial "}
+                              <span className="font-mono">{a.serial_number}</span>
+                            </>
+                          ) : null}
                         </p>
-                      )}
+                      </div>
                     </div>
-                    <Badge variant="outline" className="capitalize">{a.status.replace(/_/g, " ")}</Badge>
+                    <Badge
+                      variant="outline"
+                      className={`capitalize ${a.status === "active" ? "border-green-200 bg-green-50 text-green-700" : ""}`}
+                    >
+                      {a.status.replace(/_/g, " ")}
+                    </Badge>
                   </div>
                 ))}
               </div>
             </SectionCard>
           )}
 
-          <p className="text-xs text-gray-500">
-            After purchase, complete setup in{" "}
-            {paycloudEnabled ? (
-              <Link href="/provider/settings/sales/card-machines" className="underline">
-                Card machines
-              </Link>
-            ) : (
-              <Link href="/provider/settings/sales/terminal-integrations" className="underline">
-                Terminal Integrations
-              </Link>
-            )}
-            .
-          </p>
+          {/* What happens after purchase */}
+          <SectionCard className="border-dashed bg-slate-50">
+            <h3 className="font-semibold text-gray-900">What happens after purchase</h3>
+            <ol className="mt-3 grid gap-3 sm:grid-cols-3">
+              <li className="flex items-start gap-2.5">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-pink-100 text-xs font-bold text-pink-700">
+                  1
+                </span>
+                <p className="text-sm text-gray-600">
+                  Pay for your order — we prepare it for delivery, pickup, or instant activation.
+                </p>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-pink-100 text-xs font-bold text-pink-700">
+                  2
+                </span>
+                <p className="text-sm text-gray-600">
+                  Activate the machine with its serial number in{" "}
+                  <Link href={manageMachinesHref} className="font-medium text-pink-600 underline">
+                    {paycloudEnabled ? "Card machines" : "Terminal Integrations"}
+                  </Link>
+                  .
+                </p>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-pink-100 text-xs font-bold text-pink-700">
+                  3
+                </span>
+                <p className="text-sm text-gray-600">
+                  Turn on in-person acceptance and start charging at bookings and sales.
+                </p>
+              </li>
+            </ol>
+          </SectionCard>
         </div>
       )}
 
-      {checkoutProduct && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold">Order {checkoutProduct.name}</h3>
-            <p className="mt-1 text-sm text-gray-500">Step {checkoutStep} of 3</p>
-
-            {checkoutStep === 1 && (
-              <div className="mt-4 space-y-2">
-                {checkoutOptions.length === 0 ? (
-                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    This product isn&apos;t configured for checkout. Contact Beautonomi support.
-                  </p>
-                ) : (
-                  checkoutOptions.map((opt) => (
-                    <label key={opt.commercial_model} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="commercial_model"
-                        value={opt.commercial_model}
-                        checked={commercialModel === opt.commercial_model}
-                        onChange={() => setCommercialModel(opt.commercial_model)}
-                        className="mt-1"
-                      />
-                      <span className="flex-1 text-sm">
-                        <span className="font-medium">{opt.label}</span>
-                        <span className="block text-gray-500">
-                          {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "No payment required"}
-                        </span>
-                        {opt.description && <span className="block text-xs text-gray-400 mt-1">{opt.description}</span>}
-                      </span>
-                    </label>
-                  ))
-                )}
+      {/* Checkout sheet */}
+      <Sheet
+        open={!!checkoutProduct}
+        onOpenChange={(open) => {
+          if (!open && !submitting) setCheckoutProduct(null);
+        }}
+      >
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+          {checkoutProduct ? (
+            <>
+              <div className="border-b px-6 pb-4 pt-6">
+                <SheetHeader>
+                  <SheetTitle>Order {checkoutProduct.name}</SheetTitle>
+                  <SheetDescription className="capitalize">
+                    {checkoutProduct.vendor}
+                    {checkoutProduct.model ? ` · ${checkoutProduct.model}` : ""}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-4">
+                  <CheckoutStepper step={checkoutStep} />
+                </div>
               </div>
-            )}
 
-            {checkoutStep === 2 && (
-              <div className="mt-4 space-y-4">
-                <p className="text-sm text-gray-600 capitalize">
-                  Fulfillment: {fulfillmentType.replace(/_/g, " ")}
-                </p>
-                {fulfillmentType === "collection" && (
-                  <div>
-                    <Label>Pickup location</Label>
-                    <select
-                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                      value={collectionLocationId}
-                      onChange={(e) => setCollectionLocationId(e.target.value)}
-                    >
-                      {collectionLocations.length === 0 ? (
-                        <option value="">No pickup locations configured</option>
-                      ) : (
-                        collectionLocations.map((loc) => (
-                          <option key={loc.id} value={loc.id}>{loc.name}</option>
-                        ))
-                      )}
-                    </select>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {checkoutStep === 1 && (
+                  <div className="space-y-2.5">
+                    <p className="text-sm font-medium text-gray-900">How would you like to get it?</p>
+                    {checkoutOptions.length === 0 ? (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        This product isn&apos;t configured for checkout. Contact Beautonomi support.
+                      </p>
+                    ) : (
+                      checkoutOptions.map((opt) => {
+                        const selected = commercialModel === opt.commercial_model;
+                        return (
+                          <label
+                            key={opt.commercial_model}
+                            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors ${
+                              selected
+                                ? "border-pink-400 bg-pink-50/50 ring-1 ring-pink-300"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="commercial_model"
+                              value={opt.commercial_model}
+                              checked={selected}
+                              onChange={() => setCommercialModel(opt.commercial_model)}
+                              className="sr-only"
+                            />
+                            <span
+                              className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+                                selected ? "border-pink-600" : "border-gray-300"
+                              }`}
+                              aria-hidden
+                            >
+                              {selected ? <span className="h-2 w-2 rounded-full bg-pink-600" /> : null}
+                            </span>
+                            <span className="flex-1 text-sm">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-gray-900">{opt.label}</span>
+                                <span className={`font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`}>
+                                  {opt.requires_payment
+                                    ? formatMoney(opt.currency, opt.price)
+                                    : "R 0 — in your plan"}
+                                </span>
+                              </span>
+                              {opt.description && (
+                                <span className="mt-1 block text-xs text-gray-500">{opt.description}</span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
                   </div>
                 )}
-                {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(
-                      [
-                        ["line1", "Address line 1"],
-                        ["line2", "Address line 2"],
-                        ["city", "City"],
-                        ["province", "Province"],
-                        ["postal_code", "Postal code"],
-                        ["contact_name", "Contact name"],
-                        ["contact_phone", "Contact phone"],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <div key={key} className={key === "line1" || key === "line2" ? "sm:col-span-2" : ""}>
-                        <Label>{label}</Label>
-                        <Input
-                          className="mt-1"
-                          value={deliveryForm[key]}
-                          onChange={(e) => setDeliveryForm((f) => ({ ...f, [key]: e.target.value }))}
-                        />
+
+                {checkoutStep === 2 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <FulfillmentChip type={fulfillmentType} />
+                    </div>
+                    {fulfillmentType === "collection" && (
+                      <div className="space-y-2">
+                        <Label>Pickup location</Label>
+                        {collectionLocations.length === 0 ? (
+                          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                            No pickup locations are configured yet. Contact support.
+                          </p>
+                        ) : (
+                          collectionLocations.map((loc) => {
+                            const selected = collectionLocationId === loc.id;
+                            const address = formatCollectionAddress(loc.address);
+                            return (
+                              <button
+                                key={loc.id}
+                                type="button"
+                                onClick={() => setCollectionLocationId(loc.id)}
+                                className={`flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-colors ${
+                                  selected
+                                    ? "border-pink-400 bg-pink-50/50 ring-1 ring-pink-300"
+                                    : "border-gray-200 hover:border-gray-300"
+                                }`}
+                              >
+                                <MapPin className={`mt-0.5 h-4 w-4 ${selected ? "text-pink-600" : "text-gray-400"}`} />
+                                <span>
+                                  <span className="block text-sm font-medium text-gray-900">{loc.name}</span>
+                                  {address ? (
+                                    <span className="mt-0.5 block text-xs text-gray-500">{address}</span>
+                                  ) : null}
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
-                    ))}
+                    )}
+                    {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {(
+                          [
+                            ["line1", "Address line 1", "address-line1"],
+                            ["line2", "Address line 2", "address-line2"],
+                            ["city", "City", "address-level2"],
+                            ["province", "Province", "address-level1"],
+                            ["postal_code", "Postal code", "postal-code"],
+                            ["contact_name", "Contact name", "name"],
+                            ["contact_phone", "Contact phone", "tel"],
+                          ] as const
+                        ).map(([key, label, autoComplete]) => (
+                          <div key={key} className={key === "line1" || key === "line2" ? "sm:col-span-2" : ""}>
+                            <Label>{label}</Label>
+                            <Input
+                              className="mt-1"
+                              autoComplete={autoComplete}
+                              value={deliveryForm[key]}
+                              onChange={(e) => setDeliveryForm((f) => ({ ...f, [key]: e.target.value }))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {fulfillmentType === "digital_activation" && (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-gray-50 p-4">
+                        <Zap className="mt-0.5 h-4 w-4 text-pink-600" />
+                        <p className="text-sm text-gray-600">
+                          This product activates digitally — nothing gets shipped. You&apos;ll be prompted
+                          to complete brand integration after confirmation.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
-                {fulfillmentType === "digital_activation" && (
-                  <p className="text-sm text-gray-600">
-                    This product activates digitally. You will be prompted to complete brand integration after confirmation.
-                  </p>
+
+                {checkoutStep === 3 && selectedOption && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 rounded-xl border border-gray-100 p-3">
+                      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg">
+                        {checkoutProduct.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={checkoutProduct.image_url}
+                            alt={checkoutProduct.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-50 to-purple-50">
+                            <Smartphone className="h-6 w-6 text-pink-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-gray-900">{checkoutProduct.name}</p>
+                        <p className="text-xs text-gray-500">{selectedOption.label}</p>
+                        <FulfillmentChip type={fulfillmentType} />
+                      </div>
+                    </div>
+                    <dl className="space-y-2 rounded-xl bg-gray-50 p-4 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Plan</dt>
+                        <dd className="font-medium text-gray-900">{selectedOption.label}</dd>
+                      </div>
+                      {fulfillmentType === "collection" ? (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Pickup</dt>
+                          <dd className="font-medium text-gray-900">
+                            {collectionLocations.find((l) => l.id === collectionLocationId)?.name ?? "—"}
+                          </dd>
+                        </div>
+                      ) : null}
+                      {(fulfillmentType === "shipping" || fulfillmentType === "courier") &&
+                      deliveryForm.line1 ? (
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-gray-500">Deliver to</dt>
+                          <dd className="text-right font-medium text-gray-900">
+                            {[deliveryForm.line1, deliveryForm.city, deliveryForm.postal_code]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </dd>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between border-t border-gray-200 pt-2">
+                        <dt className="font-medium text-gray-900">Total today</dt>
+                        <dd className="text-base font-bold text-gray-900">
+                          {selectedOption.requires_payment
+                            ? formatMoney(selectedOption.currency, selectedOption.price)
+                            : "R 0 — included in subscription"}
+                        </dd>
+                      </div>
+                    </dl>
+                    {checkoutProduct.requires_integration_setup && (
+                      <p className="flex items-start gap-2 text-xs text-gray-500">
+                        <Wrench className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                        Brand integration setup will be required after confirmation.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
 
-            {checkoutStep === 3 && selectedOption && (
-              <div className="mt-4 space-y-2 text-sm">
-                <p><strong>Model:</strong> {selectedOption.label}</p>
-                <p>
-                  <strong>Total:</strong>{" "}
-                  {selectedOption.requires_payment
-                    ? formatMoney(selectedOption.currency, selectedOption.price)
-                    : "Included in subscription"}
-                </p>
-                {checkoutProduct.requires_integration_setup && (
-                  <p className="text-gray-600">Brand integration setup will be required after confirmation.</p>
-                )}
+              <div className="border-t bg-gray-50/70 px-6 py-4">
+                {selectedOption ? (
+                  <div className="mb-3 flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Total today</span>
+                    <span className="font-semibold text-gray-900">
+                      {selectedOption.requires_payment
+                        ? formatMoney(selectedOption.currency, selectedOption.price)
+                        : "R 0 — in your plan"}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="flex gap-2">
+                  {checkoutStep > 1 ? (
+                    <Button
+                      variant="outline"
+                      className="flex-none"
+                      onClick={() => setCheckoutStep((s) => (s - 1) as 1 | 2 | 3)}
+                      disabled={submitting}
+                    >
+                      Back
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="flex-none"
+                      onClick={() => setCheckoutProduct(null)}
+                      disabled={submitting}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  {checkoutStep < 3 ? (
+                    <Button
+                      className="flex-1"
+                      onClick={advanceCheckoutStep}
+                      disabled={
+                        (checkoutStep === 1 && !selectedOption) ||
+                        (checkoutStep === 1 && checkoutOptions.length === 0)
+                      }
+                    >
+                      Continue
+                      <ArrowRight className="ml-1.5 h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-1"
+                      onClick={() => void placeOrder()}
+                      disabled={submitting || !checkoutConfirmState.ok}
+                      title={checkoutConfirmState.message}
+                    >
+                      {submitting
+                        ? "Placing…"
+                        : selectedOption?.requires_payment
+                          ? "Place order & pay"
+                          : "Confirm allocation"}
+                    </Button>
+                  )}
+                </div>
+                {checkoutStep === 3 && !checkoutConfirmState.ok && checkoutConfirmState.message ? (
+                  <p className="mt-2 text-xs text-amber-700">{checkoutConfirmState.message}</p>
+                ) : null}
               </div>
-            )}
-
-            <div className="mt-6 flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setCheckoutProduct(null)} disabled={submitting}>
-                Cancel
-              </Button>
-              {checkoutStep > 1 && (
-                <Button variant="outline" onClick={() => setCheckoutStep((s) => (s - 1) as 1 | 2 | 3)} disabled={submitting}>
-                  Back
-                </Button>
-              )}
-              {checkoutStep < 3 ? (
-                <Button
-                  onClick={advanceCheckoutStep}
-                  disabled={
-                    (checkoutStep === 1 && !selectedOption) ||
-                    (checkoutStep === 1 && checkoutOptions.length === 0)
-                  }
-                >
-                  Continue
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => void placeOrder()}
-                  disabled={submitting || !checkoutConfirmState.ok}
-                  title={checkoutConfirmState.message}
-                >
-                  {submitting
-                    ? "Placing…"
-                    : selectedOption?.requires_payment
-                      ? "Place order & pay"
-                      : "Confirm allocation"}
-                </Button>
-              )}
-            </div>
-            {checkoutStep === 3 && !checkoutConfirmState.ok && checkoutConfirmState.message ? (
-              <p className="mt-2 text-xs text-amber-700">{checkoutConfirmState.message}</p>
-            ) : null}
-          </div>
-        </div>
-      )}
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </SettingsDetailLayout>
   );
 }

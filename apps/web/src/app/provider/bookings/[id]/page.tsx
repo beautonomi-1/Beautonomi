@@ -154,6 +154,9 @@ export default function ProviderBookingDetail() {
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
+  const [showNoShowDialog, setShowNoShowDialog] = useState(false);
+  const [noShowFeeEnabled, setNoShowFeeEnabled] = useState(false);
+  const [noShowFeeAmount, setNoShowFeeAmount] = useState(0);
 
   // Reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
@@ -305,6 +308,8 @@ export default function ProviderBookingDetail() {
     fetcher
       .get<{
         data?: {
+          noShowFeeEnabled?: boolean;
+          noShowFeeAmount?: number;
           paystackTerminal?: {
             isEnabled?: boolean;
             activeTerminalCount?: number;
@@ -319,10 +324,18 @@ export default function ProviderBookingDetail() {
         const ready =
           terminal?.selectable ??
           Boolean(terminal?.isEnabled && (terminal.activeTerminalCount ?? 0) > 0);
-        if (!cancelled) setPaystackTerminalReady(ready);
+        if (!cancelled) {
+          setPaystackTerminalReady(ready);
+          setNoShowFeeEnabled(Boolean(response.data?.noShowFeeEnabled));
+          setNoShowFeeAmount(Number(response.data?.noShowFeeAmount ?? 0));
+        }
       })
       .catch(() => {
-        if (!cancelled) setPaystackTerminalReady(false);
+        if (!cancelled) {
+          setPaystackTerminalReady(false);
+          setNoShowFeeEnabled(false);
+          setNoShowFeeAmount(0);
+        }
       });
     return () => {
       cancelled = true;
@@ -407,6 +420,11 @@ export default function ProviderBookingDetail() {
         return;
       }
 
+      if (newStatus === "no_show") {
+        setShowNoShowDialog(true);
+        return;
+      }
+
       const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         {
@@ -436,6 +454,49 @@ export default function ProviderBookingDetail() {
       setIsUpdating(false);
     }
   };
+
+  const handleConfirmNoShow = async () => {
+    if (!booking) return;
+    try {
+      setIsUpdating(true);
+      setConflictError(null);
+      const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
+        `/api/provider/bookings/${bookingId}`,
+        {
+          status: "no_show",
+          version: booking.version,
+        }
+      );
+      if (response.conflict) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+        return;
+      }
+      setBooking({ ...booking, status: "no_show" as Booking["status"], ...response.booking });
+      toast.success("Booking marked as no-show");
+      setShowNoShowDialog(false);
+      loadBooking();
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 409) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+      } else {
+        const msg = error instanceof Error ? error.message : "Failed to mark no-show";
+        toast.error(msg);
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const noShowPreviewFee = useMemo(() => {
+    if (!booking || !noShowFeeEnabled) return 0;
+    const collected = Math.max(
+      0,
+      Math.max(Number(booking.total_paid ?? 0), 0) - Number(booking.total_refunded ?? 0),
+    );
+    return Math.min(noShowFeeAmount, Number(booking.total_amount ?? 0), collected);
+  }, [booking, noShowFeeEnabled, noShowFeeAmount]);
 
   const handleConfirmCancel = async () => {
     if (!booking) return;
@@ -2745,6 +2806,11 @@ export default function ProviderBookingDetail() {
               <p className="text-sm text-gray-600">
                 This action cannot be undone. Please provide a reason for cancellation.
               </p>
+              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md p-3">
+                The client will receive a full refund to their Beautonomi wallet for amounts
+                already paid. Your cancellation policy does not apply to cancellations you
+                initiate.
+              </p>
               <div>
                 <label className="text-sm font-medium mb-1 block">Cancellation reason</label>
                 <textarea
@@ -2764,6 +2830,46 @@ export default function ProviderBookingDetail() {
                   {isUpdating ? "Cancelling..." : "Confirm Cancellation"}
                 </Button>
                 <Button variant="outline" onClick={() => { setShowCancelDialog(false); setCancellationReason(""); }} className="flex-1">
+                  Back
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No-show confirmation */}
+        {showNoShowDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold text-amber-700">Mark as no-show</h3>
+              <p className="text-sm text-gray-600">
+                Mark {booking?.customer_name || booking?.customers?.full_name || "this client"} as a
+                no-show?
+              </p>
+              {noShowFeeEnabled && noShowPreviewFee > 0 ? (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3">
+                  A no-show fee of {formatMoney(noShowPreviewFee)} will be retained (capped to the
+                  amount paid). Any remainder is refunded to the client&apos;s Beautonomi wallet.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded-md p-3">
+                  No no-show fee is configured — the client will be fully refunded for amounts
+                  already paid.
+                </p>
+              )}
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleConfirmNoShow}
+                  disabled={isUpdating}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                >
+                  {isUpdating ? "Saving..." : "Confirm no-show"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowNoShowDialog(false)}
+                  className="flex-1"
+                >
                   Back
                 </Button>
               </div>

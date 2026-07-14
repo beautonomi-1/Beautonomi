@@ -19,6 +19,7 @@ import {
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
 import { getCachedDefaultPhoneDial } from "@/lib/user-default-phone-dial";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { isMailableEmail } from "@beautonomi/utils";
 import type { PersonalInfoInitialPayload } from "./fetch-personal-info-initial";
 
 interface PersonalInfoData {
@@ -172,6 +173,10 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
   const [pendingPhoneE164, setPendingPhoneE164] = useState<string>('');
   const [phoneOtpCode, setPhoneOtpCode] = useState<string>('');
   const [isSendingPhoneOtp, setIsSendingPhoneOtp] = useState(false);
+  const [emailStep, setEmailStep] = useState<'enter_email' | 'enter_otp'>('enter_email');
+  const [pendingEmailForOtp, setPendingEmailForOtp] = useState('');
+  const [emailOtpCode, setEmailOtpCode] = useState('');
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
 
   const openModal = (type: keyof PersonalInfoData) => {
     const content = getModalContent(type, countries, languages);
@@ -183,6 +188,9 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
     setPhoneStep('enter_phone');
     setPendingPhoneE164('');
     setPhoneOtpCode('');
+    setEmailStep('enter_email');
+    setPendingEmailForOtp('');
+    setEmailOtpCode('');
     // Reset file state when modal closes
     setSelectedFile(null);
     setFilePreview(null);
@@ -200,8 +208,6 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         updateData.last_name = newValue.last as string;
       } else if (type === 'preferredName') {
         updateData.preferred_name = (newValue.preferredName as string) || null;
-      } else if (type === 'email') {
-        updateData.email = newValue.email as string;
       } else if (type === 'phone') {
         // Accept full E164 from PhoneInput (e.g. "+27823456789") or legacy countryCode + phone
         if (typeof newValue.phone === "string" && newValue.phone.startsWith("+")) {
@@ -350,6 +356,60 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
     } catch (error) {
       console.error("Error saving changes:", error);
       toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSendEmailOtp = async (email: string) => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !isMailableEmail(trimmed)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    setIsSendingEmailOtp(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ email: trimmed });
+      if (error) throw error;
+      setPendingEmailForOtp(trimmed);
+      setEmailStep('enter_otp');
+      setEmailOtpCode('');
+      toast.success("Verification code sent to your email.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to send code");
+    } finally {
+      setIsSendingEmailOtp(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (otp: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otp);
+    if (!pendingEmailForOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsSaving(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingEmailForOtp,
+        token,
+        type: "email_change",
+      });
+      if (error) throw error;
+      await fetch("/api/me/email/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pendingEmailForOtp }),
+      });
+      const emailParts = pendingEmailForOtp.split('@');
+      const maskedEmail = emailParts[0]?.length > 0
+        ? `${emailParts[0].substring(0, 1)}****@${emailParts[1] || ''}`
+        : pendingEmailForOtp;
+      setPersonalInfo((prev) => ({ ...prev, email: maskedEmail }));
+      closeModal();
+      toast.success("Email address updated successfully.");
+      router.refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Verification failed");
     } finally {
       setIsSaving(false);
     }
@@ -528,6 +588,14 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
           onSendPhoneOtp={handleSendPhoneOtp}
           onVerifyPhoneOtp={handleVerifyPhoneOtp}
           isSendingPhoneOtp={isSendingPhoneOtp}
+          emailStep={emailStep}
+          pendingEmailForOtp={pendingEmailForOtp}
+          emailOtpCode={emailOtpCode}
+          setEmailOtpCode={setEmailOtpCode}
+          setEmailStep={setEmailStep}
+          onSendEmailOtp={handleSendEmailOtp}
+          onVerifyEmailOtp={handleVerifyEmailOtp}
+          isSendingEmailOtp={isSendingEmailOtp}
           sumsubAvailable={sumsubAvailable}
         />
       )}
@@ -586,6 +654,14 @@ interface ModalProps {
   onSendPhoneOtp?: (e164: string) => void | Promise<void>;
   onVerifyPhoneOtp?: (otp: string) => void | Promise<void>;
   isSendingPhoneOtp?: boolean;
+  emailStep?: 'enter_email' | 'enter_otp';
+  pendingEmailForOtp?: string;
+  emailOtpCode?: string;
+  setEmailOtpCode?: (v: string) => void;
+  setEmailStep?: (step: 'enter_email' | 'enter_otp') => void;
+  onSendEmailOtp?: (email: string) => void | Promise<void>;
+  onVerifyEmailOtp?: (otp: string) => void | Promise<void>;
+  isSendingEmailOtp?: boolean;
   /** Whether SumSub automated verification is available — shows an "Verify instantly" CTA */
   sumsubAvailable?: boolean;
 }
@@ -608,6 +684,14 @@ const Modal: React.FC<ModalProps> = ({
   onSendPhoneOtp,
   onVerifyPhoneOtp,
   isSendingPhoneOtp = false,
+  emailStep = 'enter_email',
+  pendingEmailForOtp = '',
+  emailOtpCode = '',
+  setEmailOtpCode,
+  setEmailStep,
+  onSendEmailOtp,
+  onVerifyEmailOtp,
+  isSendingEmailOtp = false,
   sumsubAvailable = false,
 }) => {
   const [sumsubLaunching, setSumsubLaunching] = React.useState(false);
@@ -722,6 +806,8 @@ const Modal: React.FC<ModalProps> = ({
     } else if (content.type === "phone") {
       // Phone uses OTP flow: Send code → Verify; handled by onSendPhoneOtp / onVerifyPhoneOtp
       return;
+    } else if (content.type === "email") {
+      return;
     } else {
       onSave(formData);
     }
@@ -748,7 +834,56 @@ const Modal: React.FC<ModalProps> = ({
         </div>
         <p className="mb-4 text-gray-600 text-sm">{content.description}</p>
         <form onSubmit={handleSubmit}>
-          {content.type === "phone" && phoneStep === "enter_otp" ? (
+          {content.type === "email" && emailStep === "enter_otp" ? (
+            <div className="mb-6">
+              <p className="text-sm text-gray-700 mb-1 font-medium">Enter verification code</p>
+              <p className="mb-4 text-sm leading-relaxed text-gray-600">
+                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
+                <span className="font-semibold text-gray-900">{pendingEmailForOtp}</span>.
+              </p>
+              <OtpDigitInput
+                length={SUPABASE_AUTH_OTP_LENGTH}
+                value={emailOtpCode}
+                onChange={(v) => setEmailOtpCode?.(v)}
+                onComplete={(code) => {
+                  if (!isSaving && isCompleteSupabaseSmsOtp(code)) void onVerifyEmailOtp?.(code);
+                }}
+                disabled={isSaving}
+                autoFocus
+                label="Email verification code"
+                className="mb-3"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailStep?.("enter_email");
+                  setEmailOtpCode?.("");
+                }}
+                className="mt-3 text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSaving}
+              >
+                Wrong email? Go back
+              </button>
+            </div>
+          ) : content.type === "email" ? (
+            <div className="mb-6">
+              <label className="block mb-2 text-sm font-medium text-gray-700" htmlFor="email">
+                Email address
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={String(formData.email ?? "")}
+                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:border-transparent"
+                onChange={handleChange}
+                required
+              />
+              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                We&apos;ll email a {SUPABASE_AUTH_OTP_LENGTH}-digit code. Your address only updates after you verify.
+              </p>
+            </div>
+          ) : content.type === "phone" && phoneStep === "enter_otp" ? (
             <div className="mb-6">
               <p className="text-sm text-gray-700 mb-1 font-medium">Enter verification code</p>
               <p className="mb-4 text-sm leading-relaxed text-gray-600">
@@ -886,7 +1021,25 @@ const Modal: React.FC<ModalProps> = ({
             >
               Cancel
             </button>
-            {content.type === "phone" && phoneStep === "enter_phone" ? (
+            {content.type === "email" && emailStep === "enter_email" ? (
+              <button
+                type="button"
+                disabled={!String(formData.email ?? "").trim() || isSendingEmailOtp}
+                onClick={() => onSendEmailOtp?.(String(formData.email ?? ""))}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSendingEmailOtp ? "Sending…" : "Send verification code"}
+              </button>
+            ) : content.type === "email" && emailStep === "enter_otp" ? (
+              <button
+                type="button"
+                disabled={!isCompleteSupabaseSmsOtp(emailOtpCode) || isSaving}
+                onClick={() => onVerifyEmailOtp?.(normalizeSupabaseSmsOtpToken(emailOtpCode))}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Verifying…" : "Verify and save"}
+              </button>
+            ) : content.type === "phone" && phoneStep === "enter_phone" ? (
               <button
                 type="button"
                 disabled={!normalizeFullPhoneToE164(String(formData.phoneFull ?? "")) || isSendingPhoneOtp}
@@ -967,7 +1120,7 @@ const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = []
       return {
         type: 'email',
         title: 'Email address',
-        description: "Use an address you'll always have access to. We email confirmation links to your current and new address—you may need to open both to complete the change.",
+        description: `Use an address you'll always have access to. We'll email a ${SUPABASE_AUTH_OTP_LENGTH}-digit verification code.`,
         fields: [
           { name: 'email', label: 'Email address', type: 'email' },
         ],

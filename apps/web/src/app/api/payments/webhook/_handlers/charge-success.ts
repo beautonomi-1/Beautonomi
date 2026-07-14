@@ -2751,10 +2751,7 @@ async function handleSubscriptionAuthorizationSuccess(
   }
 
   const authCode = authorization?.authorization_code;
-  if (!authCode || !authorization?.reusable) {
-    console.error("No reusable authorization code in payment response");
-    return;
-  }
+  const isReusableAuth = !!(authCode && authorization?.reusable);
 
   const {
     amountInCurrency,
@@ -2800,7 +2797,7 @@ async function handleSubscriptionAuthorizationSuccess(
       .update({
         plan_id: planId,
         billing_period: billingPeriod,
-        paystack_authorization_code: authCode,
+        ...(authCode ? { paystack_authorization_code: authCode } : {}),
         paystack_customer_code: customerCode,
         updated_at: new Date().toISOString(),
       })
@@ -2815,7 +2812,7 @@ async function handleSubscriptionAuthorizationSuccess(
         status: "pending",
         billing_period: billingPeriod,
         auto_renew: false,
-        paystack_authorization_code: authCode,
+        ...(authCode ? { paystack_authorization_code: authCode } : {}),
         paystack_customer_code: customerCode,
         updated_at: new Date().toISOString(),
       })
@@ -2864,6 +2861,45 @@ async function handleSubscriptionAuthorizationSuccess(
       .eq("id", subscriptionRowId);
   };
 
+  const notifySubscriptionActivated = async (): Promise<void> => {
+    try {
+      const { data: plan } = await supabase
+        .from("subscription_plans")
+        .select("name")
+        .eq("id", planId)
+        .maybeSingle();
+      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+      await notifyProviderTeamUsers(providerId, {
+        type: "subscription_update",
+        title: "Subscription activated",
+        message: `${(plan as { name?: string } | null)?.name ?? "Your subscription"} is active.`,
+        data: {
+          provider_subscription_order_id: orderId,
+          plan_id: planId,
+        },
+        action_url: "/provider/subscription",
+      });
+    } catch (notificationError) {
+      console.warn("Subscription activation notification failed:", notificationError);
+    }
+  };
+
+  const activatePeriodBasedSubscription = async (
+    syncNote: string | null,
+  ): Promise<void> => {
+    const now = new Date();
+    const expiresAt = new Date(now);
+    if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    else expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    await applyActiveSubscriptionUpdate({
+      started_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      auto_renew: false,
+      ...(syncNote ? { paystack_sync_note: syncNote } : {}),
+    });
+  };
+
   // Recognize the initial authorization charge through the unified idempotent
   // helper. Previously this path posted only payment_transactions and NO
   // finance_transactions, so the first paid month was never recognized as
@@ -2881,6 +2917,17 @@ async function handleSubscriptionAuthorizationSuccess(
     description: "Provider subscription payment",
     tenantIdHint: subscriptionAuthTenantId,
   });
+
+  if (!isReusableAuth) {
+    console.warn(
+      `[subscription_auth] non-reusable authorization for order ${orderId}; activating period-based subscription`,
+    );
+    await activatePeriodBasedSubscription(
+      "Card authorization is not reusable. Subscription activated for one billing period — renew manually or update your card for auto-renew.",
+    );
+    await notifySubscriptionActivated();
+    return;
+  }
 
   // Now automatically create the Paystack subscription
   try {
@@ -2920,38 +2967,10 @@ async function handleSubscriptionAuthorizationSuccess(
         auto_renew: true,
       });
     } else {
-      const now = new Date();
-      const expiresAt = new Date(now);
-      if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-      else expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-      await applyActiveSubscriptionUpdate({
-        started_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        auto_renew: false,
-      });
+      await activatePeriodBasedSubscription(null);
     }
 
-    try {
-      const { data: plan } = await supabase
-        .from("subscription_plans")
-        .select("name")
-        .eq("id", planId)
-        .maybeSingle();
-      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
-      await notifyProviderTeamUsers(providerId, {
-        type: "subscription_update",
-        title: "Subscription activated",
-        message: `${(plan as { name?: string } | null)?.name ?? "Your subscription"} is active.`,
-        data: {
-          provider_subscription_order_id: orderId,
-          plan_id: planId,
-        },
-        action_url: "/provider/subscription",
-      });
-    } catch (notificationError) {
-      console.warn("Subscription activation notification failed:", notificationError);
-    }
+    await notifySubscriptionActivated();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("Failed to create Paystack subscription after authorization:", err);

@@ -37,6 +37,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { startPaidSubscriptionCheckout } from "@/lib/subscription/start-paid-checkout";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
 
 const ACCENT = "#FF0077";
@@ -280,6 +281,7 @@ export default function SubscriptionScreen() {
   }>();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
+  const [managingCard, setManagingCard] = useState(false);
   const appState = useRef(AppState.currentState);
   const {
     data: subscription,
@@ -308,7 +310,11 @@ export default function SubscriptionScreen() {
   const paystackCheckout = useInAppPaystackCheckout();
 
   const openSubscriptionPaystack = useCallback(
-    async (url: string, title: string, opts?: { orderId?: string }) => {
+    async (
+      url: string,
+      title: string,
+      opts?: { orderId?: string; reference?: string },
+    ) => {
       const result = await paystackCheckout.waitForCheckout(url, {
         title,
         returnUrl: subscriptionReturnUrl,
@@ -316,23 +322,34 @@ export default function SubscriptionScreen() {
         matchCancel: (rawUrl) => matchesSubscriptionPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
 
-      if (result?.outcome === "cancel" || result?.outcome === "closed") {
+      if (result?.outcome === "cancel") {
         const failed = subscriptionFailedCopy("Payment wasn't completed.");
         setPaymentOutcome({ phase: "failed", ...failed });
         refresh();
         return;
       }
 
-      if (result.outcome !== "success") {
+      const isClosed = result?.outcome === "closed";
+      if (result.outcome !== "success" && !isClosed) {
         refresh();
         return;
       }
 
       setVerifying(true);
       try {
-        // Cross-confirm against Paystack so the screen never claims a plan is
-        // active before the webhook (and the bank) signs off.
-        const reference = extractPaystackReferenceFromUrl(result.url);
+        let reference = opts?.reference?.trim() || null;
+        if (result.outcome === "success" && result.url) {
+          if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
+            const failed = subscriptionFailedCopy("Payment wasn't completed.");
+            setPaymentOutcome({ phase: "failed", ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            refresh();
+            return;
+          }
+          const extracted = extractPaystackReferenceFromUrl(result.url);
+          if (extracted) reference = extracted;
+        }
+
         const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
 
         if (verifyResult?.status === "failed") {
@@ -346,11 +363,12 @@ export default function SubscriptionScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const provisioned = await pollSubscriptionProvisioned({
           orderId: opts?.orderId ?? null,
-          maxAttempts: 6,
-          delayMs: 1500,
         });
         if (provisioned.state === "provisioned") {
-          setPaymentOutcome({ phase: "provisioned", ...subscriptionSuccessCopy(provisioned.subscription) });
+          setPaymentOutcome({
+            phase: "provisioned",
+            ...subscriptionSuccessCopy(provisioned.subscription),
+          });
         } else {
           setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
         }
@@ -521,6 +539,7 @@ export default function SubscriptionScreen() {
     try {
       const { error: err, data } = await postAction("/api/provider/subscription/renew", {
         in_app: true,
+        callback_url: subscriptionReturnUrl,
       });
       if (err) {
         closeReviewSheet();
@@ -540,9 +559,16 @@ export default function SubscriptionScreen() {
         typeof (d as { order_id?: string })?.order_id === "string"
           ? (d as { order_id?: string }).order_id
           : undefined;
+      const renewReference =
+        typeof (d as { reference?: string })?.reference === "string"
+          ? (d as { reference?: string }).reference
+          : undefined;
       if (url) {
         closeReviewSheet();
-        await openSubscriptionPaystack(url, "Renew subscription", { orderId: renewOrderId });
+        await openSubscriptionPaystack(url, "Renew subscription", {
+          orderId: renewOrderId,
+          reference: renewReference,
+        });
       } else {
         closeReviewSheet();
         Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
@@ -599,6 +625,33 @@ export default function SubscriptionScreen() {
     }
 
     await handleRenew();
+  }
+
+  /**
+   * Persistent "Manage billing / update card" action for healthy paid
+   * subscribers — reuses the same Paystack-hosted manage link as the
+   * reactive past_due/billing_issue flow above, but is always available so a
+   * provider can proactively swap cards without first hitting a payment
+   * failure.
+   */
+  async function handleManageCard() {
+    setManagingCard(true);
+    try {
+      const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
+      if (linkErr) {
+        Alert.alert("Error", getApiErrorMessage(linkErr, "Could not generate a card update link. Please try again."));
+        return;
+      }
+      if (data?.link) {
+        await openSubscriptionPaystack(data.link, "Manage billing");
+      } else {
+        Alert.alert("Error", "Could not generate a card update link. Please try again.");
+      }
+    } catch {
+      Alert.alert("Error", "Failed to get manage link.");
+    } finally {
+      setManagingCard(false);
+    }
   }
 
   async function handleUpgrade(planId: string) {
@@ -671,6 +724,7 @@ export default function SubscriptionScreen() {
       }
       await openSubscriptionPaystack(checkoutStart.authorizationUrl, "Subscription checkout", {
         orderId: checkoutStart.orderId,
+        reference: checkoutStart.reference,
       });
       refresh();
     } finally {
@@ -840,6 +894,28 @@ export default function SubscriptionScreen() {
               <Ionicons name="receipt-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
               <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
                 View invoices & payment methods
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* Persistent card-update action for healthy paid subscribers — the
+              reactive "Pay now / update card" CTA below only appears once
+              something has already gone wrong, so this is the only way to
+              proactively swap cards. */}
+          {paidSubscriber && !billingCta ? (
+            <TouchableOpacity
+              style={twStyle("mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+              onPress={handleManageCard}
+              activeOpacity={0.85}
+              disabled={managingCard}
+            >
+              {managingCard ? (
+                <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              ) : (
+                <Ionicons name="card-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              )}
+              <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+                {managingCard ? "Opening…" : "Manage billing / update card"}
               </Text>
             </TouchableOpacity>
           ) : null}

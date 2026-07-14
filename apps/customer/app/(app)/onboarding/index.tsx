@@ -1,12 +1,12 @@
 /**
  * Customer post-signup onboarding wizard — 6 steps.
  *
- * Step 1 — Preferred name     (required)
- * Step 2 — Profile photo      (skippable)
- * Step 3 — Date of birth      (skippable)
- * Step 4 — Phone + OTP        (required unless already verified)
- * Step 5 — Home address       (required unless address exists)
- * Step 6 — Beauty preferences (skippable)
+ * Step 1 — Full name + preferred name (required)
+ * Step 2 — Profile photo              (required)
+ * Step 3 — Date of birth              (required)
+ * Step 4 — Home address               (required unless address exists)
+ * Step 5 — Beauty preferences         (skippable)
+ * Step 6 — Verify email + phone       (both required)
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
@@ -29,13 +29,14 @@ import { RADIUS_BUTTON, RADIUS_CARD, RADIUS_INPUT, SCREEN_PADDING } from "@/cons
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendFormDataFileNative, isMailableEmail } from "@beautonomi/utils";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
 import { readAndClearCustomerPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
@@ -52,6 +53,7 @@ import { KeyboardDoneAccessory } from "@/features/onboarding/KeyboardDoneAccesso
 const CUSTOMER_KEYBOARD_ACCESSORY = {
   phone: "customer-onboarding-phone",
   postal: "customer-onboarding-postal",
+  email: "customer-onboarding-email",
 } as const;
 
 /* ── Constants ── */
@@ -171,6 +173,7 @@ export default function CustomerOnboarding() {
   const tenantRegionName = configBundle?.meta?.tenant_region?.name?.trim();
   const authPolicy = configBundle?.auth ?? DEFAULT_AUTH;
   const smsOtpLen = authPolicy.sms_otp_length;
+  const emailOtpLen = authPolicy.email_otp_length;
   const smsOtpExpirySec = authPolicy.sms_otp_expiration_seconds;
   const { pickWithOptions, loading: pickLoading } = useImagePicker();
   const { t } = useTranslation();
@@ -178,6 +181,8 @@ export default function CustomerOnboarding() {
   const scrollRef = useRef<ScrollView>(null);
   const scrollToFocusedInput = useScrollToFocusedInput(scrollRef);
   const preferredNameRef = useRef<TextInput>(null);
+  const fullNameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
   const addressLine1Ref = useRef<TextInput>(null);
   const addressLine2Ref = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
@@ -197,6 +202,7 @@ export default function CustomerOnboarding() {
   const [saving, setSaving] = useState(false);
 
   /* Step 1 */
+  const [fullName, setFullName] = useState("");
   const [preferredName, setPreferredName] = useState("");
 
   /* Step 2 */
@@ -227,7 +233,7 @@ export default function CustomerOnboarding() {
   const RESEND_COOLDOWN_SECS = 30;
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  /* Step 5 */
+  /* Step 4 — address */
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
   const [city, setCity] = useState("");
@@ -242,22 +248,38 @@ export default function CustomerOnboarding() {
   /** Whether to show the manual edit fields below the selected-address card */
   const [showManualFields, setShowManualFields] = useState(false);
 
-  useAutoFocus(preferredNameRef, !initializing && step === 1);
+  useAutoFocus(fullNameRef, !initializing && step === 1);
   useAutoFocus(
     addressLine1Ref,
-    !initializing && step === 5 && showManualFields && Boolean(addressLine1.trim()),
+    !initializing && step === 4 && showManualFields && Boolean(addressLine1.trim()),
   );
 
-  /* Step 6 */
+  /* Step 5 — beauty prefs */
   const [hairTypes, setHairTypes] = useState<string[]>([]);
   const [skinType, setSkinType] = useState("");
 
-  /* ── Resend cooldown ticker ── */
+  /* Step 6 — email + phone verification */
+  const [email, setEmail] = useState("");
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailOtpSending, setEmailOtpSending] = useState(false);
+  const [emailOtpVerifying, setEmailOtpVerifying] = useState(false);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+
+  /* ── Resend cooldown tickers ── */
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setInterval(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const t = setInterval(() => setEmailResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [emailResendCooldown]);
 
   /* Default country from tenant when config loads (only if user hasn’t changed from initial SA) */
   useEffect(() => {
@@ -265,9 +287,9 @@ export default function CustomerOnboarding() {
     setCountry((c) => (c === "South Africa" ? tenantRegionName : c));
   }, [tenantRegionName]);
 
-  /* Auto-open the address picker the first time the user lands on step 5 with no address */
+  /* Auto-open the address picker the first time the user lands on step 4 with no address */
   useEffect(() => {
-    if (step !== 5 || initializing) return;
+    if (step !== 4 || initializing) return;
     if (!alreadyHasAddress && !addressLine1.trim()) {
       setAddressPickerOpen(true);
     }
@@ -301,8 +323,15 @@ export default function CustomerOnboarding() {
         if (profileRes.status === "fulfilled" && !profileRes.value?.error) {
           const p = profileRes.value?.data;
           const pname = p?.preferred_name || "";
-          const fullFirst = (p?.full_name || "").split(" ")[0] || "";
+          const full =
+            p?.full_name ||
+            [p?.first_name, p?.last_name].filter(Boolean).join(" ") ||
+            "";
+          const fullFirst = full.split(" ")[0] || "";
+          setFullName(full);
           setPreferredName(pname || fullFirst);
+          if (p?.email) setEmail(p.email);
+          if (p?.email_verified) setEmailVerified(true);
           if (p?.avatar_url) setAvatarUri(p.avatar_url);
           if (p?.date_of_birth) {
             const parsed = parseDob(p.date_of_birth);
@@ -367,54 +396,92 @@ export default function CustomerOnboarding() {
 
   /* ── Step validation ── */
   const validateStep = useCallback((): string | null => {
-    if (step === 1 && !preferredName.trim()) return ob("validationPreferredName");
-    if (step === 4) {
-      if (!phoneVerified) return ob("validationPhoneVerify");
+    if (step === 1) {
+      if (!fullName.trim()) return ob("validationFullName");
+      if (!preferredName.trim()) return ob("validationPreferredName");
     }
-    if (step === 5) {
+    if (step === 2 && !avatarUri) return ob("validationPhoto");
+    if (step === 3 && !buildDob(dobYear, dobMonth, dobDay)) return ob("validationDob");
+    if (step === 4) {
       if (!alreadyHasAddress) {
         if (!addressLine1.trim()) return ob("validationStreet");
         if (!city.trim()) return ob("validationCity");
         if (!country.trim()) return ob("validationCountry");
       }
     }
+    if (step === 6) {
+      if (!emailVerified) return ob("validationEmailVerify");
+      if (!phoneVerified) return ob("validationPhoneVerify");
+    }
     return null;
-  }, [step, preferredName, phoneVerified, alreadyHasAddress, addressLine1, city, country, ob]);
+  }, [
+    step,
+    fullName,
+    preferredName,
+    avatarUri,
+    dobYear,
+    dobMonth,
+    dobDay,
+    alreadyHasAddress,
+    addressLine1,
+    city,
+    country,
+    emailVerified,
+    phoneVerified,
+    ob,
+  ]);
 
-  /* Sync phone verified from auth when entering step 4 (phone OTP signup/login). */
+  /* Sync phone + email verified from auth when entering step 6. */
   useEffect(() => {
-    if (step !== 4 || phoneVerified || initializing) return;
+    if (step !== 6 || initializing) return;
     let cancelled = false;
     (async () => {
       try {
         const {
           data: { user: authUser },
         } = await supabase.auth.getUser();
-        if (cancelled || !authUser?.phone || !authUser.phone_confirmed_at) return;
+        if (cancelled || !authUser) return;
 
-        const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
-        const digits = phoneNational.replace(/\D/g, "");
-        const formE164 = digits
-          ? normalizeSupabaseAuthPhone(
-              `${phoneCountryCode}${digits}`.startsWith("+")
-                ? `${phoneCountryCode}${digits}`
-                : `+${phoneCountryCode}${digits}`,
-            )
-          : "";
-        if (formE164 && authPhone !== formE164) return;
+        const phoneConfirmedAt = (authUser as { phone_confirmed_at?: string | null }).phone_confirmed_at;
+        const emailConfirmedAt = authUser.email_confirmed_at;
 
-        const verifyRes = await api.post("/api/me/phone/verify", { phone: authPhone });
-        if (verifyRes.error || cancelled) return;
-
-        if (!formE164) {
-          const parsed = parsePhoneToCountryAndNational(
-            authPhone,
-            getDeviceDefaultCountryDial(),
-          );
-          setPhoneCountryCode(parsed.countryCode);
-          setPhoneNational(parsed.national);
+        if (!phoneVerified && authUser.phone && phoneConfirmedAt) {
+          const authPhone = normalizeSupabaseAuthPhone(authUser.phone);
+          const digits = phoneNational.replace(/\D/g, "");
+          const formE164 = digits
+            ? normalizeSupabaseAuthPhone(
+                `${phoneCountryCode}${digits}`.startsWith("+")
+                  ? `${phoneCountryCode}${digits}`
+                  : `+${phoneCountryCode}${digits}`,
+              )
+            : "";
+          if (!formE164 || authPhone === formE164) {
+            const verifyRes = await api.post("/api/me/phone/verify", { phone: authPhone });
+            if (!verifyRes.error && !cancelled) {
+              if (!formE164) {
+                const parsed = parsePhoneToCountryAndNational(
+                  authPhone,
+                  getDeviceDefaultCountryDial(),
+                );
+                setPhoneCountryCode(parsed.countryCode);
+                setPhoneNational(parsed.national);
+              }
+              setPhoneVerified(true);
+            }
+          }
         }
-        setPhoneVerified(true);
+
+        if (!emailVerified && authUser.email && emailConfirmedAt && isMailableEmail(authUser.email)) {
+          const authEmail = authUser.email.trim();
+          const formEmail = email.trim();
+          if (!formEmail || formEmail.toLowerCase() === authEmail.toLowerCase()) {
+            const verifyRes = await api.post("/api/me/email/verify", { email: authEmail });
+            if (!verifyRes.error && !cancelled) {
+              setEmail(authEmail);
+              setEmailVerified(true);
+            }
+          }
+        }
       } catch {
         /* User can verify manually. */
       }
@@ -422,8 +489,8 @@ export default function CustomerOnboarding() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run when entering step 4
-  }, [step, phoneVerified, initializing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run when entering step 6
+  }, [step, initializing]);
 
   /* ── Phone OTP ── */
   const handleSendOtp = async () => {
@@ -482,7 +549,6 @@ export default function CustomerOnboarding() {
         type: "phone_change",
       });
       if (error) throw error;
-      // Use dedicated verify endpoint — reads Supabase's phone_confirmed_at server-side
       const verifyRes = await api.post("/api/me/phone/verify", {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
@@ -498,6 +564,95 @@ export default function CustomerOnboarding() {
     } finally {
       setOtpVerifying(false);
     }
+  };
+
+  const persistEmailVerified = useCallback(async (verifiedEmail: string) => {
+    const res = await api.post("/api/me/email/verify", { email: verifiedEmail });
+    if (res.error) {
+      throw new Error(getApiErrorMessage(res.error, "Email verified but could not save. Please try again."));
+    }
+    setEmailVerified(true);
+    setEmail(verifiedEmail);
+  }, []);
+
+  const handleSendEmailOtp = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !isMailableEmail(trimmedEmail)) {
+      Alert.alert(ob("invalidEmailTitle"), ob("invalidEmailBody"));
+      return;
+    }
+    setEmailOtpSending(true);
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const confirmedEmail = authUser?.email?.trim() || "";
+      const emailConfirmedAt = authUser?.email_confirmed_at;
+
+      if (emailConfirmedAt && confirmedEmail.toLowerCase() === trimmedEmail.toLowerCase()) {
+        await persistEmailVerified(confirmedEmail);
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({ email: trimmedEmail });
+      if (error) throw error;
+      setPendingEmail(trimmedEmail);
+      setEmailOtpCode("");
+      setEmailOtpSent(true);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+    } catch (e: unknown) {
+      Alert.alert(
+        ob("sendCodeFailedTitle"),
+        (e as { message?: string })?.message ?? ob("sendCodeFailedBody")
+      );
+    } finally {
+      setEmailOtpSending(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtpCode);
+    if (!pendingEmail || !isCompleteOtpForLength(token, emailOtpLen)) {
+      Alert.alert(ob("invalidCodeTitle"), ob("invalidEmailCodeBody", { digits: emailOtpLen }));
+      return;
+    }
+    setEmailOtpVerifying(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingEmail,
+        token,
+        type: "email_change",
+      });
+      if (error) throw error;
+      await persistEmailVerified(pendingEmail);
+    } catch (e: unknown) {
+      Alert.alert(
+        ob("verificationFailedTitle"),
+        (e as { message?: string })?.message ?? ob("verificationFailedBody")
+      );
+    } finally {
+      setEmailOtpVerifying(false);
+    }
+  };
+
+  const handleEmailChange = (value: string) => {
+    const verifiedEmail = emailVerified ? email.trim().toLowerCase() : "";
+    const stillVerified = Boolean(emailVerified && value.trim().toLowerCase() === verifiedEmail);
+    setEmail(value);
+    setEmailVerified(stillVerified);
+    if (!stillVerified) {
+      setEmailOtpSent(false);
+      setEmailOtpCode("");
+      setPendingEmail("");
+    }
+  };
+
+  const handleStartChangeEmail = () => {
+    setEmailVerified(false);
+    setEmailOtpSent(false);
+    setEmailOtpCode("");
+    setPendingEmail("");
+    setEmailResendCooldown(0);
   };
 
   /* ── Photo picker ── */
@@ -529,8 +684,21 @@ export default function CustomerOnboarding() {
     try {
       switch (step) {
         case 1: {
-          const res = await api.patch("/api/me/profile", { preferred_name: preferredName.trim() });
+          const parts = fullName.trim().split(/\s+/);
+          const first = parts[0] || "";
+          const last = parts.slice(1).join(" ") || "";
+          const res = await api.patch("/api/me/profile", {
+            first_name: first,
+            last_name: last,
+            preferred_name: preferredName.trim(),
+          });
           if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save name"));
+          const { error: metaError } = await supabase.auth.updateUser({
+            data: { full_name: fullName.trim() },
+          });
+          if (metaError) {
+            throw new Error(metaError.message || "Could not sync your name to your account.");
+          }
           break;
         }
         case 2:
@@ -553,17 +721,13 @@ export default function CustomerOnboarding() {
           break;
         case 3: {
           const dob = buildDob(dobYear, dobMonth, dobDay);
-          if (dob) {
-            const res = await api.patch("/api/me/profile", { date_of_birth: dob });
-            if (res.error)
-              throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
-          }
+          if (!dob) throw new Error(ob("validationDob"));
+          const res = await api.patch("/api/me/profile", { date_of_birth: dob });
+          if (res.error)
+            throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
           break;
         }
         case 4:
-          // Phone already saved during OTP verification
-          break;
-        case 5:
           if (!alreadyHasAddress && addressLine1.trim() && city.trim()) {
             const payload: Record<string, unknown> = {
               label: "Home",
@@ -584,7 +748,7 @@ export default function CustomerOnboarding() {
             setAlreadyHasAddress(true);
           }
           break;
-        case 6:
+        case 5:
           if (hairTypes.length > 0 || skinType) {
             const res = await api.patch("/api/me/beauty-preferences", {
               hair_type: hairTypes.length > 0 ? hairTypes : null,
@@ -593,6 +757,9 @@ export default function CustomerOnboarding() {
             if (res.error)
               throw new Error(getApiErrorMessage(res.error, "Could not save preferences"));
           }
+          break;
+        case 6:
+          // Email and phone already saved during OTP verification
           break;
       }
       return true;
@@ -678,7 +845,7 @@ export default function CustomerOnboarding() {
     );
   }
 
-  const canSkip = step !== 1 && step !== 4 && step !== 5;
+  const canSkip = step === 5;
   const isLastStep = step === TOTAL_STEPS;
   const canGoBack = step > 1;
 
@@ -759,13 +926,13 @@ export default function CustomerOnboarding() {
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Step 1: Name ── */}
+          {/* ── Step 1: Names ── */}
           {step === 1 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="person" />
               <StepTitle
-                title="What should we call you?"
-                subtitle="This is how you'll appear to beauty providers"
+                title="Tell us about you"
+                subtitle="This is how you'll appear on your profile and to beauty providers"
               />
               <View
                 style={{
@@ -778,15 +945,28 @@ export default function CustomerOnboarding() {
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: "600", color: PRIMARY }}>
-                  About 2 minutes · You can skip optional steps
+                  About 2 minutes · Beauty preferences are optional
                 </Text>
               </View>
+              <SectionLabel required>Full name</SectionLabel>
+              <TextInput
+                ref={fullNameRef}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="e.g. Nolo Sehlolo"
+                style={inputStyle}
+                placeholderTextColor="#94A3B8"
+                returnKeyType="next"
+                onSubmitEditing={() => preferredNameRef.current?.focus()}
+                onFocus={scrollToFocusedInput(fullNameRef)}
+              />
+              <Text style={hintStyle}>Your legal or full name for your personal profile.</Text>
               <SectionLabel required>Preferred name</SectionLabel>
               <TextInput
                 ref={preferredNameRef}
                 value={preferredName}
                 onChangeText={setPreferredName}
-                placeholder="e.g. Nolo"
+                placeholder={ob("preferredNamePlaceholder")}
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
                 returnKeyType="done"
@@ -802,7 +982,7 @@ export default function CustomerOnboarding() {
               <StepIcon name="camera" />
               <StepTitle
                 title="Add a profile photo"
-                subtitle="Help providers recognise you. You can always update later."
+                subtitle="Required so providers can recognise you at appointments"
               />
               <Pressable
                 onPress={() => void handlePickPhoto()}
@@ -838,7 +1018,7 @@ export default function CustomerOnboarding() {
                 <Text
                   style={[hintStyle, { marginTop: 6, textAlign: "center", paddingHorizontal: 12 }]}
                 >
-                  Camera or photo library · Optional · JPEG, PNG or WebP · max 5 MB
+                  Camera or photo library · Required · JPEG, PNG or WebP · max 5 MB
                 </Text>
               </Pressable>
             </View>
@@ -850,12 +1030,12 @@ export default function CustomerOnboarding() {
               <StepIcon name="gift" />
               <StepTitle
                 title="When's your birthday?"
-                subtitle="Used for birthday perks and age-appropriate recommendations"
+                subtitle="Required for birthday perks and age-appropriate recommendations"
               />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 {/* Day */}
                 <View style={{ flex: 1 }}>
-                  <SectionLabel>Day</SectionLabel>
+                  <SectionLabel required>Day</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowDayPicker(true);
@@ -872,7 +1052,7 @@ export default function CustomerOnboarding() {
                 </View>
                 {/* Month */}
                 <View style={{ flex: 2 }}>
-                  <SectionLabel>Month</SectionLabel>
+                  <SectionLabel required>Month</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowMonthPicker(true);
@@ -889,7 +1069,7 @@ export default function CustomerOnboarding() {
                 </View>
                 {/* Year */}
                 <View style={{ flex: 1.5 }}>
-                  <SectionLabel>Year</SectionLabel>
+                  <SectionLabel required>Year</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowYearPicker(true);
@@ -951,192 +1131,8 @@ export default function CustomerOnboarding() {
             </View>
           )}
 
-          {/* ── Step 4: Phone + OTP ── */}
+          {/* -- Step 4: Address -- */}
           {step === 4 && (
-            <View style={{ marginTop: 24 }}>
-              <StepIcon name="phone-portrait" />
-              <StepTitle
-                title="Add your phone number"
-                subtitle="Required for booking confirmations and house-call services"
-              />
-
-              {phoneVerified ? (
-                <View style={{ alignItems: "center", paddingVertical: 24 }}>
-                  <View
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 28,
-                      backgroundColor: "#D1FAE5",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 12,
-                    }}
-                  >
-                    <Ionicons name="checkmark" size={28} color="#059669" />
-                  </View>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#1E293B" }}>
-                    Phone verified
-                  </Text>
-                  <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
-                    {pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <SectionLabel required>Mobile number</SectionLabel>
-                  <PhoneInputWithCountry
-                    countryCode={phoneCountryCode}
-                    nationalValue={phoneNational}
-                    onCountryCodeChange={setPhoneCountryCode}
-                    onNationalChange={(v) => {
-                      setPhoneNational(v);
-                      setOtpSent(false);
-                      setOtpCode("");
-                    }}
-                    placeholder="082 123 4567"
-                    inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.phone}
-                    nationalInputRef={phoneNationalRef}
-                    onFocus={scrollToFocusedInput(phoneNationalRef)}
-                  />
-                  <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.phone} />
-                  <TouchableOpacity
-                    onPress={handleSendOtp}
-                    disabled={otpSending || resendCooldown > 0 || !phoneNational.trim()}
-                    style={{
-                      marginTop: 12,
-                      backgroundColor: otpSending || resendCooldown > 0 ? "#E2E8F0" : PRIMARY,
-                      borderRadius: RADIUS_BUTTON,
-                      paddingVertical: 14,
-                      alignItems: "center",
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: otpSending || resendCooldown > 0 }}
-                    accessibilityLabel={
-                      resendCooldown > 0
-                        ? `Resend in ${resendCooldown} seconds`
-                        : otpSent
-                          ? "Resend code"
-                          : "Send verification code"
-                    }
-                  >
-                    {otpSending ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text
-                        style={{
-                          color: resendCooldown > 0 ? "#94A3B8" : "#fff",
-                          fontWeight: "600",
-                          fontSize: 15,
-                        }}
-                      >
-                        {resendCooldown > 0
-                          ? `Resend in ${resendCooldown}s`
-                          : otpSent
-                            ? "Resend code"
-                            : "Send verification code"}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* §UX-audit 2026-05: inline success banner replaces the
-                      blocking Alert.alert so the user can immediately enter
-                      the code without dismissing a modal first. */}
-                  {otpSent && (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                        backgroundColor: "#ECFDF5",
-                        borderColor: "#A7F3D0",
-                        borderWidth: 1,
-                        borderRadius: 12,
-                        paddingVertical: 10,
-                        paddingHorizontal: 12,
-                        marginTop: 12,
-                      }}
-                      accessibilityRole="alert"
-                      accessibilityLabel={`Code sent to ${pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}`}
-                    >
-                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
-                      <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
-                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))}{" "}
-                        min.
-                      </Text>
-                    </View>
-                  )}
-
-                  {otpSent && (
-                    <View style={{ marginTop: 20 }}>
-                      <SectionLabel required>Enter {smsOtpLen}-digit code</SectionLabel>
-                      <OtpDigitRow
-                        length={smsOtpLen}
-                        value={otpCode}
-                        onChange={setOtpCode}
-                        onComplete={(code) => {
-                          if (!otpVerifying && isCompleteOtpForLength(code, smsOtpLen))
-                            void handleVerifyOtp(code);
-                        }}
-                        disabled={otpVerifying || phoneVerified}
-                        smsAutofill
-                      />
-                      <TouchableOpacity
-                        onPress={() => void handleVerifyOtp()}
-                        disabled={
-                          !isCompleteOtpForLength(otpCode, smsOtpLen) ||
-                          otpVerifying ||
-                          phoneVerified
-                        }
-                        style={{
-                          marginTop: 12,
-                          backgroundColor: PRIMARY,
-                          borderRadius: RADIUS_BUTTON,
-                          paddingVertical: 14,
-                          alignItems: "center",
-                          opacity:
-                            !isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying ? 0.5 : 1,
-                        }}
-                      >
-                        {otpVerifying ? (
-                          <ActivityIndicator color="#fff" size="small" />
-                        ) : (
-                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
-                            Verify
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Required notice */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 8,
-                      backgroundColor: "#FFFBEB",
-                      borderRadius: RADIUS_CARD,
-                      padding: 12,
-                      marginTop: 16,
-                    }}
-                  >
-                    <Ionicons
-                      name="alert-circle-outline"
-                      size={16}
-                      color="#D97706"
-                      style={{ marginTop: 1 }}
-                    />
-                    <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-                      Phone verification is required to continue and to make bookings.
-                    </Text>
-                  </View>
-                </>
-              )}
-            </View>
-          )}
-
-          {/* -- Step 5: Address -- */}
-          {step === 5 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="location" />
               <StepTitle
@@ -1473,8 +1469,8 @@ export default function CustomerOnboarding() {
             </View>
           )}
 
-          {/* ── Step 6: Beauty preferences ── */}
-          {step === 6 && (
+          {/* ── Step 5: Beauty preferences ── */}
+          {step === 5 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="sparkles" />
               <StepTitle
@@ -1546,6 +1542,343 @@ export default function CustomerOnboarding() {
                     </Pressable>
                   );
                 })}
+              </View>
+            </View>
+          )}
+
+          {/* ── Step 6: Verify email + phone ── */}
+          {step === 6 && (
+            <View style={{ marginTop: 24 }}>
+              <StepIcon name="shield-checkmark" />
+              <StepTitle
+                title="Verify your details"
+                subtitle="Confirm your email and phone so you can book and receive updates"
+              />
+
+              {/* Email */}
+              <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>
+                Email
+              </Text>
+              {emailVerified ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    backgroundColor: "#ECFDF5",
+                    borderWidth: 1,
+                    borderColor: "#A7F3D0",
+                    borderRadius: RADIUS_CARD,
+                    padding: 14,
+                    marginBottom: 20,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: "#D1FAE5",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={18} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#065F46" }}>
+                      Email verified
+                    </Text>
+                    <Text style={{ fontSize: 13, color: "#047857", marginTop: 2 }}>{email}</Text>
+                  </View>
+                  <TouchableOpacity onPress={handleStartChangeEmail} hitSlop={8}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={hintStyle}>
+                    We&apos;ll send a {emailOtpLen}-digit code to verify your email.
+                  </Text>
+                  <SectionLabel required>Email address</SectionLabel>
+                  <TextInput
+                    ref={emailRef}
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    placeholder="you@example.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={inputStyle}
+                    placeholderTextColor="#94A3B8"
+                    inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.email}
+                    onFocus={scrollToFocusedInput(emailRef)}
+                  />
+                  <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.email} />
+                  <TouchableOpacity
+                    onPress={() => void handleSendEmailOtp()}
+                    disabled={
+                      emailOtpSending ||
+                      emailResendCooldown > 0 ||
+                      !isMailableEmail(email.trim())
+                    }
+                    style={{
+                      backgroundColor:
+                        emailOtpSending || emailResendCooldown > 0 ? "#E2E8F0" : PRIMARY,
+                      borderRadius: RADIUS_BUTTON,
+                      paddingVertical: 14,
+                      alignItems: "center",
+                    }}
+                  >
+                    {emailOtpSending ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text
+                        style={{
+                          color: emailResendCooldown > 0 ? "#94A3B8" : "#fff",
+                          fontWeight: "600",
+                          fontSize: 15,
+                        }}
+                      >
+                        {emailResendCooldown > 0
+                          ? `Resend in ${emailResendCooldown}s`
+                          : emailOtpSent
+                            ? "Resend code"
+                            : "Send verification code"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {emailOtpSent && (
+                    <View style={{ marginTop: 16 }}>
+                      <SectionLabel required>Enter {emailOtpLen}-digit code</SectionLabel>
+                      <OtpDigitRow
+                        length={emailOtpLen}
+                        value={emailOtpCode}
+                        onChange={setEmailOtpCode}
+                        onComplete={(code) => {
+                          if (!emailOtpVerifying && isCompleteOtpForLength(code, emailOtpLen))
+                            void handleVerifyEmailOtp(code);
+                        }}
+                        disabled={emailOtpVerifying || emailVerified}
+                      />
+                      <TouchableOpacity
+                        onPress={() => void handleVerifyEmailOtp()}
+                        disabled={
+                          !isCompleteOtpForLength(emailOtpCode, emailOtpLen) ||
+                          emailOtpVerifying ||
+                          emailVerified
+                        }
+                        style={{
+                          marginTop: 12,
+                          backgroundColor: PRIMARY,
+                          borderRadius: RADIUS_BUTTON,
+                          paddingVertical: 14,
+                          alignItems: "center",
+                          opacity:
+                            !isCompleteOtpForLength(emailOtpCode, emailOtpLen) || emailOtpVerifying
+                              ? 0.5
+                              : 1,
+                        }}
+                      >
+                        {emailOtpVerifying ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+                            Verify email
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Phone */}
+              <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>
+                Phone
+              </Text>
+              {phoneVerified ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    backgroundColor: "#ECFDF5",
+                    borderWidth: 1,
+                    borderColor: "#A7F3D0",
+                    borderRadius: RADIUS_CARD,
+                    padding: 14,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: "#D1FAE5",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={18} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#065F46" }}>
+                      Phone verified
+                    </Text>
+                    <Text style={{ fontSize: 13, color: "#047857", marginTop: 2 }}>
+                      {pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setPhoneVerified(false);
+                      setOtpSent(false);
+                      setOtpCode("");
+                      setPendingPhoneE164("");
+                      setResendCooldown(0);
+                    }}
+                    hitSlop={8}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <SectionLabel required>Mobile number</SectionLabel>
+                  <PhoneInputWithCountry
+                    countryCode={phoneCountryCode}
+                    nationalValue={phoneNational}
+                    onCountryCodeChange={setPhoneCountryCode}
+                    onNationalChange={(v) => {
+                      setPhoneNational(v);
+                      setOtpSent(false);
+                      setOtpCode("");
+                    }}
+                    placeholder={ob("phonePlaceholder")}
+                    inputAccessoryViewID={CUSTOMER_KEYBOARD_ACCESSORY.phone}
+                    nationalInputRef={phoneNationalRef}
+                    onFocus={scrollToFocusedInput(phoneNationalRef)}
+                  />
+                  <KeyboardDoneAccessory nativeID={CUSTOMER_KEYBOARD_ACCESSORY.phone} />
+                  <TouchableOpacity
+                    onPress={handleSendOtp}
+                    disabled={otpSending || resendCooldown > 0 || !phoneNational.trim()}
+                    style={{
+                      marginTop: 12,
+                      backgroundColor: otpSending || resendCooldown > 0 ? "#E2E8F0" : PRIMARY,
+                      borderRadius: RADIUS_BUTTON,
+                      paddingVertical: 14,
+                      alignItems: "center",
+                    }}
+                  >
+                    {otpSending ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text
+                        style={{
+                          color: resendCooldown > 0 ? "#94A3B8" : "#fff",
+                          fontWeight: "600",
+                          fontSize: 15,
+                        }}
+                      >
+                        {resendCooldown > 0
+                          ? `Resend in ${resendCooldown}s`
+                          : otpSent
+                            ? "Resend code"
+                            : "Send verification code"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {otpSent && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                        backgroundColor: "#ECFDF5",
+                        borderColor: "#A7F3D0",
+                        borderWidth: 1,
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        marginTop: 12,
+                      }}
+                    >
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
+                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))}{" "}
+                        min.
+                      </Text>
+                    </View>
+                  )}
+
+                  {otpSent && (
+                    <View style={{ marginTop: 20 }}>
+                      <SectionLabel required>Enter {smsOtpLen}-digit code</SectionLabel>
+                      <OtpDigitRow
+                        length={smsOtpLen}
+                        value={otpCode}
+                        onChange={setOtpCode}
+                        onComplete={(code) => {
+                          if (!otpVerifying && isCompleteOtpForLength(code, smsOtpLen))
+                            void handleVerifyOtp(code);
+                        }}
+                        disabled={otpVerifying || phoneVerified}
+                        smsAutofill
+                      />
+                      <TouchableOpacity
+                        onPress={() => void handleVerifyOtp()}
+                        disabled={
+                          !isCompleteOtpForLength(otpCode, smsOtpLen) ||
+                          otpVerifying ||
+                          phoneVerified
+                        }
+                        style={{
+                          marginTop: 12,
+                          backgroundColor: PRIMARY,
+                          borderRadius: RADIUS_BUTTON,
+                          paddingVertical: 14,
+                          alignItems: "center",
+                          opacity:
+                            !isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying ? 0.5 : 1,
+                        }}
+                      >
+                        {otpVerifying ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+                            Verify phone
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 8,
+                  backgroundColor: "#FFFBEB",
+                  borderRadius: RADIUS_CARD,
+                  padding: 12,
+                  marginTop: 20,
+                }}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color="#D97706"
+                  style={{ marginTop: 1 }}
+                />
+                <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
+                  Both email and phone must be verified before you can finish setup and start
+                  booking.
+                </Text>
               </View>
             </View>
           )}

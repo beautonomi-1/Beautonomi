@@ -20,6 +20,7 @@ interface Booking {
   booking_number: string;
   scheduled_at: string;
   status: string;
+  currency?: string;
   location_type: 'at_salon' | 'at_home';
   address?: {
     line1: string;
@@ -114,7 +115,48 @@ export default function PortalBookingPage() {
   };
 
   const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel this booking?")) {
+    if (!booking || !token) return;
+
+    let promptMessage =
+      "Are you sure you want to cancel this booking? This action cannot be undone.";
+    try {
+      const preview = await fetcher.get<{
+        data: {
+          allowed: boolean;
+          reason?: string;
+          currency?: string;
+          expected_cancellation_fee?: number;
+          expected_wallet_refund?: number;
+          is_late_cancellation?: boolean;
+          refund_capped_by_paid_amount?: boolean;
+        };
+      }>(`/api/portal/booking/cancel-preview?token=${token}`, { cache: "no-store", staleTimeMs: 0 });
+      const p = preview.data;
+      if (!p?.allowed) {
+        toast.error(p?.reason || "Cancellation is not allowed for this booking.");
+        return;
+      }
+      const cur = p.currency || booking.currency;
+      const fee = Number(p.expected_cancellation_fee ?? 0);
+      const refund = Number(p.expected_wallet_refund ?? 0);
+      const capNote =
+        p.refund_capped_by_paid_amount === true
+          ? "\n\nYour wallet refund is capped by the amount you have already paid."
+          : "";
+      promptMessage =
+        `Cancel this booking now?\n\n` +
+        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}\n` +
+        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}` +
+        capNote +
+        `\n\n` +
+        (p.is_late_cancellation
+          ? "You are inside the late-cancellation window."
+          : "You are within the normal cancellation window.");
+    } catch {
+      // Fallback to generic confirmation
+    }
+
+    if (!confirm(promptMessage)) {
       return;
     }
 

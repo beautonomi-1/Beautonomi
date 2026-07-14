@@ -87,6 +87,8 @@ export function isTransientApiFailure(err: unknown): boolean {
   const code = getApiErrorCode(err);
   if (code === "MISSING_API_BASE_URL") return false;
   if (code === "NETWORK_ERROR" || code === "TIMEOUT" || code === "CANCELLED") return true;
+  // Vercel Bot Protection / WAF can return HTML 429 pages; retry briefly like other transients.
+  if (code === "HTML_ERROR" || status === 429) return true;
   if (typeof status === "number" && status >= 500) return true;
   const msg = getApiErrorMessage(err, "").toLowerCase();
   if (

@@ -11,6 +11,7 @@ import {
   isProviderPubliclyVisible,
   type ProviderVisibilityRow,
 } from "@/lib/providers/public-provider-visibility";
+import { redactProviderDetailForTier } from "@/lib/providers/provider-disclosure";
 
 function isUnmappedPreviewOrDevHost(host: string): boolean {
   const h = host.toLowerCase();
@@ -73,7 +74,12 @@ export const getPublicProviderDetail = cache(
     slug: string,
     userLat?: number,
     userLng?: number,
-  ): Promise<{ provider: PublicProviderDetail | null; seoIndexable: boolean }> => {
+  ): Promise<{
+    provider: PublicProviderDetail | null;
+    /** Unredacted detail for SEO metadata snippets only — not for page body. */
+    providerFull: PublicProviderDetail | null;
+    seoIndexable: boolean;
+  }> => {
     try {
       const supabase = getSupabaseAdmin();
 
@@ -94,7 +100,7 @@ export const getPublicProviderDetail = cache(
       if (!providerRow && isUnmappedPreviewOrDevHost(await getServerHost())) {
         providerRow = await resolveProviderAcrossTenants(supabase, decodedSlug, slug);
       }
-      if (!providerRow) return { provider: null, seoIndexable: false };
+      if (!providerRow) return { provider: null, providerFull: null, seoIndexable: false };
 
       const providerData = providerRow as Record<string, any>;
       const userData = providerData.users as Record<string, any> | null;
@@ -339,10 +345,14 @@ export const getPublicProviderDetail = cache(
         profile_promotions,
       };
 
-      return { provider: result, seoIndexable: includeInSearchEngines };
+      return {
+        provider: redactProviderDetailForTier(result, "anon"),
+        providerFull: result,
+        seoIndexable: includeInSearchEngines,
+      };
     } catch (error) {
       console.error("getPublicProviderDetail error:", error);
-      return { provider: null, seoIndexable: false };
+      return { provider: null, providerFull: null, seoIndexable: false };
     }
   },
 );

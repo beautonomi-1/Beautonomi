@@ -143,6 +143,7 @@ const baseApi = createApiClient({
   getAccessToken,
   getDefaultHeaders: (_ctx) => ({
     ...webApiTenantHeaders(),
+    "X-App": "customer",
     "X-Active-Market-Country": getDeviceRegionCountryIso(),
   }),
 });

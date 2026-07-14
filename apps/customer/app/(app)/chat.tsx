@@ -1030,6 +1030,48 @@ export default function ChatScreen() {
     [loadMessages, t],
   );
 
+  const requestChangesCustomOffer = useCallback(
+    (offerId: string) => {
+      Alert.prompt?.(
+        t("customer.chatScreen.requestChangesTitle", { defaultValue: "Request changes" }),
+        t("customer.chatScreen.requestChangesBody", { defaultValue: "Tell the provider what you'd like adjusted." }),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("common.send", { defaultValue: "Send" }),
+            onPress: async (note?: string) => {
+              if (!note?.trim()) {
+                Alert.alert(
+                  t("customer.chatScreen.offerActionFailedTitle"),
+                  t("customer.chatScreen.requestChangesEmpty", { defaultValue: "Please describe the changes you want." }),
+                );
+                return;
+              }
+              try {
+                const res = await api.post(`/api/me/custom-offers/${offerId}/request-changes`, { note: note.trim() });
+                if (res.error) {
+                  Alert.alert(
+                    t("customer.chatScreen.offerActionFailedTitle"),
+                    getApiErrorMessage(res.error, t("customer.chatScreen.requestChangesFailed", { defaultValue: "Failed to request changes" })),
+                  );
+                  return;
+                }
+                await loadMessages();
+              } catch {
+                Alert.alert(
+                  t("customer.chatScreen.offerActionFailedTitle"),
+                  t("customer.chatScreen.requestChangesFailed", { defaultValue: "Failed to request changes" }),
+                );
+              }
+            },
+          },
+        ],
+        "plain-text",
+      );
+    },
+    [loadMessages, t],
+  );
+
   const openOfferDetail = useCallback(async (offerId: string) => {
     setOfferDetailData(null);
     setOfferDetailVisible(true);
@@ -1617,6 +1659,7 @@ export default function ChatScreen() {
                           onPress={() => customOfferAttachment.offer_id && openOfferDetail(customOfferAttachment.offer_id)}
                           onAccept={() => customOfferAttachment.offer_id && openAcceptOfferOptions(customOfferAttachment.offer_id)}
                           onDecline={() => customOfferAttachment.offer_id && void declineCustomOffer(customOfferAttachment.offer_id)}
+                          onRequestChanges={() => customOfferAttachment.offer_id && requestChangesCustomOffer(customOfferAttachment.offer_id)}
                           onResume={() => customOfferAttachment.offer_id && openAcceptOfferOptions(customOfferAttachment.offer_id)}
                           onViewBooking={() => {
                             const oid = customOfferAttachment.offer_id ?? "";

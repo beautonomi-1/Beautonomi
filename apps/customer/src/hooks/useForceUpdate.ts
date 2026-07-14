@@ -25,7 +25,7 @@ export function useForceUpdate() {
   };
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
+    if (Platform.OS === "web" || __DEV__) return;
 
     const currentVersion = getAppNativeVersion();
 
@@ -93,6 +93,12 @@ export function useForceUpdate() {
                 },
               },
             ],
+            {
+              cancelable: true,
+              onDismiss: () => {
+                void dismissSoftUpdate("customer", Platform.OS, data.latestVersion!);
+              },
+            },
           );
         }
       } catch {

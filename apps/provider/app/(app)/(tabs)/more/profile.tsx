@@ -1,7 +1,7 @@
 /**
  * My Profile – personal information, address, plan, contact support.
  * Native provider profile management.
- * Email/phone changes require Supabase verification (email link, phone OTP).
+ * Email/phone changes require Supabase OTP verification.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -50,6 +50,7 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
+import { isMailableEmail } from "@beautonomi/utils";
 import { appendFormDataFileNative, countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -93,9 +94,13 @@ export default function ProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phoneStep, setPhoneStep] = useState<"enter" | "otp" | null>(null);
+  const [emailStep, setEmailStep] = useState<"otp" | null>(null);
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
+  const [pendingEmailForOtp, setPendingEmailForOtp] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
+  const [emailOtpCode, setEmailOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [sendingEmailOtp, setSendingEmailOtp] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapPinVisible, setMapPinVisible] = useState(false);
   const deviceDefaultDialRef = useRef(getDeviceDefaultCountryDial());
@@ -442,6 +447,32 @@ export default function ProfileScreen() {
     const newPhoneE164 = phoneE164FromUi();
     const oldPhoneE164 = normalizeSupabaseAuthPhone(initialProfileRef.current.phone?.trim() || "");
     const phoneChanged = newPhoneE164 !== "" && newPhoneE164 !== oldPhoneE164;
+    const trimmedEmail = (profile.email ?? "").trim();
+    const initialEmail = (initialProfileRef.current.email ?? "").trim();
+    const emailChanged =
+      trimmedEmail.length > 0 && trimmedEmail.toLowerCase() !== initialEmail.toLowerCase();
+
+    if (emailChanged) {
+      if (!isMailableEmail(trimmedEmail)) {
+        Alert.alert("Invalid email", "Please enter a valid email address.");
+        return;
+      }
+      setSendingEmailOtp(true);
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({ email: trimmedEmail });
+        if (updateError) throw updateError;
+        setPendingEmailForOtp(trimmedEmail);
+        setEmailOtpCode("");
+        setEmailStep("otp");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Code sent", `We sent a verification code to ${trimmedEmail}.`);
+      } catch (e: unknown) {
+        Alert.alert("Error", e instanceof Error ? e.message : "Failed to send code.");
+      } finally {
+        setSendingEmailOtp(false);
+      }
+      return;
+    }
 
     if (phoneChanged) {
       setSendingOtp(true);
@@ -470,14 +501,7 @@ export default function ProfileScreen() {
       // email made the server call `supabase.auth.updateUser({ email })`,
       // which throws "Auth session missing" on the bearer-token-only client
       // even though the email wasn't being changed.
-      const trimmedEmail = (profile.email ?? "").trim();
-      const initialEmail = (initialProfileRef.current.email ?? "").trim();
-      const emailChanged =
-        trimmedEmail.length > 0 &&
-        trimmedEmail.toLowerCase() !== initialEmail.toLowerCase();
-
       const payload: Record<string, unknown> = {
-        phone: newPhoneE164,
         address: profile.address
           ? {
               line1: profile.address.line1,
@@ -491,12 +515,8 @@ export default function ProfileScreen() {
             }
           : undefined,
       };
-      if (emailChanged) {
-        payload.email = trimmedEmail;
-      }
       const res = await api.patch<{
         data?: {
-          email_change_pending?: boolean;
           email?: string;
           phone?: string;
         };
@@ -507,17 +527,10 @@ export default function ProfileScreen() {
         const raw = res.data;
         const data =
           raw && typeof raw === "object" && "data" in raw && raw.data != null && typeof raw.data === "object"
-            ? (raw as { data: { email_change_pending?: boolean; email?: string; phone?: string } }).data
-            : (raw as { email_change_pending?: boolean; email?: string; phone?: string } | undefined);
-        if (data?.email_change_pending) {
-          Alert.alert(
-            "Confirm your email",
-            "We sent links to your current email and your new address. Open each to finish the change (both may be required).",
-          );
-        } else {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Alert.alert("Saved", "Your profile has been updated.");
-        }
+            ? (raw as { data: { email?: string; phone?: string } }).data
+            : (raw as { email?: string; phone?: string } | undefined);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Saved", "Your profile has been updated.");
         if (data?.email) {
           initialProfileRef.current.email = data.email;
           setSavedEmailForDisplay(data.email);
@@ -564,6 +577,35 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   }, [phoneOtpCode, pendingPhoneE164, load]);
+
+  const verifyEmailOtp = useCallback(async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtpCode);
+    if (!pendingEmailForOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    setSaving(true);
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: pendingEmailForOtp,
+        token,
+        type: "email_change",
+      });
+      if (verifyError) throw verifyError;
+      const res = await api.post("/api/me/email/verify", { email: pendingEmailForOtp });
+      if (res.error) throw new Error(getApiErrorMessage(res.error, "Failed to save email"));
+      initialProfileRef.current.email = pendingEmailForOtp;
+      setSavedEmailForDisplay(pendingEmailForOtp);
+      setProfile((p) => (p ? { ...p, email: pendingEmailForOtp } : p));
+      setEmailStep(null);
+      setPendingEmailForOtp("");
+      setEmailOtpCode("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Saved", "Your email address has been updated.");
+      load();
+    } catch (e: unknown) {
+      Alert.alert("Verification failed", e instanceof Error ? e.message : "Invalid code.");
+    } finally {
+      setSaving(false);
+    }
+  }, [emailOtpCode, pendingEmailForOtp, load]);
 
   if (loading && !profile) {
     return (
@@ -664,7 +706,7 @@ export default function ProfileScreen() {
                   autoCapitalize="none"
                 />
                 <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                  Changing your email will require confirmation via a link sent to the new address.
+                  Changing your email sends a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
                 </Text>
               </View>
               <View style={{ marginTop: 12 }}>
@@ -988,7 +1030,7 @@ export default function ProfileScreen() {
             disabled={saving || sendingOtp}
             style={twStyle("rounded-xl bg-gray-900 py-3.5 items-center")}
           >
-            {saving || sendingOtp ? (
+            {saving || sendingOtp || sendingEmailOtp ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={twStyle("font-semibold text-white")}>Save changes</Text>
@@ -996,6 +1038,57 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Email verification OTP modal */}
+      <Modal
+        visible={emailStep === "otp"}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEmailStep(null)}
+      >
+        <View style={twStyle("flex-1 bg-white p-6 pt-12")}>
+          <Text style={twStyle("text-lg font-semibold text-gray-900")}>Verify email address</Text>
+          <Text style={twStyle("mt-2 text-sm text-gray-600")}>
+            We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to {pendingEmailForOtp}. Enter it below.
+          </Text>
+          <View style={twStyle("mt-4")}>
+            <OtpDigitRow
+              value={emailOtpCode}
+              onChange={setEmailOtpCode}
+              onComplete={(code) => {
+                if (!saving && isCompleteSupabaseSmsOtp(code)) void verifyEmailOtp(code);
+              }}
+              disabled={saving}
+              autoFocus
+              accessibilityLabelPrefix="Email change verification code"
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => void verifyEmailOtp()}
+            disabled={!isCompleteSupabaseSmsOtp(emailOtpCode) || saving}
+            style={twStyle("mt-6 rounded-xl bg-gray-900 py-3.5 items-center")}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={twStyle("font-semibold text-white")}>Verify and save</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setEmailStep(null);
+              setPendingEmailForOtp("");
+              setEmailOtpCode("");
+              setProfile((p) =>
+                p ? { ...p, email: initialProfileRef.current.email } : p,
+              );
+            }}
+            style={twStyle("mt-4")}
+          >
+            <Text style={twStyle("text-sm font-medium text-primary")}>Wrong email? Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* Phone verification OTP modal */}
       <Modal

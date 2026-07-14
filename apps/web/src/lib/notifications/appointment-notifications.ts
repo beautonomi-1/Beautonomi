@@ -188,19 +188,48 @@ export async function sendCancellationNotification(
   }
 
   try {
-    // Map cancellation type to the expected format
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const admin = getSupabaseAdmin();
+    const { data: bookingRow } = await admin
+      .from("bookings")
+      .select("cancellation_fee, total_refunded, total_paid, currency")
+      .eq("id", bookingId)
+      .maybeSingle();
+
+    const feeRetained = Number((bookingRow as { cancellation_fee?: number } | null)?.cancellation_fee ?? 0);
+    const walletRefund = Math.max(
+      0,
+      Number((bookingRow as { total_refunded?: number } | null)?.total_refunded ?? 0),
+    );
+    const bookingCurrencyCode = (bookingRow as { currency?: string } | null)?.currency;
+
     const cancelledBy = cancellationType === "no_show" ? "system" : "provider";
-    const refundInfo = cancellationType === "late_cancel" 
-      ? "Late cancellation - no refund"
-      : cancellationType === "no_show"
-        ? "No show - no refund"
-        : "Full refund will be processed";
-    
+    let refundInfo = "Settlement follows the booking cancellation policy.";
+    if (cancellationType === "no_show") {
+      refundInfo =
+        feeRetained > 0
+          ? `Marked as no-show. A no-show fee of ${feeRetained.toFixed(2)} was retained; any remainder was credited to the customer's Beautonomi wallet.`
+          : "Marked as no-show. Amounts paid were credited to the customer's Beautonomi wallet.";
+    } else if (feeRetained > 0 && walletRefund > 0) {
+      refundInfo = `Cancellation fee retained: ${feeRetained.toFixed(2)}. Wallet refund issued: ${walletRefund.toFixed(2)}.`;
+    } else if (walletRefund > 0) {
+      refundInfo = `A wallet refund of ${walletRefund.toFixed(2)} has been credited to the customer's Beautonomi wallet.`;
+    } else if (feeRetained > 0) {
+      refundInfo = `A cancellation fee of ${feeRetained.toFixed(2)} was retained per the provider policy.`;
+    } else {
+      refundInfo = "No amounts were collected on this booking.";
+    }
+
     const result = await notifyBookingCancelled(
-      bookingId, 
-      cancelledBy, 
-      refundInfo, 
-      options.channels
+      bookingId,
+      cancelledBy,
+      refundInfo,
+      options.channels,
+      {
+        feeRetained,
+        walletRefund,
+        currency: bookingCurrencyCode,
+      },
     );
 
     return {

@@ -15,3 +15,5 @@ export { SectionCard } from "./SectionCard";
 export { DataTableShell } from "./DataTableShell";
 export { SettingsDetailLayout } from "./SettingsDetailLayout";
 export { QuickStartBanner } from "./QuickStartBanner";
+export { ProviderAppDownloadNudge } from "./ProviderAppDownloadNudge";
+export { ProviderDashboardAppDownloadCard } from "./ProviderDashboardAppDownloadCard";

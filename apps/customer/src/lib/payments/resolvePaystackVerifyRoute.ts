@@ -59,7 +59,7 @@ export function resolvePaystackVerifyRoute(body: unknown): RouteTarget | null {
     }
     const membershipOrderId = pickStr(cur.membershipOrderId) || pickStr(cur.membership_order_id);
     if (membershipOrderId) {
-      return { pathname: "/(app)/(tabs)/explore" };
+      return { pathname: "/(app)/account-settings/membership" };
     }
     const type = pickStr(cur.type) || pickStr(cur.payment_type);
     if (type === "wallet_topup") {
@@ -69,7 +69,7 @@ export function resolvePaystackVerifyRoute(body: unknown): RouteTarget | null {
     // but legacy callers also send `membership` — accept both to avoid
     // regressing to the bookings tab fallback.
     if (type === "membership_order" || type === "membership") {
-      return { pathname: "/(app)/(tabs)/explore" };
+      return { pathname: "/(app)/account-settings/membership" };
     }
     if (type === "custom_offer") {
       return { pathname: "/(app)/account-settings/custom-requests" };

@@ -11,6 +11,7 @@ import {
   normalizePhoneForWasender,
   resolveSessionMessagingBearer,
 } from "@/lib/whatsapp/wasender-client";
+import { leadIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest) {
     if (!leadRow.phone_e164) {
       return errorResponse("Lead has no phone number", "VALIDATION_ERROR", 400);
     }
+    if (leadIsDoNotContact(leadRow)) {
+      return errorResponse("Lead is marked do-not-contact", "DO_NOT_CONTACT", 403);
+    }
 
     const { data: session } = await supabase
       .from("whatsapp_sessions")
@@ -55,6 +59,11 @@ export async function POST(request: NextRequest) {
       return errorResponse("Session is paused", "SESSION_PAUSED", 400);
     }
 
+    const siteBaseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      new URL(request.url).origin;
+    const placeholderOpts = { supabase, tenantId, baseUrl: siteBaseUrl };
+
     let messageBody = message?.trim() || "";
 
     if (template_id && !messageBody) {
@@ -64,10 +73,10 @@ export async function POST(request: NextRequest) {
         .eq("id", template_id)
         .maybeSingle();
       if (tpl) {
-        messageBody = resolveTemplatePlaceholders((tpl as any).body, leadRow);
+        messageBody = await resolveTemplatePlaceholders((tpl as any).body, leadRow, placeholderOpts);
       }
     } else if (messageBody) {
-      messageBody = resolveTemplatePlaceholders(messageBody, leadRow);
+      messageBody = await resolveTemplatePlaceholders(messageBody, leadRow, placeholderOpts);
     }
 
     if (!messageBody) {

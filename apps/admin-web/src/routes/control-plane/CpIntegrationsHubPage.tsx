@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Mail,
   Radio,
+  Phone,
   Smartphone,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
@@ -23,6 +24,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "Product analytics API configuration",
     to: adminSpaTo("/admin/integrations/amplitude"),
     icon: BarChart3,
+  },
+  {
+    title: "Calls (Voice / Salestrail)",
+    description: "Twilio in-browser dialer and Salestrail mobile call tracking",
+    to: adminSpaTo("/admin/integrations/calls"),
+    icon: Phone,
   },
   {
     title: "Slack",

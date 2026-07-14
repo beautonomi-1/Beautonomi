@@ -12,6 +12,7 @@
  */
 
 import * as WebBrowser from "expo-web-browser";
+import { Linking, Platform } from "react-native";
 import { api } from "@/lib/api-client";
 import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 
@@ -146,7 +147,7 @@ export async function launchDidit(
       }
     }
 
-    // 2b. WebBrowser fallback — open Didit session URL in an in-app tab
+    // Browser fallback — iOS uses system Safari for reliable getUserMedia/camera.
     const urlToOpen = sessionUrl ?? null;
     if (!urlToOpen) {
       return {
@@ -156,9 +157,18 @@ export async function launchDidit(
       };
     }
 
+    if (Platform.OS === "ios") {
+      const canOpen = await Linking.canOpenURL(urlToOpen);
+      if (!canOpen) {
+        return { ok: false, error: "Could not open verification in Safari." };
+      }
+      await Linking.openURL(urlToOpen);
+      return { ok: true, sdkResult: "completed" };
+    }
+
     const browserResult = await WebBrowser.openBrowserAsync(urlToOpen, {
       dismissButtonStyle: "close",
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
     });
 
     const sdkResult: "completed" | "cancelled" =

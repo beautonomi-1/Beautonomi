@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@beautonomi/admin-access": "workspace:*",
-    "@beautonomi/learning-mockups": "workspace:*",
     "@beautonomi/admin-api-client": "workspace:*",
+    "@beautonomi/learning-mockups": "workspace:*",
     "@beautonomi/maintenance-paths": "workspace:*",
     "@beautonomi/subscription-features": "workspace:*",
     "@beautonomi/types": "workspace:*",
@@ -33,6 +33,7 @@
     "@tiptap/extension-youtube": "^3.22.4",
     "@tiptap/react": "^3.22.4",
     "@tiptap/starter-kit": "^3.22.4",
+    "@twilio/voice-sdk": "^2.18.3",
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.22.0",
     "marked": "^15.0.12",

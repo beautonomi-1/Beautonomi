@@ -9,6 +9,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { LocationPinnerDialog, type PinnedLocation } from "@/components/maps/LocationPinnerDialog";
+import { ReferrerPicker, type ReferrerSelection } from "@/components/provider-ops/ReferrerPicker";
 import { ChevronDown, ChevronRight, MapPinned, Plus, Trash2 } from "lucide-react";
 
 interface Category { id: string; name: string; slug: string; icon: string | null }
@@ -77,6 +78,7 @@ export function ProviderOpsLeadNewPage() {
   const [phoneNational, setPhoneNational] = useState("");
   const [source, setSource] = useState("manual");
   const [sourceDetail, setSourceDetail] = useState("");
+  const [referrer, setReferrer] = useState<ReferrerSelection | null>(null);
   const [locationText, setLocationText] = useState("");
   const [resolvedLocation, setResolvedLocation] = useState<Record<string, unknown> | null>(null);
   const [locationConfidence, setLocationConfidence] = useState<string | null>(null);
@@ -208,6 +210,8 @@ export function ProviderOpsLeadNewPage() {
         source_detail: sourceDetail.trim() || null, suggested_location_text: locationText.trim() || null,
         resolved_location: resolvedLocation, location_confidence: locationConfidence, country: country || null,
         description: description.trim() || null, notes: notes.trim() || null, category_ids: selectedCategoryIds, tags,
+        referrer_user_id: referrer?.referrer_user_id ?? null,
+        referrer_provider_id: referrer?.referrer_provider_id ?? null,
         ...(onboardingData ? { onboarding_data: onboardingData } : {}),
       });
       navigate(adminSpaTo(`/admin/provider-ops/leads/${res.data.id}`));
@@ -296,7 +300,13 @@ export function ProviderOpsLeadNewPage() {
               </select>
             </FormField>
             {(source === "campaign" || source === "referral") && (
-              <FormField label="Source Detail"><input type="text" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} placeholder={source === "campaign" ? "Campaign name" : "Referrer name"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
+              <FormField label="Source Detail"><input type="text" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} placeholder={source === "campaign" ? "Campaign name" : "Referrer name (optional text)"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
+            )}
+            {(source === "referral" || referrer) && (
+              <FormField label="Referrer">
+                <ReferrerPicker value={referrer} onChange={setReferrer} disabled={submitting} />
+                <p className="mt-1 text-xs text-gray-400">Link to an existing provider or user when known.</p>
+              </FormField>
             )}
             <FormField label="Description"><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." rows={3} className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
             <FormField label="Internal Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Private admin notes..." rows={2} className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>

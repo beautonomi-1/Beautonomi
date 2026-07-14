@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
+import { phoneIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 
 /**
  * POST /api/admin/provider-ops/run-stall-check
@@ -151,6 +152,9 @@ export async function POST(request: NextRequest) {
             const name = (userRow as { full_name?: string } | null)?.full_name ?? "Provider";
 
             if (phone) {
+              if (await phoneIsDoNotContact(supabase, tenantId, phone)) {
+                continue;
+              }
               // Dynamic import — graceful fallback when Twilio env vars are not set
               const { sendTwilioSMS } = await import("@/lib/integrations/twilio").catch(() => ({ sendTwilioSMS: null }));
               if (sendTwilioSMS) {

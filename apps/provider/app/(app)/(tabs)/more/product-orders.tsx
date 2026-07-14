@@ -1,16 +1,13 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
-import { View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Alert, Platform, Linking, Share as RNShare } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Alert, Platform, Linking } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { api, getApiBaseUrl } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
+import { downloadPdf } from "@/lib/pdf-file";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
-import { webApiTenantHeaders } from "@/config/public-env";
-import { supabase } from "@/lib/supabase/client";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -70,6 +67,7 @@ interface Order {
   id: string;
   order_number: string;
   total_amount: number | string;
+  wallet_amount?: number | string | null;
   subtotal?: number | string | null;
   tax_amount?: number | string | null;
   delivery_fee?: number | string | null;
@@ -109,6 +107,11 @@ interface OrdersListResponse {
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
+
+/** Net amount still due after wallet credit — matches PayCloud amount guards on the server. */
+function orderCollectibleAmount(order: Pick<Order, "total_amount" | "wallet_amount">): number {
+  return Math.max(0, Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0));
+}
 
 const STATUS_OPTIONS = [
   { value: "", label: "All" },
@@ -1076,82 +1079,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               {/* Download receipt */}
               <TouchableOpacity
                 onPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   try {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    const base = getApiBaseUrl().replace(/\/$/, "");
-                    const safeName = `order_${(activeOrder.order_number || activeOrder.id).replace(/[^\w.-]+/g, "_")}.pdf`;
-                    const pdfPath = `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`;
-
-                    const tryBearerDownload = async (): Promise<boolean> => {
-                      const { data } = await supabase.auth.getSession();
-                      const token = data.session?.access_token;
-                      if (!token || !base) return false;
-                      const pdfUrl = `${base}${pdfPath}`;
-                      const headers: Record<string, string> = {
-                        Authorization: `Bearer ${token}`,
-                        ...webApiTenantHeaders(),
-                      };
-                      if (Platform.OS === "web") {
-                        const r = await fetch(pdfUrl, { headers, credentials: "omit" });
-                        if (!r.ok) return false;
-                        const blob = await r.blob();
-                        const objUrl = URL.createObjectURL(blob);
-                        if (typeof window !== "undefined") {
-                          window.open(objUrl, "_blank", "noopener,noreferrer");
-                          setTimeout(() => URL.revokeObjectURL(objUrl), 120_000);
-                        }
-                        return true;
-                      }
-                      if (!cacheDirectory) return false;
-                      const fileUri = `${cacheDirectory}${safeName}`;
-                      const dl = await downloadAsync(pdfUrl, fileUri, { headers });
-                      if (dl.status !== 200) return false;
-                      await RNShare.share({
-                        url: fileUri,
-                        message: `Order ${activeOrder.order_number}`,
-                      });
-                      return true;
-                    };
-
-                    if (await tryBearerDownload()) return;
-
-                    const res = await api.post<{ url?: string }>(
-                      `${pdfPath.replace("/receipt/pdf", "/receipt/signed-url")}`,
-                      {},
-                    );
-                    const signedUrl = res.data?.url;
-                    if (res.error || !signedUrl) {
-                      const msg =
-                        (res.error as { message?: string } | null)?.message ??
-                        "Could not generate this receipt. Please try again.";
-                      Alert.alert("Download receipt", msg);
-                      return;
-                    }
-                    if (Platform.OS === "web") {
-                      pushInAppBrowser(router, signedUrl, "Order receipt");
-                    } else {
-                      if (!cacheDirectory) {
-                        Alert.alert(
-                          "Download receipt",
-                          "File storage is not available on this device.",
-                        );
-                        return;
-                      }
-                      const fileUri = `${cacheDirectory}${safeName}`;
-                      const dl = await downloadAsync(signedUrl, fileUri);
-                      if (dl.status !== 200) {
-                        const hint =
-                          dl.status === 401 || dl.status === 403
-                            ? "Your session may have expired. Please try again after refreshing the screen."
-                            : `The server returned status ${dl.status}.`;
-                        Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
-                        return;
-                      }
-                      await RNShare.share({
-                        url: fileUri,
-                        message: `Order ${activeOrder.order_number}`,
-                      });
-                    }
+                    await downloadPdf({
+                      router,
+                      pdfPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`,
+                      signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/signed-url`,
+                      filename: `order_${activeOrder.order_number || activeOrder.id}.pdf`,
+                      title: `Order ${activeOrder.order_number}`,
+                      label: "receipt",
+                    });
                   } catch (e) {
                     Alert.alert(
                       "Download receipt",
@@ -1421,7 +1358,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         onClose={() => setTerminalSheetOpen(false)}
         entityType="product_order"
         entityId={activeOrder?.id ?? null}
-        expectedAmount={Number(activeOrder?.total_amount ?? 0)}
+        expectedAmount={activeOrder ? orderCollectibleAmount(activeOrder) : 0}
         currency={activeOrder?.currency ?? currency}
         customerReference={activeOrder?.order_number ?? null}
       />
@@ -1429,7 +1366,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       <YocoPaymentSheet
         visible={showYocoPaymentSheet}
         onClose={() => setShowYocoPaymentSheet(false)}
-        amountCents={Math.round(Number(activeOrder?.total_amount ?? 0) * 100)}
+        amountCents={Math.round((activeOrder ? orderCollectibleAmount(activeOrder) : 0) * 100)}
         currency={activeOrder?.currency ?? currency}
         description={`Product order ${activeOrder?.order_number ?? activeOrder?.id ?? ""}`}
         onPaymentSuccess={(result) => void handleYocoCollectionSuccess(result)}
@@ -1439,7 +1376,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         <PayCloudPaymentSheet
           visible={showPaycloudPaymentSheet}
           onClose={() => setShowPaycloudPaymentSheet(false)}
-          amount={Number(activeOrder.total_amount ?? 0)}
+          amount={orderCollectibleAmount(activeOrder)}
           currency={activeOrder.currency ?? currency}
           entityType="product_order"
           entityId={activeOrder.id}

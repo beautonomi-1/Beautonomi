@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calendar,
   DollarSign,
@@ -23,6 +23,8 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 import { QuickStartBanner } from "@/components/provider/QuickStartBanner";
 import { ProviderDashboardExcellenceBanner } from "@/components/provider/ProviderDashboardExcellenceBanner";
+import { ProviderDashboardAppDownloadCard } from "@/components/provider/ProviderDashboardAppDownloadCard";
+import { ProviderAppDownloadNudge } from "@/components/provider/ProviderAppDownloadNudge";
 import { RewardsCard } from "@/components/provider/RewardsCard";
 import { BadgeCongratsModal } from "@/components/provider/BadgeCongratsModal";
 import { ProviderIdentityStrip } from "@/components/provider/ProviderIdentityStrip";
@@ -64,7 +66,15 @@ export function DashboardClient({
   initialMissingProfile,
 }: DashboardClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { bundle } = useConfigBundle();
+  const [showSubscriptionSuccessNudge, setShowSubscriptionSuccessNudge] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("subscription_success") !== "1") return;
+    setShowSubscriptionSuccessNudge(true);
+    router.replace("/provider/dashboard");
+  }, [searchParams, router]);
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { provider, isLoading: isLoadingProvider, loadError: providerError, selectedLocationId } = useProviderPortal();
   const [stats, setStats] = useState<ProviderDashboardStats | null>(() => initialStats ?? null);
@@ -444,8 +454,21 @@ export function DashboardClient({
         </div>
       )}
 
+      {showSubscriptionSuccessNudge ? (
+        <ProviderAppDownloadNudge
+          successHeadline="Subscription active!"
+          subtitle="Your plan is set up. Download the provider app to manage bookings on the go."
+          showContinue
+          continueLabel="Continue"
+          onContinue={() => setShowSubscriptionSuccessNudge(false)}
+          className="mb-4 sm:mb-6"
+        />
+      ) : null}
+
       {/* Quick Start Banner */}
       <QuickStartBanner />
+
+      <ProviderDashboardAppDownloadCard />
 
       <ProviderDashboardExcellenceBanner />
 

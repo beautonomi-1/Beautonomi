@@ -8,9 +8,11 @@ export type CustomOfferSummary = {
   status: string;
   payment_url?: string | null;
   paid_at?: string | null;
+  change_request_note?: string | null;
   staff_id?: string | null;
   location_id?: string | null;
   scheduled_at?: string | null;
+  travel_fee?: number | null;
   staff?: { id: string; name: string } | null;
   location?: { id: string; name: string } | null;
 };
@@ -19,6 +21,7 @@ export type CustomRequestListItem = {
   id: string;
   description: string;
   status: string;
+  declined_reason?: string | null;
   preferred_start_at?: string | null;
   location_type: string;
   budget_min?: number | null;

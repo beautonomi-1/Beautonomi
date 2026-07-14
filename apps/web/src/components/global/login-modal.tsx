@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
-import { X, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
+import { X, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, Smartphone, Mail } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -285,7 +285,9 @@ export default function LoginModal({
       setOtpSecondsLeft(0);
       setOtpResending(false);
       setOtpResendCooldown(0);
-      setEmailOtpMode(false);
+      // Login mode opens straight on the email form — default to the passwordless
+      // code flow (matches /login and the mobile apps); signup keeps password fields.
+      setEmailOtpMode(authPolicy.email_provider_enabled && initialMode === "login");
       setEmailOtpSent(false);
       setEmailOtpCode("");
       setPendingEmailOtp("");
@@ -792,9 +794,12 @@ export default function LoginModal({
     if (!authPolicy.email_provider_enabled) return;
     setShowEmailForm(true);
     // Default to login unless initialMode is explicitly signup
-    setIsSignup(initialMode === "signup");
+    const signup = initialMode === "signup";
+    setIsSignup(signup);
     setError(null);
-    setEmailOtpMode(false);
+    // Passwordless-primary (mobile pattern): login lands on the email-code flow,
+    // with "Use password instead" as progressive disclosure.
+    setEmailOtpMode(!signup);
     setEmailOtpSent(false);
     setEmailOtpCode("");
     setPendingEmailOtp("");
@@ -1116,7 +1121,10 @@ export default function LoginModal({
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-[440px] m-0 sm:m-4 p-0 z-[9999] overflow-auto max-h-[90vh] sm:max-h-[85vh] rounded-[28px] sm:rounded-[32px] bg-white shadow-2xl border-0">
+      <DialogContent
+        hideClose
+        className="w-full max-w-[95vw] sm:max-w-[440px] m-0 sm:m-4 p-0 z-[9999] overflow-auto max-h-[90vh] sm:max-h-[85vh] rounded-[28px] sm:rounded-[32px] bg-white shadow-2xl border-0"
+      >
         <DialogHeader className="px-5 sm:px-6 pt-5 sm:pt-6 pb-2 relative">
           <button
             onClick={() => setOpen(false)}
@@ -1147,14 +1155,62 @@ export default function LoginModal({
               <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">
                 Welcome to Beautonomi
               </h2>
-              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">
-                Log in or sign up to continue
-              </p>
-              <p className="mb-5 text-center text-xs text-gray-500">
-                Continue with phone, email code, Google, Apple, or password.
+              <p className="text-[13px] text-gray-500 mb-5">
+                Log in or sign up to continue — we&apos;ll set you up when you verify.
               </p>
             </>
           )}
+
+          {/* Method segmented control — hidden during code entry and signup form (mobile pattern) */}
+          {authPolicy.phone_provider_enabled &&
+            authPolicy.email_provider_enabled &&
+            !otpSent &&
+            !emailOtpSent &&
+            !awaitingEmailVerification &&
+            !isSignup && (
+              <div
+                className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1"
+                role="tablist"
+                aria-label="Sign-in method"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!showEmailForm}
+                  onClick={() => {
+                    if (!showEmailForm) return;
+                    setShowEmailForm(false);
+                    setShowPasswordField(false);
+                    setError(null);
+                    setEmailOtpMode(false);
+                    setEmailOtpSent(false);
+                    setEmailOtpCode("");
+                    setPendingEmailOtp("");
+                  }}
+                  className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all touch-manipulation ${
+                    !showEmailForm ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Smartphone className="h-4 w-4" aria-hidden />
+                  Phone
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={showEmailForm}
+                  onClick={() => {
+                    if (showEmailForm) return;
+                    handleEmailButtonClick();
+                  }}
+                  className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all touch-manipulation ${
+                    showEmailForm ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Mail className="h-4 w-4" aria-hidden />
+                  Email
+                </button>
+              </div>
+            )}
 
           {/* Error Message */}
           {error && !awaitingEmailVerification && (
@@ -1412,8 +1468,7 @@ export default function LoginModal({
                   Wrong email? Go back and edit
                 </button>
                 <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-500">
-                  No code in your inbox? The Supabase &quot;Confirm signup&quot; email template
-                  must include <code className="text-[10px]">{"{{ .Token }}"}</code>.
+                  No code in your inbox? Check your spam folder, or resend the code above.
                 </p>
               </div>
             </div>
@@ -1422,37 +1477,39 @@ export default function LoginModal({
           {/* Email Form (shown when "Continue with email" is clicked) */}
           {showEmailForm && !awaitingEmailVerification && (
             <>
-              {/* Back to phone/social - clear escape hatch */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowEmailForm(false);
-                  setShowPasswordField(false);
-                  setAwaitingEmailVerification(false);
-                  setError(null);
-                  setEmailOtpMode(false);
-                  setEmailOtpSent(false);
-                  setEmailOtpCode("");
-                  setPendingEmailOtp("");
-                }}
-                className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
+              {/* Back escape hatch — only when the Phone|Email tabs aren't rendered (signup mode). */}
+              {isSignup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmailForm(false);
+                    setShowPasswordField(false);
+                    setAwaitingEmailVerification(false);
+                    setError(null);
+                    setEmailOtpMode(false);
+                    setEmailOtpSent(false);
+                    setEmailOtpCode("");
+                    setPendingEmailOtp("");
+                  }}
+                  className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Back to {authPolicy.phone_provider_enabled ? "phone or social" : "social"}
-              </button>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Back to {authPolicy.phone_provider_enabled ? "phone or social" : "social"}
+                </button>
+              )}
               {/* Step 1: Email Input (or both email and password for login mode) */}
               {!showPasswordField && (
                 <>
@@ -1536,20 +1593,13 @@ export default function LoginModal({
                         className="mb-5"
                         length={emailOtpLen}
                       />
-                      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500">
-                        <span>
+                      <div className="mb-4 flex items-center justify-between gap-3 text-xs">
+                        <span className="text-gray-500">
                           Code valid for{" "}
-                          <span className="font-semibold text-gray-700">
+                          <span className="font-semibold tabular-nums text-gray-700">
                             {formatOtpCountdown(emailOtpSecondsLeft)}
-                          </span>{" "}
-                          (matches platform / Supabase email OTP expiry)
+                          </span>
                         </span>
-                        <span className="text-gray-400 sm:text-right">
-                          Link-only email? Add <code className="text-[11px]">{"{{ .Token }}"}</code>{" "}
-                          to the Supabase Magic Link template.
-                        </span>
-                      </div>
-                      <div className="mb-4 flex items-center justify-end text-xs">
                         <button
                           type="button"
                           onClick={() => void handleResendEmailOtp()}
@@ -1778,34 +1828,25 @@ export default function LoginModal({
                         </>
                       )}
 
-                      <Button
-                        variant="outline"
-                        className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                        onClick={() => {
-                          setShowEmailForm(false);
-                          setError(null);
-                          setEmailOtpMode(false);
-                          setEmailOtpSent(false);
-                          setEmailOtpCode("");
-                          setPendingEmailOtp("");
-                        }}
-                        disabled={isLoading}
-                      >
-                        <svg
-                          className="w-5 h-5 shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                      {/* Signup mode has no Phone|Email tabs — offer an explicit path back to phone. */}
+                      {isSignup && authPolicy.phone_provider_enabled && (
+                        <Button
+                          variant="outline"
+                          className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                          onClick={() => {
+                            setShowEmailForm(false);
+                            setError(null);
+                            setEmailOtpMode(false);
+                            setEmailOtpSent(false);
+                            setEmailOtpCode("");
+                            setPendingEmailOtp("");
+                          }}
+                          disabled={isLoading}
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                          />
-                        </svg>
-                        <span>Continue with Phone</span>
-                      </Button>
+                          <Smartphone className="w-5 h-5 shrink-0" aria-hidden />
+                          <span>Continue with Phone</span>
+                        </Button>
+                      )}
 
                       {/* Need help link */}
                       <div className="text-center mt-6">
@@ -2004,7 +2045,8 @@ export default function LoginModal({
                 </Button>
               )}
 
-              {authPolicy.email_provider_enabled && (
+              {/* Only needed when the Phone|Email tabs aren't rendered (phone provider disabled). */}
+              {authPolicy.email_provider_enabled && !authPolicy.phone_provider_enabled && (
                 <Button
                   variant="outline"
                   className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"

@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("id, assigned_to, commercial_stage")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .range(from, to);
       return { data: r.data as LeadRow[] | null, error: r.error };
     });

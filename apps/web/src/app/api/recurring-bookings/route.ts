@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { preferredTimeSchema } from "@/lib/recurring/preferred-time-schema";
 import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -31,7 +32,7 @@ const recurringBookingSchema = z.object({
   start_date: z.string().date(),
   end_date: z.string().date().optional(),
   number_of_occurrences: z.number().int().positive().optional(),
-  preferred_time: z.string(), // HH:MM format
+  preferred_time: preferredTimeSchema,
   location_type: z.enum(["at_home", "at_salon"]),
   location_id: z.string().uuid().optional().nullable(),
   address: z.object({

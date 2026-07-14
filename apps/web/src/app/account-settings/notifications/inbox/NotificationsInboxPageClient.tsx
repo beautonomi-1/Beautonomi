@@ -19,7 +19,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
@@ -115,11 +115,11 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
   const [isLoading, setIsLoading] = useState(() => !initialInbox);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
-  const loadRef = useRef<((silent?: boolean) => Promise<void>) | null>(null);
+  const loadRef = useRef<((silent?: boolean, opts?: { staleTimeMs?: number }) => Promise<void>) | null>(null);
   const skipHydrateFetchOnce = useRef(Boolean(initialInbox));
 
   const load = useCallback(
-    async (silent = false) => {
+    async (silent = false, opts?: { staleTimeMs?: number }) => {
       if (!user?.id) return;
       if (!silent) setIsLoading(true);
       try {
@@ -127,7 +127,9 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
           filter === "unread"
             ? "/api/me/notifications?unread_only=true&limit=50"
             : "/api/me/notifications?limit=50";
-        const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>(url);
+        const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>(url, {
+          staleTimeMs: opts?.staleTimeMs,
+        });
         const data = (response as { data?: NotificationResponse }).data ?? (response as NotificationResponse);
         setNotifications(data.notifications || []);
         setTotalUnread(data.total_unread || 0);
@@ -171,7 +173,8 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
           "postgres_changes",
           { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
           () => {
-            loadRef.current?.(true);
+            // Bypass the GET cache — the DB just changed, cached data is stale.
+            loadRef.current?.(true, { staleTimeMs: 0 });
           }
         )
         .subscribe();
@@ -196,6 +199,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
       setTotalUnread((prev) => Math.max(0, prev - 1));
       try {
         await fetcher.post(`/api/me/notifications/${notification.id}/read`);
+        deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
       } catch {
         setNotifications((prev) =>
           prev.map((n) =>
@@ -230,6 +234,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
     setTotalUnread(0);
     try {
       await fetcher.post("/api/me/notifications/mark-all-read");
+      deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
       toast.success("All notifications marked as read");
     } catch {
       setNotifications(prevNotifications);
@@ -261,6 +266,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
       await fetcher.delete(
         `/api/me/notifications/${encodeURIComponent(notification.id)}`,
       );
+      deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
     } catch {
       setNotifications(prevList);
       setTotalUnread(prevUnread);
@@ -270,7 +276,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await load(true);
+    await load(true, { staleTimeMs: 0 });
     setIsRefreshing(false);
   };
 

@@ -550,7 +550,10 @@ export default function BookingsListScreen() {
     "/api/provider/availability-blocks",
     { staleTimeMs: 600_000 },
   );
-  const { data: navCounts } = useApi<{ waiting_room: number }>("/api/provider/nav-counts", { staleTimeMs: 15_000 });
+  const { data: navCounts } = useApi<{ waiting_room: number; stale_pending_bookings: number }>(
+    "/api/provider/nav-counts",
+    { staleTimeMs: 15_000 },
+  );
   const { data: permissionData } = useApi<{
     permissions?: { edit_appointments?: boolean; cancel_appointments?: boolean };
   }>("/api/provider/permissions");
@@ -977,6 +980,21 @@ export default function BookingsListScreen() {
     [dateRange, providerTimezone],
   );
 
+  /**
+   * Jump to the Overview list, filtered to pending bookings across all dates
+   * (oldest-first via the default "By appointment" sort). Used by the
+   * needs-attention banner and the tappable Overview Pending stat card so a
+   * provider can always reach — and action — pending requests that have
+   * fallen outside the ±30-day Day-view date strip.
+   */
+  const showAllPendingBookings = useCallback(() => {
+    void Haptics.selectionAsync();
+    setStatusFilter("pending");
+    setDateRange("all");
+    setListSort("appointment");
+    setViewMode("overview");
+  }, []);
+
   const openBooking = useCallback(
     (b: Booking) => {
       if (b.is_group_booking && b.group_booking_id) {
@@ -1305,6 +1323,30 @@ export default function BookingsListScreen() {
                 </View>
               </View>
             ) : null}
+            {(navCounts?.stale_pending_bookings ?? 0) > 0 ? (
+              <TouchableOpacity
+                onPress={showAllPendingBookings}
+                activeOpacity={0.85}
+                style={[
+                  twStyle("mx-4 mb-2 flex-row items-center rounded-xl border px-3 py-3"),
+                  { backgroundColor: "#fffbeb", borderColor: "#fde68a", borderLeftWidth: 4, borderLeftColor: "#f59e0b" },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`${navCounts?.stale_pending_bookings} booking requests from past dates need your attention. Review.`}
+              >
+                <Ionicons name="alert-circle-outline" size={18} color="#b45309" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                    {navCounts?.stale_pending_bookings} booking request
+                    {navCounts?.stale_pending_bookings === 1 ? "" : "s"} from past dates need your attention
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-amber-700")}>
+                    They&apos;ve fallen outside your date strip — review and confirm or decline them.
+                  </Text>
+                </View>
+                <Text style={twStyle("ml-2 text-xs font-bold text-amber-800")}>Review</Text>
+              </TouchableOpacity>
+            ) : null}
           </>
         ) : null}
 
@@ -1345,7 +1387,12 @@ export default function BookingsListScreen() {
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
               </View>
-              <View
+              <TouchableOpacity
+                onPress={showAllPendingBookings}
+                activeOpacity={0.85}
+                disabled={statsSnapshot.pendingCount === 0}
+                accessibilityRole="button"
+                accessibilityLabel={`${statsSnapshot.pendingCount} pending bookings — view all`}
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
                   statsSnapshot.pendingCount > 0
@@ -1365,7 +1412,7 @@ export default function BookingsListScreen() {
                   </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
-              </View>
+              </TouchableOpacity>
               <View
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
@@ -1476,6 +1523,8 @@ export default function BookingsListScreen() {
       daySummary,
       currency,
       navCounts?.waiting_room,
+      navCounts?.stale_pending_bookings,
+      showAllPendingBookings,
       daySummary.isClosed,
       daySummary.hasBookingsOnClosed,
       statsRange,

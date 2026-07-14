@@ -19,6 +19,7 @@ type RequestItem = {
   id: string;
   description: string;
   status: string;
+  declined_reason?: string | null;
   created_at: string;
   preferred_start_at?: string | null;
   duration_minutes?: number | null;
@@ -26,7 +27,7 @@ type RequestItem = {
   budget_max?: number | null;
   location_type?: string;
   customer?: { id: string; full_name?: string | null; email?: string | null; avatar_url?: string | null };
-  offers?: Array<{ id: string; status: string; price: number; currency: string; created_at: string }>;
+  offers?: Array<{ id: string; status: string; price: number; currency: string; created_at: string; change_request_note?: string | null }>;
   attachments?: Array<{ id: string; url: string }>;
 };
 
@@ -73,6 +74,7 @@ export default function ProviderCustomRequestsPage() {
   const [offerDetailOpen, setOfferDetailOpen] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<Record<string, any> | null>(null);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
 
   const openOfferDetail = async (offerId: string) => {
     setOfferDetailOpen(true);
@@ -124,9 +126,29 @@ export default function ProviderCustomRequestsPage() {
     if (locationsRes.status === "fulfilled") setLocations(locationsRes.value.data || []);
   };
 
-  const openOffer = (req: RequestItem) => {
+  const openOffer = (req: RequestItem, editOfferId?: string) => {
     setSelected(req);
-    setOfferOpen(true);
+    setEditingOfferId(editOfferId ?? null);
+    if (editOfferId) {
+      const offer = req.offers?.find((o) => o.id === editOfferId);
+      if (offer) {
+        setPrice(String(offer.price ?? ""));
+        setDurationMinutes(Number(req.duration_minutes || 60));
+        const exp = new Date();
+        exp.setDate(exp.getDate() + 2);
+        setExpirationAt(exp.toISOString().slice(0, 16));
+        setNotes("");
+        setTravelFee("");
+        setStaffId(null);
+        setLocationId(null);
+        const preferred = req.preferred_start_at ? new Date(req.preferred_start_at) : new Date();
+        if (!Number.isFinite(preferred.getTime()) || preferred.getTime() < Date.now()) preferred.setHours(preferred.getHours() + 1, 0, 0, 0);
+        setScheduledAt(preferred.toISOString().slice(0, 16));
+        setOfferOpen(true);
+        void loadOfferRefs();
+        return;
+      }
+    }
     setPrice("");
     setDurationMinutes(Number(req.duration_minutes || 60));
     const exp = new Date();
@@ -140,6 +162,20 @@ export default function ProviderCustomRequestsPage() {
     if (!Number.isFinite(preferred.getTime()) || preferred.getTime() < Date.now()) preferred.setHours(preferred.getHours() + 1, 0, 0, 0);
     setScheduledAt(preferred.toISOString().slice(0, 16));
     void loadOfferRefs();
+  };
+
+  const declineRequest = async (requestId: string) => {
+    const reason = window.prompt("Optional reason for declining this request:");
+    if (reason === null) return;
+    try {
+      await fetcher.post(`/api/provider/custom-requests/${requestId}/decline`, {
+        reason: reason.trim() || null,
+      });
+      toast.success("Request declined");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof FetchError ? e.message : "Failed to decline request");
+    }
   };
 
   const dateOptions = useMemo(() => {
@@ -228,9 +264,15 @@ export default function ProviderCustomRequestsPage() {
         const fee = Number(travelFee);
         if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
       }
-      await fetcher.post(`/api/provider/custom-requests/${selected.id}/offers`, payload);
-      toast.success("Offer sent");
+      if (editingOfferId) {
+        await fetcher.patch(`/api/provider/custom-offers/${editingOfferId}`, payload);
+        toast.success("Offer updated");
+      } else {
+        await fetcher.post(`/api/provider/custom-requests/${selected.id}/offers`, payload);
+        toast.success("Offer sent");
+      }
       setOfferOpen(false);
+      setEditingOfferId(null);
       await load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to send offer");
@@ -264,6 +306,11 @@ export default function ProviderCustomRequestsPage() {
                       <span className="capitalize">{r.status}</span>
                     </div>
                     <div className="font-medium mt-1 break-words">{r.description}</div>
+                    {r.status === "declined" && r.declined_reason ? (
+                      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
+                        Declined: {r.declined_reason}
+                      </div>
+                    ) : null}
                     <div className="text-sm text-gray-600 mt-2">
                       {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
                       {r.location_type || "at_salon"}
@@ -271,9 +318,16 @@ export default function ProviderCustomRequestsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <Button variant="outline" onClick={() => openOffer(r)}>
-                      Send Offer
-                    </Button>
+                    {["pending", "offered"].includes(r.status) && (
+                      <>
+                        <Button variant="outline" onClick={() => openOffer(r)}>
+                          Send Offer
+                        </Button>
+                        <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => void declineRequest(r.id)}>
+                          Decline
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
                 {r.offers && r.offers.length > 0 ? (
@@ -283,6 +337,7 @@ export default function ProviderCustomRequestsPage() {
                       const isPaid = st === "paid";
                       const isWithdrawn = st === "withdrawn";
                       const isExpired = st === "expired";
+                      const isChangesRequested = st === "changes_requested";
                       const isInactive = isWithdrawn || isExpired;
                       const badgeClass = isPaid
                         ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
@@ -290,8 +345,10 @@ export default function ProviderCustomRequestsPage() {
                           ? "bg-slate-100 text-slate-500 border border-slate-200"
                           : isExpired
                             ? "bg-amber-100 text-amber-700 border border-amber-200"
+                            : isChangesRequested
+                              ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
                             : "bg-blue-50 text-blue-700 border border-blue-200";
-                      const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : "Pending";
+                      const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isChangesRequested ? "Changes requested" : "Pending";
                       return (
                         <div
                           key={o.id}
@@ -303,6 +360,9 @@ export default function ProviderCustomRequestsPage() {
                               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>{badgeLabel}</span>
                             </div>
                             <div className="text-sm font-medium">{o.currency} {o.price}</div>
+                            {isChangesRequested && o.change_request_note ? (
+                              <div className="text-xs text-indigo-700 mt-1 bg-indigo-50 rounded px-2 py-1">{o.change_request_note}</div>
+                            ) : null}
                             <div className="text-[11px] text-gray-400 mt-0.5">Tap for details</div>
                           </div>
                         </div>
@@ -467,7 +527,7 @@ export default function ProviderCustomRequestsPage() {
                   Cancel
                 </Button>
                 <Button onClick={sendOffer} disabled={isSubmitting || !canSubmitOffer}>
-                  {isSubmitting ? "Sending..." : "Send Offer"}
+                  {isSubmitting ? "Sending..." : editingOfferId ? "Update Offer" : "Send Offer"}
                 </Button>
                 </div>
               </div>
@@ -492,8 +552,9 @@ export default function ProviderCustomRequestsPage() {
               const isPaid = rawStatus === "paid" || !!d.booking_id;
               const isWithdrawn = rawStatus === "withdrawn";
               const isExpired = rawStatus === "expired";
-              const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : "Pending";
-              const statusClass = isPaid ? "bg-emerald-100 text-emerald-700" : isWithdrawn ? "bg-slate-100 text-slate-600" : isExpired ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700";
+              const isChangesRequested = rawStatus === "changes_requested";
+              const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isChangesRequested ? "Changes requested" : "Pending";
+              const statusClass = isPaid ? "bg-emerald-100 text-emerald-700" : isWithdrawn ? "bg-slate-100 text-slate-600" : isExpired ? "bg-amber-100 text-amber-700" : isChangesRequested ? "bg-indigo-100 text-indigo-700" : "bg-blue-50 text-blue-700";
               return (
                 <div className="space-y-4 pb-2">
                   <div className="flex items-center gap-2">
@@ -546,12 +607,30 @@ export default function ProviderCustomRequestsPage() {
                       <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
                     </div>
                   )}
+                  {isChangesRequested && d.change_request_note && (
+                    <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                      <span className="font-semibold">Customer requested changes: </span>
+                      {d.change_request_note}
+                    </div>
+                  )}
                   {isPaid && d.booking_id && (
                     <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
                       Booking created. Reference: {d.booking_id}
                     </div>
                   )}
                   <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    {(rawStatus === "pending" || isChangesRequested) && d.id && (
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setOfferDetailOpen(false);
+                          const parentReq = items.find((r) => r.offers?.some((o) => o.id === d.id));
+                          if (parentReq) openOffer(parentReq, d.id);
+                        }}
+                      >
+                        Edit offer
+                      </Button>
+                    )}
                     {!isPaid && !isWithdrawn && !isExpired && d.id && (
                       <Button
                         variant="outline"

@@ -14,6 +14,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { datetimeLocalToIsoOrNull, isoToDatetimeLocalValue } from "@/lib/maintenance-datetime";
+import { publicSiteOrigin } from "@/config/publicEnv";
 import {
   PUBLIC_SITE_MAINTENANCE_EXEMPT_PREFIXES,
   PROVIDER_WEB_MAINTENANCE_EXEMPT_PREFIXES,
@@ -80,7 +81,7 @@ function normalizeMaintenanceFromApi(
 }
 
 function previewUrl(scope: MaintenanceScope): string {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
+  const base = publicSiteOrigin();
   if (scope === "public_site") return `${base}/?maintenance_preview=1`;
   if (scope === "provider_web") return `${base}/provider?maintenance_preview=1`;
   return `${base}/maintenance-preview?scope=${scope}`;

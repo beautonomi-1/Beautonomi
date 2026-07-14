@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { csvWithBom } from "@/lib/utils/csv";
 
 const TEMPLATE_HEADERS = [
   "name",
   "email",
   "phone",
   "location",
+  "country",
   "category",
   "description",
   "source",
+  "source_detail",
+  "referrer_email",
+  "referrer_phone",
   "notes",
   "tags",
 ];
@@ -21,9 +26,13 @@ const EXAMPLE_ROWS = [
     "thandi@glowsalon.co.za",
     "+27 71 123 4567",
     "Sandton, Johannesburg",
+    "South Africa",
     "Hair; Nails",
     "Referred by existing provider",
     "referral",
+    "Referred by Jane at Glow Partners",
+    "referrer@existingprovider.co.za",
+    "",
     "Follow up next week",
     "vip; sandton",
   ],
@@ -32,7 +41,11 @@ const EXAMPLE_ROWS = [
     "",
     "0821234567",
     "Cape Town",
+    "South Africa",
     "Hair",
+    "",
+    "",
+    "",
     "",
     "",
     "",
@@ -44,8 +57,12 @@ const EXAMPLE_ROWS = [
     "",
     "",
     "",
+    "",
     "Met at trade show",
     "outbound",
+    "",
+    "",
+    "",
     "",
     "",
   ],
@@ -61,10 +78,14 @@ const INSTRUCTIONS = [
   "#   name        - Business name, person name, or both (auto-detected)",
   "#   email       - Email address (auto-normalized)",
   "#   phone       - Any phone format: +27711234567, 0821234567, 27-71-123-4567 (auto-normalized to E.164)",
-  "#   location    - Free-text: city, address, area, suburb, or full address (geocoded automatically)",
+  "#   location    - Free-text: city, address, area, suburb, or full address",
+  "#   country     - Country name (optional; also inferred from phone when possible)",
   "#   category    - Service categories separated by semicolons, e.g. Hair; Nails (matched to platform categories)",
   "#   description - Any context about the lead",
   "#   source      - How you found them: manual, import, referral, campaign, outbound, api, form (default: import)",
+  "#   source_detail - Free-text source context (also used when referrer cannot be resolved)",
+  "#   referrer_email - Email of referring provider/user (resolved to referrer IDs when possible)",
+  "#   referrer_phone - Phone of referring provider/user (resolved to referrer IDs when possible)",
   "#   notes       - Internal admin notes",
   '#   tags        - Labels separated by commas, e.g. "vip, sandton, urgent"',
   "#",
@@ -72,8 +93,9 @@ const INSTRUCTIONS = [
   "#   - You can rename columns however you like (Name, Business, Contact, Phone Number, etc.)",
   "#   - Rows with no data are skipped automatically",
   "#   - Lines starting with # are ignored",
-  "#   - No row limit — import as many leads as you need",
-  "#   - The system never rejects a row; partial data is imported with whatever is available",
+  "#   - Rows matching an existing lead's email or phone are skipped and listed in the import report",
+  "#   - Duplicate rows within the same file are also skipped",
+  "#   - Partial data is imported with whatever is available",
   "#",
   "# EXAMPLE ROWS (delete or overwrite before importing):",
 ];
@@ -119,7 +141,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const csv = lines.join("\n") + "\n";
+    const csv = csvWithBom(lines.join("\n") + "\n");
 
     return new NextResponse(csv, {
       headers: {
@@ -130,7 +152,7 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.json(
       { data: null, error: { message: "Failed to generate template", code: "INTERNAL_ERROR" } },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,5 +1,6 @@
-import { useMemo, useState, type RefObject } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Switch } from "react-native";
+import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -28,6 +29,8 @@ function FormField({
   keyboardType,
   multiline,
   hint,
+  onFieldFocus,
+  inputAccessoryViewID,
 }: {
   label: string;
   value: string;
@@ -36,12 +39,16 @@ function FormField({
   keyboardType?: "default" | "numeric" | "decimal-pad";
   multiline?: boolean;
   hint?: string;
+  onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
+  inputAccessoryViewID?: string;
 }) {
+  const inputRef = useRef<TextInput>(null);
   return (
     <View style={twStyle("mb-3")}>
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
       {hint ? <Text style={twStyle("mb-2 text-xs text-gray-400")}>{hint}</Text> : null}
       <TextInput
+        ref={inputRef}
         style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
@@ -51,7 +58,10 @@ function FormField({
         multiline={multiline}
         numberOfLines={multiline ? 3 : 1}
         textAlignVertical={multiline ? "top" : "center"}
+        onFocus={() => onFieldFocus?.(inputRef)}
+        inputAccessoryViewID={inputAccessoryViewID}
       />
+      {inputAccessoryViewID ? <KeyboardDoneAccessory nativeID={inputAccessoryViewID} /> : null}
     </View>
   );
 }
@@ -118,6 +128,7 @@ export interface ServiceFormFieldsProps {
   onClearValidationError?: () => void;
   nameInputRef?: RefObject<TextInput | null>;
   onNameFocus?: () => void;
+  onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }
 
 export function ServiceFormFields({
@@ -143,6 +154,7 @@ export function ServiceFormFields({
   onClearValidationError,
   nameInputRef,
   onNameFocus,
+  onFieldFocus,
 }: ServiceFormFieldsProps) {
   const form = value;
   const setForm = (patch: Partial<ServiceFormState> | ((prev: ServiceFormState) => ServiceFormState)) => {
@@ -320,6 +332,7 @@ export function ServiceFormFields({
         value={form.description}
         onChangeText={(t) => setForm({ description: t })}
         multiline
+        onFieldFocus={onFieldFocus}
       />
 
       {mode === "catalogue" ? (
@@ -348,6 +361,7 @@ export function ServiceFormFields({
         parentPricingName={form.pricingOptions[0]?.pricingName ?? null}
         serviceTitle={form.name.trim() || undefined}
         allowMultipleTiers={form.serviceType !== "variant"}
+        onFieldFocus={onFieldFocus}
       />
 
       <View style={twStyle("mb-3")}>
@@ -396,12 +410,16 @@ export function ServiceFormFields({
             onChangeText={(t) => setForm({ atHomeRadiusKm: t })}
             keyboardType="decimal-pad"
             placeholder={mode === "onboarding" ? "Unlimited" : undefined}
+            onFieldFocus={onFieldFocus}
+            inputAccessoryViewID="provider-service-at-home-radius"
           />
           <FormField
             label={`At-home price adjustment (${getTenantDefaultCurrency()})`}
             value={form.atHomePriceAdjustment}
             onChangeText={(t) => setForm({ atHomePriceAdjustment: t })}
             keyboardType="decimal-pad"
+            onFieldFocus={onFieldFocus}
+            inputAccessoryViewID="provider-service-at-home-price"
           />
         </>
       ) : null}

@@ -16,6 +16,7 @@ import type {
   LocationOption,
 } from "../../types/booking-engine";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { formatPublicLocationSubtitle } from "@/lib/providers/fetch-provider-contact";
 import {
   BOOKING_ACCENT,
   BOOKING_WAITLIST_BG,
@@ -289,7 +290,7 @@ export function StepVenue({
                 <div className="flex-1 min-w-0">
                   <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>{loc.name}</span>
                   <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                    {[loc.address_line1, loc.city].filter(Boolean).join(", ")}
+                    {formatPublicLocationSubtitle(loc)}
                   </p>
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />

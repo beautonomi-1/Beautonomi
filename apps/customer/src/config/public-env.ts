@@ -175,11 +175,11 @@ export function webApiTenantHeaders(): Record<string, string> {
   return host ? { "x-forwarded-host": host } : {};
 }
 
-/** Merge `x-forwarded-host` for Next.js tenant resolution on raw `fetch` calls (spec §7.1, §12). */
+/** Merge tenant + mobile app identity headers for raw `fetch` (WAF bypass + spec §7.1). */
 export function withWebApiTenantHeaders(init?: RequestInit): RequestInit {
-  const tenant = webApiTenantHeaders();
-  if (Object.keys(tenant).length === 0) return init ?? {};
   const h = new Headers(init?.headers as HeadersInit | undefined);
+  if (!h.has("X-App")) h.set("X-App", "customer");
+  const tenant = webApiTenantHeaders();
   for (const [k, v] of Object.entries(tenant)) {
     if (!h.has(k)) h.set(k, v);
   }

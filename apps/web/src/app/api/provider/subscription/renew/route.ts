@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse({
       order_id: order.id,
+      reference,
       payment_url: paymentUrl,
       authorization_url: paymentUrl,
     });

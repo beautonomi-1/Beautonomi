@@ -4,8 +4,11 @@ import React, { useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+// Side-effect: initialize i18next before first render so `useTranslation` is
+// stable (hook order changes if the instance appears mid-session).
+import "@/lib/i18n";
 import { useTranslation } from "@beautonomi/i18n";
-import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Smartphone, ArrowLeft } from "lucide-react";
 import { FaApple, FaGoogle } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_LOGIN_SUCCESS } from "@/lib/analytics/amplitude/types";
 import { signInWithOAuth, sendEmailSignInOtp } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -31,6 +36,7 @@ import {
 } from "@/lib/auth/post-login-return-path";
 import { isCompleteE164 } from "@/lib/phone";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
+import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { DEFAULT_PUBLIC_AUTH, finalizePublicAuth, type PublicAuthPolicy } from "@/lib/config/auth-policy-public";
 
 /**
@@ -56,23 +62,37 @@ function friendlyAuthErrorMessage(raw: string, channel: "phone" | "email"): stri
   if (lower.includes("user not found")) {
     return "We couldn't find an account. New here? Verify the code to create one.";
   }
+  if (lower.includes("token has expired") || lower.includes("otp_expired")) {
+    return "That code has expired. Request a new one and try again.";
+  }
+  if (lower.includes("invalid otp") || lower.includes("invalid token") || lower.includes("otp_invalid")) {
+    return "That code doesn't match. Check the digits and try again.";
+  }
   return raw;
 }
+
+type LoginMethod = "phone" | "email";
+type EmailMode = "otp" | "password";
+type AnalyticsMethod = "phone" | "email" | "google" | "apple";
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
   const { refreshUser, role: contextRole, signIn: signInWithSession } = useAuth();
+  const { track, isReady: analyticsReady } = useAmplitude();
   const rawNext = searchParams.get("next") || searchParams.get("redirect") || "";
   const nextUrl = sanitizeRelativeRedirect(rawNext) ?? "";
   const initialAuthError = searchParams.get("error")?.trim() || null;
 
+  /** Journey: Phone | Email segmented control; email defaults to passwordless code. */
+  const [selectedMethod, setMethod] = useState<LoginMethod>("phone");
+  const [emailMode, setEmailMode] = useState<EmailMode>("otp");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  /** Primary path: phone OTP, email OTP (code), or legacy email+password. */
-  const [primaryLogin, setPrimaryLogin] = useState<"phone" | "email_otp" | "email_password">("phone");
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [phoneFull, setPhoneFull] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -88,6 +108,7 @@ export default function LoginPage() {
   const [emailOtpResending, setEmailOtpResending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(initialAuthError);
+  const [infoBanner, setInfoBanner] = useState<string | null>(null);
   const [phoneInputError, setPhoneInputError] = useState<string | null>(null);
   const [emailInputError, setEmailInputError] = useState<string | null>(null);
   const [passwordFailedSuggestOtp, setPasswordFailedSuggestOtp] = useState(false);
@@ -95,6 +116,23 @@ export default function LoginPage() {
   const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
   const [publicAuth, setPublicAuth] = useState<PublicAuthPolicy>(DEFAULT_PUBLIC_AUTH);
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
+
+  const phoneEnabled = publicAuth.phone_provider_enabled;
+  const emailEnabled = publicAuth.email_provider_enabled;
+  const hasSocialAuth = socialAuth.google || socialAuth.apple;
+  // Provider gating (derived, no effect needed): if the selected method is
+  // disabled by platform policy, fall back to the enabled one.
+  const method: LoginMethod =
+    selectedMethod === "phone" && !phoneEnabled && emailEnabled
+      ? "email"
+      : selectedMethod === "email" && !emailEnabled && phoneEnabled
+        ? "phone"
+        : selectedMethod;
+  const inOtpStep = (method === "phone" && otpSent) || (method === "email" && emailMode === "otp" && emailOtpSent);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -104,6 +142,11 @@ export default function LoginPage() {
       .then((json: { auth?: Partial<PublicAuthPolicy> } | null) => {
         if (cancelled || !json?.auth) return;
         setPublicAuth(finalizePublicAuth({ ...DEFAULT_PUBLIC_AUTH, ...json.auth }));
+      })
+      .catch(() => {});
+    void getSocialAuthConfig()
+      .then((cfg) => {
+        if (!cancelled) setSocialAuth(cfg);
       })
       .catch(() => {});
     return () => {
@@ -259,11 +302,9 @@ export default function LoginPage() {
     return () => window.clearInterval(id);
   }, [emailOtpResendCooldown]);
 
-  const routeAfterAuth = async (loginResult?: any) => {
-    let userRole =
-      (await resolveRoleFast()) ||
-      (loginResult?.user?.user_metadata?.role as UserRole | undefined) ||
-      contextRole;
+  const routeAfterAuth = async (analyticsMethod: AnalyticsMethod) => {
+    if (analyticsReady) track(EVENT_LOGIN_SUCCESS, { method: analyticsMethod, surface: "login_page" });
+    let userRole = (await resolveRoleFast()) || contextRole;
     if (!userRole) {
       let updatedUser = await refreshUser();
       let retries = 0;
@@ -295,6 +336,7 @@ export default function LoginPage() {
     setPhoneInputError(null);
     setLoading(true);
     setFormError(null);
+    setInfoBanner(null);
     try {
       const supabase = getSupabaseClient();
       const phone = normalizeSupabaseAuthPhone(normalizedPhone);
@@ -308,11 +350,10 @@ export default function LoginPage() {
       setOtpCode("");
       setOtpExpiresAt(Date.now() + publicAuth.sms_otp_expiration_seconds * 1000);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("Check your phone for the verification code");
+      setInfoBanner(`Code sent. Valid for about ${Math.max(1, Math.round(publicAuth.sms_otp_expiration_seconds / 60))} min.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send OTP";
       setFormError(friendlyAuthErrorMessage(msg, "phone"));
-      toast.error(friendlyAuthErrorMessage(msg, "phone"));
     } finally {
       setLoading(false);
     }
@@ -332,11 +373,12 @@ export default function LoginPage() {
       });
       if (error) throw error;
       writeSignupPhoneHandoff(sentPhoneE164);
-      await routeAfterAuth();
+      await routeAfterAuth("phone");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid code";
+      const raw = err instanceof Error ? err.message : "Invalid code";
+      const msg = friendlyAuthErrorMessage(raw, "phone");
       setFormError(msg);
-      toast.error(msg);
+      setOtpCode("");
     } finally {
       setLoading(false);
     }
@@ -347,6 +389,7 @@ export default function LoginPage() {
     setOtpCode("");
     setSentPhoneE164("");
     setOtpExpiresAt(null);
+    setInfoBanner(null);
   };
 
   const resetEmailOtpFlow = () => {
@@ -354,6 +397,7 @@ export default function LoginPage() {
     setEmailOtpCode("");
     setSentEmailForOtp("");
     setEmailOtpExpiresAt(null);
+    setInfoBanner(null);
   };
 
   const handleEmailSendOtp = async () => {
@@ -373,6 +417,7 @@ export default function LoginPage() {
     setEmailInputError(null);
     setLoading(true);
     setFormError(null);
+    setInfoBanner(null);
     try {
       const { error } = await sendEmailSignInOtp(trimmedEmail);
       if (error) throw error;
@@ -381,11 +426,10 @@ export default function LoginPage() {
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + publicAuth.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("Check your email for the verification code");
+      setInfoBanner("Code sent. Check your inbox (and spam folder).");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send email code";
       setFormError(friendlyAuthErrorMessage(msg, "email"));
-      toast.error(friendlyAuthErrorMessage(msg, "email"));
     } finally {
       setLoading(false);
     }
@@ -404,11 +448,12 @@ export default function LoginPage() {
         type: "email",
       });
       if (error) throw error;
-      await routeAfterAuth();
+      await routeAfterAuth("email");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid code";
+      const raw = err instanceof Error ? err.message : "Invalid code";
+      const msg = friendlyAuthErrorMessage(raw, "email");
       setFormError(msg);
-      toast.error(msg);
+      setEmailOtpCode("");
     } finally {
       setLoading(false);
     }
@@ -424,11 +469,10 @@ export default function LoginPage() {
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + publicAuth.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      setInfoBanner("A new verification code has been sent.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
       setFormError(friendlyAuthErrorMessage(msg, "email"));
-      toast.error(friendlyAuthErrorMessage(msg, "email"));
     } finally {
       setEmailOtpResending(false);
     }
@@ -448,11 +492,10 @@ export default function LoginPage() {
       setOtpCode("");
       setOtpExpiresAt(Date.now() + publicAuth.sms_otp_expiration_seconds * 1000);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      setInfoBanner("A new verification code has been sent.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
       setFormError(friendlyAuthErrorMessage(msg, "phone"));
-      toast.error(friendlyAuthErrorMessage(msg, "phone"));
     } finally {
       setOtpResending(false);
     }
@@ -475,7 +518,7 @@ export default function LoginPage() {
     try {
       await signInWithSession(trimmedEmail, password);
       setFormError(null);
-      await routeAfterAuth();
+      await routeAfterAuth("email");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
       const lower = msg.toLowerCase();
@@ -487,7 +530,6 @@ export default function LoginPage() {
         lower.includes("email_not_confirmed");
       setPasswordFailedSuggestOtp(looksLikeOtpOnlyAccount);
       setFormError(msg);
-      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -507,39 +549,61 @@ export default function LoginPage() {
           ? err.message
           : `Sign in with ${provider === "google" ? "Google" : "Apple"} failed.`;
       setFormError(msg);
-      toast.error(msg);
-    } finally {
       setLoading(false);
     }
   }
 
+  const switchMethod = (target: LoginMethod) => {
+    if (target === method) return;
+    resetPhoneOtpFlow();
+    resetEmailOtpFlow();
+    setMethod(target);
+    setEmailMode("otp");
+    setFormError(null);
+    setPasswordFailedSuggestOtp(false);
+  };
+
+  const trackPasswordCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    setCapsLockOn(e.getModifierState?.("CapsLock") ?? false);
+  };
+
+  const smsExpiryMin = Math.max(1, Math.round(publicAuth.sms_otp_expiration_seconds / 60));
+  const emailExpiryMin = Math.max(1, Math.round(publicAuth.email_otp_expiration_seconds / 60));
+
+  const primaryCtaClasses =
+    "w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white transition-colors";
+
+  const spinner = (
+    <span
+      className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin"
+      aria-hidden
+    />
+  );
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4 py-12">
-      <div className="w-full max-w-[420px]">
-        <Link href="/" className="inline-block mb-8" aria-label="Beautonomi home">
-          <Image src={logo} alt="Beautonomi" className="h-8 w-auto" />
-        </Link>
-        <div className="rounded-2xl p-6 mb-2 bg-[rgba(255,0,119,0.06)]">
-          <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-2 bg-white/90">
-            <span className="text-2xl text-primary" aria-hidden>◆</span>
-          </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white via-white to-primary/[0.04] px-4 py-12">
+      <main className="w-full max-w-[420px]" aria-labelledby="login-heading">
+        <div className="text-center">
+          <Link href="/" className="inline-block mb-6" aria-label="Beautonomi home">
+            <Image src={logo} alt="Beautonomi" className="h-8 w-auto" />
+          </Link>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-1.5" id="login-heading">
+            Welcome back
+          </h1>
+          <p className="text-[15px] leading-6 text-gray-500 mb-2">
+            Sign in or create an account — we&apos;ll set you up when you verify.
+          </p>
+          <p className="text-xs text-gray-400 mb-6">
+            Continue with phone, email{hasSocialAuth ? ", Google, or Apple" : ", or password"}.
+          </p>
         </div>
-        <h1 className="text-center text-[28px] font-extrabold text-gray-900 mb-1" id="login-heading">
-          Welcome
-        </h1>
-        <p className="text-center text-[14px] text-gray-500 mb-7">
-          Sign in or create an account — phone, email code, social, or password.
-        </p>
 
-        <p className="mb-4 text-center text-xs text-gray-500">
-          Continue with phone, email code, Google, Apple, or password.
-        </p>
-
+        {/* Live region: errors */}
         {formError && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 mb-4" role="alert">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" aria-hidden />
             <div className="flex-1">
-              <p className="text-sm text-red-800">{formError}</p>
+              <p className="text-sm leading-5 text-red-800">{formError}</p>
               {passwordFailedSuggestOtp && (
                 <button
                   type="button"
@@ -547,7 +611,8 @@ export default function LoginPage() {
                     setPasswordFailedSuggestOtp(false);
                     resetPhoneOtpFlow();
                     resetEmailOtpFlow();
-                    setPrimaryLogin("email_otp");
+                    setMethod("email");
+                    setEmailMode("otp");
                     setFormError(null);
                   }}
                   className="mt-1.5 inline-block text-xs font-semibold text-primary underline hover:no-underline"
@@ -559,11 +624,74 @@ export default function LoginPage() {
           </div>
         )}
 
-        {primaryLogin === "phone" && !otpSent && (
-          <div className="space-y-4">
+        {/* Live region: success/info (e.g. code sent) */}
+        {infoBanner && !formError && (
+          <div
+            className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 mb-4"
+            role="status"
+          >
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" aria-hidden />
+            <p className="flex-1 text-sm leading-5 text-emerald-800">{infoBanner}</p>
+          </div>
+        )}
+
+        {/* Method segmented control — hidden while entering a code (mobile pattern) */}
+        {phoneEnabled && emailEnabled && !inOtpStep && (
+          <div
+            className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1"
+            role="tablist"
+            aria-label="Sign-in method"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method === "phone"}
+              onClick={() => switchMethod("phone")}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
+                method === "phone"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Smartphone className="h-4 w-4" aria-hidden />
+              Phone
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method === "email"}
+              onClick={() => switchMethod("email")}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all ${
+                method === "email"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Mail className="h-4 w-4" aria-hidden />
+              {t("auth.email")}
+            </button>
+          </div>
+        )}
+
+        {!phoneEnabled && !emailEnabled && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 mb-4 text-sm text-amber-800" role="alert">
+            Phone and email sign-in are currently unavailable.
+            {hasSocialAuth ? " Use Google or Apple below." : " Please try again later or contact support."}
+          </div>
+        )}
+
+        {/* ── Phone: enter number ── */}
+        {phoneEnabled && method === "phone" && !otpSent && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handlePhoneSendOtp();
+            }}
+          >
             <div>
-              <Label className="text-xs font-medium text-gray-700 mb-1.5 block">
-                Phone number
+              <Label className="text-xs font-medium text-gray-700 mb-1.5 block" htmlFor="login-phone">
+                {t("auth.phone")}
               </Label>
               <PhoneInput
                 inputId="login-phone"
@@ -576,35 +704,44 @@ export default function LoginPage() {
                 defaultCountryCode="+27"
                 placeholder="e.g. 82 123 4567"
               />
-              {phoneInputError ? (
+              {phoneInputError && (
                 <p className="mt-1.5 text-xs text-red-600" role="alert">{phoneInputError}</p>
-              ) : (
-                <p className="mt-2 text-xs text-gray-500">
-                  We&apos;ll send a {publicAuth.sms_otp_length}-digit code via SMS.
-                </p>
               )}
             </div>
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={() => void handlePhoneSendOtp()}
-              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
-            >
+            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
               {loading ? (
-                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+                <span className="flex items-center gap-2">{spinner} Sending code…</span>
               ) : (
-                "Continue with phone"
+                "Continue"
               )}
             </Button>
-          </div>
+            <p className="text-xs leading-5 text-gray-400">
+              We&apos;ll text a {publicAuth.sms_otp_length}-digit code (valid about {smsExpiryMin}{" "}
+              {smsExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.
+            </p>
+          </form>
         )}
 
-        {primaryLogin === "phone" && otpSent && (
+        {/* ── Phone: verify code ── */}
+        {phoneEnabled && method === "phone" && otpSent && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Enter the {publicAuth.sms_otp_length}-digit code sent to{" "}
-              <span className="font-semibold text-gray-900">{sentPhoneE164}</span>
-            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  resetPhoneOtpFlow();
+                  setFormError(null);
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Back to phone number"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden />
+              </button>
+              <p className="text-sm text-gray-600">
+                Enter the {publicAuth.sms_otp_length}-digit code sent to{" "}
+                <span className="font-semibold text-gray-900">{sentPhoneE164}</span>
+              </p>
+            </div>
             <OtpDigitInput
               value={otpCode}
               onChange={setOtpCode}
@@ -617,12 +754,16 @@ export default function LoginPage() {
               length={publicAuth.sms_otp_length}
             />
             <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-gray-500">
-                Code expires in{" "}
-                <span className="font-semibold text-gray-700">
-                  {formatOtpCountdown(otpSecondsLeft)}
+              {otpSecondsLeft > 0 ? (
+                <span className="text-gray-500">
+                  Code expires in{" "}
+                  <span className={`font-semibold tabular-nums ${otpSecondsLeft <= 15 ? "text-amber-600" : "text-gray-700"}`}>
+                    {formatOtpCountdown(otpSecondsLeft)}
+                  </span>
                 </span>
-              </span>
+              ) : (
+                <span className="font-medium text-amber-600">Code expired — request a new one.</span>
+              )}
               <button
                 type="button"
                 onClick={() => void handleResendPhoneOtp()}
@@ -630,7 +771,7 @@ export default function LoginPage() {
                 className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
               >
                 {otpResending
-                  ? "Resending..."
+                  ? "Resending…"
                   : otpResendCooldown > 0
                     ? `Resend in ${otpResendCooldown}s`
                     : "Resend code"}
@@ -639,13 +780,14 @@ export default function LoginPage() {
             <Button
               type="button"
               disabled={loading || !isCompleteOtpForLength(otpCode, publicAuth.sms_otp_length)}
+              aria-busy={loading}
               onClick={() => void handleVerifyPhoneOtp()}
-              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
+              className={primaryCtaClasses}
             >
               {loading ? (
-                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+                <span className="flex items-center gap-2">{spinner} Verifying…</span>
               ) : (
-                "Verify & Continue"
+                "Verify & continue"
               )}
             </Button>
             <button
@@ -661,13 +803,20 @@ export default function LoginPage() {
           </div>
         )}
 
-        {primaryLogin === "email_otp" && !emailOtpSent && (
-          <div className="space-y-4">
+        {/* ── Email: passwordless code (default) ── */}
+        {emailEnabled && method === "email" && emailMode === "otp" && !emailOtpSent && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleEmailSendOtp();
+            }}
+          >
             <div>
               <Label htmlFor="login-email-otp" className="text-xs font-medium text-gray-700 mb-1.5 block">
-                Email
+                {t("auth.email")}
               </Label>
-              <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
+              <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
                 <Mail className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
                 <Input
                   id="login-email-otp"
@@ -678,7 +827,7 @@ export default function LoginPage() {
                     setEmail(e.target.value);
                     if (emailInputError) setEmailInputError(null);
                   }}
-                  className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
+                  className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[15px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
                   autoComplete="email"
                   inputMode="email"
                   aria-required="true"
@@ -687,35 +836,52 @@ export default function LoginPage() {
               {emailInputError ? (
                 <p className="mt-1.5 text-xs text-red-600" role="alert">{emailInputError}</p>
               ) : (
-                <p className="mt-2 text-xs text-gray-500">
-                  We&apos;ll email a {publicAuth.email_otp_length}-digit code. If the message only has a sign-in link,
-                  add the <code className="text-[11px] bg-gray-100 px-1 rounded">{"{{ .Token }}"}</code> placeholder to
-                  the Supabase Magic Link email template (see{" "}
-                  <code className="text-[11px]">supabase/email-templates/README.md</code>).
+                <p className="mt-2 text-xs leading-5 text-gray-400">
+                  We&apos;ll email you a {publicAuth.email_otp_length}-digit verification code (valid about{" "}
+                  {emailExpiryMin} {emailExpiryMin === 1 ? "minute" : "minutes"}). No password needed.
                 </p>
               )}
             </div>
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={() => void handleEmailSendOtp()}
-              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
-            >
+            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
               {loading ? (
-                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+                <span className="flex items-center gap-2">{spinner} Sending code…</span>
               ) : (
-                "Send email code"
+                "Send code"
               )}
             </Button>
-          </div>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setEmailMode("password");
+                setFormError(null);
+              }}
+            >
+              Use <span className="font-semibold text-primary">password</span> instead
+            </button>
+          </form>
         )}
 
-        {primaryLogin === "email_otp" && emailOtpSent && (
+        {/* ── Email: verify code ── */}
+        {emailEnabled && method === "email" && emailMode === "otp" && emailOtpSent && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Enter the {publicAuth.email_otp_length}-digit code sent to{" "}
-              <span className="font-semibold text-gray-900">{sentEmailForOtp}</span>
-            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  resetEmailOtpFlow();
+                  setFormError(null);
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Back to email"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden />
+              </button>
+              <p className="text-sm text-gray-600">
+                Enter the {publicAuth.email_otp_length}-digit code sent to{" "}
+                <span className="font-semibold text-gray-900">{sentEmailForOtp}</span>
+              </p>
+            </div>
             <OtpDigitInput
               value={emailOtpCode}
               onChange={setEmailOtpCode}
@@ -728,13 +894,16 @@ export default function LoginPage() {
               length={publicAuth.email_otp_length}
             />
             <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-gray-500">
-                Code valid for{" "}
-                <span className="font-semibold text-gray-700">
-                  {formatOtpCountdown(emailOtpSecondsLeft)}
-                </span>{" "}
-                (from platform auth settings; match Supabase &quot;Email OTP expiration&quot;)
-              </span>
+              {emailOtpSecondsLeft > 0 ? (
+                <span className="text-gray-500">
+                  Code valid for{" "}
+                  <span className="font-semibold tabular-nums text-gray-700">
+                    {formatOtpCountdown(emailOtpSecondsLeft)}
+                  </span>
+                </span>
+              ) : (
+                <span className="font-medium text-amber-600">Code expired — request a new one.</span>
+              )}
               <button
                 type="button"
                 onClick={() => void handleResendEmailOtp()}
@@ -742,22 +911,23 @@ export default function LoginPage() {
                 className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
               >
                 {emailOtpResending
-                  ? "Resending..."
+                  ? "Resending…"
                   : emailOtpResendCooldown > 0
-                    ? `Resend in ${emailOtpResendCooldown}s (spacing only)`
+                    ? `Resend in ${emailOtpResendCooldown}s`
                     : "Resend code"}
               </button>
             </div>
             <Button
               type="button"
               disabled={loading || !isCompleteOtpForLength(emailOtpCode, publicAuth.email_otp_length)}
+              aria-busy={loading}
               onClick={() => void handleVerifyEmailOtp()}
-              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
+              className={primaryCtaClasses}
             >
               {loading ? (
-                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+                <span className="flex items-center gap-2">{spinner} Verifying…</span>
               ) : (
-                "Verify & Continue"
+                "Verify & continue"
               )}
             </Button>
             <button
@@ -773,162 +943,156 @@ export default function LoginPage() {
           </div>
         )}
 
-        {primaryLogin === "email_password" && (
+        {/* ── Email: password (progressive disclosure) ── */}
+        {emailEnabled && method === "email" && emailMode === "password" && (
           <form onSubmit={handleEmailLogin} className="space-y-4">
-          <div>
-            <Label htmlFor="login-email" className="text-xs font-medium text-gray-700 mb-1.5 block">
-              {t("auth.email")}
-            </Label>
-            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
-              <Mail className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
-              <Input
-                id="login-email"
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
-                autoComplete="email"
-                inputMode="email"
-                onKeyDown={(e) => e.key === "Enter" && passwordRef.current?.focus()}
-                aria-required="true"
-              />
+            <div>
+              <Label htmlFor="login-email" className="text-xs font-medium text-gray-700 mb-1.5 block">
+                {t("auth.email")}
+              </Label>
+              <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+                <Mail className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
+                <Input
+                  id="login-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[15px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
+                  autoComplete="email"
+                  inputMode="email"
+                  onKeyDown={(e) => e.key === "Enter" && passwordRef.current?.focus()}
+                  aria-required="true"
+                />
+              </div>
             </div>
-          </div>
-          <div>
-            <Label htmlFor="login-password" className="text-xs font-medium text-gray-700 mb-1.5 block">
-              {t("auth.password")}
-            </Label>
-            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
-              <Lock className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
-              <Input
-                ref={passwordRef}
-                id="login-password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 border-0 bg-transparent h-12 px-2.5 pr-8 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
-                autoComplete="current-password"
-                aria-required="true"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label htmlFor="login-password" className="text-xs font-medium text-gray-700 block">
+                  {t("auth.password")}
+                </Label>
+                <Link
+                  href={nextUrl ? `/forgot-password?next=${encodeURIComponent(nextUrl)}` : "/forgot-password"}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  {t("auth.forgotPassword")}
+                </Link>
+              </div>
+              <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+                <Lock className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
+                <Input
+                  ref={passwordRef}
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={trackPasswordCapsLock}
+                  onKeyUp={trackPasswordCapsLock}
+                  onBlur={() => setCapsLockOn(false)}
+                  className="flex-1 border-0 bg-transparent h-12 px-2.5 pr-8 text-[15px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
+                  autoComplete="current-password"
+                  aria-required="true"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
+                </button>
+              </div>
+              {capsLockOn && (
+                <p className="mt-1.5 text-xs font-medium text-amber-600" role="status">
+                  Caps Lock is on.
+                </p>
+              )}
             </div>
-          </div>
-          <Link
-            href={nextUrl ? `/forgot-password?next=${encodeURIComponent(nextUrl)}` : "/forgot-password"}
-            className="block text-sm text-gray-500 hover:text-primary text-center mt-1"
-          >
-            {t("auth.forgotPassword")} <span className="font-semibold text-primary">Reset it</span>
-          </Link>
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
-          >
-            {loading ? (
-              <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
-            ) : (
-              t("auth.login")
-            )}
-          </Button>
+            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
+              {loading ? (
+                <span className="flex items-center gap-2">{spinner} Signing in…</span>
+              ) : (
+                t("auth.login")
+              )}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setEmailMode("otp");
+                setFormError(null);
+                setPasswordFailedSuggestOtp(false);
+              }}
+            >
+              Sign in with an <span className="font-semibold text-primary">email code</span> instead
+            </button>
           </form>
         )}
 
-        <div className="flex items-center gap-4 my-6">
-          <div className="flex-1 h-px bg-gray-200" aria-hidden />
-          <span className="text-[13px] text-gray-400">{t("auth.orContinueWith")}</span>
-          <div className="flex-1 h-px bg-gray-200" aria-hidden />
-        </div>
-        <div className="space-y-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleSocialOAuth("google")}
-            disabled={loading}
-            className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-          >
-            <FaGoogle className="text-lg text-[#4285F4]" aria-hidden />
-            <span>{t("auth.continueWithGoogle")}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleSocialOAuth("apple")}
-            disabled={loading}
-            className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-          >
-            <FaApple className="text-lg" aria-hidden />
-            <span>{t("auth.continueWithApple")}</span>
-          </Button>
-          {primaryLogin !== "phone" && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                resetEmailOtpFlow();
-                setPrimaryLogin("phone");
-                setFormError(null);
-                setPasswordFailedSuggestOtp(false);
-              }}
-              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-            >
-              <span>Continue with phone</span>
-            </Button>
-          )}
-          {primaryLogin !== "email_otp" && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                resetPhoneOtpFlow();
-                resetEmailOtpFlow();
-                setPrimaryLogin("email_otp");
-                setFormError(null);
-                setPasswordFailedSuggestOtp(false);
-              }}
-              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-            >
-              <Mail className="h-4 w-4" aria-hidden />
-              <span>Continue with email code</span>
-            </Button>
-          )}
-          {primaryLogin !== "email_password" && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                resetPhoneOtpFlow();
-                resetEmailOtpFlow();
-                setPrimaryLogin("email_password");
-                setFormError(null);
-                setPasswordFailedSuggestOtp(false);
-              }}
-              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-            >
-              <Lock className="h-4 w-4" aria-hidden />
-              <span>Sign in with password</span>
-            </Button>
-          )}
-        </div>
-        <p className="text-center text-sm text-gray-500 mt-6">
-          New here? Use phone, email code, or Google — we&apos;ll create your account when you verify. Or{" "}
-          <Link
-            href={nextUrl ? `/signup?next=${encodeURIComponent(nextUrl)}` : "/signup"}
-            className="font-bold text-primary"
-          >
-            {t("auth.signup")}
-          </Link>
-          {" "}for the full signup form.
-        </p>
-      </div>
+        {/* ── Social auth ── */}
+        {hasSocialAuth && !inOtpStep && (
+          <>
+            <div className="flex items-center gap-4 my-6">
+              <div className="flex-1 h-px bg-gray-200" aria-hidden />
+              <span className="text-[13px] text-gray-400">{t("auth.orContinueWith")}</span>
+              <div className="flex-1 h-px bg-gray-200" aria-hidden />
+            </div>
+            <div className="space-y-3">
+              {socialAuth.google && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleSocialOAuth("google")}
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5 hover:bg-gray-50"
+                >
+                  <FaGoogle className="text-lg text-[#4285F4]" aria-hidden />
+                  <span>{t("auth.continueWithGoogle")}</span>
+                </Button>
+              )}
+              {socialAuth.apple && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleSocialOAuth("apple")}
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5 hover:bg-gray-50"
+                >
+                  <FaApple className="text-lg" aria-hidden />
+                  <span>{t("auth.continueWithApple")}</span>
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── Signup + legal footer ── */}
+        {!inOtpStep && (
+          <>
+            <p className="text-center text-sm text-gray-500 mt-6">
+              {t("auth.dontHaveAccount")}{" "}
+              <Link
+                href={nextUrl ? `/signup?next=${encodeURIComponent(nextUrl)}` : "/signup"}
+                className="font-bold text-primary hover:underline"
+              >
+                {t("auth.signup")}
+              </Link>
+            </p>
+            <p className="text-center text-xs leading-5 text-gray-400 mt-4">
+              By continuing, you agree to our{" "}
+              <Link href="/terms-and-condition" className="font-medium text-gray-500 underline hover:text-gray-700">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy-policy" className="font-medium text-gray-500 underline hover:text-gray-700">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          </>
+        )}
+      </main>
     </div>
   );
 }

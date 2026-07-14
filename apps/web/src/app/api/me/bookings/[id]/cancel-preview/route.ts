@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { computeCancellationRefundAmount, roundCurrency2 } from "@/lib/bookings/refund-processing";
+import { roundCurrency2 } from "@/lib/bookings/refund-processing";
+import { computeReconciledCancellationAmounts } from "@/lib/bookings/settle-booking-cancellation";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
@@ -82,9 +83,22 @@ export async function GET(
       Math.max(0, Math.max(totalPaid, walletCollected + giftCardCollected) - Number((booking as any).total_refunded ?? 0))
     );
     const isLate = check.isLateCancellation === true;
-    const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
-    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
+    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking: {
+        id: booking.id as string,
+        provider_id: booking.provider_id as string,
+        total_amount: bookingTotal,
+        total_paid: booking.total_paid as number | null,
+        total_refunded: (booking as { total_refunded?: number | null }).total_refunded,
+        wallet_amount: (booking as { wallet_amount?: number | null }).wallet_amount,
+        gift_card_amount: (booking as { gift_card_amount?: number | null }).gift_card_amount,
+      },
+      cancelledBy: "customer",
+      currency: (booking.currency as string) || LAST_RESORT_CURRENCY,
+      policy,
+      isLateCancellation: isLate,
+      refundBookingTotal: bookingTotal,
+    });
 
     return successResponse({
       allowed: true,
@@ -94,7 +108,7 @@ export async function GET(
       total_paid: totalPaid,
       expected_cancellation_fee: cancellationFeeApplied,
       expected_wallet_refund: walletRefundAmount,
-      refund_capped_by_paid_amount: walletRefundAmount < policyRefundAmount,
+      refund_capped_by_paid_amount: walletRefundAmount < bookingTotal,
       policy: {
         hours_before_cutoff: policy.hours_before_cutoff,
         grace_window_minutes: policy.grace_window_minutes,

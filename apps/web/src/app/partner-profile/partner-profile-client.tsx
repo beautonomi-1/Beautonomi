@@ -24,6 +24,7 @@ import { EVENT_PROVIDER_PROFILE_VIEW } from "@/lib/analytics/amplitude/types";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderDetail } from "@/types/beautonomi";
 import type { PartnerProfileServiceCategoryInitial } from "@/types/partner-profile-services";
+import { fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
 
 const tabChunkFallback = (
   <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-10" aria-hidden>
@@ -72,15 +73,47 @@ interface PartnerProfileClientProps {
 }
 
 export default function PartnerProfileClient({
-  provider,
+  provider: initialProvider,
   initialServiceCategories,
 }: PartnerProfileClientProps) {
   const [activeTab, setActiveTab] = useState("services");
+  const [provider, setProvider] = useState(initialProvider);
+  const [disclosureTier, setDisclosureTier] = useState<"anon" | "authed" | "booked">(
+    initialProvider.disclosure_tier ?? "anon",
+  );
   const { user, isLoading: authLoading } = useAuth();
   const { track, isReady } = useAmplitude();
   const profileViewTrackedRef = useRef(false);
   const distanceEnrichedRef = useRef(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setProvider(initialProvider);
+    setDisclosureTier(initialProvider.disclosure_tier ?? "anon");
+  }, [initialProvider]);
+
+  useEffect(() => {
+    if (!user?.id || !provider.slug) return;
+    let cancelled = false;
+    fetchProviderContactDisclosure(provider.slug)
+      .then((contact) => {
+        if (cancelled || !contact) return;
+        setDisclosureTier(contact.disclosure_tier);
+        setProvider((prev) => ({
+          ...prev,
+          description: contact.description ?? prev.description,
+          website: contact.website ?? prev.website,
+          social_media_links: contact.social_media_links ?? prev.social_media_links,
+          locations: contact.locations ?? prev.locations,
+          operating_hours: contact.operating_hours ?? prev.operating_hours,
+          disclosure_tier: contact.disclosure_tier,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, provider.slug]);
 
   /** Match list cards: add lat/lng from saved marketplace location so server can return distance_km. */
   useEffect(() => {
@@ -244,7 +277,13 @@ export default function PartnerProfileClient({
             <PartnerAbout
               description={provider.description}
               locations={provider.locations}
-              operating_hours={provider.operating_hours ?? (provider.locations?.find((l: any) => l.is_primary) ?? provider.locations?.[0])?.working_hours}
+              operating_hours={
+                provider.operating_hours ??
+                (provider.locations?.find((l: { is_primary?: boolean }) => l.is_primary) ??
+                  provider.locations?.[0])?.working_hours
+              }
+              disclosureTier={disclosureTier}
+              isAuthenticated={Boolean(user)}
             />
           </TabsContent>
         </Tabs>

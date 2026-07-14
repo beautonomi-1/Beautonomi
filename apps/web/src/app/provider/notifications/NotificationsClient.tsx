@@ -26,7 +26,7 @@ import {
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -153,7 +153,7 @@ export function NotificationsClient({
   }, [initialError]);
 
   const loadNotifications = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; staleTimeMs?: number }) => {
       if (!user?.id) return;
       try {
         if (!options?.silent) setIsLoading(true);
@@ -161,7 +161,9 @@ export function NotificationsClient({
         const url = unreadOnly
           ? "/api/provider/notifications?limit=100&unread_only=true"
           : "/api/provider/notifications?limit=100";
-        const response = await fetcher.get<{ data?: { notifications: Notification[]; total_unread: number } }>(url);
+        const response = await fetcher.get<{ data?: { notifications: Notification[]; total_unread: number } }>(url, {
+          staleTimeMs: options?.staleTimeMs,
+        });
         const data = response.data ?? response;
         setNotifications((data as any).notifications || []);
         setTotalUnread((data as any).total_unread || 0);
@@ -199,7 +201,8 @@ export function NotificationsClient({
           "postgres_changes",
           { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
           () => {
-            void loadNotifications({ silent: true });
+            // Bypass the GET cache — the DB just changed, cached data is stale.
+            void loadNotifications({ silent: true, staleTimeMs: 0 });
           }
         )
         .subscribe();
@@ -228,6 +231,7 @@ export function NotificationsClient({
     if (wasUnread) {
       try {
         await fetcher.post(`/api/provider/notifications/${notification.id}/read`);
+        deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
       } catch (error) {
         console.error("Failed to mark notification as read:", error);
         setNotifications((prev) =>
@@ -269,6 +273,7 @@ export function NotificationsClient({
       await fetcher.delete(
         `/api/provider/notifications/${encodeURIComponent(notification.id)}`,
       );
+      deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
       toast.success("Notification deleted");
     } catch (error) {
       console.error("Failed to delete notification:", error);
@@ -288,9 +293,11 @@ export function NotificationsClient({
     );
     setTotalUnread((prev) => prev + 1);
     try {
+      // Server couples read_at with is_read so all surfaces agree on read state.
       await fetcher.patch(`/api/provider/notifications/${notification.id}`, {
         is_read: false,
       });
+      deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
     } catch (error) {
       console.error("Failed to mark as unread:", error);
       setNotifications((prev) =>
@@ -308,6 +315,7 @@ export function NotificationsClient({
     setTotalUnread(0);
     try {
       await fetcher.post("/api/provider/notifications/mark-all-read");
+      deleteFetcherGetCacheEntriesMatching("/api/provider/notifications");
       toast.success("All notifications marked as read");
     } catch (error) {
       console.error("Failed to mark all as read:", error);

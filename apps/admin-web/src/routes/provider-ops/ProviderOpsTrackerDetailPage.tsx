@@ -81,11 +81,49 @@ interface ParsedNote {
   created_by_email: string | null;
 }
 
+interface DraftEditForm {
+  business_name: string;
+  owner_name: string;
+  owner_email: string;
+  owner_phone: string;
+  description: string;
+  team_size: string;
+  address_line1: string;
+  address_line2: string;
+  address_city: string;
+  address_state: string;
+  address_postal_code: string;
+  address_country: string;
+}
+
+const TEAM_SIZE_OPTIONS = [
+  { value: "", label: "—" },
+  { value: "freelancer", label: "Freelancer" },
+  { value: "small", label: "Small" },
+  { value: "medium", label: "Medium" },
+  { value: "large", label: "Large" },
+] as const;
+
+const EDITABLE_DRAFT_TOP_LEVEL_KEYS = new Set([
+  "business_name",
+  "owner_name",
+  "owner_email",
+  "owner_phone",
+  "description",
+  "team_size",
+  "address",
+]);
+
+const DRAFT_INPUT_CLASS =
+  "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none";
+
 export function ProviderOpsTrackerDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
   const [noteText, setNoteText] = useState("");
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [draftEditForm, setDraftEditForm] = useState<DraftEditForm>(emptyDraftEditForm());
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.trackerDetail(userId!),
@@ -115,6 +153,18 @@ export function ProviderOpsTrackerDetailPage() {
     onError: (e: Error) => adminToast.error(`Submit failed: ${e.message}`),
   });
 
+  const saveDraftMut = useMutation({
+    mutationFn: (draft_data: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/provider-ops/tracker/${userId}/draft`, { draft_data }),
+    onSuccess: () => {
+      setIsEditingDraft(false);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerDetail(userId!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.trackerStats() });
+      adminToast.success("Draft updated");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to save draft: ${e.message}`),
+  });
+
   if (denied) return denied;
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Tracker Detail" /><AdminPanel><AdminPageSkeleton rows={8} /></AdminPanel></div>;
   if (q.error) {
@@ -139,6 +189,25 @@ export function ProviderOpsTrackerDetailPage() {
     .sort((a, b) => a.step - b.step);
   const canSubmit = !provider && !!draft && Boolean(draftData.business_name);
   const lifecycleBadge = deriveLifecycleBadge(provider, draft);
+  const otherDraftEntries = Object.entries(draftData).filter(([key]) => !EDITABLE_DRAFT_TOP_LEVEL_KEYS.has(key));
+
+  function startDraftEditing() {
+    setDraftEditForm(buildDraftEditForm(draftData));
+    setIsEditingDraft(true);
+  }
+
+  function cancelDraftEditing() {
+    setIsEditingDraft(false);
+  }
+
+  function saveDraftEdits() {
+    const changes = buildDraftSavePayload(draftData, draftEditForm);
+    if (!changes) {
+      setIsEditingDraft(false);
+      return;
+    }
+    saveDraftMut.mutate(changes);
+  }
 
   return (
     <div className="space-y-6">
@@ -221,15 +290,167 @@ export function ProviderOpsTrackerDetailPage() {
 
           {draft && (
             <AdminPanel>
-              <h3 className="mb-3 text-sm font-semibold text-gray-700">Draft Data</h3>
-              <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                {Object.entries(draftData).map(([key, val]) => (
-                  <div key={key}>
-                    <dt className="text-xs text-gray-400">{key.replace(/_/g, " ")}</dt>
-                    <dd className="break-words text-sm text-gray-800">{formatDraftValue(val)}</dd>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">Draft Data</h3>
+                {!isEditingDraft ? (
+                  <button
+                    type="button"
+                    onClick={startDraftEditing}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                  >
+                    Edit
+                  </button>
+                ) : null}
+              </div>
+
+              {isEditingDraft ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <DraftFieldInput
+                      label="Business name"
+                      value={draftEditForm.business_name}
+                      onChange={(v) => setDraftEditForm((f) => ({ ...f, business_name: v }))}
+                    />
+                    <DraftFieldInput
+                      label="Owner name"
+                      value={draftEditForm.owner_name}
+                      onChange={(v) => setDraftEditForm((f) => ({ ...f, owner_name: v }))}
+                    />
+                    <DraftFieldInput
+                      label="Owner email"
+                      type="email"
+                      value={draftEditForm.owner_email}
+                      onChange={(v) => setDraftEditForm((f) => ({ ...f, owner_email: v }))}
+                    />
+                    <DraftFieldInput
+                      label="Owner phone"
+                      type="tel"
+                      value={draftEditForm.owner_phone}
+                      onChange={(v) => setDraftEditForm((f) => ({ ...f, owner_phone: v }))}
+                    />
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500">Team size</span>
+                      <select
+                        className={DRAFT_INPUT_CLASS}
+                        value={draftEditForm.team_size}
+                        onChange={(e) => setDraftEditForm((f) => ({ ...f, team_size: e.target.value }))}
+                      >
+                        {TEAM_SIZE_OPTIONS.map((opt) => (
+                          <option key={opt.value || "unset"} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                ))}
-              </dl>
+
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Description</span>
+                    <textarea
+                      rows={3}
+                      className={DRAFT_INPUT_CLASS}
+                      value={draftEditForm.description}
+                      onChange={(e) => setDraftEditForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                  </label>
+
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-gray-500">Address</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <DraftFieldInput
+                        label="Line 1"
+                        value={draftEditForm.address_line1}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_line1: v }))}
+                      />
+                      <DraftFieldInput
+                        label="Line 2"
+                        value={draftEditForm.address_line2}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_line2: v }))}
+                      />
+                      <DraftFieldInput
+                        label="City"
+                        value={draftEditForm.address_city}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_city: v }))}
+                      />
+                      <DraftFieldInput
+                        label="State / province"
+                        value={draftEditForm.address_state}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_state: v }))}
+                      />
+                      <DraftFieldInput
+                        label="Postal code"
+                        value={draftEditForm.address_postal_code}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_postal_code: v }))}
+                      />
+                      <DraftFieldInput
+                        label="Country"
+                        value={draftEditForm.address_country}
+                        onChange={(v) => setDraftEditForm((f) => ({ ...f, address_country: v }))}
+                      />
+                    </div>
+                  </div>
+
+                  {otherDraftEntries.length > 0 ? (
+                    <div className="border-t pt-3">
+                      <p className="mb-2 text-xs font-medium text-gray-500">Other fields (read-only)</p>
+                      <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        {otherDraftEntries.map(([key, val]) => (
+                          <div key={key}>
+                            <dt className="text-xs text-gray-400">{key.replace(/_/g, " ")}</dt>
+                            <dd className="break-words text-sm text-gray-800">{formatDraftValue(val)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ) : null}
+
+                  <div className="flex gap-2 border-t pt-3">
+                    <button
+                      type="button"
+                      disabled={saveDraftMut.isPending}
+                      onClick={saveDraftEdits}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {saveDraftMut.isPending ? "Saving…" : "Save Changes"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelDraftEditing}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                    <DraftFieldDisplay label="Business name" value={draftData.business_name} />
+                    <DraftFieldDisplay label="Owner name" value={draftData.owner_name} />
+                    <DraftFieldDisplay label="Owner email" value={draftData.owner_email} />
+                    <DraftFieldDisplay label="Owner phone" value={draftData.owner_phone} />
+                    <DraftFieldDisplay label="Team size" value={draftData.team_size} />
+                    <DraftFieldDisplay label="Description" value={draftData.description} className="sm:col-span-2" />
+                    <DraftFieldDisplay label="Address line 1" value={getDraftAddressPart(draftData, "line1")} />
+                    <DraftFieldDisplay label="Address line 2" value={getDraftAddressPart(draftData, "line2")} />
+                    <DraftFieldDisplay label="City" value={getDraftAddressPart(draftData, "city")} />
+                    <DraftFieldDisplay label="State / province" value={getDraftAddressPart(draftData, "state")} />
+                    <DraftFieldDisplay label="Postal code" value={getDraftAddressPart(draftData, "postal_code")} />
+                    <DraftFieldDisplay label="Country" value={getDraftAddressPart(draftData, "country")} />
+                  </dl>
+
+                  {otherDraftEntries.length > 0 ? (
+                    <dl className="mt-4 grid grid-cols-1 gap-3 border-t pt-4 text-sm sm:grid-cols-2">
+                      {otherDraftEntries.map(([key, val]) => (
+                        <div key={key}>
+                          <dt className="text-xs text-gray-400">{key.replace(/_/g, " ")}</dt>
+                          <dd className="break-words text-sm text-gray-800">{formatDraftValue(val)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                </>
+              )}
             </AdminPanel>
           )}
 
@@ -367,6 +588,138 @@ function parseAdminNotes(raw: string | null | undefined): ParsedNote[] {
       };
     })
     .filter((n) => n.note.trim());
+}
+
+function emptyDraftEditForm(): DraftEditForm {
+  return {
+    business_name: "",
+    owner_name: "",
+    owner_email: "",
+    owner_phone: "",
+    description: "",
+    team_size: "",
+    address_line1: "",
+    address_line2: "",
+    address_city: "",
+    address_state: "",
+    address_postal_code: "",
+    address_country: "",
+  };
+}
+
+function buildDraftEditForm(data: Record<string, unknown>): DraftEditForm {
+  const addr = (data.address as Record<string, unknown> | undefined) ?? {};
+  return {
+    business_name: String(data.business_name ?? ""),
+    owner_name: String(data.owner_name ?? ""),
+    owner_email: String(data.owner_email ?? ""),
+    owner_phone: String(data.owner_phone ?? ""),
+    description: String(data.description ?? ""),
+    team_size: String(data.team_size ?? ""),
+    address_line1: String(addr.line1 ?? ""),
+    address_line2: String(addr.line2 ?? ""),
+    address_city: String(addr.city ?? ""),
+    address_state: String(addr.state ?? ""),
+    address_postal_code: String(addr.postal_code ?? ""),
+    address_country: String(addr.country ?? ""),
+  };
+}
+
+function buildDraftSavePayload(
+  original: Record<string, unknown>,
+  form: DraftEditForm,
+): Record<string, unknown> | null {
+  const changes: Record<string, unknown> = {};
+
+  const scalarFields = [
+    "business_name",
+    "owner_name",
+    "owner_email",
+    "owner_phone",
+    "description",
+  ] as const;
+  for (const field of scalarFields) {
+    if (form[field] !== String(original[field] ?? "")) {
+      changes[field] = form[field] || null;
+    }
+  }
+
+  if (form.team_size !== String(original.team_size ?? "")) {
+    changes.team_size = form.team_size || null;
+  }
+
+  const origAddr = (original.address as Record<string, unknown> | undefined) ?? {};
+  const addressFields = [
+    ["line1", form.address_line1],
+    ["line2", form.address_line2],
+    ["city", form.address_city],
+    ["state", form.address_state],
+    ["postal_code", form.address_postal_code],
+    ["country", form.address_country],
+  ] as const;
+  const addressChanged = addressFields.some(
+    ([key, value]) => value !== String(origAddr[key] ?? ""),
+  );
+  if (addressChanged) {
+    changes.address = {
+      ...origAddr,
+      line1: form.address_line1,
+      line2: form.address_line2 || undefined,
+      city: form.address_city,
+      state: form.address_state,
+      postal_code: form.address_postal_code,
+      country: form.address_country,
+    };
+  }
+
+  return Object.keys(changes).length > 0 ? changes : null;
+}
+
+function getDraftAddressPart(data: Record<string, unknown>, key: string): unknown {
+  const addr = data.address;
+  if (!addr || typeof addr !== "object") return undefined;
+  return (addr as Record<string, unknown>)[key];
+}
+
+function DraftFieldInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-xs font-medium text-gray-500">{label}</span>
+      <input
+        type={type}
+        className={DRAFT_INPUT_CLASS}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
+function DraftFieldDisplay({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: unknown;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs text-gray-400">{label}</dt>
+      <dd className="break-words text-sm text-gray-800">{formatDraftValue(value)}</dd>
+    </div>
+  );
 }
 
 function formatDraftValue(value: unknown): string {

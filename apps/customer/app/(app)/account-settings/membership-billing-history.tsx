@@ -1,11 +1,9 @@
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Platform, Alert, Share } from "react-native";
-import { useFocusEffect } from "expo-router";
-import * as FileSystem from "expo-file-system/legacy";
+import { View, Text, TouchableOpacity, ScrollView, Platform, Alert } from "react-native";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
-import { supabase } from "@/lib/supabase/client";
+import { downloadPdf } from "@/lib/pdf-file";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
@@ -24,7 +22,8 @@ type BillingItem = {
   provider_name: string;
   provider_id: string | null;
   reference: string | null;
-  receipt_url: string;
+  receipt_url: string | null;
+  failure_reason?: string | null;
 };
 
 function formatDateSafe(value: string | null | undefined): string {
@@ -42,7 +41,26 @@ function formatMoney(amount: number, currency?: string): string {
   }).format(amount);
 }
 
+function statusStyle(status: string): { bg: string; text: string; label: string } {
+  const s = status.toLowerCase();
+  if (s === "paid") return { bg: "#D1FAE5", text: "#065F46", label: "Paid" };
+  if (s === "failed") return { bg: "#FEE2E2", text: "#991B1B", label: "Failed" };
+  if (s === "pending") return { bg: "#FEF3C7", text: "#92400E", label: "Pending" };
+  return { bg: Colors.gray[100], text: Colors.gray[700], label: status };
+}
+
 export default function MembershipBillingHistoryScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{
+    membership_id?: string;
+    provider_id?: string;
+    provider_name?: string;
+    plan_id?: string;
+  }>();
+  const providerId = typeof params.provider_id === "string" ? params.provider_id : undefined;
+  const planId = typeof params.plan_id === "string" ? params.plan_id : undefined;
+  const providerName = typeof params.provider_name === "string" ? params.provider_name : undefined;
+
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web")
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
@@ -56,7 +74,12 @@ export default function MembershipBillingHistoryScreen() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ items?: BillingItem[] }>("/api/me/membership/billing-history");
+      const q = new URLSearchParams();
+      if (providerId) q.set("provider_id", providerId);
+      if (planId) q.set("plan_id", planId);
+      const qs = q.toString();
+      const path = `/api/me/membership/billing-history${qs ? `?${qs}` : ""}`;
+      const res = await api.get<{ items?: BillingItem[] }>(path);
       if (res.error) setError(getApiErrorMessage(res.error, "Failed to load billing history"));
       else setItems(res.data?.items ?? []);
     } catch (e) {
@@ -64,119 +87,83 @@ export default function MembershipBillingHistoryScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [providerId, planId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const openReceipt = async (item: BillingItem) => {
+    if (!item.receipt_url) return;
     try {
-      const base = getBackendUrl().replace(/\/$/, "");
-      const pdfPath = item.receipt_url; // already starts with /api/...
-      const filename = `membership-receipt-${item.id}.pdf`.replace(/[^\w.-]+/g, "_");
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-
-      if (!base) {
-        Alert.alert("Download failed", "Could not determine API URL.");
-        return;
-      }
-
-      const pdfUrl = `${base}${pdfPath}`;
-
-      if (Platform.OS === "web") {
-        const init = withWebApiTenantHeaders({
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: "omit",
-        });
-        const response = await fetch(pdfUrl, init);
-        if (!response.ok) throw new Error(`Status ${response.status}`);
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = filename;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-        return;
-      }
-
-      if (!FileSystem.cacheDirectory) {
-        Alert.alert("Download failed", "Storage is unavailable on this device.");
-        return;
-      }
-
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      const tenantInit = withWebApiTenantHeaders({ headers, credentials: "omit" });
-      const allHeaders: Record<string, string> = Object.assign(
-        {},
-        headers,
-        tenantInit.headers as Record<string, string> | undefined,
-      );
-      const dl = await FileSystem.downloadAsync(pdfUrl, fileUri, { headers: allHeaders });
-      if (dl.status !== 200) {
-        Alert.alert("Download failed", `The server returned status ${dl.status}.`);
-        return;
-      }
-      await Share.share({ url: fileUri, title: "Membership receipt", message: filename });
+      await downloadPdf({
+        router,
+        pdfPath: item.receipt_url,
+        filename: `membership-receipt-${item.id}.pdf`,
+        title: "Membership receipt",
+        label: "receipt",
+      });
     } catch (e) {
       Alert.alert("Download failed", getApiErrorMessage(e as Error, "Could not download receipt."));
     }
   };
 
+  const title = providerName ? `Billing history · ${providerName}` : "Billing history";
+
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
-        <Text style={{ fontSize: 22, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Billing history</Text>
+        <Text style={{ fontSize: 22, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>{title}</Text>
 
         {items.length === 0 ? (
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 16, padding: 16 }}>
             <Text style={{ color: Colors.gray[600] }}>No billing history yet.</Text>
           </View>
         ) : (
-          items.map((item) => (
-            <View
-              key={item.id}
-              style={{
-                backgroundColor: Colors.white,
-                borderRadius: 14,
-                padding: 14,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: Colors.gray[100],
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: "600", color: Colors.gray[900], fontSize: 15 }}>
-                    {item.plan_name}
-                    {item.is_renewal ? " (renewal)" : " (initial)"}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{item.provider_name}</Text>
-                  <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{formatDateSafe(item.date)}</Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={{ fontWeight: "700", color: Colors.gray[900], fontSize: 15 }}>{formatMoney(item.amount)}</Text>
-                  <View style={{ backgroundColor: "#D1FAE5", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 }}>
-                    <Text style={{ fontSize: 12, color: "#065F46", fontWeight: "600" }}>Paid</Text>
+          items.map((item) => {
+            const badge = statusStyle(item.status);
+            return (
+              <View
+                key={item.id}
+                style={{
+                  backgroundColor: Colors.white,
+                  borderRadius: 14,
+                  padding: 14,
+                  marginBottom: 10,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[100],
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900], fontSize: 15 }}>
+                      {item.plan_name}
+                      {item.is_renewal ? " (renewal)" : " (initial)"}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{item.provider_name}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{formatDateSafe(item.date)}</Text>
+                    {item.failure_reason ? (
+                      <Text style={{ fontSize: 12, color: "#B91C1C", marginTop: 4 }}>{item.failure_reason}</Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontWeight: "700", color: Colors.gray[900], fontSize: 15 }}>{formatMoney(item.amount)}</Text>
+                    <View style={{ backgroundColor: badge.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 }}>
+                      <Text style={{ fontSize: 12, color: badge.text, fontWeight: "600" }}>{badge.label}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <TouchableOpacity
-                onPress={() => openReceipt(item)}
-                style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
-              >
-                <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
-                <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Download receipt</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+                {item.receipt_url && item.status === "paid" ? (
+                  <TouchableOpacity
+                    onPress={() => openReceipt(item)}
+                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
+                  >
+                    <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Download receipt</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </ScreenFrame>

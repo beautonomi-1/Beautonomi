@@ -11,6 +11,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { sendOnboardingInvite } from "@/lib/provider-ops/send-onboarding-invite";
+import { leadIsDoNotContact } from "@/lib/provider-ops/do-not-contact";
 import crypto from "crypto";
 
 function getPublicSiteBaseUrl(request: NextRequest): string {
@@ -58,6 +59,10 @@ export async function POST(
       .single();
 
     if (leadErr || !lead) return notFoundResponse("Lead not found");
+
+    if (leadIsDoNotContact(lead as { do_not_contact?: boolean })) {
+      return errorResponse("Lead is marked do-not-contact", "DO_NOT_CONTACT", 403);
+    }
 
     const email = lead.email as string | null | undefined;
     const phone = lead.phone_e164 as string | null | undefined;

@@ -28,13 +28,15 @@ import {
 } from "@/lib/providerOpsLeadStages";
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Tag, User,
-  Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp,
+  Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp, RotateCcw,
   MessageSquare, Globe, Building2, FileText, Clock,
-  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle,
+  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle, Ban,
 } from "lucide-react";
 import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
+import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
+import { ReferrerPicker, referrerSelectionFromLead, type ReferrerSelection } from "@/components/provider-ops/ReferrerPicker";
 
 function detailAssigneeName(lead: Record<string, unknown>): string {
   const aid = lead.assigned_to != null ? String(lead.assigned_to) : "";
@@ -57,6 +59,8 @@ const ACTIVITY_ICON_MAP: Record<string, typeof MessageSquare> = {
   email_sent: Mail,
   sms_sent: Send,
   whatsapp_sent: MessageCircle,
+  do_not_contact_set: Ban,
+  do_not_contact_cleared: Check,
   meeting: Calendar,
   default: MessageSquare,
 };
@@ -71,6 +75,8 @@ const ACTIVITY_COLOR_MAP: Record<string, { bg: string; text: string }> = {
   email_sent: { bg: "bg-amber-100", text: "text-amber-600" },
   sms_sent: { bg: "bg-indigo-100", text: "text-indigo-600" },
   whatsapp_sent: { bg: "bg-green-100", text: "text-green-600" },
+  do_not_contact_set: { bg: "bg-rose-100", text: "text-rose-600" },
+  do_not_contact_cleared: { bg: "bg-emerald-100", text: "text-emerald-600" },
   meeting: { bg: "bg-pink-100", text: "text-pink-600" },
   default: { bg: "bg-gray-100", text: "text-gray-500" },
 };
@@ -117,6 +123,7 @@ export function ProviderOpsLeadDetailPage() {
     business_name: "", contact_person_name: "", email: "", phone_e164: "",
     suggested_location_text: "", country: "", description: "", notes: "",
   });
+  const [editReferrer, setEditReferrer] = useState<ReferrerSelection | null>(null);
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.leadDetail(id!),
@@ -234,6 +241,21 @@ export function ProviderOpsLeadDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to add note: ${e.message}`),
   });
 
+  const logCall = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${id}/activities`, {
+        activity_type: "call_logged",
+        description: noteText.trim() || "Phone call with lead",
+        metadata: { direction: "outbound" },
+      }),
+    onSuccess: () => {
+      setNoteText("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      adminToast.success("Call logged");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to log call: ${e.message}`),
+  });
+
   const assignMut = useMutation({
     mutationFn: (args: { assigned_to: string; assigned_to_name?: string }) => {
       const d = q.data as Record<string, unknown> | undefined;
@@ -262,10 +284,20 @@ export function ProviderOpsLeadDetailPage() {
   const deleteLead = useMutation({
     mutationFn: () => adminApi.deleteJson(`/api/admin/provider-ops/leads/${id}`),
     onSuccess: () => {
-      adminToast.success("Lead deleted");
+      adminToast.success("Lead moved to trash");
       navigate(adminSpaTo("/admin/provider-ops/leads"));
     },
     onError: (e: Error) => adminToast.error(`Failed to delete lead: ${e.message}`),
+  });
+
+  const restoreLead = useMutation({
+    mutationFn: () => adminApi.postJson(`/api/admin/provider-ops/leads/${id}/restore`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      adminToast.success("Lead restored");
+    },
+    onError: (e: Error) => adminToast.error(`Restore failed: ${e.message}`),
   });
 
   const convertMut = useMutation({
@@ -368,6 +400,7 @@ export function ProviderOpsLeadDetailPage() {
       description: String(d.description ?? ""),
       notes: String(d.notes ?? ""),
     });
+    setEditReferrer(referrerSelectionFromLead(d));
     setIsEditing(true);
   }
 
@@ -380,6 +413,14 @@ export function ProviderOpsLeadDetailPage() {
       if (editDraft[f] !== String(d[f] ?? "")) {
         updates[f] = editDraft[f] || null;
       }
+    }
+    const currentReferrer = referrerSelectionFromLead(d);
+    const sameReferrer =
+      (currentReferrer?.referrer_user_id ?? null) === (editReferrer?.referrer_user_id ?? null) &&
+      (currentReferrer?.referrer_provider_id ?? null) === (editReferrer?.referrer_provider_id ?? null);
+    if (!sameReferrer) {
+      updates.referrer_user_id = editReferrer?.referrer_user_id ?? null;
+      updates.referrer_provider_id = editReferrer?.referrer_provider_id ?? null;
     }
     if (Object.keys(updates).length === 0) { setIsEditing(false); return; }
     updateLeadMut.mutate(updates);
@@ -436,6 +477,14 @@ export function ProviderOpsLeadDetailPage() {
   const assignedToId = lead.assigned_to != null ? String(lead.assigned_to) : "";
   const iOwnLead = Boolean(myUserId && assignedToId === myUserId);
   const updatedAtRaw = lead.updated_at != null ? String(lead.updated_at) : "";
+  const doNotContact = Boolean(lead.do_not_contact);
+  const referrerDisplay =
+    referrerSelectionFromLead(lead)?.display_name ||
+    (lead.source_detail ? String(lead.source_detail) : null);
+
+  function toggleDoNotContact() {
+    updateLeadMut.mutate({ do_not_contact: !doNotContact });
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 pb-[max(3rem,env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 lg:px-0">
@@ -522,6 +571,26 @@ export function ProviderOpsLeadDetailPage() {
               <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset", STAGE_BADGE[stage] || "bg-gray-100 text-gray-600")}>
                 {getLeadStageLabel(stage)}
               </span>
+              <button
+                type="button"
+                disabled={updateLeadMut.isPending}
+                onClick={toggleDoNotContact}
+                title={
+                  doNotContact
+                    ? "Do not contact — outbound SMS/WhatsApp blocked. Click to clear."
+                    : "Mark as do-not-contact"
+                }
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset touch-manipulation transition-colors",
+                  doNotContact
+                    ? "bg-rose-100 text-rose-800 ring-rose-200 hover:bg-rose-200/80"
+                    : "border border-dashed border-gray-300 bg-white text-gray-500 hover:border-rose-300 hover:text-rose-700",
+                  updateLeadMut.isPending && "opacity-60",
+                )}
+              >
+                <Ban className="h-3 w-3" />
+                {doNotContact ? "Do not contact" : "Mark DNC"}
+              </button>
               <span className="inline-block rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-500">{String(lead.source ?? "—")}</span>
               <span className="text-xs text-gray-400">{lead.created_at ? new Date(String(lead.created_at)).toLocaleDateString() : ""}</span>
             </div>
@@ -560,9 +629,28 @@ export function ProviderOpsLeadDetailPage() {
           >
             <MessageCircle className="h-4 w-4" />WhatsApp
           </button>
-          <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 touch-manipulation hover:bg-red-50 transition-colors" onClick={() => { if (confirm("Delete this lead? This action cannot be undone.")) deleteLead.mutate(); }}>
-            <Trash2 className="h-4 w-4" />Delete
-          </button>
+          {lead.deleted_at ? (
+            <button
+              type="button"
+              disabled={restoreLead.isPending}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 touch-manipulation hover:bg-emerald-50 transition-colors disabled:opacity-50"
+              onClick={() => {
+                if (confirm("Restore this lead from trash?")) restoreLead.mutate();
+              }}
+            >
+              <RotateCcw className="h-4 w-4" />Restore
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 touch-manipulation hover:bg-red-50 transition-colors"
+              onClick={() => {
+                if (confirm("Move this lead to trash?")) deleteLead.mutate();
+              }}
+            >
+              <Trash2 className="h-4 w-4" />Trash
+            </button>
+          )}
         </div>
       </div>
 
@@ -692,6 +780,12 @@ export function ProviderOpsLeadDetailPage() {
                   <span className="text-xs font-medium text-gray-500">Notes</span>
                   <textarea rows={2} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.notes} onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))} />
                 </label>
+                <label className="block text-sm">
+                  <span className="text-xs font-medium text-gray-500">Referrer</span>
+                  <div className="mt-1">
+                    <ReferrerPicker value={editReferrer} onChange={setEditReferrer} disabled={updateLeadMut.isPending} />
+                  </div>
+                </label>
                 <div className="flex gap-2 pt-1">
                   <button type="button" disabled={updateLeadMut.isPending} onClick={saveEdits} className="min-h-11 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-colors">
                     {updateLeadMut.isPending ? "Saving…" : "Save Changes"}
@@ -707,9 +801,27 @@ export function ProviderOpsLeadDetailPage() {
                 <DetailField icon={Building2} label="Business Name" value={lead.business_name} />
                 <DetailField icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${String(lead.email)}` : undefined} />
                 <DetailField icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${String(lead.phone_e164)}` : undefined} />
+                {lead.phone_e164 ? (
+                  <div className="sm:col-span-2">
+                    <LeadVoiceDialer
+                      leadId={String(lead.id)}
+                      phoneE164={String(lead.phone_e164)}
+                      tenantId={lead.tenant_id != null ? String(lead.tenant_id) : undefined}
+                      doNotContact={doNotContact}
+                      phoneLookupStatus={
+                        lead.phone_lookup_status != null
+                          ? String(lead.phone_lookup_status)
+                          : undefined
+                      }
+                    />
+                  </div>
+                ) : null}
                 <DetailField icon={MapPin} label="Location" value={lead.suggested_location_text} />
                 <DetailField icon={Globe} label="Country" value={lead.country} />
                 <DetailField icon={ExternalLink} label="Source" value={lead.source} />
+                {referrerDisplay ? (
+                  <DetailField icon={UserPlus} label="Referrer" value={referrerDisplay} />
+                ) : null}
                 <DetailField icon={Calendar} label="Created" value={lead.created_at ? new Date(String(lead.created_at)).toLocaleString() : null} />
                 <DetailField
                   icon={UserPlus}
@@ -944,6 +1056,16 @@ export function ProviderOpsLeadDetailPage() {
                 >
                   Add Note
                 </button>
+                <button
+                  type="button"
+                  disabled={logCall.isPending}
+                  title="Log a phone call (uses the text above as the call summary)"
+                  className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 disabled:opacity-50 hover:bg-emerald-100 transition-colors touch-manipulation sm:w-auto"
+                  onClick={() => logCall.mutate()}
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  Log call
+                </button>
               </div>
             </div>
           </AdminPanel>
@@ -1057,6 +1179,18 @@ export function ProviderOpsLeadDetailPage() {
                 <span className="text-xs text-gray-500">Source</span>
                 <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700">{String(lead.source ?? "—")}</span>
               </div>
+              {referrerDisplay ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Referrer</span>
+                  <span className="text-xs font-medium text-gray-700">{referrerDisplay}</span>
+                </div>
+              ) : null}
+              {lead.source_detail && !referrerDisplay ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Source detail</span>
+                  <span className="text-xs text-gray-700">{String(lead.source_detail)}</span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-500">Created</span>
                 <span className="text-xs text-gray-700">{lead.created_at ? new Date(String(lead.created_at)).toLocaleDateString() : "—"}</span>

@@ -32,7 +32,7 @@ import {
   Search, Upload, Download, Plus, LayoutGrid, LayoutList,
   Phone, Mail, MapPin, Calendar, Tag, User, ChevronDown,
   Clock, MessageSquare, MessageCircle, ArrowUpDown, CheckSquare, Square,
-  Trash2, UserPlus, X, ChevronUp, Filter, MoreHorizontal,
+  Trash2, UserPlus, X, ChevronUp, Filter, MoreHorizontal, RotateCcw,
   StickyNote, TrendingUp, ArrowRight, ExternalLink, Pencil,
 } from "lucide-react";
 import { WhatsAppSendModal } from "@/components/whatsapp/WhatsAppSendModal";
@@ -44,13 +44,20 @@ import {
   labelOf,
   type AssignableUser,
 } from "@/components/provider-ops/LeadAssigneeInline";
+import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
 
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
 const OPS_LEADS_REFETCH_MS = 45_000;
 const ACTIVITY_ICONS: Record<string, typeof MessageSquare> = {
-  note: StickyNote, stage_change: TrendingUp, call: Phone,
-  email: Mail, meeting: Calendar, default: MessageSquare,
+  note: StickyNote, stage_change: TrendingUp, stage_changed: TrendingUp,
+  call: Phone, call_logged: Phone,
+  email: Mail, email_sent: Mail, sms_sent: MessageSquare,
+  whatsapp_sent: MessageCircle, whatsapp_received: MessageCircle,
+  do_not_contact_set: X, do_not_contact_cleared: CheckSquare,
+  invite_accepted: UserPlus, match_confirmed: CheckSquare,
+  assignment_changed: User, task_created: CheckSquare,
+  task_completed: CheckSquare, meeting: Calendar, default: MessageSquare,
 };
 
 interface LeadCategory {
@@ -80,8 +87,36 @@ interface Lead {
   /** Wasender reachability check — surfaced as a badge in the inbox. */
   whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   whatsapp_checked_at?: string | null;
+  do_not_contact?: boolean;
+  do_not_contact_at?: string | null;
+  do_not_contact_reason?: string | null;
+  tenant_id?: string | null;
+  phone_lookup_status?: string | null;
+  phone_lookup_at?: string | null;
   updated_at?: string;
   overdue_task_count?: number;
+  invite_sent_at?: string | null;
+  invite_accepted_at?: string | null;
+  onboarding_data?: Record<string, unknown> | null;
+  deleted_at?: string | null;
+}
+
+type DetailActivityTab = "timeline" | "comms" | "tasks";
+
+function leadInviteStatusChip(lead: Lead): { label: string; className: string } | null {
+  if (lead.invite_accepted_at) {
+    return { label: "Invite accepted", className: "bg-emerald-100 text-emerald-700 ring-emerald-200/80" };
+  }
+  if (lead.invite_sent_at) {
+    return { label: "Invite sent", className: "bg-indigo-100 text-indigo-700 ring-indigo-200/80" };
+  }
+  return null;
+}
+
+function leadHasOnboardingData(lead: Lead): boolean {
+  const od = lead.onboarding_data;
+  if (!od || typeof od !== "object") return false;
+  return Object.keys(od).filter((k) => k !== "invite_token").length > 0;
 }
 
 /** Shows whether the lead phone was verified on WhatsApp (Wasender check). */
@@ -126,6 +161,43 @@ function WhatsAppStatusChip({ status, compact = false }: { status?: Lead["whatsa
       <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
       {c.label}
     </span>
+  );
+}
+
+/** Do-not-contact badge with optional admin toggle. */
+function DoNotContactChip({
+  active,
+  compact = false,
+  onToggle,
+  toggling = false,
+}: {
+  active: boolean;
+  compact?: boolean;
+  onToggle?: () => void;
+  toggling?: boolean;
+}) {
+  if (!active && !onToggle) return null;
+  return (
+    <button
+      type="button"
+      disabled={!onToggle || toggling}
+      onClick={onToggle}
+      title={
+        active
+          ? "Do not contact — outbound SMS/WhatsApp blocked. Click to clear."
+          : "Mark as do-not-contact"
+      }
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium touch-manipulation transition-colors",
+        active
+          ? "bg-rose-100 text-rose-800 ring-1 ring-inset ring-rose-200 hover:bg-rose-200/80"
+          : "border border-dashed border-gray-300 bg-white text-gray-500 hover:border-rose-300 hover:text-rose-700",
+        toggling && "opacity-60",
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-rose-500" : "bg-gray-300")} />
+      {active ? (compact ? "DNC" : "Do not contact") : compact ? "+ DNC" : "Mark DNC"}
+    </button>
   );
 }
 
@@ -215,6 +287,7 @@ export function ProviderOpsLeadsPage() {
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
   const viewParam = sp.get("view");
+  const deletedView = sp.get("deleted") === "only";
 
   const [searchInput, setSearchInput] = useState(search);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -228,7 +301,24 @@ export function ProviderOpsLeadsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; total_rows_in_file: number; skipped_empty: number; warnings: { row: number; field: string; message: string }[] } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    total_rows_in_file: number;
+    skipped_empty: number;
+    skipped_duplicates_count: number;
+    recovered_rows: number;
+    warnings: { row: number; field: string; message: string }[];
+    skipped_duplicates: {
+      row: number;
+      field: string;
+      value: string;
+      existing_lead_id: string | null;
+      existing_lead_name: string | null;
+      reason: "in_file" | "existing_lead";
+    }[];
+    error?: string | null;
+  } | null>(null);
+  const [importDetailsOpen, setImportDetailsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
   const resizingRef = useRef(false);
@@ -259,9 +349,9 @@ export function ProviderOpsLeadsPage() {
   const qk = useMemo(
     () =>
       adminQueryKeys.providerOps.leads(
-        `s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|a=${assignedToFilter}|sb=${sortBy}|sd=${sortDir}`,
+        `s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|a=${assignedToFilter}|sb=${sortBy}|sd=${sortDir}|del=${deletedView ? "only" : "active"}`,
       ),
-    [stage, page, search, country, province, categoryKey, assignedToFilter, sortBy, sortDir],
+    [stage, page, search, country, province, categoryKey, assignedToFilter, sortBy, sortDir, deletedView],
   );
 
   const q = useQuery({
@@ -278,6 +368,7 @@ export function ProviderOpsLeadsPage() {
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
+      if (deletedView) p.set("deleted", "only");
       return adminApi.getJson<LeadsPayload>(`/api/admin/provider-ops/leads?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -422,9 +513,20 @@ export function ProviderOpsLeadsPage() {
     onSuccess: () => {
       setSelectedLeadId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      adminToast.success("Lead deleted");
+      adminToast.success("Lead moved to trash");
     },
     onError: (e: Error) => adminToast.error(`Delete failed: ${e.message}`),
+  });
+
+  const restoreMut = useMutation({
+    mutationFn: (id: string) =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${id}/restore`, {}),
+    onSuccess: () => {
+      setSelectedLeadId(null);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      adminToast.success("Lead restored");
+    },
+    onError: (e: Error) => adminToast.error(`Restore failed: ${e.message}`),
   });
 
   const bulkDeleteMut = useMutation({
@@ -468,6 +570,21 @@ export function ProviderOpsLeadsPage() {
       setNoteText("");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(selectedLeadId!) });
       adminToast.success("Note added");
+    },
+    onError: (e: Error) => adminToast.error(`Failed: ${e.message}`),
+  });
+
+  const logCallMut = useMutation({
+    mutationFn: (leadId: string) =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
+        activity_type: "call_logged",
+        description: noteText.trim() || "Phone call with lead",
+        metadata: { direction: "outbound" },
+      }),
+    onSuccess: () => {
+      setNoteText("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(selectedLeadId!) });
+      adminToast.success("Call logged");
     },
     onError: (e: Error) => adminToast.error(`Failed: ${e.message}`),
   });
@@ -556,10 +673,14 @@ export function ProviderOpsLeadsPage() {
 
   const handleImportFile = useCallback(async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "csv" && ext !== "tsv" && ext !== "txt") return;
+    if (ext !== "csv" && ext !== "tsv" && ext !== "txt") {
+      adminToast.error("Unsupported file type. Please upload a .csv, .tsv, or .txt file.");
+      return;
+    }
     try {
       setImporting(true);
       setImportResult(null);
+      setImportDetailsOpen(false);
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/admin/provider-ops/leads/import", { method: "POST", body: formData, credentials: "include" });
@@ -568,14 +689,78 @@ export function ProviderOpsLeadsPage() {
         adminToast.error(json?.error?.message ?? json?.message ?? "Import failed — please check your file and try again");
         return;
       }
-      setImportResult({ imported: json.data.imported, total_rows_in_file: json.data.total_rows_in_file, skipped_empty: json.data.skipped_empty, warnings: json.data.warnings || [] });
-      adminToast.success(`Imported ${json.data.imported as number} leads`);
+      const data = json.data;
+      setImportResult({
+        imported: data.imported,
+        total_rows_in_file: data.total_rows_in_file,
+        skipped_empty: data.skipped_empty,
+        skipped_duplicates_count: data.skipped_duplicates_count ?? 0,
+        recovered_rows: data.recovered_rows ?? 0,
+        warnings: data.warnings || [],
+        skipped_duplicates: data.skipped_duplicates || [],
+        error: data.error ?? null,
+      });
+      const dupCount = data.skipped_duplicates_count ?? 0;
+      const recoveredCount = data.recovered_rows ?? 0;
+      const toastParts = [`Imported ${data.imported as number} leads`];
+      if (dupCount > 0) toastParts.push(`${dupCount} duplicates skipped`);
+      if (recoveredCount > 0) toastParts.push(`${recoveredCount} rows auto-recovered`);
+      if (data.error) toastParts.push("import partially completed");
+      adminToast.success(toastParts.join(" · "));
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [qc]);
+
+  const downloadImportReport = useCallback(() => {
+    if (!importResult) return;
+    const rows: string[][] = [["row", "type", "field", "value", "message", "existing_lead_id", "existing_lead_name"]];
+    for (const dup of importResult.skipped_duplicates) {
+      rows.push([
+        String(dup.row),
+        dup.reason === "in_file" ? "duplicate_in_file" : "duplicate_existing",
+        dup.field,
+        dup.value,
+        dup.reason === "in_file"
+          ? "Duplicate row in this file"
+          : `Matches existing lead${dup.existing_lead_name ? `: ${dup.existing_lead_name}` : ""}`,
+        dup.existing_lead_id ?? "",
+        dup.existing_lead_name ?? "",
+      ]);
+    }
+    for (const warn of importResult.warnings) {
+      rows.push([
+        String(warn.row),
+        "warning",
+        warn.field,
+        "",
+        warn.message,
+        "",
+        "",
+      ]);
+    }
+    const csv = rows
+      .map((row) =>
+        row
+          .map((cell) => {
+            if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+              return `"${cell.replace(/"/g, '""')}"`;
+            }
+            return cell;
+          })
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `provider-leads-import-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [importResult]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -587,6 +772,7 @@ export function ProviderOpsLeadsPage() {
       if (province) p.set("province", province);
       categoryIds.forEach((id) => p.append("category_ids", id));
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
+      if (deletedView) p.set("deleted", "only");
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
         adminToast.error("Export failed — please try again");
@@ -602,7 +788,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter]);
+  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter, deletedView]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -738,14 +924,76 @@ export function ProviderOpsLeadsPage() {
 
       {importResult && (
         <div className="mx-1 mb-2 flex-shrink-0">
-          <AdminPanel className="!border-emerald-200 !bg-emerald-50">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-emerald-800">{importResult.imported.toLocaleString()} leads imported</p>
-                <p className="text-xs text-emerald-700">{importResult.total_rows_in_file} rows · {importResult.skipped_empty} empty rows skipped</p>
-                {importResult.warnings.length > 0 && <p className="text-xs text-amber-600">{importResult.warnings.length} warning(s)</p>}
+          <AdminPanel className={cn("!border-emerald-200 !bg-emerald-50", importResult.error && "!border-amber-200 !bg-amber-50")}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-semibold text-emerald-800">
+                  {importResult.imported.toLocaleString()} leads imported
+                </p>
+                <p className="text-xs text-emerald-700">
+                  {importResult.total_rows_in_file} rows · {importResult.skipped_empty} empty rows skipped
+                  {importResult.skipped_duplicates_count > 0
+                    ? ` · ${importResult.skipped_duplicates_count} duplicates skipped`
+                    : ""}
+                  {importResult.recovered_rows > 0
+                    ? ` · ${importResult.recovered_rows} rows auto-recovered`
+                    : ""}
+                  {importResult.warnings.length > 0 ? ` · ${importResult.warnings.length} warning(s)` : ""}
+                </p>
+                {importResult.error ? (
+                  <p className="text-xs text-amber-700">{importResult.error}</p>
+                ) : null}
+                {(importResult.warnings.length > 0 || importResult.skipped_duplicates_count > 0) && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setImportDetailsOpen((open) => !open)}
+                      className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                    >
+                      {importDetailsOpen ? "Hide details" : "Show details"}
+                    </button>
+                    {importDetailsOpen ? (
+                      <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-emerald-800">
+                        {importResult.skipped_duplicates.slice(0, 50).map((dup, idx) => (
+                          <li key={`dup-${dup.row}-${idx}`}>
+                            Row {dup.row}: duplicate {dup.field} ({dup.value})
+                            {dup.existing_lead_name ? ` — matches ${dup.existing_lead_name}` : ""}
+                          </li>
+                        ))}
+                        {importResult.warnings.slice(0, 50).map((warn, idx) => (
+                          <li key={`warn-${warn.row}-${idx}`}>
+                            Row {warn.row}: {warn.field} — {warn.message}
+                          </li>
+                        ))}
+                        {importResult.skipped_duplicates.length + importResult.warnings.length > 50 ? (
+                          <li className="text-emerald-600">…and more. Download the full report.</li>
+                        ) : null}
+                      </ul>
+                    ) : null}
+                  </div>
+                )}
               </div>
-              <button type="button" onClick={() => setImportResult(null)} className="text-xs text-emerald-600 hover:text-emerald-800">Dismiss</button>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                {(importResult.warnings.length > 0 || importResult.skipped_duplicates_count > 0) && (
+                  <button
+                    type="button"
+                    onClick={downloadImportReport}
+                    className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                  >
+                    Download report
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportResult(null);
+                    setImportDetailsOpen(false);
+                  }}
+                  className="text-xs text-emerald-600 hover:text-emerald-800"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           </AdminPanel>
         </div>
@@ -761,6 +1009,20 @@ export function ProviderOpsLeadsPage() {
               {stageCounts[s] != null && <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">{stageCounts[s]}</span>}
             </button>
           ))}
+          <button
+            type="button"
+            className={cn(adminTabButtonClass(deletedView), "touch-manipulation whitespace-nowrap")}
+            onClick={() => {
+              const n = new URLSearchParams(sp);
+              if (deletedView) n.delete("deleted");
+              else n.set("deleted", "only");
+              n.set("page", "1");
+              setSp(n, { replace: true });
+            }}
+          >
+            <Trash2 className="mr-1 inline h-3.5 w-3.5" />
+            Trash
+          </button>
         </div>
       </div>
 
@@ -1109,6 +1371,8 @@ export function ProviderOpsLeadsPage() {
               setNoteText={setNoteText}
               onAddNote={() => addNoteMut.mutate(selectedLeadId)}
               addingNote={addNoteMut.isPending}
+              onLogCall={() => logCallMut.mutate(selectedLeadId)}
+              loggingCall={logCallMut.isPending}
               onStageChange={(s) =>
                 stageChangeMut.mutate({
                   id: selectedLeadId!,
@@ -1116,9 +1380,11 @@ export function ProviderOpsLeadsPage() {
                   expected_updated_at: detail?.updated_at,
                 })
               }
-              onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
+              onDelete={() => { if (confirm("Move this lead to trash?")) deleteMut.mutate(selectedLeadId); }}
+              onRestore={() => { if (confirm("Restore this lead?")) restoreMut.mutate(selectedLeadId); }}
               onClose={() => setSelectedLeadId(null)}
               isDeleting={deleteMut.isPending}
+              isRestoring={restoreMut.isPending}
               onSave={(fields) => updateLeadMut.mutate(fields)}
               isSaving={updateLeadMut.isPending}
             />
@@ -1153,12 +1419,18 @@ export function ProviderOpsLeadsPage() {
                 setNoteText={setNoteText}
                 onAddNote={() => addNoteMut.mutate(selectedLeadId)}
                 addingNote={addNoteMut.isPending}
+                onLogCall={() => logCallMut.mutate(selectedLeadId)}
+                loggingCall={logCallMut.isPending}
                 onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s, detail?.updated_at)}
                 onDelete={() => {
-                  if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId);
+                  if (confirm("Move this lead to trash?")) deleteMut.mutate(selectedLeadId);
+                }}
+                onRestore={() => {
+                  if (confirm("Restore this lead?")) restoreMut.mutate(selectedLeadId);
                 }}
                 onClose={() => setSelectedLeadId(null)}
                 isDeleting={deleteMut.isPending}
+                isRestoring={restoreMut.isPending}
                 onSave={(fields) => updateLeadMut.mutate(fields)}
                 isSaving={updateLeadMut.isPending}
               />
@@ -1585,7 +1857,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
 
 // ─── Detail panel (right side) ────────────────────────────────────────────────
 
-function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAddNote, addingNote, onStageChange, onDelete, onClose, isDeleting, onSave, isSaving }: {
+function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAddNote, addingNote, onLogCall, loggingCall, onStageChange, onDelete, onRestore, onClose, isDeleting, isRestoring, onSave, isSaving }: {
   lead: Lead | null;
   activities: Activity[];
   isLoading: boolean;
@@ -1593,13 +1865,22 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
   setNoteText: (v: string) => void;
   onAddNote: () => void;
   addingNote: boolean;
+  onLogCall: () => void;
+  loggingCall: boolean;
   onStageChange: (stage: string) => void;
   onDelete: () => void;
+  onRestore?: () => void;
   onClose: () => void;
   isDeleting: boolean;
+  isRestoring?: boolean;
   onSave?: (fields: Record<string, unknown>) => void;
   isSaving?: boolean;
 }) {
+  const qc = useQueryClient();
+  const leadId = lead?.id;
+  const [activityTab, setActivityTab] = useState<DetailActivityTab>("timeline");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueAt, setTaskDueAt] = useState("");
   const [editing, setEditing] = useState(false);
   const [editFields, setEditFields] = useState({
     business_name: "",
@@ -1610,6 +1891,72 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
     description: "",
     notes: "",
   });
+
+  const tasksQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.leadDetail(leadId!), "tasks"],
+    queryFn: () =>
+      adminApi.getJson<{
+        tasks: Array<{
+          id: string;
+          title: string;
+          description: string | null;
+          due_at: string | null;
+          completed_at: string | null;
+          assigned_to: string | null;
+          assignee?: { full_name?: string | null; email?: string | null } | null;
+        }>;
+      }>(`/api/admin/provider-ops/leads/${leadId}/tasks`),
+    enabled: !!leadId && activityTab === "tasks",
+  });
+
+  const commsQ = useQuery({
+    queryKey: [...adminQueryKeys.providerOps.leadDetail(leadId!), "communications"],
+    queryFn: () =>
+      adminApi.getJson<{
+        communications: Array<{
+          id: string;
+          channel: string;
+          direction: string;
+          status: string | null;
+          subject: string | null;
+          body: string | null;
+          created_at: string;
+        }>;
+      }>(`/api/admin/provider-ops/leads/${leadId}/communications?limit=20`),
+    enabled: !!leadId && activityTab === "comms",
+  });
+
+  const createTaskMut = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/tasks`, {
+        title: taskTitle.trim(),
+        due_at: taskDueAt ? new Date(taskDueAt).toISOString() : null,
+      }),
+    onSuccess: () => {
+      adminToast.success("Task created");
+      setTaskTitle("");
+      setTaskDueAt("");
+      void tasksQ.refetch();
+      if (leadId) void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(leadId) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to create task"),
+  });
+
+  const completeTaskMut = useMutation({
+    mutationFn: (taskId: string) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${leadId}/tasks/${taskId}`, { completed: true }),
+    onSuccess: () => {
+      void tasksQ.refetch();
+      if (leadId) void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(leadId) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to complete task"),
+  });
+
+  useEffect(() => {
+    setActivityTab("timeline");
+    setTaskTitle("");
+    setTaskDueAt("");
+  }, [leadId]);
 
   if (isLoading || !lead) {
     return (
@@ -1677,7 +2024,26 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
                 <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", STAGE_BADGE[lead.commercial_stage] || "bg-gray-100 text-gray-600")}>
                   {getLeadStageLabel(lead.commercial_stage)}
                 </span>
+                <DoNotContactChip
+                  active={Boolean(l.do_not_contact)}
+                  compact
+                  onToggle={onSave ? () => onSave({ do_not_contact: !l.do_not_contact }) : undefined}
+                  toggling={isSaving}
+                />
                 <span className="inline-block rounded-md border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500">{lead.source}</span>
+                {(() => {
+                  const invite = leadInviteStatusChip(lead);
+                  return invite ? (
+                    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", invite.className)}>
+                      {invite.label}
+                    </span>
+                  ) : null;
+                })()}
+                {leadHasOnboardingData(lead) ? (
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200/80">
+                    Onboarding data
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1706,9 +2072,15 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
             <ExternalLink className="h-3 w-3" />Full Page
           </Link>
-          <button type="button" disabled={isDeleting} onClick={onDelete} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 touch-manipulation hover:bg-red-50 disabled:opacity-50">
-            <Trash2 className="h-3 w-3" />Delete
-          </button>
+          {lead.deleted_at && onRestore ? (
+            <button type="button" disabled={isRestoring} onClick={onRestore} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-700 touch-manipulation hover:bg-emerald-50 disabled:opacity-50">
+              <RotateCcw className="h-3 w-3" />Restore
+            </button>
+          ) : !lead.deleted_at ? (
+            <button type="button" disabled={isDeleting} onClick={onDelete} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 touch-manipulation hover:bg-red-50 disabled:opacity-50">
+              <Trash2 className="h-3 w-3" />Trash
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1786,11 +2158,32 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
             <InfoRow icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} />
             <InfoRow icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${lead.phone_e164}` : undefined} />
             {lead.phone_e164 && (
-              <div className="ml-7 -mt-1">
+              <div className="ml-7 mt-2">
+                <LeadVoiceDialer
+                  leadId={lead.id}
+                  phoneE164={lead.phone_e164}
+                  tenantId={l.tenant_id}
+                  doNotContact={Boolean(l.do_not_contact)}
+                  phoneLookupStatus={l.phone_lookup_status}
+                />
+              </div>
+            )}
+            {lead.phone_e164 && (
+              <div className="ml-7 -mt-1 flex flex-wrap items-center gap-2">
                 <WhatsAppStatusChip status={lead.whatsapp_status} />
+                <DoNotContactChip
+                  active={Boolean(l.do_not_contact)}
+                  onToggle={onSave ? () => onSave({ do_not_contact: !l.do_not_contact }) : undefined}
+                  toggling={isSaving}
+                />
                 {lead.whatsapp_checked_at && (
-                  <span className="ml-2 text-[11px] text-gray-400">
+                  <span className="text-[11px] text-gray-400">
                     checked {new Date(lead.whatsapp_checked_at).toLocaleDateString()}
+                  </span>
+                )}
+                {l.do_not_contact && l.do_not_contact_at && (
+                  <span className="text-[11px] text-rose-600">
+                    DNC since {new Date(String(l.do_not_contact_at)).toLocaleDateString()}
                   </span>
                 )}
               </div>
@@ -1862,65 +2255,207 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           </div>
         )}
 
-        {/* Activity timeline */}
+        {/* Activity section with tabs */}
         <div className="px-4 py-3 sm:px-5">
-          <label className="mb-3 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Activity Timeline</label>
-          {activities.length > 0 ? (
-            <div className="relative space-y-0">
-              <div className="absolute left-3 top-3 bottom-0 w-px bg-gray-200" />
-              {activities.map((a, i) => {
-                const Icon = ACTIVITY_ICONS[a.activity_type] || ACTIVITY_ICONS.default;
-                return (
-                  <div key={a.id ?? i} className="relative flex gap-3 pb-4">
-                    <div className={cn(
-                      "relative z-10 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
-                      a.activity_type === "stage_change" ? "bg-purple-100" :
-                      a.activity_type === "note" ? "bg-blue-100" :
-                      a.activity_type === "call" ? "bg-green-100" :
-                      a.activity_type === "email" ? "bg-amber-100" : "bg-gray-100",
-                    )}>
-                      <Icon className={cn(
-                        "h-3 w-3",
-                        a.activity_type === "stage_change" ? "text-purple-600" :
-                        a.activity_type === "note" ? "text-blue-600" :
-                        a.activity_type === "call" ? "text-green-600" :
-                        a.activity_type === "email" ? "text-amber-600" : "text-gray-500",
-                      )} />
-                    </div>
-                    <div className="min-w-0 pt-0.5">
-                      <p className="text-sm text-gray-700">{a.description || a.activity_type.replace(/_/g, " ")}</p>
-                      <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-400">
-                        <span>{new Date(a.created_at).toLocaleString()}</span>
-                        {a.created_by_name && <span>by {a.created_by_name}</span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400">No activities yet</p>
-          )}
-
-          {/* Add note */}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              type="text"
-              placeholder="Add a note…"
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && noteText.trim() && onAddNote()}
-              className="min-h-11 w-full flex-1 rounded-lg border border-gray-200 px-3 py-2 text-base placeholder:text-gray-400 focus:border-gray-400 focus:outline-none sm:text-sm"
-            />
-            <button
-              type="button"
-              disabled={!noteText.trim() || addingNote}
-              onClick={onAddNote}
-              className="min-h-11 w-full shrink-0 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors touch-manipulation sm:w-auto"
-            >
-              Add
-            </button>
+          <div className="mb-3 flex flex-wrap gap-1 border-b border-gray-100 pb-2">
+            {([
+              { key: "timeline" as const, label: "Timeline" },
+              { key: "comms" as const, label: "Comms" },
+              { key: "tasks" as const, label: "Tasks" },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                className={cn(adminTabButtonClass(activityTab === tab.key), "touch-manipulation text-xs")}
+                onClick={() => setActivityTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
+
+          {activityTab === "timeline" ? (
+            <>
+              {activities.length > 0 ? (
+                <div className="relative space-y-0">
+                  <div className="absolute left-3 top-3 bottom-0 w-px bg-gray-200" />
+                  {activities.map((a, i) => {
+                    const Icon = ACTIVITY_ICONS[a.activity_type] || ACTIVITY_ICONS.default;
+                    return (
+                      <div key={a.id ?? i} className="relative flex gap-3 pb-4">
+                        <div className={cn(
+                          "relative z-10 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
+                          a.activity_type.startsWith("stage_change") ? "bg-purple-100" :
+                          a.activity_type === "note" ? "bg-blue-100" :
+                          a.activity_type === "call" || a.activity_type === "call_logged" ? "bg-green-100" :
+                          a.activity_type === "email" || a.activity_type === "email_sent" ? "bg-amber-100" : "bg-gray-100",
+                        )}>
+                          <Icon className={cn(
+                            "h-3 w-3",
+                            a.activity_type.startsWith("stage_change") ? "text-purple-600" :
+                            a.activity_type === "note" ? "text-blue-600" :
+                            a.activity_type === "call" || a.activity_type === "call_logged" ? "text-green-600" :
+                            a.activity_type === "email" || a.activity_type === "email_sent" ? "text-amber-600" : "text-gray-500",
+                          )} />
+                        </div>
+                        <div className="min-w-0 pt-0.5">
+                          <p className="text-sm text-gray-700">{a.description || a.activity_type.replace(/_/g, " ")}</p>
+                          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-400">
+                            <span>{new Date(a.created_at).toLocaleString()}</span>
+                            {a.created_by_name && <span>by {a.created_by_name}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">No activities yet</p>
+              )}
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  placeholder="Add a note or call summary…"
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && noteText.trim() && onAddNote()}
+                  className="min-h-11 w-full flex-1 rounded-lg border border-gray-200 px-3 py-2 text-base placeholder:text-gray-400 focus:border-gray-400 focus:outline-none sm:text-sm"
+                />
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    disabled={!noteText.trim() || addingNote}
+                    onClick={onAddNote}
+                    className="min-h-11 flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors touch-manipulation sm:flex-none"
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loggingCall}
+                    onClick={onLogCall}
+                    title="Log a phone call (uses the text above as the call summary)"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 disabled:opacity-50 hover:bg-emerald-100 transition-colors touch-manipulation sm:flex-none"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    Log call
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {activityTab === "comms" ? (
+            commsQ.isLoading ? (
+              <div className="py-6 text-center text-sm text-gray-400">Loading communications…</div>
+            ) : (commsQ.data?.communications ?? []).length > 0 ? (
+              <ul className="max-h-64 space-y-2 overflow-y-auto">
+                {(commsQ.data?.communications ?? []).map((comm) => (
+                  <li key={comm.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium capitalize text-gray-800">
+                        {comm.channel} · {comm.direction}
+                      </span>
+                      <span className="text-xs text-gray-500">{comm.status ?? "sent"}</span>
+                    </div>
+                    {comm.subject ? <p className="mt-1 text-xs font-medium text-gray-700">{comm.subject}</p> : null}
+                    {comm.body ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-gray-600">{comm.body}</p>
+                    ) : null}
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      {new Date(comm.created_at).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400">No outbound communications logged yet.</p>
+            )
+          ) : null}
+
+          {activityTab === "tasks" ? (
+            <>
+              {tasksQ.isLoading ? (
+                <div className="py-6 text-center text-sm text-gray-400">Loading tasks…</div>
+              ) : (
+                <div className="space-y-2">
+                  {(tasksQ.data?.tasks ?? []).map((task) => {
+                    const overdue =
+                      !task.completed_at &&
+                      task.due_at &&
+                      new Date(task.due_at).getTime() < Date.now();
+                    return (
+                      <div
+                        key={task.id}
+                        className={cn(
+                          "flex items-start justify-between gap-3 rounded-lg border px-3 py-2",
+                          overdue ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50",
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className={cn("text-sm font-medium", task.completed_at ? "text-gray-400 line-through" : "text-gray-900")}>
+                            {task.title}
+                          </p>
+                          {task.due_at ? (
+                            <p className={cn("text-xs", overdue ? "text-red-700" : "text-gray-500")}>
+                              Due {new Date(task.due_at).toLocaleString()}
+                            </p>
+                          ) : null}
+                        </div>
+                        {!task.completed_at ? (
+                          <button
+                            type="button"
+                            onClick={() => completeTaskMut.mutate(task.id)}
+                            disabled={completeTaskMut.isPending}
+                            className="shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            Complete
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-xs text-green-700">Done</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(tasksQ.data?.tasks ?? []).length === 0 ? (
+                    <p className="text-sm text-gray-400">No follow-up tasks yet.</p>
+                  ) : null}
+                </div>
+              )}
+              <form
+                className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!taskTitle.trim()) return;
+                  createTaskMut.mutate();
+                }}
+              >
+                <input
+                  type="text"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder="New follow-up task…"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="datetime-local"
+                    value={taskDueAt}
+                    onChange={(e) => setTaskDueAt(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={createTaskMut.isPending || !taskTitle.trim()}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    Add task
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

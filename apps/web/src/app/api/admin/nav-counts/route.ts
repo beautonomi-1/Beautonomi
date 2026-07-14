@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
             .from("provider_leads")
             .select("id", { count: "exact", head: true })
             .eq("tenant_id", tenantId)
+            .is("deleted_at", null)
             .eq("commercial_stage", "new");
           if (error) return { count: 0 };
           return { count: count ?? 0 };

@@ -5,12 +5,10 @@ import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabas
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 import { describeCancellationRefund } from "@/lib/bookings/refund-processing";
 import {
-  computeCancellationFeeForSettlement,
-  computeEffectiveCollectedAmount,
+  computeReconciledCancellationAmounts,
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
-import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -187,7 +185,7 @@ export async function POST(
       loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
     };
 
-    const { cancellationFeeApplied, policyRefundAmount } = computeCancellationFeeForSettlement({
+    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
       booking: financialSnapshot,
       cancelledBy: "customer",
       currency: cancelCurrency,
@@ -195,9 +193,6 @@ export async function POST(
       isLateCancellation: isLate,
       refundBookingTotal: bookingTotal,
     });
-    const walletRefundAmount = roundCurrency2(
-      Math.min(policyRefundAmount, computeEffectiveCollectedAmount(financialSnapshot)),
-    );
 
     const currentVersion = (booking as BookingRow).version ?? 0;
     const { data: updatedRows, error: updateError } = await adminSupabase
@@ -315,6 +310,9 @@ export async function POST(
     await sendCancellationNotification(bookingId, {
       cancelledBy: 'customer',
       refundInfo,
+      feeRetained: cancellationFeeApplied,
+      walletRefund: walletRefundAmount,
+      currency: cancelCurrency,
     });
 
     // §Group-booking-qa 2026-05: when a non-primary participant cancels their
@@ -343,6 +341,10 @@ export async function POST(
         await cancelGroupBooking(supabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
           settleFinance: true,
           financeActor: "customer",
+          financeContext: {
+            policy,
+            isLateCancellation: isLate,
+          },
         });
 
         // Notify all participants directly via OneSignal. Previously this used a

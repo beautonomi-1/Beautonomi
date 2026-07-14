@@ -62,11 +62,13 @@ export async function GET(request: NextRequest) {
       supabase
         .from("provider_leads")
         .select("*", { count: "exact", head: true })
-        .eq("tenant_id", tenantId),
+        .eq("tenant_id", tenantId)
+        .is("deleted_at", null),
       supabase
         .from("provider_leads")
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .gte("created_at", weekAgo),
       Promise.all(
         PROVIDER_LEAD_PIPELINE_STAGES.map(async (stage) => {
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest) {
             .from("provider_leads")
             .select("*", { count: "exact", head: true })
             .eq("tenant_id", tenantId)
+            .is("deleted_at", null)
             .eq("commercial_stage", stage);
           if (error) throw error;
           return [stage, count ?? 0] as const;
@@ -96,6 +99,7 @@ export async function GET(request: NextRequest) {
         .from("provider_leads")
         .select("id, email, phone_e164")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .is("matched_provider_id", null)
         .not("commercial_stage", "eq", "lost")
         .order("created_at", { ascending: false })

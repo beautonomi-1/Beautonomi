@@ -22,6 +22,16 @@ vi.mock("@/lib/supabase/api-helpers", () => ({
     ),
 }));
 
+vi.mock("@/lib/custom-offers/sync-offer-message-attachments", () => ({
+  patchCustomOfferMessageAttachments: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/notifications/onesignal", () => ({
+  getNotificationTemplate: vi.fn().mockResolvedValue(null),
+  sendTemplateNotification: vi.fn().mockResolvedValue(undefined),
+  sendToUser: vi.fn().mockResolvedValue(undefined),
+}));
+
 type Captured = {
   expiredRequestIds: string[];
   expiredOfferIds: string[];
@@ -29,8 +39,8 @@ type Captured = {
 };
 
 function makeAdmin(opts: {
-  staleRequests: Array<{ id: string }>;
-  staleOffers: Array<{ id: string }>;
+  staleRequests: Array<{ id: string; customer_id?: string; provider_id?: string }>;
+  staleOffers: Array<{ id: string; request_id?: string; provider_id?: string; request?: { customer_id?: string } }>;
   captured: Captured;
 }) {
   function chainable(table: string, isCascade = false) {
@@ -95,8 +105,13 @@ describe("GET /api/cron/expire-custom-requests", () => {
     const captured: Captured = { expiredRequestIds: [], expiredOfferIds: [], cascadeUpdates: 0 };
     mockGetSupabaseAdmin.mockReturnValue(
       makeAdmin({
-        staleRequests: [{ id: "req-1" }, { id: "req-2" }],
-        staleOffers: [{ id: "offer-1" }],
+        staleRequests: [
+          { id: "req-1", customer_id: "cust-1", provider_id: "prov-1" },
+          { id: "req-2", customer_id: "cust-2", provider_id: "prov-2" },
+        ],
+        staleOffers: [
+          { id: "offer-1", request_id: "req-1", provider_id: "prov-1", request: { customer_id: "cust-1" } },
+        ],
         captured,
       }),
     );

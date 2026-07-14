@@ -276,6 +276,7 @@ export default function AppLayout() {
         <Stack.Screen name="on-demand/result" options={{ headerShown: true, title: stackTitle("result") }} />
         <Stack.Screen name="more-providers/[section]" options={{ headerShown: true }} />
         <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: stackTitle("link") }} />
+        <Stack.Screen name="pdf-preview" options={{ headerShown: false, title: "PDF" }} />
         <Stack.Screen name="onboarding/index" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
       </Stack>
       </View>

@@ -55,6 +55,17 @@ describe("buildOverviewDateParams", () => {
     expect(month.start_date).toBe("2026-06-01");
     expect(month.end_date).toBe("2026-06-30");
   });
+
+  it("§stale-pending: 'all' range has no date bounds so stale pending requests stay reachable", () => {
+    // The needs-attention banner and the tappable Overview Pending card both
+    // deep-link to dateRange="all" — this is what guarantees a booking
+    // request from any date in the past (however old) still shows up in the
+    // Overview list, unlike the ±30-day Day-view date strip.
+    const params = buildOverviewDateParams("all", tz);
+    expect(params).toEqual({});
+    expect(params.start_date).toBeUndefined();
+    expect(params.end_date).toBeUndefined();
+  });
 });
 
 describe("buildOverviewDateRangeLabel", () => {
@@ -98,6 +109,20 @@ describe("appendBookingsQueryParts", () => {
     });
     expect(url).toContain("status=pending");
     expect(url).toContain("search=jane");
+  });
+
+  it("§stale-pending: the pending/all-dates deep-link URL filters by status without date bounds, sorted oldest-first", () => {
+    const overview = buildOverviewDateParams("all", "Africa/Johannesburg");
+    const url = appendBookingsQueryParts(new URLSearchParams(), {
+      ...overview,
+      status: "pending",
+      sort: "scheduled_at",
+      order: "asc",
+    });
+    expect(url).toContain("status=pending");
+    expect(url).toContain("order=asc");
+    expect(url).not.toContain("start_date=");
+    expect(url).not.toContain("end_date=");
   });
 });
 

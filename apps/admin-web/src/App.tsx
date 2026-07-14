@@ -164,6 +164,7 @@ export default function App() {
           <Route path="api-keys" element={<P.ApiKeysListPage />} />
           <Route path="integrations/amplitude" element={<P.AmplitudeConfigPage />} />
           <Route path="integrations/slack" element={<P.SlackIntegrationPage />} />
+          <Route path="integrations/calls" element={<P.CallsIntegrationPage />} />
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
           <Route path="integrations/yoco" element={<P.YocoIntegrationPage />} />
           <Route path="integrations/paycloud" element={<P.PayCloudIntegrationPage />} />

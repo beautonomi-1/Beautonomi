@@ -10,6 +10,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { applyActiveLeadFilter } from "@/lib/provider-ops/lead-query-filters";
 
 const MAX_IDS = 500;
 
@@ -44,11 +45,13 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: leads, error: fetchErr } = await supabase
+    let fetchQuery = supabase
       .from("provider_leads")
-      .select("id, matched_provider_id")
+      .select("id, matched_provider_id, deleted_at")
       .eq("tenant_id", tenantId)
       .in("id", uniqueIds);
+    fetchQuery = applyActiveLeadFilter(fetchQuery, "active");
+    const { data: leads, error: fetchErr } = await fetchQuery;
 
     if (fetchErr) throw fetchErr;
 
@@ -60,21 +63,26 @@ export async function POST(request: NextRequest) {
     const skippedMatched = found.filter((l) => l.matched_provider_id).map((l) => l.id);
 
     if (toDelete.length > 0) {
-      const { error: a1 } = await supabase.from("provider_lead_activities").delete().in("lead_id", toDelete);
-      if (a1) throw a1;
-      const { error: a2 } = await supabase.from("provider_lead_categories").delete().in("lead_id", toDelete);
-      if (a2) throw a2;
-      const { error: a3 } = await supabase.from("provider_lead_communications").delete().in("lead_id", toDelete);
-      if (a3) throw a3;
-      const { error: a4 } = await supabase.from("provider_lead_tasks").delete().in("lead_id", toDelete);
-      if (a4) throw a4;
-
+      const now = new Date().toISOString();
       const { error: delErr } = await supabase
         .from("provider_leads")
-        .delete()
+        .update({ deleted_at: now, deleted_by: user.id })
         .in("id", toDelete)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .is("deleted_at", null);
       if (delErr) throw delErr;
+
+      const activityRows = toDelete.map((leadId) => ({
+        lead_id: leadId,
+        activity_type: "lead_deleted",
+        description: "Lead moved to trash (bulk)",
+        metadata: { soft_delete: true, bulk: true },
+        performed_by: user.id,
+      }));
+      const { error: actErr } = await supabase
+        .from("provider_lead_activities")
+        .insert(activityRows);
+      if (actErr) throw actErr;
     }
 
     void writeAuditLog({
