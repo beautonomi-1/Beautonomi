@@ -48,7 +48,7 @@ export async function POST(
       ownership: { column: "user_id", value: user.id },
     });
 
-    if (!result.ok) {
+    if ("code" in result) {
       if (result.code === "TICKET_NOT_RESOLVED") {
         return errorResponse(result.message, "TICKET_NOT_RESOLVED", 409);
       }

@@ -26,7 +26,7 @@
     "test:errors": "node scripts/test-runner.js --verbose",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "analyze": "ANALYZE=true next build",
     "check-bundle": "node scripts/check-bundle-size.mjs",
