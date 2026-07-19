@@ -45,11 +45,11 @@ export function AdsCheckoutProcessingOverlay({
         <Text style={styles.hint}>
           {hint === null
             ? ""
-            : hint ?? "Don't close the app — we're confirming with the payment provider."}
+            : hint ?? "Don\u2019t close the app — we\u2019re confirming with the payment provider."}
         </Text>
         {showSlowPath ? (
           <Animated.Text entering={FadeIn.duration(400)} style={styles.slowPath}>
-            Still working — don't close the app.
+            Still working — don{"'"}t close the app.
           </Animated.Text>
         ) : null}
       </View>

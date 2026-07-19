@@ -9,6 +9,8 @@ type Action = "confirm" | "dispute";
 /**
  * POST /api/me/bookings/[id]/refunds/[refundId]/respond
  * Customer confirms or disputes a pending cash refund.
+ * @tenant-hint Booking is loaded with the user-scoped Supabase client (RLS); service role is only used for
+ * refund rows already tied to that booking_id after the customer ownership check.
  */
 export async function POST(
   request: NextRequest,

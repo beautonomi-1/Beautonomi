@@ -1521,6 +1521,54 @@ export default function BookingDetailScreen() {
     return () => task.cancel();
   }, [focusPayment, data]);
 
+  const unpaidAdditionalChargesTotal = useMemo(
+    () =>
+      additionalCharges
+        .filter((c) => c.status !== "paid" && c.status !== "rejected")
+        .reduce((sum, c) => sum + Number(c.amount ?? 0), 0),
+    [additionalCharges],
+  );
+
+  const completionChecklist = useMemo(() => {
+    const row = resolvedBooking ?? (data as BookingDetail | undefined);
+    if (!row) {
+      return buildBookingCompletionChecklist({
+        status: null,
+        paymentStatus: null,
+        outstanding: 0,
+        unpaidAdditionalCharges: 0,
+        productOrders: [],
+        hasProductsOnBooking: false,
+      });
+    }
+
+    const totalAmount = row.total_amount ?? 0;
+    const totalPaid = row.total_paid ?? 0;
+    const totalRefunded = row.total_refunded ?? 0;
+    const walletAmountApplied = Number(row.wallet_amount ?? 0);
+    const giftCardAmountApplied = Number(row.gift_card_amount ?? 0);
+    const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+    const ps = (row.payment_status || "").toLowerCase();
+    const walletGiftCoverage = walletAmountApplied + giftCardAmountApplied;
+    const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
+    const outstandingRawLocal = totalAmount - coverageLocal;
+    const outstanding =
+      typeof row.outstanding_balance === "number"
+        ? Math.max(0, row.outstanding_balance)
+        : ps === "refunded"
+          ? 0
+          : Math.max(0, outstandingRawLocal);
+
+    return buildBookingCompletionChecklist({
+      status: row.status,
+      paymentStatus: row.payment_status,
+      outstanding,
+      unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
+      productOrders: appointmentProductOrders,
+      hasProductsOnBooking: (row.products?.length ?? 0) > 0,
+    });
+  }, [resolvedBooking, data, unpaidAdditionalChargesTotal, appointmentProductOrders]);
+
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
@@ -1671,33 +1719,6 @@ export default function BookingDetailScreen() {
     statusesAllowingPayment.has(b.status);
   const canMarkPaid = canCollectPayment;
   const requiresRecollectConfirm = (b.payment_status ?? "").toLowerCase() === "refunded";
-  const unpaidAdditionalChargesTotal = useMemo(
-    () =>
-      additionalCharges
-        .filter((c) => c.status !== "paid" && c.status !== "rejected")
-        .reduce((sum, c) => sum + Number(c.amount ?? 0), 0),
-    [additionalCharges],
-  );
-
-  const completionChecklist = useMemo(
-    () =>
-      buildBookingCompletionChecklist({
-        status: b.status,
-        paymentStatus: b.payment_status,
-        outstanding,
-        unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
-        productOrders: appointmentProductOrders,
-        hasProductsOnBooking: (b.products?.length ?? 0) > 0,
-      }),
-    [
-      b.status,
-      b.payment_status,
-      b.products,
-      outstanding,
-      unpaidAdditionalChargesTotal,
-      appointmentProductOrders,
-    ],
-  );
 
   const canRefund = canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);

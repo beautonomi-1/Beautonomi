@@ -10,6 +10,7 @@ type Action = "confirm" | "dispute";
  * order refund. Parity with the booking cash-refund confirmation flow — no
  * money moves here (cash was handed back in person); this records the customer
  * acknowledgement / dispute for audit + support triage.
+ * @tenant-hint Service-role read/update is scoped with .eq("customer_id", user.id) after customer auth.
  */
 export async function POST(
   request: NextRequest,

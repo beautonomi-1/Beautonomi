@@ -132,7 +132,7 @@
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.104.1",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "babel-plugin-dynamic-import-node": "^2.3.3",
     "turbo": "^2.9.6"
   }
