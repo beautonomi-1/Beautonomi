@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 
@@ -360,6 +361,7 @@ export default function InAppBrowserScreen() {
       ) : (
         <WebView
           source={{ uri: rawUrl }}
+          {...inAppWebViewUserAgentProps()}
           style={styles.webview}
           originWhitelist={["https://*", "http://*", "provider://*"]}
           onShouldStartLoadWithRequest={(request: { url: string }) => {

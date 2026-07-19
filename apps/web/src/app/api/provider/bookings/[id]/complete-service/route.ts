@@ -112,6 +112,14 @@ export async function POST(
       );
     }
 
+    if (String(bookingData.payment_status ?? "").toLowerCase() === "refunded") {
+      return errorResponse(
+        "This booking was fully refunded. Cancel the booking instead of marking it completed.",
+        "PAYMENT_REFUNDED",
+        400,
+      );
+    }
+
     // Create booking event
     const { error: eventError } = await supabase
       .from("booking_events")
@@ -248,6 +256,37 @@ export async function POST(
         await notifyReviewReminder(id);
       } catch (reviewReminderErr) {
         console.error("[complete-service] review reminder failed:", reviewReminderErr);
+      }
+
+      try {
+        const { maybeSendWalkInAppNudge } = await import("@/lib/portal/walk-in-app-nudge");
+        const supabaseAdminComplete = getSupabaseAdmin();
+        const bookingRow = updatedBooking as {
+          customer_id?: string;
+          booking_number?: string;
+          booking_source?: string;
+          provider_id?: string;
+          tenant_id?: string | null;
+        };
+        if (bookingRow.customer_id && bookingRow.booking_source === "walk_in") {
+          const { data: providerRow } = await supabaseAdminComplete
+            .from("providers")
+            .select("business_name")
+            .eq("id", bookingRow.provider_id ?? providerId)
+            .maybeSingle();
+          await maybeSendWalkInAppNudge({
+            supabaseAdmin: supabaseAdminComplete,
+            customerId: bookingRow.customer_id,
+            bookingId: id,
+            bookingNumber: bookingRow.booking_number || id.slice(0, 8),
+            providerId: bookingRow.provider_id ?? providerId,
+            providerName: (providerRow as { business_name?: string } | null)?.business_name ?? "Your provider",
+            tenantId: bookingRow.tenant_id ?? null,
+            trigger: "booking_completed",
+          });
+        }
+      } catch (nudgeErr) {
+        console.warn("[complete-service] walk-in app nudge failed:", nudgeErr);
       }
 
       try {

@@ -73,6 +73,7 @@ export default function MyTicketDetailPage() {
   const [csatScore, setCsatScore] = useState<number | null>(null);
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
+  const [csatEditing, setCsatEditing] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<SupportAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +90,9 @@ export default function MyTicketDetailPage() {
       setMessages(data?.messages ?? []);
       setCsatScore(data?.ticket?.csat_score ?? null);
       setCsatComment(data?.ticket?.csat_comment ?? "");
+      if (typeof data?.ticket?.csat_score === "number") {
+        setCsatEditing(false);
+      }
       void fetcher.post(`/api/me/support-tickets/${id}/seen`, {}).catch(() => {});
     } catch {
       setTicket(null);
@@ -159,6 +163,7 @@ export default function MyTicketDetailPage() {
 
   const submitCsat = async () => {
     if (!id || !csatScore) return;
+    const wasFirstSubmit = typeof ticket?.csat_score !== "number";
     setSubmittingCsat(true);
     try {
       await fetcher.post(`/api/me/support-tickets/${id}/csat`, {
@@ -166,8 +171,13 @@ export default function MyTicketDetailPage() {
         comment: csatComment.trim() || null,
       });
       deleteFetcherGetCacheEntriesMatching("/api/me/support-tickets");
+      setCsatEditing(false);
       await loadTicket();
-      toast.success("Thanks for rating support");
+      toast.success(
+        wasFirstSubmit
+          ? "Thanks for your feedback — this ticket is now closed."
+          : "Your rating has been updated. Thank you!",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit rating");
     } finally {
@@ -406,42 +416,85 @@ export default function MyTicketDetailPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">
-                    {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+                    {typeof ticket.csat_score === "number" && !csatEditing
+                      ? "Thanks for your feedback"
+                      : typeof ticket.csat_score === "number"
+                        ? "Update your rating"
+                        : "Rate this support experience"}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    {[1, 2, 3, 4, 5].map((score) => (
-                      <button
-                        key={score}
+                  {typeof ticket.csat_score === "number" && !csatEditing ? (
+                    <>
+                      <p className="text-sm text-zinc-700">
+                        Your rating: <span className="font-semibold">{ticket.csat_score}/5</span>
+                        {ticket.csat_comment ? (
+                          <span className="block mt-1 text-zinc-600">“{ticket.csat_comment}”</span>
+                        ) : null}
+                      </p>
+                      <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                        This ticket is closed. We appreciate you taking a moment to rate support.
+                      </p>
+                      <Button
                         type="button"
-                        onClick={() => setCsatScore(score)}
-                        className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${
-                          csatScore === score
-                            ? "border-[#FF0077] bg-[#FF0077] text-white"
-                            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
-                        }`}
+                        variant="outline"
+                        onClick={() => setCsatEditing(true)}
+                        className="border-zinc-200"
                       >
-                        {score}
-                      </button>
-                    ))}
-                  </div>
-                  <Textarea
-                    value={csatComment}
-                    onChange={(e) => setCsatComment(e.target.value)}
-                    placeholder="Optional: what went well or what could be better?"
-                    rows={3}
-                    maxLength={1000}
-                  />
-                  <Button
-                    type="button"
-                    onClick={submitCsat}
-                    disabled={!csatScore || submittingCsat}
-                    className="bg-[#FF0077] hover:bg-[#D60565]"
-                  >
-                    {submittingCsat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    {typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"}
-                  </Button>
+                        Update rating
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5].map((score) => (
+                          <button
+                            key={score}
+                            type="button"
+                            onClick={() => setCsatScore(score)}
+                            className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${
+                              csatScore === score
+                                ? "border-[#FF0077] bg-[#FF0077] text-white"
+                                : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                            }`}
+                          >
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                      <Textarea
+                        value={csatComment}
+                        onChange={(e) => setCsatComment(e.target.value)}
+                        placeholder="Optional: what went well or what could be better?"
+                        rows={3}
+                        maxLength={1000}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          onClick={submitCsat}
+                          disabled={!csatScore || submittingCsat}
+                          className="bg-[#FF0077] hover:bg-[#D60565]"
+                        >
+                          {submittingCsat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                          {typeof ticket.csat_score === "number" ? "Save rating" : "Submit rating"}
+                        </Button>
+                        {typeof ticket.csat_score === "number" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setCsatEditing(false);
+                              setCsatScore(ticket.csat_score ?? null);
+                              setCsatComment(ticket.csat_comment ?? "");
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
               <p className="text-sm text-gray-500">

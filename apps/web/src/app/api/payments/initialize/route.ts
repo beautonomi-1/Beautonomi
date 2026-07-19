@@ -6,6 +6,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
+import { resolveSettlementModel } from "@/lib/payments/provider/settlement-model";
+import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveBookingPaystackAmount } from "@/lib/payments/resolve-paystack-initialize-amount";
@@ -139,6 +142,18 @@ export async function POST(request: Request) {
 
     const amountInSmallestUnit = resolved.amountSmallestUnit;
     const transactionReference = generateTransactionReference("booking", booking_id);
+    const chargeCurrency = (currency || lastResortCurrency).toUpperCase();
+
+    const fxReady = await assertReportingCurrencyReady(admin, chargeCurrency);
+    if (fxReady.ok === false) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: { message: fxReady.message, code: fxReady.code },
+        },
+        { status: 503 },
+      );
+    }
 
     // Get platform settings for split code (transaction split for commission)
     const { data: platformSettings } = await (supabase
@@ -171,6 +186,7 @@ export async function POST(request: Request) {
       .single();
 
     let subaccount: string | undefined;
+    let stripeConnectAccountId: string | undefined;
     if (bookingDetails?.provider_id) {
       const { data: providerSubaccount } = await (supabase
         .from("provider_paystack_subaccounts") as any)
@@ -181,6 +197,17 @@ export async function POST(request: Request) {
 
       if (providerSubaccount) {
         subaccount = providerSubaccount.subaccount_code;
+      }
+
+      const { data: providerStripe } = await (supabase
+        .from("providers") as any)
+        .select("stripe_connect_account_id")
+        .eq("id", bookingDetails.provider_id)
+        .maybeSingle();
+      const connectId = (providerStripe as { stripe_connect_account_id?: string | null } | null)
+        ?.stripe_connect_account_id;
+      if (typeof connectId === "string" && connectId.trim()) {
+        stripeConnectAccountId = connectId.trim();
       }
     }
 
@@ -195,7 +222,46 @@ export async function POST(request: Request) {
       ? `${resolvedCallbackUrl}${resolvedCallbackUrl.includes("?") ? "&" : "?"}cancelled=1`
       : `${appUrl}/checkout/cancelled?booking_id=${encodeURIComponent(booking_id)}`;
 
-    // Initialize transaction with split if configured
+    // Initialize transaction with split if configured (Paystack) or PaymentIntent (Stripe).
+    const psp = await getPaymentProviderForTenant(paymentTenantId);
+    if (psp?.provider.id === "stripe") {
+      const settlementModel = resolveSettlementModel(psp.gateway.config);
+      const stripeInit = await psp.provider.initializePayment({
+        email,
+        amountInSmallestUnit,
+        currency: currency || lastResortCurrency,
+        reference: transactionReference,
+        callbackUrl: resolvedCallbackUrl,
+        metadata: {
+          booking_id,
+          customer_id: auth.user.id,
+          save_card: saveCard,
+          set_as_default: setAsDefault,
+          cancel_action: cancelAction,
+        },
+        tenantId: paymentTenantId,
+        connectedAccountId: stripeConnectAccountId,
+        settlementModel,
+      });
+
+      await (supabase.from("bookings") as any)
+        .update({
+          payment_reference: stripeInit.reference,
+          payment_status: "pending",
+        })
+        .eq("id", booking_id);
+
+      return NextResponse.json({
+        data: {
+          provider: "stripe",
+          client_secret: stripeInit.clientSecret,
+          payment_intent_id: stripeInit.paymentIntentId,
+          reference: stripeInit.reference,
+        },
+        error: null,
+      });
+    }
+
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit,

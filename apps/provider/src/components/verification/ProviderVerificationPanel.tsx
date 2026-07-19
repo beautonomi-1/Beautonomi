@@ -479,7 +479,9 @@ export function ProviderVerificationPanel({
               </Text>
             </View>
             <Text style={twStyle("text-sm text-blue-700")}>
-              {"Your verification is being reviewed. We'll notify you once it's confirmed — no action needed."}
+              {status === "pending_review"
+                ? "We're reviewing your documents — this can take a few minutes if additional checks are running. You can continue setup; we'll notify you when verification is complete."
+                : "Your verification is being reviewed. We'll notify you once it's confirmed — no action needed."}
             </Text>
           </View>
         )}

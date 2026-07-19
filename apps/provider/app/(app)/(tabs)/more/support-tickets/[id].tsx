@@ -300,6 +300,7 @@ export default function SupportTicketDetailScreen() {
 
   const submitCsat = async () => {
     if (!id || !csatScore) return;
+    const wasFirstSubmit = typeof ticket?.csat_score !== "number";
     setSubmittingCsat(true);
     try {
       const res = await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/csat`, {
@@ -311,7 +312,12 @@ export default function SupportTicketDetailScreen() {
         return;
       }
       invalidateSupportTicketsListCache();
-      Alert.alert("Thanks", "Your rating helps us improve support.");
+      Alert.alert(
+        "Thanks for your feedback",
+        wasFirstSubmit
+          ? "Your rating has been saved and this ticket is now closed."
+          : "Your rating has been updated. Thank you!",
+      );
       setCsatExpanded(false);
       await loadTicket();
       setTimeout(() => scrollViewRef.current?.scrollTo({ y: 0, animated: true }), 200);
@@ -567,10 +573,14 @@ export default function SupportTicketDetailScreen() {
                   accessibilityState={{ expanded: csatExpanded }}
                 >
                   <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                    {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+                    {typeof ticket.csat_score === "number" && !csatExpanded
+                      ? "Thanks for your feedback"
+                      : typeof ticket.csat_score === "number"
+                        ? "Update your rating"
+                        : "Rate this support experience"}
                   </Text>
                   <Text style={twStyle("text-xs font-semibold text-indigo-600")}>
-                    {csatExpanded ? "Hide" : "Show"}
+                    {csatExpanded ? "Hide" : typeof ticket.csat_score === "number" ? "Update" : "Show"}
                   </Text>
                 </TouchableOpacity>
                 {csatExpanded ? (
@@ -607,7 +617,11 @@ export default function SupportTicketDetailScreen() {
                     />
                     <ActionButton
                       label={
-                        submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"
+                        submittingCsat
+                          ? "Submitting…"
+                          : typeof ticket.csat_score === "number"
+                            ? "Save rating"
+                            : "Submit rating"
                       }
                       onPress={submitCsat}
                       fullWidth
@@ -615,10 +629,19 @@ export default function SupportTicketDetailScreen() {
                     />
                   </>
                 ) : typeof ticket.csat_score === "number" ? (
-                  <Text style={twStyle("text-sm text-gray-600")}>
-                    You rated this ticket {ticket.csat_score}/5
-                    {ticket.csat_comment ? ` — "${ticket.csat_comment}"` : ""}
-                  </Text>
+                  <View>
+                    <Text style={twStyle("text-sm font-semibold text-gray-700")}>
+                      Your rating: {ticket.csat_score}/5
+                      {ticket.csat_comment ? `\n“${ticket.csat_comment}”` : ""}
+                    </Text>
+                    <Text
+                      style={twStyle(
+                        "mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700",
+                      )}
+                    >
+                      This ticket is closed. We appreciate you taking a moment to rate support.
+                    </Text>
+                  </View>
                 ) : null}
                 <Text style={twStyle("mt-4 text-sm text-gray-500")}>
                   This ticket is {ticket.status}. Submit a new ticket from Settings → Contact support to continue.

@@ -38,6 +38,7 @@ type ProviderMembership = {
   next_billing_at: string | null;
   last_payment_at: string | null;
   past_due_since: string | null;
+  renewal_payment_method_missing?: boolean;
   card: { last4: string; brand: string; exp: string } | null;
 };
 
@@ -344,10 +345,11 @@ export default function MembershipPageClient() {
           </div>
           {providerMemberships.map((pm) => {
             const isPastDue = pm.status === "past_due";
+            const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue;
             return (
               <Card
                 key={pm.id}
-                className={isPastDue ? "border-red-300 shadow-sm" : undefined}
+                className={isPastDue || needsRenewalCard ? "border-amber-300 shadow-sm" : undefined}
               >
                 <CardContent className="space-y-4 pt-6">
                   {isPastDue ? (
@@ -358,6 +360,19 @@ export default function MembershipPageClient() {
                         <p className="mt-1">
                           We couldn&apos;t renew your {pm.plan_name} membership. Update your card
                           within the grace period to keep your benefits.
+                        </p>
+                      </div>
+                    </div>
+                  ) : needsRenewalCard ? (
+                    <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                      <div>
+                        <p className="font-semibold">Add a payment method</p>
+                        <p className="mt-1">
+                          Your {pm.plan_name} membership is active, but we couldn&apos;t save a card
+                          for renewals. Add a payment method{" "}
+                          {pm.next_billing_at ? `before ${formatDateSafe(pm.next_billing_at)}` : "soon"}{" "}
+                          to keep it from lapsing.
                         </p>
                       </div>
                     </div>

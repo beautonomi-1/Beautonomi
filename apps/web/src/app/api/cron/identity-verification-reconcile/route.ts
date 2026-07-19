@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { reconcileSession } from "@/lib/identity-verification/identity-verification-service";
 
@@ -22,13 +23,9 @@ const STALE_MINUTES = 15;
 const MAX_BATCH = 50;
 
 export async function GET(request: NextRequest) {
-  // Protect with CRON_SECRET (set in env)
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
   }
 
   const supabase = getSupabaseAdmin();

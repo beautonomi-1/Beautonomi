@@ -27,6 +27,10 @@ export interface ConfigBundleMeta {
     timezone: string;
     phone_country_code: string;
     region_id?: string;
+    /** Primary online payment gateway for the region ("paystack" | "stripe" | ...). */
+    payment_gateway?: string;
+    /** Minimum native version supporting the region's gateway SDK (Stripe PaymentSheet). */
+    gateway_native_min_version?: string;
   };
   /** Allowlisted subset of region_settings (support URLs, paystack_public_key, etc.). */
   region_settings_public?: Record<string, unknown>;
@@ -222,4 +226,67 @@ export function getTenantDefaultCurrency(): string {
 export function clearConfigBundleCache(): void {
   cached = null;
   cacheTime = 0;
+}
+
+/** Compares dotted semver-ish versions; returns <0, 0, >0. Missing parts treated as 0. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = b.split(".").map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va !== vb) return va - vb;
+  }
+  return 0;
+}
+
+/**
+ * Whether this build ships the Stripe PaymentSheet native SDK. Kept as a compile-time
+ * constant so tree-shaking removes the branch until the SDK is bundled. Flip to `true`
+ * in the build that adds `@stripe/stripe-react-native`.
+ */
+export const BUILD_SUPPORTS_STRIPE_NATIVE = false;
+
+export type CheckoutGatewayDecision = {
+  /** Resolved region gateway ("paystack" | "stripe" | "unknown"). */
+  gateway: string;
+  /** True when the app can present the gateway natively in-app. */
+  canCheckoutNatively: boolean;
+  /**
+   * When native checkout is unavailable for the region gateway, use the hosted
+   * web checkout fallback instead of the in-app SDK/webview.
+   */
+  useHostedWebFallback: boolean;
+};
+
+/**
+ * Decide how the customer app should present checkout for the active market.
+ *
+ * - Paystack regions: in-app webview flow (existing behaviour) — always native-capable.
+ * - Stripe regions: require Stripe PaymentSheet, gated on both build capability and the
+ *   region's `gateway_native_min_version`. Older builds fall back to hosted web checkout
+ *   so payments never hard-break during a phased native rollout.
+ */
+export function resolveCheckoutGateway(appVersion?: string | null): CheckoutGatewayDecision {
+  const region = getCachedConfigBundle()?.meta?.tenant_region;
+  const gateway = (region?.payment_gateway ?? "paystack").trim().toLowerCase() || "paystack";
+
+  if (gateway === "paystack") {
+    return { gateway, canCheckoutNatively: true, useHostedWebFallback: false };
+  }
+
+  if (gateway === "stripe") {
+    const minVersion = region?.gateway_native_min_version ?? null;
+    const versionOk =
+      !minVersion || !appVersion || compareVersions(appVersion, minVersion) >= 0;
+    const nativeOk = BUILD_SUPPORTS_STRIPE_NATIVE && versionOk;
+    return {
+      gateway,
+      canCheckoutNatively: nativeOk,
+      useHostedWebFallback: !nativeOk,
+    };
+  }
+
+  // Unknown gateway → safest path is hosted web checkout.
+  return { gateway: gateway || "unknown", canCheckoutNatively: false, useHostedWebFallback: true };
 }

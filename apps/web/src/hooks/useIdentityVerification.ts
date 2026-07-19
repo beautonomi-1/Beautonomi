@@ -146,8 +146,19 @@ export function useIdentityVerification(
     return () => { cancelled = true; };
   }, [fetchStatus]);
 
-  // Poll after SDK returns until terminal status
+  // Poll after SDK returns until terminal status (extended window for AML / manual review)
   const onSdkReturn = useCallback(() => {
+    const MAX_POLL_ATTEMPTS = 30;
+    const MAX_REVIEW_POLL_ATTEMPTS = 90;
+    const terminal = new Set([
+      "approved", "rejected", "expired", "abandoned", "errored",
+    ]);
+    const shouldStop = (status: NormalizedVerificationStatus, attempts: number) => {
+      if (terminal.has(status)) return true;
+      if (status === "pending_review") return attempts >= MAX_REVIEW_POLL_ATTEMPTS;
+      return attempts >= MAX_POLL_ATTEMPTS;
+    };
+
     // Show optimistic "checking" — don't unlock gates until webhook confirms
     stopPolling();
     pollAttemptsRef.current = 0;
@@ -156,12 +167,11 @@ export function useIdentityVerification(
       try {
         const s = await fetchStatus();
         setStatus(s);
-        const terminal = ["approved","rejected","expired","abandoned","errored"].includes(s);
-        if (terminal || pollAttemptsRef.current >= 30) {
+        if (shouldStop(s, pollAttemptsRef.current)) {
           stopPolling();
         }
       } catch {
-        if (pollAttemptsRef.current >= 30) stopPolling();
+        if (pollAttemptsRef.current >= MAX_REVIEW_POLL_ATTEMPTS) stopPolling();
       }
     }, pollIntervalMs);
   }, [fetchStatus, pollIntervalMs, stopPolling]);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -64,6 +64,7 @@ export default function BookingDetailPage() {
   const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const bookingId = params.id as string;
   const onDemandConfig = useModuleConfig("on_demand");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
@@ -109,6 +110,32 @@ export default function BookingDetailPage() {
       void reloadBooking();
     }
   }, [bookingId, reloadBooking]);
+
+  useEffect(() => {
+    const refundId =
+      searchParams.get("refund_confirm") ?? searchParams.get("refund_dispute");
+    if (!bookingId || !refundId) return;
+
+    const action = searchParams.get("refund_dispute") ? "dispute" : "confirm";
+    const run = async () => {
+      try {
+        await fetcher.post(`/api/me/bookings/${bookingId}/refunds/${refundId}/respond`, {
+          action,
+        });
+        toast.success(
+          action === "dispute"
+            ? "Refund disputed. Our team will review."
+            : "Refund confirmed. Thank you.",
+        );
+      } catch (err) {
+        const msg = err instanceof FetchError ? err.message : "Could not update refund status.";
+        toast.error(msg);
+      } finally {
+        router.replace(`/account-settings/bookings/${bookingId}`);
+      }
+    };
+    void run();
+  }, [bookingId, router, searchParams]);
 
   /** Realtime + window focus refetch so additional charges appear without manual refresh. */
   useEffect(() => {

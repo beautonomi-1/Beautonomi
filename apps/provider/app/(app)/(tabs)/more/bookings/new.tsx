@@ -113,6 +113,7 @@ interface ApiClient {
     email?: string;
     phone?: string;
     avatar_url?: string | null;
+    is_registered?: boolean;
   };
   /** §Provider-audit 2026-05: surfaced from `/api/provider/clients` so we
    * can render a member/expired/cancelled pill on the new-booking flow. */
@@ -133,6 +134,7 @@ interface Client {
   email: string;
   phone: string;
   avatar_url?: string | null;
+  is_shadow?: boolean | null;
   /**
    * §Provider-audit 2026-05: when present, the new-booking screen surfaces
    * an explicit member/cancelled/expired pill so providers know exactly
@@ -153,6 +155,10 @@ interface SelectedService {
   staffId?: string;
   addOnIds: string[];
   customization?: string;
+  isCustom?: boolean;
+  customName?: string;
+  customPrice?: number;
+  customDuration?: number;
   /**
    * §Provider-audit 2026-04 (packages round 2): track which package a line
    * came from so the "Remove package" action can cleanly undo everything the
@@ -455,6 +461,7 @@ export default function NewBookingScreen() {
       email: c.customer?.email || "",
       phone: c.customer?.phone || "",
       avatar_url: c.customer?.avatar_url ?? null,
+      is_shadow: c.customer?.is_registered === false,
       salon_membership: c.salon_membership ?? null,
     }),
     [],
@@ -491,6 +498,10 @@ export default function NewBookingScreen() {
 
   // --- Services ---
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
+  const [showCustomService, setShowCustomService] = useState(false);
+  const [customServiceName, setCustomServiceName] = useState("");
+  const [customServicePrice, setCustomServicePrice] = useState("");
+  const [customServiceDuration, setCustomServiceDuration] = useState("60");
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
@@ -575,6 +586,7 @@ export default function NewBookingScreen() {
           email: raw.customer?.email || "",
           phone: raw.customer?.phone || "",
           avatar_url: raw.customer?.avatar_url ?? null,
+          is_shadow: raw.customer?.is_registered === false,
           salon_membership: raw.salon_membership ?? null,
         });
       }
@@ -1053,6 +1065,10 @@ export default function NewBookingScreen() {
   const cartSubtotalOnly = useMemo(() => {
     let subtotal = 0;
     selectedServices.forEach((sel) => {
+      if (sel.isCustom) {
+        subtotal += safeNum(sel.customPrice);
+        return;
+      }
       const svc = services?.find((s) => s.id === sel.serviceId);
       if (!svc) return;
       const svcPrice = safeNum(svc.price);
@@ -1089,6 +1105,21 @@ export default function NewBookingScreen() {
     let totalMinutes = 0;
     const items: { name: string; price: number; duration: number; staffName?: string; quantity?: number }[] = [];
     selectedServices.forEach((sel) => {
+      if (sel.isCustom) {
+        const svcPrice = safeNum(sel.customPrice);
+        const svcMinutes = safeNum(sel.customDuration ?? 60);
+        subtotal += svcPrice;
+        servicesSubtotal += svcPrice;
+        totalMinutes += svcMinutes;
+        const staffName = staffList?.find((s) => s.id === sel.staffId)?.name;
+        items.push({
+          name: sel.customName ?? "Custom service",
+          price: svcPrice,
+          duration: svcMinutes,
+          staffName,
+        });
+        return;
+      }
       const svc = services?.find((s) => s.id === sel.serviceId);
       if (!svc) return;
       const svcPrice = safeNum(svc.price);
@@ -1212,6 +1243,7 @@ export default function NewBookingScreen() {
     };
     const byId = new Map<string, Agg>();
     for (const sel of selectedServices) {
+      if (sel.isCustom) continue;
       const svc = services.find((x) => x.id === sel.serviceId);
       if (!svc) continue;
       const title = svc.variant_name ? `${svc.title} · ${svc.variant_name}` : svc.title;
@@ -1261,7 +1293,7 @@ export default function NewBookingScreen() {
     const d = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
     const dur = summary.totalMinutes || 60;
     const staffIds = selectedServices.map((s) => s.staffId).filter((id): id is string => !!id);
-    const serviceIds = [...new Set(selectedServices.map((s) => s.serviceId).filter(Boolean))];
+    const serviceIds = [...new Set(selectedServices.filter((s) => !s.isCustom).map((s) => s.serviceId).filter(Boolean))];
     const mode = locationType === "at_home" ? "mobile" : "salon";
     const travelBuffer = locationType === "at_home" ? atHomeTravelBufferMinutes : 0;
     return {
@@ -1436,6 +1468,41 @@ export default function NewBookingScreen() {
         { serviceId, addOnIds: [], ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}) },
       ];
     });
+  }
+
+  function addCustomServiceLine() {
+    const name = customServiceName.trim();
+    const price = safeNum(customServicePrice);
+    const duration = Math.max(1, Math.floor(safeNum(customServiceDuration) || 60));
+    if (!name) {
+      Alert.alert("Custom service", "Enter a service name.");
+      return;
+    }
+    if (price <= 0) {
+      Alert.alert("Custom service", "Enter a price greater than zero.");
+      return;
+    }
+    const serviceId = `custom:${Date.now()}`;
+    setSelectedServices((prev) => [
+      ...prev,
+      {
+        serviceId,
+        addOnIds: [],
+        isCustom: true,
+        customName: name,
+        customPrice: price,
+        customDuration: duration,
+        ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}),
+      },
+    ]);
+    setCustomServiceName("");
+    setCustomServicePrice("");
+    setCustomServiceDuration("60");
+    setShowCustomService(false);
+  }
+
+  function removeCustomService(serviceId: string) {
+    setSelectedServices((prev) => prev.filter((s) => s.serviceId !== serviceId));
   }
 
   function setStaffForService(serviceId: string, staffId: string) {
@@ -1667,7 +1734,7 @@ export default function NewBookingScreen() {
       // pre-flight required resources (rooms, chairs, equipment) and warn
       // before we open the review modal.
       const offeringIds = Array.from(
-        new Set(selectedServices.map((s) => s.serviceId).filter(Boolean)),
+        new Set(selectedServices.filter((s) => !s.isCustom).map((s) => s.serviceId).filter(Boolean)),
       );
       if (offeringIds.length > 0) params.set("offering_ids", offeringIds.join(","));
       params.set("mode", locationType === "at_home" ? "mobile" : "salon");
@@ -1742,6 +1809,18 @@ export default function NewBookingScreen() {
 
     const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, schedulingTimezone);
     const selectedServicePayloads = selectedServices.map((s) => {
+      if (s.isCustom) {
+        return {
+          isCustom: true,
+          customName: s.customName ?? "Custom service",
+          name: s.customName ?? "Custom service",
+          price: s.customPrice ?? 0,
+          duration_minutes: s.customDuration ?? 60,
+          duration: s.customDuration ?? 60,
+          staff_id: s.staffId || undefined,
+          currency: getTenantDefaultCurrency(),
+        };
+      }
       const svc = services?.find((sv) => sv.id === s.serviceId);
       const addonDuration = s.addOnIds.reduce((acc, aoId) => {
         const ao = svc?.add_ons?.find((a: { id: string; duration_minutes?: number }) => a.id === aoId);
@@ -1854,8 +1933,13 @@ export default function NewBookingScreen() {
             : recurrencePattern === "monthly"
               ? "MONTHLY"
               : "WEEKLY";
+        // Recurring bookings are keyed by catalog service_id; custom (ad-hoc) services
+        // cannot recur, so narrow to the non-custom payloads that carry a service_id.
+        const recurringServicePayloads = selectedServicePayloads.filter(
+          (s): s is Extract<typeof s, { service_id: string }> => "service_id" in s,
+        );
         const cartItems = [
-          ...selectedServicePayloads.map((s) => ({
+          ...recurringServicePayloads.map((s) => ({
             id: s.service_id,
             type: "service" as const,
             name: s.name,
@@ -1894,8 +1978,8 @@ export default function NewBookingScreen() {
         }
         const recurringBody: Record<string, unknown> = {
           customer_id: selectedClient.customer_id,
-          service_id: selectedServicePayloads[0]?.service_id,
-          staff_id: selectedServicePayloads[0]?.staff_id,
+          service_id: recurringServicePayloads[0]?.service_id,
+          staff_id: recurringServicePayloads[0]?.staff_id,
           location_id: locationType === "at_salon" ? selectedLocationId : null,
           recurrence_rule: recurrenceParts.join(";"),
           start_date: format(selectedDate, "yyyy-MM-dd"),
@@ -1914,7 +1998,7 @@ export default function NewBookingScreen() {
             booking_source: isWalkIn ? "walk_in" : "provider",
             cart_items: cartItems,
             addons: selectedAddOnPayloads,
-            services: selectedServicePayloads.map((s) => ({
+            services: recurringServicePayloads.map((s) => ({
               offering_id: s.service_id,
               staff_id: s.staff_id,
             })),
@@ -2326,6 +2410,9 @@ export default function NewBookingScreen() {
                               {selectedClient.full_name}
                             </Text>
                             <Text style={twStyle("text-xs text-gray-500")}>{selectedClient.phone || selectedClient.email}</Text>
+                            <Text style={twStyle("mt-0.5 text-[11px] font-semibold text-gray-600")}>
+                              {selectedClient.is_shadow ? "Walk-in client" : "Has Beautonomi app"}
+                            </Text>
                           </View>
                           <TouchableOpacity
                             onPress={() => setSelectedClient(null)}
@@ -2422,6 +2509,9 @@ export default function NewBookingScreen() {
                                     <Text style={twStyle("text-xs text-gray-500")}>
                                       {c.phone || c.email}
                                     </Text>
+                                    <Text style={twStyle("text-[10px] font-semibold text-gray-500")}>
+                                      {c.is_shadow ? "Walk-in client" : "Has Beautonomi app"}
+                                    </Text>
                                   </View>
                                 </TouchableOpacity>
                               ))}
@@ -2493,6 +2583,58 @@ export default function NewBookingScreen() {
 
               {/* -------- SERVICES -------- */}
               <SectionLabel label="Services" required />
+              <View style={twStyle("mb-3 flex-row flex-wrap items-center gap-2")}>
+                <TouchableOpacity
+                  style={twStyle("rounded-full border border-dashed border-primary bg-primary/5 px-3 py-2")}
+                  onPress={() => setShowCustomService(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add custom service line item"
+                >
+                  <Text style={twStyle("text-xs font-semibold text-primary")}>+ Custom service (in person)</Text>
+                </TouchableOpacity>
+                {selectedClient?.customer_id ? (
+                  <TouchableOpacity
+                    style={twStyle("rounded-full border border-gray-200 bg-gray-50 px-3 py-2")}
+                    onPress={() =>
+                      router.push(`/(app)/(tabs)/more/messaging/${selectedClient.customer_id}` as never)
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Send a quote instead via messaging"
+                  >
+                    <Text style={twStyle("text-xs font-semibold text-gray-700")}>Send a quote instead</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {selectedServices.some((s) => s.isCustom) ? (
+                <View style={twStyle("mb-3")}>
+                  {selectedServices
+                    .filter((s) => s.isCustom)
+                    .map((sel) => (
+                      <View
+                        key={sel.serviceId}
+                        style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-3")}
+                      >
+                        <View style={twStyle("flex-1 pr-2")}>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")}>{sel.customName}</Text>
+                          <Text style={twStyle("text-xs text-gray-600")}>
+                            {formatDuration(sel.customDuration ?? 60)} · Custom price
+                          </Text>
+                        </View>
+                        <View style={twStyle("flex-row items-center")}>
+                          <Text style={twStyle("mr-3 text-sm font-semibold text-gray-900")}>
+                            {formatCurrency(sel.customPrice ?? 0, getTenantDefaultCurrency())}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => removeCustomService(sel.serviceId)}
+                            accessibilityLabel={`Remove ${sel.customName}`}
+                          >
+                            <Ionicons name="close-circle" size={22} color="#b45309" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                </View>
+              ) : null}
               {servicesLoading ? (
                 <LoadingState fullScreen={false} message="Loading services..." />
               ) : servicesError && !services ? (
@@ -3905,6 +4047,55 @@ export default function NewBookingScreen() {
               <Text style={twStyle("py-4 text-center text-sm text-gray-400")}>No packages available</Text>
             )}
           </ScrollView>
+        </BottomSheet>
+
+        {/* -------- CUSTOM SERVICE SHEET -------- */}
+        <BottomSheet
+          visible={showCustomService}
+          onClose={() => setShowCustomService(false)}
+          title="Custom service"
+        >
+          <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+            For walk-in bespoke work priced on the spot. Use &quot;Send a quote instead&quot; when the client needs to approve remotely.
+          </Text>
+          <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Service name</Text>
+          <TextInput
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            placeholder="e.g. Colour correction"
+            placeholderTextColor="#9ca3af"
+            value={customServiceName}
+            onChangeText={setCustomServiceName}
+          />
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Price</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                placeholder="0.00"
+                placeholderTextColor="#9ca3af"
+                keyboardType="decimal-pad"
+                value={customServicePrice}
+                onChangeText={setCustomServicePrice}
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Duration (min)</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                placeholder="60"
+                placeholderTextColor="#9ca3af"
+                keyboardType="number-pad"
+                value={customServiceDuration}
+                onChangeText={setCustomServiceDuration}
+              />
+            </View>
+          </View>
+          <TouchableOpacity
+            style={twStyle("rounded-xl bg-primary py-3 items-center")}
+            onPress={addCustomServiceLine}
+          >
+            <Text style={twStyle("font-semibold text-white")}>Add to booking</Text>
+          </TouchableOpacity>
         </BottomSheet>
 
         {/* -------- ADD-ON PICKER SHEET -------- */}

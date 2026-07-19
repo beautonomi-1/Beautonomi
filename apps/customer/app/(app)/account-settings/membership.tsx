@@ -5,6 +5,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { BookingCardSkeleton } from "@/components/Skeleton";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useTranslation } from "@beautonomi/i18n";
@@ -28,6 +29,7 @@ type ProviderMembership = {
   next_billing_at: string | null;
   last_payment_at: string | null;
   past_due_since: string | null;
+  renewal_payment_method_missing?: boolean;
   card: { last4: string; brand: string; exp: string } | null;
 };
 
@@ -253,7 +255,17 @@ export default function MembershipScreen() {
   const hasSalonMemberships = providerMemberships.length > 0;
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load}>
+    <ScreenFrame
+      loading={loading}
+      error={error}
+      onRetry={load}
+      skeleton={
+        <View>
+          <BookingCardSkeleton />
+          <BookingCardSkeleton />
+        </View>
+      }
+    >
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
         {hasMembership ? (
           <View>
@@ -317,7 +329,8 @@ export default function MembershipScreen() {
             </Text>
             {providerMemberships.map((pm) => {
               const isPastDue = pm.status === "past_due";
-              const cardBorderColor = isPastDue ? "#EF4444" : Colors.gray[100];
+              const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue;
+              const cardBorderColor = isPastDue ? "#EF4444" : needsRenewalCard ? "#F59E0B" : Colors.gray[100];
 
               return (
                 <View
@@ -327,7 +340,7 @@ export default function MembershipScreen() {
                     borderRadius: 16,
                     padding: 16,
                     marginBottom: 12,
-                    borderWidth: isPastDue ? 1.5 : 1,
+                    borderWidth: isPastDue || needsRenewalCard ? 1.5 : 1,
                     borderColor: cardBorderColor,
                   }}
                 >
@@ -339,6 +352,20 @@ export default function MembershipScreen() {
                         <Text style={{ fontWeight: "600", color: "#DC2626", fontSize: 13 }}>{mem("dunningBannerTitle")}</Text>
                         <Text style={{ color: "#DC2626", fontSize: 13, marginTop: 2 }}>{mem("dunningBannerBody", { planName: pm.plan_name })}</Text>
                         <Text style={{ color: "#DC2626", fontSize: 12, marginTop: 2 }}>{mem("gracePeriodNote")}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Missing renewal card banner (membership active, no saved card) */}
+                  {needsRenewalCard && (
+                    <View style={{ backgroundColor: "#FFFBEB", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                      <Ionicons name="card-outline" size={18} color="#B45309" style={{ marginTop: 1 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: "600", color: "#B45309", fontSize: 13 }}>Add a payment method</Text>
+                        <Text style={{ color: "#B45309", fontSize: 13, marginTop: 2 }}>
+                          Your {pm.plan_name} membership is active, but we couldn&apos;t save a card for renewals. Add one
+                          {pm.next_billing_at ? ` before ${formatDateSafe(pm.next_billing_at)}` : " soon"} to keep it from lapsing.
+                        </Text>
                       </View>
                     </View>
                   )}

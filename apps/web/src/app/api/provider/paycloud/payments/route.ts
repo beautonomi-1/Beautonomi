@@ -12,6 +12,10 @@ import { resolvePayScenario } from "@/lib/payments/paycloud-scenarios";
 import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-guards";
 import { validatePaycloudPaymentInitiate } from "@/lib/payments/paycloud-initiate-guards";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
+import {
+  buildSameTerminalIntentPayload,
+  resolvePaycloudIntentContract,
+} from "@/lib/payments/paycloud-intent-contract";
 import { z } from "zod";
 
 const createPaymentSchema = z.object({
@@ -27,6 +31,8 @@ const createPaymentSchema = z.object({
   sale_id: z.string().uuid().optional().nullable(),
   group_booking_id: z.string().uuid().optional().nullable(),
   channel: z.enum(["cloud", "same_terminal"]).optional().default("cloud"),
+  /** Best-effort device serial from the P5/P5L for same-terminal terminal_sn validation. */
+  device_serial: z.string().min(1).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -142,6 +148,24 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         );
       }
+
+      const deviceSerial = parsed.data.device_serial?.trim();
+      if (deviceSerial && terminal?.terminal_sn) {
+        const normalizeSn = (s: string) => s.trim().toLowerCase();
+        if (normalizeSn(deviceSerial) !== normalizeSn(terminal.terminal_sn)) {
+          return NextResponse.json(
+            {
+              data: null,
+              error: {
+                message:
+                  "This device does not match the selected card machine serial. Choose the machine registered to this terminal.",
+                code: "DEVICE_TERMINAL_MISMATCH",
+              },
+            },
+            { status: 400 },
+          );
+        }
+      }
     }
 
     const { data: paymentRow, error: insertError } = await supabase
@@ -177,12 +201,51 @@ export async function POST(request: NextRequest) {
 
     if (insertError) throw insertError;
 
-    await supabase
+    const admin = getSupabaseAdmin();
+    const { data: claimed } = await admin
       .from("paycloud_terminals")
       .update({ in_flight_payment_id: paymentRow.id })
-      .eq("id", parsed.data.terminal_id);
+      .eq("id", parsed.data.terminal_id)
+      .is("in_flight_payment_id", null)
+      .select("id")
+      .maybeSingle();
+
+    if (!claimed) {
+      await admin
+        .from("provider_paycloud_payments")
+        .update({ status: "closed", updated_at: new Date().toISOString() })
+        .eq("id", paymentRow.id);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "This card machine already has a payment in progress. Wait or cancel it first.",
+            code: "TERMINAL_IN_FLIGHT",
+          },
+        },
+        { status: 409 },
+      );
+    }
 
     if (channel === "same_terminal") {
+      const intentContract = await resolvePaycloudIntentContract(supabase, {
+        environment: ctx.environment,
+        tenantId: ctx.tenant_id ?? provider.tenant_id ?? null,
+        paycloudAppId: ctx.paycloud_app_db_id,
+      });
+      const intentPayload = buildSameTerminalIntentPayload({
+        merchantOrderNo,
+        chargeAmount,
+        currency,
+        payScenario: scenario.pay_scenario,
+        payMethodId: scenario.pay_method_id,
+        transType: parsed.data.cashback_amount ? 11 : 1,
+        tipAmount: parsed.data.tip_amount,
+        cashbackAmount: parsed.data.cashback_amount,
+        appId: ctx.credentials.app_id,
+        intentContract,
+      });
+
       return NextResponse.json({
         data: {
           payment_id: paymentRow.id,
@@ -191,16 +254,7 @@ export async function POST(request: NextRequest) {
           amount: chargeAmount,
           currency,
           channel: "same_terminal",
-          intent_payload: {
-            merchant_order_no: merchantOrderNo,
-            order_amount: String(chargeAmount),
-            price_currency: currency,
-            pay_scenario: scenario.pay_scenario,
-            pay_method_id: scenario.pay_method_id,
-            trans_type: parsed.data.cashback_amount ? 11 : 1,
-            tip_amount: parsed.data.tip_amount ? String(parsed.data.tip_amount) : undefined,
-            cashback_amount: parsed.data.cashback_amount ? String(parsed.data.cashback_amount) : undefined,
-          },
+          intent_payload: intentPayload,
         },
         error: null,
       });

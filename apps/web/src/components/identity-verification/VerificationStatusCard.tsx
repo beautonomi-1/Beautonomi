@@ -75,7 +75,7 @@ const STATUS_CONFIG: Record<
     badgeLabel: "Under review",
     title: "Verification under review",
     description:
-      "Your verification is being reviewed. We'll notify you shortly — no action needed.",
+      "We're reviewing your documents — this can take a few minutes if additional checks are running. You can continue using Beautonomi; we'll notify you when verification is complete.",
   },
   approved: {
     icon: ShieldCheck,

@@ -7,6 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { resolveReferrerUserId } from "@/lib/referrals/resolve-referrer";
+import { notifyReferralCodeUsed } from "@/lib/notifications/notification-service";
 
 /**
  * POST /api/me/referrals/attach
@@ -70,6 +71,22 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       return handleApiError(updateError, "Failed to attach referral");
+    }
+
+    try {
+      const { data: referrerProfile } = await supabase
+        .from("users")
+        .select("full_name, preferred_name, handle, email")
+        .eq("id", referrerId)
+        .maybeSingle();
+      const referrerName =
+        (referrerProfile as { preferred_name?: string | null } | null)?.preferred_name?.trim() ||
+        (referrerProfile as { full_name?: string | null } | null)?.full_name?.trim() ||
+        (referrerProfile as { handle?: string | null } | null)?.handle ||
+        "A friend";
+      await notifyReferralCodeUsed(user.id, referrerName, 0);
+    } catch (notifyErr) {
+      console.warn("[referrals/attach] notifyReferralCodeUsed failed:", notifyErr);
     }
 
     return successResponse({ attached: true, referrer_id: referrerId });

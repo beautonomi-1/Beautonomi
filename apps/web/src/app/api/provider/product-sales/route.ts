@@ -83,7 +83,7 @@ const walkInLineSchema = z.object({
 const walkInSaleSchema = z
   .object({
     items: z.array(walkInLineSchema).optional(),
-    payment_method: z.enum(["cash", "yoco", "card", "eft", "other", "paycloud"]),
+    payment_method: z.enum(["cash", "yoco", "card", "eft", "other", "paycloud", "paystack_terminal"]),
     payment_reference: z.string().max(200).optional(),
     finalize_paycloud_order_id: z.string().uuid().optional(),
     customer_name: z.string().max(100).optional(),
@@ -512,6 +512,9 @@ export async function POST(request: NextRequest) {
 
     const isPendingPaycloud =
       parsed.payment_method === "paycloud" && !parsed.payment_reference?.trim();
+    const isPendingPaystackTerminal =
+      parsed.payment_method === "paystack_terminal" && !parsed.payment_reference?.trim();
+    const isPendingTerminal = isPendingPaycloud || isPendingPaystackTerminal;
 
     const totalAmount = sumMoney(subtotal, taxAmount);
 
@@ -533,18 +536,18 @@ export async function POST(request: NextRequest) {
         delivery_fee: "0.00",
         platform_fee: "0.00",
         total_amount: totalAmount.toFixed(2),
-        payment_method: isPendingPaycloud ? "card" : paymentMethodForOrder,
+        payment_method: isPendingTerminal ? "card" : paymentMethodForOrder,
         payment_reference: parsed.payment_reference ?? null,
-        payment_status: isPendingPaycloud ? "pending" : "paid",
-        status: isPendingPaycloud ? "confirmed" : "delivered",
+        payment_status: isPendingTerminal ? "pending" : "paid",
+        status: isPendingTerminal ? "confirmed" : "delivered",
         order_source: "walk_in",
         collection_location_id: parsed.location_id ?? null,
         staff_id: user.id,
         customer_name: parsed.customer_name ?? null,
         customer_phone: parsed.customer_phone ?? null,
-        confirmed_at: isPendingPaycloud ? new Date().toISOString() : undefined,
-        delivered_at: isPendingPaycloud ? null : new Date().toISOString(),
-        paid_at: isPendingPaycloud ? null : new Date().toISOString(),
+        confirmed_at: isPendingTerminal ? new Date().toISOString() : undefined,
+        delivered_at: isPendingTerminal ? null : new Date().toISOString(),
+        paid_at: isPendingTerminal ? null : new Date().toISOString(),
       })
       .select()
       .single();
@@ -565,7 +568,7 @@ export async function POST(request: NextRequest) {
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
     if (insertErr) throw insertErr;
 
-    if (isPendingPaycloud) {
+    if (isPendingTerminal) {
       return successResponse({ order: { ...order, items: orderItems } }, 201);
     }
 

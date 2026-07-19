@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyPaycloudWebhookSignature } from "@/lib/payments/paycloud-client";
 import { settlePaycloudPayment } from "@/lib/payments/settle-paycloud-payment";
+import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud-void";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
 import { resolvePaycloudGatewayPublicKey } from "@/lib/payments/resolve-paycloud-app-credentials";
@@ -95,8 +96,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (payment && isSuccess && signatureValid) {
-      const captured = Number(payload.order_amount ?? payment.amount);
-      const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured);
+      const captured = Number(
+        payload.paid_amount ?? payload.order_amount ?? payment.amount,
+      );
+      const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured, {
+        tipAmount: Number(payment.tip_amount ?? 0),
+        cashbackAmount: Number(payment.cashback_amount ?? 0),
+      });
 
       await supabase
         .from("provider_paycloud_payments")
@@ -109,7 +115,21 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", payment.id);
 
-      if (matchStatus === "exact" || matchStatus === "over") {
+      // A completed VOID is a reversal, not a new capture. Reverse the original
+      // instead of settling — settling would insert a second positive payment.
+      if (isPaycloudVoidRow(payment)) {
+        await completePaycloudVoid(supabase, payment);
+        await supabase
+          .from("paycloud_webhook_events")
+          .update({ processed: true })
+          .eq("merchant_order_no", merchantOrderNo);
+        if (payment.terminal_id) {
+          await supabase
+            .from("paycloud_terminals")
+            .update({ in_flight_payment_id: null, last_used_at: new Date().toISOString() })
+            .eq("id", payment.terminal_id);
+        }
+      } else if (matchStatus === "exact" || matchStatus === "over") {
         const settleResult = await settlePaycloudPayment(supabase, {
           paymentId: payment.id,
           providerId: payment.provider_id,
@@ -120,6 +140,7 @@ export async function POST(request: NextRequest) {
           merchantOrderNo: payment.merchant_order_no,
           processedBy: payment.processed_by,
           currency: payment.currency,
+          tipAmount: Number(payment.tip_amount ?? 0),
         });
 
         await handlePaycloudPostSettle(supabase, payment, settleResult, captured);

@@ -8,6 +8,9 @@ export interface ResolvedPaycloudContext {
   merchant_no: string;
   store_no: string;
   credentials: PaycloudAppCredentials;
+  /** tenant_paycloud_apps.id for metadata (intent_contract overrides). */
+  paycloud_app_db_id?: string | null;
+  tenant_id?: string | null;
 }
 
 /**
@@ -53,6 +56,8 @@ export async function resolvePaycloudContextForProvider(
     merchant_no: merchant.merchant_no,
     store_no: merchant.store_no,
     credentials,
+    paycloud_app_db_id: (merchant as { paycloud_app_id?: string | null }).paycloud_app_id ?? null,
+    tenant_id: tenantId,
   };
 }
 

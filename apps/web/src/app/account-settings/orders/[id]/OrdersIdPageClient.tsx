@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -122,6 +123,7 @@ function timelineIndex(status: string) {
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const locale = useTenantLocaleTag();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -164,6 +166,32 @@ export default function OrderDetailPage() {
       setLoading(false);
     })();
   }, [params.id]);
+
+  // §Product-refund-confirmation: notification deep links land here with a
+  // ?refund_confirm=1 or ?refund_dispute=1 query param. Fire the response then
+  // strip the param so a refresh doesn't re-submit.
+  useEffect(() => {
+    const orderId = typeof params.id === "string" ? params.id : null;
+    const wantsConfirm = searchParams.get("refund_confirm");
+    const wantsDispute = searchParams.get("refund_dispute");
+    if (!orderId || (!wantsConfirm && !wantsDispute)) return;
+    const action = wantsDispute ? "dispute" : "confirm";
+    (async () => {
+      try {
+        await fetcher.post(`/api/me/product-orders/${orderId}/refund-respond`, { action });
+        toast.success(
+          action === "dispute"
+            ? "Refund disputed. Our team will review."
+            : "Refund confirmed. Thank you.",
+        );
+      } catch (err) {
+        const msg = err instanceof FetchError ? err.message : "Could not update refund status.";
+        toast.error(msg);
+      } finally {
+        router.replace(`/account-settings/orders/${orderId}`);
+      }
+    })();
+  }, [params.id, searchParams, router]);
 
   if (loading) {
     return (

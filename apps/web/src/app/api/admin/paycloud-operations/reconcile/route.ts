@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     let q = supabase
       .from("provider_paycloud_payments")
       .select(
-        "id, provider_id, terminal_id, merchant_order_no, paycloud_order_id, amount, expected_amount, currency, status, entity_type, entity_id, processed_by, trans_status, metadata, created_at",
+        "id, provider_id, terminal_id, merchant_order_no, paycloud_order_id, amount, tip_amount, cashback_amount, expected_amount, currency, status, entity_type, entity_id, processed_by, trans_status, trans_type, metadata, created_at",
       )
       .in("status", ["pending", "processing"])
       .gte("created_at", since);

@@ -6,7 +6,7 @@
  * @see MESSAGE_ATTACHMENTS_BUCKET in `@/lib/messaging/message-attachments`
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { MESSAGE_ATTACHMENTS_BUCKET } from "@/lib/messaging/message-attachments";
+import { MESSAGE_ATTACHMENTS_BUCKET, createMessageAttachmentSignedUrl } from "@/lib/messaging/message-attachments";
 import {
   getStorageServiceClientOrUser,
   hasSupabaseStorageServiceRole,
@@ -19,6 +19,7 @@ export const SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX = "support-tickets";
 
 export type SupportTicketAttachmentMeta = {
   url: string;
+  storage_path: string;
   type: string;
   name: string;
   size: number;
@@ -73,7 +74,7 @@ export async function uploadSupportTicketFiles(
     const bucketExists = buckets?.some((b) => b.name === MESSAGE_ATTACHMENTS_BUCKET) ?? false;
     if (!bucketExists) {
       const { error: createError } = await client.storage.createBucket(MESSAGE_ATTACHMENTS_BUCKET, {
-        public: true,
+        public: false,
         fileSizeLimit: 52428800,
       });
       if (createError) {
@@ -116,13 +117,14 @@ export async function uploadSupportTicketFiles(
       continue;
     }
 
-    const {
-      data: { publicUrl },
-    } = client.storage.from(MESSAGE_ATTACHMENTS_BUCKET).getPublicUrl(fileName);
-
-    if (publicUrl) {
-      uploaded.push({ url: publicUrl, type: file.type, name: file.name, size: file.size });
-    }
+    const signedUrl = await createMessageAttachmentSignedUrl(client, fileName);
+    uploaded.push({
+      url: signedUrl ?? "",
+      storage_path: fileName,
+      type: file.type,
+      name: file.name,
+      size: file.size,
+    });
   }
 
   if (uploaded.length === 0 && files.length > 0) {

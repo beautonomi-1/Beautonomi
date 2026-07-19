@@ -391,7 +391,9 @@ export default function MembershipPlansScreen() {
 
             {showDetail.benefits && showDetail.benefits.length > 0 && (
               <View style={twStyle("mb-3")}>
-                <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase text-gray-400")}>Benefits</Text>
+                <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase text-gray-400")}>
+                  Benefits (display only)
+                </Text>
                 {showDetail.benefits.map((b, i) => (
                   <View key={i} style={[twStyle("flex-row items-center mb-1"), { marginRight: 8 }]}>
                     <Ionicons name="checkmark-circle" size={14} color="#22c55e" style={{ marginRight: 8 }} />
@@ -486,6 +488,9 @@ export default function MembershipPlansScreen() {
           </View>
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Benefits</Text>
+          <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+            Shown to customers on the plan page. Only the discount % above is applied automatically at checkout; other benefits are display-only.
+          </Text>
           <ChipCombobox
             value={form.benefitsList}
             onChange={(v) => setForm((p) => ({ ...p, benefitsList: v }))}

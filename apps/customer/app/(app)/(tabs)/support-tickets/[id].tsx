@@ -105,6 +105,7 @@ export default function SupportTicketDetailScreen() {
   const [csatScore, setCsatScore] = useState<number | null>(null);
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
+  const [csatEditing, setCsatEditing] = useState(false);
   /** True once the user touches the rating, so background refreshes don't wipe an unsaved selection. */
   const csatDirtyRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -138,6 +139,9 @@ export default function SupportTicketDetailScreen() {
       if (!csatDirtyRef.current) {
         setCsatScore(loadedTicket?.csat_score ?? null);
         setCsatComment(loadedTicket?.csat_comment ?? "");
+        if (typeof loadedTicket?.csat_score === "number") {
+          setCsatEditing(false);
+        }
       }
       setMessages(loadedMessages);
       if (loadedOnceRef.current && newStaffMessage) {
@@ -324,6 +328,7 @@ export default function SupportTicketDetailScreen() {
 
   const submitCsat = async () => {
     if (!id || !csatScore) return;
+    const wasFirstSubmit = typeof ticket?.csat_score !== "number";
     setSubmittingCsat(true);
     try {
       const res = await api.post(`/api/me/support-tickets/${id}/csat`, {
@@ -338,7 +343,13 @@ export default function SupportTicketDetailScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Persisted — allow the next load to sync the saved value from the server.
       csatDirtyRef.current = false;
-      Alert.alert("Thanks", "Your rating helps us improve support.");
+      setCsatEditing(false);
+      Alert.alert(
+        "Thanks for your feedback",
+        wasFirstSubmit
+          ? "Your rating has been saved and this ticket is now closed."
+          : "Your rating has been updated. Thank you!",
+      );
       await loadTicket();
     } catch (e) {
       Alert.alert("Could not submit rating", e instanceof Error ? e.message : "Please try again.");
@@ -536,53 +547,93 @@ export default function SupportTicketDetailScreen() {
 
           {!canReply && (
             <View style={styles.csatBlock}>
-              <Text style={styles.label}>
-                {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
-              </Text>
-              <View style={styles.csatRow}>
-                {[1, 2, 3, 4, 5].map((score) => (
+              {typeof ticket.csat_score === "number" && !csatEditing ? (
+                <>
+                  <Text style={styles.label}>Thanks for your feedback</Text>
+                  <Text style={styles.csatThanksScore}>
+                    Your rating: {ticket.csat_score}/5
+                    {ticket.csat_comment ? `\n“${ticket.csat_comment}”` : ""}
+                  </Text>
+                  <Text style={styles.csatThanksBanner}>
+                    This ticket is closed. We appreciate you taking a moment to rate support.
+                  </Text>
                   <TouchableOpacity
-                    key={score}
-                    onPress={() => {
-                      void Haptics.selectionAsync();
-                      csatDirtyRef.current = true;
-                      setCsatScore(score);
-                      // Bring the Submit button into view so the second step is obvious.
-                      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-                    }}
-                    style={[styles.csatChip, csatScore === score && styles.csatChipActive]}
+                    onPress={() => setCsatEditing(true)}
+                    style={styles.csatSecondaryBtn}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: csatScore === score }}
                   >
-                    <Text style={[styles.csatText, csatScore === score && styles.csatTextActive]}>{score}</Text>
+                    <Text style={styles.csatSecondaryBtnText}>Update rating</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-              {csatScore && typeof ticket.csat_score !== "number" ? (
-                <Text style={styles.csatHint}>Tap “Submit rating” below to send your {csatScore}/5 rating.</Text>
-              ) : null}
-              <TextInput
-                style={styles.csatInput}
-                placeholder="Optional comment"
-                placeholderTextColor="#9ca3af"
-                value={csatComment}
-                onChangeText={(text) => {
-                  csatDirtyRef.current = true;
-                  setCsatComment(text);
-                }}
-                multiline
-                maxLength={1000}
-              />
-              <TouchableOpacity
-                onPress={submitCsat}
-                disabled={!csatScore || submittingCsat}
-                style={[styles.sendBtn, (!csatScore || submittingCsat) && styles.sendBtnDisabled]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.sendBtnText}>
-                  {submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"}
-                </Text>
-              </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.label}>
+                    {typeof ticket.csat_score === "number" ? "Update your rating" : "Rate this support experience"}
+                  </Text>
+                  <View style={styles.csatRow}>
+                    {[1, 2, 3, 4, 5].map((score) => (
+                      <TouchableOpacity
+                        key={score}
+                        onPress={() => {
+                          void Haptics.selectionAsync();
+                          csatDirtyRef.current = true;
+                          setCsatScore(score);
+                          // Bring the Submit button into view so the second step is obvious.
+                          setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+                        }}
+                        style={[styles.csatChip, csatScore === score && styles.csatChipActive]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: csatScore === score }}
+                      >
+                        <Text style={[styles.csatText, csatScore === score && styles.csatTextActive]}>{score}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {csatScore && typeof ticket.csat_score !== "number" ? (
+                    <Text style={styles.csatHint}>Tap “Submit rating” below to send your {csatScore}/5 rating.</Text>
+                  ) : null}
+                  <TextInput
+                    style={styles.csatInput}
+                    placeholder="Optional comment"
+                    placeholderTextColor="#9ca3af"
+                    value={csatComment}
+                    onChangeText={(text) => {
+                      csatDirtyRef.current = true;
+                      setCsatComment(text);
+                    }}
+                    multiline
+                    maxLength={1000}
+                  />
+                  <TouchableOpacity
+                    onPress={submitCsat}
+                    disabled={!csatScore || submittingCsat}
+                    style={[styles.sendBtn, (!csatScore || submittingCsat) && styles.sendBtnDisabled]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.sendBtnText}>
+                      {submittingCsat
+                        ? "Submitting…"
+                        : typeof ticket.csat_score === "number"
+                          ? "Save rating"
+                          : "Submit rating"}
+                    </Text>
+                  </TouchableOpacity>
+                  {typeof ticket.csat_score === "number" ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCsatEditing(false);
+                        csatDirtyRef.current = false;
+                        setCsatScore(ticket.csat_score ?? null);
+                        setCsatComment(ticket.csat_comment ?? "");
+                      }}
+                      style={styles.csatSecondaryBtn}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.csatSecondaryBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )}
               <Text style={styles.closedNote}>
                 This ticket is {ticket.status}. Open Help → New ticket if you need further help.
               </Text>
@@ -693,6 +744,29 @@ const styles = StyleSheet.create({
   csatText: { fontWeight: "700", color: Colors.gray[700] },
   csatTextActive: { color: "#fff" },
   csatHint: { marginBottom: 10, fontSize: 13, color: Colors.primary, fontWeight: "600" },
+  csatThanksScore: { marginBottom: 10, fontSize: 15, lineHeight: 22, color: Colors.gray[700], fontWeight: "600" },
+  csatThanksBanner: {
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#047857",
+  },
+  csatSecondaryBtn: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  csatSecondaryBtnText: { fontWeight: "600", color: Colors.gray[700], fontSize: 15 },
   csatInput: {
     marginBottom: 10,
     minHeight: 72,

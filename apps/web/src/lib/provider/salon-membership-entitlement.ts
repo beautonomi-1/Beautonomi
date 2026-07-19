@@ -113,34 +113,36 @@ export async function resolveMembershipDiscount(params: {
       }
     }
 
-    // Platform membership: only beat the salon plan if it offers more.
-    const { data: platformMemberships } = await params.supabase
-      .from("customer_memberships")
-      .select(
-        "id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to, name)",
-      )
-      .eq("customer_id", params.customerId)
-      .eq("status", "active");
+    // Platform membership: gated — no purchase path exists; skip unless explicitly enabled.
+    if (process.env.PLATFORM_CUSTOMER_MEMBERSHIPS_ENABLED === "true") {
+      const { data: platformMemberships } = await params.supabase
+        .from("customer_memberships")
+        .select(
+          "id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to, name)",
+        )
+        .eq("customer_id", params.customerId)
+        .eq("status", "active");
 
-    for (const row of platformMemberships ?? []) {
-      const providerScope = row.provider_id ?? null;
-      if (providerScope && providerScope !== params.providerId) continue;
-      const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
-      if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt < Date.now()) continue;
-      const m = row.membership;
-      if (!m || (m.discount_applies_to && m.discount_applies_to !== "all_services")) continue;
-      const pct = Number(m.discount_percentage || 0);
-      if (pct <= 0) continue;
-      const cap = Number(m.discount_cap_per_booking || 0) || 0;
-      let discount = Math.max(0, percentOf(params.subtotal, pct));
-      if (cap > 0) discount = Math.min(discount, cap);
-      discount = Math.min(discount, params.subtotal);
-      if (discount > result.membershipDiscountAmount) {
-        result.membershipDiscountAmount = discount;
-        result.membershipPlanId = null;
-        result.membershipPlanName =
-          typeof m.name === "string" && m.name.trim() ? m.name.trim() : "Platform membership";
-        result.membershipId = m.id || null;
+      for (const row of platformMemberships ?? []) {
+        const providerScope = row.provider_id ?? null;
+        if (providerScope && providerScope !== params.providerId) continue;
+        const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
+        if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt < Date.now()) continue;
+        const m = row.membership;
+        if (!m || (m.discount_applies_to && m.discount_applies_to !== "all_services")) continue;
+        const pct = Number(m.discount_percentage || 0);
+        if (pct <= 0) continue;
+        const cap = Number(m.discount_cap_per_booking || 0) || 0;
+        let discount = Math.max(0, percentOf(params.subtotal, pct));
+        if (cap > 0) discount = Math.min(discount, cap);
+        discount = Math.min(discount, params.subtotal);
+        if (discount > result.membershipDiscountAmount) {
+          result.membershipDiscountAmount = discount;
+          result.membershipPlanId = null;
+          result.membershipPlanName =
+            typeof m.name === "string" && m.name.trim() ? m.name.trim() : "Platform membership";
+          result.membershipId = m.id || null;
+        }
       }
     }
   } catch {

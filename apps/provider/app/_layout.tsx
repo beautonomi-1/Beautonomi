@@ -47,6 +47,7 @@ if (Platform.OS !== "web") {
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
+  SplashScreen.setOptions({ fade: true, duration: 350 });
 }
 
 /** Max time splash can stay visible (e.g. after install/update). Then hide so user sees login. */

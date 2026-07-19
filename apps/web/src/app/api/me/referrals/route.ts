@@ -4,6 +4,10 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  REFERRAL_SETTINGS_ID,
+  resolveReferralProgramEnabled,
+} from "@/lib/referrals/referral-program-enabled";
 
 /**
  * GET /api/me/referrals
@@ -70,7 +74,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Load referral settings from DB so mobile and web get same is_enabled and amount
-    const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
     let referralSettings = { referral_amount: 50, referral_currency: lastResortCurrency, is_enabled: true };
     try {
       const { data: rs } = await supabase
@@ -88,6 +91,12 @@ export async function GET(request: NextRequest) {
     } catch {
       // use defaults
     }
+
+    const programGate = await resolveReferralProgramEnabled(tenantId);
+    referralSettings = {
+      ...referralSettings,
+      is_enabled: programGate.enabled && referralSettings.is_enabled,
+    };
 
     // Generate referral link
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";

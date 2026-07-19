@@ -25,10 +25,20 @@ export type ValidateProviderBookingProductsResult =
   | { ok: true; products: ValidatedProviderBookingProduct[] }
   | { ok: false; message: string; code: "VALIDATION_ERROR" | "INSUFFICIENT_STOCK" | "PRODUCT_VALIDATION_FAILED" };
 
+export type ValidateProviderBookingProductsOptions = {
+  /** Quantities already reserved on this booking (productId:variantId → qty). Credited against stock checks. */
+  existingReservedQuantities?: Map<string, number>;
+};
+
+function productLineKey(productId: string, variantId?: string | null): string {
+  return `${productId}:${variantId ?? ""}`;
+}
+
 export async function validateProviderBookingProducts(
   supabase: any,
   providerId: string,
   inputProducts: ProviderBookingProductInput[] | undefined,
+  options?: ValidateProviderBookingProductsOptions,
 ): Promise<ValidateProviderBookingProductsResult> {
   const input = Array.isArray(inputProducts) ? inputProducts : [];
   if (input.length === 0) return { ok: true, products: [] };
@@ -116,10 +126,13 @@ export async function validateProviderBookingProducts(
       unitPrice = Number.isFinite(variantPrice) && variantPrice > 0 ? variantPrice : unitPrice;
       if (trackStock) {
         const available = Number(variant.quantity ?? 0);
-        if (quantity > available) {
+        const reserved =
+          options?.existingReservedQuantities?.get(productLineKey(productId, variantId)) ?? 0;
+        const effectiveAvailable = available + reserved;
+        if (quantity > effectiveAvailable) {
           return {
             ok: false,
-            message: `${productData.name}: only ${available} in stock for that option.`,
+            message: `${productData.name}: only ${effectiveAvailable} in stock for that option.`,
             code: "INSUFFICIENT_STOCK",
           };
         }
@@ -134,10 +147,13 @@ export async function validateProviderBookingProducts(
       }
       if (trackStock) {
         const available = Number(productData.quantity ?? 0);
-        if (quantity > available) {
+        const reserved =
+          options?.existingReservedQuantities?.get(productLineKey(productId, null)) ?? 0;
+        const effectiveAvailable = available + reserved;
+        if (quantity > effectiveAvailable) {
           return {
             ok: false,
-            message: `${productData.name}: only ${available} in stock.`,
+            message: `${productData.name}: only ${effectiveAvailable} in stock.`,
             code: "INSUFFICIENT_STOCK",
           };
         }

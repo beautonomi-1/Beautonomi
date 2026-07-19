@@ -46,6 +46,18 @@ type CatalogProduct = {
 
 type CatalogProductVariant = NonNullable<CatalogProduct["variants"]>[number];
 
+function stockLimitForProductLine(
+  product: CatalogProduct,
+  variant?: CatalogProductVariant | null,
+  existingOnBookingQty = 0,
+): number | null {
+  if (product.track_stock_quantity === false) return null;
+  const raw = variant ? variant.quantity : product.quantity;
+  const stock = Number(raw ?? 0);
+  if (!Number.isFinite(stock)) return 0;
+  return Math.max(0, Math.floor(stock)) + existingOnBookingQty;
+}
+
 export type BookingEditSheetBooking = {
   scheduled_at?: string | null;
   special_requests?: string | null;
@@ -60,6 +72,10 @@ export type BookingEditSheetBooking = {
   service_fee_amount?: number;
   location_id?: string | null;
   version?: number;
+  total_amount?: number;
+  total_paid?: number;
+  total_refunded?: number;
+  payment_status?: string;
   services?: Array<{
     offering_id?: string;
     service_id?: string;
@@ -211,13 +227,29 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
     setSelectedProducts((prev) => {
       const productId = product.id;
       const productVariantId = variant?.id;
+      const existingOnBooking = prev
+        .filter(
+          (p) =>
+            p.productId === productId &&
+            (p.productVariantId ?? null) === (productVariantId ?? null),
+        )
+        .reduce((sum, p) => sum + p.quantity, 0);
+      const maxStock = stockLimitForProductLine(product, variant, existingOnBooking);
+      if (maxStock !== null && maxStock <= 0) {
+        Alert.alert("Out of stock", `${product.name} is not available right now.`);
+        return prev;
+      }
       const existing = prev.find(
         (p) => p.productId === productId && (p.productVariantId ?? null) === (productVariantId ?? null),
       );
       if (existing) {
+        if (maxStock != null && existing.quantity >= maxStock) {
+          Alert.alert("Stock limit", `Only ${maxStock} available for ${product.name}.`);
+          return prev;
+        }
         return prev.map((p) =>
           p.productId === productId && (p.productVariantId ?? null) === (productVariantId ?? null)
-            ? { ...p, quantity: p.quantity + 1 }
+            ? { ...p, quantity: p.quantity + 1, maxStock }
             : p,
         );
       }
@@ -230,6 +262,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
           productVariantName: variant?.name,
           quantity: 1,
           unitPrice: safeNum(variant?.price ?? product.price),
+          maxStock,
         },
       ];
     });
@@ -239,7 +272,16 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
   const updateProductQty = useCallback((index: number, delta: number) => {
     setSelectedProducts((prev) =>
       prev
-        .map((p, i) => (i === index ? { ...p, quantity: Math.max(1, p.quantity + delta) } : p))
+        .map((p, i) => {
+          if (i !== index) return p;
+          const nextQty = p.quantity + delta;
+          if (nextQty < 1) return { ...p, quantity: 0 };
+          if (p.maxStock != null && nextQty > p.maxStock) {
+            Alert.alert("Stock limit", `Only ${p.maxStock} available for ${p.productName}.`);
+            return p;
+          }
+          return { ...p, quantity: nextQty };
+        })
         .filter((p) => p.quantity > 0),
     );
   }, []);
@@ -286,8 +328,10 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
       if (result.errorCode === "PRODUCT_EDIT_LOCKED") {
         Alert.alert(
           "Cannot edit products",
-          "Products on this booking already affected stock or the booking is closed. Create a sale or refund adjustment instead.",
+          "This booking is closed. Create a sale or refund adjustment instead.",
         );
+      } else if (result.errorCode === "INSUFFICIENT_STOCK") {
+        Alert.alert("Insufficient stock", result.error);
       } else if (result.errorCode === "CONFLICT") {
         Alert.alert("Conflict", "This booking was modified elsewhere. Close, refresh, and try again.");
       } else {
@@ -301,6 +345,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
   };
 
   const currency = getTenantDefaultCurrency();
+
+  const paidAfterRefunds = Math.max(
+    0,
+    safeNum(booking.total_paid) - safeNum(booking.total_refunded),
+  );
+  const balanceAfterEdit = Math.max(0, totalsPreview.totalAmount - paidAfterRefunds);
+  const overpaymentAfterEdit = Math.max(0, paidAfterRefunds - totalsPreview.totalAmount);
 
   return (
     <>
@@ -418,6 +469,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
                     </Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
                       {formatCurrency(p.unitPrice, currency)} each
+                      {p.maxStock != null ? ` · ${p.maxStock} max` : ""}
                     </Text>
                   </View>
                   <View style={twStyle("flex-row items-center")}>
@@ -425,7 +477,11 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
                       <Ionicons name="remove-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
                     <Text style={twStyle("min-w-[24px] text-center text-sm font-semibold")}>{p.quantity}</Text>
-                    <TouchableOpacity onPress={() => updateProductQty(index, 1)} style={twStyle("px-2 py-1")}>
+                    <TouchableOpacity
+                      onPress={() => updateProductQty(index, 1)}
+                      style={twStyle(`px-2 py-1 ${p.maxStock != null && p.quantity >= p.maxStock ? "opacity-40" : ""}`)}
+                      disabled={p.maxStock != null && p.quantity >= p.maxStock}
+                    >
                       <Ionicons name="add-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => removeProduct(index)} style={twStyle("ml-1 px-1")}>
@@ -463,6 +519,23 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
             <Text style={twStyle("mt-1 text-xs text-gray-600")}>
               Subtotal {formatCurrency(subtotal, currency)} · Tax {formatCurrency(totalsPreview.taxAmount, currency)}
             </Text>
+            {paidAfterRefunds > 0 ? (
+              <View style={twStyle("mt-2 border-t border-gray-200 pt-2")}>
+                <Text style={twStyle("text-xs text-gray-600")}>
+                  Already paid: {formatCurrency(paidAfterRefunds, currency)}
+                </Text>
+                {balanceAfterEdit > 0 ? (
+                  <Text style={twStyle("mt-1 text-xs font-semibold text-amber-800")}>
+                    Balance due after save: {formatCurrency(balanceAfterEdit, currency)}
+                  </Text>
+                ) : null}
+                {overpaymentAfterEdit > 0 ? (
+                  <Text style={twStyle("mt-1 text-xs font-semibold text-blue-800")}>
+                    Overpayment after save: {formatCurrency(overpaymentAfterEdit, currency)} — refund or credit the customer from the booking payment section.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </View>
 
           <View style={twStyle("mt-4")}>
@@ -510,31 +583,41 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
         snapHeight="full"
       >
         <ScrollView>
-          {productsList.map((product) => (
+          {productsList.map((product) => {
+            const baseMax = stockLimitForProductLine(product);
+            const baseOut = baseMax !== null && baseMax <= 0;
+            return (
             <View key={product.id}>
               <TouchableOpacity
-                onPress={() => addProduct(product)}
-                style={twStyle("border-b border-gray-100 px-4 py-3")}
+                onPress={() => !baseOut && addProduct(product)}
+                disabled={baseOut}
+                style={twStyle(`border-b border-gray-100 px-4 py-3 ${baseOut ? "opacity-50" : ""}`)}
               >
                 <Text style={twStyle("text-base text-gray-900")}>{product.name}</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
                   {formatCurrency(product.price, product.currency ?? currency)}
+                  {baseMax != null ? (baseOut ? " · Out of stock" : ` · ${baseMax} in stock`) : ""}
                 </Text>
               </TouchableOpacity>
-              {(product.variants ?? []).map((variant) => (
+              {(product.variants ?? []).map((variant) => {
+                const variantMax = stockLimitForProductLine(product, variant);
+                const variantOut = variantMax !== null && variantMax <= 0;
+                return (
                 <TouchableOpacity
                   key={variant.id}
-                  onPress={() => addProduct(product, variant)}
-                  style={twStyle("border-b border-gray-50 px-6 py-2")}
+                  onPress={() => !variantOut && addProduct(product, variant)}
+                  disabled={variantOut}
+                  style={twStyle(`border-b border-gray-50 px-6 py-2 ${variantOut ? "opacity-50" : ""}`)}
                 >
                   <Text style={twStyle("text-sm text-gray-800")}>{variant.name}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {formatCurrency(variant.price, product.currency ?? currency)}
+                    {variantMax != null ? (variantOut ? " · Out of stock" : ` · ${variantMax} in stock`) : ""}
                   </Text>
                 </TouchableOpacity>
-              ))}
+              );})}
             </View>
-          ))}
+          );})}
         </ScrollView>
       </BottomSheet>
     </>

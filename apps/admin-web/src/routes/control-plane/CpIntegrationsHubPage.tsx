@@ -11,6 +11,8 @@ import {
   Radio,
   Phone,
   Smartphone,
+  CreditCard,
+  Rocket,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -66,6 +68,18 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "Identity verification (KYC)",
     to: adminSpaTo("/admin/control-plane/integrations/didit"),
     icon: Shield,
+  },
+  {
+    title: "Stripe",
+    description: "Card payments & Connect payouts for non-Paystack markets",
+    to: adminSpaTo("/admin/control-plane/integrations/stripe"),
+    icon: CreditCard,
+  },
+  {
+    title: "Country launch checklist",
+    description: "Automated pre-launch readiness validation per tenant/region",
+    to: adminSpaTo("/admin/control-plane/country-launch-checklist"),
+    icon: Rocket,
   },
   {
     title: "Yoco",

@@ -365,5 +365,12 @@ jobs:
       - name: Verify cron schedule (all 38 handlers exist)
         run: pnpm verify:cron-schedule
 
+      - name: RLS harness (static + optional live Supabase)
+        run: pnpm --filter web exec vitest run src/lib/security/__tests__/rls-harness.test.ts
+        env:
+          SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+          SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+          SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+
       - name: Run tests
         run: pnpm test

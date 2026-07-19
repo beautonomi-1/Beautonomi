@@ -19,6 +19,7 @@ import {
   usePayCloudTerminals,
   usePayCloudSettings,
   usePayCloudPayment,
+  isPaycloudCaptureUnderReview,
   type PayCloudTerminal,
   type PayCloudPaymentResult,
   type PayCloudEntityType,
@@ -29,8 +30,34 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
   canLaunchPaycloudSameTerminal,
+  getPaycloudDeviceSerial,
   startPaycloudSameTerminalSale,
 } from "@/lib/paycloud-same-terminal";
+
+const SAME_TERMINAL_POLL_INTERVAL_MS = 3000;
+const SAME_TERMINAL_POLL_TIMEOUT_MS = 2 * 60 * 1000;
+
+async function pollSameTerminalSettlement(
+  paymentId: string,
+  confirmPayment: (id: string) => Promise<PayCloudPaymentResult | null>,
+  pollPayment: (id: string) => Promise<PayCloudPaymentResult | null>,
+): Promise<PayCloudPaymentResult | null> {
+  const deadline = Date.now() + SAME_TERMINAL_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await confirmPayment(paymentId);
+    const polled = await pollPayment(paymentId);
+    if (
+      polled?.status === "successful" ||
+      polled?.status === "failed" ||
+      polled?.status === "closed" ||
+      polled?.status === "cancelled"
+    ) {
+      return polled;
+    }
+    await new Promise((r) => setTimeout(r, SAME_TERMINAL_POLL_INTERVAL_MS));
+  }
+  return null;
+}
 
 function formatLastUsed(iso: string): string {
   const ms = Date.parse(iso);
@@ -99,7 +126,9 @@ export function PayCloudPaymentSheet({
   const [payMethod, setPayMethod] = useState<"card" | "qr">("card");
   const [inFlightPaymentId, setInFlightPaymentId] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<PayCloudPaymentResult | null>(null);
+  const [reviewResult, setReviewResult] = useState<PayCloudPaymentResult | null>(null);
   const [voiding, setVoiding] = useState(false);
+  const [resumingInFlight, setResumingInFlight] = useState(false);
   const closingRef = useRef(false);
 
   const activeTerminals = terminals.filter((t) => t.is_active);
@@ -119,7 +148,9 @@ export function PayCloudPaymentSheet({
     setPayMethod("card");
     setInFlightPaymentId(null);
     setSuccessResult(null);
+    setReviewResult(null);
     setVoiding(false);
+    setResumingInFlight(false);
     setPayOnThisDevice(false);
     closingRef.current = false;
     if (sameTerminalFlag) {
@@ -154,7 +185,67 @@ export function PayCloudPaymentSheet({
     if (selectedTerminal && !activeTerminals.some((t) => t.id === selectedTerminal.id)) {
       setSelectedTerminal(activeTerminals.length > 0 ? activeTerminals[0] : null);
     }
-  }, [activeTerminals, selectedTerminal, bookingLocationId, isMobileBooking]);
+  }, [selectedTerminal, activeTerminals, bookingLocationId, isMobileBooking]);
+
+  useEffect(() => {
+    if (!visible || !selectedTerminal?.in_flight_payment_id) return;
+    setInFlightPaymentId(selectedTerminal.in_flight_payment_id);
+  }, [visible, selectedTerminal?.id, selectedTerminal?.in_flight_payment_id]);
+
+  /**
+   * Route a terminal-confirmed capture to the right outcome. An "under" or
+   * "mismatch" capture is real money on the machine that did NOT settle to the
+   * entity — showing plain success would leave staff believing the balance is
+   * cleared, so it gets a dedicated review state and never fires
+   * onPaymentSuccess.
+   */
+  const handleSettledSuccess = useCallback(
+    (result: PayCloudPaymentResult) => {
+      setInFlightPaymentId(null);
+      if (isPaycloudCaptureUnderReview(result)) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        setReviewResult(result);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSuccessResult(result);
+      onPaymentSuccess(result);
+    },
+    [onPaymentSuccess],
+  );
+
+  const handleResumeInFlight = useCallback(async () => {
+    const paymentId = inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id;
+    if (!paymentId) return;
+    setResumingInFlight(true);
+    try {
+      const settled = await pollSameTerminalSettlement(paymentId, confirmPayment, pollPayment);
+      if (settled?.status === "successful") {
+        handleSettledSuccess(settled);
+        return;
+      }
+      if (settled?.status === "failed" || settled?.status === "cancelled" || settled?.status === "closed") {
+        setInFlightPaymentId(null);
+        Alert.alert(
+          "Payment not completed",
+          settled.error_message || "The in-progress payment did not complete. You can start a new charge.",
+        );
+        return;
+      }
+      Alert.alert(
+        "Still waiting",
+        "The payment is still processing. Try again in a moment or cancel and start fresh.",
+      );
+    } finally {
+      setResumingInFlight(false);
+    }
+  }, [
+    inFlightPaymentId,
+    selectedTerminal?.in_flight_payment_id,
+    confirmPayment,
+    pollPayment,
+    handleSettledSuccess,
+  ]);
 
   const parsedTip = (() => {
     const trimmed = tipAmount.trim();
@@ -177,16 +268,20 @@ export function PayCloudPaymentSheet({
   const handleClose = useCallback(async () => {
     if (closingRef.current) return;
     closingRef.current = true;
-    if (inFlightPaymentId && !successResult) {
+    // A review-state capture already completed on the machine — never close it,
+    // that would try to cancel money that was actually taken.
+    if (inFlightPaymentId && !successResult && !reviewResult) {
       await closePayment(inFlightPaymentId);
       setInFlightPaymentId(null);
     }
     setSuccessResult(null);
+    setReviewResult(null);
     onClose();
-  }, [inFlightPaymentId, successResult, closePayment, onClose]);
+  }, [inFlightPaymentId, successResult, reviewResult, closePayment, onClose]);
 
   const handleVoidOnTerminal = useCallback(async () => {
-    const paymentId = successResult?.id || successResult?.payment_id;
+    const completed = successResult ?? reviewResult;
+    const paymentId = completed?.id || completed?.payment_id;
     if (!paymentId) return;
     setVoiding(true);
     try {
@@ -197,7 +292,7 @@ export function PayCloudPaymentSheet({
     } finally {
       setVoiding(false);
     }
-  }, [successResult, voidPayment]);
+  }, [successResult, reviewResult, voidPayment]);
 
   const handleProcess = useCallback(async () => {
     if (!selectedTerminal) {
@@ -209,6 +304,7 @@ export function PayCloudPaymentSheet({
 
     const trySameDevice = payOnThisDevice && sameDeviceAvailable && payMethod === "card";
     const channel: "cloud" | "same_terminal" = trySameDevice ? "same_terminal" : "cloud";
+    const deviceSerial = trySameDevice ? await getPaycloudDeviceSerial() : null;
 
     const result = await createPayment({
       terminal_id: selectedTerminal.id,
@@ -224,6 +320,7 @@ export function PayCloudPaymentSheet({
       group_booking_id:
         groupBookingId ?? (entityType === "group_booking" ? entityId : null),
       channel,
+      ...(deviceSerial ? { device_serial: deviceSerial } : {}),
     });
 
     if (!result) return;
@@ -257,38 +354,36 @@ export function PayCloudPaymentSheet({
         });
         if (!cloudRetry) return;
         if (cloudRetry.status === "successful") {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setInFlightPaymentId(null);
-          setSuccessResult(cloudRetry);
-          onPaymentSuccess(cloudRetry);
+          handleSettledSuccess(cloudRetry);
         }
         return;
       }
 
       if (paymentId) {
-        await confirmPayment(paymentId);
-        const polled = await pollPayment(paymentId);
-        if (polled?.status === "successful") {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const settled = await pollSameTerminalSettlement(paymentId, confirmPayment, pollPayment);
+        if (settled?.status === "successful") {
+          handleSettledSuccess(settled);
+          return;
+        }
+        if (settled?.status === "failed" || settled?.status === "cancelled") {
           setInFlightPaymentId(null);
-          setSuccessResult(polled);
-          onPaymentSuccess(polled);
+          Alert.alert(
+            "Payment failed",
+            settled.error_message || "The card payment didn't go through on this device.",
+          );
           return;
         }
       }
       Alert.alert(
         "Waiting for confirmation",
-        "Payment started on this device. We'll confirm when the bank approves it.",
+        "Payment started on this device. Tap Resume if it doesn't update automatically.",
       );
       return;
     }
 
     if (result) {
       if (result.status === "successful") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setInFlightPaymentId(null);
-        setSuccessResult(result);
-        onPaymentSuccess(result);
+        handleSettledSuccess(result);
       } else if (result.status === "failed") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setInFlightPaymentId(null);
@@ -324,7 +419,7 @@ export function PayCloudPaymentSheet({
     closePayment,
     confirmPayment,
     pollPayment,
-    onPaymentSuccess,
+    handleSettledSuccess,
   ]);
 
   if (!paycloudEnabled) {
@@ -357,6 +452,51 @@ export function PayCloudPaymentSheet({
             variant="outline"
             fullWidth
           />
+          <View style={twStyle("mt-2")}>
+            <ActionButton label="Done" onPress={() => void handleClose()} fullWidth />
+          </View>
+        </View>
+      ) : reviewResult ? (
+        <View>
+          <View style={twStyle("mb-4 items-center rounded-2xl border border-amber-200 bg-amber-50 py-6 px-4")}>
+            <Ionicons name="alert-circle" size={40} color="#d97706" />
+            <Text style={twStyle("mt-2 text-base font-semibold text-amber-900")}>
+              Payment needs review
+            </Text>
+            <Text style={twStyle("mt-1 text-sm text-amber-800")}>
+              {formatCurrency(Number(reviewResult.amount ?? 0), currency)} captured
+              {typeof reviewResult.expected_amount === "number"
+                ? ` · ${formatCurrency(reviewResult.expected_amount, currency)} was due`
+                : ""}
+            </Text>
+            <Text style={twStyle("mt-2 text-xs text-center text-amber-800")}>
+              The card machine took a different amount than the balance due, so it was
+              not applied to this charge automatically. It has been flagged for
+              review — the balance still shows as owing until it is resolved.
+            </Text>
+          </View>
+          <ActionButton
+            label={voiding ? "Sending void…" : "Void on card machine"}
+            onPress={() => void handleVoidOnTerminal()}
+            loading={voiding}
+            variant="outline"
+            fullWidth
+          />
+          <View style={twStyle("mt-2")}>
+            <TouchableOpacity
+              onPress={() => {
+                void handleClose();
+                router.push("/(app)/(tabs)/more/card-machines" as never);
+              }}
+              style={twStyle("items-center rounded-xl border border-amber-300 bg-white py-3")}
+              accessibilityRole="button"
+              accessibilityLabel="Open card machines to review"
+            >
+              <Text style={twStyle("text-sm font-semibold text-amber-800")}>
+                Review in Card machines
+              </Text>
+            </TouchableOpacity>
+          </View>
           <View style={twStyle("mt-2")}>
             <ActionButton label="Done" onPress={() => void handleClose()} fullWidth />
           </View>
@@ -540,6 +680,25 @@ export function PayCloudPaymentSheet({
         </View>
       ) : (
         <View style={twStyle("mb-6")}>
+          {(inFlightPaymentId || selectedTerminal?.in_flight_payment_id) && !successResult ? (
+            <View style={twStyle("mb-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-indigo-900")}>
+                Payment in progress on this card machine
+              </Text>
+              <Text style={twStyle("mt-1 text-xs text-indigo-800")}>
+                A charge may still be completing. Resume to check status without starting a duplicate.
+              </Text>
+              <TouchableOpacity
+                onPress={() => void handleResumeInFlight()}
+                style={twStyle("mt-2 self-start rounded-lg bg-indigo-600 px-3 py-2")}
+                disabled={resumingInFlight}
+              >
+                <Text style={twStyle("text-xs font-semibold text-white")}>
+                  {resumingInFlight ? "Checking…" : "Resume payment"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {(() => {
             const hasPortable = activeTerminals.some((t) => t.location_id == null);
             const hasExactMatch =

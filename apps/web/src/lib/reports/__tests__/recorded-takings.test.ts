@@ -169,6 +169,29 @@ describe("getRecordedTakingsForRange", () => {
     });
   });
 
+  it("attributes PayCloud card-machine payments to the paycloud bucket, not generic card", async () => {
+    const r = await getRecordedTakingsForRange(
+      mockSupabase({
+        providers: [providerRow()],
+        booking_payments: [
+          // PayCloud stores payment_method='card' + payment_provider='paycloud'.
+          { booking_id: "b-mine-1", amount: 120, payment_method: "card", payment_provider: "paycloud", status: "completed", created_at: inRange, tenant_id: tenantId },
+          // A genuine manual card entry stays in the card bucket.
+          { booking_id: "b-mine-1", amount: 30, payment_method: "card", status: "completed", created_at: inRange, tenant_id: tenantId },
+        ],
+        bookings: [{ id: "b-mine-1", provider_id: providerId, location_id: null }],
+        product_orders: [],
+        sales: [],
+        finance_transactions: [],
+      }),
+      { providerId, rangeStartIso: start, rangeEndIso: end },
+    );
+
+    expect(r.byPaymentMethod.paycloud).toBe(120);
+    expect(r.byPaymentMethod.card).toBe(30);
+    expect(r.bookingPaymentsTotal).toBe(150);
+  });
+
   it("split-safe: does not double-count wallet share already represented by a wallet booking_payments row", async () => {
     const r = await getRecordedTakingsForRange(
       mockSupabase({

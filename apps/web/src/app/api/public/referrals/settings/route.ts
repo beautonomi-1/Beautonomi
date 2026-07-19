@@ -4,8 +4,10 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-
-const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+import {
+  REFERRAL_SETTINGS_ID,
+  resolveReferralProgramEnabled,
+} from "@/lib/referrals/referral-program-enabled";
 
 /**
  * GET /api/public/referrals/settings
@@ -52,11 +54,13 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    const programGate = await resolveReferralProgramEnabled(tenantId);
+
     return successResponse({
       referral_amount: referralSettings?.referral_amount || 50,
       referral_message: referralSettings?.referral_message || 'Join Beautonomi and get rewarded! Use my referral link to get started.',
       referral_currency: referralSettings?.referral_currency || lastResortCurrency,
-      is_enabled: referralSettings?.is_enabled !== false,
+      is_enabled: programGate.enabled && referralSettings?.is_enabled !== false,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch referral settings");

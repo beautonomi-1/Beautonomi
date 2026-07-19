@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { WebView } from "react-native-webview";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
-import { getBackendUrl } from "@/config/public-env";
+import { getBackendUrl, inAppWebViewUserAgentProps } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function AboutScreen() {
@@ -23,6 +23,7 @@ export default function AboutScreen() {
         ) : (
           <WebView
             source={{ uri: `${base}/about` }}
+            {...inAppWebViewUserAgentProps()}
             style={styles.webview}
             startInLoadingState
             onError={(e: any) => setWebError(e.nativeEvent.description || "Could not load page")}

@@ -29,6 +29,7 @@ import {
   createGroupParticipantChildBooking,
   notifyGroupParticipantBooking,
 } from "@/lib/bookings/create-group-participant-booking";
+import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 import { RECOGNIZED_REVENUE_TYPES, recognizedRevenue } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
@@ -690,13 +691,45 @@ export async function POST(request: NextRequest) {
       for (let idx = 0; idx < participantsWithBookings.length; idx++) {
         const p = participantsWithBookings[idx];
         if (p.booking_id) continue;
-        const customerId =
+        let customerId =
           typeof p.customer_id === "string" && p.customer_id.trim().length > 0
             ? p.customer_id.trim()
             : null;
-        if (!customerId) continue;
         const svcId = p.service_id || service_id || null;
         if (!svcId) continue;
+
+        // §Group-parity: roster-only participants (name + phone/email, no
+        // selected account) still get a shadow customer so they receive a
+        // child booking, confirmation, and the walk-in app nudge — matching
+        // single-booking walk-in behaviour.
+        if (!customerId) {
+          const participantName =
+            (p.name || p.participant_name || p.client_name || "").toString().trim();
+          const participantPhone =
+            (p.phone || p.participant_phone || p.client_phone || "").toString().trim();
+          const participantEmail =
+            (p.email || p.participant_email || p.client_email || "").toString().trim();
+          if (participantName && (participantPhone || participantEmail)) {
+            try {
+              const shadow = await createOrResolveShadowCustomer({
+                supabaseAdmin: admin,
+                fullName: participantName,
+                email: participantEmail || null,
+                phone: participantPhone || null,
+                providerId,
+                shadowSource: "group_booking",
+                createdByUserId: user.id,
+              });
+              if (shadow.ok) {
+                customerId = shadow.customerId;
+                participantsWithBookings[idx] = { ...p, customer_id: customerId };
+              }
+            } catch (shadowErr) {
+              console.warn("Group participant shadow customer creation failed:", shadowErr);
+            }
+          }
+          if (!customerId) continue;
+        }
 
         const carriesTravelFee = wantsTravelFee && idx === primaryIdxResolved;
         const created = await createGroupParticipantChildBooking(admin, sessionContext, {

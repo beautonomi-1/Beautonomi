@@ -11,7 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
-import { LoadingState } from "@/components/ui/LoadingState";
+import { SkeletonDashboard } from "@/components/ui/Skeleton";
 import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -169,8 +169,8 @@ export function FinanceOverviewContent() {
 
   if (loading && !data) {
     return (
-      <View style={twStyle("flex-1 items-center justify-center py-12")}>
-        <LoadingState />
+      <View style={twStyle("flex-1 py-12")}>
+        <SkeletonDashboard />
       </View>
     );
   }

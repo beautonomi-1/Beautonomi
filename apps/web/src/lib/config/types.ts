@@ -20,6 +20,13 @@ export interface TenantRegionMeta {
   phone_country_code: string;
   /** `public.regions.id` when migration 377 is applied and region_code matches. */
   region_id?: string;
+  /** Primary online payment gateway for the region (e.g. "paystack", "stripe"). */
+  payment_gateway?: string;
+  /**
+   * Minimum native app version that supports the region's gateway checkout SDK
+   * (e.g. Stripe PaymentSheet). Clients below this fall back to hosted web checkout.
+   */
+  gateway_native_min_version?: string;
 }
 
 /** Stable list for contract tests — keep in sync with `TenantRegionMeta` required fields. */
@@ -100,6 +107,13 @@ export interface SafeOnDemandModuleConfig {
   waiting_screen_timeout_seconds: number;
   provider_accept_window_seconds: number;
   ui_copy: Record<string, any>;
+}
+
+export interface SafeAgentModuleConfig {
+  /** Whether any agent capability is enabled (master switch). */
+  enabled: boolean;
+  /** When true, agents observe but do not mutate. */
+  shadow_mode: boolean;
 }
 
 export interface SafeAiModuleConfig {
@@ -193,6 +207,7 @@ export interface PublicConfigBundle {
     identity_verification: SafeIdentityVerificationModuleConfig;
     aura: SafeAuraModuleConfig;
     safety: SafeSafetyModuleConfig;
+    agents: SafeAgentModuleConfig;
   };
   /**
    * Tenant-aware verification policy snapshot.

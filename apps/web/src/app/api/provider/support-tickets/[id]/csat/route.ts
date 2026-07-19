@@ -8,6 +8,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requireProviderSupportTicketAccess } from "@/lib/support/provider-support-ticket-access";
+import { submitSupportTicketCsat } from "@/lib/support/submit-support-ticket-csat";
 
 const csatSchema = z.object({
   score: z.number().int().min(1).max(5),
@@ -36,28 +37,29 @@ export async function POST(
     }>(admin, user.id, id, "id, provider_id, requester_type, status, assigned_to");
     if (access.response) return access.response;
 
-    const status = String(access.ticket.status ?? "");
-    if (status !== "resolved" && status !== "closed") {
-      return errorResponse("You can rate support after the ticket is resolved", "TICKET_NOT_RESOLVED", 409);
+    const providerId = access.ticket.provider_id;
+    if (!providerId) {
+      return errorResponse("Ticket has no provider scope", "FORBIDDEN", 403);
     }
 
-    const submittedAt = new Date().toISOString();
-    const { data, error } = await admin
-      .from("support_tickets")
-      .update({
-        csat_score: parsed.data.score,
-        csat_comment: parsed.data.comment?.trim() || null,
-        csat_submitted_at: submittedAt,
-        csat_agent_id: access.ticket.assigned_to ?? null,
-      })
-      .eq("id", id)
-      .eq("provider_id", access.ticket.provider_id)
-      .select("id, csat_score, csat_comment, csat_submitted_at")
-      .single();
+    const result = await submitSupportTicketCsat({
+      supabase: admin,
+      ticketId: id,
+      score: parsed.data.score,
+      comment: parsed.data.comment,
+      assignedTo: access.ticket.assigned_to ?? null,
+      currentStatus: String(access.ticket.status ?? ""),
+      ownership: { column: "provider_id", value: providerId },
+    });
 
-    if (error) throw error;
+    if (!result.ok) {
+      if (result.code === "TICKET_NOT_RESOLVED") {
+        return errorResponse(result.message, "TICKET_NOT_RESOLVED", 409);
+      }
+      throw new Error(result.message);
+    }
 
-    return successResponse({ ticket: data });
+    return successResponse({ ticket: result.ticket, closedOnSubmit: result.closedOnSubmit });
   } catch (error) {
     return handleApiError(error, "Failed to submit provider support rating");
   }

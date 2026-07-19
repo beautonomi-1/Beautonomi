@@ -67,6 +67,8 @@ describe("POST /api/me/membership/cancel", () => {
                     data: {
                       id: "membership-1",
                       user_id: "customer-1",
+                      status: "active",
+                      expires_at: "2026-08-01T00:00:00.000Z",
                       provider: {
                         id: "provider-1",
                         tenant_id: "tenant-za",
@@ -102,8 +104,15 @@ describe("POST /api/me/membership/cancel", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.data).toMatchObject({ cancelled: true, type: "salon" });
-    expect(updates[0]).toMatchObject({ status: "cancelled" });
+    expect(body.data).toMatchObject({
+      cancelled: true,
+      type: "salon",
+      cancel_immediately: false,
+      benefits_until: "2026-08-01T00:00:00.000Z",
+    });
+    // Cancel-at-period-end: membership stays active with auto_renew off.
+    expect(updates[0]).toMatchObject({ status: "active", auto_renew: false });
+    expect(updates[0]).toHaveProperty("cancelled_at");
     expect(mockNotifyProviderMembershipCancelled).toHaveBeenCalledTimes(1);
     expect(mockNotifyProviderMembershipCancelled).toHaveBeenCalledWith(
       expect.objectContaining({

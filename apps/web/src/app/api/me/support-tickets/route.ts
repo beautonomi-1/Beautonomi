@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -144,6 +144,17 @@ export async function POST(request: NextRequest) {
       console.error("Support staff new-ticket notification failed:", staffNotifyErr);
     }
 
+    // Agent triage runs after the response is sent: classifies the ticket,
+    // drafts a first reply, and proposes assignment — all human-approved.
+    after(async () => {
+      try {
+        const { runSupportTriageWorkflow } = await import("@/lib/agents/workflows/support-agent");
+        await runSupportTriageWorkflow({ ticketId: ticket.id });
+      } catch (triageErr) {
+        console.error("Support triage workflow failed:", triageErr);
+      }
+    });
+
     try {
       const { slackNotifyNewSupportTicket } = await import("@/lib/integrations/slack/triggers");
       await slackNotifyNewSupportTicket(request, ticket as {
@@ -157,6 +168,23 @@ export async function POST(request: NextRequest) {
       });
     } catch (slackErr) {
       console.error("Slack notification failed:", slackErr);
+    }
+
+    try {
+      const { maybeOpenFraudCaseFromSafetyTicket } = await import(
+        "@/lib/fraud/maybe-open-fraud-from-support-ticket"
+      );
+      await maybeOpenFraudCaseFromSafetyTicket({
+        ticketId: ticket.id,
+        category,
+        userId: user.id,
+        providerId,
+        subject: validated.subject,
+        message: validated.message,
+        supabase: adminSupabase as never,
+      });
+    } catch (fraudErr) {
+      console.error("Fraud case from safety ticket failed:", fraudErr);
     }
 
     return successResponse({

@@ -189,8 +189,17 @@ export const CpIntegrationsHubPage = lazy(() =>
 export const CpIntegrationDiditPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationDiditPage").then((m) => ({ default: m.CpIntegrationDiditPage }))
 );
+export const CpIntegrationStripePage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationStripePage").then((m) => ({ default: m.CpIntegrationStripePage }))
+);
+export const CpCountryLaunchChecklistPage = lazy(() =>
+  import("@/routes/control-plane/CpCountryLaunchChecklistPage").then((m) => ({ default: m.CpCountryLaunchChecklistPage }))
+);
 export const VerificationSessionsPage = lazy(() =>
   import("@/routes/identity-trust/VerificationSessionsPage").then((m) => ({ default: m.VerificationSessionsPage }))
+);
+export const CpAgenticConsolePage = lazy(() =>
+  import("@/routes/control-plane/CpAgenticConsolePage").then((m) => ({ default: m.CpAgenticConsolePage }))
 );
 export const CpIntegrationGeminiPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationGeminiPage").then((m) => ({ default: m.CpIntegrationGeminiPage }))
@@ -263,6 +272,9 @@ export const ReviewsListPage = lazy(() =>
 );
 export const UserReportsListPage = lazy(() =>
   import("@/routes/trust/UserReportsListPage").then((m) => ({ default: m.UserReportsListPage }))
+);
+export const FraudCasesPage = lazy(() =>
+  import("@/routes/trust/FraudCasesPage").then((m) => ({ default: m.FraudCasesPage }))
 );
 export const RefundsListPage = lazy(() =>
   import("@/routes/refunds/RefundsListPage").then((m) => ({ default: m.RefundsListPage }))

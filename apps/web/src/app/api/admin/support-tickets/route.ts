@@ -7,6 +7,7 @@ import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/su
 import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
+import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -302,6 +303,24 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     const ticketId = (data as { id: string }).id;
+    const normalizedCategory = normalizeSupportTicketCategory(category);
+    try {
+      const { maybeOpenFraudCaseFromSafetyTicket } = await import(
+        "@/lib/fraud/maybe-open-fraud-from-support-ticket"
+      );
+      await maybeOpenFraudCaseFromSafetyTicket({
+        ticketId,
+        category: normalizedCategory,
+        userId: user.id,
+        providerId: provider_id || null,
+        subject: String(subject),
+        message: String(description),
+        supabase: supabase as never,
+      });
+    } catch (fraudErr) {
+      console.error("Fraud case from admin safety ticket failed:", fraudErr);
+    }
+
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({
       actor_user_id: user.id,

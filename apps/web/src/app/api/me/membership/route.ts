@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
         last_payment_at,
         renewal_failure_count,
         past_due_since,
+        metadata,
         plan:membership_plans(id, name, description, price_monthly, currency, discount_percent),
         provider:providers(id, business_name, slug, tenant_id)
       `
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest) {
       next_billing_at: string | null;
       last_payment_at: string | null;
       past_due_since: string | null;
+      renewal_payment_method_missing?: boolean;
       card: { last4: string; brand: string; exp: string } | null;
     }[] = [];
 
@@ -209,6 +211,9 @@ export async function GET(request: NextRequest) {
             next_billing_at: row.next_billing_at ?? null,
             last_payment_at: row.last_payment_at ?? null,
             past_due_since: row.past_due_since ?? null,
+            renewal_payment_method_missing:
+              (row.metadata as { renewal_payment_method_missing?: boolean } | null)
+                ?.renewal_payment_method_missing === true,
             card: row.payment_method_id ? (cardMap.get(row.payment_method_id) ?? null) : null,
           });
         }

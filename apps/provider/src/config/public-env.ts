@@ -181,6 +181,29 @@ export function withWebApiTenantHeaders(init?: RequestInit): RequestInit {
   return { ...init, headers: h };
 }
 
+/**
+ * User-Agent token appended to in-app `WebView` requests so the Vercel Firewall can
+ * bypass bot / rate-limit rules for first-party app traffic.
+ *
+ * WHY: `withWebApiTenantHeaders` only tags raw `fetch` calls with `X-App`; WebView
+ * page loads (and every subresource / XHR they fan out into) cannot send that header.
+ * The UA, however, is sent on *every* request the WebView makes, so it is the reliable
+ * signal for the Firewall bypass.
+ *
+ * KEEP IN SYNC: the Vercel Firewall allow rule must match `User-Agent contains
+ * "BeautonomiApp"`. The `/provider` suffix lets you distinguish app surfaces if needed.
+ */
+export const MOBILE_WEB_USER_AGENT_TOKEN = "BeautonomiApp/provider";
+
+/**
+ * Props to spread onto a `react-native-webview` `<WebView>` that loads first-party
+ * Beautonomi pages. `applicationNameForUserAgent` appends the token to the platform's
+ * default UA (keeping a realistic browser UA) and applies to all requests the page makes.
+ */
+export function inAppWebViewUserAgentProps(): { applicationNameForUserAgent: string } {
+  return { applicationNameForUserAgent: MOBILE_WEB_USER_AGENT_TOKEN };
+}
+
 /** Runtime market host controls tenant routing for global-ready single builds. */
 export const initializeRuntimeMarketHost = initializeActiveMarketHost;
 export const setRuntimeMarketHost = setRuntimeActiveMarketHost;

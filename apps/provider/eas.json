@@ -33,6 +33,19 @@
       },
       "env": {
         "APP_ENV": "preview",
+        "EXPO_PUBLIC_APP_URL": "https://www.beautonomi.com",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "channel": "preview"
+    },
+    "terminal": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "image": "latest"
+      },
+      "env": {
+        "APP_ENV": "preview",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "channel": "preview"

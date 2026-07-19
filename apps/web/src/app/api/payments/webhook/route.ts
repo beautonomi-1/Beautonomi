@@ -432,6 +432,20 @@ export async function POST(request: Request) {
           } catch (disputeReversalError) {
             console.error("[webhook] dispute reversal failed:", disputeReversalError);
           }
+          try {
+            const { openFraudCaseFromPaystackDispute } = await import(
+              "@/lib/fraud/open-fraud-from-paystack-dispute"
+            );
+            await openFraudCaseFromPaystackDispute({
+              eventType,
+              eventId,
+              reference: String(disputeRef),
+              disputeData: disputeData as Record<string, unknown> | null,
+              supabase: supabase as never,
+            });
+          } catch (fraudCaseErr) {
+            console.error("[webhook] fraud case open failed:", fraudCaseErr);
+          }
         }
         response = NextResponse.json({ received: true });
       } else {

@@ -287,6 +287,16 @@ export async function POST(
       );
     }
 
+    const paymentStatus = String((booking as { payment_status?: string }).payment_status ?? "").toLowerCase();
+    if (paymentStatus === "refunded" && body?.confirm_recollect !== true) {
+      return errorResponse(
+        "This booking was fully refunded. Confirm you are recording a new payment before collecting again.",
+        "REFUNDED_BOOKING",
+        409,
+        { requires_confirm_recollect: true },
+      );
+    }
+
     const { format: formatMoney } = await getTenantMoneyFormatter(
       (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
     );
@@ -418,6 +428,14 @@ export async function POST(
       return errorResponse(
         "Yoco terminal payments require a stable payment reference or Idempotency-Key",
         "YOCO_REFERENCE_REQUIRED",
+        400
+      );
+    }
+
+    if (effectivePaymentMethod === "card" && paymentProvider !== "cash" && !stableReference) {
+      return errorResponse(
+        "Card payments require a stable payment reference or Idempotency-Key",
+        "CARD_REFERENCE_REQUIRED",
         400
       );
     }
@@ -695,6 +713,41 @@ export async function POST(
             );
           } catch (pushError) {
             console.warn("OneSignal push notification failed:", pushError);
+          }
+
+          try {
+            const { data: providerRow } = await supabaseAdmin
+              .from("providers")
+              .select("user_id")
+              .eq("id", providerId)
+              .maybeSingle();
+            const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+            if (providerUserId) {
+              const { data: customerRow } = await supabaseAdmin
+                .from("users")
+                .select("full_name")
+                .eq("id", booking.customer_id)
+                .maybeSingle();
+              const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+              const bookingRef =
+                booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+              await sendTemplateNotification(
+                "provider_payment_received",
+                [providerUserId],
+                {
+                  amount: formatMoney(paymentAmount),
+                  booking_number: bookingRef,
+                  booking_id: bookingId,
+                  customer_name:
+                    (customerRow as { full_name?: string } | null)?.full_name ?? "Customer",
+                  payment_method: payment_method,
+                },
+                ["push"],
+                { appType: "provider", tenantId: tenantId ?? null, skipInApp: true },
+              );
+            }
+          } catch (providerPushError) {
+            console.warn("Provider payment notification failed:", providerPushError);
           }
         } catch (notifError) {
           console.warn("Failed to create payment notification:", notifError);

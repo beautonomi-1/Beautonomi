@@ -51,7 +51,14 @@
     { "path": "/api/cron/slack-operational-alerts", "schedule": "15 * * * *" },
     { "path": "/api/cron/process-membership-renewals", "schedule": "0 6 * * *" },
     { "path": "/api/cron/membership-renewal-reminders", "schedule": "0 7 * * *" },
-    { "path": "/api/cron/identity-verification-reconcile", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/identity-verification-reconcile", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/auto-finalize-cash-refunds", "schedule": "0 * * * *" },
+    { "path": "/api/cron/fx-reference-rates", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/gl-currency-drift", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/agent-ops-sentinel", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/agent-workforce-sweep", "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/agent-provider-ops", "schedule": "30 5 * * *" },
+    { "path": "/api/cron/agent-provider-digest", "schedule": "0 6 * * 1" }
   ],
   "headers": [
     {

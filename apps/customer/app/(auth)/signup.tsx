@@ -30,6 +30,13 @@ import {
 } from "@/lib/supabase-sms-otp";
 
 const REFERRAL_REF_KEY = "referral_ref";
+
+function resolveSignupReferralCode(fromLink: string | null, manual: string): string | null {
+  const linked = fromLink?.trim();
+  if (linked) return linked;
+  const typed = manual.trim();
+  return typed || null;
+}
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
@@ -162,6 +169,8 @@ export default function SignupScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [referralCode, setReferralCode] = useState<string | null>(params.ref?.trim() ?? null);
+  const [manualReferralCode, setManualReferralCode] = useState("");
+  const [showReferralInput, setShowReferralInput] = useState(Boolean(params.ref?.trim()));
   const [preferredLanguage, setPreferredLanguage] = useState(getDefaultLanguage);
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
@@ -339,7 +348,7 @@ export default function SignupScreen() {
         fullPhone,
         signupSource,
         preferredLanguage,
-        referralCode: referralCode ?? null,
+        referralCode: resolveSignupReferralCode(referralCode, manualReferralCode),
       };
 
       if (result.requiresConfirmation) {
@@ -446,7 +455,9 @@ export default function SignupScreen() {
           await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
         }
         await changeLanguage(preferredLanguage);
-        const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
+        const refToAttach =
+          resolveSignupReferralCode(referralCode, manualReferralCode) ??
+          (await AsyncStorage.getItem(REFERRAL_REF_KEY));
         if (refToAttach?.trim()) {
           try {
             await api.post("/api/me/referrals/attach", { referral_code: refToAttach.trim() });
@@ -685,9 +696,45 @@ export default function SignupScreen() {
         <Text style={{ fontSize: 26, fontWeight: "800", color: Colors.gray[900], marginBottom: 6 }}>
           Create Your Account
         </Text>
-        <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 24 }}>
+        <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 16 }}>
           Join Beautonomi and discover the best beauty services near you
         </Text>
+
+        {(showReferralInput || manualReferralCode || referralCode) ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700], marginBottom: 6 }}>
+              Referral code <Text style={{ fontWeight: "400", color: Colors.gray[500] }}>(optional)</Text>
+            </Text>
+            <TextInput
+              value={manualReferralCode || referralCode || ""}
+              onChangeText={(text) => {
+                const next = text.toUpperCase().replace(/\s/g, "");
+                setManualReferralCode(next);
+                if (next) AsyncStorage.setItem(REFERRAL_REF_KEY, next).catch(() => {});
+              }}
+              placeholder="Enter a friend's code"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={{
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: RADIUS_INPUT,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 15,
+                backgroundColor: Colors.white,
+              }}
+            />
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={() => setShowReferralInput(true)}
+            style={{ marginBottom: 16 }}
+            accessibilityRole="button"
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>Have a referral code?</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Terms — above social + email so OAuth is never ahead of consent */}
         {hasSocialAuth && !agreedToTerms ? (

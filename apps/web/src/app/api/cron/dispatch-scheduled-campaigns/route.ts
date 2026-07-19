@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
  * to manual sends). Designed to run every few minutes.
  */
 export async function GET(request: NextRequest) {
-  if (!verifyCronRequest(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
   }
 
   const supabase = getSupabaseAdmin();

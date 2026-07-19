@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, handleApiError, requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
+import { submitSupportTicketCsat } from "@/lib/support/submit-support-ticket-csat";
 
 const csatSchema = z.object({
   score: z.number().int().min(1).max(5),
@@ -37,28 +38,24 @@ export async function POST(
       return errorResponse("You can only rate your own support tickets", "FORBIDDEN", 403);
     }
 
-    const status = String(ticket.status ?? "");
-    if (status !== "resolved" && status !== "closed") {
-      return errorResponse("You can rate support after the ticket is resolved", "TICKET_NOT_RESOLVED", 409);
+    const result = await submitSupportTicketCsat({
+      supabase: admin,
+      ticketId: id,
+      score: parsed.data.score,
+      comment: parsed.data.comment,
+      assignedTo: ticket.assigned_to ?? null,
+      currentStatus: String(ticket.status ?? ""),
+      ownership: { column: "user_id", value: user.id },
+    });
+
+    if (!result.ok) {
+      if (result.code === "TICKET_NOT_RESOLVED") {
+        return errorResponse(result.message, "TICKET_NOT_RESOLVED", 409);
+      }
+      throw new Error(result.message);
     }
 
-    const submittedAt = new Date().toISOString();
-    const { data, error } = await admin
-      .from("support_tickets")
-      .update({
-        csat_score: parsed.data.score,
-        csat_comment: parsed.data.comment?.trim() || null,
-        csat_submitted_at: submittedAt,
-        csat_agent_id: ticket.assigned_to ?? null,
-      })
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .select("id, csat_score, csat_comment, csat_submitted_at")
-      .single();
-
-    if (error) throw error;
-
-    return successResponse({ ticket: data });
+    return successResponse({ ticket: result.ticket, closedOnSubmit: result.closedOnSubmit });
   } catch (error) {
     return handleApiError(error, "Failed to submit support rating");
   }

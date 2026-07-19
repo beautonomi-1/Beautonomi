@@ -260,6 +260,7 @@ export default function WalkInSaleScreen() {
     link?: string | null;
     reference?: string | null;
     expectedAmount: number;
+    pendingOrderId?: string;
   } | null>(null);
   const [variantPickProduct, setVariantPickProduct] = useState<Product | null>(null);
   const [selectedSale, setSelectedSale] = useState<WalkInSale | null>(null);
@@ -382,7 +383,7 @@ export default function WalkInSaleScreen() {
     (sale: WalkInSale) => {
       Alert.alert(
         "Process refund",
-        `Refund order ${sale.order_number} (${formatCurrency(Number(sale.total_amount), tenantCurrency)})? This marks the order as refunded. Adjust stock manually in Products if items are returned.`,
+        `Refund order ${sale.order_number} (${formatCurrency(Number(sale.total_amount), tenantCurrency)})? Stock will be returned automatically.`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -393,7 +394,7 @@ export default function WalkInSaleScreen() {
               try {
                 const { error: err } = await patchOrder(
                   `/api/provider/product-orders/${sale.id}`,
-                  { status: "refunded" },
+                  { status: "refunded", refund_method: "cash" },
                 );
                 if (err) {
                   Alert.alert("Refund failed", err);
@@ -543,6 +544,7 @@ export default function WalkInSaleScreen() {
       setShowPaycloudPayment(false);
       setPaycloudLinkedOrderId(null);
       setPaycloudLinkedTotal(null);
+      setPaystackTerminalPrompt(null);
       setVariantPickProduct(null);
       setCart([]);
       setCustomerName("");
@@ -629,16 +631,53 @@ export default function WalkInSaleScreen() {
       return;
     }
     if (paymentMethod === "paystack_terminal") {
+      const phoneErr = validateE164Phone(customerPhoneE164);
+      if (phoneErr) {
+        setCheckoutError(phoneErr);
+        Alert.alert("Invalid phone", phoneErr);
+        return;
+      }
+      setCheckoutError(null);
+      setPreparingPaystackTerminal(true);
       try {
-        setPreparingPaystackTerminal(true);
-        const customerReference = `walk-in-${Date.now().toString(36)}`;
+        const items = cart.map((c) => ({
+          product_id: c.product_id,
+          quantity: c.quantity,
+          product_variant_id: c.product_variant_id ?? undefined,
+        }));
+        const { data, error: err, errorCode } = await postSale("/api/provider/product-sales", {
+          items,
+          payment_method: "paystack_terminal",
+          customer_id: linkedClient?.customer_id,
+          customer_name: customerName.trim() || undefined,
+          customer_phone: customerPhoneE164.trim() || undefined,
+          ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
+        });
+        if (err) {
+          const friendly = walkInSaleErrorMessage(errorCode, err);
+          setCheckoutError(friendly);
+          Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
+          return;
+        }
+        const rawPayload = data as { order?: WalkInSale } | WalkInSale | null | undefined;
+        const order =
+          rawPayload && typeof rawPayload === "object" && "order" in rawPayload && rawPayload.order
+            ? rawPayload.order
+            : rawPayload && typeof rawPayload === "object" && "order_number" in rawPayload
+              ? (rawPayload as WalkInSale)
+              : undefined;
+        if (!order?.id) {
+          Alert.alert("Error", "Could not prepare card sale");
+          return;
+        }
+        const customerReference = `walk-in-${order.id.slice(0, 8)}`;
         const res = await api.post<{
           terminal?: { terminal_code?: string; payment_link?: string | null; terminal_url?: string | null; qr_url?: string | null };
           expectedAmount?: number | null;
         }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, paystackTerminalCollectionIntentPayload({
-          // Intentionally "other": product order is created only after payment via product-sales.
-          entity_type: "other",
-          expected_amount: Number(cartTotalDue.toFixed(2)),
+          entity_type: "product_order",
+          entity_id: order.id,
+          expected_amount: Number(order.total_amount ?? cartTotalDue),
           customer_reference: customerReference,
         }));
         if (res.error) {
@@ -654,10 +693,9 @@ export default function WalkInSaleScreen() {
           code: terminal.terminal_code,
           link: terminal.payment_link ?? terminal.terminal_url ?? terminal.qr_url ?? null,
           reference: customerReference,
-          expectedAmount: Number(res.data?.expectedAmount ?? cartTotalDue),
+          expectedAmount: Number(res.data?.expectedAmount ?? order.total_amount ?? cartTotalDue),
+          pendingOrderId: order.id,
         });
-      } catch (err) {
-        Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to prepare terminal payment.");
       } finally {
         setPreparingPaystackTerminal(false);
       }
@@ -1470,6 +1508,16 @@ export default function WalkInSaleScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
+            {paystackTerminalPrompt.pendingOrderId ? (
+              <TouchableOpacity
+                onPress={() => void submitSale(undefined, paystackTerminalPrompt.pendingOrderId)}
+                style={{ marginTop: 12, borderRadius: 12, backgroundColor: "#111827", paddingVertical: 14 }}
+              >
+                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>
+                  Payment received — complete sale
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
       </BottomSheet>

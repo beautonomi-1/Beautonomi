@@ -1149,13 +1149,19 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     const receiptAutoSend =
       (providerRow as { receipt_auto_send?: boolean | null } | null)?.receipt_auto_send !== false;
     if (providerUserId) {
+      const { data: customerRow } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", bookingData.customer_id)
+        .maybeSingle();
       await sendTemplateNotification(
-        "payment_successful",
+        "provider_payment_received",
         [providerUserId],
         {
           amount: String(amountInCurrency),
           booking_number: bookingData.booking_number || String(metadata.booking_id ?? ""),
           booking_id: String(metadata.booking_id ?? ""),
+          customer_name: (customerRow as { full_name?: string } | null)?.full_name ?? "Customer",
           payment_method: "card",
         },
         ["push"],
@@ -2366,6 +2372,42 @@ async function handleMembershipOrderSuccess(
       savedAuthCode = authorization.authorization_code;
     } catch (saveCardErr) {
       console.error("[membership] savePaystackAuthorization failed:", saveCardErr);
+      if (enableAutoRenew && orderData.user_id) {
+        try {
+          const { data: existingMembership } = await supabase
+            .from("user_memberships")
+            .select("metadata")
+            .eq("user_id", orderData.user_id)
+            .eq("provider_id", providerId)
+            .maybeSingle();
+          const priorMeta =
+            (existingMembership as { metadata?: Record<string, unknown> | null } | null)?.metadata ?? {};
+          await supabase
+            .from("user_memberships")
+            .update({
+              metadata: {
+                ...priorMeta,
+                renewal_payment_method_missing: true,
+                renewal_payment_method_missing_at: new Date().toISOString(),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", orderData.user_id)
+            .eq("provider_id", providerId);
+          const { insertNotification } = await import("@/lib/notifications/insert-notification");
+          await insertNotification({
+            user_id: orderData.user_id,
+            type: "membership_payment_method",
+            title: "Add a payment method",
+            message:
+              "Your membership is active, but we could not save your card for renewals. Add a payment method before your next billing date.",
+            data: { provider_id: providerId },
+            action_url: "/account-settings/membership",
+          }).catch(() => undefined);
+        } catch (flagErr) {
+          console.error("[membership] failed to flag missing renewal payment method:", flagErr);
+        }
+      }
     }
   }
 

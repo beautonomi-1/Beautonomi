@@ -50,6 +50,21 @@ const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: strin
     body: "Your payment was processed successfully.",
     url: "/account-settings/bookings",
   },
+  provider_payment_received: {
+    title: "Payment received",
+    body: "Payment received: {{amount}} for booking #{{booking_number}} from {{customer_name}}.",
+    url: "/provider/bookings/{{booking_id}}",
+  },
+  cash_refund_confirmation: {
+    title: "Confirm cash refund",
+    body: "{{provider_name}} recorded a {{amount}} cash refund for booking #{{booking_number}}. Tap to confirm or dispute.",
+    url: "/account-settings/bookings/{{booking_id}}?refund_confirm={{refund_id}}",
+  },
+  walk_in_app_nudge: {
+    title: "Manage your bookings on Beautonomi",
+    body: "Create your free account to view bookings with {{provider_name}} and earn rewards.",
+    url: "{{claim_link}}",
+  },
   payment_failed: {
     title: "Payment failed",
     body: "Your payment could not be processed. Please try again.",

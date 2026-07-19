@@ -18,6 +18,19 @@ describe("computeAmountMatchStatus", () => {
   it("returns mismatch for small underpayment", () => {
     expect(computeAmountMatchStatus(100, 99.5)).toBe("mismatch");
   });
+
+  it("treats captured = expected + authorized tip/cashback as exact, not over", () => {
+    expect(computeAmountMatchStatus(100, 115, { tipAmount: 15 })).toBe("exact");
+    expect(computeAmountMatchStatus(100, 120, { cashbackAmount: 20 })).toBe("exact");
+    expect(computeAmountMatchStatus(100, 135, { tipAmount: 15, cashbackAmount: 20 })).toBe("exact");
+    // Base-only report (order_amount without tip) is still exact.
+    expect(computeAmountMatchStatus(100, 100, { tipAmount: 15 })).toBe("exact");
+  });
+
+  it("flags captures beyond expected + authorized extras as over", () => {
+    expect(computeAmountMatchStatus(100, 140, { tipAmount: 15, cashbackAmount: 20 })).toBe("over");
+    expect(computeAmountMatchStatus(100, 116, { tipAmount: 15 })).toBe("over");
+  });
 });
 
 describe("computeExpectedAmountForEntity", () => {

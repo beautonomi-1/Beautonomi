@@ -34,6 +34,7 @@ import { InAppBannerProvider } from "@/providers/InAppBannerProvider";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
+  SplashScreen.setOptions({ fade: true, duration: 350 });
 }
 
 /** Max time splash can stay visible; then hide so auth/login can render. */

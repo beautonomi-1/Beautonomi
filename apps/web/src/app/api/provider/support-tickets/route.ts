@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -186,6 +186,34 @@ export async function POST(request: NextRequest) {
     } catch (slackErr) {
       console.error("Slack provider support ticket notification failed:", slackErr);
     }
+
+    try {
+      const { maybeOpenFraudCaseFromSafetyTicket } = await import(
+        "@/lib/fraud/maybe-open-fraud-from-support-ticket"
+      );
+      await maybeOpenFraudCaseFromSafetyTicket({
+        ticketId: ticket.id,
+        category,
+        userId: user.id,
+        providerId,
+        subject: validated.subject,
+        message: validated.message,
+        supabase: admin as never,
+      });
+    } catch (fraudErr) {
+      console.error("Fraud case from safety ticket failed:", fraudErr);
+    }
+
+    // Agent triage runs after the response: drafts a reply and proposes
+    // assignment for human approval in the Agentic Console.
+    after(async () => {
+      try {
+        const { runSupportTriageWorkflow } = await import("@/lib/agents/workflows/support-agent");
+        await runSupportTriageWorkflow({ ticketId: ticket.id });
+      } catch (triageErr) {
+        console.error("Support triage workflow failed:", triageErr);
+      }
+    });
 
     return successResponse({
       ticket,

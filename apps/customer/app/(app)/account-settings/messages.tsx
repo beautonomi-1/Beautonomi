@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { ConversationSkeleton } from "@/components/Skeleton";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -95,7 +96,21 @@ export default function MessagesScreen() {
   });
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: ch("noMessages") }} isEmpty={filteredConvos.length === 0}>
+    <ScreenFrame
+      loading={loading}
+      error={error}
+      onRetry={load}
+      empty={{ title: ch("noMessages") }}
+      isEmpty={filteredConvos.length === 0}
+      skeleton={
+        <View>
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+        </View>
+      }
+    >
       <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
         <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
         <TextInput

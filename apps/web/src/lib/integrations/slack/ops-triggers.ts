@@ -59,6 +59,32 @@ export function slackNotifySafetyPanic(params: {
   });
 }
 
+/** Fraud case opened from a deterministic signal (webhook, ticket, etc.). */
+export function slackNotifyFraudCaseOpened(params: {
+  tenantId: string;
+  fraudCaseId: string;
+  signal: string;
+  riskScore: number;
+  paymentReference?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FRAUD_CASE_OPENED,
+    dedupeKey: `fraud-case:${params.fraudCaseId}:opened`,
+    entityType: "fraud_case",
+    entityId: params.fraudCaseId,
+    title: "Fraud case opened",
+    detailLines: [
+      `Signal: ${params.signal}`,
+      `Risk score: ${params.riskScore}`,
+      params.paymentReference ? `Payment ref: ${params.paymentReference}` : null,
+      "Action: review in Admin → Fraud Cases",
+    ].filter(Boolean) as string[],
+    actionUrl: "/fraud-cases",
+  });
+}
+
 /** User-submitted report (`user_reports`) pending triage. */
 export function slackNotifyUserReportCreated(params: {
   tenantId: string;
