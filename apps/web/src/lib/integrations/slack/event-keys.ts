@@ -29,6 +29,7 @@ export const SLACK_EVENT_KEYS = {
   SAFETY_USER_REPORT: "safety.user_report.pending",
   SAFETY_ADVERSE_REPORT: "safety.user_report.adverse",
   SAFETY_PANIC: "safety.panic.created",
+  FRAUD_CASE_OPENED: "fraud.case.opened",
   VERIFICATION_PENDING: "verification.pending_review",
   VERIFICATION_STUCK: "verification.stuck_review",
   VERIFICATION_REJECTED: "verification.rejected_outcome",
@@ -37,6 +38,9 @@ export const SLACK_EVENT_KEYS = {
   COMPLIANCE_ACCOUNT_DELETION_FAILED: "compliance.account_deletion.failed",
   REPORT_DAILY_OPERATIONS_DIGEST: "report.daily_operations_digest",
   REPORT_FINANCE_EXCEPTIONS_DIGEST: "report.finance_exceptions_digest",
+  AGENT_ACTION_PROPOSED: "agents.action.proposed",
+  AGENT_RUN_FAILED: "agents.run.failed",
+  AGENT_EMERGENCY_ACTIVATED: "agents.emergency.activated",
 } as const;
 
 export type SlackEventKey = (typeof SLACK_EVENT_KEYS)[keyof typeof SLACK_EVENT_KEYS];

@@ -8,6 +8,7 @@ type PaycloudPaymentRow = {
   currency: string;
   amount: number;
   entity_type: string;
+  entity_id: string;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -52,8 +53,10 @@ export async function handlePaycloudPostSettle(
     }
   }
 
-  const bookingId = settleResult.bookingId;
-  if (!bookingId || payment.entity_type !== "booking") return;
+  // Customer receipts: bookings settle to one booking, additional charges settle
+  // to their parent booking, group bookings settle across every child booking.
+  const receiptEntityTypes = new Set(["booking", "additional_charge", "group_booking"]);
+  if (!receiptEntityTypes.has(payment.entity_type)) return;
   if (metadata.receipt_sent_at != null) return;
 
   const admin = getSupabaseAdmin();
@@ -67,26 +70,47 @@ export async function handlePaycloudPostSettle(
     (providerRow as { receipt_auto_send?: boolean | null } | null)?.receipt_auto_send !== false;
   if (!receiptAutoSend) return;
 
-  const { data: booking } = await admin
-    .from("bookings")
-    .select("total_amount, payment_status")
-    .eq("id", bookingId)
-    .maybeSingle();
-  if (!booking || booking.payment_status !== "paid") return;
+  let receiptBookingIds: string[] = [];
+  if (payment.entity_type === "group_booking") {
+    const { data: children } = await admin
+      .from("bookings")
+      .select("id, payment_status")
+      .eq("group_booking_id", payment.entity_id)
+      .eq("provider_id", payment.provider_id)
+      .not("status", "in", "(cancelled,no_show)");
+    receiptBookingIds = (children ?? [])
+      .filter((b) => b.payment_status === "paid")
+      .map((b) => b.id);
+  } else if (settleResult.bookingId) {
+    receiptBookingIds = [settleResult.bookingId];
+  }
+  if (!receiptBookingIds.length) return;
 
   try {
     const { notifyReceiptSent } = await import("@/lib/notifications/notification-service");
-    await notifyReceiptSent(
-      bookingId,
-      Number(booking.total_amount ?? capturedAmount),
-      new Date(),
-      ["email"],
-    );
-    metadata.receipt_sent_at = new Date().toISOString();
-    await supabase
-      .from("provider_paycloud_payments")
-      .update({ metadata, updated_at: new Date().toISOString() })
-      .eq("id", payment.id);
+    let sentAny = false;
+    for (const bookingId of receiptBookingIds) {
+      const { data: booking } = await admin
+        .from("bookings")
+        .select("total_amount, payment_status")
+        .eq("id", bookingId)
+        .maybeSingle();
+      if (!booking || booking.payment_status !== "paid") continue;
+      await notifyReceiptSent(
+        bookingId,
+        Number(booking.total_amount ?? capturedAmount),
+        new Date(),
+        ["email"],
+      );
+      sentAny = true;
+    }
+    if (sentAny) {
+      metadata.receipt_sent_at = new Date().toISOString();
+      await supabase
+        .from("provider_paycloud_payments")
+        .update({ metadata, updated_at: new Date().toISOString() })
+        .eq("id", payment.id);
+    }
   } catch (receiptError) {
     console.error("PayCloud post-settle receipt failed:", receiptError);
   }

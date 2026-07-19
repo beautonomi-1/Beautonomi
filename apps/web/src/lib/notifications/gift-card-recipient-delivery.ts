@@ -17,6 +17,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enqueueNotification } from "@/lib/notifications/enqueue";
+import { signGiftCardClaimToken } from "@/lib/gift-cards/gift-card-claim-token";
 
 const BRAND_NAME = "Beautonomi";
 
@@ -67,10 +68,37 @@ export async function deliverGiftCardToRecipient(params: {
 
   const moneyLabel = `${params.currency} ${Number(params.perCardAmount).toFixed(2)}`;
   const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+
+  // Build a signed one-tap claim URL for every code (not just single-card
+  // sends). Each card gets its own token so bulk recipients can claim each
+  // balance directly instead of manually typing codes on the wallet page.
+  const claimUrlByCode = new Map<string, string>();
+  if (appBase && codes.length > 0) {
+    const upperCodes = codes.map((c) => c.toUpperCase());
+    const { data: cardRows } = await supabase
+      .from("gift_cards")
+      .select("id, code")
+      .in("code", upperCodes);
+    const idByCode = new Map<string, string>();
+    for (const row of (cardRows ?? []) as Array<{ id?: string; code?: string }>) {
+      if (row.code && row.id) idByCode.set(String(row.code).toUpperCase(), String(row.id));
+    }
+    for (const code of codes) {
+      const cardId = idByCode.get(code.toUpperCase());
+      if (cardId) {
+        const token = signGiftCardClaimToken(cardId, recipientEmail);
+        claimUrlByCode.set(code, `${appBase}/gift-card/claim?token=${encodeURIComponent(token)}`);
+      }
+    }
+  }
+
   const singleCode = codes.length === 1 ? codes[0] : null;
-  const redeemUrl = appBase
+  // Primary CTA: single-card sends deep-link straight to that card's claim page;
+  // bulk sends fall back to the wallet (each card is claimable inline below).
+  let redeemUrl = appBase
     ? singleCode
-      ? `${appBase}/account-settings/wallet?giftCode=${encodeURIComponent(singleCode)}`
+      ? claimUrlByCode.get(singleCode) ??
+        `${appBase}/account-settings/wallet?giftCode=${encodeURIComponent(singleCode)}`
       : `${appBase}/account-settings/wallet`
     : "";
 
@@ -82,12 +110,15 @@ export async function deliverGiftCardToRecipient(params: {
       : `${senderName} sent you a ${BRAND_NAME} gift card`;
 
   const codesHtml = codes
-    .map(
-      (code) =>
-        `<div style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:1px;background:#FDF2F8;border:1px solid #F5D0E5;border-radius:10px;padding:14px 16px;margin:8px 0;color:#111827;">${escapeHtml(
-          code,
-        )}</div>`,
-    )
+    .map((code) => {
+      const claimUrl = claimUrlByCode.get(code);
+      const claimLinkHtml = claimUrl
+        ? `<div style="margin-top:8px;"><a href="${claimUrl}" style="color:#DB2777;font-weight:700;text-decoration:none;font-size:14px;">Add this card to my wallet →</a></div>`
+        : "";
+      return `<div style="background:#FDF2F8;border:1px solid #F5D0E5;border-radius:10px;padding:14px 16px;margin:8px 0;color:#111827;"><div style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:1px;">${escapeHtml(
+        code,
+      )}</div>${claimLinkHtml}</div>`;
+    })
     .join("");
 
   const messageHtml = params.message?.trim()
@@ -119,13 +150,21 @@ export async function deliverGiftCardToRecipient(params: {
       </p>
     </div>`;
 
+  const codeTextLines =
+    codes.length > 1 && claimUrlByCode.size > 0
+      ? codes.map((code) => {
+          const url = claimUrlByCode.get(code);
+          return url ? `${code} — claim: ${url}` : code;
+        })
+      : [`Code${codes.length > 1 ? "s" : ""}: ${codes.join(", ")}`];
+
   const textLines = [
     `${senderName} sent you ${valuePlural}!`,
     "",
     params.message?.trim() ? `"${params.message.trim()}"` : null,
     `Value: ${moneyLabel}${codes.length > 1 ? " each" : ""}`,
     "",
-    `Code${codes.length > 1 ? "s" : ""}: ${codes.join(", ")}`,
+    ...codeTextLines,
     "",
     `How to redeem: open ${BRAND_NAME}, go to Wallet → Gift Card, and enter the code to add it to your wallet — or use it at checkout.`,
     redeemUrl ? `Redeem: ${redeemUrl}` : null,

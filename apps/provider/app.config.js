@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.76",
+  version: "1.0.77",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -77,6 +77,10 @@ const BASE_EXPO_CONFIG = {
     [
       "./plugins/android-sibling-app-queries/app.plugin.js",
       { packageName: "com.beautonomi", scheme: "customer" },
+    ],
+    [
+      "./plugins/android-sibling-app-queries/app.plugin.js",
+      { packageName: "com.wiseasy.cashier", scheme: "wisecashier" },
     ],
     [
       "expo-build-properties",
@@ -181,7 +185,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "268",
+    buildNumber: "269",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -229,7 +233,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 269,
+    versionCode: 270,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

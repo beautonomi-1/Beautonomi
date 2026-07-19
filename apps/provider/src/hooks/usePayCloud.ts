@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Alert } from "react-native";
 import { api } from "@/lib/api-client";
+import type { PaycloudIntentContract, PaycloudIntentPayload } from "@/lib/paycloud-same-terminal";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 /* ─── Platform availability gate ─── */
@@ -53,6 +54,7 @@ export interface PayCloudTerminal {
   total_amount: number;
   last_used: string | null;
   last_error: string | null;
+  in_flight_payment_id?: string | null;
   created_at: string;
   merchant?: PayCloudMerchantInfo | null;
 }
@@ -116,18 +118,11 @@ export interface PayCloudPaymentRequest {
   group_booking_id?: string | null;
   /** cloud = ecrorder to terminal; same_terminal = Intent on this device (P5). */
   channel?: "cloud" | "same_terminal";
+  /** Best-effort P5 serial for same-terminal validation. */
+  device_serial?: string;
 }
 
-export type PaycloudIntentPayload = {
-  merchant_order_no: string;
-  order_amount: string;
-  price_currency: string;
-  pay_scenario: string;
-  pay_method_id?: string;
-  trans_type?: number;
-  tip_amount?: string;
-  cashback_amount?: string;
-};
+export type { PaycloudIntentContract, PaycloudIntentPayload };
 
 export type PayCloudPaymentStatus =
   | "pending"
@@ -136,6 +131,8 @@ export type PayCloudPaymentStatus =
   | "failed"
   | "cancelled"
   | "closed";
+
+export type PayCloudAmountMatchStatus = "exact" | "over" | "under" | "mismatch" | "pending";
 
 export interface PayCloudPaymentResult {
   id: string;
@@ -150,6 +147,19 @@ export interface PayCloudPaymentResult {
   error_message?: string;
   channel?: "cloud" | "same_terminal";
   intent_payload?: PaycloudIntentPayload;
+  /** Captured-vs-expected comparison. "under"/"mismatch" captures are NOT
+   *  auto-settled and must be resolved via reconciliation/superadmin. */
+  amount_match_status?: PayCloudAmountMatchStatus;
+  expected_amount?: number;
+}
+
+/** Capture succeeded on the machine but did not settle because the captured
+ *  amount fell short of the outstanding balance. Never treat as plain success. */
+export function isPaycloudCaptureUnderReview(
+  result: PayCloudPaymentResult | null | undefined,
+): boolean {
+  if (!result || result.status !== "successful") return false;
+  return result.amount_match_status === "under" || result.amount_match_status === "mismatch";
 }
 
 /* ─── Terminal Management ─── */
@@ -188,6 +198,8 @@ function normalizeTerminal(raw: unknown): PayCloudTerminal | null {
     total_amount: typeof row.total_amount === "number" ? row.total_amount : 0,
     last_used: lastUsed,
     last_error: typeof row.last_error === "string" ? row.last_error : null,
+    in_flight_payment_id:
+      typeof row.in_flight_payment_id === "string" ? row.in_flight_payment_id : null,
     created_at:
       typeof row.created_at === "string" && row.created_at.length > 0
         ? row.created_at
@@ -513,6 +525,16 @@ function toPaymentResult(row: Record<string, unknown>): PayCloudPaymentResult {
       row.intent_payload && typeof row.intent_payload === "object"
         ? (row.intent_payload as PaycloudIntentPayload)
         : undefined,
+    amount_match_status:
+      row.amount_match_status === "exact" ||
+      row.amount_match_status === "over" ||
+      row.amount_match_status === "under" ||
+      row.amount_match_status === "mismatch" ||
+      row.amount_match_status === "pending"
+        ? row.amount_match_status
+        : undefined,
+    expected_amount:
+      typeof row.expected_amount === "number" ? row.expected_amount : undefined,
   };
 }
 
@@ -609,6 +631,8 @@ export function usePayCloudPayment() {
                     "Could not reach the card machine. Check it is powered on, online, and in Cloud Mode."
                   : code === "TERMINAL_NOT_CONFIGURED"
                     ? "This card machine isn't fully set up yet."
+                    : code === "DEVICE_TERMINAL_MISMATCH"
+                      ? "This device does not match the selected card machine. Choose the machine registered to this terminal."
                     : code === "AMOUNT_MISMATCH"
                       ? "Amount does not match the outstanding balance."
                       : res.error.message || "Card payment could not be started";

@@ -155,6 +155,109 @@ describe("settlePaycloudPayment", () => {
     );
   });
 
+  it("records a card-machine tip as its own payment row and bumps booking totals", async () => {
+    const bookingPayments = chain({ data: null });
+    const bookings = chain({
+      data: {
+        id: "booking-1",
+        booking_number: "B1",
+        payment_status: "pending",
+        tenant_id: "tenant-1",
+        status: "confirmed",
+        total_amount: 100,
+        total_paid: 0,
+        total_refunded: 0,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        tip_amount: 0,
+        additional_charges: [],
+      },
+    });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "booking_payments") return bookingPayments;
+        if (table === "bookings") return bookings;
+        return chain({ data: null });
+      }),
+    } as never;
+
+    const result = await settlePaycloudPayment(supabase, {
+      paymentId: "pay-tip",
+      providerId: "provider-1",
+      entityType: "booking",
+      entityId: "booking-1",
+      amount: 100,
+      paycloudOrderId: "pc-order-tip",
+      merchantOrderNo: "BNTIP",
+      processedBy: "user-1",
+      tipAmount: 15,
+    });
+
+    expect(result.settled).toBe(true);
+
+    const insertMock = bookingPayments.insert as ReturnType<typeof vi.fn>;
+    expect(insertMock).toHaveBeenCalledTimes(2);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      amount: 100,
+      payment_provider_id: "pc-order-tip",
+    });
+    expect(insertMock.mock.calls[1][0]).toMatchObject({
+      amount: 15,
+      payment_provider_id: "pc-order-tip:tip",
+    });
+
+    const updateMock = bookings.update as ReturnType<typeof vi.fn>;
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ tip_amount: 15, total_amount: 115 }),
+    );
+  });
+
+  it("skips the tip when the base charge is not fully covered", async () => {
+    const bookingPayments = chain({ data: null });
+    const bookings = chain({
+      data: {
+        id: "booking-1",
+        booking_number: "B1",
+        payment_status: "pending",
+        tenant_id: "tenant-1",
+        status: "confirmed",
+        total_amount: 100,
+        total_paid: 0,
+        total_refunded: 0,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        tip_amount: 0,
+        additional_charges: [],
+      },
+    });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "booking_payments") return bookingPayments;
+        if (table === "bookings") return bookings;
+        return chain({ data: null });
+      }),
+    } as never;
+
+    const result = await settlePaycloudPayment(supabase, {
+      paymentId: "pay-under",
+      providerId: "provider-1",
+      entityType: "booking",
+      entityId: "booking-1",
+      amount: 50,
+      paycloudOrderId: "pc-order-under",
+      merchantOrderNo: "BNUNDER",
+      tipAmount: 15,
+    });
+
+    expect(result.settled).toBe(true);
+    const insertMock = bookingPayments.insert as ReturnType<typeof vi.fn>;
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({ amount: 50 });
+    expect(bookings.update as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
   it("rejects invoice entity type", async () => {
     const supabase = { from: vi.fn() } as never;
     const result = await settlePaycloudPayment(supabase, {

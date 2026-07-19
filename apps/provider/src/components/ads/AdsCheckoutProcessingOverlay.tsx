@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
-import { View, Text, Modal, ActivityIndicator, Animated, StyleSheet } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, Modal, StyleSheet } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
+import { BrandGlyphPulse } from "@/components/BrandGlyphPulse";
 
 export interface AdsCheckoutProcessingOverlayProps {
   visible: boolean;
@@ -22,33 +24,34 @@ export function AdsCheckoutProcessingOverlay({
   hint,
   title = "Please wait",
 }: AdsCheckoutProcessingOverlayProps) {
-  const pulse = useRef(new Animated.Value(0.4)).current;
+  const [showSlowPath, setShowSlowPath] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.35, duration: 900, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [visible, pulse]);
+    if (!visible) {
+      setShowSlowPath(false);
+      return;
+    }
+    setShowSlowPath(false);
+    const timer = setTimeout(() => setShowSlowPath(true), 8000);
+    return () => clearTimeout(timer);
+  }, [visible, message]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.backdrop} pointerEvents="auto">
-        <Animated.View style={[styles.iconWrap, { opacity: pulse }]}>
-          <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
-        </Animated.View>
+        <BrandGlyphPulse size={64} accentColor={Colors.primary} cardBackgroundColor="rgba(255,255,255,0.12)" />
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
         <Text style={styles.hint}>
           {hint === null
             ? ""
-            : hint ?? "Don't close the app — we're confirming with the payment provider."}
+            : hint ?? "Don\u2019t close the app — we\u2019re confirming with the payment provider."}
         </Text>
+        {showSlowPath ? (
+          <Animated.Text entering={FadeIn.duration(400)} style={styles.slowPath}>
+            Still working — don{"'"}t close the app.
+          </Animated.Text>
+        ) : null}
       </View>
     </Modal>
   );
@@ -62,13 +65,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 32,
   },
-  iconWrap: { marginBottom: 20 },
-  spinner: { transform: [{ scale: 1.15 }] },
   title: {
     fontSize: 20,
     fontWeight: "800",
     color: "#fff",
     textAlign: "center",
+    marginTop: 20,
     marginBottom: 8,
   },
   message: {
@@ -85,5 +87,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
     maxWidth: 300,
+  },
+  slowPath: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 300,
+    marginTop: 8,
+    fontWeight: "600",
   },
 });

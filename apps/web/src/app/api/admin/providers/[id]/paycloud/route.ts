@@ -8,6 +8,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { computePaycloudReadiness } from "@/lib/payments/paycloud-readiness";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -35,6 +36,11 @@ export async function GET(
       .eq("id", providerId)
       .maybeSingle();
     if (!provider) return notFoundResponse("Provider not found");
+
+    const scopedTenantId = await resolveAdminApiTenantId(_request);
+    if (scopedTenantId && (provider as { tenant_id?: string }).tenant_id !== scopedTenantId) {
+      return notFoundResponse("Provider not found");
+    }
 
     const readiness = await computePaycloudReadiness(supabase, providerId);
 
@@ -106,6 +112,11 @@ export async function PATCH(
       .eq("id", providerId)
       .maybeSingle();
     if (!provider) return notFoundResponse("Provider not found");
+
+    const scopedTenantId = await resolveAdminApiTenantId(request);
+    if (scopedTenantId && (provider as { tenant_id?: string }).tenant_id !== scopedTenantId) {
+      return notFoundResponse("Provider not found");
+    }
 
     if (parsed.data.accept_paycloud !== undefined) {
       await supabase

@@ -75,6 +75,8 @@ export const adminQueryKeys = {
 
   userReports: (q: string) => [...adminQueryKeys.root, "user-reports", q] as const,
 
+  fraudCases: (q: string) => [...adminQueryKeys.root, "fraud-cases", q] as const,
+
   refunds: (filters: { page: number; status: string }) => [...adminQueryKeys.root, "refunds", "list", filters] as const,
 
   supportTicketDetail: (id: string) => [...adminQueryKeys.root, "support-tickets", "detail", id] as const,

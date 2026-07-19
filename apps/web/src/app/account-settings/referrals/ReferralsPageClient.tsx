@@ -166,7 +166,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
               question: "How does the referral program work?",
               answer: [
                 "Share your unique referral link with friends and family.",
-                "When someone signs up using your link and completes their first booking, you both earn rewards.",
+                "When someone signs up using your link and completes their first eligible booking, you earn wallet credit and loyalty points.",
                 "Your referral must complete a booking to qualify for rewards.",
                 "Rewards are credited to your wallet after the referred user's first completed booking.",
               ],

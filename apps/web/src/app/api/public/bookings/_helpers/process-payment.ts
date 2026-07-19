@@ -25,6 +25,9 @@ import {
   ensureWalletGiftBookingPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
+import { resolveSettlementModel } from "@/lib/payments/provider/settlement-model";
+import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
@@ -435,13 +438,35 @@ export async function processPayment(
   let paymentReference: string | null = null;
 
   if (paymentMethod === "card") {
+    const psp = await getPaymentProviderForTenant(flagTenantId);
     const paystackEnabled = await isPaystackEnabledForTenant(flagTenantId);
-    if (!paystackEnabled) {
+    const cardGateway = psp?.provider.id ?? (paystackEnabled ? "paystack" : null);
+
+    if (!cardGateway) {
       return handleApiError(
         new Error("Online card payment is currently unavailable"),
         "Online card payment is currently unavailable. Please choose cash or another method.",
         "FEATURE_DISABLED",
         400
+      );
+    }
+
+    if (cardGateway === "paystack" && !paystackEnabled) {
+      return handleApiError(
+        new Error("Online card payment is currently unavailable"),
+        "Online card payment is currently unavailable. Please choose cash or another method.",
+        "FEATURE_DISABLED",
+        400
+      );
+    }
+
+    const fxReady = await assertReportingCurrencyReady(supabaseAdmin, v.currency);
+    if (fxReady.ok === false) {
+      return handleApiError(
+        new Error(fxReady.message),
+        fxReady.message,
+        fxReady.code,
+        503
       );
     }
 
@@ -742,6 +767,92 @@ export async function processPayment(
       }
 
       const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
+
+      if (cardGateway === "stripe" && psp) {
+        const settlementModel = resolveSettlementModel(psp.gateway.config);
+        let stripeConnectAccountId: string | undefined;
+        const { data: providerStripe } = await supabaseAdmin
+          .from("providers")
+          .select("stripe_connect_account_id")
+          .eq("id", draft.provider_id)
+          .maybeSingle();
+        const connectId = (providerStripe as { stripe_connect_account_id?: string | null } | null)
+          ?.stripe_connect_account_id;
+        if (typeof connectId === "string" && connectId.trim()) {
+          stripeConnectAccountId = connectId.trim();
+        }
+
+        let stripeInit: Awaited<ReturnType<typeof psp.provider.initializePayment>>;
+        try {
+          stripeInit = await psp.provider.initializePayment({
+            email,
+            amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
+            currency: v.currency,
+            reference,
+            callbackUrl,
+            metadata: {
+              booking_id: booking.id,
+              customer_id: v.customerId,
+              amount_to_collect: amountToCollect,
+              booking_total_amount: v.totalAmount,
+              payment_option: v.provider.requires_deposit ? paymentOption : "full",
+              requires_deposit: Boolean(v.provider.requires_deposit),
+              gift_card_amount_applied: giftCardAmountApplied,
+              gift_card_code: giftCardCode || null,
+              wallet_amount_applied: walletAmountApplied,
+              currency: v.currency,
+              tip_amount: v.tipAmount,
+              tax_amount: v.taxAmount,
+              travel_fee: v.travelFee,
+              service_fee_amount: v.serviceFeeAmount,
+              cancel_action: bookingCancelAction,
+              tenant_id: flagTenantId,
+            },
+            tenantId: flagTenantId,
+            connectedAccountId: stripeConnectAccountId,
+            settlementModel,
+          });
+        } catch (initErr) {
+          console.error("[process-payment] stripe initializePayment threw:", initErr);
+          return handleApiError(
+            initErr,
+            "Payment provider is temporarily unavailable. Please try again in a moment.",
+            "PAYMENT_INIT_FAILED",
+            502
+          );
+        }
+
+        paymentUrl = stripeInit.authorizationUrl ?? null;
+
+        await (supabase.from("bookings") as any)
+          .update({
+            payment_reference: reference,
+            payment_provider: "stripe",
+            payment_status: "pending",
+            status: "pending_payment",
+          })
+          .eq("id", booking.id);
+
+        await (supabase.from("payments") as any).insert({
+          booking_id: booking.id,
+          user_id: v.customerId,
+          provider_id: draft.provider_id,
+          payment_number: "",
+          amount: amountToCollect,
+          currency: v.currency,
+          status: "pending",
+          payment_provider: "stripe",
+          payment_provider_transaction_id: stripeInit.paymentIntentId ?? reference,
+          payment_provider_response: stripeInit,
+          description: `Payment for booking ${booking.booking_number}`,
+          metadata: {
+            payment_option: v.provider.requires_deposit ? paymentOption : "full",
+            gift_card_amount_applied: giftCardAmountApplied,
+            gift_card_code: giftCardCode || null,
+            wallet_amount_applied: walletAmountApplied,
+          },
+        });
+      } else {
       let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
       try {
         paystackData = await initializePaystackTransaction({
@@ -825,6 +936,7 @@ export async function processPayment(
           save_card: saveCard,
         },
       });
+      }
     }
   }
 

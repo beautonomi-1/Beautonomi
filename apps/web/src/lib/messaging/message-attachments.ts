@@ -50,11 +50,12 @@ export function isStorageBackedChatAttachment(att: Record<string, unknown>): boo
     return false;
   }
   const url = String(att.url || "");
-  if (!url) return false;
-  // Support ticket files live in the same bucket under `support-tickets/...` — not chat retention scope
-  if (url.includes(`/${MESSAGE_ATTACHMENTS_BUCKET}/support-tickets/`) || url.includes("/message-attachments/support-tickets/")) {
+  const storagePath = typeof att.storage_path === "string" ? att.storage_path : "";
+  if (!url && !storagePath) return false;
+  if (storagePath.startsWith("support-tickets/") || url.includes("/support-tickets/")) {
     return false;
   }
+  if (storagePath) return true;
   return url.includes(`/${MESSAGE_ATTACHMENTS_BUCKET}/`) || url.includes("/message-attachments/");
 }
 
@@ -93,10 +94,92 @@ export function collectStoragePathsFromAttachmentsJson(attachments: unknown): st
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
     if (!isStorageBackedChatAttachment(o)) continue;
-    const path = extractMessageAttachmentStoragePath(String(o.url || ""), base);
+    const explicitPath =
+      typeof o.storage_path === "string" && o.storage_path.trim().length > 0
+        ? o.storage_path.trim()
+        : null;
+    const path = explicitPath ?? extractMessageAttachmentStoragePath(String(o.url || ""), base);
     if (path) out.push(path);
   }
   return out;
+}
+
+/** Default signed URL TTL for chat/support attachments (1 hour). */
+export function messageAttachmentSignedUrlTtlSeconds(): number {
+  const n = parseInt(process.env.MESSAGE_ATTACHMENT_SIGNED_URL_TTL_SECONDS || "3600", 10);
+  return Number.isFinite(n) && n >= 60 ? n : 3600;
+}
+
+/**
+ * Resolve a storage object path from attachment JSON (new `storage_path` or legacy public URL).
+ */
+export function resolveMessageAttachmentStoragePath(
+  att: Record<string, unknown>,
+  supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+): string | null {
+  const explicit =
+    typeof att.storage_path === "string" && att.storage_path.trim().length > 0
+      ? att.storage_path.trim()
+      : null;
+  if (explicit) return explicit;
+  return extractMessageAttachmentStoragePath(String(att.url || ""), supabaseUrl);
+}
+
+/**
+ * Create a time-limited signed URL for a private message-attachments object.
+ */
+export async function createMessageAttachmentSignedUrl(
+  storageClient: { storage: { from: (bucket: string) => { createSignedUrl: (path: string, expiresIn: number) => Promise<{ data: { signedUrl?: string } | null; error: { message?: string } | null }> } } },
+  storagePath: string,
+  expiresInSeconds = messageAttachmentSignedUrlTtlSeconds(),
+): Promise<string | null> {
+  if (!storagePath?.trim()) return null;
+  const { data, error } = await storageClient.storage
+    .from(MESSAGE_ATTACHMENTS_BUCKET)
+    .createSignedUrl(storagePath.trim(), expiresInSeconds);
+  if (error || !data?.signedUrl) {
+    console.warn("[message-attachments] createSignedUrl failed:", error?.message ?? "no url");
+    return null;
+  }
+  return data.signedUrl;
+}
+
+/**
+ * Attach signed URLs for API responses (private bucket). Leaves non-storage payloads unchanged.
+ */
+export async function signMessageAttachmentsForResponse(
+  attachments: unknown,
+  storageClient: Parameters<typeof createMessageAttachmentSignedUrl>[0],
+  messageCreatedAt: string,
+  nowMs = Date.now(),
+): Promise<unknown[]> {
+  const sanitized = sanitizeMessageAttachmentsForResponse(attachments, messageCreatedAt, nowMs);
+  if (!Array.isArray(sanitized)) return [];
+
+  const signed: unknown[] = [];
+  for (const item of sanitized) {
+    if (!item || typeof item !== "object") {
+      signed.push(item);
+      continue;
+    }
+    const o = item as Record<string, unknown>;
+    if (!isStorageBackedChatAttachment(o) || o.expired === true) {
+      signed.push(item);
+      continue;
+    }
+    const path = resolveMessageAttachmentStoragePath(o);
+    if (!path) {
+      signed.push(item);
+      continue;
+    }
+    const signedUrl = await createMessageAttachmentSignedUrl(storageClient, path);
+    signed.push({
+      ...o,
+      url: signedUrl ?? "",
+      storage_path: path,
+    });
+  }
+  return signed;
 }
 
 /**

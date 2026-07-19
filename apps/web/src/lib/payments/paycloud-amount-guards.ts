@@ -110,10 +110,16 @@ export async function computeExpectedAmountForEntity(
 export function computeAmountMatchStatus(
   expected: number,
   captured: number,
+  extras?: { tipAmount?: number | null; cashbackAmount?: number | null },
 ): "exact" | "over" | "under" | "mismatch" {
-  const diff = Math.abs(captured - expected);
-  if (diff < 0.01) return "exact";
-  if (captured > expected) return "over";
+  // Tips/cashback are authorized on top of the base order. PayCloud reports may
+  // return the base order_amount or the full paid_amount, so any combination of
+  // expected ± authorized extras is an exact capture — not an exception.
+  const tip = Math.max(0, Number(extras?.tipAmount ?? 0));
+  const cashback = Math.max(0, Number(extras?.cashbackAmount ?? 0));
+  const acceptable = [expected, expected + tip, expected + cashback, expected + tip + cashback];
+  if (acceptable.some((value) => Math.abs(captured - value) < 0.01)) return "exact";
+  if (captured > expected + tip + cashback) return "over";
   if (captured < expected * 0.99) return "under";
   return "mismatch";
 }

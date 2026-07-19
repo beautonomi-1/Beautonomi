@@ -87,7 +87,10 @@ export async function POST(
     const { data: provider } = await supabase.from("providers").select("tenant_id").eq("id", providerId).single();
     const voidMerchantOrderNo = buildMerchantOrderNo("BV");
     const notifyUrl = getPaycloudNotifyUrl(request);
-    const voidAmount = Number(payment.amount);
+    const voidAmount =
+      Number(payment.amount) +
+      Math.max(0, Number(payment.tip_amount ?? 0)) +
+      Math.max(0, Number(payment.cashback_amount ?? 0));
 
     const { data: voidPaymentRow, error: insertError } = await supabase
       .from("provider_paycloud_payments")

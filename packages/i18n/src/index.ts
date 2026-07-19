@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
 import en from "./locales/en.json";
+import enGBOverrides from "./locales/en-GB.json";
 import zu from "./locales/zu.json";
 import af from "./locales/af.json";
 import st from "./locales/st.json";
@@ -13,9 +14,22 @@ import ss from "./locales/ss.json";
 
 export const defaultNS = "translation";
 
+function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Record<string, unknown>): T {
+  const out = { ...base } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof out[key] === "object") {
+      out[key] = deepMerge(out[key] as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out as T;
+}
+
 /** Bundled locales; `xh`–`ss` currently ship English copy — translate in-place (fallbackLng fills any gaps). */
 export const resources = {
   en: { translation: en },
+  "en-GB": { translation: deepMerge(en as Record<string, unknown>, enGBOverrides as Record<string, unknown>) },
   zu: { translation: zu },
   af: { translation: af },
   st: { translation: st },
@@ -29,6 +43,7 @@ export const resources = {
 
 export const supportedLanguages = [
   { code: "en", name: "English", nativeName: "English" },
+  { code: "en-GB", name: "English (UK)", nativeName: "English (UK)" },
   { code: "zu", name: "Zulu", nativeName: "isiZulu" },
   { code: "xh", name: "Xhosa", nativeName: "isiXhosa" },
   { code: "af", name: "Afrikaans", nativeName: "Afrikaans" },

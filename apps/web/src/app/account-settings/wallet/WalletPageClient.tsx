@@ -30,6 +30,10 @@ export default function WalletPage({
   const [isToppingUp, setIsToppingUp] = useState(false);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pendingGiftCards, setPendingGiftCards] = useState<
+    Array<{ id: string; code: string; balance: number; currency: string }>
+  >([]);
+  const [claimingCode, setClaimingCode] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -76,6 +80,42 @@ export default function WalletPage({
       setGiftCardCode(incoming.trim().toUpperCase());
     }
   }, [searchParams]);
+
+  // Surface gift cards sent to this account's email that haven't been added to
+  // the wallet yet, so the recipient can claim them in one tap on arrival.
+  const loadPendingGiftCards = async () => {
+    try {
+      const res = await fetcher.get<{
+        data?: { pending_gift_cards?: Array<{ id: string; code: string; balance: number; currency: string }> };
+      }>("/api/me/profile", { staleTimeMs: 15_000 });
+      setPendingGiftCards(res.data?.pending_gift_cards ?? []);
+    } catch {
+      setPendingGiftCards([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadPendingGiftCards();
+  }, []);
+
+  const claimPendingGiftCard = async (code: string) => {
+    if (!code) return;
+    try {
+      setClaimingCode(code);
+      const res = await fetcher.post<{ data: { amount: number; currency: string; message: string } }>(
+        "/api/me/wallet/redeem-gift-card",
+        { code },
+      );
+      toast.success(res?.data?.message || "Gift card added to your wallet");
+      setPendingGiftCards((prev) => prev.filter((gc) => gc.code !== code));
+      await refresh();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to add gift card";
+      toast.error(message);
+    } finally {
+      setClaimingCode(null);
+    }
+  };
 
   const startTopup = async () => {
     const amount = Number(topupAmount);
@@ -159,6 +199,39 @@ export default function WalletPage({
                     {wallet ? format(Number(wallet.balance || 0)) : "—"}
                   </div>
                 </div>
+
+                {/* Pending gift cards — sent to this account's email, not yet redeemed */}
+                {pendingGiftCards.length > 0 && (
+                  <div className="rounded-2xl border border-[#FF0077]/30 bg-gradient-to-br from-[#FF0077]/5 to-[#E6006A]/5 p-6 md:p-8">
+                    <h2 className="text-lg font-semibold tracking-tighter text-gray-900 mb-1">
+                      🎁 You have {pendingGiftCards.length === 1 ? "a gift card" : `${pendingGiftCards.length} gift cards`} waiting
+                    </h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Someone sent {pendingGiftCards.length === 1 ? "this" : "these"} to your email. Add {pendingGiftCards.length === 1 ? "it" : "them"} to your wallet to spend.
+                    </p>
+                    <div className="space-y-3">
+                      {pendingGiftCards.map((gc) => (
+                        <div
+                          key={gc.id}
+                          className="flex items-center justify-between gap-3 rounded-xl bg-white/70 border border-white/50 px-4 py-3"
+                        >
+                          <div>
+                            <div className="font-mono text-sm font-semibold text-gray-900">{gc.code}</div>
+                            <div className="text-sm text-gray-600">{format(Number(gc.balance || 0))}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void claimPendingGiftCard(gc.code)}
+                            disabled={claimingCode === gc.code}
+                            className="whitespace-nowrap bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white px-5 py-2 rounded-xl font-semibold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {claimingCode === gc.code ? "Adding…" : "Add to wallet"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Top Up Card */}
                 <div

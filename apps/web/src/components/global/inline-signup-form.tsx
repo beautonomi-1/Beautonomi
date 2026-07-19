@@ -49,6 +49,35 @@ import { getSocialAuthConfig } from "@/lib/social-auth-config";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
+const REFERRAL_REF_KEY = "referral_ref";
+
+function persistReferralRef(code: string | undefined) {
+  if (typeof window === "undefined" || !code?.trim()) return;
+  sessionStorage.setItem(REFERRAL_REF_KEY, code.trim());
+}
+
+function resolveEffectiveReferralCode(fromProp?: string, manual?: string): string | undefined {
+  const fromUrl = fromProp?.trim();
+  if (fromUrl) return fromUrl;
+  const typed = manual?.trim();
+  if (typed) return typed;
+  if (typeof window !== "undefined") {
+    const stored = sessionStorage.getItem(REFERRAL_REF_KEY)?.trim();
+    if (stored) return stored;
+  }
+  return undefined;
+}
+
+async function attachReferralIfPresent(fromProp?: string, manual?: string) {
+  const code = resolveEffectiveReferralCode(fromProp, manual);
+  if (!code) return;
+  persistReferralRef(code);
+  try {
+    await fetcher.post("/api/me/referrals/attach", { referral_code: code });
+  } catch {
+    // Non-blocking; attribution may already be set
+  }
+}
 
 interface InlineSignupFormProps {
   redirectContext?: "provider" | "customer";
@@ -122,6 +151,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     return "en";
   });
   const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [manualReferralCode, setManualReferralCode] = useState("");
+  const [showReferralInput, setShowReferralInput] = useState(false);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
     google: true,
     apple: true,
@@ -150,6 +181,14 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       setSocialAuth({ google: true, apple: true });
     });
   }, []);
+
+  useEffect(() => {
+    if (referralCode?.trim()) {
+      setManualReferralCode(referralCode.trim());
+      setShowReferralInput(true);
+      persistReferralRef(referralCode);
+    }
+  }, [referralCode]);
 
   useEffect(() => {
     if (signupPhoneResendCooldown <= 0) return;
@@ -253,8 +292,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     setShowResendVerification(false);
 
-    if (referralCode?.trim() && typeof window !== "undefined") {
-      sessionStorage.setItem("referral_ref", referralCode.trim());
+    if (resolveEffectiveReferralCode(referralCode, manualReferralCode) && typeof window !== "undefined") {
+      persistReferralRef(resolveEffectiveReferralCode(referralCode, manualReferralCode));
     }
 
     try {
@@ -281,13 +320,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         } catch {
           // Non-blocking
         }
-        if (referralCode?.trim()) {
-          try {
-            await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
-          } catch {
-            // Non-blocking; attribution may already be set
-          }
-        }
+        await attachReferralIfPresent(referralCode, manualReferralCode);
         await new Promise(resolve => setTimeout(resolve, 300));
 
         if (redirectContext === "provider") {
@@ -313,13 +346,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             } catch {
               // Non-blocking
             }
-            if (referralCode?.trim()) {
-              try {
-                await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
-              } catch {
-                // Non-blocking
-              }
-            }
+            await attachReferralIfPresent(referralCode, manualReferralCode);
             await new Promise(resolve => setTimeout(resolve, 300));
 
             if (redirectContext === "provider") {
@@ -467,13 +494,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     } catch {
       // Non-blocking
     }
-    if (referralCode?.trim()) {
-      try {
-        await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
-      } catch {
-        // Non-blocking
-      }
-    }
+    await attachReferralIfPresent(referralCode, manualReferralCode);
     if (opts?.verifiedPhoneE164) {
       writeSignupPhoneHandoff(opts.verifiedPhoneE164);
     }
@@ -729,6 +750,35 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       {/* Unified welcome — phone OTP, social, email code */}
       {!showEmailForm && !awaitingEmailVerification && (
         <>
+          {(showReferralInput || manualReferralCode || referralCode) ? (
+            <div className="mb-4">
+              <Label htmlFor="signup-referral-code" className={labelClass}>
+                Referral code <span className="text-gray-400 font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="signup-referral-code"
+                value={manualReferralCode}
+                onChange={(e) => {
+                  const next = e.target.value.toUpperCase().replace(/\s/g, "");
+                  setManualReferralCode(next);
+                  persistReferralRef(next);
+                }}
+                placeholder="Enter a friend's code"
+                className={fieldClass}
+                autoCapitalize="characters"
+                autoComplete="off"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowReferralInput(true)}
+              className="mb-4 text-sm text-primary font-medium hover:underline"
+            >
+              Have a referral code?
+            </button>
+          )}
+
           {!agreeTerms && (
             <p className="text-xs text-gray-600 mb-3" aria-live="polite">
               Tick the box below to continue.

@@ -38,6 +38,36 @@ export async function POST(
       return NextResponse.json({ data: payment, error: null });
     }
 
+    const initiationChannel = (payment as { initiation_channel?: string }).initiation_channel ?? "cloud";
+    const isSameTerminalPending =
+      initiationChannel === "same_terminal" &&
+      (payment.status === "pending" || payment.status === "processing");
+
+    if (isSameTerminalPending) {
+      await supabase
+        .from("provider_paycloud_payments")
+        .update({
+          status: "closed",
+          error_message: "Cancelled before WiseCashier completed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (payment.terminal_id) {
+        await supabase
+          .from("paycloud_terminals")
+          .update({ in_flight_payment_id: null })
+          .eq("id", payment.terminal_id);
+      }
+
+      const { data: updated } = await supabase
+        .from("provider_paycloud_payments")
+        .select("*")
+        .eq("id", id)
+        .single();
+      return NextResponse.json({ data: updated, error: null });
+    }
+
     if (!payment.terminal_id) {
       return NextResponse.json({ data: null, error: { message: "No terminal linked", code: "NO_TERMINAL" } }, { status: 400 });
     }

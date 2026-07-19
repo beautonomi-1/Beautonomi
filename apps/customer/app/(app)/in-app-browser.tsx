@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useTranslation } from "@beautonomi/i18n";
 
 export default function InAppBrowserScreen() {
@@ -102,6 +103,7 @@ export default function InAppBrowserScreen() {
       <View style={styles.webviewWrap}>
         <WebView
           source={{ uri: rawUrl }}
+          {...inAppWebViewUserAgentProps()}
           style={styles.webview}
           originWhitelist={["https://*", "http://*", "customer://*"]}
           onShouldStartLoadWithRequest={(request: { url: string }) => {

@@ -11,6 +11,7 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
+import { BrandGlyphPulse } from "@/components/BrandGlyphPulse";
 
 interface LoadingStateProps {
   message?: string;
@@ -26,6 +27,9 @@ interface LoadingStateProps {
  * `ActivityIndicator` (#111) with gray text, which fought the pink brand
  * palette every time a list was refreshed. Replaced with a soft three-dot
  * pulse in the brand accent so refreshes feel quiet and on-brand.
+ *
+ * §Provider-audit 2026-07: full-screen loads also show the brand glyph pulse
+ * (mirrors customer MiniBrandLoader / ScreenFrame fallback).
  */
 export function LoadingState({
   message = "Loading…",
@@ -73,6 +77,11 @@ export function LoadingState({
       accessibilityRole="progressbar"
       accessibilityLabel={message}
     >
+      {fullScreen ? (
+        <View style={styles.glyphWrap}>
+          <BrandGlyphPulse size={56} accentColor={accent} />
+        </View>
+      ) : null}
       <View style={styles.dots}>
         <Animated.View style={[styles.dot, { backgroundColor: accent }, style0]} />
         <Animated.View style={[styles.dot, { backgroundColor: accent }, style1]} />
@@ -87,6 +96,9 @@ const styles = StyleSheet.create({
   root: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  glyphWrap: {
+    marginBottom: 20,
   },
   dots: {
     flexDirection: "row",

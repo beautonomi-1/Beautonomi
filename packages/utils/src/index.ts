@@ -44,13 +44,23 @@ export {
   formatMoney,
   formatMoneyCompact,
   fromCents,
+  fromMinorUnits,
   multiplyMoney,
   percentOf,
   roundCurrency,
+  splitMoneyProportionally,
   subtractMoney,
   sumMoney,
   toCents,
+  toMinorUnits,
 } from "./money";
+export {
+  CURRENCY_CATALOG,
+  getCurrencyMeta,
+  minorUnitFactor,
+  normalizeCurrencyCode,
+  type CurrencyMeta,
+} from "./currencies";
 export { LAST_RESORT_CURRENCY } from "./last-resort-currency";
 export {
   formatProviderDescriptionDisplay,

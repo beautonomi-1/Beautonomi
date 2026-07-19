@@ -44,7 +44,13 @@ type ProviderPaymentBookingRow = {
   booking_number: string | null;
 };
 
-function mapPaymentMethod(method: string | null) {
+function mapPaymentMethod(method: string | null, provider?: string | null) {
+  // Prefer the concrete provider for card-machine tenders whose payment_method is
+  // constrained to "card" (PayCloud / Yoco), so the provider transaction list shows
+  // the real instrument instead of a generic "card".
+  const prov = (provider ?? "").toLowerCase();
+  if (prov === "paycloud") return "paycloud";
+  if (prov === "yoco") return "yoco";
   switch (method) {
     case "yoco":
       return "yoco";
@@ -272,7 +278,7 @@ export async function GET(request: NextRequest) {
         appointment_duration: booking?.duration_minutes,
         team_member_id: p.created_by || undefined,
         team_member_name: teamMemberName,
-        method: mapPaymentMethod(p.payment_method),
+        method: mapPaymentMethod(p.payment_method, p.payment_provider),
         amount: Number(p.amount || 0),
         status: p.status === 'completed' ? 'completed' : 
                 p.status === 'pending' ? 'pending' : 'failed',

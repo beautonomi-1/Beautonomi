@@ -52,6 +52,31 @@ export function normalizeRecordedPaymentMethod(m: string | null | undefined): st
   return "other";
 }
 
+/**
+ * Resolve the takings bucket, preferring the concrete payment_provider so
+ * provider-collected card-machine tenders (PayCloud) are attributed distinctly
+ * instead of collapsing into the generic `card` bucket. `payment_method` on these
+ * rows is constrained to `card`, so the provider is the only distinguishing signal.
+ */
+export function resolveRecordedTakingsBucket(
+  paymentMethod: string | null | undefined,
+  paymentProvider: string | null | undefined,
+): string {
+  const provider = (paymentProvider ?? "").toLowerCase();
+  if (provider === "paycloud") return "paycloud";
+  return normalizeRecordedPaymentMethod(paymentMethod);
+}
+
+/** Card-machine tip rows are counted in tipsTotal via finance_transactions, not booking_payments. */
+export function isCardMachineTipBookingPayment(row: {
+  payment_provider_data?: unknown;
+  payment_provider_id?: string | null;
+}): boolean {
+  const data = row.payment_provider_data as Record<string, unknown> | null | undefined;
+  if (data && String(data.tip ?? "") === "true") return true;
+  return String(row.payment_provider_id ?? "").endsWith(":tip");
+}
+
 function emptyMethodMap(): Record<string, number> {
   const byPaymentMethod: Record<string, number> = {};
   RECORDED_TAKINGS_PAYMENT_METHODS.forEach((m) => {
@@ -82,7 +107,7 @@ export async function getRecordedTakingsForRange(
 
   let bpQuery = supabaseAdmin
     .from("booking_payments")
-    .select("booking_id, amount, payment_method")
+    .select("booking_id, amount, payment_method, payment_provider, payment_provider_data, payment_provider_id")
     .in("status", [...PAID_BOOKING_PAYMENT_STATUSES])
     .gte("created_at", rangeStartIso)
     .lte("created_at", rangeEndIso);
@@ -92,7 +117,14 @@ export async function getRecordedTakingsForRange(
   const { data: bpRows, error: bpError } = await bpQuery;
   if (bpError) throw bpError;
 
-  type BpRow = { booking_id: string; amount?: number; payment_method?: string };
+  type BpRow = {
+    booking_id: string;
+    amount?: number;
+    payment_method?: string;
+    payment_provider?: string | null;
+    payment_provider_data?: unknown;
+    payment_provider_id?: string | null;
+  };
   type BookingRow = { id: string; location_id?: string };
   const bpRowList = (bpRows ?? []) as BpRow[];
   const bookingIds = [...new Set(bpRowList.map((r) => r.booking_id))];
@@ -115,8 +147,9 @@ export async function getRecordedTakingsForRange(
   const bpBookingIds = new Set<string>();
   for (const row of bpRowList) {
     if (!providerBookingIds.has(row.booking_id)) continue;
+    if (isCardMachineTipBookingPayment(row)) continue;
     const amount = Number(row.amount ?? 0);
-    const method = normalizeRecordedPaymentMethod(row.payment_method);
+    const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
     byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
     bookingPaymentsTotal += amount;
     bpBookingIds.add(row.booking_id);
@@ -126,6 +159,7 @@ export async function getRecordedTakingsForRange(
   const bpAmountByBooking = new Map<string, number>();
   for (const row of bpRowList) {
     if (!providerBookingIds.has(row.booking_id)) continue;
+    if (isCardMachineTipBookingPayment(row)) continue;
     const a = Number(row.amount ?? 0);
     bpAmountByBooking.set(row.booking_id, (bpAmountByBooking.get(row.booking_id) ?? 0) + a);
   }
@@ -174,7 +208,7 @@ export async function getRecordedTakingsForRange(
 
   let salesQuery = supabaseAdmin
     .from("sales")
-    .select("total_amount, payment_method")
+    .select("total_amount, payment_method, payment_provider")
     .eq("provider_id", providerId)
     .eq("payment_status", "completed")
     .gte("sale_date", rangeStartIso)
@@ -186,11 +220,11 @@ export async function getRecordedTakingsForRange(
   const { data: salesRows, error: salesError } = await salesQuery;
   if (salesError) throw salesError;
 
-  type SalesRow = { total_amount?: number; payment_method?: string };
+  type SalesRow = { total_amount?: number; payment_method?: string; payment_provider?: string | null };
   let salesTotal = 0;
   for (const row of (salesRows ?? []) as SalesRow[]) {
     const amount = Number(row.total_amount ?? 0);
-    const method = normalizeRecordedPaymentMethod(row.payment_method);
+    const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
     byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
     salesTotal += amount;
   }
@@ -200,7 +234,7 @@ export async function getRecordedTakingsForRange(
   {
     let productOrderQuery = supabaseAdmin
       .from("product_orders")
-      .select("id, total_amount, payment_method, fulfillment_type, collection_location_id")
+      .select("id, total_amount, payment_method, payment_provider, fulfillment_type, collection_location_id")
       .eq("provider_id", providerId)
       .eq("order_source", "walk_in")
       .eq("payment_status", "paid")
@@ -217,6 +251,7 @@ export async function getRecordedTakingsForRange(
       id: string;
       total_amount?: number;
       payment_method?: string;
+      payment_provider?: string | null;
       fulfillment_type?: string | null;
       collection_location_id?: string | null;
     }[];
@@ -226,7 +261,7 @@ export async function getRecordedTakingsForRange(
     productOrderSalesCount = walkInOrders.length;
     for (const row of walkInOrders) {
       const amount = Number(row.total_amount ?? 0);
-      const method = normalizeRecordedPaymentMethod(row.payment_method);
+      const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
       byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
       salesTotal += amount;
     }

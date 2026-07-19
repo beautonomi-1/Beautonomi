@@ -13,8 +13,11 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveReferrerUserId } from "@/lib/referrals/resolve-referrer";
 import { bookingQualifiesForReferralReward } from "@/lib/referrals/booking-qualifies-for-referral";
-
-const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+import {
+  REFERRAL_SETTINGS_ID,
+  resolveReferralProgramEnabled,
+} from "@/lib/referrals/referral-program-enabled";
+import { notifyReferralBonusEarned } from "@/lib/notifications/notification-service";
 
 /**
  * POST /api/me/referrals/track
@@ -68,12 +71,21 @@ export async function POST(request: NextRequest) {
       (bookingRow as { tenant_id?: string | null }).tenant_id ?? null;
     const tenantIdForCurrency =
       referralMarketTenantId ?? (await resolveTenantIdWithZaFallback(request));
+
+    const programGate = await resolveReferralProgramEnabled(tenantIdForCurrency);
+    if (!programGate.enabled) {
+      return errorResponse(
+        "The referral program is not active right now.",
+        "REFERRALS_DISABLED",
+        400
+      );
+    }
+
     const marketCurrencyFallback =
       (await getTenantRegionConfig(tenantIdForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     let rewardAmount = 50;
     let rewardCurrency = marketCurrencyFallback;
-    let referralsEnabled = true;
     try {
       const { data: settings } = await supabaseAdmin
         .from("referral_settings")
@@ -82,7 +94,6 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (settings) {
-        referralsEnabled = (settings as { is_enabled?: boolean }).is_enabled !== false;
         rewardAmount = Number((settings as { referral_amount?: unknown }).referral_amount) || 50;
         rewardCurrency =
           (settings as { referral_currency?: string | null }).referral_currency ||
@@ -90,14 +101,6 @@ export async function POST(request: NextRequest) {
       }
     } catch {
       // use defaults
-    }
-
-    if (!referralsEnabled) {
-      return errorResponse(
-        "The referral program is not active right now.",
-        "REFERRALS_DISABLED",
-        400
-      );
     }
 
     let referrerUser: {
@@ -290,6 +293,30 @@ export async function POST(request: NextRequest) {
         }
       } catch (loyaltyErr) {
         console.warn("[referrals/track] loyalty point insert:", loyaltyErr);
+      }
+    }
+
+    if (rewardAmount > 0) {
+      const { data: referredProfile } = await supabaseAdmin
+        .from("users")
+        .select("full_name, preferred_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      const referredName =
+        (referredProfile as { preferred_name?: string | null } | null)?.preferred_name?.trim() ||
+        (referredProfile as { full_name?: string | null } | null)?.full_name?.trim() ||
+        (referredProfile as { email?: string | null } | null)?.email?.split("@")[0] ||
+        "A friend";
+
+      try {
+        await notifyReferralBonusEarned(
+          referrerUser.id,
+          rewardAmount,
+          referredName,
+          referralCode,
+        );
+      } catch (notifyErr) {
+        console.warn("[referrals/track] notifyReferralBonusEarned failed:", notifyErr);
       }
     }
 

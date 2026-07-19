@@ -617,7 +617,7 @@ async function runDailyDigests(
   now: Date,
   summary: SlackOperationalAlertSummary
 ) {
-  const [openSupport, activeLeads, openDisputes, pendingVerifications] = await Promise.all([
+  const [openSupport, activeLeads, openDisputes, pendingVerifications, openFraudCases] = await Promise.all([
     supabase
       .from("support_tickets")
       .select("id, provider:providers!inner(tenant_id)", { count: "exact", head: true })
@@ -639,6 +639,11 @@ async function runDailyDigests(
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("status", "pending"),
+    supabase
+      .from("fraud_cases")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .in("status", ["open", "review", "held"]),
   ]);
 
   await emit(summary, {
@@ -654,6 +659,7 @@ async function runDailyDigests(
       `Active provider leads: ${activeLeads.count ?? 0}`,
       `Open disputes: ${openDisputes.count ?? 0}`,
       `Pending verifications: ${pendingVerifications.count ?? 0}`,
+      `Open fraud cases: ${openFraudCases.count ?? 0}`,
     ],
     actionUrl: "/",
   });

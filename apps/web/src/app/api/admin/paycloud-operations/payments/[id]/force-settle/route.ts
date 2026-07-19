@@ -76,6 +76,7 @@ export async function POST(
       merchantOrderNo: payment.merchant_order_no,
       processedBy: user.id,
       currency: payment.currency,
+      tipAmount: Number(payment.tip_amount ?? 0),
     });
 
     await writeAuditLog({

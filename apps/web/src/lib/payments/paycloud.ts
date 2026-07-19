@@ -3,10 +3,11 @@ export type PaycloudEnvironment = "sandbox" | "live";
 /**
  * Gateway roots (paths /api/entry/{ecrorder|orderquery|ecrclose} are appended).
  * @see https://developers.paycloud.africa/docs/addpay/CloudAPI/create-order/
- * Sandbox example in PayCloud docs: https://addpay-op.wangtest.cn
+ * Official sandbox endpoint per Test Integration doc: https://addpay-open.wangtest.cn/api/entry
+ * @see https://developers.paycloud.africa/docs/public/PayCloudTestIntegration
  */
 export const PAYCLOUD_API_BASE: Record<PaycloudEnvironment, string> = {
-  sandbox: "https://addpay-op.wangtest.cn",
+  sandbox: "https://addpay-open.wangtest.cn",
   live: process.env.PAYCLOUD_API_BASE_LIVE ?? "https://api.paycloud.africa",
 };
 

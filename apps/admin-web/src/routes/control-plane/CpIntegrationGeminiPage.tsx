@@ -14,8 +14,8 @@ export function CpIntegrationGeminiPage() {
   const [form, setForm] = useState({
     enabled: false,
     api_key_secret: "",
-    default_model: "gemini-1.5-flash",
-    allowed_models: '["gemini-1.5-flash","gemini-1.5-pro"]',
+    default_model: "gemini-2.5-flash-lite",
+    allowed_models: '["gemini-2.5-flash-lite","gemini-2.5-flash","gemini-2.5-pro"]',
     safety_settings: "{}",
   });
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -34,7 +34,7 @@ export function CpIntegrationGeminiPage() {
         setForm((p) => ({
           ...p,
           enabled: Boolean(d.enabled),
-          default_model: String(d.default_model ?? "gemini-1.5-flash"),
+          default_model: String(d.default_model ?? "gemini-2.5-flash-lite"),
           allowed_models:
             typeof d.allowed_models === "string"
               ? d.allowed_models

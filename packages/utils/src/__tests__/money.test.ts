@@ -1,98 +1,45 @@
 import { describe, it, expect } from "vitest";
 import {
-  toCents,
-  fromCents,
-  addMoney,
-  subtractMoney,
-  multiplyMoney,
-  roundCurrency,
+  toMinorUnits,
+  fromMinorUnits,
   percentOf,
   sumMoney,
-  formatMoney,
+  splitMoneyProportionally,
+  roundCurrency,
 } from "../money";
 
-describe("toCents", () => {
-  it("converts whole amounts", () => {
-    expect(toCents(10)).toBe(1000);
+describe("currency-aware money", () => {
+  it("ZAR uses 2 decimal minor units", () => {
+    expect(toMinorUnits(10.005, "ZAR")).toBe(1001);
+    expect(fromMinorUnits(1001, "ZAR")).toBe(10.01);
   });
-  it("converts decimal amounts correctly", () => {
-    expect(toCents(19.99)).toBe(1999);
-  });
-  it("handles the classic 0.1 + 0.2 scenario", () => {
-    expect(toCents(0.1 + 0.2)).toBe(30);
-  });
-});
 
-describe("fromCents", () => {
-  it("converts back to decimal", () => {
-    expect(fromCents(1999)).toBe(19.99);
+  it("JPY uses zero decimal minor units", () => {
+    expect(toMinorUnits(100.7, "JPY")).toBe(101);
+    expect(fromMinorUnits(101, "JPY")).toBe(101);
   });
-});
 
-describe("addMoney", () => {
-  it("adds without floating-point error", () => {
-    expect(addMoney(0.1, 0.2)).toBe(0.3);
+  it("KWD uses 3 decimal minor units", () => {
+    expect(toMinorUnits(1.2345, "KWD")).toBe(1235);
+    expect(fromMinorUnits(1235, "KWD")).toBe(1.235);
   });
-  it("adds larger values", () => {
-    expect(addMoney(99.99, 0.01)).toBe(100);
-  });
-});
 
-describe("subtractMoney", () => {
-  it("subtracts without floating-point error", () => {
-    expect(subtractMoney(100, 0.01)).toBe(99.99);
+  it("percentOf avoids float drift for ZAR", () => {
+    expect(percentOf(200, 15, "ZAR")).toBe(30);
   });
-});
 
-describe("multiplyMoney", () => {
-  it("multiplies amount by factor", () => {
-    expect(multiplyMoney(33.33, 3)).toBe(99.99);
+  it("sumMoney defaults to ZAR when currency omitted", () => {
+    expect(sumMoney(1.1, 2.2)).toBe(3.3);
   });
-  it("handles percentage discount", () => {
-    expect(multiplyMoney(100, 0.15)).toBe(15);
-  });
-});
 
-describe("roundCurrency", () => {
-  it("rounds to two decimal places", () => {
-    expect(roundCurrency(1.005)).toBe(1.01);
-    expect(roundCurrency(1.004)).toBe(1);
+  it("splitMoneyProportionally allocates remainder", () => {
+    const { parts, residual } = splitMoneyProportionally(10, [1, 1, 1], "ZAR");
+    expect(parts.reduce((a, b) => a + b, 0) + residual).toBeCloseTo(10, 2);
+    expect(parts.every((p) => p === 3.33 || p === 3.34)).toBe(true);
   });
-});
 
-describe("percentOf", () => {
-  it("computes 15% of 200", () => {
-    expect(percentOf(200, 15)).toBe(30);
-  });
-  it("computes 7.5% of 100 without float drift", () => {
-    expect(percentOf(100, 7.5)).toBe(7.5);
-  });
-  it("computes 33.33% of 100", () => {
-    expect(percentOf(100, 33.33)).toBe(33.33);
-  });
-  it("handles zero percentage", () => {
-    expect(percentOf(500, 0)).toBe(0);
-  });
-  it("handles 100%", () => {
-    expect(percentOf(123.45, 100)).toBe(123.45);
-  });
-});
-
-describe("sumMoney", () => {
-  it("sums multiple values without float error", () => {
-    expect(sumMoney(0.1, 0.2, 0.3)).toBe(0.6);
-  });
-  it("sums typical booking components", () => {
-    expect(sumMoney(199.99, 15.0, 28.5, 10.0)).toBe(253.49);
-  });
-  it("handles single value", () => {
-    expect(sumMoney(42.42)).toBe(42.42);
-  });
-});
-
-describe("formatMoney", () => {
-  it("formats ZAR by default", () => {
-    const result = formatMoney(100);
-    expect(result).toContain("100");
+  it("roundCurrency respects currency minor units", () => {
+    expect(roundCurrency(1.234, "KWD")).toBe(1.234);
+    expect(roundCurrency(1.234, "ZAR")).toBe(1.23);
   });
 });

@@ -40,6 +40,7 @@ export function humanizePaymentMethodKey(key: string): string {
     paystack_terminal: "Paystack Terminal",
     paystack_virtual_terminal: "Paystack Terminal",
     yoco: "Yoco",
+    paycloud: "Card machine (PayCloud)",
     stripe: "Stripe",
     card: "Card (terminal)",
     wallet: "Wallet credit",
@@ -224,7 +225,7 @@ export async function buildProviderPaymentMethodsReport(
    */
   let bpQuery = supabase
     .from("booking_payments")
-    .select("booking_id, amount, payment_method")
+    .select("booking_id, amount, payment_method, payment_provider")
     .eq("status", "completed")
     .gte("created_at", rangeStartIso)
     .lte("created_at", rangeEndIso);
@@ -236,14 +237,25 @@ export async function buildProviderPaymentMethodsReport(
   const { data: bpRowsRaw, error: bpErr } = await bpQuery;
   if (bpErr) throw bpErr;
 
-  type BpRow = { booking_id: string; amount?: number; payment_method?: string };
+  type BpRow = {
+    booking_id: string;
+    amount?: number;
+    payment_method?: string;
+    payment_provider?: string | null;
+  };
   const bpList = (bpRowsRaw ?? []) as BpRow[];
   const bpBookingIds = [...new Set(bpList.map((r) => r.booking_id))];
   const bpScope = await fetchBookingsForProvider(supabase, providerId, bpBookingIds, locationId);
 
   for (const row of bpList) {
     if (!bpScope.has(row.booking_id)) continue;
-    const methodKey = normalizeRecordedPaymentMethod(row.payment_method);
+    // Provider-collected card-machine tenders (PayCloud) store payment_method='card';
+    // attribute them to their own bucket via payment_provider so the mix isn't
+    // collapsed into generic "Card (terminal)".
+    const methodKey =
+      (row.payment_provider ?? "").toLowerCase() === "paycloud"
+        ? "paycloud"
+        : normalizeRecordedPaymentMethod(row.payment_method);
     // Skip if the booking already has a gateway PT that would cover this same
     // payment leg (prevents double-counting gateway captures).
     if (scopedPtBookingIds.has(row.booking_id) && isGatewayCardCaptureProvider(methodKey)) continue;

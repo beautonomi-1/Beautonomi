@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -9,11 +8,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 /**
  * GET /api/public/gift-cards/validate?code=XXX
  *
- * Authenticated validation (balance lookup). Uses **cookies (web)** or
- * **Authorization: Bearer** (Expo customer app) — pass `request` into
- * `getSupabaseServer` so mobile sessions resolve.
- *
- * Returns: { valid, balance, currency, message }
+ * Authenticated validation (balance lookup). Uses RLS-safe
+ * lookup_gift_card_by_code (787) — no service-role table scan.
  */
 export async function GET(request: Request) {
   try {
@@ -48,13 +44,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ valid: false, message: "Login required to use gift cards" }, { status: 401 });
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data: card, error } = await (supabaseAdmin.from("gift_cards") as any)
-      .select("id, code, balance, currency, is_active, expires_at")
-      .eq("code", code)
-      .maybeSingle();
+    const { data: rows, error } = await supabase.rpc("lookup_gift_card_by_code", { p_code: code });
 
-    if (error || !card) {
+    if (error) {
+      const msg = error.message?.includes("Not authorized")
+        ? "You do not have access to this gift card"
+        : "Invalid gift card code";
+      return NextResponse.json({ valid: false, message: msg }, { status: 200 });
+    }
+
+    const card = Array.isArray(rows) ? rows[0] : null;
+    if (!card) {
       return NextResponse.json({ valid: false, message: "Invalid gift card code" }, { status: 200 });
     }
 
@@ -72,4 +72,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ valid: false, message: "Failed to validate gift card" }, { status: 500 });
   }
 }
-

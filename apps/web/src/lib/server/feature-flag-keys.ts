@@ -175,6 +175,9 @@ export const FEATURE_FLAG_KEYS = {
   TERMINAL_VENDOR_NEDBANK: "terminal_vendor_nedbank_enabled",
   TERMINAL_VENDOR_ABSA: "terminal_vendor_absa_enabled",
   TERMINAL_VENDOR_STANDARD_BANK: "terminal_vendor_standard_bank_enabled",
+
+  /** Platform user referral program (wallet rewards for inviting friends). */
+  REFERRAL_PROGRAM: "referral_program",
 } as const;
 
 export type PaymentRelatedFeatureKey =

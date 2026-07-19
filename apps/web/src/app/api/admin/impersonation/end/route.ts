@@ -35,6 +35,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Re-verify the caller is the original superadmin who started impersonation
+    const { data: adminProfile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", adminUserId)
+      .maybeSingle();
+    if (String(adminProfile?.role ?? "").toLowerCase() !== "superadmin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (user.id === adminUserId) {
+      return NextResponse.json({ error: "Not in impersonation session" }, { status: 400 });
+    }
+
     // Use service role client to generate a sign-in link for the admin
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

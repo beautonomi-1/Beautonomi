@@ -1,0 +1,11 @@
+{
+  "common": {
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "colourNote": "Prices include VAT where applicable."
+  },
+  "checkout": {
+    "postcode": "Postcode",
+    "mobile": "Mobile number"
+  }
+}

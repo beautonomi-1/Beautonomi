@@ -95,7 +95,10 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
     "membership_provider_earnings",
     "payout_transfer_fee",
   ],
+  "804_gl_shadow_refund_components.sql": ["membership_discount"],
 };
+
+const LIVE_SHADOW_FUNCTION_MIGRATION = "804_gl_shadow_refund_components.sql";
 
 /**
  * Types that are allowed to appear in code but deliberately skipped by
@@ -166,6 +169,26 @@ function isFinanceTransactionsInsert(context: string[]): boolean {
 const WEB_SRC = path.resolve(__dirname, "..", "..", "..");
 
 describe("Reconciliation drift (Wave 5.3)", () => {
+  it("live shadow function migration includes membership_discount handler", () => {
+    const migrationsDir = path.resolve(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "supabase",
+      "migrations",
+    );
+    const liveSql = fs.readFileSync(
+      path.join(migrationsDir, LIVE_SHADOW_FUNCTION_MIGRATION),
+      "utf8",
+    );
+    expect(liveSql).toContain("'membership_discount'");
+    expect(liveSql).toContain("refund_component");
+  });
+
   it("migration 510 (+ later allowlist migrations) and test data agree on allowlist", () => {
     const migrationsDir = path.resolve(
       __dirname,

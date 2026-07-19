@@ -61,12 +61,16 @@ const EVENT_LABELS: Record<string, string> = {
   "safety.user_report.pending": "Safety: user report pending",
   "safety.user_report.adverse": "Safety: adverse report pending",
   "safety.panic.created": "Safety: panic button pressed (urgent)",
+  "fraud.case.opened": "Trust: fraud case opened",
   "verification.pending_review": "Verifications: pending review",
   "verification.stuck_review": "Verifications: stuck review",
   "compliance.account_deletion.succeeded": "Compliance: self-service account deleted",
   "compliance.account_deletion.failed": "Compliance: self-service account deletion failed",
   "report.daily_operations_digest": "Reports: daily operations digest",
   "report.finance_exceptions_digest": "Reports: finance exceptions digest",
+  "agents.action.proposed": "Agents: action awaiting approval",
+  "agents.run.failed": "Agents: workflow run failed",
+  "agents.emergency.activated": "Agents: emergency kill switch toggled",
 };
 
 /** Mirrors apps/web default-routing.ts defaultDedupeWindowSeconds for consistent DB/API/UI saves. */

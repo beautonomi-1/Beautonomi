@@ -47,6 +47,7 @@ import {
 } from "@/lib/bookings/provider-booking-finance";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 
 function sumUnpaidAdditionalCharges(charges: unknown): number {
@@ -917,6 +918,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { timezone: providerTimezone } = await getProviderReportContext(supabaseAdmin, providerId);
 
+    if (Array.isArray(body.services) && body.services.length > 0) {
+      body.services = await resolveCustomServicesInBookingBody(
+        supabaseAdmin,
+        providerId,
+        lastResortCurrency,
+        body.services,
+      );
+    }
+
     invalidateProviderBookingsReadCache(providerId);
 
     // Check booking limits
@@ -1784,28 +1794,32 @@ async function handleCreateProviderBooking(request: NextRequest) {
       // carry per-service customization through its jsonb payload; patch it
       // in after creation for any services that had a non-empty value.
       if (body.services && Array.isArray(body.services)) {
-        const customizationByOffering = new Map<string, string>();
         for (const s of body.services as any[]) {
           const offeringId = s?.serviceId || s?.service_id || s?.offering_id;
           const cust = typeof s?.customization === "string" ? s.customization.trim() : "";
-          if (offeringId && cust.length > 0) {
-            customizationByOffering.set(String(offeringId), cust);
-          }
-        }
-        if (customizationByOffering.size > 0) {
-          for (const [offeringId, cust] of customizationByOffering) {
-            const { error: custErr } = await supabaseAdmin
-              .from("booking_services")
-              .update({ customization: cust })
-              .eq("booking_id", booking.id)
-              .eq("offering_id", offeringId);
-            if (custErr) {
-              // Non-fatal — booking is still usable; surface in logs for debugging.
-              console.warn(
-                `[provider/bookings] customization patch failed for booking ${booking.id}, offering ${offeringId}:`,
-                custErr
-              );
-            }
+          if (!offeringId || !cust.length) continue;
+
+          const { data: targetRow } = await supabaseAdmin
+            .from("booking_services")
+            .select("id")
+            .eq("booking_id", booking.id)
+            .eq("offering_id", offeringId)
+            .or("customization.is.null,customization.eq.")
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (!targetRow?.id) continue;
+
+          const { error: custErr } = await supabaseAdmin
+            .from("booking_services")
+            .update({ customization: cust })
+            .eq("id", targetRow.id);
+          if (custErr) {
+            console.warn(
+              `[provider/bookings] customization patch failed for booking ${booking.id}, row ${targetRow.id}:`,
+              custErr,
+            );
           }
         }
       }
@@ -2269,37 +2283,64 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
 
       void (async () => {
+        let providerBusinessName = "Your provider";
         try {
           const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
             "@/lib/portal/guest-booking-link-delivery"
           );
-          if (!(await shouldDeliverGuestLinkForCustomer(supabaseAdmin, customerId))) return;
+          if (await shouldDeliverGuestLinkForCustomer(supabaseAdmin, customerId)) {
+            const { data: customerRow } = await supabaseAdmin
+              .from("users")
+              .select("full_name, email, phone")
+              .eq("id", customerId)
+              .maybeSingle();
+            const { data: providerRow } = await supabaseAdmin
+              .from("providers")
+              .select("business_name")
+              .eq("id", providerId)
+              .maybeSingle();
+            providerBusinessName = (providerRow?.business_name as string) || providerBusinessName;
 
-          const { data: customerRow } = await supabaseAdmin
-            .from("users")
-            .select("full_name, email, phone")
-            .eq("id", customerId)
-            .maybeSingle();
-          const { data: providerRow } = await supabaseAdmin
-            .from("providers")
-            .select("business_name")
-            .eq("id", providerId)
-            .maybeSingle();
-
-          await deliverGuestBookingLink({
-            supabaseAdmin,
-            bookingId: booking.id,
-            bookingNumber: booking.booking_number || booking.id.slice(0, 8),
-            scheduledAt: booking.scheduled_at,
-            customerId,
-            customerName: (customerRow?.full_name as string) || body.customer_name || "Guest",
-            customerEmail: (customerRow?.email as string) || body.customer_email || null,
-            customerPhone: (customerRow?.phone as string) || body.customer_phone || null,
-            providerName: (providerRow?.business_name as string) || "Your provider",
-            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
-          });
+            await deliverGuestBookingLink({
+              supabaseAdmin,
+              bookingId: booking.id,
+              bookingNumber: booking.booking_number || booking.id.slice(0, 8),
+              scheduledAt: booking.scheduled_at,
+              customerId,
+              customerName: (customerRow?.full_name as string) || body.customer_name || "Guest",
+              customerEmail: (customerRow?.email as string) || body.customer_email || null,
+              customerPhone: (customerRow?.phone as string) || body.customer_phone || null,
+              providerName: providerBusinessName,
+              tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+            });
+          } else {
+            const { data: providerRow } = await supabaseAdmin
+              .from("providers")
+              .select("business_name")
+              .eq("id", providerId)
+              .maybeSingle();
+            providerBusinessName = (providerRow?.business_name as string) || providerBusinessName;
+          }
         } catch (guestLinkErr) {
           console.warn("Guest booking link delivery:", guestLinkErr);
+        }
+
+        if (body.booking_source === "walk_in" || booking.booking_source === "walk_in") {
+          try {
+            const { maybeSendWalkInAppNudge } = await import("@/lib/portal/walk-in-app-nudge");
+            await maybeSendWalkInAppNudge({
+              supabaseAdmin,
+              customerId,
+              bookingId: booking.id,
+              bookingNumber: booking.booking_number || booking.id.slice(0, 8),
+              providerId,
+              providerName: providerBusinessName,
+              tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+              trigger: "booking_created",
+            });
+          } catch (nudgeErr) {
+            console.warn("Walk-in app nudge:", nudgeErr);
+          }
         }
       })();
     }

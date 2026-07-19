@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id, display_name, terminal_sn, location_id, status, source,
         is_active, total_transactions, total_amount, last_used_at, last_error,
+        in_flight_payment_id,
         terminal_asset_id, assigned_at, created_at, updated_at,
         provider_locations:location_id ( name ),
         merchant:paycloud_merchants ( label, merchant_no, store_no )
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
       total_amount: Number(t.total_amount ?? 0),
       last_used: t.last_used_at,
       last_error: t.last_error,
+      in_flight_payment_id: t.in_flight_payment_id ?? null,
       created_at: t.created_at,
       merchant: t.merchant
         ? {

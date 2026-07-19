@@ -88,8 +88,8 @@ export async function PUT(request: NextRequest) {
       tenant_id: scopeTenantId,
       environment,
       enabled: body.enabled ?? false,
-      default_model: body.default_model ?? "gemini-1.5-flash",
-      allowed_models: body.allowed_models ?? ["gemini-1.5-flash", "gemini-1.5-pro"],
+      default_model: body.default_model ?? "gemini-2.5-flash-lite",
+      allowed_models: body.allowed_models ?? ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
       safety_settings: body.safety_settings ?? {},
       updated_at: new Date().toISOString(),
     };

@@ -4,6 +4,7 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import {
   MESSAGE_ATTACHMENTS_BUCKET,
   messageAttachmentRetentionDays,
+  createMessageAttachmentSignedUrl,
 } from "@/lib/messaging/message-attachments";
 import {
   getStorageServiceClientOrUser,
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
         // Omit allowedMimeTypes so the bucket accepts the same wide MIME set as a manually
         // created "Any" bucket; a restrictive list can cause create/upload mismatches.
         const { error: createError } = await storageClient.storage.createBucket(bucketName, {
-          public: true,
+          public: false,
           fileSizeLimit: 52428800, // 50MB
         });
 
@@ -139,7 +140,13 @@ export async function POST(request: NextRequest) {
 
     // Upload files to Supabase Storage
     // Storage path: message-attachments/{conversation_id}/{user_id}/{timestamp}-{index}-{random}.{ext}
-    const uploadedAttachments: Array<{ url: string; type: string; name: string; size: number }> = [];
+    const uploadedAttachments: Array<{
+      url: string;
+      storage_path: string;
+      type: string;
+      name: string;
+      size: number;
+    }> = [];
     const timestamp = Date.now();
     const userId = user.id;
 
@@ -171,19 +178,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = storageClient.storage.from(bucketName).getPublicUrl(fileName);
-
-      if (publicUrl) {
-        uploadedAttachments.push({
-          url: publicUrl,
-          type: file.type,
-          name: file.name,
-          size: file.size,
-        });
-      }
+      // Private bucket: persist storage_path; return short-lived signed URL for immediate preview.
+      const signedUrl = await createMessageAttachmentSignedUrl(storageClient, fileName);
+      uploadedAttachments.push({
+        url: signedUrl ?? "",
+        storage_path: fileName,
+        type: file.type,
+        name: file.name,
+        size: file.size,
+      });
     }
 
     if (uploadedAttachments.length === 0) {

@@ -9,6 +9,16 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
+import {
+  computeInPersonRefundableCap,
+  fetchBookingPaymentsForRefundCap,
+  fetchCompletedCashRefundsTotal,
+} from "@/lib/bookings/booking-refund-limits";
+import {
+  cashRefundConfirmationDeadline,
+  finalizeCashRefund,
+  notifyCustomerCashRefundConfirmation,
+} from "@/lib/bookings/cash-refund-confirmation";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
@@ -179,6 +189,24 @@ export async function POST(
       );
     }
 
+    const bookingPayments = await fetchBookingPaymentsForRefundCap(
+      supabaseAdmin,
+      bookingId,
+      (booking as { tenant_id?: string | null }).tenant_id,
+    );
+    const completedCashRefunds = await fetchCompletedCashRefundsTotal(supabaseAdmin, bookingId);
+    const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedCashRefunds);
+
+    if (refundMethod === "cash" && amount > inPersonCap) {
+      return errorResponse(
+        `Cash refunds are limited to ${formatMoney(inPersonCap)} collected in person on this booking. Amounts paid online must be refunded as wallet credit.`,
+        "CASH_REFUND_CAP_EXCEEDED",
+        400,
+      );
+    }
+
+    const requiresCustomerConfirmation = refundMethod === "cash" && !!booking.customer_id;
+
     const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
       tenant_id: (booking as { tenant_id?: string | null }).tenant_id,
       provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
@@ -206,6 +234,10 @@ export async function POST(
         status: "pending",
         notes: notes || defaultNotes,
         created_by: user.id,
+        customer_confirmation_required: requiresCustomerConfirmation,
+        confirmation_deadline_at: requiresCustomerConfirmation
+          ? cashRefundConfirmationDeadline()
+          : null,
       })
       .select()
       .single();
@@ -265,24 +297,73 @@ export async function POST(
       }
     }
 
-    // Wallet credited successfully — finalise the refund. The status flip
-    // to `completed` triggers (a) the finance_transactions reversal row
-    // via 490 and (b) the booking.payment_status recalculation via 126.
-    const { error: finalizeErr } = await supabaseAdmin
-      .from("booking_refunds")
-      .update({ status: "completed" })
-      .eq("id", refundId);
+    if (requiresCustomerConfirmation) {
+      const { data: providerRow } = await supabaseAdmin
+        .from("providers")
+        .select("business_name")
+        .eq("id", providerId)
+        .maybeSingle();
+      const providerName =
+        (providerRow as { business_name?: string } | null)?.business_name ?? "Your provider";
+      const bookingRef =
+        booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
 
-    if (finalizeErr) {
-      // Wallet was credited but we couldn't finalise. Surface a 500 so
-      // ops can re-finalise with a manual UPDATE; the wallet credit is
-      // idempotent on `p_reference_id` so a retry will not double-pay.
-      console.error("Refund finalize failed after wallet credit:", finalizeErr);
-      return errorResponse(
-        "Refund credited to wallet but failed to finalise; please re-trigger.",
-        "FINALIZE_ERROR",
-        500,
-      );
+      try {
+        await notifyCustomerCashRefundConfirmation({
+          customerId: booking.customer_id!,
+          bookingId,
+          bookingNumber: String(bookingRef),
+          refundId,
+          amountFormatted: formatMoney(amount),
+          providerName,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id,
+        });
+      } catch (notifErr) {
+        console.warn("Failed to send cash refund confirmation request:", notifErr);
+      }
+
+      try {
+        await supabaseAdmin.from("booking_events").insert({
+          booking_id: bookingId,
+          event_type: "refund_pending_confirmation",
+          event_data: { refund_id: refundId, amount, reason, refund_method: refundMethod },
+          created_by: user.id,
+        });
+      } catch (eventErr) {
+        console.warn("Failed to create pending refund booking event:", eventErr);
+      }
+
+      return successResponse({
+        refund,
+        refund_method: refundMethod,
+        pending_customer_confirmation: true,
+        message: `Cash refund of ${formatMoney(amount)} recorded — awaiting customer confirmation`,
+        fully_refunded: false,
+      });
+    }
+
+    if (refundMethod === "cash") {
+      const finalizeResult = await finalizeCashRefund(supabaseAdmin, refundId, bookingId, user.id);
+      if (finalizeResult.error) {
+        return errorResponse(finalizeResult.error, "FINALIZE_ERROR", 500);
+      }
+    } else {
+      // Wallet credited successfully — finalise the refund. The status flip
+      // to `completed` triggers (a) the finance_transactions reversal row
+      // via 490 and (b) the booking.payment_status recalculation via 126.
+      const { error: finalizeErr } = await supabaseAdmin
+        .from("booking_refunds")
+        .update({ status: "completed" })
+        .eq("id", refundId);
+
+      if (finalizeErr) {
+        console.error("Refund finalize failed after wallet credit:", finalizeErr);
+        return errorResponse(
+          "Refund credited to wallet but failed to finalise; please re-trigger.",
+          "FINALIZE_ERROR",
+          500,
+        );
+      }
     }
 
     // Record booking event for audit trail

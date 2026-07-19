@@ -84,6 +84,8 @@ import {
 } from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 import { BookingEditSheet } from "@/components/bookings/BookingEditSheet";
+import { BookingPaymentTimeline } from "@/components/bookings/BookingPaymentTimeline";
+import { buildBookingCompletionChecklist } from "@/lib/booking-completion-checklist";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
@@ -1519,6 +1521,54 @@ export default function BookingDetailScreen() {
     return () => task.cancel();
   }, [focusPayment, data]);
 
+  const unpaidAdditionalChargesTotal = useMemo(
+    () =>
+      additionalCharges
+        .filter((c) => c.status !== "paid" && c.status !== "rejected")
+        .reduce((sum, c) => sum + Number(c.amount ?? 0), 0),
+    [additionalCharges],
+  );
+
+  const completionChecklist = useMemo(() => {
+    const row = resolvedBooking ?? (data as BookingDetail | undefined);
+    if (!row) {
+      return buildBookingCompletionChecklist({
+        status: null,
+        paymentStatus: null,
+        outstanding: 0,
+        unpaidAdditionalCharges: 0,
+        productOrders: [],
+        hasProductsOnBooking: false,
+      });
+    }
+
+    const totalAmount = row.total_amount ?? 0;
+    const totalPaid = row.total_paid ?? 0;
+    const totalRefunded = row.total_refunded ?? 0;
+    const walletAmountApplied = Number(row.wallet_amount ?? 0);
+    const giftCardAmountApplied = Number(row.gift_card_amount ?? 0);
+    const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+    const ps = (row.payment_status || "").toLowerCase();
+    const walletGiftCoverage = walletAmountApplied + giftCardAmountApplied;
+    const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
+    const outstandingRawLocal = totalAmount - coverageLocal;
+    const outstanding =
+      typeof row.outstanding_balance === "number"
+        ? Math.max(0, row.outstanding_balance)
+        : ps === "refunded"
+          ? 0
+          : Math.max(0, outstandingRawLocal);
+
+    return buildBookingCompletionChecklist({
+      status: row.status,
+      paymentStatus: row.payment_status,
+      outstanding,
+      unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
+      productOrders: appointmentProductOrders,
+      hasProductsOnBooking: (row.products?.length ?? 0) > 0,
+    });
+  }, [resolvedBooking, data, unpaidAdditionalChargesTotal, appointmentProductOrders]);
+
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
@@ -1656,15 +1706,20 @@ export default function BookingDetailScreen() {
     "pending",
     "booked",
     "confirmed",
+    "waiting",
+    "checked_in",
     "started",
     "in_progress",
     "completed",
   ]);
-  const canMarkPaid =
+  const canCollectPayment =
     canProcessPayments &&
     yocoTerminalAmount > 0 &&
     typeof b.status === "string" &&
     statusesAllowingPayment.has(b.status);
+  const canMarkPaid = canCollectPayment;
+  const requiresRecollectConfirm = (b.payment_status ?? "").toLowerCase() === "refunded";
+
   const canRefund = canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
 
@@ -1994,6 +2049,54 @@ export default function BookingDetailScreen() {
     }
 
     if (dbTarget === "completed") {
+      if ((b.payment_status ?? "").toLowerCase() === "refunded") {
+        Alert.alert(
+          "Booking refunded",
+          "This booking was fully refunded. Cancel it instead of marking completed.",
+          [
+            { text: "Cancel booking", onPress: () => void applyDbStatusTransition("cancelled") },
+            { text: "Dismiss", style: "cancel" },
+          ],
+        );
+        return;
+      }
+
+      if (!completionChecklist.allDone) {
+        const cur = b.currency ?? getTenantDefaultCurrency();
+        Alert.alert(
+          "Before completing",
+          `${completionChecklist.blockingLabels.join(" · ")}\n\nFinish these steps or choose Complete Anyway.`,
+          [
+            {
+              text: "Collect payment",
+              onPress: () => setShowMarkPaid(true),
+            },
+            {
+              text: "Complete anyway",
+              style: "default",
+              onPress: () => {
+                void (async () => {
+                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+                  const { error: err, errorCode } = await postMutation(
+                    `/api/provider/bookings/${id}/complete-service`,
+                    {},
+                  );
+                  if (err) {
+                    setOptimisticBookingStatus(null);
+                    Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
+                    return;
+                  }
+                  setOptimisticBookingStatus(null);
+                  await refresh();
+                })();
+              },
+            },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+        return;
+      }
+
       // Gate on unpaid balance: prompt provider to capture payment first.
       if (outstanding > 0) {
         const cur = b.currency ?? getTenantDefaultCurrency();
@@ -2254,7 +2357,7 @@ export default function BookingDetailScreen() {
     await refresh();
   };
 
-  const handleMarkPaid = async () => {
+  const handleMarkPaid = async (confirmRecollect = false) => {
     if (!id) return;
     if (!canProcessPayments) {
       Alert.alert("Permission", "You do not have permission to process payments.");
@@ -2262,6 +2365,20 @@ export default function BookingDetailScreen() {
     }
     if (yocoTerminalAmount <= 0) {
       Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
+      return;
+    }
+    if (requiresRecollectConfirm && !confirmRecollect) {
+      Alert.alert(
+        "Booking was refunded",
+        "This booking was fully refunded. Record a new payment only if you are collecting again in person.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Record new payment",
+            onPress: () => void handleMarkPaid(true),
+          },
+        ],
+      );
       return;
     }
     // Paystack Terminal cannot be "marked paid" manually — the customer must pay via the
@@ -2277,6 +2394,7 @@ export default function BookingDetailScreen() {
       amount: Number(yocoTerminalAmount.toFixed(2)),
       idempotency_key: `manual:${id}:${markPaidMethod}:${Number(yocoTerminalAmount.toFixed(2))}:${Number(b.total_paid ?? 0).toFixed(2)}`,
       settle_additional_charges: true,
+      ...(confirmRecollect ? { confirm_recollect: true } : {}),
     });
     setMarkingPaid(false);
     if (res.error) {
@@ -2317,9 +2435,19 @@ export default function BookingDetailScreen() {
       Alert.alert("Error", res.error);
       return;
     }
+    const pendingConfirmation =
+      res.data &&
+      typeof res.data === "object" &&
+      (res.data as { pending_customer_confirmation?: boolean }).pending_customer_confirmation === true;
     setShowRefund(false);
     setRefundAmount("");
     setRefundReason("");
+    if (pendingConfirmation) {
+      Alert.alert(
+        "Refund recorded",
+        "The customer will be asked to confirm they received this cash refund.",
+      );
+    }
     await refresh();
   };
 
@@ -3086,6 +3214,24 @@ export default function BookingDetailScreen() {
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-base font-bold text-gray-900")}>{nextStep.title}</Text>
               <Text style={twStyle("mt-1 text-sm leading-5 text-gray-600")}>{nextStep.description}</Text>
+              {!completionChecklist.allDone && (isActive || isStarted) ? (
+                <View style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>Before you finish</Text>
+                  {completionChecklist.items.map((item) => (
+                    <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
+                      <Ionicons
+                        name={item.done ? "checkmark-circle" : "ellipse-outline"}
+                        size={14}
+                        color={item.done ? "#16a34a" : "#d97706"}
+                      />
+                      <Text style={twStyle("ml-1.5 text-xs text-amber-950")}>
+                        {item.label}
+                        {!item.done && item.detail ? ` — ${item.detail}` : ""}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -3179,12 +3325,12 @@ export default function BookingDetailScreen() {
                     : "rounded-xl border border-emerald-600 bg-white px-4 py-2.5",
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Mark booking paid"
+                accessibilityLabel="Collect payment for booking"
               >
                 <Text
                   style={twStyle(`text-sm font-semibold ${isAtHome ? "text-white" : "text-emerald-700"}`)}
                 >
-                  Mark paid
+                  Collect payment
                 </Text>
               </TouchableOpacity>
             ) : canSendPaymentLink ? (
@@ -3866,9 +4012,12 @@ export default function BookingDetailScreen() {
             )}
             {totalPaid > 0 && outstanding > 0 && (
               <Text style={twStyle("text-xs text-gray-500 mt-1.5")}>
-                Part of this booking is already paid. Mark paid, Yoco, or a payment link will only collect the remaining balance.
+                Part of this booking is already paid. Collect payment, Yoco, or a payment link will only collect the remaining balance.
               </Text>
             )}
+            {id ? (
+              <BookingPaymentTimeline bookingId={String(id)} currency={b.currency ?? getTenantDefaultCurrency()} />
+            ) : null}
             <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
               {canMarkPaid && (
                 <>
@@ -3880,7 +4029,7 @@ export default function BookingDetailScreen() {
                     {markingPaid ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={twStyle("font-medium text-white")}>Mark paid</Text>
+                      <Text style={twStyle("font-medium text-white")}>Collect payment</Text>
                     )}
                   </TouchableOpacity>
                   {canCreateSales && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
@@ -4130,7 +4279,7 @@ export default function BookingDetailScreen() {
                         {markingChargePaid && chargeMarkPaidId === c.id ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={twStyle("text-xs font-medium text-white text-center")}>Mark paid</Text>
+                          <Text style={twStyle("text-xs font-medium text-white text-center")}>Record payment</Text>
                         )}
                       </TouchableOpacity>
                       {paycloudEnabled && paycloudCollectEnabled ? (
@@ -4558,7 +4707,7 @@ export default function BookingDetailScreen() {
       </BottomSheet>
 
       {/* Mark paid modal */}
-      <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Mark as paid">
+      <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Collect payment">
         <View>
           {Math.abs(yocoTerminalAmount - outstanding) > 0.01 ? (
             <>
@@ -4592,7 +4741,7 @@ export default function BookingDetailScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <ActionButton label={markingPaid ? "Processing…" : "Confirm payment"} onPress={handleMarkPaid} loading={markingPaid} fullWidth />
+          <ActionButton label={markingPaid ? "Processing…" : "Record payment"} onPress={() => void handleMarkPaid()} loading={markingPaid} fullWidth />
         </View>
       </BottomSheet>
 

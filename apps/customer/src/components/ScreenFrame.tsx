@@ -1,7 +1,8 @@
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM, RADIUS_BUTTON } from "@/constants/layout";
 import { Colors } from "@/constants/colors";
 import { useThemedColors } from "@/hooks/useThemedColors";
+import { MiniBrandLoader } from "@/components/MiniBrandLoader";
 
 interface ScreenFrameProps {
   title?: string;
@@ -22,6 +23,8 @@ interface ScreenFrameProps {
    * Use for screens that contain FlatList / nested vertical scroll (ScrollView inside ScrollView breaks layout).
    */
   scrollable?: boolean;
+  /** Optional page-shaped skeleton shown while `loading` instead of the brand loader. */
+  skeleton?: React.ReactNode;
 }
 
 export function ScreenFrame({
@@ -35,6 +38,7 @@ export function ScreenFrame({
   refreshing = false,
   onRefresh,
   scrollable = true,
+  skeleton,
 }: ScreenFrameProps) {
   // §UI-audit 2026-05: ScreenFrame is the most-reused customer screen
   // shell, so making it theme-aware is the cheapest way to give the
@@ -42,10 +46,25 @@ export function ScreenFrame({
   // without having to rewrite every individual screen at once.
   const themed = useThemedColors();
   if (loading) {
+    if (skeleton) {
+      return (
+        <View style={{ flex: 1, backgroundColor: themed.surface }}>
+          {scrollable ? (
+            <ScrollView
+              contentContainerStyle={{ padding: SCREEN_PADDING, paddingBottom }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {skeleton}
+            </ScrollView>
+          ) : (
+            <View style={{ flex: 1, padding: SCREEN_PADDING, paddingBottom }}>{skeleton}</View>
+          )}
+        </View>
+      );
+    }
     return (
-      <View style={{ flex: 1, backgroundColor: themed.surface, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: themed.textSecondary, marginTop: 16 }}>Loading...</Text>
+      <View style={{ flex: 1, backgroundColor: themed.surface, alignItems: "center", justifyContent: "center" }}>
+        <MiniBrandLoader />
       </View>
     );
   }

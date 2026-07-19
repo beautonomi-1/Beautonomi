@@ -31,6 +31,7 @@ describe("providerTemplateKeyToPreferenceSection", () => {
     expect(providerTemplateKeyToPreferenceSection("new_review")).toBe("new_reviews");
     expect(providerTemplateKeyToPreferenceSection("payout_processed")).toBe("payout_updates");
     expect(providerTemplateKeyToPreferenceSection("payment_successful")).toBe("payment_received");
+    expect(providerTemplateKeyToPreferenceSection("provider_payment_received")).toBe("payment_received");
     expect(providerTemplateKeyToPreferenceSection("booking_waitlist_available")).toBe(
       "waitlist_notifications",
     );

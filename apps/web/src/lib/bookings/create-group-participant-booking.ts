@@ -351,4 +351,33 @@ export async function notifyGroupParticipantBooking(
   await notifyBookingConfirmed(bookingId, ["email", "push"]).catch((e) =>
     console.warn("Group participant confirmation:", e)
   );
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const admin = getSupabaseAdmin();
+    const { data: bookingRow } = await admin
+      .from("bookings")
+      .select("booking_number, tenant_id, providers(business_name)")
+      .eq("id", bookingId)
+      .maybeSingle();
+    const providerName =
+      (bookingRow as { providers?: { business_name?: string } | Array<{ business_name?: string }> } | null)
+        ?.providers;
+    const businessName = Array.isArray(providerName)
+      ? providerName[0]?.business_name
+      : providerName?.business_name;
+    const { maybeSendWalkInAppNudge } = await import("@/lib/portal/walk-in-app-nudge");
+    await maybeSendWalkInAppNudge({
+      supabaseAdmin: admin,
+      customerId,
+      bookingId,
+      bookingNumber: (bookingRow as { booking_number?: string } | null)?.booking_number ?? bookingId.slice(0, 8),
+      providerId,
+      providerName: businessName ?? "Your salon",
+      tenantId: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      trigger: "booking_created",
+    });
+  } catch (nudgeErr) {
+    console.warn("Group participant walk-in nudge:", nudgeErr);
+  }
 }

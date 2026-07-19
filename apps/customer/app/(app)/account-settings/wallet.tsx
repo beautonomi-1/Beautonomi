@@ -13,6 +13,7 @@ import {
   isCancelledPaystackUrl,
 } from "@/lib/paystack-webview-utils";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { Skeleton } from "@/components/Skeleton";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useAuth } from "@/providers/AuthProvider";
@@ -77,6 +78,10 @@ export default function WalletScreen() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [ownedGiftCards, setOwnedGiftCards] = useState<any[]>([]);
+  const [pendingGiftCards, setPendingGiftCards] = useState<
+    Array<{ id: string; code: string; balance: number; currency: string }>
+  >([]);
+  const [claimingCode, setClaimingCode] = useState<string | null>(null);
 
   const params = useLocalSearchParams<{ giftCode?: string }>();
 
@@ -112,12 +117,45 @@ export default function WalletScreen() {
     }
   }, []);
 
+  const loadPendingGiftCards = useCallback(async () => {
+    const res = await api
+      .get<{ pending_gift_cards?: Array<{ id: string; code: string; balance: number; currency: string }> }>(
+        "/api/me/profile",
+      )
+      .catch(() => null);
+    const list = res?.data?.pending_gift_cards;
+    setPendingGiftCards(Array.isArray(list) ? list : []);
+  }, []);
+
+  const claimPendingGiftCard = async (code: string) => {
+    if (!code) return;
+    setClaimingCode(code);
+    try {
+      const res = await api.post<{ amount: number; currency: string; message: string }>(
+        "/api/me/wallet/redeem-gift-card",
+        { code },
+      );
+      if (res.error) {
+        Alert.alert(t("common.error"), res.error.message || "Failed to add gift card");
+      } else {
+        Alert.alert("Success", res.data?.message || "Gift card added to your wallet");
+        setPendingGiftCards((prev) => prev.filter((gc) => gc.code !== code));
+        await Promise.all([load(), loadGiftCards()]);
+      }
+    } catch (e) {
+      Alert.alert(t("common.error"), e instanceof Error ? e.message : "Failed to add gift card");
+    } finally {
+      setClaimingCode(null);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       void load();
       void refreshCards();
       void loadGiftCards();
-    }, [load, refreshCards, loadGiftCards]),
+      void loadPendingGiftCards();
+    }, [load, refreshCards, loadGiftCards, loadPendingGiftCards]),
   );
 
   useEffect(() => {
@@ -326,12 +364,99 @@ export default function WalletScreen() {
 
   return (
     <>
-    <ScreenFrame loading={loading} error={error} onRetry={load} refreshing={refreshing} onRefresh={handleRefresh}>
+    <ScreenFrame
+      loading={loading}
+      error={error}
+      onRetry={load}
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      skeleton={
+        <View>
+          <Skeleton width="100%" height={120} borderRadius={16} />
+          {[1, 2, 3].map((i) => (
+            <View
+              key={i}
+              style={{
+                marginTop: 12,
+                padding: 16,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+              }}
+            >
+              <Skeleton width="45%" height={14} />
+              <Skeleton width="70%" height={12} style={{ marginTop: 8 }} />
+              <Skeleton width="30%" height={12} style={{ marginTop: 8 }} />
+            </View>
+          ))}
+        </View>
+      }
+    >
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 24, alignItems: "center" }}>
           <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{t("customer.walletScreen.balanceLabel")}</Text>
           <Text style={{ fontSize: 30, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>{balanceLabel}</Text>
         </View>
+
+        {pendingGiftCards.length > 0 ? (
+          <View
+            style={{
+              marginTop: 16,
+              borderWidth: 1,
+              borderColor: Colors.primary,
+              borderRadius: 16,
+              padding: 16,
+              backgroundColor: "#FFF5FA",
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
+              🎁 {pendingGiftCards.length === 1 ? "A gift card is" : `${pendingGiftCards.length} gift cards are`} waiting
+            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4, marginBottom: 12 }}>
+              Sent to your email. Add {pendingGiftCards.length === 1 ? "it" : "them"} to your wallet to spend.
+            </Text>
+            {pendingGiftCards.map((gc) => (
+              <View
+                key={gc.id}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: Colors.white,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                    {formatMoney(Number(gc.balance ?? 0), String(gc.currency ?? currency))}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                    •••• {String(gc.code ?? "").slice(-6)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => void claimPendingGiftCard(gc.code)}
+                  disabled={claimingCode === gc.code}
+                  style={{
+                    backgroundColor: Colors.primary,
+                    borderRadius: 10,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    opacity: claimingCode === gc.code ? 0.7 : 1,
+                  }}
+                >
+                  {claimingCode === gc.code ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 13 }}>Add to wallet</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View style={{ marginTop: 24 }}>
           <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Top Up Option</Text>

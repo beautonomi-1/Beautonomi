@@ -191,6 +191,15 @@ export async function PATCH(
         updatePayload.refunded_amount = refundAmount;
         updatePayload.refunded_at = new Date().toISOString();
         if (parsed.refund_reason) updatePayload.refund_reason = parsed.refund_reason;
+        // §Product-refund-confirmation: in-person cash refunds to a real
+        // customer account are flagged for confirmation/dispute (parity with
+        // booking cash refunds). No wallet money moves — this is an audit trail.
+        if (refundMethod === "cash" && order.customer_id) {
+          updatePayload.refund_customer_confirmation_required = true;
+          updatePayload.refund_confirmation_deadline_at = new Date(
+            Date.now() + 48 * 60 * 60 * 1000,
+          ).toISOString();
+        }
       }
     }
     if (parsed.tracking_number) updatePayload.tracking_number = parsed.tracking_number;
@@ -203,7 +212,7 @@ export async function PATCH(
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
 
     // On cancellation, restore stock (variant or product-level)
-    if (parsed.status === "cancelled") {
+    if (parsed.status === "cancelled" || parsed.status === "refunded") {
       const { data: items } = await (supabase.from("product_order_items") as any)
         .select("product_id, product_variant_id, quantity")
         .eq("order_id", id);
@@ -217,15 +226,7 @@ export async function PATCH(
                 p_quantity: item.quantity,
               });
             } catch {
-              const { data: v } = await (supabase.from("product_variants") as any)
-                .select("quantity")
-                .eq("id", item.product_variant_id)
-                .single();
-              if (v) {
-                await (supabase.from("product_variants") as any)
-                  .update({ quantity: (v.quantity ?? 0) + item.quantity })
-                  .eq("id", item.product_variant_id);
-              }
+              /* best effort */
             }
           } else {
             try {
@@ -234,15 +235,7 @@ export async function PATCH(
                 p_quantity: item.quantity,
               });
             } catch {
-              const { data: prod } = await (supabase.from("products") as any)
-                .select("quantity")
-                .eq("id", item.product_id)
-                .single();
-              if (prod) {
-                await (supabase.from("products") as any)
-                  .update({ quantity: (prod.quantity ?? 0) + item.quantity })
-                  .eq("id", item.product_id);
-              }
+              /* best effort */
             }
           }
         }
@@ -414,8 +407,15 @@ export async function PATCH(
         },
       };
 
+      // When a cash refund needs customer confirmation we send the dedicated
+      // confirm/dispute notification below instead of the generic "refund
+      // processed" one, so the customer isn't told it's done AND asked to
+      // confirm in the same breath.
+      const needsRefundConfirmation =
+        parsed.status === "refunded" && refundMethod === "cash" && !!order.customer_id;
+
       const notif = notificationMap[parsed.status];
-      if (notif) {
+      if (notif && !needsRefundConfirmation) {
         void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
           insertNotification({
             user_id: updated.customer.id,
@@ -430,6 +430,40 @@ export async function PATCH(
             action_url: "/product-orders",
           })
         );
+      }
+
+      // §Product-refund-confirmation: send the confirm/dispute request for
+      // in-person cash refunds so the customer can flag a discrepancy.
+      if (needsRefundConfirmation) {
+        try {
+          const { data: providerRow } = await (supabase.from("providers") as any)
+            .select("business_name")
+            .eq("id", providerId)
+            .maybeSingle();
+          const providerName =
+            (providerRow as { business_name?: string } | null)?.business_name ?? "Your provider";
+          const baseUrl =
+            process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://beautonomi.com";
+          const { sendTemplateNotification } = await import(
+            "@/lib/notifications/onesignal"
+          );
+          await sendTemplateNotification(
+            "product_order_cash_refund_confirmation",
+            [order.customer_id],
+            {
+              amount: `${order.currency || LAST_RESORT_CURRENCY} ${refundAmount.toFixed(2)}`,
+              order_number: updated.order_number ?? id.slice(0, 8),
+              order_id: id,
+              provider_name: providerName,
+              confirm_url: `${baseUrl}/account-settings/orders/${id}?refund_confirm=1`,
+              dispute_url: `${baseUrl}/account-settings/orders/${id}?refund_dispute=1`,
+            },
+            ["push", "email", "sms"],
+            { appType: "customer", tenantId: order.tenant_id ?? null },
+          );
+        } catch (confirmErr) {
+          console.warn("Product order cash refund confirmation notify failed:", confirmErr);
+        }
       }
     }
 

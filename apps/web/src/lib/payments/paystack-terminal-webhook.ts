@@ -505,7 +505,47 @@ export async function recordPaystackTerminalCharge(
       .eq("id", context.id);
   }
 
-  if ((row as any)?.provider_notification_status === "pending") {
+  // Auto-finalize parity with PayCloud: when the charge confidently maps to a
+  // pending walk-in product order (exact amount + auto-suggested), finalize the
+  // sale immediately instead of stranding it in the manual allocation inbox.
+  // Best-effort — never let this break the webhook; the payment is already
+  // recorded above and remains resolvable manually if this fails.
+  let autoFinalized = false;
+  if (
+    (row as any)?.id &&
+    suggestion.entityType === "product_order" &&
+    suggestion.entityId &&
+    suggestion.amountMatchStatus === "exact_match" &&
+    suggestion.allocationStatus === "suggested" &&
+    Number((row as any).allocated_amount ?? 0) <= 0
+  ) {
+    try {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", context.provider_id)
+        .maybeSingle();
+      const { autoFinalizeTerminalWalkInProductOrder } = await import(
+        "@/lib/payments/auto-finalize-terminal-product-order"
+      );
+      const result = await autoFinalizeTerminalWalkInProductOrder({
+        supabase,
+        terminalPaymentId: String((row as any).id),
+        providerId: context.provider_id,
+        productOrderId: suggestion.entityId,
+        paidAmount,
+        gatewayFee: feeAmount,
+        reference,
+        currency,
+        allocatedByUserId: (providerRow as { user_id?: string | null } | null)?.user_id ?? null,
+      });
+      autoFinalized = result.finalized;
+    } catch (autoErr) {
+      console.error("[paystack-terminal] auto-finalize walk-in order failed:", autoErr);
+    }
+  }
+
+  if ((row as any)?.provider_notification_status === "pending" && !autoFinalized) {
     const { data: provider } = await supabase
       .from("providers")
       .select("id, user_id, tenant_id, business_name")
@@ -557,6 +597,12 @@ export async function recordPaystackTerminalCharge(
         .update({ provider_notification_status: "not_required" })
         .eq("id", row.id);
     }
+  } else if (autoFinalized && (row as any)?.provider_notification_status === "pending") {
+    // Auto-finalized sales are notified via notifyProductOrderPaidIfTransitioned;
+    // clear the inbox notification flag so the "review and allocate" push never fires.
+    await (supabase.from("provider_paystack_terminal_payments") as any)
+      .update({ provider_notification_status: "not_required" })
+      .eq("id", (row as any).id);
   }
 
   return { recorded: true, payment: row };

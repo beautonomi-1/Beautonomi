@@ -19,27 +19,33 @@ const PAYSTACK_HOST_ALLOWLIST = new Set<string>([
   "api.paystack.co",
 ]);
 
-function assertPaystackUrl(url: string): void {
+const STRIPE_HOST_ALLOWLIST = new Set<string>(["checkout.stripe.com", "pay.stripe.com"]);
+
+function assertHostedCheckoutUrl(url: string): void {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error("[paystack] checkout URL is not a valid URL");
+    throw new Error("[checkout] URL is not valid");
   }
   if (parsed.protocol !== "https:") {
-    throw new Error("[paystack] checkout URL must use https");
+    throw new Error("[checkout] URL must use https");
   }
   const host = parsed.hostname.toLowerCase();
-  const allowed =
+  const paystackAllowed =
     PAYSTACK_HOST_ALLOWLIST.has(host) ||
     host.endsWith(".paystack.com") ||
     host.endsWith(".paystack.co") ||
     host.endsWith(".paystack.shop");
-  if (!allowed) {
-    throw new Error(
-      `[paystack] refusing to open non-Paystack host: ${host}`,
-    );
+  const stripeAllowed =
+    STRIPE_HOST_ALLOWLIST.has(host) || host.endsWith(".stripe.com");
+  if (!paystackAllowed && !stripeAllowed) {
+    throw new Error(`[checkout] refusing to open untrusted host: ${host}`);
   }
+}
+
+function assertPaystackUrl(url: string): void {
+  assertHostedCheckoutUrl(url);
 }
 
 export function useInAppPaystackCheckout() {

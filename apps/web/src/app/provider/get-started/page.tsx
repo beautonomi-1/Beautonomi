@@ -177,6 +177,7 @@ export default function GetStartedPage() {
   const optionalSteps = setupStatus.steps.filter((s) => !s.required);
   const completedRequired = requiredSteps.filter((s) => s.completed).length;
   const remaining = requiredSteps.length - completedRequired;
+  const nextIncomplete = requiredSteps.find((s) => !s.completed);
 
   // ── All done ──────────────────────────────────────────────────────────────
   if (setupStatus.isComplete) {
@@ -274,6 +275,27 @@ export default function GetStartedPage() {
             </span>
           </div>
         </div>
+
+        {nextIncomplete ? (
+          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                Next up: {nextIncomplete.title}
+              </p>
+              {nextIncomplete.description ? (
+                <p className="text-xs text-gray-600 mt-0.5">{nextIncomplete.description}</p>
+              ) : null}
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 bg-primary hover:bg-primary-hover text-white"
+              onClick={() => handleStepClick(nextIncomplete)}
+            >
+              Continue setup
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
 
         {/* Required steps */}
         <section className="mb-6 sm:mb-8">

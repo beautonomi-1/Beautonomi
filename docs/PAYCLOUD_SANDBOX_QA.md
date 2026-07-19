@@ -13,9 +13,20 @@ Facts aligned with [PayCloud Developer docs](https://developers.paycloud.africa/
 
 Auth: RSA2 `SHA256WithRSA` ([API Security](https://developers.paycloud.africa/docs/public/APISecurity/)). Request body is **flat JSON** (not Alipay `biz_content`). Timestamp = 13-digit Unix ms. Envelope `version` = `1.0`; create order also sends `api_version=2.0`.
 
-Sandbox gateway root (docs example): `https://addpay-op.wangtest.cn`  
+Sandbox gateway root (official Test Integration doc): `https://addpay-open.wangtest.cn`  
 Live default: `https://api.paycloud.africa`  
 Override via `PAYCLOUD_API_BASE_SANDBOX` / `PAYCLOUD_API_BASE_LIVE` or `tenant_paycloud_apps.api_base_url`.
+
+### Official sandbox test parameters ([Test integration](https://developers.paycloud.africa/docs/public/PayCloudTestIntegration))
+
+| Field | Value |
+|-------|-------|
+| API endpoint | `https://addpay-open.wangtest.cn/api/entry` |
+| `app_id` | `wz715fc0d10ee9d156` |
+| `merchant_no` | `302100085224` |
+| `store_no` | `4021000637` |
+
+Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox environment). Use PayCloud's published RSA key pair from the test integration doc. **Never** copy test keys into production tenants.
 
 ### Required create-order fields (v1)
 
@@ -120,9 +131,12 @@ Beautonomi does **not** subscribe clients to PayCloud payment realtime (RLS is s
 
 - Feature flag: `payment_paycloud_same_terminal` (off until hardware spike passes).
 - Spike checklist: `docs/PAYCLOUD_SAME_TERMINAL_SPIKE.md`.
-- APIs: `channel: same_terminal` on create → `intent_payload`; `POST .../confirm` after Intent.
+- Native module: `apps/provider/modules/paycloud-same-terminal` (Expo Android module → WiseCashier Intent).
+- APIs: `channel: same_terminal` on create → `intent_payload` (includes `app_id` + optional `intent_contract` from `tenant_paycloud_apps.metadata`); `device_serial` optional for terminal_sn validation; `POST .../confirm` + poll after Intent.
+- Close/cancel: same-terminal pending rows skip cloud `ecrclose` — local close clears `in_flight_payment_id`.
 - Settle path unchanged: webhook / poll / confirm / cron → `settlePaycloudPayment`.
 - UI copy: “Pay on this device” / “Send to card machine” — never “Intent” or “SDK”.
+- EAS build for side-load: `eas build --profile terminal --platform android` (APK, arm64).
 
 ## Known deferrals (documented, not faked)
 

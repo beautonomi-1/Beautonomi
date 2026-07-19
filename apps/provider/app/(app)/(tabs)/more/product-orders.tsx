@@ -13,6 +13,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -79,6 +80,7 @@ interface Order {
   payment_status?: string;
   fulfillment_type?: string;
   order_source?: string | null;
+  booking_id?: string | null;
   tracking_number?: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
@@ -562,8 +564,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   if (loading && !data) {
     return (
-      <View style={twStyle("flex-1 items-center justify-center py-12")}>
-        <LoadingState />
+      <View style={twStyle("flex-1 py-12 px-4")}>
+        <SkeletonList rows={6} />
       </View>
     );
   }
@@ -1057,6 +1059,21 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     Payment is recorded on the linked appointment. Mark the product collected from the booking
                     detail or advance fulfillment below.
                   </Text>
+                  {activeOrder.booking_id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setViewOrder(null);
+                        setOrderDetail(null);
+                        router.push(`/(app)/(tabs)/more/bookings/${activeOrder.booking_id}` as never);
+                      }}
+                      style={twStyle("mt-2 flex-row items-center")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Go to linked booking"
+                    >
+                      <Ionicons name="calendar-outline" size={14} color="#1d4ed8" />
+                      <Text style={twStyle("ml-1 text-xs font-semibold text-blue-800")}>Go to booking</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
                 activeOrder.status !== "cancelled" &&

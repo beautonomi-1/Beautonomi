@@ -276,6 +276,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const userEmail = (u.email ?? authUser?.email ?? "").trim().toLowerCase();
+    if (userEmail && userEmail.includes("@") && !userEmail.includes("beautonomi.invalid")) {
+      try {
+        const admin = getSupabaseAdmin();
+        const { data: waitingGiftCards } = await admin
+          .from("gift_cards")
+          .select("id, code, balance, currency, metadata")
+          .gt("balance", 0)
+          .eq("is_active", true)
+          .filter("metadata->>recipient_email", "eq", userEmail);
+        const waiting = waitingGiftCards ?? [];
+        Object.assign(formattedData, {
+          pending_gift_cards: waiting.map((gc) => ({
+            id: gc.id,
+            code: gc.code,
+            balance: Number(gc.balance ?? 0),
+            currency: gc.currency,
+          })),
+        });
+      } catch {
+        Object.assign(formattedData, { pending_gift_cards: [] });
+      }
+    } else {
+      Object.assign(formattedData, { pending_gift_cards: [] });
+    }
+
     const res = successResponse(formattedData);
     res.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");
     return res;

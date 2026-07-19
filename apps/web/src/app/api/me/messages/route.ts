@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import {
   enrichMessagesWithReplyTo,
   isProviderMessageRole,
@@ -104,22 +104,28 @@ export async function GET(request: NextRequest) {
       providerBusinessName,
     });
 
-    const transformed = withReplies.map((m: any) =>
-      mapMessageWithReplyFields(m, {
-        id: m.id,
-        conversation_id: m.conversation_id,
-        sender_id: m.sender_id,
-        sender_name:
-          isProviderMessageRole(m.sender_role) && providerBusinessName
-            ? providerBusinessName
-            : m.sender?.full_name || "User",
-        sender_role: m.sender_role,
-        content: m.content,
-        attachments: sanitizeMessageAttachmentsForResponse(m.attachments || [], m.created_at),
-        is_read: Boolean(m.is_read),
-        created_at: m.created_at,
-        read_at: m.read_at,
-      })
+    const transformed = await Promise.all(
+      withReplies.map(async (m: any) =>
+        mapMessageWithReplyFields(m, {
+          id: m.id,
+          conversation_id: m.conversation_id,
+          sender_id: m.sender_id,
+          sender_name:
+            isProviderMessageRole(m.sender_role) && providerBusinessName
+              ? providerBusinessName
+              : m.sender?.full_name || "User",
+          sender_role: m.sender_role,
+          content: m.content,
+          attachments: await signMessageAttachmentsForResponse(
+            m.attachments || [],
+            admin,
+            m.created_at,
+          ),
+          is_read: Boolean(m.is_read),
+          created_at: m.created_at,
+          read_at: m.read_at,
+        }),
+      ),
     );
 
     // Fire-and-forget: mark unread messages as read so sender sees read receipt (use admin to bypass RLS)

@@ -896,7 +896,7 @@ function CustomerOnboardingWizard() {
               phone: normalizeSupabaseAuthPhone(handoff.phoneE164),
             })
             .catch(() => {
-              // Non-blocking — Step 4 auto-detect / manual verify will recover.
+              // Non-blocking — Step 6 auto-detect / manual verify will recover.
             });
         }
 
@@ -942,11 +942,11 @@ function CustomerOnboardingWizard() {
       if (!preferredName.trim()) return "Please enter a name to continue.";
     }
     if (currentStep === 4) {
+      if (!alreadyHasAddress && !address) return "Please search for and select your address.";
+    }
+    if (currentStep === 6) {
       if (!phoneVerified && !phoneE164) return "A verified phone number is required.";
       if (!phoneVerified && phoneE164) return "Please verify your phone number to continue.";
-    }
-    if (currentStep === 5) {
-      if (!alreadyHasAddress && !address) return "Please search for and select your address.";
     }
     return null;
   }, [currentStep, preferredName, phoneVerified, phoneE164, address, alreadyHasAddress]);
@@ -981,10 +981,6 @@ function CustomerOnboardingWizard() {
           break;
         }
         case 4: {
-          // Phone was already saved during OTP verification in Step4Phone
-          break;
-        }
-        case 5: {
           if (address && !alreadyHasAddress) {
             await fetcher.post("/api/me/addresses", {
               label: "Home",
@@ -999,7 +995,6 @@ function CustomerOnboardingWizard() {
             });
             setAlreadyHasAddress(true);
           } else if (address && alreadyHasAddress) {
-            // User chose to add another
             await fetcher.post("/api/me/addresses", {
               label: "Home",
               is_default: false,
@@ -1014,13 +1009,17 @@ function CustomerOnboardingWizard() {
           }
           break;
         }
-        case 6: {
+        case 5: {
           if (hairTypes.length > 0 || skinType) {
             await fetcher.patch("/api/me/beauty-preferences", {
               hair_type: hairTypes.length > 0 ? hairTypes : null,
               skin_type: skinType || null,
             });
           }
+          break;
+        }
+        case 6: {
+          // Phone was already saved during OTP verification in Step6Phone
           break;
         }
       }
@@ -1089,7 +1088,7 @@ function CustomerOnboardingWizard() {
     );
   }
 
-  const canSkipCurrentStep = currentStep !== 1 && currentStep !== 4 && currentStep !== 5;
+  const canSkipCurrentStep = currentStep !== 1 && currentStep !== 4 && currentStep !== 6;
   const isLastStep = currentStep === TOTAL_STEPS;
   const continueLabel = isLastStep ? "Finish" : "Continue";
   const canGoBack = currentStep > 1;
@@ -1161,14 +1160,6 @@ function CustomerOnboardingWizard() {
                 />
               )}
               {currentStep === 4 && (
-                <Step4Phone
-                  phoneE164={phoneE164}
-                  onPhoneChange={setPhoneE164}
-                  alreadyVerified={phoneVerified}
-                  onVerified={() => setPhoneVerified(true)}
-                />
-              )}
-              {currentStep === 5 && (
                 <Step5Location
                   address={address}
                   addressDisplay={addressDisplay}
@@ -1176,7 +1167,7 @@ function CustomerOnboardingWizard() {
                   alreadyHasAddress={alreadyHasAddress}
                 />
               )}
-              {currentStep === 6 && (
+              {currentStep === 5 && (
                 <Step6Beauty
                   hairTypes={hairTypes}
                   skinType={skinType}
@@ -1186,6 +1177,14 @@ function CustomerOnboardingWizard() {
                     )
                   }
                   onSkinChange={setSkinType}
+                />
+              )}
+              {currentStep === 6 && (
+                <Step4Phone
+                  phoneE164={phoneE164}
+                  onPhoneChange={setPhoneE164}
+                  alreadyVerified={phoneVerified}
+                  onVerified={() => setPhoneVerified(true)}
                 />
               )}
             </div>

@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/Badge";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
-import { LoadingState } from "@/components/ui/LoadingState";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
@@ -1662,7 +1662,7 @@ export default function SalesScreen() {
         </View>
 
         {salesLoading && sales.length === 0 ? (
-          <LoadingState fullScreen={false} />
+          <SkeletonList rows={5} />
         ) : salesError && sales.length === 0 ? (
           <ErrorState message={salesError} onRetry={refreshSales} />
         ) : sales.length === 0 ? (

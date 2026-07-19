@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enqueueNotification } from "@/lib/notifications/enqueue";
+import { normalizePhoneToE164 } from "@/lib/phone";
 import { isShadowEmail } from "@/lib/users/shadow-email";
 
 function escapeHtml(input: string): string {
@@ -66,6 +67,45 @@ export async function sendShadowAccountClaimInvite(params: {
         claim_url: claimUrl,
       },
       dedupeKey: `account_claim:${userRow.id}:${new Date().toISOString().slice(0, 10)}`,
+      tenantId: params.tenantId ?? null,
+    },
+    params.supabaseAdmin,
+  );
+
+  return true;
+}
+
+export async function sendShadowAccountClaimInviteByPhone(params: {
+  supabaseAdmin: SupabaseClient;
+  phone: string;
+  tenantId?: string | null;
+}): Promise<boolean> {
+  const phoneNorm = normalizePhoneToE164(params.phone.trim());
+  if (!phoneNorm) return false;
+
+  const { data: userRow } = await params.supabaseAdmin
+    .from("users")
+    .select("id, full_name, phone, is_shadow, claimed_at")
+    .eq("phone", phoneNorm)
+    .maybeSingle();
+
+  if (!userRow?.id || userRow.is_shadow !== true || userRow.claimed_at) return false;
+
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const claimUrl = `${appBase}/login?claim=1&phone=${encodeURIComponent(phoneNorm)}`;
+  const customerName = (userRow.full_name as string) || "there";
+
+  await enqueueNotification(
+    {
+      channel: "sms",
+      templateKey: "account_claim_invite",
+      recipientUserId: userRow.id as string,
+      payload: {
+        body: `Hi ${customerName}, we found your Beautonomi bookings. Sign in with this phone to claim your account: ${claimUrl}`,
+        claim_url: claimUrl,
+        phone: phoneNorm,
+      },
+      dedupeKey: `account_claim_phone:${userRow.id}:${new Date().toISOString().slice(0, 10)}`,
       tenantId: params.tenantId ?? null,
     },
     params.supabaseAdmin,

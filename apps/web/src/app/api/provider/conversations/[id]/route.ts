@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import { enrichMessagesWithReplyTo, mapMessageWithReplyFields } from "@/lib/messaging/message-replies";
 
 // All conversation data reads use the admin client so provider_staff are not
@@ -92,15 +92,21 @@ export async function GET(
       .update({ unread_count_provider: 0 })
       .eq("id", conversationId);
 
-    const transformedMessages = withReplies.map((msg: any) =>
-      mapMessageWithReplyFields(msg, {
-        id: msg.id,
-        content: msg.content,
-        sender_type: msg.sender_role === "customer" ? "customer" : "provider",
-        created_at: msg.created_at,
-        read_at: msg.read_at,
-        attachments: sanitizeMessageAttachmentsForResponse(msg.attachments ?? [], msg.created_at),
-      })
+    const transformedMessages = await Promise.all(
+      withReplies.map(async (msg: any) =>
+        mapMessageWithReplyFields(msg, {
+          id: msg.id,
+          content: msg.content,
+          sender_type: msg.sender_role === "customer" ? "customer" : "provider",
+          created_at: msg.created_at,
+          read_at: msg.read_at,
+          attachments: await signMessageAttachmentsForResponse(
+            msg.attachments ?? [],
+            supabaseAdmin,
+            msg.created_at,
+          ),
+        }),
+      ),
     );
 
     return successResponse({

@@ -21,12 +21,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const providerMembershipId =
       typeof body?.provider_membership_id === "string" ? body.provider_membership_id : null;
+    const cancelImmediately = body?.cancel_immediately === true;
 
     if (providerMembershipId) {
       const { data: activeSalon, error: salonFindError } = await (supabase
         .from("user_memberships") as any)
         .select(
-          "id, user_id, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans(id, name)"
+          "id, user_id, status, expires_at, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans(id, name)"
         )
         .eq("id", providerMembershipId)
         .eq("user_id", user.id)
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
 
       const { error: salonUpdateError } = await (supabase.from("user_memberships") as any)
         .update({
-          status: "cancelled",
+          status: cancelImmediately ? "cancelled" : activeSalon.status,
           auto_renew: false,
           cancelled_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -95,12 +96,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return successResponse({ cancelled: true, type: "salon" });
+      return successResponse({
+        cancelled: true,
+        type: "salon",
+        cancel_immediately: cancelImmediately,
+        benefits_until: cancelImmediately ? null : activeSalon.expires_at ?? null,
+      });
     }
 
     const { data: active, error: findError } = await supabase
       .from("customer_memberships")
-      .select("id")
+      .select("id, status, expires_at")
       .eq("customer_id", user.id)
       .eq("status", "active")
       .order("expires_at", { ascending: false })
@@ -111,10 +117,15 @@ export async function POST(request: NextRequest) {
       return successResponse({ cancelled: false, message: "No active membership found" });
     }
 
+    // §Membership-cancel 2026-07: platform memberships now default to
+    // cancel-at-period-end (parity with salon memberships) — disable auto-renew
+    // and stamp cancelled_at, but keep the plan active until it expires so the
+    // customer keeps the benefits they already paid for. `cancel_immediately`
+    // still ends it now for support/refund flows.
     const { error: updateError } = await supabase
       .from("customer_memberships")
       .update({
-        status: "cancelled",
+        status: cancelImmediately ? "cancelled" : (active as { status?: string }).status ?? "active",
         auto_renew: false,
         cancelled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -126,7 +137,12 @@ export async function POST(request: NextRequest) {
       return handleApiError(updateError, "Failed to cancel membership");
     }
 
-    return successResponse({ cancelled: true });
+    return successResponse({
+      cancelled: true,
+      type: "platform",
+      cancel_immediately: cancelImmediately,
+      benefits_until: cancelImmediately ? null : (active as { expires_at?: string | null }).expires_at ?? null,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to cancel membership");
   }

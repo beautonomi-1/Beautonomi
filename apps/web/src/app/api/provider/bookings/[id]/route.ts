@@ -39,6 +39,11 @@ import {
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+import {
+  buildExistingReservedQuantities,
+  reconcileBookingProductStockOnEdit,
+  type ExistingBookingProductRow,
+} from "@/lib/bookings/reconcile-booking-product-stock";
 import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
 import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
 
@@ -1580,23 +1585,19 @@ export async function PATCH(
           400,
         );
       }
-      const { data: deductedProductRows } = await supabaseAdminPatch
+
+      const { data: existingProductRows } = await supabaseAdminPatch
         .from("booking_products")
-        .select("id")
-        .eq("booking_id", id)
-        .not("stock_deducted_at", "is", null)
-        .limit(1);
-      if ((deductedProductRows ?? []).length > 0) {
-        return errorResponse(
-          "Products on this booking already affected stock. Create a sale/refund adjustment instead of editing the booking products.",
-          "PRODUCT_EDIT_LOCKED",
-          400,
-        );
-      }
+        .select("id, product_id, product_variant_id, quantity, stock_deducted_at")
+        .eq("booking_id", id);
+      const existingRows = (existingProductRows ?? []) as ExistingBookingProductRow[];
+      const existingReserved = buildExistingReservedQuantities(existingRows);
+
       const productValidation = await validateProviderBookingProducts(
         supabaseAdminPatch,
         providerId,
         products,
+        { existingReservedQuantities: existingReserved },
       );
       if (productValidation.ok === false) {
         return errorResponse(
@@ -1605,6 +1606,22 @@ export async function PATCH(
           productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
         );
       }
+
+      const stockReconcile = await reconcileBookingProductStockOnEdit(supabaseAdminPatch, {
+        providerId,
+        bookingId: id,
+        actorUserId: user.id,
+        existingRows,
+        newProducts: productValidation.products,
+      });
+      if (stockReconcile.ok === false) {
+        return errorResponse(stockReconcile.message, stockReconcile.code, 400);
+      }
+
+      const stockDeductedAtForNewRows = stockReconcile.stockWasDeducted
+        ? new Date().toISOString()
+        : null;
+
       // Delete existing products
       await supabaseAdminPatch
         .from("booking_products")
@@ -1612,7 +1629,7 @@ export async function PATCH(
         .eq("booking_id", id);
 
       // Insert new products
-      if (products.length > 0) {
+      if (productValidation.products.length > 0) {
         const { data: bookingServices } = await supabaseAdminPatch
           .from("booking_services")
           .select("staff_id")
@@ -1628,6 +1645,7 @@ export async function PATCH(
           unit_price: product.unitPrice,
           total_price: product.totalPrice,
           staff_id: primaryStaffId,
+          ...(stockDeductedAtForNewRows ? { stock_deducted_at: stockDeductedAtForNewRows } : {}),
         }));
 
         const { error: productsError } = await supabaseAdminPatch

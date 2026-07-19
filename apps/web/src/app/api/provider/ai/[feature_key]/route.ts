@@ -17,12 +17,12 @@ const FEATURE_TEMPLATES: Record<
   "ai.provider.profile_completion": {
     system: `You are a helpful assistant for beauty and wellness providers. Given the provider context, suggest improvements for their profile: headline, short bio, specialties, FAQ, and policies. Respond with a JSON object: { "suggested_profile_patch": { "headline": string, "bio": string, "specialties": string[], "faq": string[], "policies": string[] } }. Only include fields you suggest; omit null.`,
     userPrompt: "Suggest profile improvements based on the provider context.",
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash-lite",
   },
   "ai.provider.content_studio": {
     system: `You are a social media assistant for beauty and wellness providers. Given the provider context, suggest post captions and hashtags. Respond with a JSON object: { "post_captions": string[], "hashtags": string[], "short_description": string }. Keep captions concise and on-brand.`,
     userPrompt: "Suggest post captions, hashtags, and a short description for the provider.",
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash-lite",
   },
 };
 

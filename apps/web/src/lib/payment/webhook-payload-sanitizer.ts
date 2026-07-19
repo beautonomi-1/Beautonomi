@@ -10,12 +10,15 @@
 
 const KEEP_TOP_LEVEL = new Set([
   "event",
+  "type",
   "id",
   "domain",
   "created_at",
   "sent_at",
   "status",
   "channel",
+  "livemode",
+  "api_version",
 ]);
 
 const KEEP_DATA_FIELDS = new Set([
@@ -39,6 +42,13 @@ const KEEP_DATA_FIELDS = new Set([
   "refund_reference",
   "event",
   "payment_method",
+  "object",
+  "payment_intent",
+  "amount_received",
+  "amount_refunded",
+  "balance_transaction",
+  "customer",
+  "dispute",
 ]);
 
 const KEEP_METADATA_FIELDS = new Set([
@@ -79,7 +89,7 @@ function pick<T extends Record<string, unknown>>(obj: T, allowed: Set<string>): 
   return out;
 }
 
-/** Sanitize a Paystack/Yoco webhook event body for long-term retention. */
+/** Sanitize a Paystack/Yoco/Stripe webhook event body for long-term retention. */
 export function sanitizeWebhookPayload(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object") return {};
   const event = raw as Record<string, unknown>;
@@ -87,12 +97,29 @@ export function sanitizeWebhookPayload(raw: unknown): Record<string, unknown> {
 
   const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : undefined;
   if (data) {
-    const cleanData = pick(data, KEEP_DATA_FIELDS);
-    const metadata = data.metadata && typeof data.metadata === "object" ? (data.metadata as Record<string, unknown>) : undefined;
-    if (metadata) {
-      cleanData.metadata = pick(metadata, KEEP_METADATA_FIELDS);
+    // Stripe: { data: { object: { ... } } }
+    const stripeObject =
+      data.object && typeof data.object === "object"
+        ? (data.object as Record<string, unknown>)
+        : undefined;
+    if (stripeObject) {
+      const cleanObject = pick(stripeObject, KEEP_DATA_FIELDS);
+      const metadata =
+        stripeObject.metadata && typeof stripeObject.metadata === "object"
+          ? (stripeObject.metadata as Record<string, unknown>)
+          : undefined;
+      if (metadata) {
+        cleanObject.metadata = pick(metadata, KEEP_METADATA_FIELDS);
+      }
+      top.data = { object: cleanObject };
+    } else {
+      const cleanData = pick(data, KEEP_DATA_FIELDS);
+      const metadata = data.metadata && typeof data.metadata === "object" ? (data.metadata as Record<string, unknown>) : undefined;
+      if (metadata) {
+        cleanData.metadata = pick(metadata, KEEP_METADATA_FIELDS);
+      }
+      top.data = cleanData;
     }
-    top.data = cleanData;
   }
 
   return top;

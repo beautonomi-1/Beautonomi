@@ -133,6 +133,7 @@ export default function App() {
           <Route path="staff" element={<P.StaffListPage />} />
           <Route path="reviews" element={<P.ReviewsListPage />} />
           <Route path="user-reports" element={<P.UserReportsListPage />} />
+          <Route path="fraud-cases" element={<P.FraudCasesPage />} />
           <Route path="refunds" element={<P.RefundsListPage />} />
           <Route path="finance" element={<P.FinanceOverviewPage />} />
           <Route path="payouts" element={<P.PayoutsPage />} />
@@ -224,6 +225,8 @@ export default function App() {
             <Route path="feature-flags" element={<P.CpFeatureFlagsPage />} />
             <Route path="integrations" element={<P.CpIntegrationsHubPage />} />
             <Route path="integrations/didit" element={<P.CpIntegrationDiditPage />} />
+            <Route path="integrations/stripe" element={<P.CpIntegrationStripePage />} />
+            <Route path="country-launch-checklist" element={<P.CpCountryLaunchChecklistPage />} />
             <Route path="integrations/gemini" element={<P.CpIntegrationGeminiPage />} />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
             <Route path="integrations/wasender" element={<P.CpIntegrationWasenderPage />} />
@@ -236,6 +239,7 @@ export default function App() {
             <Route path="modules/ai/entitlements" element={<P.CpAiEntitlementsPage />} />
             <Route path="modules/ai/templates" element={<P.CpAiTemplatesPage />} />
             <Route path="modules/ai" element={<P.CpModuleAiPage />} />
+            <Route path="modules/agents" element={<P.CpAgenticConsolePage />} />
             <Route path="modules/ads" element={<P.CpModuleAdsPage />} />
             <Route path="safety-logs" element={<P.CpSafetyLogsPage />} />
             <Route path="maintenance/sign-ups" element={<P.CpMaintenanceSignupsPage />} />

@@ -67,6 +67,7 @@ const GROUPS: { label: string; description: string; items: CpLink[] }[] = [
       { title: "Ranking", to: "/admin/control-plane/modules/ranking", icon: Gauge },
       { title: "Ranking scores", to: "/admin/control-plane/modules/ranking/scores", icon: Scale },
       { title: "AI module", to: "/admin/control-plane/modules/ai", icon: Bot },
+      { title: "Agentic workforce", to: "/admin/control-plane/modules/agents", icon: Bot },
       { title: "AI usage", to: "/admin/control-plane/modules/ai/usage", icon: Activity },
       { title: "AI entitlements", to: "/admin/control-plane/modules/ai/entitlements", icon: Flag },
       { title: "AI templates", to: "/admin/control-plane/modules/ai/templates", icon: Layers },

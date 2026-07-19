@@ -116,7 +116,7 @@ export const FEATURE_FLAGS = {
   PROVIDER_VERIFICATION: 'provider_verification',
   STAFF_TIME_TRACKING: 'staff_time_tracking',
   LOYALTY_PROGRAM: 'loyalty_program',
-  REFERRAL_PROGRAM: 'referral_program',
+  REFERRAL_PROGRAM: 'referral_program', // see FEATURE_FLAG_KEYS.REFERRAL_PROGRAM
   GIFT_CARDS: 'gift_cards',
   REVIEWS_RATINGS: 'reviews_ratings',
   QR_CODES: 'qr_codes',

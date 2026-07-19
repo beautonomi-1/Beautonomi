@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { queryPaycloudOrder, closePaycloudOrder } from "@/lib/payments/paycloud-client";
 import { resolvePaycloudContextForProvider } from "@/lib/payments/paycloud-credentials";
 import { settlePaycloudPayment } from "@/lib/payments/settle-paycloud-payment";
+import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud-void";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
@@ -13,6 +14,8 @@ export type PaycloudReconcilePaymentRow = {
   merchant_order_no: string;
   paycloud_order_id?: string | null;
   amount: number;
+  tip_amount?: number | null;
+  cashback_amount?: number | null;
   expected_amount: number;
   currency: string;
   status: string;
@@ -20,6 +23,7 @@ export type PaycloudReconcilePaymentRow = {
   entity_id: string;
   processed_by?: string | null;
   trans_status?: string | null;
+  trans_type?: number | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string;
 };
@@ -90,7 +94,10 @@ export async function reconcilePaycloudPayment(
     const captured = Number(
       rawResult?.paid_amount ?? rawResult?.order_amount ?? payment.amount,
     );
-    const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured);
+    const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured, {
+      tipAmount: Number(payment.tip_amount ?? 0),
+      cashbackAmount: Number(payment.cashback_amount ?? 0),
+    });
     await supabase
       .from("provider_paycloud_payments")
       .update({
@@ -105,6 +112,18 @@ export async function reconcilePaycloudPayment(
       })
       .eq("id", payment.id);
 
+    // A completed VOID is a reversal, not a new capture — reverse the original rather
+    // than settling (which would insert a second positive payment / double-count).
+    if (isPaycloudVoidRow(payment)) {
+      await completePaycloudVoid(supabase, payment);
+      await supabase
+        .from("paycloud_terminals")
+        .update({ in_flight_payment_id: null })
+        .eq("id", payment.terminal_id);
+      return { payment_id: payment.id, action: "settled", reason: "void_reversed" };
+    }
+
+    let didSettle = false;
     if (matchStatus === "exact" || matchStatus === "over") {
       const settleResult = await settlePaycloudPayment(supabase, {
         paymentId: payment.id,
@@ -117,15 +136,24 @@ export async function reconcilePaycloudPayment(
         merchantOrderNo: payment.merchant_order_no,
         processedBy: payment.processed_by,
         currency: payment.currency,
+        tipAmount: Number(payment.tip_amount ?? 0),
       });
       await handlePaycloudPostSettle(supabase, payment, settleResult, captured);
+      didSettle = settleResult.settled;
     }
 
     await supabase
       .from("paycloud_terminals")
       .update({ in_flight_payment_id: null })
       .eq("id", payment.terminal_id);
-    return { payment_id: payment.id, action: "settled" };
+
+    if (didSettle) {
+      return { payment_id: payment.id, action: "settled" };
+    }
+    if (matchStatus === "under" || matchStatus === "mismatch") {
+      return { payment_id: payment.id, action: "unchanged", reason: `amount_${matchStatus}` };
+    }
+    return { payment_id: payment.id, action: "unchanged", reason: "settle_skipped" };
   }
 
   if (transStatus === PAYCLOUD_TRANS_STATUS.PROCESSING || transStatus === PAYCLOUD_TRANS_STATUS.CREATED) {

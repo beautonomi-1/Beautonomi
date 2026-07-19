@@ -16,6 +16,8 @@ export interface BookingEditProductLine {
   productVariantName?: string;
   quantity: number;
   unitPrice: number;
+  /** Max purchasable qty given current stock (null = untracked). */
+  maxStock?: number | null;
 }
 
 export interface BookingEditCatalogService {

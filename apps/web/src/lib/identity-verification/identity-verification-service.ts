@@ -754,6 +754,27 @@ export async function handleVerificationWebhook(
   } catch (err) {
     console.warn("[webhook/didit] slack notify failed:", err);
   }
+
+  try {
+    const { maybeOpenFraudCaseFromDiditSession } = await import("@/lib/fraud/maybe-open-fraud-from-didit");
+    if (isRejected) {
+      await maybeOpenFraudCaseFromDiditSession({
+        sessionId,
+        session,
+        outcome: "rejected",
+        rejectionReason,
+      });
+    } else if (nameMismatch && (isApproved || isPendingReview)) {
+      await maybeOpenFraudCaseFromDiditSession({
+        sessionId,
+        session,
+        outcome: "name_mismatch",
+        rejectionReason,
+      });
+    }
+  } catch (fraudErr) {
+    console.warn("[webhook/didit] fraud case open failed:", fraudErr);
+  }
 }
 
 async function storeEvent(

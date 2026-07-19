@@ -56,6 +56,48 @@ const CUSTOMER_KEYBOARD_ACCESSORY = {
   email: "customer-onboarding-email",
 } as const;
 
+const ONBOARDING_DRAFT_KEY = "beautonomi_customer_onboarding_draft_v1";
+const ONBOARDING_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+type OnboardingDraft = {
+  ts: number;
+  step: number;
+  fullName: string;
+  preferredName: string;
+  dobYear: string;
+  dobMonth: string;
+  dobDay: string;
+  hairTypes: string[];
+  skinType: string;
+  addressLine1: string;
+  city: string;
+  province: string;
+  postalCode: string;
+};
+
+async function loadOnboardingDraft(): Promise<Partial<OnboardingDraft>> {
+  try {
+    const raw = await AsyncStorage.getItem(ONBOARDING_DRAFT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as OnboardingDraft;
+    if (!parsed.ts || Date.now() - parsed.ts > ONBOARDING_DRAFT_TTL_MS) {
+      await AsyncStorage.removeItem(ONBOARDING_DRAFT_KEY);
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+async function saveOnboardingDraft(draft: OnboardingDraft): Promise<void> {
+  try {
+    await AsyncStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // ignore
+  }
+}
+
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
 export function onboardingDoneKey(uid?: string | null): string {
@@ -303,6 +345,8 @@ export default function CustomerOnboarding() {
     let cancelled = false;
     async function init() {
       try {
+        const draft = await loadOnboardingDraft();
+
         const oc = await api.get<{ completed?: boolean }>("/api/me/onboarding/complete");
         if (cancelled) return;
         if (!oc.error && oc.data?.completed === true) {
@@ -319,6 +363,19 @@ export default function CustomerOnboarding() {
         ]);
 
         if (cancelled) return;
+
+        if (draft.step) setStep(draft.step);
+        if (draft.fullName) setFullName(draft.fullName);
+        if (draft.preferredName) setPreferredName(draft.preferredName);
+        if (draft.dobYear) setDobYear(draft.dobYear);
+        if (draft.dobMonth) setDobMonth(draft.dobMonth);
+        if (draft.dobDay) setDobDay(draft.dobDay);
+        if (draft.hairTypes?.length) setHairTypes(draft.hairTypes);
+        if (draft.skinType) setSkinType(draft.skinType);
+        if (draft.addressLine1) setAddressLine1(draft.addressLine1);
+        if (draft.city) setCity(draft.city);
+        if (draft.province) setProvince(draft.province);
+        if (draft.postalCode) setPostalCode(draft.postalCode);
 
         if (profileRes.status === "fulfilled" && !profileRes.value?.error) {
           const p = profileRes.value?.data;
@@ -393,6 +450,42 @@ export default function CustomerOnboarding() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  useEffect(() => {
+    if (initializing) return;
+    const timer = setTimeout(() => {
+      void saveOnboardingDraft({
+        ts: Date.now(),
+        step,
+        fullName,
+        preferredName,
+        dobYear,
+        dobMonth,
+        dobDay,
+        hairTypes,
+        skinType,
+        addressLine1,
+        city,
+        province,
+        postalCode,
+      });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [
+    initializing,
+    step,
+    fullName,
+    preferredName,
+    dobYear,
+    dobMonth,
+    dobDay,
+    hairTypes,
+    skinType,
+    addressLine1,
+    city,
+    province,
+    postalCode,
+  ]);
 
   /* ── Step validation ── */
   const validateStep = useCallback((): string | null => {
@@ -815,6 +908,7 @@ export default function CustomerOnboarding() {
         return;
       }
       await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
+      await AsyncStorage.removeItem(ONBOARDING_DRAFT_KEY);
       if (userId) await setBiometricPromptPending(userId);
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});

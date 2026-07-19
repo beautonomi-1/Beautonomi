@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Pressable, Platform, Alert, TextInput, Switch, Linking } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,7 +31,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantDefaultCurrency, resolveCheckoutGateway } from "@/lib/config-bundle";
+import { getAppNativeVersion } from "@/lib/app-native-version";
 import {
   formatMoney,
   getHoldTimeRemaining,
@@ -815,6 +817,7 @@ export default function BookCheckoutScreen() {
   } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingStep, setProcessingStep] = useState<1 | 2 | 3 | undefined>(undefined);
   const [processingMessage, setProcessingMessage] = useState(() => t("checkout.processingPayment"));
   const consumeInFlightRef = useRef(false);
   const paystackHostedCheckout = useInAppPaystackCheckout();
@@ -1702,7 +1705,14 @@ export default function BookCheckoutScreen() {
     }
   }, [hold, hold_id, total]);
 
+  const checkoutGateway = resolveCheckoutGateway(getAppNativeVersion());
   const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
+  const cardOnlineEnabled =
+    checkoutGateway.gateway === "stripe"
+      ? true
+      : checkoutGateway.gateway === "paystack"
+        ? paystackEnabled
+        : paystackEnabled;
   const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
   const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
   const cashEnabled = hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform;
@@ -2292,14 +2302,35 @@ export default function BookCheckoutScreen() {
       return;
     }
 
-    if (paymentMethod === "card" && !paystackEnabled) {
+    if (paymentMethod === "card" && !cardOnlineEnabled) {
       setError(t("checkout.cardUnavailableMarket"));
       return;
+    }
+
+    // Stripe-region native gating: if the active market uses Stripe and this build
+    // cannot present it natively (older version / SDK not bundled), and the backend
+    // did not hand back a hosted checkout URL, prompt to update instead of failing
+    // silently mid-payment. Paystack markets are unaffected.
+    if (paymentMethod === "card" && cardAmountDueNow > 0.005) {
+      const gatewayDecision = resolveCheckoutGateway(getAppNativeVersion());
+      if (
+        gatewayDecision.gateway === "stripe" &&
+        !gatewayDecision.canCheckoutNatively &&
+        !gatewayDecision.useHostedWebFallback
+      ) {
+        setError(
+          t(
+            "checkout.updateRequiredForPayment",
+            "Please update the app to complete card payments in your region."
+          )
+        );
+        return;
+      }
     }
     if (
       paymentMethod === "card" &&
       cardAmountDueNow > 0.005 &&
-      !paystackEnabled &&
+      !cardOnlineEnabled &&
       !(selectedCardId && !useNewCard && savedCards.length > 0)
     ) {
       setError(t("checkout.cardUnavailableMarket"));
@@ -2591,12 +2622,14 @@ export default function BookCheckoutScreen() {
 
       if (paymentUrl && paymentMethod !== "cash" && paymentMethod !== "giftcard") {
         setProcessingPayment(true);
+        setProcessingStep(2);
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         if (Platform.OS !== "web") {
           // Important: close the blocking overlay before opening Paystack WebView.
           // Two RN modals competing can leave users stuck on "opening payment page".
           setProcessingPayment(false);
+          setProcessingStep(undefined);
           const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
           // Mark before opening browser so the deep-link return screen cooperates
           // if Android mounts book/paystack before waitForCheckout resolves.
@@ -2613,6 +2646,7 @@ export default function BookCheckoutScreen() {
 
           if (authResult.outcome === "cancel") {
             setProcessingPayment(false);
+            setProcessingStep(undefined);
             getAnalyticsClient()?.track("payment_cancelled", {
               booking_id: bookingId,
               reason: "cancel_action",
@@ -2631,6 +2665,7 @@ export default function BookCheckoutScreen() {
           if (authResult.outcome === "success" && authResult.url) {
             if (isCancelledPaystackUrl(authResult.url)) {
               setProcessingPayment(false);
+              setProcessingStep(undefined);
               getAnalyticsClient()?.track("payment_cancelled", {
                 booking_id: bookingId,
                 reason: "cancel_action",
@@ -2656,6 +2691,7 @@ export default function BookCheckoutScreen() {
           return;
         }
         setProcessingPayment(true);
+        setProcessingStep(3);
         setProcessingMessage(t("checkout.confirmingPayment"));
         if (saveCard) refreshCards();
 
@@ -2689,6 +2725,7 @@ export default function BookCheckoutScreen() {
 
         if (!paymentConfirmed) {
           setProcessingPayment(false);
+          setProcessingStep(undefined);
           if (bookingId) {
             trackBookingConfirmed(bookingId, paymentMethod, total);
             trackPaymentSuccess(bookingId, amountPaidOnCompletion);
@@ -2711,6 +2748,7 @@ export default function BookCheckoutScreen() {
         }
 
         setProcessingPayment(false);
+        setProcessingStep(undefined);
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaidOnCompletion);
         notifyRecurringSubscription({ bookingIdForSeriesCheck: confirmedBookingId ?? bookingId });
@@ -2728,6 +2766,7 @@ export default function BookCheckoutScreen() {
       }
     } catch (e) {
       setProcessingPayment(false);
+      setProcessingStep(undefined);
       setError(getApiErrorMessage(e, t("checkout.failedComplete")));
     } finally {
       consumeInFlightRef.current = false;
@@ -5375,7 +5414,7 @@ export default function BookCheckoutScreen() {
             )}
             <TouchableOpacity
               onPress={() => {
-                haptic.medium();
+                haptic.light();
                 handleComplete();
               }}
               disabled={
@@ -5387,24 +5426,32 @@ export default function BookCheckoutScreen() {
                 giftCardValidating
               }
               style={{
-                backgroundColor: isExpired ? "#D1D5DB" : Colors.primary,
+                backgroundColor: isExpired
+                  ? "#D1D5DB"
+                  : consuming
+                    ? "#CC0066"
+                    : Colors.primary,
                 borderRadius: 14,
                 paddingVertical: 16,
                 alignItems: "center",
                 flexDirection: "row",
                 justifyContent: "center",
                 opacity:
-                  consuming ||
-                  policyAckBlocksCheckout ||
-                  loyaltyValidating ||
-                  promoValidating ||
-                  giftCardValidating
+                  !consuming &&
+                  (policyAckBlocksCheckout ||
+                    loyaltyValidating ||
+                    promoValidating ||
+                    giftCardValidating)
                     ? 0.7
                     : 1,
               }}
               accessibilityRole="button"
               accessibilityLabel={
-                user ? t("checkout.completeBooking") : t("checkout.signInToComplete")
+                consuming
+                  ? (t("checkout.reservingSlot", "Reserving your slot…") as string)
+                  : user
+                    ? t("checkout.completeBooking")
+                    : t("checkout.signInToComplete")
               }
               accessibilityHint={
                 user
@@ -5424,9 +5471,14 @@ export default function BookCheckoutScreen() {
               {consuming ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <ActivityIndicator size="small" color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginLeft: 8 }}>
-                    {t("checkout.processing")}
-                  </Text>
+                  <Animated.Text
+                    key="reserving"
+                    entering={FadeIn.duration(200)}
+                    exiting={FadeOut.duration(150)}
+                    style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginLeft: 8 }}
+                  >
+                    {t("checkout.reservingSlot", "Reserving your slot…")}
+                  </Animated.Text>
                 </View>
               ) : (
                 <>
@@ -5455,7 +5507,11 @@ export default function BookCheckoutScreen() {
         </KeyboardAvoidingView>
       </View>
 
-      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+      <PaymentProcessingOverlay
+        visible={processingPayment}
+        message={processingMessage}
+        step={processingStep}
+      />
 
       <BookingProductPickerSheet
         visible={productPickerVisible}

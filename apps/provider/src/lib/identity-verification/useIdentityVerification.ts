@@ -47,6 +47,18 @@ const TERMINAL_STATUSES = new Set<NormalizedVerificationStatus>([
   "approved", "rejected", "expired", "abandoned", "errored",
 ]);
 
+const MAX_POLL_ATTEMPTS = 30;
+const MAX_REVIEW_POLL_ATTEMPTS = 90;
+
+function shouldStopPolling(
+  status: NormalizedVerificationStatus,
+  attempts: number,
+): boolean {
+  if (TERMINAL_STATUSES.has(status)) return true;
+  if (status === "pending_review") return attempts >= MAX_REVIEW_POLL_ATTEMPTS;
+  return attempts >= MAX_POLL_ATTEMPTS;
+}
+
 const STATUS_ENDPOINT: Record<"customer" | "provider", string> = {
   customer: "/api/me/identity-verification/status",
   provider: "/api/provider/identity-verification/status",
@@ -108,11 +120,11 @@ export function useIdentityVerification(
       try {
         const s = await fetchStatus();
         setStatus(s);
-        if (TERMINAL_STATUSES.has(s) || pollAttemptsRef.current >= 30) {
+        if (shouldStopPolling(s, pollAttemptsRef.current)) {
           stopPolling();
         }
       } catch {
-        if (pollAttemptsRef.current >= 30) stopPolling();
+        if (pollAttemptsRef.current >= MAX_REVIEW_POLL_ATTEMPTS) stopPolling();
       }
     }, pollIntervalMs);
   }, [fetchStatus, pollIntervalMs, stopPolling]);

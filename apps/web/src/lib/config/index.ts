@@ -23,6 +23,7 @@ import type {
   SafeSumsubModuleConfig,
   SafeAuraModuleConfig,
   SafeSafetyModuleConfig,
+  SafeAgentModuleConfig,
   SafeVerificationPolicy,
   SafeIdentityVerificationModuleConfig,
   TenantRegionMeta,
@@ -61,6 +62,11 @@ const DEFAULT_ON_DEMAND: SafeOnDemandModuleConfig = {
   waiting_screen_timeout_seconds: 45,
   provider_accept_window_seconds: 30,
   ui_copy: {},
+};
+
+const DEFAULT_AGENT_MODULE: SafeAgentModuleConfig = {
+  enabled: false,
+  shadow_mode: true,
 };
 
 const DEFAULT_AI_MODULE: SafeAiModuleConfig = {
@@ -312,6 +318,25 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     }
     if (tenantRegionConfig) {
+      let gatewayName: string | undefined;
+      let gatewayNativeMinVersion: string | undefined;
+      if (tenantRegionConfig.regionId) {
+        try {
+          const { getPrimaryOnlinePaymentGatewayForRegion } = await import(
+            "@/lib/regions/payment-gateways"
+          );
+          const gw = await getPrimaryOnlinePaymentGatewayForRegion(tenantRegionConfig.regionId);
+          if (gw?.gateway) {
+            gatewayName = gw.gateway.trim().toLowerCase();
+            const minV = gw.config?.native_min_version;
+            if (typeof minV === "string" && minV.trim()) {
+              gatewayNativeMinVersion = minV.trim();
+            }
+          }
+        } catch {
+          // Non-fatal: gateway metadata is advisory for client checkout branching.
+        }
+      }
       tenantRegionMeta = {
         code: tenantRegionConfig.regionCode,
         name: tenantRegionConfig.regionDisplayName,
@@ -320,6 +345,10 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
         timezone: tenantRegionConfig.defaultTimezone,
         phone_country_code: tenantRegionConfig.phoneCountryCode,
         ...(tenantRegionConfig.regionId ? { region_id: tenantRegionConfig.regionId } : {}),
+        ...(gatewayName ? { payment_gateway: gatewayName } : {}),
+        ...(gatewayNativeMinVersion
+          ? { gateway_native_min_version: gatewayNativeMinVersion }
+          : {}),
       };
       regionSettingsPublic = pickPublicRegionSettings(tenantRegionConfig.regionSettings);
     }
@@ -458,6 +487,18 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     kyb_required_for_business: verificationPolicyBundle.kybRequiredForBusiness,
   };
 
+  const agentModuleRes = await supabase
+    .from("agent_module_config")
+    .select("master_enabled, shadow_mode")
+    .eq("environment", environment)
+    .maybeSingle();
+  const agents: SafeAgentModuleConfig = agentModuleRes.data
+    ? {
+        enabled: Boolean(agentModuleRes.data.master_enabled),
+        shadow_mode: agentModuleRes.data.shadow_mode !== false,
+      }
+    : DEFAULT_AGENT_MODULE;
+
   const flagsWithCalV2: Record<string, ResolvedFlag> = {
     ...flags,
     // V2 is the new standard. Default to true. Can still be disabled per-tenant if an emergency rollback is needed.
@@ -509,6 +550,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       },
       aura,
       safety,
+      agents,
     },
     verification,
   };
