@@ -85,7 +85,7 @@ export async function runAdminCopilot(raw: unknown) {
   const deniedTools: string[] = [];
   let toolCalls = 0;
 
-  for (const planned of planToolCalls(input.question, module.environment)) {
+  for (const planned of planToolCalls(input.question, agentModule.environment)) {
     if (toolCalls >= MAX_TOOL_CALLS) break;
     const tool = getBoundTool(planned.name);
     if (!tool) continue;
@@ -97,7 +97,7 @@ export async function runAdminCopilot(raw: unknown) {
     const grant = await loadToolGrant(def.id, tool.name, tool.version);
     const ctx: AuthzContext = {
       principal,
-      module,
+      module: agentModule,
       operational: op,
       emergency,
       toolGrant: grant,
