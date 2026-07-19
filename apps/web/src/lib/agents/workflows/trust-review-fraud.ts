@@ -46,8 +46,8 @@ export async function runReviewFraudSweepForTenant(params: {
   tenantId: string;
   environment?: string;
 }): Promise<{ skipped: true; reason: string } | { casesProposed: number; errors: string[] }> {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const def = await loadAgentDefinition("trust-monitor");

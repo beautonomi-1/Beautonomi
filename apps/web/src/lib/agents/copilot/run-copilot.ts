@@ -46,8 +46,8 @@ function planToolCalls(question: string, environment: string): Array<{ name: str
 
 export async function runAdminCopilot(raw: unknown) {
   const input = copilotInputSchema.parse(raw);
-  const module = await loadAgentModuleConfig();
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig();
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { error: gate.reason, blockers: gate.blockers };
 
   const def = await loadAgentDefinition("admin-copilot");

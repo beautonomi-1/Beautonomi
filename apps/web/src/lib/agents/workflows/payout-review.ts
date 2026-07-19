@@ -11,8 +11,8 @@ export async function runPayoutReviewWorkflow(params: {
   recommendation: "approve" | "reject" | "hold";
   rationale: string;
 }) {
-  const module = await loadAgentModuleConfig();
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig();
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason };
 
   const def = await loadAgentDefinition("payout-review");
@@ -37,7 +37,7 @@ export async function runPayoutReviewWorkflow(params: {
 
   return {
     actionId: action.id,
-    shadowMode: module.shadowMode,
+    shadowMode: agentModule.shadowMode,
     requiresMakerChecker: true,
     note: "Execution requires human approval via Agent Inbox + deterministic posting service",
   };

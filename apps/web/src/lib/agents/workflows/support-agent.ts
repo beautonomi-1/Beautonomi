@@ -213,8 +213,8 @@ export async function runSupportTriageWorkflow(params: {
       shadowMode: boolean;
     }
 > {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const def = await loadAgentDefinition("support-triage");
@@ -256,7 +256,7 @@ export async function runSupportTriageWorkflow(params: {
     workflow_run_id: runId,
     trigger_kind: "event",
     status: "running",
-    shadow_mode: module.shadowMode,
+    shadow_mode: agentModule.shadowMode,
   });
 
   const context = await fetchSupportTicketContext(supabase, ticket).catch(() => null);
@@ -371,7 +371,7 @@ export async function runSupportTriageWorkflow(params: {
     })
     .eq("id", runId);
 
-  return { runId, classification, proposals, shadowMode: module.shadowMode };
+  return { runId, classification, proposals, shadowMode: agentModule.shadowMode };
 }
 
 function isDuplicateProposal(err: unknown): boolean {

@@ -90,6 +90,7 @@ const ALLOW_LIST_PREFIXES = [
   "src/app/api/public/",
   "src/app/api/webhooks/",
   "src/app/api/payments/webhook",
+  "src/app/api/payments/stripe/webhook",
   "src/app/api/cron/",
   "src/app/api/health",
   "src/app/api/sentry-test",

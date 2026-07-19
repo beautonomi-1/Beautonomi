@@ -11,8 +11,8 @@ import { assertAgentReadAllowed } from "../safety-gate";
 import { readSystemHealth } from "../tools/implementations";
 
 export async function runOpsSentinelWorkflow(params: { tenantId: string; environment: string }) {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason };
 
   const def = await loadAgentDefinition("ops-sentinel");
@@ -41,7 +41,7 @@ export async function runOpsSentinelWorkflow(params: { tenantId: string; environ
     workflow_run_id: runId,
     trigger_kind: "cron",
     status: "running",
-    shadow_mode: module.shadowMode,
+    shadow_mode: agentModule.shadowMode,
   });
 
   const health = await readSystemHealth(principal, params.environment);
@@ -60,7 +60,7 @@ export async function runOpsSentinelWorkflow(params: { tenantId: string; environ
     status: health.status,
     checks: health.checks,
     modelUsed: route.modelId,
-    shadowMode: module.shadowMode,
+    shadowMode: agentModule.shadowMode,
     findings: health.checks.filter((c) => !c.ok).map((c) => ({
       statement: `Check ${c.name} failed`,
       kind: "platform_fact" as const,
@@ -73,5 +73,5 @@ export async function runOpsSentinelWorkflow(params: { tenantId: string; environ
     .update({ status: "completed", ended_at: new Date().toISOString() })
     .eq("id", runId);
 
-  return { runId, summary, shadowMode: module.shadowMode };
+  return { runId, summary, shadowMode: agentModule.shadowMode };
 }

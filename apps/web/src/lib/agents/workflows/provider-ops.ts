@@ -118,8 +118,8 @@ export async function runProviderOpsSweepForTenant(params: {
   tenantId: string;
   environment?: string;
 }): Promise<{ skipped: true; reason: string } | { counts: ProviderOpsCounts }> {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const def = await loadAgentDefinition("ops-sentinel");
@@ -336,8 +336,8 @@ export async function runProviderDigestSweepForTenant(params: {
   tenantId: string;
   environment?: string;
 }): Promise<{ skipped: true; reason: string } | { digests: number; errors: string[] }> {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const def = await loadAgentDefinition("ops-sentinel");

@@ -63,8 +63,8 @@ export function buildCsatRecoveryDraft(params: { ticketNumber: string; customerN
 export async function runSupportFollowUpSweep(environment?: string): Promise<
   { skipped: true; reason: string } | { counts: SupportFollowUpCounts }
 > {
-  const module = await loadAgentModuleConfig(environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const def = await loadAgentDefinition("support-triage");

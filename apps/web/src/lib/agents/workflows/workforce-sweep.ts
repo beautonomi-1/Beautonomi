@@ -47,8 +47,8 @@ export async function runWorkforceSweepForTenant(params: {
   tenantId: string;
   environment: string;
 }): Promise<{ skipped: true; reason: string } | { counts: SweepCounts }> {
-  const module = await loadAgentModuleConfig(params.environment);
-  const gate = assertAgentReadAllowed({ masterEnabled: module.masterEnabled });
+  const agentModule = await loadAgentModuleConfig(params.environment);
+  const gate = assertAgentReadAllowed({ masterEnabled: agentModule.masterEnabled });
   if (!gate.allowed) return { skipped: true, reason: gate.reason ?? "gated" };
 
   const supabase = getSupabaseAdmin();

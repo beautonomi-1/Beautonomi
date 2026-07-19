@@ -39,10 +39,10 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return handleApiError(new Error("Forbidden"), "Action not in admin tenant scope", "FORBIDDEN", 403);
     }
 
-    const module = await loadAgentModuleConfig();
+    const agentModule = await loadAgentModuleConfig();
     const gate = assertAgentMutationAllowed({
-      masterEnabled: module.masterEnabled,
-      shadowMode: module.shadowMode,
+      masterEnabled: agentModule.masterEnabled,
+      shadowMode: agentModule.shadowMode,
       rlsHarnessGreen: process.env.AGENT_RLS_HARNESS_GREEN === "true",
     });
     if (!gate.allowed) {
