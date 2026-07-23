@@ -38,6 +38,7 @@ interface OfferRow {
   price?: number;
   currency?: string;
   request_id?: string;
+  provider_id?: string | null;
   location_id?: string | null;
   request?: RequestRow | null;
 }

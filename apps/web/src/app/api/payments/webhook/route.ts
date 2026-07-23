@@ -446,7 +446,7 @@ export async function POST(request: Request) {
             );
             await openFraudCaseFromPaystackDispute({
               eventType,
-              eventId,
+              eventId: eventId != null ? String(eventId) : undefined,
               reference: String(disputeRef),
               disputeData: disputeData as Record<string, unknown> | null,
               supabase: supabase as never,
