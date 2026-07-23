@@ -24,6 +24,8 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
 
 vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: vi.fn(),
+  requireOwnerOrEditSettings: vi.fn(),
+  requireAnyPermission: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -121,7 +123,7 @@ function buildAdminMock(rpcResult: { data: any; error: any }) {
 }
 
 async function setupMocks(adminMock: ReturnType<typeof buildAdminMock>) {
-  const { requirePermission } = await import("@/lib/auth/requirePermission");
+  const { requireOwnerOrEditSettings } = await import("@/lib/auth/requirePermission");
   const { getProviderIdForUser } = await import("@/lib/supabase/api-helpers");
   const { getSupabaseServer } = await import("@/lib/supabase/server");
   const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
@@ -132,7 +134,7 @@ async function setupMocks(adminMock: ReturnType<typeof buildAdminMock>) {
   const { checkPayoutRequestRateLimit } = await import("@/lib/rate-limit/payout-request");
   const { getProviderReportContext } = await import("@/lib/reports/provider-report-utils");
 
-  vi.mocked(requirePermission).mockResolvedValue({
+  vi.mocked(requireOwnerOrEditSettings).mockResolvedValue({
     authorized: true,
     user: { id: owner.id, role: owner.role },
   });

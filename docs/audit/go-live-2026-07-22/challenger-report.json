@@ -1,0 +1,43 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "agent": 19,
+  "generated_at": "2026-07-22T19:30:48.863Z",
+  "challenged_score_increase": true,
+  "rejected_findings": [
+    {
+      "id": "FND-P1-002-resolved-claim",
+      "reason": "advanced/route.ts:104-108 still no-op; prior resolved status incorrect"
+    },
+    {
+      "id": "post-remediation-84pct-claim",
+      "reason": "Cannot reach 84% with 2 open P0s and local-only evidence cap"
+    }
+  ],
+  "reclassified_findings": [
+    {
+      "id": "FND-P0-002",
+      "from": "open",
+      "to": "partial",
+      "reason": "money-path.spec.ts adds API smoke but not full money E2E"
+    },
+    {
+      "id": "FND-P1-017",
+      "from": "open",
+      "to": "partial",
+      "reason": "migration 780 provides repo evidence for legal CMS content"
+    },
+    {
+      "id": "INT-011",
+      "from": "mock",
+      "to": "partial",
+      "reason": "Stripe booking processor shipped; Connect lifecycle incomplete"
+    }
+  ],
+  "additional_blockers": [
+    "FND-P1-024",
+    "FND-P1-002-regression"
+  ],
+  "confidence_adjusted_recommendation": "no_go_pending_critical_remediation",
+  "confidence": "high",
+  "notes": "Score capped at 74% despite net-new features (Stripe, fraud, agent workforce) because unresolved P0s and staging-gated journeys override numeric readiness."
+}

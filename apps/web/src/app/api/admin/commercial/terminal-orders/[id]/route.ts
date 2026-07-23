@@ -118,6 +118,19 @@ export async function PATCH(
       }
     }
 
+    if (validation.data.order_status === "dispatched") {
+      const integrationStatus = String(
+        (existing as { integration_setup_status?: string }).integration_setup_status ?? "",
+      );
+      if (integrationStatus === "awaiting_merchant_onboarding") {
+        return errorResponse(
+          "Cannot dispatch: merchant onboarding must be approved first.",
+          "MERCHANT_ONBOARDING_REQUIRED",
+          409,
+        );
+      }
+    }
+
     const updates = {
       ...patchFields,
       ...(record_payment && !patchFields.invoice_status ? { invoice_status: "paid" as const } : {}),

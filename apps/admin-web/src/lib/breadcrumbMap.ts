@@ -94,6 +94,8 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
 
   // Commercial Operations (Terminal)
   "commercial/terminal-insights": { label: "Terminal Insights", parentHref: null },
+  "commercial/terminal-onboarding": { label: "Terminal Onboarding", parentHref: null },
+  "commercial/terminal-onboarding/[id]": { label: "Application", parentHref: "/admin/commercial/terminal-onboarding" },
   "commercial/terminal-products": { label: "Terminal Products", parentHref: null },
   "commercial/terminal-orders": { label: "Terminal Orders", parentHref: null },
   "commercial/terminal-campaigns": { label: "Terminal Campaigns", parentHref: null },
@@ -165,8 +167,8 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "integrations/paycloud-operations": { label: "PayCloud Operations", parentHref: "/admin/integrations/paycloud" },
   "control-plane/integrations": { label: "Integrations Hub", parentHref: "/admin/control-plane/overview" },
   "control-plane/integrations/didit": { label: "Didit (KYC)", parentHref: "/admin/control-plane/integrations" },
-  "control-plane/integrations/gemini": { label: "Gemini (AI)", parentHref: "/admin/control-plane/integrations" },
-  "control-plane/integrations/aura": { label: "Aura", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/gemini": { label: "Gemini Credentials", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/aura": { label: "Aura (Trust & Safety)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/wasender": { label: "Wasender", parentHref: "/admin/control-plane/integrations" },
 
   // Platform & Access
@@ -185,22 +187,22 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
 
   // Control Plane (Platform Advanced)
   "control-plane/overview": { label: "Platform Advanced", parentHref: null },
-  "control-plane/feature-flags": { label: "Feature Flags (Environment)", parentHref: "/admin/control-plane/overview" },
+  "control-plane/feature-flags": { label: "Preview & Resolve", parentHref: "/admin/control-plane/overview" },
   "control-plane/audit-log": { label: "Config Change Log", parentHref: "/admin/audit-logs" },
   "control-plane/compliance": { label: "Compliance Purge", parentHref: "/admin/settings" },
   "control-plane/tenant-reset": { label: "Tenant Reset", parentHref: "/admin/settings" },
   "control-plane/maintenance": { label: "Maintenance", parentHref: "/admin/control-plane/overview" },
-  "control-plane/maintenance/sign-ups": { label: "Sign-up Maintenance", parentHref: "/admin/control-plane/maintenance" },
+  "control-plane/maintenance/sign-ups": { label: "Sign-up Notifications", parentHref: "/admin/control-plane/maintenance" },
   "control-plane/modules/distance": { label: "Distance Module", parentHref: "/admin/control-plane/overview" },
   "control-plane/modules/on-demand": { label: "On-Demand Module", parentHref: "/admin/control-plane/overview" },
   "control-plane/modules/safety": { label: "Safety Module", parentHref: "/admin/control-plane/overview" },
   "control-plane/modules/ranking": { label: "Ranking Module", parentHref: "/admin/control-plane/overview" },
   "control-plane/modules/ranking/scores": { label: "Ranking Scores", parentHref: "/admin/control-plane/modules/ranking" },
-  "control-plane/modules/ai": { label: "AI Module", parentHref: "/admin/control-plane/overview" },
+  "control-plane/modules/ai": { label: "Provider AI", parentHref: "/admin/control-plane/overview" },
   "control-plane/modules/agents": { label: "Agentic Console", parentHref: "/admin/control-plane/overview" },
-  "control-plane/modules/ai/usage": { label: "AI Usage", parentHref: "/admin/control-plane/modules/ai" },
-  "control-plane/modules/ai/entitlements": { label: "AI Entitlements", parentHref: "/admin/control-plane/modules/ai" },
-  "control-plane/modules/ai/templates": { label: "AI Templates", parentHref: "/admin/control-plane/modules/ai" },
+  "control-plane/modules/ai/usage": { label: "Usage", parentHref: "/admin/control-plane/modules/ai" },
+  "control-plane/modules/ai/entitlements": { label: "Entitlements", parentHref: "/admin/control-plane/modules/ai" },
+  "control-plane/modules/ai/templates": { label: "Templates", parentHref: "/admin/control-plane/modules/ai" },
   "control-plane/modules/ads": { label: "Ads Module", parentHref: "/admin/control-plane/overview" },
 };
 

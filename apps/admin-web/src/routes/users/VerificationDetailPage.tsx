@@ -241,7 +241,7 @@ export function VerificationDetailPage() {
           </div>
         ) : (
           <p className="text-sm text-gray-600">
-            No uploaded file on this record (for example Sumsub automated verification). Use Sumsub or reset below so the
+            No uploaded file on this record (for example Didit automated verification). Use Didit or reset below so the
             customer can re-verify.
           </p>
         )}
@@ -260,7 +260,7 @@ export function VerificationDetailPage() {
                 if (
                   typeof window !== "undefined" &&
                   !window.confirm(
-                    "Reset this user's identity verification state? They will be able to upload or run Sumsub again.",
+                    "Reset this user's identity verification state? They will be able to upload or run Didit again.",
                   )
                 ) {
                   return;

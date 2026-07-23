@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScanBarcode, Search, Loader2 } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 
 export interface BarcodeProduct {
@@ -17,6 +17,8 @@ export interface BarcodeProduct {
   retail_price?: number;
   image_urls?: string[] | null;
   has_variants?: boolean;
+  retail_sales_enabled?: boolean;
+  track_stock_quantity?: boolean;
 }
 
 export interface BarcodeVariant {
@@ -31,14 +33,33 @@ export interface BarcodeVariant {
 export interface BarcodeLookupResult {
   product: BarcodeProduct;
   variant?: BarcodeVariant;
+  needs_variant?: boolean;
+  variants?: BarcodeVariant[];
 }
 
 interface BarcodeLookupProps {
-  onSelect: (product: BarcodeProduct, variant?: BarcodeVariant) => void;
+  onSelect: (result: BarcodeLookupResult) => void;
   placeholder?: string;
   className?: string;
   /** Optional: label for the input */
   label?: string;
+  autoFocus?: boolean;
+}
+
+function mapApiErrorMessage(error: unknown): string {
+  if (error instanceof FetchError) {
+    switch (error.code) {
+      case "NOT_FOR_RETAIL":
+        return "This product is not available for retail sale";
+      case "AMBIGUOUS_BARCODE":
+        return "Multiple products match this code — fix duplicates in your catalogue";
+      case "NOT_FOUND":
+        return "No product found for this barcode or SKU";
+      default:
+        return error.message || "No product found for this barcode or SKU";
+    }
+  }
+  return "No product found for this barcode or SKU";
 }
 
 export function BarcodeLookup({
@@ -46,11 +67,18 @@ export function BarcodeLookup({
   placeholder = "Scan or enter barcode / SKU",
   className,
   label = "Find by barcode",
+  autoFocus = true,
 }: BarcodeLookupProps) {
   const [value, setValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
+    }
+  }, [autoFocus]);
 
   const handleLookup = async () => {
     const q = value.trim();
@@ -68,17 +96,17 @@ export function BarcodeLookup({
         params.set("sku", q);
       }
       const res = await fetcher.get<{ data: BarcodeLookupResult }>(
-        `/api/provider/products/by-barcode?${params.toString()}`
+        `/api/provider/products/by-barcode?${params.toString()}`,
       );
       const data = res.data;
       if (data?.product) {
-        onSelect(data.product, data.variant);
+        onSelect(data);
         setValue("");
       } else {
         setError("No product found");
       }
-    } catch {
-      setError("No product found for this barcode or SKU");
+    } catch (err) {
+      setError(mapApiErrorMessage(err));
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();

@@ -51,3 +51,28 @@ export async function isPaycloudSameTerminalEnabledForProvider(
   const tenantId = (provider as { tenant_id?: string | null } | null)?.tenant_id ?? null;
   return isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD_SAME_TERMINAL, tenantId);
 }
+
+async function tenantIdForProvider(supabase: any, providerId: string): Promise<string | null> {
+  const { data: provider } = await supabase
+    .from("providers")
+    .select("tenant_id")
+    .eq("id", providerId)
+    .single();
+  return (provider as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+}
+
+export async function isPaycloudQrEnabledForProvider(
+  supabase: any,
+  providerId: string,
+): Promise<boolean> {
+  const tenantId = await tenantIdForProvider(supabase, providerId);
+  return isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD_QR, tenantId);
+}
+
+export async function isPaycloudCashbackEnabledForProvider(
+  supabase: any,
+  providerId: string,
+): Promise<boolean> {
+  const tenantId = await tenantIdForProvider(supabase, providerId);
+  return isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD_CASHBACK, tenantId);
+}

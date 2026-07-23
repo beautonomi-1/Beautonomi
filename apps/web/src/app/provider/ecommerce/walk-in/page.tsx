@@ -17,7 +17,7 @@ import {
   History,
   ChevronRight,
 } from "lucide-react";
-import { BarcodeLookup } from "@/components/provider-portal/BarcodeLookup";
+import { BarcodeLookup, type BarcodeLookupResult, type BarcodeVariant } from "@/components/provider-portal/BarcodeLookup";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { isCompleteE164 } from "@/lib/phone";
@@ -42,6 +42,8 @@ interface Product {
   id: string;
   name: string;
   brand: string | null;
+  sku?: string | null;
+  barcode?: string | null;
   retail_price: number;
   /** Percentage; matches `POST /api/provider/product-sales` line tax. */
   tax_rate: number;
@@ -53,6 +55,7 @@ interface Product {
   variants: Variant[];
   image_urls: string[];
   is_active: boolean;
+  track_stock_quantity?: boolean;
 }
 
 interface CartItem {
@@ -70,6 +73,49 @@ interface CartItem {
 /** Unique key per cart line (product + optional variant). */
 function cartLineKey(productId: string, variantId?: string) {
   return variantId ? `${productId}::${variantId}` : productId;
+}
+
+function formatBarcodeVariantName(v: BarcodeVariant): string {
+  const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
+  if (vals.length) return vals.map(String).join(" / ");
+  if (v.sku?.trim()) return v.sku.trim();
+  return "Variant";
+}
+
+function buildWalkInProductFromBarcodeHit(
+  result: BarcodeLookupResult,
+  existing: Product | undefined,
+  taxRate: number,
+): Product {
+  if (existing) return existing;
+  const { product, variant, variants: apiVariants } = result;
+  const mappedVariants: Variant[] = (apiVariants ?? []).map((v) => ({
+    id: v.id,
+    variant_name: formatBarcodeVariantName(v),
+    retail_price: Number(v.retail_price ?? product.retail_price ?? 0),
+    quantity: Number(v.quantity ?? 0),
+    sku: v.sku ?? null,
+  }));
+  const effectiveQty = variant
+    ? Number(variant.quantity ?? 0)
+    : mappedVariants.length > 0
+      ? mappedVariants.reduce((sum, v) => sum + v.quantity, 0)
+      : Number(product.quantity ?? 0);
+  const untracked = product.track_stock_quantity === false;
+  return {
+    id: product.id,
+    name: product.name ?? "Product",
+    brand: null,
+    retail_price: Number(variant?.retail_price ?? product.retail_price ?? 0),
+    tax_rate: taxRate,
+    quantity: Number(product.quantity ?? 0),
+    effective_quantity: untracked ? 99_999 : effectiveQty,
+    has_variants: Boolean(product.has_variants || result.needs_variant),
+    variants: mappedVariants,
+    image_urls: product.image_urls ?? [],
+    is_active: true,
+    track_stock_quantity: product.track_stock_quantity ?? true,
+  };
 }
 
 function walkInCartTotals(cart: CartItem[], taxRatePercent = 0) {
@@ -123,6 +169,7 @@ export default function WalkInSalePage() {
   const [paycloudLinkedTotal, setPaycloudLinkedTotal] = useState<number | null>(null);
   const [walkInTaxRate, setWalkInTaxRate] = useState(0);
   const [loadError, setLoadError] = useState("");
+  const [barcodeScanError, setBarcodeScanError] = useState("");
 
   /** Product awaiting variant selection before being added to the cart. */
   const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
@@ -137,12 +184,18 @@ export default function WalkInSalePage() {
           res.data.products
             // Use effective_quantity (sums variant stock for variant-based products)
             // so variant-only catalogs appear in the grid.
-            .filter((p) => p.is_active && (p.effective_quantity ?? p.quantity) > 0)
+            .filter(
+              (p) =>
+                p.is_active &&
+                ((p as { track_stock_quantity?: boolean }).track_stock_quantity === false ||
+                  (p.effective_quantity ?? p.quantity) > 0),
+            )
             .map((p) => ({
               ...p,
               retail_price: Number(p.retail_price),
               effective_quantity: Number(p.effective_quantity ?? p.quantity),
               tax_rate: Number((p as { tax_rate?: unknown }).tax_rate ?? 0),
+              track_stock_quantity: (p as { track_stock_quantity?: boolean }).track_stock_quantity ?? true,
               variants: (p.variants || []).map((v: any) => ({
                 id: v.id,
                 variant_name: v.variant_name || v.name || "Variant",
@@ -195,9 +248,16 @@ export default function WalkInSalePage() {
 
   const filtered = useMemo(() =>
     products.filter(
-      (p) =>
-        (p?.name ?? "").toLowerCase().includes((search ?? "").toLowerCase()) ||
-        (p?.brand ?? "").toLowerCase().includes((search ?? "").toLowerCase()),
+      (p) => {
+        const q = (search ?? "").toLowerCase();
+        if (!q) return true;
+        return (
+          (p?.name ?? "").toLowerCase().includes(q) ||
+          (p?.brand ?? "").toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q)
+        );
+      },
     ),
   [products, search]);
 
@@ -205,7 +265,12 @@ export default function WalkInSalePage() {
   const addToCart = useCallback((product: Product, variant?: Variant) => {
     const key = cartLineKey(product.id, variant?.id);
     const unitPrice = variant ? variant.retail_price : product.retail_price;
-    const availableQty = variant ? variant.quantity : (product.effective_quantity ?? product.quantity);
+    const untracked = product.track_stock_quantity === false;
+    const availableQty = untracked
+      ? 99_999
+      : variant
+        ? variant.quantity
+        : (product.effective_quantity ?? product.quantity);
 
     setCart((prev) => {
       const existing = prev.find((c) => cartLineKey(c.product.id, c.variantId) === key);
@@ -237,6 +302,48 @@ export default function WalkInSalePage() {
       addToCart(product);
     }
   };
+
+  const handleBarcodeSelect = useCallback(
+    (result: BarcodeLookupResult) => {
+      const full = products.find((p) => p.id === result.product.id);
+      const target = buildWalkInProductFromBarcodeHit(result, full, walkInTaxRate);
+
+      if (result.needs_variant || (target.has_variants && !result.variant)) {
+        setBarcodeScanError("");
+        setVariantPickerProduct(target);
+        return;
+      }
+
+      const untrackedStock =
+        result.product.track_stock_quantity === false || target.track_stock_quantity === false;
+
+      if (result.variant) {
+        const v: Variant = {
+          id: result.variant.id,
+          variant_name: formatBarcodeVariantName(result.variant),
+          retail_price: Number(result.variant.retail_price ?? target.retail_price),
+          quantity: Number(result.variant.quantity ?? 0),
+          sku: result.variant.sku ?? null,
+        };
+        if (!untrackedStock && v.quantity <= 0) {
+          setBarcodeScanError(`${target.name} — ${v.variant_name} is out of stock`);
+          return;
+        }
+        setBarcodeScanError("");
+        addToCart(target, v);
+        return;
+      }
+
+      const stock = target.effective_quantity ?? target.quantity;
+      if (!untrackedStock && stock <= 0) {
+        setBarcodeScanError(`${target.name} is out of stock`);
+        return;
+      }
+      setBarcodeScanError("");
+      addToCart(target);
+    },
+    [products, addToCart, walkInTaxRate],
+  );
 
   const updateQty = (key: string, delta: number) => {
     setCart((prev) =>
@@ -468,54 +575,11 @@ export default function WalkInSalePage() {
                 <BarcodeLookup
                   label="Scan or enter barcode"
                   placeholder="Barcode / SKU"
-                  onSelect={(product, variant) => {
-                    const full = products.find((p) => p.id === product.id);
-                    if (full) {
-                      if (variant) {
-                        const v: Variant = {
-                          id: variant.id,
-                          variant_name: (variant as any).variant_name || (variant as any).name || "Variant",
-                          retail_price: Number(variant.retail_price ?? full.retail_price),
-                          quantity: Number(variant.quantity ?? 0),
-                          sku: (variant as any).sku ?? null,
-                        };
-                        if (v.quantity > 0) addToCart(full, v);
-                      } else {
-                        if ((full.effective_quantity ?? full.quantity) > 0) addToCart(full);
-                      }
-                    } else {
-                      // Product not in the filtered list (e.g. scanned out-of-grid product)
-                      const qty = variant?.quantity ?? (product as any).quantity ?? 0;
-                      if (qty > 0) {
-                        const synthetic: Product = {
-                          id: product.id,
-                          name: (product as any).name ?? "Product",
-                          brand: null,
-                          retail_price: Number(variant?.retail_price ?? (product as any).retail_price ?? 0),
-                          tax_rate: Number((product as any).tax_rate ?? 0),
-                          quantity: qty,
-                          effective_quantity: qty,
-                          has_variants: false,
-                          variants: [],
-                          image_urls: (product as any).image_urls ?? [],
-                          is_active: true,
-                        };
-                        addToCart(
-                          synthetic,
-                          variant
-                            ? {
-                                id: variant.id,
-                                variant_name: (variant as any).variant_name || "Variant",
-                                retail_price: Number(variant.retail_price ?? synthetic.retail_price),
-                                quantity: qty,
-                                sku: (variant as any).sku ?? null,
-                              }
-                            : undefined,
-                        );
-                      }
-                    }
-                  }}
+                  onSelect={handleBarcodeSelect}
                 />
+                {barcodeScanError ? (
+                  <p className="mt-1.5 text-xs text-red-600">{barcodeScanError}</p>
+                ) : null}
               </div>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />

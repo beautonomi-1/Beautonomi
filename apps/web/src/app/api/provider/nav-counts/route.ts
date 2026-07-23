@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getProviderIdForUser, handleApiError, notFoundResponse, requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  dashboardBookingLocationOrFilter,
+  dashboardGroupBookingLocationOrFilter,
+} from "@/lib/server/provider/dashboard-booking-location-filter";
 
 const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "ready_for_collection", "shipped"];
 
@@ -23,6 +27,12 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const locationId = request.nextUrl.searchParams.get("location_id")?.trim() || null;
+    const bookingLocationOrFilter = locationId ? dashboardBookingLocationOrFilter(locationId) : null;
+    const groupLocationOrFilter = locationId
+      ? dashboardGroupBookingLocationOrFilter(locationId)
+      : null;
+
     const startOfTodayUtc = new Date();
     startOfTodayUtc.setUTCHours(0, 0, 0, 0);
     const staleCutoffIso = startOfTodayUtc.toISOString();
@@ -38,29 +48,45 @@ export async function GET(request: NextRequest) {
       openReturnRequests,
       pendingCustomRequests,
     ] = await Promise.all([
-      supabase
-        .from("bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .in("status", ["pending", "pending_payment"]),
+      (() => {
+        let q = supabase
+          .from("bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("provider_id", providerId)
+          .in("status", ["pending", "pending_payment"]);
+        if (bookingLocationOrFilter) q = q.or(bookingLocationOrFilter);
+        return q;
+      })(),
       // Group bookings in pending state count towards the provider's pending badge
-      supabase
-        .from("group_bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .in("status", ["pending"]),
-      supabase
-        .from("bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .in("status", ["pending", "pending_payment"])
-        .lt("scheduled_at", staleCutoffIso),
-      supabase
-        .from("group_bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .eq("status", "pending")
-        .lt("scheduled_at", staleCutoffIso),
+      (() => {
+        let q = supabase
+          .from("group_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("provider_id", providerId)
+          .in("status", ["pending"]);
+        if (groupLocationOrFilter) q = q.or(groupLocationOrFilter);
+        return q;
+      })(),
+      (() => {
+        let q = supabase
+          .from("bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("provider_id", providerId)
+          .in("status", ["pending", "pending_payment"])
+          .lt("scheduled_at", staleCutoffIso);
+        if (bookingLocationOrFilter) q = q.or(bookingLocationOrFilter);
+        return q;
+      })(),
+      (() => {
+        let q = supabase
+          .from("group_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("provider_id", providerId)
+          .eq("status", "pending")
+          .lt("scheduled_at", staleCutoffIso);
+        if (groupLocationOrFilter) q = q.or(groupLocationOrFilter);
+        return q;
+      })(),
       (supabase.from("product_orders") as any)
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)

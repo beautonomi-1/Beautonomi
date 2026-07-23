@@ -282,8 +282,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "PayCloud Operations", href: "/admin/integrations/paycloud-operations", icon: Terminal, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
-      { title: "Gemini (AI)", href: "/admin/control-plane/integrations/gemini", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
-      { title: "Aura", href: "/admin/control-plane/integrations/aura", icon: Zap, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Gemini credentials", href: "/admin/control-plane/integrations/gemini", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Aura (trust & safety)", href: "/admin/control-plane/integrations/aura", icon: Zap, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
     ],
   },
 
@@ -292,6 +292,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Commercial Operations",
     items: [
       { title: "Terminal Insights", href: "/admin/commercial/terminal-insights", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
+      { title: "Terminal Onboarding", href: "/admin/commercial/terminal-onboarding", icon: Terminal, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Products", href: "/admin/commercial/terminal-products", icon: Package, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Orders", href: "/admin/commercial/terminal-orders", icon: ShoppingCart, section: ADMIN_SECTION_COMMERCIAL },
       { title: "Terminal Campaigns", href: "/admin/commercial/terminal-campaigns", icon: Megaphone, section: ADMIN_SECTION_COMMERCIAL },

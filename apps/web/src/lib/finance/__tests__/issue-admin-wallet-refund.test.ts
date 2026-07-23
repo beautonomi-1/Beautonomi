@@ -131,6 +131,27 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
       }
 
       if (table === "payment_transactions") {
+        const claimSelect = () =>
+          Promise.resolve({
+            data: txnUpdateError ? [] : [{ id: "claimed-txn" }],
+            error: txnUpdateError ? { message: txnUpdateError } : null,
+          });
+        const claimChain: Record<string, unknown> = {
+          eq: () => claimChain,
+          in: () => claimChain,
+          or: () => claimChain,
+          select: claimSelect,
+          then: undefined,
+        };
+        // Allow `await claimQuery.select("id")` and also Promise-like terminal eq for rollback.
+        (claimChain as { eq: (c?: string, v?: unknown) => unknown }).eq = (
+          _c?: string,
+          _v?: unknown,
+        ) => {
+          // Rollback path: update().eq(id) without further chain → Promise
+          // Claim path: update().eq(id).in(...).or(...).select()
+          return Object.assign(Promise.resolve({ error: null }), claimChain);
+        };
         return {
           // no-transactionId charge lookup: select().eq().eq().in().order()
           select: () => ({
@@ -143,12 +164,7 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
               }),
             }),
           }),
-          update: () => ({
-            eq: () =>
-              Promise.resolve({
-                error: txnUpdateError ? { message: txnUpdateError } : null,
-              }),
-          }),
+          update: () => claimChain,
         };
       }
 
@@ -340,7 +356,7 @@ describe("issueAdminWalletRefund", () => {
     expect(result.success).toBe(true);
   });
 
-  it("still returns success even when payment_transactions update fails (wallet already credited)", async () => {
+  it("returns TXN_CLAIM_ERROR when payment_transactions claim fails before wallet credit", async () => {
     const result = await issueAdminWalletRefund({
       supabase: buildMock({ txnUpdateError: "db error", refundInsertId: "r1" }),
       tenantId: "tenant-1",
@@ -351,11 +367,11 @@ describe("issueAdminWalletRefund", () => {
       actorUserId: "admin-1",
       transactionId: "txn-1",
     });
-    // Should still succeed — txn update failure is logged but not fatal
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.code).toBe("TXN_CLAIM_ERROR");
   });
 
-  it("computes full refund correctly: amount >= originalChargeAmount", async () => {
+  it("credits wallet excluding gift-card leg on full refund (gift card is restored separately)", async () => {
     const result = await issueAdminWalletRefund({
       supabase: buildMock({
         refundInsertId: "rf-full",
@@ -377,7 +393,8 @@ describe("issueAdminWalletRefund", () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.amount).toBe(300);
+      // R300 gross − R50 gift restore = R250 wallet credit (no double refund)
+      expect(result.amount).toBe(250);
     }
   });
 });

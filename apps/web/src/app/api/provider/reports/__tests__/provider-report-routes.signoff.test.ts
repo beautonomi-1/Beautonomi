@@ -58,6 +58,14 @@ vi.mock("@/lib/supabase/api-helpers", () => ({
   ),
 }));
 
+vi.mock("@/lib/reports/require-provider-reports-access", () => ({
+  requireProviderReportsAccess: vi.fn(async () => ({ authorized: true, user })),
+}));
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: vi.fn(async () => ({ authorized: true, user })),
+}));
+
 vi.mock("@/lib/reports/revenue-helpers", () => ({
   getProviderRevenue: (...args: unknown[]) => getProviderRevenueMock(...args),
   getPreviousPeriodRevenue: (...args: unknown[]) => getPreviousPeriodRevenueMock(...args),

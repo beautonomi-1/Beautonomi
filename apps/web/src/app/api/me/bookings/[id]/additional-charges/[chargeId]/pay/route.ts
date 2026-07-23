@@ -140,29 +140,59 @@ export async function POST(
       paystackAmount = applied.paystackAmount;
 
       if (applied.fullySettled) {
-        const settled = await settleAdditionalChargeWithoutPaystack(admin, {
-          bookingId,
-          chargeId,
-          customerId: user.id,
-          providerId: (booking as { provider_id: string }).provider_id,
-          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
-          bookingNumber,
-          chargeAmount,
-          walletAmountApplied,
-          giftCardAmountApplied,
-        });
-        if (settled.ok === false) {
-          return errorResponse(settled.error, "SETTLEMENT_ERROR", 500);
+        try {
+          const settled = await settleAdditionalChargeWithoutPaystack(admin, {
+            bookingId,
+            chargeId,
+            customerId: user.id,
+            providerId: (booking as { provider_id: string }).provider_id,
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            bookingNumber,
+            chargeAmount,
+            walletAmountApplied,
+            giftCardAmountApplied,
+          });
+          if (settled.ok === false) {
+            if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
+              await rollbackCollectibleSplitLeg(admin, {
+                bookingId,
+                customerId: user.id,
+                currency,
+                tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+                providerId: (booking as { provider_id: string }).provider_id,
+                walletAmountToReverse: walletAmountApplied,
+                giftCardAmountToReverse: giftCardAmountApplied,
+                paymentLegSuffix,
+                idempotencyKey: `additional_charge_rollback:${chargeId}`,
+              });
+            }
+            return errorResponse(settled.error, "SETTLEMENT_ERROR", 500);
+          }
+          return successResponse({
+            authorization_url: "",
+            access_code: "",
+            reference: null,
+            wallet_amount_applied: walletAmountApplied,
+            gift_card_amount_applied: giftCardAmountApplied,
+            paystack_amount: 0,
+            fully_settled: true,
+          });
+        } catch (settleErr) {
+          if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
+            await rollbackCollectibleSplitLeg(admin, {
+              bookingId,
+              customerId: user.id,
+              currency,
+              tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+              providerId: (booking as { provider_id: string }).provider_id,
+              walletAmountToReverse: walletAmountApplied,
+              giftCardAmountToReverse: giftCardAmountApplied,
+              paymentLegSuffix,
+              idempotencyKey: `additional_charge_rollback:${chargeId}`,
+            });
+          }
+          throw settleErr;
         }
-        return successResponse({
-          authorization_url: "",
-          access_code: "",
-          reference: null,
-          wallet_amount_applied: walletAmountApplied,
-          gift_card_amount_applied: giftCardAmountApplied,
-          paystack_amount: 0,
-          fully_settled: true,
-        });
       }
     }
 

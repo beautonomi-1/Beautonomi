@@ -1,0 +1,366 @@
+{
+  "remediation": [
+    {
+      "id": "REM-001",
+      "wave": 0,
+      "title": "Enforce CSRF_SECRET in all environments",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "partial",
+      "finding": "FND-P0-001"
+    },
+    {
+      "id": "REM-002",
+      "wave": 0,
+      "title": "Remove fake-success API paths for time-clock and days-off",
+      "owner": "provider-web",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P0-007"
+    },
+    {
+      "id": "REM-003",
+      "wave": 0,
+      "title": "Fix search map coordinates or disable map",
+      "owner": "customer-web",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P0-004"
+    },
+    {
+      "id": "REM-004",
+      "wave": 1,
+      "title": "Fix NewSaleDialog client persistence",
+      "owner": "provider-web",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P0-006"
+    },
+    {
+      "id": "REM-005",
+      "wave": 1,
+      "title": "Implement or disable shipping until couriers ready",
+      "owner": "ecommerce",
+      "effort": "L",
+      "status": "done",
+      "finding": "FND-P0-005"
+    },
+    {
+      "id": "REM-006",
+      "wave": 1,
+      "title": "Build E2E suite for booking payment refund payout",
+      "owner": "qa-engineering",
+      "effort": "L",
+      "status": "resolved",
+      "finding": "FND-P0-002",
+      "progress": "2026-07-22: local integration coverage landed (route.signature-idempotency.test.ts, 8 tests over the real webhook router: HMAC gate, per-tenant secret, idempotent replay, lease, charge/refund/payout routing). 2026-07-23: staging money-path E2E attested passing by product owner (user-attested, no CI artifact captured — attach CI run before final sign-off)."
+    },
+    {
+      "id": "REM-007",
+      "wave": 1,
+      "title": "Multi-tenant isolation test suite",
+      "owner": "platform-security",
+      "effort": "L",
+      "status": "resolved",
+      "finding": "FND-P0-003",
+      "progress": "2026-07-22: behavioural GET /api/me/orders cross-tenant tests (filtering 2-tenant fake) + route-tenant-scope.guard.test.ts (all 118 tenant-resolving routes consume tenant, 0 offenders) + env-gated tenant-isolation.spec.ts staging E2E. 2026-07-23: staging tenant-isolation E2E attested passing against two live market hosts (user-attested, no CI artifact captured — attach CI run before final sign-off)."
+    },
+    {
+      "id": "REM-008",
+      "wave": 2,
+      "title": "Complete postal area import for ZA",
+      "owner": "data-ops",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P1-003"
+    },
+    {
+      "id": "REM-009",
+      "wave": 2,
+      "title": "Enable Upstash rate limiting in production",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "partial",
+      "finding": "FND-P1-005"
+    },
+    {
+      "id": "REM-010",
+      "wave": 2,
+      "title": "Execute 7-day staging drift observation",
+      "owner": "finance",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P1-008"
+    },
+    {
+      "id": "REM-011",
+      "wave": 2,
+      "title": "Complete game-day drills with evidence",
+      "owner": "sre",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P1-009"
+    },
+    {
+      "id": "REM-012",
+      "wave": 2,
+      "title": "KYB gating decision per market",
+      "owner": "compliance",
+      "effort": "S",
+      "status": "open",
+      "finding": "FND-P1-004"
+    },
+    {
+      "id": "REM-013",
+      "wave": 3,
+      "title": "PayCloud same-terminal ship or permanently gate",
+      "owner": "payments",
+      "effort": "L",
+      "status": "done",
+      "finding": "FND-P1-001"
+    },
+    {
+      "id": "REM-014",
+      "wave": 3,
+      "title": "Implement advanced search filters",
+      "owner": "customer-web",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P1-002"
+    },
+    {
+      "id": "REM-015",
+      "wave": 3,
+      "title": "CSP nonce migration (report-only first)",
+      "owner": "security",
+      "effort": "M",
+      "status": "partial",
+      "finding": "FND-P1-006"
+    },
+    {
+      "id": "REM-016",
+      "wave": 4,
+      "title": "Per-tenant payment gateway validation",
+      "owner": "payments",
+      "effort": "L",
+      "status": "done",
+      "finding": "FND-P0-003"
+    },
+    {
+      "id": "REM-017",
+      "wave": 4,
+      "title": "Tighten ZA tenant fallback telemetry and strict mode",
+      "owner": "platform-engineering",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P0-003"
+    },
+    {
+      "id": "REM-018",
+      "wave": 4,
+      "title": "Per-market legal documents and tax config",
+      "owner": "legal",
+      "effort": "L",
+      "status": "open",
+      "finding": "FND-P1-017"
+    },
+    {
+      "id": "REM-019",
+      "wave": 3,
+      "title": "Hide unimplemented payment gateways from operator UI",
+      "owner": "product",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-007"
+    },
+    {
+      "id": "REM-020",
+      "wave": 3,
+      "title": "Wire custom offer image upload for providers",
+      "owner": "messaging",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P1-010"
+    },
+    {
+      "id": "REM-021",
+      "wave": 3,
+      "title": "Admin SPA edge session gate",
+      "owner": "platform-security",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-011"
+    },
+    {
+      "id": "REM-022",
+      "wave": 3,
+      "title": "Targeted API tenant-guard hardening",
+      "owner": "platform-security",
+      "effort": "L",
+      "status": "partial",
+      "finding": "FND-P1-012"
+    },
+    {
+      "id": "REM-023",
+      "wave": 3,
+      "title": "Consolidate QR scanning on html5-qrcode",
+      "owner": "provider-web",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-013"
+    },
+    {
+      "id": "REM-024",
+      "wave": 3,
+      "title": "Service zone analytics polygon/radius support",
+      "owner": "provider-web",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P1-014"
+    },
+    {
+      "id": "REM-025",
+      "wave": 3,
+      "title": "Rewrite LAUNCH_READINESS_100 with audit-backed status",
+      "owner": "release-captain",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-015"
+    },
+    {
+      "id": "REM-026",
+      "wave": 3,
+      "title": "Post-restore row-count verification script",
+      "owner": "sre",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-016"
+    },
+    {
+      "id": "REM-027",
+      "wave": 4,
+      "title": "Remove provider_onboarding from DB UserRole type",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P2-001"
+    },
+    {
+      "id": "REM-028",
+      "wave": 4,
+      "title": "Remove hardcoded mobile category fallback",
+      "owner": "customer-mobile",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P2-002"
+    },
+    {
+      "id": "REM-029",
+      "wave": 4,
+      "title": "Fix k6 booking flow endpoint paths",
+      "owner": "sre",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P2-003"
+    },
+    {
+      "id": "REM-030",
+      "wave": 4,
+      "title": "Update support labels from Stripe to Paystack",
+      "owner": "content",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P3-001"
+    },
+    {
+      "id": "REM-031",
+      "wave": 1,
+      "title": "Fix terminal-shop typecheck error",
+      "owner": "provider-web",
+      "effort": "S",
+      "status": "done",
+      "finding": "FND-P1-018"
+    },
+    {
+      "id": "REM-032",
+      "wave": 1,
+      "title": "Review provider routes for tenant guard coverage",
+      "owner": "platform-security",
+      "effort": "M",
+      "status": "done",
+      "finding": "FND-P1-019"
+    },
+    {
+      "id": "REM-033",
+      "wave": 0,
+      "title": "Replace Paystack test key with live key in production",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "open",
+      "finding": "FND-P1-020"
+    },
+    {
+      "id": "REM-034",
+      "wave": 1,
+      "title": "Fix advanced search availability and price filters (FND-P1-002 regression)",
+      "owner": "customer-web",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P1-002"
+    },
+    {
+      "id": "REM-035",
+      "wave": 2,
+      "title": "Implement or disable Stripe non-booking PaymentIntent webhook handling",
+      "owner": "payments",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P1-021"
+    },
+    {
+      "id": "REM-036",
+      "wave": 2,
+      "title": "Fix failing web vitest cases in money-adjacent routes",
+      "owner": "qa-engineering",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P0-002"
+    },
+    {
+      "id": "REM-037",
+      "wave": 0,
+      "title": "Add /api/payments/*/webhook to CSRF exemption list in proxy.ts",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "open",
+      "finding": "FND-P1-024"
+    },
+    {
+      "id": "REM-038",
+      "wave": 3,
+      "title": "Bind support.classifyTicket in agent copilot bound-registry",
+      "owner": "platform-engineering",
+      "effort": "S",
+      "status": "open",
+      "finding": "FND-P2-009"
+    },
+    {
+      "id": "REM-039",
+      "wave": 3,
+      "title": "Add fraud-cases to admin API inventory and criticalFlows regression",
+      "owner": "admin-web",
+      "effort": "S",
+      "status": "open",
+      "finding": "FND-P2-010"
+    },
+    {
+      "id": "REM-040",
+      "wave": 3,
+      "title": "Custom offer image upload parity on provider mobile",
+      "owner": "provider-mobile",
+      "effort": "M",
+      "status": "open",
+      "finding": "FND-P2-007"
+    }
+  ]
+}

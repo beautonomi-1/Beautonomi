@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ExpoLinking from "expo-linking";
@@ -8,6 +8,7 @@ import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { safeWarn } from "@/lib/payments/safeLog";
+import { isTransientApiFailure } from "@/lib/api-error";
 import {
   matchesExpoReturnUrl,
   isCancelledPaystackUrl,
@@ -72,6 +73,11 @@ export default function WalletScreen() {
   const [topupAmount, setTopupAmount] = useState("");
   const [toppingUp, setToppingUp] = useState(false);
   const [topupStatus, setTopupStatus] = useState<string | null>(null);
+  const topupIdempotencyKeyRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `wallet-topup-${Date.now()}`,
+  );
   const [refreshing, setRefreshing] = useState(false);
   
   const [paymentOption, setPaymentOption] = useState<"new_card" | "saved_card" | "gift_card">("new_card");
@@ -214,9 +220,23 @@ export default function WalletScreen() {
         payment_url?: string;
         topup_id?: string;
         paystack_reference?: string;
-      }>("/api/me/wallet/topup", { amount, callback_url: returnUrl });
+      }>(
+        "/api/me/wallet/topup",
+        { amount, callback_url: returnUrl, idempotency_key: topupIdempotencyKeyRef.current },
+        {
+          timeout: 120_000,
+          headers: { "Idempotency-Key": topupIdempotencyKeyRef.current },
+        },
+      );
       
       if (res.error) {
+        if (isTransientApiFailure(res.error)) {
+          Alert.alert(
+            t("customer.walletScreen.paymentPendingTitle"),
+            t("customer.walletScreen.paymentPendingBody"),
+          );
+          return;
+        }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedStartTopup"));
         return;
       }
@@ -284,9 +304,11 @@ export default function WalletScreen() {
         verifiedSuccess = verifyResult.status === "success";
         if (verifyResult.status === "failed") {
           safeWarn("Wallet top-up verify reported failed", { message: verifyResult.errorMessage });
-          throw new Error(
-            t("customer.walletScreen.paymentDeclined", "Your payment was declined. No funds were taken.") as string,
+          Alert.alert(
+            t("customer.walletScreen.paymentPendingTitle"),
+            t("customer.walletScreen.paymentPendingBody"),
           );
+          return;
         }
       }
 
@@ -330,7 +352,14 @@ export default function WalletScreen() {
         );
       }
     } catch (e) {
-      Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.walletScreen.topUpFailed"));
+      if (isTransientApiFailure(e)) {
+        Alert.alert(
+          t("customer.walletScreen.paymentPendingTitle"),
+          t("customer.walletScreen.paymentPendingBody"),
+        );
+      } else {
+        Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.walletScreen.topUpFailed"));
+      }
     } finally {
       setToppingUp(false);
       setTopupStatus(null);

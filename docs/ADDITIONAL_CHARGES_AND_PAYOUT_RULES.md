@@ -18,9 +18,9 @@ This document defines how additional charges (booking add-ons or product/retail 
 | **Online (Paystack)** – customer pays via redirect/checkout | Yes (via webhook/flow) | Yes (`additional_charge_payment` + `provider_earnings`) | Yes |
 | **Card on file** – platform charges saved card after customer approval | Yes (via `settleAdditionalChargePlatformHeld`) | Yes (`additional_charge_payment` + `provider_earnings`) | Yes |
 | **Paystack Terminal** – terminal payment allocated to additional charge | Yes (via `settleAdditionalChargePlatformHeld`) | Yes (`additional_charge_payment` + `provider_earnings`) | Yes |
-| **Walk-in at salon** – provider takes cash or Yoco | Yes (mark-paid API) | Yes (`walk_in_additional_charge` – audit/reporting only) | No |
+| **Walk-in at salon** – provider takes cash, Yoco, or PayCloud card machine | Yes (mark-paid API / PayCloud settle) | Yes (`walk_in_additional_charge` – audit/reporting only) | No |
 
-**Rule:** If the platform (or Paystack) holds the money -> create ledger rows that count toward payout. If the provider took payment directly (cash/Yoco at salon) -> record the payment and create an audit ledger row only; **do not** add to payout balance.
+**Rule:** If the platform (or Paystack) holds the money -> create ledger rows that count toward payout. If the provider took payment directly (cash/Yoco/PayCloud at salon) -> record the payment and create an audit ledger row only; **do not** add to payout balance.
 
 **No extra platform fee on additional charges:** The charge amount is treated as pure service revenue. Platform earns only via commission (same rate as the original booking). No extra customer surcharge is added.
 
@@ -53,7 +53,7 @@ The resolver is implemented in `apps/web/src/lib/bookings/resolve-additional-cha
 
 ## 3. Ledger transaction types
 
-- **`provider_earnings`** – Provider's share of revenue (after commission). **Included** in available payout balance when the payment went through the platform (e.g. Paystack). Excluded when booking is walk-in and payment was cash/Yoco (provider already has the money).
+- **`provider_earnings`** – Provider's share of revenue (after commission). **Included** in available payout balance when the payment went through the platform (e.g. Paystack). Excluded when booking is walk-in and payment was cash/Yoco/PayCloud (provider already has the money).
 - **`additional_charge_payment`** – Platform commission on an online/card-on-file/terminal additional charge. Admin/finance only.
 - **`walk_in_additional_charge`** – Audit/reporting only. Created when a provider marks an additional charge as paid (cash/card/Yoco at salon). **Not** included in `getAvailablePayoutBalance`; used so reports can show total revenue including walk-in add-ons.
 
@@ -69,7 +69,7 @@ The resolver is implemented in `apps/web/src/lib/bookings/resolve-additional-cha
 ## 5. Payout balance
 
 - **Available balance** = sum of `provider_earnings` (net) where the platform held the money, minus completed payouts and pending payout requests.
-- Walk-in earnings (cash/Yoco) and `walk_in_additional_charge` are **excluded** from payout balance because the platform never held those funds.
+- Walk-in earnings (cash/Yoco/PayCloud) and `walk_in_additional_charge` are **excluded** from payout balance because the platform never held those funds.
 
 ---
 

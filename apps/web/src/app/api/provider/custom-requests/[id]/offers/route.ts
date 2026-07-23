@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -39,7 +39,11 @@ const createOfferSchema = z.object({
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -83,7 +87,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Ensure request belongs to this provider
     const { data: reqRow } = await supabase
       .from("custom_requests")
-      .select("id, customer_id, provider_id, status, expires_at, providers!custom_requests_provider_id_fkey(business_name)")
+      .select(
+        "id, customer_id, provider_id, status, expires_at, location_type, address_line1, providers!custom_requests_provider_id_fkey(business_name)",
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -93,6 +99,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       customer_id?: string;
       status?: string;
       expires_at?: string | null;
+      location_type?: string | null;
+      address_line1?: string | null;
       providers?: { business_name?: string };
     };
     const req = reqRow as ReqRow;
@@ -125,6 +133,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         "This custom request expired before you could send an offer.",
         "REQUEST_EXPIRED",
         410,
+      );
+    }
+
+    const requestLocationType = req.location_type === "at_home" ? "at_home" : "at_salon";
+    if (requestLocationType === "at_home" && !req.address_line1?.trim()) {
+      return errorResponse(
+        "This house-call request is missing a service address. Ask the customer to update it before sending an offer.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+    if (requestLocationType === "at_salon" && !body.location_id) {
+      return errorResponse(
+        "At-salon offers require a salon location.",
+        "VALIDATION_ERROR",
+        400,
       );
     }
 

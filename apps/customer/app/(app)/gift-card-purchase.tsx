@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform, Linking } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
@@ -12,7 +12,7 @@ import {
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -50,6 +50,11 @@ export default function GiftCardPurchaseScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const [amount, setAmount] = useState<number>(250);
+  const purchaseIdempotencyKeyRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `gift-${Date.now()}`,
+  );
   const [customAmount, setCustomAmount] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [isGift, setIsGift] = useState(false);
@@ -134,7 +139,12 @@ export default function GiftCardPurchaseScreen() {
             .map((card) => card.id)
             .filter((id): id is string => typeof id === "string" && id.length > 0),
         );
-        const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
+        const body: Record<string, unknown> = {
+          amount: finalAmount,
+          quantity,
+          currency: tenantCurrency,
+          idempotency_key: purchaseIdempotencyKeyRef.current,
+        };
         if (isGift && recipientEmail.trim()) {
           body.recipient_email = recipientEmail.trim();
           if (recipientName.trim()) body.recipient_name = recipientName.trim();
@@ -146,8 +156,16 @@ export default function GiftCardPurchaseScreen() {
         const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
           "/api/public/gift-cards/purchase",
           body,
+          {
+            timeout: 120_000,
+            headers: { "Idempotency-Key": purchaseIdempotencyKeyRef.current },
+          },
         );
         if (res.error) {
+          if (isTransientApiFailure(res.error)) {
+            setSuccessState("pending");
+            return;
+          }
           Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));
           return;
         }

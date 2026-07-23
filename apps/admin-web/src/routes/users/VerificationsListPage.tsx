@@ -78,7 +78,7 @@ export function VerificationsListPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Verifications"
-        description="Identity review queue for the resolved admin tenant. Pending includes submitted and in-review Sumsub states. Open a row to approve, reject, or view documents."
+        description="Manual identity document uploads for the resolved admin tenant. Didit verification sessions live under Identity & Trust → Sessions. Pending includes submitted and in-review manual uploads."
       />
       <AdminPanel>
         <div className="flex flex-wrap gap-2">

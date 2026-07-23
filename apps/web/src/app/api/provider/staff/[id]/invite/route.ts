@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
+import { sendStaffInvite } from "@/lib/provider/staff-invite";
+import { trackServer } from "@/lib/analytics/amplitude/server";
+import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { z } from "zod";
 
 const inviteSchema = z.object({
@@ -12,8 +14,8 @@ const inviteSchema = z.object({
 
 /**
  * POST /api/provider/staff/[id]/invite
- * 
- * Send invitation email to staff member
+ *
+ * Send staff invitation (Resend email + optional OneSignal push).
  */
 export async function POST(
   request: NextRequest,
@@ -29,7 +31,6 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    // Validate input
     const validationResult = inviteSchema.safeParse(body);
     if (!validationResult.success) {
       return errorResponse(
@@ -40,13 +41,11 @@ export async function POST(
       );
     }
 
-    // Get provider ID
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Get staff member
     const { data: staff, error: staffError } = await supabase
       .from("provider_staff")
       .select("id, name, email, user_id")
@@ -58,107 +57,71 @@ export async function POST(
       return notFoundResponse("Staff member not found");
     }
 
-    // Get provider info for email
     const { data: provider } = await supabase
       .from("providers")
-      .select("business_name, owner_name")
+      .select("business_name, tenant_id")
       .eq("id", providerId)
       .single();
 
-    // Generate invitation token used in push/email deep links.
-    const invitationToken = Buffer.from(`${id}:${Date.now()}`).toString('base64');
-    const businessName = provider?.business_name || 'the team';
     const inviteEmail = (staff.email || validationResult.data.email || "").trim().toLowerCase();
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    const inviteUrl = `${appBase}/provider/onboarding?invite=${encodeURIComponent(invitationToken)}`;
-
-    let pushSent = false;
-    let emailSent = false;
-
-    // Notify via OneSignal if staff has user_id (existing user)
-    if (staff.user_id) {
-      try {
-        const { sendToUser } = await import('@/lib/notifications/onesignal');
-        await sendToUser(
-          staff.user_id,
-          {
-            title: `Invitation to join ${businessName}`,
-            message: validationResult.data.message || `You've been invited to join ${businessName} as a team member.`,
-            data: {
-              type: 'staff_invitation',
-              staff_id: id,
-              provider_id: providerId,
-              invitation_token: invitationToken,
-            },
-            url: `/provider/onboarding?invite=${invitationToken}`,
-          },
-          ["push"],
-          { appType: "provider" }
-        );
-        pushSent = true;
-      } catch (notifError) {
-        console.error('Staff invite notification failed:', notifError);
-      }
+    if (!inviteEmail) {
+      return errorResponse("Staff member has no email address", "VALIDATION_ERROR", 400);
     }
 
-    // Always try email delivery; required path for staff without linked app account.
-    if (inviteEmail) {
-      try {
-        const creds = await resolveOneSignalCredentials("provider");
-        if (creds.appId && creds.restKey) {
-          const emailSubject = `Invitation to join ${businessName}`;
-          const emailBody =
-            (validationResult.data.message?.trim() ||
-              `You've been invited to join ${businessName} as a team member.`) +
-            `\n\nOpen this link to continue: ${inviteUrl}`;
+    const { data: inviterProfile } = await supabase
+      .from("users")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .maybeSingle();
+    const inviter = inviterProfile as { full_name?: string | null; email?: string | null } | null;
 
-          const oneSignalRes = await fetch("https://api.onesignal.com/notifications?c=push", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json; charset=utf-8",
-              "Authorization": `Key ${creds.restKey}`,
-            },
-            body: JSON.stringify({
-              app_id: creds.appId,
-              target_channel: "email",
-              include_email_tokens: [inviteEmail],
-              email_subject: emailSubject,
-              email_body: emailBody,
-              data: {
-                type: "staff_invitation",
-                staff_id: id,
-                provider_id: providerId,
-                invitation_token: invitationToken,
-              },
-            }),
-          });
-          if (!oneSignalRes.ok) {
-            const errBody = await oneSignalRes.text();
-            console.error("Staff invite email failed:", errBody);
-          } else {
-            emailSent = true;
-          }
-        }
-      } catch (emailErr) {
-        console.error("Staff invite email failed:", emailErr);
-      }
-    }
+    const delivery = await sendStaffInvite({
+      supabase,
+      staffId: id,
+      providerId,
+      tenantId: (provider as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      inviterUserId: user.id,
+      inviterName: inviter?.full_name ?? inviter?.email ?? null,
+      customMessage: validationResult.data.message ?? null,
+      recipientUserId: staff.user_id ?? null,
+      recipientEmail: inviteEmail,
+    });
 
-    if (!pushSent && !emailSent) {
+    void trackServer(EVENT_STAFF_INVITED, {
+      user_id: user.id,
+      staff_id: id,
+      provider_id: providerId,
+      email_delivered: delivery.email.delivered,
+      push_delivered: delivery.push.delivered,
+    }).catch((err) => console.warn("[staff-invite] analytics failed:", err));
+
+    if (!delivery.email.delivered && !delivery.push.delivered) {
       return errorResponse(
-        "Failed to send invite. Configure provider OneSignal email credentials or ensure user has push registration.",
+        delivery.email.error ||
+          delivery.push.error ||
+          "Failed to send invite. Configure Resend in Admin → Integrations or ensure the user has the Provider app installed.",
         "INVITE_DELIVERY_FAILED",
-        502
+        502,
+        {
+          join_url: delivery.join_url,
+          email: delivery.email,
+          push: delivery.push,
+        },
       );
     }
 
     return successResponse({
       success: true,
       message: "Invitation sent successfully",
-      email: inviteEmail || validationResult.data.email,
+      email: inviteEmail,
+      join_url: delivery.join_url,
       channels: {
-        push: pushSent,
-        email: emailSent,
+        push: delivery.push.delivered,
+        email: delivery.email.delivered,
+      },
+      delivery: {
+        email: delivery.email,
+        push: delivery.push,
       },
     });
   } catch (error) {

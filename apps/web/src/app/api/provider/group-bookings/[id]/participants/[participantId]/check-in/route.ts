@@ -8,6 +8,7 @@ import {
   forbiddenResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -24,7 +25,11 @@ export async function POST(
 ) {
   try {
     const admin = getSupabaseAdmin();
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id: rawId, participantId } = await params;
     const id = normalizeGroupBookingId(rawId);
 

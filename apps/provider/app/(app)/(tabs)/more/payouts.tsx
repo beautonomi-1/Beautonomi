@@ -50,9 +50,11 @@ interface PayoutAccount {
   is_primary?: boolean;
 }
 
-/** GET /api/provider/team-access — `can_process_payments` matches POST /api/provider/payouts */
+/** GET /api/provider/team-access — payout request aligns with owner/`edit_settings`. */
 interface TeamAccessPayload {
   can_process_payments?: boolean;
+  can_request_payouts?: boolean;
+  is_business_owner?: boolean;
 }
 
 interface NextDateData {
@@ -204,7 +206,8 @@ export function PayoutsContent() {
   const minimumPayout = financeData?.earnings?.minimum_payout_amount ?? 100;
   const defaultCurrency = getTenantDefaultCurrency();
 
-  const canRequestPayouts = teamAccess?.can_process_payments === true;
+  const canRequestPayouts =
+    teamAccess?.can_request_payouts === true || teamAccess?.is_business_owner === true;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

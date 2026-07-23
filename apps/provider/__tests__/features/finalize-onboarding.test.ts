@@ -17,6 +17,8 @@ jest.mock("@/lib/api-client", () => ({
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   removeItem: jest.fn().mockResolvedValue(undefined),
+  setItem: jest.fn().mockResolvedValue(undefined),
+  getItem: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock("@/lib/portal-cache", () => ({
@@ -43,7 +45,11 @@ jest.mock("@/lib/payments/verifyPaystackWithRetry", () => ({
 
 jest.mock("@/lib/payments/providerPaystackReturn", () => ({
   getSubscriptionPaystackReturnUrl: jest.fn(() => "provider://subscription-return"),
-  matchesSubscriptionPaystackReturnUrl: jest.fn(() => true),
+  matchesSubscriptionPaystackReturnUrl: jest.fn((_url: string, opts?: { success?: boolean; cancelled?: boolean }) => {
+    if (opts?.cancelled) return false;
+    if (opts?.success) return true;
+    return false;
+  }),
   pollSubscriptionProvisioned: jest.fn().mockResolvedValue({ state: "provisioned" }),
 }));
 
@@ -145,6 +151,36 @@ describe("finalizeOnboardingSuccess", () => {
       "https://checkout.paystack.com/test",
       expect.objectContaining({ returnUrl: "provider://subscription-return" }),
     );
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
+  });
+
+  it("verifies stored reference when auth session closes after checkout", async () => {
+    const { verifyPaystackWithRetry } = jest.requireMock<{ verifyPaystackWithRetry: jest.Mock }>(
+      "@/lib/payments/verifyPaystackWithRetry",
+    );
+    const waitForCheckout = jest.fn().mockResolvedValue({ outcome: "closed" });
+    startPaidSubscriptionCheckout.mockResolvedValue({
+      ok: true,
+      authorizationUrl: "https://checkout.paystack.com/test",
+      orderId: "order-1",
+      reference: "provider_subscription_auth_test",
+    });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(verifyPaystackWithRetry).toHaveBeenCalledWith("provider_subscription_auth_test");
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding/verify-identity");
   });
 

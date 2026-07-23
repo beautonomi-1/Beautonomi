@@ -231,6 +231,42 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id && reference) {
       const productOrderId = String(metadata.product_order_id);
+      const amountMajor = convertFromSmallestUnit(amount || 0);
+      const { data: poBeforeRow } = await (supabase.from("product_orders") as any)
+        .select("total_amount, wallet_amount, payment_reference, tenant_id, currency")
+        .eq("id", productOrderId)
+        .maybeSingle();
+      if (poBeforeRow) {
+        const expectedMajor = Math.max(
+          0,
+          Number(poBeforeRow.total_amount ?? 0) - Number(poBeforeRow.wallet_amount ?? 0),
+        );
+        const existingReference = String(poBeforeRow.payment_reference ?? "").trim();
+        if (
+          Math.abs(amountMajor - expectedMajor) > 0.01 &&
+          existingReference &&
+          existingReference !== reference
+        ) {
+          console.error("[charge-success] product order amount mismatch", {
+            productOrderId,
+            amountMajor,
+            expectedMajor,
+            reference,
+          });
+          const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+            "@/lib/integrations/slack/ops-triggers"
+          );
+          slackNotifyProductOrderPaymentNotRecorded({
+            tenantId: poBeforeRow.tenant_id ?? null,
+            productOrderId,
+            reference: String(reference),
+            source: "paystack_webhook:amount_mismatch",
+            amountMajor,
+            currency: poBeforeRow.currency ?? null,
+          });
+          return;
+        }
+      }
       const payRecord = await recordProductOrderPayment({
         supabase,
         productOrderId,
@@ -240,6 +276,24 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         source: "paystack_webhook",
         provider: "paystack",
       });
+      if (!payRecord.ok) {
+        console.error("[charge-success] product order payment not recorded (order may be non-payable)", {
+          productOrderId,
+          reference,
+        });
+        const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+          "@/lib/integrations/slack/ops-triggers"
+        );
+        slackNotifyProductOrderPaymentNotRecorded({
+          tenantId: poBeforeRow?.tenant_id ?? null,
+          productOrderId,
+          reference: String(reference),
+          source: "paystack_webhook",
+          amountMajor,
+          currency: poBeforeRow?.currency ?? null,
+        });
+        return;
+      }
       const { notifyProductOrderPaidIfTransitioned } = await import(
         "@/lib/notifications/notify-product-order-paid"
       );
@@ -539,11 +593,13 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   // Travel and tip are booking-level items recorded separately (not per-charge).
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  // Deposit-aware payment status: if this is a deposit-only charge, the booking
-  // is partially_paid (balance still owed), not fully paid.
+  // Deposit-only first charges must not recognize full tip / tax / travel /
+  // platform fee — that money may never be collected. Post those booking-level
+  // rows only when this charge is a full (or remaining) settlement.
   const stdPaymentOption = String(metadata?.payment_option || "full");
   const stdRequiresDeposit = Boolean(metadata?.requires_deposit);
   const stdIsDeposit = stdRequiresDeposit && stdPaymentOption === "deposit";
+  const shouldPostBookingLevelFees = !stdIsDeposit;
 
   // Ensure booking_payments parity for webhook-first flows.
   // This keeps bookings.total_paid / payment_status aligned even if redirect verify is skipped.
@@ -734,10 +790,22 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .maybeSingle();
 
   if (existingPaymentTxForRef) {
-    // Scenario A: webhook retry for a reference already fully processed.
-    console.log(`[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`);
-    await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
-    return;
+    const { data: existingFinanceForRetry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "payment")
+      .maybeSingle();
+    if (existingFinanceForRetry) {
+      console.log(
+        `[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`,
+      );
+      await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
+      return;
+    }
+    console.log(
+      `[charge-success] Paystack ref ${reference} has payment_transactions row but finance ledger missing — backfilling`,
+    );
   }
 
   // Scenario B detection: has the ledger for this booking been written before?
@@ -751,6 +819,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const isSecondCharge = !!existingFinancePaymentRow;
 
   // Now insert the payment_transactions row for this charge (after idempotency checks).
+  if (!existingPaymentTxForRef) {
   const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
@@ -774,6 +843,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       return;
     }
     throw paymentTxInsertError;
+  }
   }
 
   const splitWalletOrGift =
@@ -826,8 +896,8 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     created_at: new Date().toISOString(),
   });
 
-  // Customer-paid Platform Fee entry
-  if (serviceFeeAmount > 0) {
+  // Customer-paid Platform Fee entry — only when fully collected (not deposit-only).
+  if (shouldPostBookingLevelFees && serviceFeeAmount > 0) {
     await supabase.from("finance_transactions").insert({
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
@@ -842,6 +912,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     });
   }
 
+  if (shouldPostBookingLevelFees) {
   await supabase.from("finance_transactions").insert([
     ...(tipAmount > 0
       ? [{
@@ -888,11 +959,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         ]
       : []),
   ]);
+  }
   } else {
-    // Scenario B: second Paystack charge for this booking. Booking-level rows
-    // (platform_fee, tax, tip, travel) were already recorded for the first charge.
-    // Only append the per-charge payment + provider_earnings rows.
-    console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings only.`);
+    // Scenario B: second Paystack charge for this booking. Per-charge payment +
+    // earnings always append. Booking-level tip/tax/travel/platform_fee are posted
+    // here when the first charge was a deposit (they were deferred until collected).
+    console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings.`);
     await supabase.from("finance_transactions").insert([
       {
         booking_id: metadata.booking_id,
@@ -919,6 +991,77 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         created_at: webhookNow,
       },
     ]);
+
+    const { data: existingBookingLevelRows } = await supabase
+      .from("finance_transactions")
+      .select("id, transaction_type")
+      .eq("booking_id", metadata.booking_id)
+      .in("transaction_type", ["tip", "tax", "travel_fee", "platform_fee"]);
+    const existingBookingLevelTypes = new Set(
+      ((existingBookingLevelRows ?? []) as Array<{ transaction_type?: string }>).map((r) =>
+        String(r.transaction_type ?? ""),
+      ),
+    );
+    const deferredRows: Array<Record<string, unknown>> = [];
+    if (serviceFeeAmount > 0 && !existingBookingLevelTypes.has("platform_fee")) {
+      deferredRows.push({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "platform_fee",
+        amount: serviceFeeAmount,
+        fees: 0,
+        commission: 0,
+        net: serviceFeeAmount,
+        description: `Platform fee for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      });
+    }
+    if (tipAmount > 0 && !existingBookingLevelTypes.has("tip")) {
+      deferredRows.push({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "tip",
+        amount: tipAmount,
+        fees: 0,
+        commission: 0,
+        net: tipAmount,
+        description: `Tip for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      });
+    }
+    if (taxAmount > 0 && !existingBookingLevelTypes.has("tax")) {
+      deferredRows.push({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "tax",
+        amount: taxAmount,
+        fees: 0,
+        commission: 0,
+        net: 0,
+        description: `Tax for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      });
+    }
+    if (travelFee > 0 && !existingBookingLevelTypes.has("travel_fee")) {
+      deferredRows.push({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "travel_fee",
+        amount: travelFee,
+        fees: 0,
+        commission: 0,
+        net: travelFee,
+        description: `Travel fee for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      });
+    }
+    if (deferredRows.length > 0) {
+      await supabase.from("finance_transactions").insert(deferredRows);
+    }
   }
 
   // For split wallet + card payments: record the wallet portion in the ledger.
@@ -1260,11 +1403,9 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
 
   if (o.payment_status !== "pending") return;
 
-  await creditWalletForProductOrderIfNeeded(supabase, o, "Wallet refund (card payment failed)", "product_order_payment_failed");
-
-  await restockProductOrderLineItems(supabase, o.id);
-
-  await (supabase.from("product_orders") as any)
+  // Atomically claim failure only while still pending — avoids racing a late
+  // verify/webhook that just marked the order paid.
+  const { data: claimed } = await (supabase.from("product_orders") as any)
     .update({
       payment_status: "failed",
       status: "cancelled",
@@ -1272,7 +1413,16 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
       cancellation_reason: "Card payment failed",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", o.id);
+    .eq("id", o.id)
+    .eq("payment_status", "pending")
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimed?.length ?? 0) === 0) return;
+
+  await creditWalletForProductOrderIfNeeded(supabase, o, "Wallet refund (card payment failed)", "product_order_payment_failed");
+
+  await restockProductOrderLineItems(supabase, o.id);
 
   try {
     const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
@@ -1323,18 +1473,37 @@ async function handleSubscriptionRenewalChargeFailed(
     reference ||
     `sub_renew_failed:${subscriptionCode}:${new Date().toISOString().slice(0, 10)}`;
 
-  const { data: existingTx } = await supabase
+  const { data: existingFailedTx } = await supabase
     .from("payment_transactions")
     .select("id")
     .eq("provider", "paystack")
     .eq("reference", paystackRef)
     .eq("status", "failed")
     .maybeSingle();
-  if (existingTx) {
+  if (existingFailedTx) {
     console.log(
       `Subscription renewal charge.failed already recorded for ref ${paystackRef}`,
     );
     return;
+  }
+
+  // Success-then-failed race: charge.success / invoice.update may have already
+  // recognized this renewal under the same Paystack charge reference. Never
+  // flip an active (paid) subscription to past_due after money was recognized.
+  if (reference) {
+    const { data: successTxForRef } = await supabase
+      .from("payment_transactions")
+      .select("id")
+      .eq("provider", "paystack")
+      .eq("reference", reference)
+      .eq("status", "success")
+      .maybeSingle();
+    if (successTxForRef) {
+      console.log(
+        `[charge.failed] Skipping subscription past_due — reference ${reference} already succeeded`,
+      );
+      return;
+    }
   }
 
   const { data: subRow } = await supabase
@@ -1375,7 +1544,8 @@ async function handleSubscriptionRenewalChargeFailed(
       status: "past_due",
       updated_at: new Date().toISOString(),
     })
-    .eq("paystack_subscription_code", subscriptionCode);
+    .eq("paystack_subscription_code", subscriptionCode)
+    .in("status", ["active", "past_due"]);
 
   await supabase.from("payment_transactions").insert({
     booking_id: null,
@@ -1559,6 +1729,42 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
   }
 
   const bookingData = booking as ChargeBookingRow;
+
+  const { data: successTxForRef } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", reference)
+    .eq("status", "success")
+    .maybeSingle();
+  if (successTxForRef) {
+    console.log(
+      `[charge.failed] Skipping booking failure — reference ${reference} already succeeded`,
+    );
+    return;
+  }
+
+  const { data: claimedBooking } = await supabase
+    .from("bookings")
+    .update({
+      payment_status: "failed",
+      payment_reference: reference,
+      payment_provider: "paystack",
+      status: "cancelled",
+      cancellation_reason: "Payment failed",
+      cancelled_at: new Date().toISOString(),
+    })
+    .eq("id", metadata.booking_id)
+    .eq("payment_status", "pending")
+    .select("id");
+
+  if ((claimedBooking?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping booking failure — booking ${metadata.booking_id} no longer pending payment`,
+    );
+    return;
+  }
+
   const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
     supabase,
     providerId: bookingData.provider_id,
@@ -1637,23 +1843,6 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       ]);
   } catch (paymentCleanupError) {
     console.error("Error cleaning synthetic booking payments after charge.failed:", paymentCleanupError);
-  }
-
-  // Update booking: mark payment as failed AND cancel the booking to release the slot
-  const { error: updateError } = await supabase.from("bookings")
-    .update({
-      payment_status: "failed",
-      payment_reference: reference,
-      payment_provider: "paystack",
-      status: "cancelled",
-      cancellation_reason: "Payment failed",
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq("id", metadata.booking_id);
-
-  if (updateError) {
-    console.error("Error updating booking payment status:", updateError);
-    throw updateError;
   }
 
   // Create payment transaction record
@@ -1770,6 +1959,25 @@ async function handleCustomOfferSuccess(
       reference: payload.reference,
       reason: result.reason,
     });
+    // Customer was charged but the offer is no longer payment_pending (e.g.
+    // cancel-payment won the race). Raise ops so the charge can be refunded
+    // manually — do not silently absorb the money.
+    try {
+      const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+        "@/lib/integrations/slack/ops-triggers"
+      );
+      slackNotifyProductOrderPaymentNotRecorded({
+        productOrderId: offerId,
+        reference: payload.reference,
+        source: `custom_offer_finalize_${result.reason ?? "failed"}`,
+        amountMajor:
+          typeof payload.amount === "number"
+            ? convertFromSmallestUnit(payload.amount)
+            : null,
+      });
+    } catch (alertErr) {
+      console.error("[handleCustomOfferSuccess] ops alert failed:", alertErr);
+    }
   }
 
   // §custom-offer-save-card 2026-05: mirror the booking-success path — when
@@ -1820,7 +2028,7 @@ async function handleCustomOfferFailed(
   if (!offerId) return;
 
   const admin = getSupabaseAdmin();
-  await admin
+  const { data: claimedOffer } = await admin
     .from("custom_offers")
     .update({
       status: "pending",
@@ -1828,7 +2036,17 @@ async function handleCustomOfferFailed(
       payment_reference: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", offerId);
+    .eq("id", offerId)
+    .eq("status", "payment_pending")
+    .is("booking_id", null)
+    .select("id");
+
+  if ((claimedOffer?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping custom offer failure — offer ${offerId} no longer payment_pending`,
+    );
+    return;
+  }
 
   await patchCustomOfferMessageAttachments(admin, offerId, { status: "pending" });
 
@@ -1916,7 +2134,8 @@ async function handleWalletTopupFailed(
   const topupId = payload.metadata.wallet_topup_id as string;
   if (!topupId) return;
 
-  await supabase.from("wallet_topups")
+  const { data: claimedTopup } = await supabase
+    .from("wallet_topups")
     .update({
       status: "failed",
       failed_at: new Date().toISOString(),
@@ -1924,7 +2143,15 @@ async function handleWalletTopupFailed(
       paystack_reference: payload.reference,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", topupId);
+    .eq("id", topupId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedTopup?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping wallet top-up failure — topup ${topupId} no longer pending`,
+    );
+  }
 }
 
 // ─── Gift Card Order ─────────────────────────────────────────────────────────
@@ -2247,9 +2474,20 @@ async function handleGiftCardOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.gift_card_order_id as string;
-  await supabase.from("gift_card_orders")
+  if (!orderId) return;
+
+  const { data: claimedOrder } = await supabase
+    .from("gift_card_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedOrder?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping gift card order failure — order ${orderId} no longer pending`,
+    );
+  }
 }
 
 // ─── Membership Order ────────────────────────────────────────────────────────
@@ -2280,7 +2518,7 @@ async function handleMembershipOrderSuccess(
     user_id?: string;
     plan_id?: string;
     amount?: number;
-    metadata?: { attribution?: Record<string, unknown> } | null;
+    metadata?: Record<string, unknown> | { attribution?: Record<string, unknown> } | null;
   };
   const orderData = order as MembershipOrderRow;
   if (orderData.status === "paid") return;
@@ -2298,6 +2536,38 @@ async function handleMembershipOrderSuccess(
   const planProviderId = (planRow as { provider_id?: string | null } | null)?.provider_id ?? null;
   if (!planProviderId) {
     console.error("Membership plan missing or has no provider:", orderData.plan_id);
+    // Money was captured but we cannot activate — mark the order failed so it
+    // does not sit pending forever, and raise an ops alert for manual refund.
+    await supabase
+      .from("membership_orders")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        ...(payload.reference ? { paystack_reference: payload.reference } : {}),
+        metadata: {
+          ...((orderData.metadata as Record<string, unknown> | null) ?? {}),
+          finalize_failed_reason: "plan_missing",
+          finalize_failed_at: new Date().toISOString(),
+          paystack_reference: payload.reference,
+        },
+      })
+      .eq("id", orderId)
+      .in("status", ["pending", "failed"]);
+    try {
+      const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+        "@/lib/integrations/slack/ops-triggers"
+      );
+      // Reuse the charged-but-not-recorded ops channel shape with membership context.
+      slackNotifyProductOrderPaymentNotRecorded({
+        productOrderId: orderId,
+        reference: payload.reference,
+        source: "membership_order_plan_missing",
+        amountMajor:
+          typeof payload.amount === "number" ? convertFromSmallestUnit(payload.amount) : null,
+      });
+    } catch (alertErr) {
+      console.error("[membership] ops alert failed for missing plan:", alertErr);
+    }
     return;
   }
   if (orderData.provider_id && orderData.provider_id !== planProviderId) {
@@ -2307,6 +2577,21 @@ async function handleMembershipOrderSuccess(
       planProviderId,
       planId: orderData.plan_id,
     });
+    await supabase
+      .from("membership_orders")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        ...(payload.reference ? { paystack_reference: payload.reference } : {}),
+        metadata: {
+          ...((orderData.metadata as Record<string, unknown> | null) ?? {}),
+          finalize_failed_reason: "provider_mismatch",
+          finalize_failed_at: new Date().toISOString(),
+          paystack_reference: payload.reference,
+        },
+      })
+      .eq("id", orderId)
+      .in("status", ["pending", "failed"]);
     return;
   }
   const providerId = planProviderId;
@@ -2411,6 +2696,12 @@ async function handleMembershipOrderSuccess(
     }
   }
 
+  // Idempotent ledger kind: auto-billing cron renewals must advance next_billing_at
+  // even when this webhook path does not re-save a card (renewal metadata has no
+  // enable_auto_renew / save_card). Leaving the cron's short retry date would
+  // re-charge the customer within 1–3 days after a successful recovery charge.
+  const isAutoRenewal = metadata?.kind === "membership_renewal" || metadata?.source === "auto_renewal";
+
   const recurringFields: Record<string, unknown> = {};
   if (savedPaymentMethodId) {
     recurringFields.auto_renew = true;
@@ -2422,6 +2713,13 @@ async function handleMembershipOrderSuccess(
     recurringFields.past_due_since = null;
     recurringFields.recurring_consent_at = now.toISOString();
     recurringFields.billing_period = "monthly";
+  } else if (isAutoRenewal) {
+    // Webhook recovery after a cron "false failure": keep existing payment method
+    // fields, but repair the billing schedule to the new term and clear dunning.
+    recurringFields.next_billing_at = expiresAt.toISOString();
+    recurringFields.last_payment_at = now.toISOString();
+    recurringFields.renewal_failure_count = 0;
+    recurringFields.past_due_since = null;
   } else {
     // Card not reusable — keep whatever was already set; reset failure count on successful manual re-purchase.
     recurringFields.last_payment_at = now.toISOString();
@@ -2437,21 +2735,30 @@ async function handleMembershipOrderSuccess(
       status: "active",
       started_at: startedAt,
       expires_at: expiresAt.toISOString(),
-      metadata: { source: "purchase", membership_order_id: orderId, attribution },
+      metadata: {
+        source: isAutoRenewal ? "auto_renewal" : "purchase",
+        membership_order_id: orderId,
+        attribution,
+      },
       updated_at: new Date().toISOString(),
       ...recurringFields,
     },
     { onConflict: "user_id,provider_id" },
   );
 
+  // Atomic claim to paid when still pending/failed — webhook recovery after cron
+  // marked the order failed must still settle it.
   await supabase
     .from("membership_orders")
-    .update({ status: "paid", updated_at: new Date().toISOString() })
-    .eq("id", orderId);
+    .update({
+      status: "paid",
+      updated_at: new Date().toISOString(),
+      ...(payload.reference ? { paystack_reference: payload.reference } : {}),
+    })
+    .eq("id", orderId)
+    .in("status", ["pending", "failed"]);
 
   // Idempotent ledger: one payment_transactions + two finance_transactions per reference.
-  // Use `membership_renewal` kind when this charge originated from the auto-billing cron.
-  const isAutoRenewal = metadata?.kind === "membership_renewal" || metadata?.source === "auto_renewal";
   const { recordMembershipPayment } = await import("@/lib/memberships/membership-payment");
   await recordMembershipPayment({
     supabase,
@@ -2488,9 +2795,20 @@ async function handleMembershipOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.membership_order_id as string;
-  await supabase.from("membership_orders")
+  if (!orderId) return;
+
+  const { data: claimedOrder } = await supabase
+    .from("membership_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedOrder?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping membership order failure — order ${orderId} no longer pending`,
+    );
+  }
 }
 
 // ─── Provider Subscription Order ─────────────────────────────────────────────
@@ -2634,7 +2952,16 @@ async function handleProviderSubscriptionOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.provider_subscription_order_id as string;
-  await supabase.from("provider_subscription_orders")
+  if (!orderId) return;
+
+  // Atomically claim failure only while the order is still pending. A duplicate
+  // or out-of-order charge.failed that arrives after a charge.success already
+  // marked the order `paid` (subscription activated, revenue recognized) must
+  // NOT downgrade it to `failed` — that would leave provider_subscription_orders
+  // inconsistent with an active provider_subscriptions row + recognized payment.
+  // Mirrors handleMembershipOrderFailed / booking + product-order failure guards.
+  const { data: claimedOrder } = await supabase
+    .from("provider_subscription_orders")
     .update({
       status: "failed",
       paystack_reference: payload.reference,
@@ -2642,7 +2969,15 @@ async function handleProviderSubscriptionOrderFailed(
       failure_reason: payload.message || "Payment failed",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedOrder?.length ?? 0) === 0) {
+    console.log(
+      `[charge.failed] Skipping provider subscription order failure — order ${orderId} no longer pending`,
+    );
+  }
 }
 
 // ─── Ads budget order (pre-pay for campaign) ──────────────────────────────────
@@ -2792,6 +3127,59 @@ async function handleSubscriptionAuthorizationSuccess(
     return;
   }
 
+  // Idempotency: verify + charge.success both call this path. If the order is
+  // already paid (or the Paystack subscription was already created), do not call
+  // createSubscription again — that would register a second Paystack subscription
+  // and double-bill the provider on renewals.
+  const { data: existingOrder } = await supabase
+    .from("provider_subscription_orders")
+    .select("id, status, paystack_reference")
+    .eq("id", orderId)
+    .maybeSingle();
+  const orderAlreadyPaid =
+    String((existingOrder as { status?: string } | null)?.status ?? "") === "paid";
+
+  const { data: existingSubForGuard } = await supabase
+    .from("provider_subscriptions")
+    .select("id, paystack_subscription_code, status")
+    .eq("provider_id", providerId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const alreadyHasPaystackSub = Boolean(
+    (existingSubForGuard as { paystack_subscription_code?: string | null } | null)
+      ?.paystack_subscription_code,
+  );
+
+  if (orderAlreadyPaid && alreadyHasPaystackSub) {
+    console.log(
+      `[subscription_auth] order ${orderId} already paid with Paystack subscription; skipping createSubscription`,
+    );
+    // Still ensure the authorization charge is recognized (idempotent).
+    const {
+      amountInCurrency: amt,
+      feesInCurrency: feeAmt,
+    } = await resolvePaystackChargeFees(supabase, amount, fees);
+    const tenantHint = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: null,
+      provider_id: providerId,
+    });
+    await recordProviderSubscriptionPayment({
+      supabase,
+      reference,
+      providerId,
+      amountMajor: amt,
+      feesMajor: feeAmt,
+      planId,
+      orderId,
+      paymentTransactionType: "charge",
+      kind: "subscription_authorization",
+      description: "Provider subscription payment",
+      tenantIdHint: tenantHint,
+    });
+    return;
+  }
+
   const authCode = authorization?.authorization_code;
   const isReusableAuth = !!(authCode && authorization?.reusable);
 
@@ -2805,18 +3193,53 @@ async function handleSubscriptionAuthorizationSuccess(
     provider_id: providerId,
   });
 
-  await supabase.from("provider_subscription_orders")
+  // Atomic claim: only one concurrent verify/webhook delivery can mark paid.
+  // Subsequent deliveries see status !== pending and skip createSubscription.
+  const { data: claimedAuthOrder } = await supabase
+    .from("provider_subscription_orders")
     .update({
       status: "paid",
       paystack_reference: reference,
       paid_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if ((claimedAuthOrder?.length ?? 0) === 0) {
+    // Another delivery already claimed, or order never pending. If Paystack sub
+    // already exists, stop. Otherwise fall through carefully: still recognize
+    // money + ensure local activation, but never create a second Paystack sub.
+    if (alreadyHasPaystackSub || orderAlreadyPaid) {
+      console.log(
+        `[subscription_auth] order ${orderId} claim lost (already settled); skipping createSubscription`,
+      );
+      await recordProviderSubscriptionPayment({
+        supabase,
+        reference,
+        providerId,
+        amountMajor: amountInCurrency,
+        feesMajor: feesInCurrency,
+        planId,
+        orderId,
+        paymentTransactionType: "charge",
+        kind: "subscription_authorization",
+        description: "Provider subscription payment",
+        tenantIdHint: subscriptionAuthTenantId,
+      });
+      return;
+    }
+    // Order paid but no Paystack sub yet (prior createSubscription failed) —
+    // continue below to retry setup, but guard createSubscription on code.
+    console.warn(
+      `[subscription_auth] order ${orderId} not pending; retrying local activation / Paystack sync`,
+    );
+  }
 
   const { data: existingSubRows, error: existingSubErr } = await supabase
     .from("provider_subscriptions")
-    .select("id")
+    .select("id, paystack_subscription_code")
     .eq("provider_id", providerId)
     .order("created_at", { ascending: true })
     .limit(5);
@@ -2971,8 +3394,27 @@ async function handleSubscriptionAuthorizationSuccess(
     return;
   }
 
-  // Now automatically create the Paystack subscription
+  // Now automatically create the Paystack subscription (once).
   try {
+    const existingCodeOnRow = String(
+      (
+        (existingSubRows?.[0] as { paystack_subscription_code?: string | null } | undefined)
+          ?.paystack_subscription_code ?? ""
+      ).trim(),
+    );
+    if (existingCodeOnRow) {
+      console.log(
+        `[subscription_auth] provider ${providerId} already has paystack_subscription_code; skipping createSubscription`,
+      );
+      await applyActiveSubscriptionUpdate({
+        paystack_subscription_code: existingCodeOnRow,
+        auto_renew: true,
+        started_at: new Date().toISOString(),
+      });
+      await notifySubscriptionActivated();
+      return;
+    }
+
     const { createSubscription } = await import("@/lib/payments/paystack-complete");
     const paystackPlanCode =
       billingPeriod === "yearly"

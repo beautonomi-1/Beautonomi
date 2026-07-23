@@ -8,6 +8,7 @@ import {
   SectionList,
   RefreshControl,
   Animated,
+  Platform,
 } from "react-native";
 import {
   bookingLifecycleStatus,
@@ -23,6 +24,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import AnimatedRe, {
   useSharedValue,
   useAnimatedStyle,
@@ -56,11 +58,14 @@ import { mapProviderBookingActionError } from "@/lib/provider-booking-action-pol
 import { useBusinessToday } from "@/hooks/useBusinessToday";
 import {
   appendBookingsQueryParts,
+  BOOKINGS_TO_REVIEW_STATUS,
   buildDateStripInfo,
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
   buildStripDateParams,
+  buildStripDays,
   filterBookingsForDayKey,
+  isDateWithinStripWindow,
   mergeAtHomeBookings,
 } from "@/lib/bookings-list-query";
 
@@ -163,6 +168,7 @@ const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
 
 const STATUS_OPTIONS = [
   { label: "All", value: "" },
+  { label: "To review", value: BOOKINGS_TO_REVIEW_STATUS },
   { label: "Pending", value: "pending" },
   { label: "Awaiting payment", value: "pending_payment" },
   { label: "Confirmed", value: "confirmed" },
@@ -177,6 +183,26 @@ const STATUS_OPTIONS = [
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
+
+function bookingMatchesStatusFilter(
+  b: Pick<Booking, "status" | "db_status">,
+  statusFilter: string,
+): boolean {
+  if (!statusFilter) return true;
+  if (statusFilter === BOOKINGS_TO_REVIEW_STATUS) {
+    const status = bookingLifecycleStatus(b);
+    return status === "pending" || status === "pending_payment";
+  }
+  return bookingLifecycleStatus(b) === statusFilter;
+}
+
+function isPendingStatusDeepLink(rawStatus: string): boolean {
+  return (
+    rawStatus === "pending" ||
+    rawStatus === "pending_payment" ||
+    rawStatus === BOOKINGS_TO_REVIEW_STATUS
+  );
+}
 
 function isNonTerminalScheduleBooking(b: Pick<Booking, "status" | "db_status">): boolean {
   if (isTerminalScheduleBooking(b)) return false;
@@ -297,16 +323,10 @@ export default function BookingsListScreen() {
   const providerTimezone = provider?.timezone?.trim() || null;
   const { businessToday, businessTodayKey } = useBusinessToday(providerTimezone);
   const [selectedDate, setSelectedDate] = useState(() => startOfBusinessDayLocalDate(providerTimezone));
+  const [stripAnchorDate, setStripAnchorDate] = useState(() => startOfBusinessDayLocalDate(providerTimezone));
+  const [showJumpDatePicker, setShowJumpDatePicker] = useState(false);
   const prevBusinessTodayKeyRef = useRef(businessTodayKey);
   const userPickedDateRef = useRef(false);
-
-  useEffect(() => {
-    const rawStatus = typeof routeParams.status === "string" ? routeParams.status.trim() : "";
-    if (rawStatus && STATUS_OPTIONS.some((o) => o.value === rawStatus)) {
-      setStatusFilter(rawStatus);
-      setViewMode("overview");
-    }
-  }, [routeParams.status]);
 
   useEffect(() => {
     const rawDate = typeof routeParams.date === "string" ? routeParams.date.trim() : "";
@@ -315,12 +335,15 @@ export default function BookingsListScreen() {
       const parsed = new Date(y, (m || 1) - 1, d || 1);
       if (Number.isFinite(parsed.getTime())) {
         parsed.setHours(0, 0, 0, 0);
+        userPickedDateRef.current = !isSameDay(parsed, businessToday);
         setSelectedDate(parsed);
-        userPickedDateRef.current = true;
+        setStripAnchorDate((prev) =>
+          isDateWithinStripWindow(parsed, prev) ? prev : parsed,
+        );
         setViewMode("day");
       }
     }
-  }, [routeParams.date]);
+  }, [routeParams.date, businessToday]);
 
   const selectedDateKey = useMemo(() => {
     return formatBusinessDayYYYYMMDD(selectedDate, providerTimezone);
@@ -337,6 +360,7 @@ export default function BookingsListScreen() {
 
     if (!userPickedDateRef.current || selectedDateKey === prevKey) {
       setSelectedDate(businessToday);
+      setStripAnchorDate(businessToday);
       userPickedDateRef.current = false;
     }
     prevBusinessTodayKeyRef.current = businessTodayKey;
@@ -391,6 +415,23 @@ export default function BookingsListScreen() {
   type StatsRange = "today" | "week" | "month" | "all";
   const [statsRange, setStatsRange] = useState<StatsRange>("today");
 
+  useEffect(() => {
+    const rawStatus = typeof routeParams.status === "string" ? routeParams.status.trim() : "";
+    if (!rawStatus) return;
+    const isKnownStatus =
+      STATUS_OPTIONS.some((o) => o.value === rawStatus) || rawStatus === BOOKINGS_TO_REVIEW_STATUS;
+    if (!isKnownStatus) return;
+    setStatusFilter(rawStatus === "pending" ? BOOKINGS_TO_REVIEW_STATUS : rawStatus);
+    if (isPendingStatusDeepLink(rawStatus)) {
+      setDateRange("all");
+      setStatsRange("all");
+      setListSort("appointment");
+      setSearch("");
+      setDebouncedSearch("");
+    }
+    setViewMode("overview");
+  }, [routeParams.status]);
+
   interface BookingsStatsPayload {
     booked_gmv: number;
     recognized_revenue: number;
@@ -427,8 +468,8 @@ export default function BookingsListScreen() {
   }, [search]);
 
   const stripDateParams = useMemo(
-    () => buildStripDateParams(providerTimezone),
-    [providerTimezone],
+    () => buildStripDateParams(providerTimezone, stripAnchorDate),
+    [providerTimezone, stripAnchorDate],
   );
 
   const stripUrl = useMemo(
@@ -550,16 +591,28 @@ export default function BookingsListScreen() {
     "/api/provider/availability-blocks",
     { staleTimeMs: 600_000 },
   );
+  const navCountsUrl = useMemo(
+    () =>
+      selectedLocationId
+        ? `/api/provider/nav-counts?location_id=${encodeURIComponent(selectedLocationId)}`
+        : "/api/provider/nav-counts",
+    [selectedLocationId],
+  );
   const { data: navCounts } = useApi<{ waiting_room: number; stale_pending_bookings: number }>(
-    "/api/provider/nav-counts",
+    navCountsUrl,
     { staleTimeMs: 15_000 },
   );
   const { data: permissionData } = useApi<{
+    isOwner?: boolean;
     permissions?: { edit_appointments?: boolean; cancel_appointments?: boolean };
   }>("/api/provider/permissions");
-  const canEditAppointments = permissionData?.permissions?.edit_appointments === true;
+  const isOwner = permissionData?.isOwner === true;
+  const canEditAppointments =
+    isOwner || permissionData?.permissions?.edit_appointments === true;
   const canCancelAppointments =
-    permissionData?.permissions?.cancel_appointments === true || canEditAppointments;
+    isOwner ||
+    permissionData?.permissions?.cancel_appointments === true ||
+    canEditAppointments;
 
   const timeBlocks = useMemo(() => (Array.isArray(timeBlocksRaw) ? timeBlocksRaw : []), [timeBlocksRaw]);
 
@@ -755,13 +808,7 @@ export default function BookingsListScreen() {
     return keys;
   }, [availabilityBlocksRaw]);
 
-  const stripDays = useMemo(
-    () =>
-      Array.from({ length: PROVIDER_BOOKINGS_STRIP_HALF_DAYS * 2 + 1 }, (_, i) =>
-        addDays(businessToday, i - PROVIDER_BOOKINGS_STRIP_HALF_DAYS),
-      ),
-    [businessToday],
-  );
+  const stripDays = useMemo(() => buildStripDays(stripAnchorDate), [stripAnchorDate]);
 
   const selectedDateStripIndex = useMemo(() => {
     const index = stripDays.findIndex((d) => isSameDay(d, selectedDate));
@@ -787,7 +834,16 @@ export default function BookingsListScreen() {
   useEffect(() => {
     if (viewMode !== "day") return;
     scheduleDateStripScrollRef.current();
-  }, [viewMode, selectedDateStripIndex, businessTodayKey]);
+  }, [viewMode, selectedDateStripIndex, businessTodayKey, stripAnchorDate]);
+
+  const isToReviewOverviewEmpty = useMemo(
+    () =>
+      viewMode === "overview" &&
+      dateRange === "all" &&
+      statusFilter === BOOKINGS_TO_REVIEW_STATUS &&
+      !search.trim(),
+    [viewMode, dateRange, statusFilter, search],
+  );
 
   const dateStripInfo = useMemo(
     () => buildDateStripInfo(stripBookingsMerged, timeBlocks, closedDateKeys, providerTimezone),
@@ -838,7 +894,7 @@ export default function BookingsListScreen() {
     // Status chip narrows the day list client-side (the strip stays full —
     // dateStripInfo is derived from the unfiltered strip dataset).
     if (!statusFilter) return dayRows;
-    return dayRows.filter((b) => bookingLifecycleStatus(b) === statusFilter);
+    return dayRows.filter((b) => bookingMatchesStatusFilter(b, statusFilter));
   }, [viewMode, daySearchFiltered, selectedDateKey, providerTimezone, statusFilter]);
 
   const dayBlocksForSelected = useMemo(() => {
@@ -980,6 +1036,20 @@ export default function BookingsListScreen() {
     [dateRange, providerTimezone],
   );
 
+  const applyJumpToDate = useCallback(
+    (picked: Date) => {
+      const normalized = new Date(picked);
+      normalized.setHours(0, 0, 0, 0);
+      userPickedDateRef.current = !isSameDay(normalized, businessToday);
+      setSelectedDate(normalized);
+      setStripAnchorDate((prev) =>
+        isDateWithinStripWindow(normalized, prev) ? prev : normalized,
+      );
+      setViewMode("day");
+    },
+    [businessToday],
+  );
+
   /**
    * Jump to the Overview list, filtered to pending bookings across all dates
    * (oldest-first via the default "By appointment" sort). Used by the
@@ -989,8 +1059,11 @@ export default function BookingsListScreen() {
    */
   const showAllPendingBookings = useCallback(() => {
     void Haptics.selectionAsync();
-    setStatusFilter("pending");
+    setSearch("");
+    setDebouncedSearch("");
+    setStatusFilter(BOOKINGS_TO_REVIEW_STATUS);
     setDateRange("all");
+    setStatsRange("all");
     setListSort("appointment");
     setViewMode("overview");
   }, []);
@@ -1185,6 +1258,46 @@ export default function BookingsListScreen() {
 
         {viewMode === "day" ? (
           <>
+            <View style={twStyle("mx-4 mb-2 flex-row items-center justify-end")}>
+              <TouchableOpacity
+                onPress={() => setShowJumpDatePicker(true)}
+                style={twStyle(
+                  "flex-row items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2",
+                )}
+                accessibilityRole="button"
+                accessibilityLabel={`Jump to date, currently ${format(selectedDate, "MMMM d, yyyy")}`}
+              >
+                <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>
+                  {format(selectedDate, "MMM d, yyyy")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {showJumpDatePicker ? (
+              <View style={twStyle("mx-4 mb-2")}>
+                {Platform.OS === "ios" ? (
+                  <View style={twStyle("mb-1 flex-row items-center justify-end")}>
+                    <TouchableOpacity
+                      onPress={() => setShowJumpDatePicker(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Done choosing date"
+                    >
+                      <Text style={[twStyle("text-sm font-bold"), { color: Colors.primary }]}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={(event, picked) => {
+                    if (Platform.OS === "android") setShowJumpDatePicker(false);
+                    if (event.type === "dismissed") return;
+                    if (picked) applyJumpToDate(picked);
+                  }}
+                />
+              </View>
+            ) : null}
             <FlatList<Date>
               ref={dateStripRef}
               horizontal
@@ -1535,6 +1648,8 @@ export default function BookingsListScreen() {
       dateRange,
       listSort,
       statusFilter,
+      applyJumpToDate,
+      showJumpDatePicker,
     ],
   );
 
@@ -1653,13 +1768,21 @@ export default function BookingsListScreen() {
             ) : (
               <EmptyState
                 icon="calendar-outline"
-                title={search || statusFilter ? "No bookings match" : "Nothing scheduled"}
+                title={
+                  isToReviewOverviewEmpty
+                    ? "No pending requests"
+                    : search || statusFilter
+                      ? "No bookings match"
+                      : "Nothing scheduled"
+                }
                 description={
-                  search || statusFilter
-                    ? "Try adjusting your search or filters."
-                    : viewMode === "day"
-                      ? "No appointments or blocks for this day."
-                      : "Create a new booking to get started."
+                  isToReviewOverviewEmpty
+                    ? "There are no pending or awaiting-payment bookings for this location."
+                    : search || statusFilter
+                      ? "Try adjusting your search or filters."
+                      : viewMode === "day"
+                        ? "No appointments or blocks for this day."
+                        : "Create a new booking to get started."
                 }
                 actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
                 onAction={

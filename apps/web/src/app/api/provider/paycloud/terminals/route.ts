@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveSingleActivePaycloudMerchant } from "@/lib/payments/paycloud-merchant-helpers";
-import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
+import {
+  requirePaycloudPlatformEnabledForProvider,
+  isPaycloudQrEnabledForProvider,
+  isPaycloudCashbackEnabledForProvider,
+} from "@/lib/payments/paycloud-feature-gate";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
@@ -71,12 +75,18 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .maybeSingle();
 
+    const [qrFlagOn, cashbackFlagOn] = await Promise.all([
+      isPaycloudQrEnabledForProvider(supabase, providerId),
+      isPaycloudCashbackEnabledForProvider(supabase, providerId),
+    ]);
+
     return NextResponse.json({
       data: {
         terminals: mapped,
         accept_paycloud: settings?.accept_paycloud ?? false,
-        qr_payments_enabled: settings?.qr_payments_enabled ?? false,
-        cashback_enabled: settings?.cashback_enabled ?? false,
+        // Effective capability: platform flag AND provider setting.
+        qr_payments_enabled: qrFlagOn && (settings?.qr_payments_enabled ?? false),
+        cashback_enabled: cashbackFlagOn && (settings?.cashback_enabled ?? false),
       },
       error: null,
     });

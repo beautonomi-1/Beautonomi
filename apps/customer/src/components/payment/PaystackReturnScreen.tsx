@@ -81,6 +81,10 @@ export interface PaystackReturnScreenProps {
    * Shown after `SLOW_HINT_MS` ms while still in the `verifying` state.
    */
   slowHint?: string;
+  /** Override pending-state supporting copy (defaults to booking wording). */
+  pendingSubtext?: string;
+  /** Override failed-state supporting copy (defaults to booking wording). */
+  failedSubtext?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -122,6 +126,8 @@ export function PaystackReturnScreen({
   verifyEndpoint,
   labels,
   slowHint,
+  pendingSubtext,
+  failedSubtext,
 }: PaystackReturnScreenProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -297,10 +303,16 @@ export function PaystackReturnScreen({
 
   const subtext = (() => {
     if (mode === "pending") {
-      return "We'll update your booking within a few minutes. You can keep using the app while we confirm with your bank.";
+      return (
+        pendingSubtext ??
+        "We'll update your booking within a few minutes. You can keep using the app while we confirm with your bank."
+      );
     }
     if (mode === "failed") {
-      return "If you were charged, your booking will still be confirmed once the payment lands. Please check your Bookings tab.";
+      return (
+        failedSubtext ??
+        "If you were charged, your booking will still be confirmed once the payment lands. Please check your Bookings tab."
+      );
     }
     if (mode === "verifying" && slow) {
       return "This usually takes a few seconds. You can leave this screen — we'll keep checking in the background.";

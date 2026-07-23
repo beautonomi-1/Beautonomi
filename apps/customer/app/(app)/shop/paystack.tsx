@@ -42,6 +42,8 @@ export default function ShopPaystackReturnScreen() {
         fallbackCta: "Go to Orders",
         continueCta: "View order",
       }}
+      pendingSubtext="We'll update your order within a few minutes. You can keep using the app while we confirm with your bank."
+      failedSubtext="If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
     />
   );
 }

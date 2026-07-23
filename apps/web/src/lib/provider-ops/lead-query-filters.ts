@@ -63,3 +63,68 @@ export function parseDeletedFilter(searchParams: URLSearchParams): "active" | "d
   if (v === "all") return "all";
   return "active";
 }
+
+export type LeadContactFilter =
+  | "all"
+  | "complete"
+  | "has_phone"
+  | "has_email"
+  | "missing_phone"
+  | "missing_email"
+  | "incomplete";
+
+const VALID_CONTACT_FILTERS = new Set<LeadContactFilter>([
+  "all",
+  "complete",
+  "has_phone",
+  "has_email",
+  "missing_phone",
+  "missing_email",
+  "incomplete",
+]);
+
+export function parseContactFilter(searchParams: URLSearchParams): LeadContactFilter {
+  const v = searchParams.get("contact")?.trim();
+  if (v && VALID_CONTACT_FILTERS.has(v as LeadContactFilter)) {
+    return v as LeadContactFilter;
+  }
+  return "all";
+}
+
+/** PostgREST filter builder (typed loosely to avoid deep Supabase generic instantiation). */
+type ContactFilterQuery = {
+  is: (col: string, val: null) => ContactFilterQuery;
+  not: (col: string, op: string, val: null) => ContactFilterQuery;
+  neq: (col: string, val: string) => ContactFilterQuery;
+  or: (filters: string) => ContactFilterQuery;
+};
+
+/** Filter leads by email/phone completeness. */
+export function applyContactFilter(q: ContactFilterQuery, contact: LeadContactFilter): ContactFilterQuery {
+  if (contact === "all") return q;
+
+  if (contact === "missing_phone") {
+    return q.or("phone_e164.is.null,phone_e164.eq.");
+  }
+  if (contact === "missing_email") {
+    return q.or("email.is.null,email.eq.");
+  }
+  if (contact === "incomplete") {
+    return q.or("phone_e164.is.null,phone_e164.eq.,email.is.null,email.eq.");
+  }
+  if (contact === "has_phone") {
+    return q.not("phone_e164", "is", null).neq("phone_e164", "");
+  }
+  if (contact === "has_email") {
+    return q.not("email", "is", null).neq("email", "");
+  }
+  if (contact === "complete") {
+    return q
+      .not("phone_e164", "is", null)
+      .neq("phone_e164", "")
+      .not("email", "is", null)
+      .neq("email", "");
+  }
+
+  return q;
+}

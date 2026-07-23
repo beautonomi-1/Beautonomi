@@ -17,6 +17,9 @@ describe("adminSpaTo", () => {
   it("preserves query strings", () => {
     expect(adminSpaTo("/admin/login?next=%2Fadmin%2Fdashboard")).toBe("/login?next=%2Fadmin%2Fdashboard");
     expect(adminSpaTo("/admin/verifications?status=all")).toBe("/verifications?status=all");
+    expect(adminSpaTo("/admin/refunds?status=success")).toBe("/refunds?status=success");
+    expect(adminSpaTo("/admin/disputes?status=open")).toBe("/disputes?status=open");
+    expect(adminSpaTo("/admin/webhooks?tab=failures")).toBe("/webhooks?tab=failures");
   });
 });
 

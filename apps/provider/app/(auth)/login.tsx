@@ -42,10 +42,14 @@ import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 const PRIMARY = Colors.primary;
 
 /** Wait for session storage so root `/` portal + profile checks see a valid Bearer token on iOS. */
-async function goToAppRoot(router: { replace: (href: string) => void }, method: string) {
+async function goToAppRoot(
+  router: { replace: (href: string) => void },
+  method: string,
+  redirectPath?: string,
+) {
   await supabase.auth.getSession();
   logLoginSuccessBreadcrumb(method);
-  router.replace("/");
+  router.replace(redirectPath ?? "/");
 }
 
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
@@ -54,7 +58,16 @@ type LoginMode = "phone" | "email";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ deactivated?: string; suspended?: string; deletion_scheduled?: string }>();
+  const params = useLocalSearchParams<{
+    deactivated?: string;
+    suspended?: string;
+    deletion_scheduled?: string;
+    joinToken?: string;
+  }>();
+  const postLoginPath = useMemo(() => {
+    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
+    return token ? `/join?token=${encodeURIComponent(token)}` : undefined;
+  }, [params.joinToken]);
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,
@@ -323,7 +336,7 @@ export default function LoginScreen() {
       }
       await writeSignupPhoneHandoff(e164);
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "phone_otp");
+      await goToAppRoot(router, "phone_otp", postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
     } finally {
@@ -346,7 +359,7 @@ export default function LoginScreen() {
         return;
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, `oauth_${provider}`);
+      await goToAppRoot(router, `oauth_${provider}`, postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "OAuth sign-in failed. Please try again.");
     } finally {
@@ -399,7 +412,7 @@ export default function LoginScreen() {
         trackLogin("email");
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, isSignup ? "email_signup" : "email_password");
+      await goToAppRoot(router, isSignup ? "email_signup" : "email_password", postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
@@ -420,7 +433,7 @@ export default function LoginScreen() {
       }
       trackSignUp("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "email_signup");
+      await goToAppRoot(router, "email_signup", postLoginPath);
     } catch (e: unknown) {
       setSignupOtpError(e instanceof Error ? e.message : "Verification failed.");
     } finally {
@@ -497,7 +510,7 @@ export default function LoginScreen() {
       }
       trackLogin("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "email_otp");
+      await goToAppRoot(router, "email_otp", postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed.");
     } finally {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
@@ -30,13 +30,22 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Tag, User,
   Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp, RotateCcw,
   MessageSquare, Globe, Building2, FileText, Clock,
-  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle, Ban,
+  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle, Ban, AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
 import { LeadVoiceDialer } from "@/components/provider-ops/LeadVoiceDialer";
 import { ReferrerPicker, referrerSelectionFromLead, type ReferrerSelection } from "@/components/provider-ops/ReferrerPicker";
+import {
+  canWhatsAppLead,
+  getLeadContactAlertLabel,
+  normalizeLeadWhatsAppStatus,
+  getWhatsAppBlockedReason,
+  hasLeadEmail,
+  hasLeadPhone,
+} from "@/lib/providerOpsLeadContact";
 
 function detailAssigneeName(lead: Record<string, unknown>): string {
   const aid = lead.assigned_to != null ? String(lead.assigned_to) : "";
@@ -55,6 +64,7 @@ const ACTIVITY_ICON_MAP: Record<string, typeof MessageSquare> = {
   stage_change: TrendingUp,
   stage_changed: TrendingUp,
   call: Phone,
+  call_logged: Phone,
   email: Mail,
   email_sent: Mail,
   sms_sent: Send,
@@ -71,6 +81,7 @@ const ACTIVITY_COLOR_MAP: Record<string, { bg: string; text: string }> = {
   stage_change: { bg: "bg-purple-100", text: "text-purple-600" },
   stage_changed: { bg: "bg-purple-100", text: "text-purple-600" },
   call: { bg: "bg-green-100", text: "text-green-600" },
+  call_logged: { bg: "bg-green-100", text: "text-green-600" },
   email: { bg: "bg-amber-100", text: "text-amber-600" },
   email_sent: { bg: "bg-amber-100", text: "text-amber-600" },
   sms_sent: { bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -124,6 +135,8 @@ export function ProviderOpsLeadDetailPage() {
     suggested_location_text: "", country: "", description: "", notes: "",
   });
   const [editReferrer, setEditReferrer] = useState<ReferrerSelection | null>(null);
+  const lastCallLogAtRef = useRef(0);
+  const noteInputRef = useRef<HTMLInputElement>(null);
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.leadDetail(id!),
@@ -246,7 +259,7 @@ export function ProviderOpsLeadDetailPage() {
       adminApi.postJson(`/api/admin/provider-ops/leads/${id}/activities`, {
         activity_type: "call_logged",
         description: noteText.trim() || "Phone call with lead",
-        metadata: { direction: "outbound" },
+        metadata: { direction: "outbound", source: "manual_log" },
       }),
     onSuccess: () => {
       setNoteText("");
@@ -255,6 +268,46 @@ export function ProviderOpsLeadDetailPage() {
     },
     onError: (e: Error) => adminToast.error(`Failed to log call: ${e.message}`),
   });
+
+  const handleLeadCallClick = useCallback(async () => {
+    const lead = q.data as Record<string, unknown> | undefined;
+    const phone = typeof lead?.phone_e164 === "string" ? lead.phone_e164.trim() : "";
+    if (!phone) return;
+    if (lead?.do_not_contact) {
+      const ok = window.confirm("This lead is marked Do Not Contact. Place the call anyway?");
+      if (!ok) return;
+    }
+
+    const now = Date.now();
+    const shouldLog = now - lastCallLogAtRef.current >= 2000;
+    if (shouldLog) lastCallLogAtRef.current = now;
+
+    const a = document.createElement("a");
+    a.href = `tel:${phone}`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    if (!shouldLog) return;
+
+    try {
+      await adminApi.postJson(`/api/admin/provider-ops/leads/${id}/activities`, {
+        activity_type: "call_logged",
+        description: "Phone call with lead",
+        metadata: { direction: "outbound", source: "tel_link" },
+      });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      toast.success("Call logged", {
+        action: {
+          label: "Add note",
+          onClick: () => noteInputRef.current?.focus(),
+        },
+      });
+    } catch (e) {
+      adminToast.error(e instanceof Error ? e.message : "Failed to log call");
+    }
+  }, [id, q.data, qc]);
 
   const assignMut = useMutation({
     mutationFn: (args: { assigned_to: string; assigned_to_name?: string }) => {
@@ -478,6 +531,15 @@ export function ProviderOpsLeadDetailPage() {
   const iOwnLead = Boolean(myUserId && assignedToId === myUserId);
   const updatedAtRaw = lead.updated_at != null ? String(lead.updated_at) : "";
   const doNotContact = Boolean(lead.do_not_contact);
+  const contactLead = {
+    phone_e164: typeof lead.phone_e164 === "string" ? lead.phone_e164 : null,
+    email: typeof lead.email === "string" ? lead.email : null,
+    do_not_contact: doNotContact,
+    whatsapp_status: normalizeLeadWhatsAppStatus(lead.whatsapp_status),
+  };
+  const contactAlertLabel = getLeadContactAlertLabel(contactLead);
+  const whatsAppBlockedReason = getWhatsAppBlockedReason(contactLead);
+  const whatsAppEnabled = canWhatsAppLead(contactLead);
   const referrerDisplay =
     referrerSelectionFromLead(lead)?.display_name ||
     (lead.source_detail ? String(lead.source_detail) : null);
@@ -591,6 +653,15 @@ export function ProviderOpsLeadDetailPage() {
                 <Ban className="h-3 w-3" />
                 {doNotContact ? "Do not contact" : "Mark DNC"}
               </button>
+              {contactAlertLabel ? (
+                <span
+                  title={contactAlertLabel}
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {contactAlertLabel}
+                </span>
+              ) : null}
               <span className="inline-block rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-500">{String(lead.source ?? "—")}</span>
               <span className="text-xs text-gray-400">{lead.created_at ? new Date(String(lead.created_at)).toLocaleDateString() : ""}</span>
             </div>
@@ -606,26 +677,31 @@ export function ProviderOpsLeadDetailPage() {
               <FileText className="h-4 w-4" />Edit
             </button>
           )}
-          {Boolean(lead.phone_e164) ? (
-            <a href={`tel:${String(lead.phone_e164)}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors">
+          {hasLeadPhone(contactLead) ? (
+            <button
+              type="button"
+              onClick={() => void handleLeadCallClick()}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors"
+            >
               <Phone className="h-4 w-4" />Call
-            </a>
+            </button>
           ) : null}
-          {Boolean(lead.email) ? (
+          {hasLeadEmail(contactLead) ? (
             <a href={`mailto:${String(lead.email)}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors">
               <Mail className="h-4 w-4" />Email
             </a>
           ) : null}
           <button
             type="button"
+            disabled={!whatsAppEnabled}
             onClick={() => document.getElementById("whatsapp-panel")?.scrollIntoView({ behavior: "smooth" })}
             className={cn(
               "inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium touch-manipulation transition-colors",
-              lead.phone_e164
+              whatsAppEnabled
                 ? "border-green-300 bg-white text-green-700 hover:bg-green-50"
-                : "opacity-40 pointer-events-none border-gray-200 bg-white text-gray-400",
+                : "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400",
             )}
-            title={lead.phone_e164 ? "Send WhatsApp" : "No phone number"}
+            title={whatsAppBlockedReason ?? "Send WhatsApp"}
           >
             <MessageCircle className="h-4 w-4" />WhatsApp
           </button>
@@ -799,8 +875,18 @@ export function ProviderOpsLeadDetailPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <DetailField icon={User} label="Contact Person" value={lead.contact_person_name} />
                 <DetailField icon={Building2} label="Business Name" value={lead.business_name} />
-                <DetailField icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${String(lead.email)}` : undefined} />
-                <DetailField icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${String(lead.phone_e164)}` : undefined} />
+                <DetailField
+                  icon={Mail}
+                  label="Email"
+                  value={hasLeadEmail(contactLead) ? lead.email : "No email"}
+                  href={hasLeadEmail(contactLead) ? `mailto:${String(lead.email)}` : undefined}
+                />
+                <DetailField
+                  icon={Phone}
+                  label="Phone"
+                  value={hasLeadPhone(contactLead) ? lead.phone_e164 : "No phone"}
+                  href={hasLeadPhone(contactLead) ? `tel:${String(lead.phone_e164)}` : undefined}
+                />
                 {lead.phone_e164 ? (
                   <div className="sm:col-span-2">
                     <LeadVoiceDialer
@@ -1041,6 +1127,7 @@ export function ProviderOpsLeadDetailPage() {
               </div>
               <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
+                  ref={noteInputRef}
                   type="text"
                   placeholder="Add a note…"
                   value={noteText}

@@ -20,11 +20,12 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 interface ChainState {
   filters: Record<string, unknown[]>;
+  orFilters: string[];
 }
 
 /** Chainable count/select-query stub; resolves lazily via `.then` once awaited. */
 function makeChain(resolveQuery: (state: ChainState) => { count?: number; data?: unknown; error: unknown }) {
-  const state: ChainState = { filters: {} };
+  const state: ChainState = { filters: {}, orFilters: [] };
   const chain: any = {
     select: () => chain,
     eq: (col: string, value: unknown) => {
@@ -47,7 +48,10 @@ function makeChain(resolveQuery: (state: ChainState) => { count?: number; data?:
       state.filters[`not:${col}`] = args;
       return chain;
     },
-    or: () => chain,
+    or: (filter: string) => {
+      state.orFilters.push(filter);
+      return chain;
+    },
     then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
       try {
         resolve(resolveQuery(state));
@@ -165,5 +169,43 @@ describe("GET /api/provider/nav-counts", () => {
 
     expect(body.data.pending_bookings).toBe(3);
     expect(body.data.stale_pending_bookings).toBe(0);
+  });
+
+  it("scopes pending and stale counts by location_id when provided", async () => {
+    const bookingOrCalls: string[] = [];
+    const groupOrCalls: string[] = [];
+    mockGetSupabaseAdmin.mockReturnValue({
+      from(table: string) {
+        return makeChain((state) => {
+          if (table === "bookings") bookingOrCalls.push(...state.orFilters);
+          if (table === "group_bookings") groupOrCalls.push(...state.orFilters);
+          return resolveTable(table, state, {
+            ...DEFAULT_COUNTS,
+            pendingBookings: 2,
+            staleBookings: 1,
+            pendingGroupBookings: 1,
+            staleGroupBookings: 0,
+          });
+        });
+      },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      new NextRequest("http://localhost/api/provider/nav-counts?location_id=loc-branch-1"),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.pending_bookings).toBe(3);
+    expect(body.data.stale_pending_bookings).toBe(1);
+    expect(bookingOrCalls.length).toBe(2);
+    expect(groupOrCalls.length).toBe(2);
+    expect(bookingOrCalls.every((f) => f.includes("loc-branch-1") && f.includes("booking_source"))).toBe(
+      true,
+    );
+    expect(groupOrCalls.every((f) => f.includes("loc-branch-1") && !f.includes("booking_source"))).toBe(
+      true,
+    );
   });
 });

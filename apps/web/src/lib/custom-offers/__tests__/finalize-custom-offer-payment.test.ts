@@ -51,22 +51,25 @@ vi.mock("@/lib/notifications/insert-notification", () => ({
 }));
 
 function makeAdminMockForOffer(offer: any, paymentTxn: any | null = null) {
+  const chainFor = (data: unknown) => {
+    const chain: any = {
+      eq: () => chain,
+      maybeSingle: async () => ({ data }),
+      single: async () => ({ data }),
+    };
+    return { select: () => chain };
+  };
   return {
-    from: (table: string) => ({
-      select: () => ({
-        eq: () => ({
-          single: async () => ({ data: table === "custom_offers" ? offer : null }),
-          maybeSingle: async () => {
-            if (table === "payment_transactions") return { data: paymentTxn };
-            if (table === "providers") return { data: { tenant_id: "t1" } };
-            return { data: null };
-          },
-        }),
-      }),
-      update: () => ({ eq: async () => ({ error: null }) }),
-      insert: () => ({
-        select: () => ({ single: async () => ({ data: null, error: null }) }),
-      }),
+    from: (table: string) => {
+      if (table === "custom_offers") return chainFor(offer);
+      if (table === "payment_transactions") return chainFor(paymentTxn);
+      if (table === "finance_transactions") return chainFor(paymentTxn ? { id: "fin-1" } : null);
+      if (table === "providers") return chainFor({ tenant_id: "t1" });
+      return chainFor(null);
+    },
+    update: () => ({ eq: async () => ({ error: null }) }),
+    insert: () => ({
+      select: () => ({ single: async () => ({ data: null, error: null }) }),
     }),
     rpc: vi.fn(async () => ({ data: null, error: null })),
   } as any;
@@ -457,5 +460,185 @@ describe("finalizeCustomOfferPayment idempotency", () => {
     const earnings = Number(earningsRow?.net_amount ?? earningsRow?.amount ?? 0);
     expect(Number(paymentRow?.amount)).toBeLessThan(80);
     expect(commission + earnings).toBeCloseTo(Number(paymentRow?.amount), 2);
+  });
+});
+
+/**
+ * A prior run can mark the offer `paid` (or insert `payment_transactions`) and then crash
+ * before writing `finance_transactions` — e.g. process restart between step 7 and step 10 of
+ * `finalizeCustomOfferPayment`. A Paystack webhook retry for the same reference must backfill
+ * the missing ledger rows instead of (a) silently no-op'ing forever, or (b) falling through to
+ * a full re-finalize that would create a duplicate offering + booking for the same offer.
+ */
+describe("finalizeCustomOfferPayment finance backfill (crash recovery)", () => {
+  const backfillBookingRow = {
+    id: "booking-9",
+    provider_id: "provider-1",
+    tenant_id: "tenant-1",
+    total_amount: 100,
+    tip_amount: 0,
+    tax_amount: 0,
+    travel_fee: 0,
+    service_fee_amount: 0,
+    wallet_amount: 0,
+    gift_card_amount: 0,
+    promotion_discount_amount: 0,
+    loyalty_discount_amount: 0,
+    payment_reference: "co_test_ref",
+    payment_provider: "paystack",
+  };
+
+  function makeAdminMockForAlreadyPaidNeedsBackfill() {
+    const financeInserts: Array<Record<string, unknown>> = [];
+    const paymentTxInserts: Array<Record<string, unknown>> = [];
+    const offer = {
+      id: "offer-1",
+      status: "paid",
+      booking_id: "booking-9",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "provider-1" },
+    };
+    const admin = {
+      from: (table: string) => {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          single: async () => (table === "custom_offers" ? { data: offer } : { data: null }),
+          maybeSingle: async () => {
+            if (table === "finance_transactions") return { data: null };
+            if (table === "bookings") return { data: backfillBookingRow };
+            if (table === "payment_transactions") return { data: null };
+            if (table === "providers") return { data: { tenant_id: "tenant-1" } };
+            return { data: null };
+          },
+          insert: (value: unknown) => {
+            if (table === "finance_transactions") {
+              const rows = Array.isArray(value) ? value : [value];
+              financeInserts.push(...(rows as Array<Record<string, unknown>>));
+            }
+            if (table === "payment_transactions") paymentTxInserts.push(value as Record<string, unknown>);
+            return Promise.resolve({ data: null, error: null });
+          },
+          update: () => ({ eq: async () => ({ error: null }) }),
+        };
+        return chain;
+      },
+      rpc: vi.fn(async () => ({ data: null, error: null })),
+    } as any;
+    return { admin, financeInserts, paymentTxInserts };
+  }
+
+  function makeAdminMockForDuplicateReferenceNeedsBackfill() {
+    const financeInserts: Array<Record<string, unknown>> = [];
+    const paymentTxInserts: Array<Record<string, unknown>> = [];
+    const offer = {
+      id: "offer-1",
+      status: "payment_pending",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "provider-1" },
+    };
+    let paymentTxCalls = 0;
+    const admin = {
+      from: (table: string) => {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          single: async () => (table === "custom_offers" ? { data: offer } : { data: null }),
+          maybeSingle: async () => {
+            if (table === "payment_transactions") {
+              paymentTxCalls += 1;
+              // 1st call: the main-flow existingTx dedupe (matched by reference alone).
+              if (paymentTxCalls === 1) return { data: { id: "tx-1", booking_id: "booking-9" } };
+              // 2nd call: backfill's own (provider, reference) dedupe check.
+              return { data: null };
+            }
+            if (table === "finance_transactions") return { data: null };
+            if (table === "bookings") return { data: backfillBookingRow };
+            if (table === "providers") return { data: { tenant_id: "tenant-1" } };
+            return { data: null };
+          },
+          insert: (value: unknown) => {
+            if (table === "finance_transactions") {
+              const rows = Array.isArray(value) ? value : [value];
+              financeInserts.push(...(rows as Array<Record<string, unknown>>));
+            }
+            if (table === "payment_transactions") paymentTxInserts.push(value as Record<string, unknown>);
+            return Promise.resolve({ data: null, error: null });
+          },
+          update: () => ({ eq: async () => ({ error: null }) }),
+        };
+        return chain;
+      },
+      rpc: vi.fn(async () => ({ data: null, error: null })),
+    } as any;
+    return { admin, financeInserts, paymentTxInserts };
+  }
+
+  it("backfills the finance ledger when the offer is already paid but the ledger is missing", async () => {
+    const { admin, financeInserts, paymentTxInserts } = makeAdminMockForAlreadyPaidNeedsBackfill();
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_test_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.bookingId).toBe("booking-9");
+    expect(res.reason).toBe("already_paid");
+    expect(paymentTxInserts.length).toBe(1);
+    const paymentRow = financeInserts.find((r) => r.transaction_type === "payment");
+    const earningsRow = financeInserts.find((r) => r.transaction_type === "provider_earnings");
+    expect(paymentRow).toBeTruthy();
+    expect(earningsRow).toBeTruthy();
+  });
+
+  it("does not re-insert finance rows when the offer is already paid and the ledger already exists", async () => {
+    const offer = {
+      id: "offer-1",
+      status: "paid",
+      booking_id: "booking-9",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "p1" },
+    };
+    // Truthy 2nd arg makes the shared helper's finance_transactions lookup return a row,
+    // i.e. the ledger already exists — backfill must no-op.
+    const admin = makeAdminMockForOffer(offer, { id: "tx-1" });
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_test_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.bookingId).toBe("booking-9");
+    expect(res.reason).toBe("already_paid");
+  });
+
+  it("backfills instead of re-finalizing when a booking exists for the reference but the ledger is missing", async () => {
+    const { admin, financeInserts, paymentTxInserts } = makeAdminMockForDuplicateReferenceNeedsBackfill();
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_test_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.bookingId).toBe("booking-9");
+    expect(res.reason).toBe("duplicate_reference_backfilled");
+    expect(paymentTxInserts.length).toBe(1);
+    expect(financeInserts.some((r) => r.transaction_type === "provider_earnings")).toBe(true);
+    expect(financeInserts.some((r) => r.transaction_type === "payment")).toBe(true);
   });
 });

@@ -471,7 +471,6 @@ const STEPS = [
     id: 9,
     title: "Service Zones",
     description: "Select service areas",
-    canSkip: true,
     conditional: (data: Partial<OnboardingData>) =>
       data.business_type === "mobile" || data.business_type === "both",
   },
@@ -745,7 +744,11 @@ export default function ProviderOnboarding() {
         }
         break;
       case 9: // Service Zones
-        // Optional (can skip)
+        if (formData.business_type === "mobile" || formData.business_type === "both") {
+          if (!formData.selected_zone_ids?.length) {
+            errors.push("Please select at least one service zone");
+          }
+        }
         break;
       case 10: // Service Categories
         if (!formData.global_category_ids || formData.global_category_ids.length === 0) {
@@ -1112,6 +1115,8 @@ export default function ProviderOnboarding() {
 
   const currentStepData = STEPS[currentStep - 1];
   const canSkip = currentStepData?.canSkip || false;
+  const currentStepValidation = validateStep(currentStep);
+  const canProceed = currentStepValidation.valid;
   const totalVisibleSteps = STEPS.filter(
     (s) => !s.conditional || (s.conditional && s.conditional(formData))
   ).length;
@@ -1245,14 +1250,20 @@ export default function ProviderOnboarding() {
               </Button>
               <div className="flex flex-1 items-center justify-end gap-3 sm:flex-none sm:gap-4">
                 {canSkip && currentStep < STEPS.length && (
-                  <Button variant="outline" onClick={handleSkip} className={ONBOARDING_BTN_SKIP}>
+                  <Button
+                    variant="outline"
+                    onClick={handleSkip}
+                    disabled={!canProceed}
+                    className={`${ONBOARDING_BTN_SKIP} disabled:pointer-events-none disabled:opacity-40`}
+                  >
                     Skip for now
                   </Button>
                 )}
                 {currentStep < STEPS.length ? (
                   <Button
                     onClick={handleNext}
-                    className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover`}
+                    disabled={!canProceed}
+                    className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50`}
                   >
                     Next
                     <ChevronRight className="ml-2 h-5 w-5" aria-hidden />
@@ -3716,6 +3727,41 @@ function Step7Location({
   );
 }
 
+function formatWebPlatformTravelDefaults(
+  limits: {
+    default_rate_per_km?: number;
+    default_minimum_fee?: number;
+    default_free_within_km?: number;
+    default_maximum_fee?: number | null;
+    default_currency?: string;
+  } | null,
+): string {
+  if (!limits) return "Loading platform travel rates…";
+  const currency = limits.default_currency?.trim() || LAST_RESORT_CURRENCY;
+  const fmt = (amount: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  const parts: string[] = [];
+  if (limits.default_rate_per_km != null && Number.isFinite(limits.default_rate_per_km)) {
+    parts.push(`${fmt(limits.default_rate_per_km)}/km`);
+  }
+  if (limits.default_minimum_fee != null && Number.isFinite(limits.default_minimum_fee)) {
+    parts.push(`min ${fmt(limits.default_minimum_fee)}`);
+  }
+  if (limits.default_free_within_km != null && limits.default_free_within_km > 0) {
+    parts.push(`free within ${limits.default_free_within_km} km`);
+  } else if (limits.default_free_within_km === 0) {
+    parts.push("charged from first km");
+  }
+  if (limits.default_maximum_fee != null && Number.isFinite(limits.default_maximum_fee)) {
+    parts.push(`max ${fmt(limits.default_maximum_fee)}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "Platform standard rates apply";
+}
+
 function Step9ServiceZones({
   data,
   updateData,
@@ -3726,6 +3772,30 @@ function Step9ServiceZones({
   const [suggestedZones, setSuggestedZones] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedZoneIds, setSelectedZoneIds] = useState<string[]>(data.selected_zone_ids || []);
+  const [platformTravelLimits, setPlatformTravelLimits] = useState<{
+    default_rate_per_km?: number;
+    default_minimum_fee?: number;
+    default_free_within_km?: number;
+    default_maximum_fee?: number | null;
+    default_currency?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetcher.get<{ data: typeof platformTravelLimits }>(
+          "/api/provider/travel-fees/platform-limits",
+        );
+        if (!cancelled) setPlatformTravelLimits(response.data ?? null);
+      } catch {
+        if (!cancelled) setPlatformTravelLimits(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const loadZones = async () => {
@@ -3823,16 +3893,27 @@ function Step9ServiceZones({
         <AlertCircle className="h-5 w-5 text-slate-500" />
         <AlertDescription className="text-sm leading-relaxed text-slate-600 ml-2">
           <strong className="text-slate-900">Service zones</strong> define where you offer at-home
-          services. We&apos;ve suggested zones near your address. You can adjust this now or finish
-          later in Settings.
+          services. Select at least one zone to continue. You can adjust zones later in Settings.
         </AlertDescription>
       </Alert>
+
+      <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50/70 p-4 sm:p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+          Travel fees — platform defaults
+        </p>
+        <p className="mt-1 text-sm text-slate-800">
+          {formatWebPlatformTravelDefaults(platformTravelLimits)}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Customize per-km or tiered pricing in Settings → Travel fees after signup.
+        </p>
+      </div>
 
       {suggestedZones.length === 0 ? (
         <div className="rounded-[1.5rem] border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
           <p className="text-sm font-medium text-amber-900">
-            No zones matched this address yet. You can add service zones later under Settings â†’
-            Service Zones.
+            No service zones matched this address. You must select at least one zone to continue.
+            Check your location step or ask your marketplace admin to add zones for your area.
           </p>
         </div>
       ) : (
@@ -3904,10 +3985,6 @@ function Step9ServiceZones({
                       </span>
                     </div>
                     <p className="mb-1 text-sm font-medium text-sky-800">{zone.match_reason}</p>
-                    <p className="text-xs text-slate-600">
-                      Travel fees use platform defaults for now. Customize per-km or tiered pricing
-                      in Settings → Travel fees after signup (required for mobile providers).
-                    </p>
                   </div>
                 </div>
               </div>

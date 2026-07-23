@@ -176,6 +176,42 @@ export default function ProviderTeamMembers() {
     }
   };
 
+  const handleResendInvite = async (member: TeamMember) => {
+    if (!canManageTeam) return;
+    if (!member.email) {
+      toast.error("This team member has no email address");
+      return;
+    }
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const res = await fetcher.post<{
+        data?: { join_url?: string; channels?: { email?: boolean; push?: boolean } };
+      }>(`/api/provider/staff/${member.id}/invite`, {
+        email: member.email,
+      });
+      const joinUrl = res.data?.join_url;
+      if (joinUrl && !res.data?.channels?.email) {
+        toast.success("Invite link ready — copy and share if email did not send", {
+          description: joinUrl,
+          duration: 8000,
+        });
+      } else {
+        toast.success(`Invitation sent to ${member.email}`);
+      }
+    } catch (error: any) {
+      console.error("Failed to send invitation:", error);
+      const joinUrl = error?.details?.join_url;
+      if (joinUrl) {
+        toast.error(error?.message || "Email not configured", {
+          description: `Share this link: ${joinUrl}`,
+          duration: 10000,
+        });
+      } else {
+        toast.error(error?.message || "Failed to send invitation");
+      }
+    }
+  };
+
   // Show loading while provider is loading
   if (isLoadingProvider) {
     return <LoadingTimeout loadingMessage="Loading provider data..." />;
@@ -408,6 +444,10 @@ export default function ProviderTeamMembers() {
                               <Settings className="w-4 h-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleResendInvite(member)} className="cursor-pointer">
+                              <Mail className="w-4 h-4 mr-2" />
+                              Resend invite
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleResetPassword(member)} className="cursor-pointer">
                               <KeyRound className="w-4 h-4 mr-2" />
                               Reset Password
@@ -475,6 +515,10 @@ export default function ProviderTeamMembers() {
                           <Settings className="w-4 h-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleResendInvite(member)}>
+                          <Mail className="w-4 h-4 mr-2" />
+                          Resend invite
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleResetPassword(member)}>
                           <KeyRound className="w-4 h-4 mr-2" />
                           Reset Password
@@ -519,6 +563,16 @@ export default function ProviderTeamMembers() {
                     >
                       <Settings className="w-4 h-4 mr-2" />
                       Manage
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleResendInvite(member)}
+                      disabled={!canManageTeam}
+                      className="flex-1 min-h-[44px] touch-manipulation"
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Resend invite
                     </Button>
                     <Button
                       variant="outline"

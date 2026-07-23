@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
@@ -35,7 +35,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("view_sales", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -66,9 +70,17 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const body = await request.json();
     const parsed = updateSchema.parse(body);
+    const isMoneyAction = parsed.action === "process_refund";
+    const permissionCheck = await requirePermission(
+      isMoneyAction ? "process_payments" : "view_sales",
+      request,
+    );
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

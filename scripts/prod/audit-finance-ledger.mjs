@@ -51,6 +51,42 @@ violations += await check(
   "completed_refunds_without_ledger",
 );
 
+async function checkPaidProductOrdersMissingLedger() {
+  const { data: paidOrders, error: poErr } = await client
+    .from("product_orders")
+    .select("id, order_number, payment_method")
+    .eq("payment_status", "paid")
+    .in("payment_method", ["paystack", "wallet"])
+    .limit(500);
+  if (poErr) {
+    console.warn(`[finance-audit] paid_product_orders: query failed (${poErr.message})`);
+    return 0;
+  }
+  const orders = paidOrders ?? [];
+  if (orders.length === 0) return 0;
+  const ids = orders.map((o) => o.id);
+  const { data: ledgerRows, error: ftErr } = await client
+    .from("finance_transactions")
+    .select("product_order_id")
+    .in("product_order_id", ids)
+    .eq("transaction_type", "provider_earnings");
+  if (ftErr) {
+    console.warn(`[finance-audit] paid_product_orders: ledger query failed (${ftErr.message})`);
+    return 0;
+  }
+  const withLedger = new Set((ledgerRows ?? []).map((r) => r.product_order_id));
+  const missing = orders.filter((o) => !withLedger.has(o.id));
+  if (missing.length > 0) {
+    console.error(
+      `[finance-audit] paid_product_orders_missing_ledger: ${missing.length} violation(s)`,
+    );
+    console.error(JSON.stringify(missing.slice(0, 10), null, 2));
+  }
+  return missing.length;
+}
+
+violations += await checkPaidProductOrdersMissingLedger();
+
 if (violations > 0) {
   console.error(`[finance-audit] FAILED — ${violations} total violations.`);
   process.exit(1);

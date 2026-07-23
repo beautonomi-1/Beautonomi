@@ -24,6 +24,12 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  createProductOrderIdempotencyKey,
+  isCreateOrderTransientError,
+  pollProductOrderPaid,
+  recoverRecentProductOrderForProvider,
+} from "@/features/shop/productOrderCheckoutHelpers";
 import { useCart } from "@/features/shop/useCart";
 import { emitCartUpdated } from "@/lib/cart-events";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
@@ -73,6 +79,18 @@ interface ShippingConfig {
   collection_notes?: string | null;
   delivery_notes?: string | null;
   delivery_radius_km?: number | null;
+}
+
+function summarizeCartItems(
+  providerItems: Array<{ quantity: number; product?: { name?: string } | null }>,
+): string {
+  if (providerItems.length === 0) return "";
+  return (
+    providerItems
+      .map((i) => `${i.quantity}× ${i.product?.name ?? "Item"}`)
+      .slice(0, 4)
+      .join(", ") + (providerItems.length > 4 ? "…" : "")
+  );
 }
 
 const contentConstraintStyle = (contentMaxWidth: number, isTablet: boolean) =>
@@ -148,6 +166,7 @@ export default function ProductCheckoutScreen() {
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const placingRef = useRef(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [processingMessage, setProcessingMessage] = useState("Processing payment…");
   const [orderSuccessData, setOrderSuccessData] = useState<{
@@ -382,52 +401,112 @@ export default function ProductCheckoutScreen() {
       Alert.alert(pc("addressRequiredTitle"), pc("addressRequiredBody"));
       return;
     }
+    if (placingRef.current) return;
     if (fulfillment === "collection" && !selectedLocation) {
       Alert.alert(pc("locationRequiredTitle"), pc("locationRequiredBody"));
       return;
     }
 
+    placingRef.current = true;
+    const idempotencyKey = createProductOrderIdempotencyKey();
     setPlacing(true);
     setProcessingPayment(true);
     setProcessingMessage(pc("placingOrder", undefined, "Placing your order…"));
+
+    try {
     await refreshSession().catch(() => {});
 
-    // 1. Create the order (payment_status = "pending" or "paid" if wallet covers full amount)
-    const result = await orders.createOrder({
-      provider_id,
-      fulfillment_type: fulfillment,
-      delivery_address_id: fulfillment === "delivery" ? selectedAddress! : undefined,
-      collection_location_id: fulfillment === "collection" ? selectedLocation! : undefined,
-      payment_method: paymentMethod,
-      use_wallet: paymentMethod === "paystack" ? useWallet : false,
-    });
+    // 1. Create the order (payment_status = "pending" until wallet/card settles)
+    const result = await orders.createOrder(
+      {
+        provider_id,
+        fulfillment_type: fulfillment,
+        delivery_address_id: fulfillment === "delivery" ? selectedAddress! : undefined,
+        collection_location_id: fulfillment === "collection" ? selectedLocation! : undefined,
+        payment_method: paymentMethod,
+        use_wallet: paymentMethod === "paystack" ? useWallet : false,
+      },
+      { idempotencyKey },
+    );
+
+    let order = result.data;
+    let paidWithWallet = result.paid_with_wallet === true;
+    let amountDue = result.amount_due ?? total;
 
     if (result.error) {
-      setPlacing(false);
-      setProcessingPayment(false);
-      Alert.alert(pc("orderFailedTitle"), getApiErrorMessage(result.error, pc("orderFailedBody")));
-      return;
+      if (isCreateOrderTransientError(result.error)) {
+        setProcessingMessage(
+          pc("checkingOrderStatus", undefined, "Checking your order status…"),
+        );
+        const recovered = await recoverRecentProductOrderForProvider(provider_id);
+        if (recovered) {
+          const paidWithWalletRecovered =
+            recovered.payment_status === "paid" &&
+            (recovered.payment_method === "wallet" ||
+              Number(recovered.wallet_amount ?? 0) >= total - 0.01);
+          if (paidWithWalletRecovered) {
+            await fetchCart().catch(() => {});
+            emitCartUpdated();
+            haptic.success();
+            setPlacing(false);
+            setProcessingPayment(false);
+            setOrderSuccessData({
+              orderNumber: recovered.order_number,
+              total,
+              currency: fb,
+              items: summarizeCartItems(providerItems),
+              status: "success",
+              subtitle: pc("orderPlacedWalletBody", {
+                orderNumber: String(recovered.order_number ?? ""),
+              }),
+            });
+            return;
+          }
+          order = recovered;
+          paidWithWallet = false;
+          amountDue = Math.max(0, total - Number(recovered.wallet_amount ?? 0));
+        } else {
+          placingRef.current = false;
+          setPlacing(false);
+          setProcessingPayment(false);
+          Alert.alert(
+            pc("orderStatusUnknownTitle", undefined, "Still confirming your order"),
+            pc(
+              "orderStatusUnknownBody",
+              undefined,
+              "We could not confirm whether your order went through. Check My Orders before trying again.",
+            ),
+            [
+              {
+                text: pc("viewOrdersCta"),
+                onPress: () => router.replace("/(app)/product-orders" as any),
+              },
+            ],
+          );
+          return;
+        }
+      } else {
+        placingRef.current = false;
+        setPlacing(false);
+        setProcessingPayment(false);
+        Alert.alert(pc("orderFailedTitle"), result.error.message || pc("orderFailedBody"));
+        return;
+      }
     }
 
-    const order = result.data;
-    const paidWithWallet = result.paid_with_wallet === true;
-    const amountDue = result.amount_due ?? total;
     const customerEmail = user?.email;
 
     if (order) {
       trackProductOrderPlaced(order.id, order.order_number, total, paymentMethod, fulfillment);
     }
 
-    const itemsSummary =
-      providerItems.length === 0
-        ? ""
-        : providerItems
-            .map((i) => `${i.quantity}× ${i.product?.name ?? "Item"}`)
-            .slice(0, 4)
-            .join(", ") + (providerItems.length > 4 ? "…" : "");
+    const itemsSummary = summarizeCartItems(providerItems);
 
-    // Paid fully with wallet – no Paystack
-    if (paidWithWallet) {
+    // Paid fully with wallet (or nothing left to collect) – no Paystack
+    if (paidWithWallet || amountDue <= 0.005) {
+      await fetchCart().catch(() => {});
+      emitCartUpdated();
+      haptic.success();
       setPlacing(false);
       setProcessingPayment(false);
       setOrderSuccessData({
@@ -508,7 +587,7 @@ export default function ProductCheckoutScreen() {
         setProcessingPayment(false);
         setOrderSuccessData({
           orderNumber: order.order_number,
-          total: amountDue,
+          total,
           currency: fb,
           items: itemsSummary,
           status: "success",
@@ -516,18 +595,49 @@ export default function ProductCheckoutScreen() {
         });
         return;
       }
-      setPlacing(false);
-      setProcessingPayment(false);
-      Alert.alert(
-        errTitle,
-        pc(
-          "savedCardChargeFailed",
-          undefined,
-          "Could not charge your saved card. Try again or use a different payment method.",
-        ) ||
-          "We could not charge your saved card. Try paying with a new card or another method."
-      );
-      return;
+      if (cardCharge.requires3ds) {
+        setProcessingMessage(
+          pc("openingPaymentPage", undefined, "Opening payment page…"),
+        );
+        // Fall through to hosted Paystack for 3DS / OTP.
+      } else {
+        setProcessingMessage(pc("confirmingPayment", undefined, "Confirming your payment…"));
+        const paidAfterCard = await pollProductOrderPaid(orders.fetchOrderDetail, order.id);
+        if (paidAfterCard) {
+          await fetchCart();
+          emitCartUpdated();
+          haptic.success();
+          setPlacing(false);
+          setProcessingPayment(false);
+          setOrderSuccessData({
+            orderNumber: order.order_number,
+            total,
+            currency: fb,
+            items: itemsSummary,
+            status: "success",
+            subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
+          });
+          return;
+        }
+        // Order exists — soft-pending, never imply checkout failed after create.
+        await fetchCart().catch(() => {});
+        emitCartUpdated();
+        setPlacing(false);
+        setProcessingPayment(false);
+        setOrderSuccessData({
+          orderNumber: order.order_number,
+          total,
+          currency: fb,
+          items: itemsSummary,
+          status: "pending",
+          subtitle: pc(
+            "orderCreatedPayPendingBody",
+            { orderNumber: String(order.order_number) },
+            `Order #${order.order_number} was created. Complete payment from My Orders if it does not confirm shortly.`,
+          ),
+        });
+        return;
+      }
     }
 
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
@@ -593,7 +703,21 @@ export default function ProductCheckoutScreen() {
 
       if (pr.outcome === "cancel") {
         setProcessingPayment(false);
-        Alert.alert("Payment cancelled", "You cancelled the payment.");
+        Alert.alert(
+          pc("paymentCancelledTitle", undefined, "Payment cancelled"),
+          pc(
+            "paymentCancelledOrderBody",
+            { orderNumber: String(order.order_number) },
+            `No card charge was completed. Order #${order.order_number} is still pending — complete payment from My Orders. Any wallet amount applied stays on the order until you pay or the checkout expires.`,
+          ),
+          [
+            {
+              text: pc("viewOrdersCta"),
+              onPress: () => router.replace("/(app)/product-orders" as any),
+            },
+            { text: pc("notNow", undefined, "Not now"), style: "cancel" },
+          ],
+        );
         return;
       }
 
@@ -603,7 +727,21 @@ export default function ProductCheckoutScreen() {
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
           setProcessingPayment(false);
-          Alert.alert("Payment cancelled", "You cancelled the payment.");
+          Alert.alert(
+            pc("paymentCancelledTitle", undefined, "Payment cancelled"),
+            pc(
+              "paymentCancelledOrderBody",
+              { orderNumber: String(order.order_number) },
+              `No card charge was completed. Order #${order.order_number} is still pending — complete payment from My Orders.`,
+            ),
+            [
+              {
+                text: pc("viewOrdersCta"),
+                onPress: () => router.replace("/(app)/product-orders" as any),
+              },
+              { text: pc("notNow", undefined, "Not now"), style: "cancel" },
+            ],
+          );
           return;
         }
         const extracted = extractPaystackReferenceFromUrl(pr.url);
@@ -614,18 +752,7 @@ export default function ProductCheckoutScreen() {
       }
 
       let paid = false;
-      const MAX_ATTEMPTS = 10;
-      const POLL_INTERVAL_MS = 2000;
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        const check = await orders.fetchOrderDetail(order.id);
-        if (check.data?.payment_status === "paid") {
-          paid = true;
-          break;
-        }
-        if (attempt < MAX_ATTEMPTS - 1) {
-          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-        }
-      }
+      paid = await pollProductOrderPaid(orders.fetchOrderDetail, order.id);
 
       setProcessingPayment(false);
       if (paid) {
@@ -634,7 +761,7 @@ export default function ProductCheckoutScreen() {
         haptic.success();
         setOrderSuccessData({
           orderNumber: order.order_number,
-          total: amountDue,
+          total,
           currency: fb,
           items: itemsSummary,
           status: "success",
@@ -645,13 +772,16 @@ export default function ProductCheckoutScreen() {
         emitCartUpdated();
         setOrderSuccessData({
           orderNumber: order.order_number,
-          total: amountDue,
+          total,
           currency: fb,
           items: itemsSummary,
           status: "pending",
           subtitle: pc("paymentPendingCheckoutBody"),
         });
       }
+    }
+    } finally {
+      placingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
   }, [

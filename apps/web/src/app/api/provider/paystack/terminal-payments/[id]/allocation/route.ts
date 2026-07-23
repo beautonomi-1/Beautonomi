@@ -17,6 +17,7 @@ import {
   requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
@@ -59,6 +60,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
     const { id } = await params;
     const body = allocationSchema.parse(await request.json());
     const { supabase, user, providerId } = await resolveProvider(request);
@@ -218,9 +223,29 @@ export async function POST(
       const { notifyProductOrderPaidIfTransitioned } = await import(
         "@/lib/notifications/notify-product-order-paid"
       );
-      await notifyProductOrderPaidIfTransitioned(admin as any, body.entity_id, {
+      await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, body.entity_id, {
         transitionedToPaid: payRecord.transitionedToPaid,
       });
+
+      const { data: walkInOrder } = await (admin.from("product_orders") as any)
+        .select("id, order_source, status")
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (
+        walkInOrder &&
+        String(walkInOrder.order_source ?? "") === "walk_in" &&
+        String(walkInOrder.status ?? "") !== "delivered"
+      ) {
+        const { fulfillWalkInProductOrderDelivery } = await import(
+          "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
+        );
+        await fulfillWalkInProductOrderDelivery({
+          supabase: admin as any,
+          providerId,
+          orderId: body.entity_id,
+        });
+      }
     }
 
     if (body.entity_type === "additional_charge") {

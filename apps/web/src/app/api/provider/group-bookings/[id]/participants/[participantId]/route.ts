@@ -8,6 +8,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { recalculateGroupBookingTotal } from "@/lib/bookings/recalculate-group-total";
 
 function normalizeGroupBookingId(rawId: string): string {
@@ -23,10 +24,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; participantId: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: rawGroupId, participantId } = await params;

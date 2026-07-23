@@ -1,26 +1,18 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
-import type { UserRole } from "@/types/beautonomi";
 import {
   checkNewGateFeatureAccess,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
-
-const PROVIDER_SETTINGS_ROLES = [
-  "provider_owner",
-  "provider_staff",
-  "provider_onboarding",
-  "superadmin",
-] as const satisfies readonly UserRole[];
 
 const patchSchema = z.object({
   gift_cards_enabled: z.boolean(),
@@ -36,7 +28,11 @@ const patchSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
+    const authCheck = await requirePermission("view_sales", request);
+    if (!authCheck.authorized) {
+      return authCheck.response!;
+    }
+    const { user } = authCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -89,7 +85,11 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

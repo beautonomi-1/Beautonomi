@@ -24,6 +24,11 @@ import { recordProductOrderPayment } from "@/lib/orders/record-product-order-pay
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { z } from "zod";
+import {
+  extractIdempotencyKey,
+  lookupIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/http/idempotency";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
@@ -70,6 +75,13 @@ const chargeSavedCardSchema = z
  */
 export async function POST(request: NextRequest) {
   try {
+    const idempotencyKey = extractIdempotencyKey(request);
+    const idempotencyEndpoint = "payments/charge-saved-card";
+    if (idempotencyKey) {
+      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey);
+      if (cached) return cached.toResponse();
+    }
+
     // §Customer-launch (audit 2026-04): previously both requireRoleInApi
     // and getSupabaseServer were called without `request`, so the Bearer
     // header that mobile clients send was ignored. That made the saved-
@@ -366,9 +378,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+    const chargeStatus = String(chargeResult.data?.status ?? "");
+    const chargeSucceeded = chargeStatus === "success";
 
     // Additional-charge card-on-file: settle commission + earnings accounting.
     if (additionalChargeIdFromMeta && additionalChargeBookingId) {
+      if (!chargeSucceeded) {
+        return errorResponse(
+          chargeResult.message || "Card charge did not complete. Try again or use a different card.",
+          chargeStatus === "failed" ? "CHARGE_FAILED" : "CHARGE_PENDING",
+          chargeStatus === "failed" ? 402 : 409,
+        );
+      }
       const chargeData = chargeResult.data as { reference?: string; amount?: number; fees?: number; id?: number };
       try {
         await settleAdditionalChargePlatformHeld(supabaseAdmin, {
@@ -386,24 +407,52 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (productOrderIdFromMeta && chargeResult.data?.reference) {
+    if (
+      productOrderIdFromMeta &&
+      chargeResult.data?.reference &&
+      String(chargeResult.data?.status ?? "") === "success"
+    ) {
       try {
         const chargeData = chargeResult.data as { reference?: string; fees?: number };
+        const amountMajorForOrder = convertFromSmallestUnit(amountInSmallestUnit);
         const payRecord = await recordProductOrderPayment({
           supabase: supabaseAdmin,
           productOrderId: productOrderIdFromMeta,
           reference: String(chargeData.reference),
-          amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+          amountMajor: amountMajorForOrder,
           feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0),
           source: "paystack_verify",
           provider: "paystack",
         });
-        const { notifyProductOrderPaidIfTransitioned } = await import(
-          "@/lib/notifications/notify-product-order-paid"
-        );
-        await notifyProductOrderPaidIfTransitioned(supabaseAdmin, productOrderIdFromMeta, {
-          transitionedToPaid: payRecord.transitionedToPaid,
-        });
+        if (!payRecord.ok) {
+          console.error(
+            "[charge-saved-card] product order payment not recorded (order may be non-payable)",
+            { productOrderId: productOrderIdFromMeta, reference: chargeData.reference },
+          );
+          const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+            "@/lib/integrations/slack/ops-triggers"
+          );
+          const { data: poRow } = await supabaseAdmin
+            .from("product_orders")
+            .select("tenant_id, currency")
+            .eq("id", productOrderIdFromMeta)
+            .maybeSingle();
+          slackNotifyProductOrderPaymentNotRecorded({
+            tenantId: (poRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+            productOrderId: productOrderIdFromMeta,
+            reference: chargeData.reference ?? null,
+            source: "paystack_verify",
+            amountMajor: amountMajorForOrder,
+            currency: (poRow as { currency?: string | null } | null)?.currency ?? null,
+          });
+        } else {
+          const { notifyProductOrderPaidIfTransitioned } = await import(
+            "@/lib/notifications/notify-product-order-paid"
+          );
+          await notifyProductOrderPaidIfTransitioned(supabaseAdmin, productOrderIdFromMeta, {
+            transitionedToPaid: payRecord.transitionedToPaid,
+          });
+        }
       } catch (poErr) {
         console.error("[charge-saved-card] Failed to record product order payment:", poErr);
       }
@@ -415,6 +464,13 @@ export async function POST(request: NextRequest) {
     // Skip when settling an additional charge — settleAdditionalChargePlatformHeld
     // already wrote the booking_payments row and the finance ledger.
     if (bookingIdFromMeta && !additionalChargeIdFromMeta) {
+      if (!chargeSucceeded) {
+        return errorResponse(
+          chargeResult.message || "Card charge did not complete. Try again or use a different card.",
+          chargeStatus === "failed" ? "CHARGE_FAILED" : "CHARGE_PENDING",
+          chargeStatus === "failed" ? 402 : 409,
+        );
+      }
       const chargeData = chargeResult.data as {
         id?: number;
         reference?: string;
@@ -454,6 +510,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (
+      giftCardOrderIdFromMeta &&
+      !productOrderIdFromMeta &&
+      !bookingIdFromMeta &&
+      chargeSucceeded &&
+      chargeResult.data?.reference
+    ) {
+      try {
+        const chargeData = chargeResult.data as { reference?: string; amount?: number; fees?: number };
+        const { processSuccessfulPayment } = await import(
+          "@/app/api/payments/webhook/_handlers/charge-success"
+        );
+        await processSuccessfulPayment(
+          {
+            reference: String(chargeData.reference ?? chargeReference),
+            metadata: { ...meta, gift_card_order_id: giftCardOrderIdFromMeta },
+            amount: typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+            fees: typeof chargeData.fees === "number" ? chargeData.fees : 0,
+          },
+          supabaseAdmin,
+        );
+      } catch (giftErr) {
+        console.error("[charge-saved-card] Failed to fulfill gift card order after charge:", giftErr);
+      }
+    }
+
     // Wallet top-up via saved card: credit the wallet immediately on a successful
     // charge so the customer sees their balance update right away, instead of
     // waiting on the async webhook (the charge reference differs from the
@@ -489,13 +571,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return successResponse({
+    const responseBody = {
       transaction: chargeResult.data,
       reference: chargeResult.data.reference ?? chargeReference,
       status: chargeResult.data.status,
       message: chargeResult.message,
       currency,
-    });
+    };
+    if (idempotencyKey) {
+      await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        status: 200,
+        body: responseBody,
+      });
+    }
+    return successResponse(responseBody);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(

@@ -210,3 +210,10 @@ export async function requireAllPermissions(
     };
   }
 }
+
+/** Owner or explicit `edit_settings` — used for payouts, bank accounts, and owner-only settings. */
+export async function requireOwnerOrEditSettings(
+  request?: NextRequest | Request,
+): Promise<PermissionCheckResult> {
+  return requireAnyPermission(['edit_settings'], request);
+}

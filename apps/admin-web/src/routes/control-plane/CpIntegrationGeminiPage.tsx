@@ -93,7 +93,7 @@ export function CpIntegrationGeminiPage() {
   return (
     <div className="space-y-6">
       <CpBack to=".." label="Integrations" />
-      <AdminPageHeader title="Gemini" description="API key, models, and safety settings." />
+      <AdminPageHeader title="Gemini credentials" description="API key, models, and safety settings." />
       <EnvSelect value={env} onChange={setEnv} />
       {msg ? (
         <AdminPanel>

@@ -79,6 +79,12 @@ type PendingTerminalOrder = {
   terminal_products?: { name?: string; vendor?: string };
 };
 
+type MerchantApplicationSummary = {
+  id: string;
+  application_no: string;
+  status: string;
+};
+
 export default function CardMachinesPage() {
   const searchParams = useSearchParams();
   const activationOrderId = parseHighlightedOrderId(searchParams);
@@ -105,6 +111,7 @@ export default function CardMachinesPage() {
   const [reconcilePayments, setReconcilePayments] = useState<PaycloudReconciliationPayment[]>([]);
   const [reconcileExceptions, setReconcileExceptions] = useState(0);
   const [pendingOrder, setPendingOrder] = useState<PendingTerminalOrder | null>(null);
+  const [merchantApplication, setMerchantApplication] = useState<MerchantApplicationSummary | null>(null);
   const [activationSerial, setActivationSerial] = useState("");
   const [activationName, setActivationName] = useState("");
   const [activating, setActivating] = useState(false);
@@ -114,6 +121,24 @@ export default function CardMachinesPage() {
   }, [paycloudEnabled, yocoEnabled]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetcher.get<{ data: { application?: MerchantApplicationSummary | null } }>(
+          "/api/provider/terminal-merchant-application?create=false",
+        );
+        const app = res.data?.application;
+        if (app && !["approved", "declined", "cancelled"].includes(app.status)) {
+          setMerchantApplication(app);
+        } else {
+          setMerchantApplication(null);
+        }
+      } catch {
+        setMerchantApplication(null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (!terminalEcommerceEnabled) {
       setPendingOrder(null);
       return;
@@ -121,11 +146,10 @@ export default function CardMachinesPage() {
 
     const isPendingActivation = (order: PendingTerminalOrder | undefined | null) => {
       if (!order) return false;
-      if (order.invoice_status !== "paid" || order.integration_setup_status !== "pending") {
-        return false;
-      }
+      if (order.invoice_status !== "paid") return false;
+      if (order.integration_setup_status === "awaiting_merchant_onboarding") return false;
+      if (order.integration_setup_status !== "pending") return false;
       const vendor = (order.terminal_products?.vendor ?? "").toLowerCase();
-      // Prefer PayCloud / Beautonomi card-machine orders; allow unknown vendor when deep-linked.
       return !vendor || vendor === "paycloud" || Boolean(activationOrderId);
     };
 
@@ -501,6 +525,32 @@ export default function CardMachinesPage() {
                   <Link href={planBlocker.href ?? "/provider/subscription"}>
                     <ArrowUpRight className="mr-2 h-4 w-4" />
                     Upgrade plan
+                  </Link>
+                </Button>
+              </div>
+            </SectionCard>
+          ) : null}
+
+          {merchantApplication &&
+          ["draft", "submitted", "info_required", "in_review", "sent_to_acquirer", "awaiting_term_sheet"].includes(
+            merchantApplication.status,
+          ) ? (
+            <SectionCard className="mb-6 border-indigo-200 bg-indigo-50/40">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium text-indigo-950">
+                    Finish card machine application ({merchantApplication.application_no})
+                  </div>
+                  <div className="text-sm text-indigo-800">
+                    {merchantApplication.status === "draft" || merchantApplication.status === "info_required"
+                      ? "Complete your details so we can ship your terminal."
+                      : "Track your application status."}
+                  </div>
+                </div>
+                <Button asChild>
+                  <Link href="/provider/settings/sales/terminal-merchant-application">
+                    Open application
+                    <ArrowUpRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               </div>

@@ -9,6 +9,7 @@ import {
   requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 
@@ -81,6 +82,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
     const { supabase, providerId } = await resolveProvider(request);
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 

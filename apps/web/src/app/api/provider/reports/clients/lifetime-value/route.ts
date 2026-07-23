@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { canAccessReportType } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
@@ -19,7 +20,11 @@ type ClientSummary = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    // Check subscription allows advanced reports (client reports are advanced)
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;    // Check subscription allows advanced reports (client reports are advanced)
     const accessCheck = await canAccessReportType(user.id, "clients");
     if (!accessCheck.allowed) {
       return accessCheck.error!;

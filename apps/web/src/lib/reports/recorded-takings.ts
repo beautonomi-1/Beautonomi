@@ -33,6 +33,8 @@ export type RecordedTakingsResult = {
   /** Legacy `sales` rows + walk-in `product_orders` paid in range. */
   salesTotal: number;
   tipsTotal: number;
+  /** Card-machine cash-out (PayCloud). Not revenue; tracked for till reconciliation. */
+  cashbackTotal: number;
   cancellationFeesTotal: number;
   /** Same formula as end-of-day `total`. */
   totalRecorded: number;
@@ -75,6 +77,16 @@ export function isCardMachineTipBookingPayment(row: {
   const data = row.payment_provider_data as Record<string, unknown> | null | undefined;
   if (data && String(data.tip ?? "") === "true") return true;
   return String(row.payment_provider_id ?? "").endsWith(":tip");
+}
+
+/** Card-machine cashback rows are counted in cashbackTotal via finance_transactions, not booking_payments. */
+export function isCardMachineCashbackBookingPayment(row: {
+  payment_provider_data?: unknown;
+  payment_provider_id?: string | null;
+}): boolean {
+  const data = row.payment_provider_data as Record<string, unknown> | null | undefined;
+  if (data && String(data.cashback ?? "") === "true") return true;
+  return String(row.payment_provider_id ?? "").endsWith(":cashback");
 }
 
 function emptyMethodMap(): Record<string, number> {
@@ -145,14 +157,21 @@ export async function getRecordedTakingsForRange(
 
   let bookingPaymentsTotal = 0;
   const bpBookingIds = new Set<string>();
+  /** Bookings whose online gateway payment already embeds tip in booking_payments.amount. */
+  const onlineGatewayTipAlreadyInPayments = new Set<string>();
   for (const row of bpRowList) {
     if (!providerBookingIds.has(row.booking_id)) continue;
     if (isCardMachineTipBookingPayment(row)) continue;
+    if (isCardMachineCashbackBookingPayment(row)) continue;
     const amount = Number(row.amount ?? 0);
     const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
     byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
     bookingPaymentsTotal += amount;
     bpBookingIds.add(row.booking_id);
+    const provider = String(row.payment_provider ?? "").toLowerCase();
+    if (provider === "paystack" || provider === "stripe" || provider === "flutterwave") {
+      onlineGatewayTipAlreadyInPayments.add(row.booking_id);
+    }
   }
 
   /** Per booking: sum of completed booking_payments in this range (all methods). */
@@ -160,6 +179,7 @@ export async function getRecordedTakingsForRange(
   for (const row of bpRowList) {
     if (!providerBookingIds.has(row.booking_id)) continue;
     if (isCardMachineTipBookingPayment(row)) continue;
+    if (isCardMachineCashbackBookingPayment(row)) continue;
     const a = Number(row.amount ?? 0);
     bpAmountByBooking.set(row.booking_id, (bpAmountByBooking.get(row.booking_id) ?? 0) + a);
   }
@@ -270,6 +290,7 @@ export async function getRecordedTakingsForRange(
   salesCount += productOrderSalesCount;
 
   let tipsTotal = 0;
+  let cashbackTotal = 0;
   let cancellationFeesTotal = 0;
   let ledgerLocationAttribution: LedgerLocationAttributionSummary | undefined;
   try {
@@ -277,7 +298,7 @@ export async function getRecordedTakingsForRange(
       .from("finance_transactions")
       .select("transaction_type, amount, net, booking_id, product_order_id")
       .eq("provider_id", providerId)
-      .in("transaction_type", ["tip", "cancellation_fee"])
+      .in("transaction_type", ["tip", "cashback", "cancellation_fee"])
       .gte("created_at", rangeStartIso)
       .lte("created_at", rangeEndIso);
     type LedgerTipCancelRow = {
@@ -293,9 +314,24 @@ export async function getRecordedTakingsForRange(
       ledgerRows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, ledgerRows, locationId);
     }
     for (const r of ledgerRows ?? []) {
-      const row = r as { transaction_type: string; amount?: number; net?: number };
+      const row = r as {
+        transaction_type: string;
+        amount?: number;
+        net?: number;
+        booking_id?: string | null;
+      };
       if (row.transaction_type === "tip") {
+        // Online Paystack/Stripe/Flutterwave charges already include tip inside
+        // booking_payments.amount. Those tips are therefore already in
+        // bookingPaymentsTotal — counting the finance tip row again would
+        // double-count. Card-machine tips are excluded from bookingPaymentsTotal
+        // (isCardMachineTipBookingPayment) so they still belong in tipsTotal.
+        if (row.booking_id && onlineGatewayTipAlreadyInPayments.has(row.booking_id)) {
+          continue;
+        }
         tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+      } else if (row.transaction_type === "cashback") {
+        cashbackTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
       } else if (row.transaction_type === "cancellation_fee") {
         cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
       }
@@ -304,6 +340,7 @@ export async function getRecordedTakingsForRange(
     /* non-critical */
   }
 
+  // Cashback is till cash-out, not recorded takings income — excluded from totalRecorded.
   const totalRecorded =
     bookingPaymentsTotal + walletTotal + salesTotal + tipsTotal + cancellationFeesTotal;
 
@@ -313,6 +350,7 @@ export async function getRecordedTakingsForRange(
     walletTotal,
     salesTotal,
     tipsTotal,
+    cashbackTotal,
     cancellationFeesTotal,
     totalRecorded,
     bookingCount,

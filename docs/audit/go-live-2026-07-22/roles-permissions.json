@@ -1,0 +1,147 @@
+{
+  "roles": [
+    {
+      "id": "ROL-001",
+      "name": "customer",
+      "db_enum": true,
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ]
+    },
+    {
+      "id": "ROL-002",
+      "name": "provider_owner",
+      "db_enum": true,
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ]
+    },
+    {
+      "id": "ROL-003",
+      "name": "provider_staff",
+      "db_enum": true,
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "granular_permissions": true
+    },
+    {
+      "id": "ROL-004",
+      "name": "superadmin",
+      "db_enum": true,
+      "apps": [
+        "APP-001",
+        "APP-002"
+      ]
+    },
+    {
+      "id": "ROL-005",
+      "name": "support_agent",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ]
+    },
+    {
+      "id": "ROL-006",
+      "name": "admin_support",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "support"
+    },
+    {
+      "id": "ROL-007",
+      "name": "admin_finance",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "finance"
+    },
+    {
+      "id": "ROL-008",
+      "name": "admin_trust",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "trust"
+    },
+    {
+      "id": "ROL-009",
+      "name": "admin_content",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "content"
+    },
+    {
+      "id": "ROL-010",
+      "name": "admin_ecommerce",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "ecommerce"
+    },
+    {
+      "id": "ROL-011",
+      "name": "admin_marketing",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "marketing"
+    },
+    {
+      "id": "ROL-012",
+      "name": "admin_integrations",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "integrations"
+    },
+    {
+      "id": "ROL-013",
+      "name": "admin_operations",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "operations"
+    },
+    {
+      "id": "ROL-014",
+      "name": "admin_platform_config",
+      "db_enum": true,
+      "apps": [
+        "APP-002"
+      ],
+      "section": "platform_config"
+    },
+    {
+      "id": "ROL-015",
+      "name": "provider_onboarding",
+      "db_enum": false,
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "note": "TS-only legacy role, not in PG enum"
+    }
+  ],
+  "enforcement_layers": [
+    "api_middleware",
+    "rls",
+    "edge_proxy",
+    "staff_permissions_jsonb"
+  ],
+  "rls_migration_count": 179
+}

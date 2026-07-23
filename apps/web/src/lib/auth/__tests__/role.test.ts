@@ -53,10 +53,16 @@ describe("getPortalForUser", () => {
     ).toBe("provider_onboarding");
   });
 
-  it("returns provider_onboarding when provider_staff and status not active", () => {
+  it("returns provider when provider_staff even if business status is draft", () => {
     expect(
       getPortalForUser({ role: "provider_staff", provider_status: "draft" })
-    ).toBe("provider_onboarding");
+    ).toBe("provider");
+  });
+
+  it("returns provider when provider_staff and status pending_approval", () => {
+    expect(
+      getPortalForUser({ role: "provider_staff", provider_status: "pending_approval" })
+    ).toBe("provider");
   });
 
   it("returns provider_onboarding when provider_owner and no status", () => {

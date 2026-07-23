@@ -149,7 +149,7 @@ export function LeadVoiceDialer({
   const outcomeMut = useMutation({
     mutationFn: (description: string) =>
       adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
-        activity_type: "note",
+        activity_type: "call_logged",
         description,
         metadata: { source: "voice_dialer", direction: "outbound" },
       }),
@@ -158,12 +158,20 @@ export function LeadVoiceDialer({
       void qc.invalidateQueries({
         queryKey: [...adminQueryKeys.providerOps.leadDetail(leadId), "communications"],
       });
-      adminToast.success("Call outcome saved");
+      adminToast.success("Browser call logged");
       setOutcomeOpen(false);
       setOutcomeNote("");
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to save call outcome"),
   });
+
+  const saveCallOutcome = useCallback(
+    (note: string) => {
+      const trimmed = note.trim();
+      outcomeMut.mutate(trimmed ? `Call outcome: ${trimmed}` : "Phone call with lead");
+    },
+    [outcomeMut],
+  );
 
   const promptOutcomeIfNeeded = useCallback(() => {
     if (callAttemptedRef.current) {
@@ -368,7 +376,7 @@ export function LeadVoiceDialer({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-              In-browser dialer
+              Browser call
             </p>
             <p className="mt-0.5 truncate font-mono text-sm text-gray-800">{phone}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -453,25 +461,22 @@ export function LeadVoiceDialer({
             setOutcomeNote("");
           }
         }}
-        title="Call outcome"
-        description="Add notes about how the call went. This is appended to the lead timeline."
+        title="Browser call outcome"
+        description="Optional notes about how the call went. Saving logs the call on the lead timeline."
         footer={
           <>
             <button
               type="button"
               disabled={outcomeMut.isPending}
-              onClick={() => {
-                setOutcomeOpen(false);
-                setOutcomeNote("");
-              }}
+              onClick={() => saveCallOutcome("")}
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
               Skip
             </button>
             <button
               type="button"
-              disabled={outcomeMut.isPending || !outcomeNote.trim()}
-              onClick={() => outcomeMut.mutate(`Call outcome: ${outcomeNote.trim()}`)}
+              disabled={outcomeMut.isPending}
+              onClick={() => saveCallOutcome(outcomeNote)}
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
             >
               {outcomeMut.isPending ? "Saving…" : "Save outcome"}

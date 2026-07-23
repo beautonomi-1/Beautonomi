@@ -78,6 +78,7 @@ export async function runSlackOperationalAlerts(now = new Date()): Promise<Slack
     await runDisputeAlerts(supabase, tenantId, now, summary);
     await runSafetyAlerts(supabase, tenantId, now, summary);
     await runVerificationAlerts(supabase, tenantId, now, summary);
+    await runTerminalMerchantOnboardingAlerts(supabase, tenantId, now, summary);
     await runDailyDigests(supabase, tenantId, now, summary);
   }
 
@@ -663,4 +664,41 @@ async function runDailyDigests(
     ],
     actionUrl: "/",
   });
+}
+
+async function runTerminalMerchantOnboardingAlerts(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  now: Date,
+  summary: SlackOperationalAlertSummary,
+) {
+  const cutoff = isoBefore(now, DAY);
+  const { data: stalled } = await supabase
+    .from("terminal_merchant_applications")
+    .select("id, application_no, status, submitted_at, assigned_admin_id, trading_name")
+    .eq("tenant_id", tenantId)
+    .in("status", ["submitted", "in_review", "info_required", "sent_to_acquirer", "awaiting_term_sheet"])
+    .lt("submitted_at", cutoff)
+    .is("assigned_admin_id", null)
+    .order("submitted_at", { ascending: true })
+    .limit(10);
+
+  for (const row of stalled ?? []) {
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.TERMINAL_MERCHANT_APPLICATION_STALLED,
+      dedupeKey: `tmo:${row.id}:stalled:${dayKey(now)}`,
+      entityType: "terminal_merchant_applications",
+      entityId: row.id,
+      title: "Terminal merchant application stalled",
+      detailLines: [
+        row.application_no,
+        row.trading_name ?? "—",
+        `Status: ${row.status}`,
+        "Unassigned >24h",
+      ],
+      actionUrl: `/admin/commercial/terminal-onboarding/${row.id}`,
+    });
+  }
 }

@@ -8,6 +8,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { dateRangeBoundsUtc, getDayInTz } from "@/lib/dates/provider-tz";
 import { eachReportDateKey, getProviderReportContext, reportDateKey } from "@/lib/reports/provider-report-utils";
 
@@ -72,7 +73,11 @@ export interface OccupancyResponse {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);

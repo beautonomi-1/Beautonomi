@@ -524,7 +524,29 @@ export async function proxy(request: NextRequest) {
           return null;
         }
 
-        return (userData as { role: string }).role;
+        let role = (userData as { role: string }).role;
+
+        // Elevate customer → provider_owner / provider_staff (mirrors /api/me/role)
+        if (role === 'customer') {
+          const { data: ownerRow } = await supabase
+            .from('providers')
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle();
+          if (ownerRow) return 'provider_owner';
+
+          const { data: staffRow } = await supabase
+            .from('provider_staff')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (staffRow) return 'provider_staff';
+        }
+
+        return role;
       } catch (error) {
         console.error("Exception in getUserRole:", error);
         return null;
@@ -553,11 +575,16 @@ export async function proxy(request: NextRequest) {
           return finalizePageResponse(request, response);
         }
 
+        // Public: staff join preview (no session required — invite links from email)
+        if (pathname === '/provider/join' || pathname.startsWith('/provider/join/')) {
+          return finalizePageResponse(request, response);
+        }
+
         if (!user) {
           return redirectToLogin(pathname);
         }
 
-        // Allow customers to access onboarding page
+        // Allow customers to access onboarding
         if (pathname === '/provider/onboarding' || pathname.startsWith('/provider/onboarding/')) {
           return finalizePageResponse(request, response);
         }

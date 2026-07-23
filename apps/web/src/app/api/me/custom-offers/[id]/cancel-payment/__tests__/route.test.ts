@@ -5,6 +5,7 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockPatchCustomOfferMessageAttachments = vi.fn();
+const mockCreditWalletForCustomOfferAbandon = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -27,20 +28,27 @@ vi.mock("@/lib/custom-offers/sync-offer-message-attachments", () => ({
     mockPatchCustomOfferMessageAttachments(...args),
 }));
 
+vi.mock("@/lib/custom-offers/credit-wallet-for-offer-abandon", () => ({
+  creditWalletForCustomOfferAbandon: (...args: unknown[]) =>
+    mockCreditWalletForCustomOfferAbandon(...args),
+}));
+
 function buildSelectSingle(row: unknown, err: unknown = null) {
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
   chain.single = vi.fn(() => Promise.resolve({ data: row, error: err }));
+  chain.maybeSingle = vi.fn(() => Promise.resolve({ data: row, error: err }));
   return chain;
 }
 
-function buildUpdateChain(err: unknown = null) {
+function buildUpdateChain(err: unknown = null, claimed: unknown[] = [{ id: "offer-1" }]) {
   const chain: Record<string, unknown> = {};
   chain.update = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
-  chain.then = (resolve: (v: { error: unknown }) => unknown) =>
-    Promise.resolve({ error: err }).then(resolve);
+  chain.select = vi.fn(() =>
+    Promise.resolve({ data: err ? null : claimed, error: err }),
+  );
   return chain;
 }
 
@@ -49,12 +57,14 @@ describe("POST /api/me/custom-offers/[id]/cancel-payment", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
     mockPatchCustomOfferMessageAttachments.mockResolvedValue(undefined);
+    mockCreditWalletForCustomOfferAbandon.mockResolvedValue(undefined);
   });
 
   it("resets a payment_pending offer to pending and returns reset:true", async () => {
     const offerRow = {
       id: "offer-1",
       status: "payment_pending",
+      provider_id: "prov-1",
       request: { customer_id: "user-1" },
     };
     const serverSelectChain = buildSelectSingle(offerRow);
@@ -80,11 +90,52 @@ describe("POST /api/me/custom-offers/[id]/cancel-payment", () => {
         payment_reference: null,
       })
     );
+    expect(mockCreditWalletForCustomOfferAbandon).toHaveBeenCalledWith(
+      expect.anything(),
+      "offer-1",
+      "user-1",
+      "prov-1",
+      { reason: "cancelled" },
+    );
     expect(mockPatchCustomOfferMessageAttachments).toHaveBeenCalledWith(
       expect.anything(),
       "offer-1",
       { status: "pending" }
     );
+  });
+
+  it("does not refund wallet when offer was already paid (claim loses race)", async () => {
+    const offerRow = {
+      id: "offer-1",
+      status: "payment_pending",
+      provider_id: "prov-1",
+      request: { customer_id: "user-1" },
+    };
+    const serverSelectChain = buildSelectSingle(offerRow);
+    // After failed claim, re-read returns paid
+    const paidSelect = buildSelectSingle({ status: "paid" });
+    let fromCalls = 0;
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn(() => {
+        fromCalls += 1;
+        return fromCalls === 1 ? serverSelectChain : paidSelect;
+      }),
+    });
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn(() => buildUpdateChain(null, [])),
+    });
+
+    const { POST } = await import("../route");
+    const request = new NextRequest(
+      "http://localhost/api/me/custom-offers/offer-1/cancel-payment",
+      { method: "POST" }
+    );
+    const response = await POST(request, { params: Promise.resolve({ id: "offer-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual({ reset: false, status: "paid" });
+    expect(mockCreditWalletForCustomOfferAbandon).not.toHaveBeenCalled();
   });
 
   it("returns reset:false without touching the DB when offer is not payment_pending", async () => {

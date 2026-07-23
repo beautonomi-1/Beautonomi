@@ -51,6 +51,13 @@ import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catal
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
+import { BarcodeScannerModal } from "@/features/products/BarcodeScannerModal";
+import {
+  barcodeLookupQueryParams,
+  mapApiErrorCodeToMessage,
+  type BarcodeLookupApiPayload,
+} from "@/features/products/resolveBarcodeForWalkInSale";
+import { resolveBarcodeForPosSale } from "@/features/products/resolveBarcodeForPosSale";
 import { pt } from "@/lib/provider-translate";
 
 interface DashboardMetrics {
@@ -123,6 +130,7 @@ interface ProductItem {
   effective_quantity?: number;
   has_variants?: boolean;
   variants?: ProductVariantRow[];
+  track_stock_quantity?: boolean;
 }
 
 interface ProductsResponse {
@@ -299,6 +307,10 @@ export default function SalesScreen() {
     variants: ServiceVariantRow[];
   } | null>(null);
   const [productPick, setProductPick] = useState<ProductItem | null>(null);
+  const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeLookupBusy, setBarcodeLookupBusy] = useState(false);
+  const [barcodeLookupError, setBarcodeLookupError] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<{
     total: number;
     items: CartItem[];
@@ -612,6 +624,54 @@ export default function SalesScreen() {
     addSimpleProductToCart(product);
   }
 
+  function applyPosBarcodeResolve(resolved: ReturnType<typeof resolveBarcodeForPosSale>) {
+    if (resolved.action === "error") {
+      setBarcodeLookupError(resolved.message);
+      Alert.alert("Barcode lookup", resolved.message);
+      return;
+    }
+    setBarcodeLookupError(null);
+    if (resolved.action === "pick_variant") {
+      setProductPick(resolved.product as ProductItem);
+      return;
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (resolved.variant) {
+      addProductVariantToCart(resolved.product as ProductItem, resolved.variant as ProductVariantRow);
+    } else {
+      addSimpleProductToCart(resolved.product as ProductItem);
+    }
+  }
+
+  async function handlePosBarcodeCode(rawCode: string) {
+    const code = rawCode.trim();
+    if (!code) return;
+    setBarcodeLookupBusy(true);
+    setBarcodeLookupError(null);
+    try {
+      const params = barcodeLookupQueryParams(code);
+      const res = await api.fetch<BarcodeLookupApiPayload>(
+        `/api/provider/products/by-barcode?${params.toString()}`,
+      );
+      if (res.error) {
+        const message = mapApiErrorCodeToMessage(
+          res.error.code,
+          res.error.message ?? "Lookup failed",
+        );
+        setBarcodeLookupError(message);
+        Alert.alert("Barcode lookup", message);
+        return;
+      }
+      applyPosBarcodeResolve(
+        resolveBarcodeForPosSale(res.data, products as PosProductItem[]),
+      );
+      setBarcodeInput("");
+      setBarcodeScanOpen(false);
+    } finally {
+      setBarcodeLookupBusy(false);
+    }
+  }
+
   function removeFromCart(lineId: string) {
     setCart((prev) => prev.filter((i) => i.lineId !== lineId));
   }
@@ -639,6 +699,9 @@ export default function SalesScreen() {
     setSelectedStaffId(null);
     setServicePick(null);
     setProductPick(null);
+    setBarcodeInput("");
+    setBarcodeScanOpen(false);
+    setBarcodeLookupError(null);
     setVariantLoadingId(null);
     variantsCacheRef.current.clear();
     yocoPendingSaleIdRef.current = null;
@@ -1224,6 +1287,69 @@ export default function SalesScreen() {
 
             {cartTab === "products" && (
               <View>
+                {!productPick ? (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ marginBottom: 8, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                      Scan or enter barcode
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <TextInput
+                        value={barcodeInput}
+                        onChangeText={setBarcodeInput}
+                        placeholder="Barcode / SKU"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="done"
+                        editable={!barcodeLookupBusy}
+                        onSubmitEditing={() => void handlePosBarcodeCode(barcodeInput)}
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: Colors.gray[200],
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 12,
+                          fontSize: 15,
+                          backgroundColor: Colors.white,
+                        }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => void handlePosBarcodeCode(barcodeInput)}
+                        disabled={barcodeLookupBusy}
+                        style={{
+                          borderRadius: 12,
+                          backgroundColor: "#4f46e5",
+                          paddingHorizontal: 14,
+                          paddingVertical: 12,
+                          opacity: barcodeLookupBusy ? 0.6 : 1,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Look up barcode"
+                      >
+                        <Ionicons name="search" size={20} color="#fff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setBarcodeScanOpen(true)}
+                        disabled={barcodeLookupBusy}
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "#c4b5fd",
+                          backgroundColor: "#f5f3ff",
+                          paddingHorizontal: 14,
+                          paddingVertical: 12,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Scan barcode with camera"
+                      >
+                        <Ionicons name="barcode-outline" size={22} color="#6d28d9" />
+                      </TouchableOpacity>
+                    </View>
+                    {barcodeLookupError ? (
+                      <Text style={{ marginTop: 6, fontSize: 12, color: "#B91C1C" }}>{barcodeLookupError}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 {products.map((prod, i) => {
                   const hasOpts = Boolean(prod.has_variants && (prod.variants?.length ?? 0) > 0);
                   const maxSimple = maxSellableUnits(prod as PosProductItem, null);
@@ -1821,6 +1947,17 @@ export default function SalesScreen() {
           </View>
         ) : null}
       </BottomSheet>
+
+      <BarcodeScannerModal
+        visible={barcodeScanOpen}
+        onClose={() => setBarcodeScanOpen(false)}
+        title="Scan product barcode"
+        busy={barcodeLookupBusy}
+        errorMessage={barcodeLookupError}
+        onScanned={(code) => {
+          void handlePosBarcodeCode(code);
+        }}
+      />
 
       <View style={{ height: 32 }} />
     </ScreenContainer>

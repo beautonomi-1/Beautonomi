@@ -471,6 +471,7 @@ const GroupBookingCard = memo(function GroupBookingCard({
 function GroupBookingsScrollHeader({
   stats,
   onCreate,
+  canCreate,
 }: {
   stats: {
     total: number;
@@ -479,9 +480,11 @@ function GroupBookingsScrollHeader({
     bookedGross: number;
   };
   onCreate: () => void;
+  canCreate: boolean;
 }) {
   return (
     <View style={{ paddingBottom: 4 }}>
+      {canCreate ? (
       <TouchableOpacity
         onPress={onCreate}
         activeOpacity={0.86}
@@ -514,6 +517,7 @@ function GroupBookingsScrollHeader({
           </View>
         </View>
       </TouchableOpacity>
+      ) : null}
 
       <View style={twStyle("mb-3 flex-row gap-2")}>
         <View style={[twStyle("flex-1"), { minWidth: 0, marginRight: 4 }]}>
@@ -678,6 +682,19 @@ export default function GroupBookingsScreen() {
   const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
+  const { data: permissionData } = useApi<{
+    isOwner?: boolean;
+    permissions?: Record<string, boolean>;
+  }>("/api/provider/permissions", { staleTimeMs: 60_000 });
+  const isOwner = permissionData?.isOwner === true;
+  const canCreateGroups = isOwner || permissionData?.permissions?.create_appointments === true;
+  const canEditGroups = isOwner || permissionData?.permissions?.edit_appointments === true;
+  const canCancelGroups =
+    isOwner ||
+    permissionData?.permissions?.cancel_appointments === true ||
+    canEditGroups;
+  const canProcessPayments =
+    isOwner || permissionData?.permissions?.process_payments === true;
 
   const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
     "/api/provider/services?include_variants=true"
@@ -1308,6 +1325,10 @@ export default function GroupBookingsScreen() {
   }, [groups, groupData]);
 
   async function handleCancel(group: GroupBooking) {
+    if (!canCancelGroups) {
+      Alert.alert("Permission required", "You do not have permission to cancel group bookings.");
+      return;
+    }
     if (!group.id) {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
       return;
@@ -1335,6 +1356,15 @@ export default function GroupBookingsScreen() {
   async function handleStatusChange(group: GroupBooking, newStatus: string) {
     if (!group.id) {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
+      return;
+    }
+    if (newStatus === "cancelled") {
+      if (!canCancelGroups) {
+        Alert.alert("Permission required", "You do not have permission to cancel group bookings.");
+        return;
+      }
+    } else if (!canEditGroups) {
+      Alert.alert("Permission required", "You do not have permission to update group bookings.");
       return;
     }
     // §Group-booking-audit 2026-05: route "cancelled" through the dedicated
@@ -1407,6 +1437,10 @@ export default function GroupBookingsScreen() {
     group: GroupBooking,
     paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco"
   ) {
+    if (!canProcessPayments) {
+      Alert.alert("Permission required", "You do not have permission to record payments.");
+      return;
+    }
     if (!group.id) {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
       return;
@@ -1610,6 +1644,10 @@ export default function GroupBookingsScreen() {
   // required fields (date/time/duration). Service/staff/location can be
   // filled in later via the edit sheet or the web portal.
   function openCreate() {
+    if (!canCreateGroups) {
+      Alert.alert("Permission required", "You do not have permission to create group bookings.");
+      return;
+    }
     const now = new Date();
     const hh = String(Math.min(23, now.getHours() + 1)).padStart(2, "0");
     const requestedDate =
@@ -2812,6 +2850,10 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleCheckIn(participant: Participant) {
+    if (!canEditGroups) {
+      Alert.alert("Permission required", "You do not have permission to check participants in.");
+      return;
+    }
     if (!selectedGroup?.id || !participant?.id) return;
     if (pendingParticipantId === participant.id) return;
     previousGroupRef.current = selectedGroup;
@@ -2838,6 +2880,10 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleCheckOut(participant: Participant) {
+    if (!canEditGroups) {
+      Alert.alert("Permission required", "You do not have permission to check participants out.");
+      return;
+    }
     if (!selectedGroup?.id || !participant?.id) return;
     if (pendingParticipantId === participant.id) return;
     previousGroupRef.current = selectedGroup;
@@ -2953,8 +2999,14 @@ export default function GroupBookingsScreen() {
   const handleOpenCreate = useCallback(() => openCreateRef.current(), []);
 
   const groupListHeader = useMemo(
-    () => <GroupBookingsScrollHeader stats={stats} onCreate={handleOpenCreate} />,
-    [stats, handleOpenCreate]
+    () => (
+      <GroupBookingsScrollHeader
+        stats={stats}
+        onCreate={handleOpenCreate}
+        canCreate={canCreateGroups}
+      />
+    ),
+    [stats, handleOpenCreate, canCreateGroups]
   );
 
   const groupListEmpty = useMemo(
@@ -2967,12 +3019,12 @@ export default function GroupBookingsScreen() {
             ? "Try a different search or filter"
             : "Create a group session for bridal parties, events, families, or shared service appointments."
         }
-        actionLabel={search.trim() ? undefined : "Create group booking"}
+        actionLabel={search.trim() || !canCreateGroups ? undefined : "Create group booking"}
         actionAccessibilityLabel="Create a new group booking"
-        onAction={search.trim() ? undefined : handleOpenCreate}
+        onAction={search.trim() || !canCreateGroups ? undefined : handleOpenCreate}
       />
     ),
-    [search, handleOpenCreate]
+    [search, handleOpenCreate, canCreateGroups]
   );
 
   const handleOpenGroup = useCallback((group: GroupBooking) => {
@@ -2996,16 +3048,18 @@ export default function GroupBookingsScreen() {
         onBack={handleBack}
         subtitle={`${stats.total} groups · ${stats.upcoming} upcoming`}
         rightAction={
-          <TouchableOpacity
-            onPress={openCreate}
-            style={twStyle("flex-row items-center rounded-full bg-indigo-600 px-3 py-1.5")}
-            hitSlop={8}
-            accessibilityLabel="Create group booking"
-            accessibilityRole="button"
-          >
-            <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 4 }} />
-            <Text style={twStyle("text-xs font-semibold text-white")}>New</Text>
-          </TouchableOpacity>
+          canCreateGroups ? (
+            <TouchableOpacity
+              onPress={openCreate}
+              style={twStyle("flex-row items-center rounded-full bg-indigo-600 px-3 py-1.5")}
+              hitSlop={8}
+              accessibilityLabel="Create group booking"
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 4 }} />
+              <Text style={twStyle("text-xs font-semibold text-white")}>New</Text>
+            </TouchableOpacity>
+          ) : undefined
         }
       />
 

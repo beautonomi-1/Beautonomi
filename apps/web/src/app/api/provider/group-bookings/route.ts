@@ -10,6 +10,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission, requireAnyPermission } from "@/lib/auth/requirePermission";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
@@ -121,10 +122,11 @@ async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const searchParams = request.nextUrl.searchParams;
@@ -431,10 +433,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("create_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();

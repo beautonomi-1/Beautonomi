@@ -51,9 +51,10 @@ import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, getBackendUrl } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useInAppBanner } from "@/providers/InAppBannerProvider";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 import {
   TravelFeesEditor,
@@ -2220,7 +2221,8 @@ function Step9Zones() {
           No zones found nearby
         </Text>
         <Text style={twStyle("text-center text-[14px] text-slate-500 max-w-[250px]")}>
-          You can configure service zones later in Settings › Service Zones.
+          No service zones matched your address. Ask your marketplace admin to add zones for your
+          area, or go back and check your location — you need at least one zone to continue.
         </Text>
       </View>
     );
@@ -2399,7 +2401,8 @@ function Step10Categories() {
         scrollEnabled={false}
         renderItem={({ item }: { item: Cat }) => {
           const on = (formData.global_category_ids || []).includes(item.id);
-          const iconUri = resolveGlobalCategoryIconUri(item.icon, APP_URL);
+          const categoryIconOrigin = (APP_URL || getBackendUrl()).replace(/\/$/, "");
+          const iconUri = resolveGlobalCategoryIconUri(item.icon, categoryIconOrigin);
           return (
             <TouchableOpacity
               onPress={() => toggle(item.id)}
@@ -2534,6 +2537,7 @@ function categoryNameFromForm(form: ServiceFormState, categories: { id: string; 
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
   const onboardingScroll = useOnboardingScroll();
+  const { show: showBanner } = useInAppBanner();
   const tenantCurrency = getTenantDefaultCurrency();
   const services = formData.services || [];
   const serviceNameRef = useRef<TextInput>(null);
@@ -2587,6 +2591,7 @@ function Step11Services() {
     defaultOnboardingFormState(formData.business_type ?? "salon"),
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [serviceSuccessMessage, setServiceSuccessMessage] = useState<string | null>(null);
   const [addonName, setAddonName] = useState("");
   const [addonPrice, setAddonPrice] = useState("");
   const [addonDuration, setAddonDuration] = useState("");
@@ -2642,6 +2647,7 @@ function Step11Services() {
       ),
     );
     setFormError(null);
+    setServiceSuccessMessage(null);
     setDraftAddons(
       (formData.service_addons || []).filter((a) => a.parent_service_index === index),
     );
@@ -2725,7 +2731,10 @@ function Step11Services() {
 
     updateFormData({ services: nextServices, service_addons: nextAddons });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const successMessage = editingIndex != null ? "Service updated" : "Service added";
     resetForm();
+    setServiceSuccessMessage(successMessage);
+    showBanner({ title: successMessage, tone: "success" });
   };
 
   const remove = (i: number) => {
@@ -2955,6 +2964,19 @@ function Step11Services() {
           </View>
         ) : null}
       </View>
+
+      {serviceSuccessMessage ? (
+        <View
+          style={twStyle(
+            "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex-row items-center gap-2",
+          )}
+        >
+          <Ionicons name="checkmark-circle" size={18} color="#059669" />
+          <Text style={twStyle("text-sm font-semibold text-emerald-800 flex-1")}>
+            {serviceSuccessMessage}
+          </Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity
         onPress={saveService}

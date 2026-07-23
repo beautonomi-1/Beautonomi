@@ -6,6 +6,11 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { applyPosProductStockDecrements } from "@/lib/provider-sales/pos-product-stock";
+import {
+  resolveYocoSettleEntity,
+  reverseYocoSettlement,
+  settleYocoPayment,
+} from "@/lib/payments/settle-yoco-payment";
 
 function yocoAmountCents(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -310,7 +315,9 @@ async function handlePaymentNotification(
 
   const { data: yocoPaymentRow } = await supabase
     .from("provider_yoco_payments")
-    .select("sale_id, status, device_id, amount, provider_id")
+    .select(
+      "id, sale_id, status, device_id, amount, provider_id, appointment_id, tip_amount, entity_type, entity_id, group_booking_id, metadata",
+    )
     .eq("yoco_payment_id", id)
     .maybeSingle();
 
@@ -327,11 +334,18 @@ async function handlePaymentNotification(
   }
 
   const existingPayment = yocoPaymentRow as {
+    id?: string | null;
     sale_id?: string | null;
     status?: string | null;
     device_id?: string | null;
     amount?: number | null;
     provider_id?: string | null;
+    appointment_id?: string | null;
+    tip_amount?: number | null;
+    entity_type?: string | null;
+    entity_id?: string | null;
+    group_booking_id?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
   if (
     status === "successful" &&
@@ -417,98 +431,42 @@ async function handlePaymentNotification(
     }
   }
 
-  // If payment successful, create booking_payment record
-  // This will trigger automatic creation of finance_transactions via database trigger
-  const bookingId = metadata?.appointment_id as string | undefined;
-  if (status === "successful" && bookingId) {
-    const amountInCurrency = amount / 100; // Yoco uses cents
-    
-    // Get booking details
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("id, tenant_id, booking_number, provider_id, total_amount, payment_status, location_id, location_type")
-      .eq("id", bookingId)
-      .single();
-    
-    // If booking is missing location_id and it's an at_salon booking, set it to provider's first location
-    if (booking && !booking.location_id && booking.location_type === "at_salon") {
-      const supabaseAdmin = getSupabaseAdmin();
-      
-      const { data: providerLocations } = await supabaseAdmin
-        .from("provider_locations")
-        .select("id")
-        .eq("provider_id", booking.provider_id)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      
-      if (providerLocations && providerLocations.length > 0) {
-        const defaultLocationId = providerLocations[0].id;
-        const { error: updateError } = await supabaseAdmin
-          .from("bookings")
-          .update({ location_id: defaultLocationId })
-          .eq("id", bookingId);
-        
-        if (!updateError) {
-          console.log(`Updated booking ${bookingId} with location_id ${defaultLocationId} via Yoco webhook`);
-        } else {
-          console.warn(`Failed to update location_id for booking ${bookingId}:`, updateError);
-        }
-      }
-    }
-    
-    if (booking && booking.payment_status !== "paid") {
-      // Idempotency: skip if we've already recorded this Yoco payment
-      const { data: existingPayment } = await supabase
-        .from("booking_payments")
-        .select("id")
-        .eq("payment_provider", "yoco")
-        .eq("payment_provider_id", id)
-        .maybeSingle();
-      if (existingPayment) {
-        console.log(`Yoco payment ${id} already recorded, skipping (idempotent)`);
-        return;
-      }
+  // Settle booking / group / product_order / additional_charge via shared card-machine helper
+  // (tip + add-ons + clamps). Sale path above keeps POS stock decrement ownership.
+  if (status === "successful") {
+    const settleEntity = resolveYocoSettleEntity({
+      entity_type: existingPayment?.entity_type,
+      entity_id: existingPayment?.entity_id,
+      appointment_id: existingPayment?.appointment_id ?? (metadata?.appointment_id as string | undefined),
+      sale_id: existingPayment?.sale_id ?? (metadata?.sale_id as string | undefined),
+      group_booking_id: existingPayment?.group_booking_id,
+      metadata: {
+        ...(existingPayment?.metadata ?? {}),
+        ...metadata,
+      },
+    });
 
-      console.log(`Creating booking_payment for booking ${booking.booking_number} via Yoco terminal`);
-      
-      // Create booking_payment record (this will trigger finance_transactions creation via migration 169)
-      const yocoBookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
-      const { error: paymentError } = await supabase
-        .from("booking_payments")
-        .insert({
-          booking_id: bookingId,
-          ...(yocoBookingTenantId ? { tenant_id: yocoBookingTenantId } : {}),
-          amount: amountInCurrency,
-          payment_method: "card",
-          payment_provider: "yoco",
-          payment_provider_id: id, // Yoco payment ID
-          payment_provider_data: {
-            yoco_payment_id: id,
-            device_id: metadata.device_id,
-            currency: currency,
-          },
-          status: "completed",
-          notes: `Yoco card terminal payment - ${id}`,
-          created_by: metadata.processed_by || null,
-          created_at: new Date().toISOString(),
-        });
-      
-      if (paymentError) {
-        if (paymentError.code === "23505") {
-          console.log(`Yoco payment ${id} was recorded concurrently, skipping duplicate`);
-          return;
-        }
-        console.error("Error creating booking_payment:", paymentError);
-        throw new Error(`Failed to create booking_payment for Yoco payment ${id}: ${paymentError.message}`);
-      } else {
-        console.log(`✅ Booking payment created for ${booking.booking_number} via Yoco terminal. Finance transactions will be auto-created by trigger.`);
-        // The trigger (migration 169) will automatically:
-        // 1. Create finance_transactions (payment & provider_earnings)
-        // 2. Update booking.payment_status to "paid"
-        // 3. Update booking.total_paid
+    if (settleEntity && settleEntity.entityType !== "sale") {
+      const amountInCurrency = amount / 100;
+      // tip_amount column defaults to 0 — treat 0 as unset so metadata tip still applies.
+      const tipFromColumn = Number(existingPayment?.tip_amount ?? 0);
+      const tipFromMeta = Number(metadata.tip_amount ?? 0);
+      const tipAmount = Math.max(0, tipFromColumn > 0 ? tipFromColumn : tipFromMeta);
+      const settleResult = await settleYocoPayment(supabase, {
+        paymentId: String(existingPayment?.id ?? id),
+        providerId: String(existingPayment?.provider_id ?? metadata.provider_id),
+        entityType: settleEntity.entityType,
+        entityId: settleEntity.entityId,
+        amount: amountInCurrency,
+        yocoPaymentId: id,
+        processedBy:
+          typeof metadata.processed_by === "string" ? metadata.processed_by : null,
+        currency,
+        tipAmount,
+      });
+      if (!settleResult.settled && settleResult.reason) {
+        console.warn(`Yoco settle skipped/failed for ${id}: ${settleResult.reason}`);
       }
-    } else if (booking && booking.payment_status === "paid") {
-      console.log(`Booking ${booking.booking_number} is already marked as paid, skipping`);
     }
   }
 
@@ -553,18 +511,29 @@ async function handleRefundSuccess(
   const originalAmount = yocoAmountCents(data.original_amount);
   const yocoPaymentId = metadata?.payment_id as string | undefined;
 
-  // Resolve provider_id and appointment_id from payment for RLS and booking sync
+  // Resolve provider_id and settle entity for full reverse parity (tip/charge/group suffixes).
   let providerId: string | null = null;
   let bookingId: string | null = null;
+  let yocoPaymentRow: {
+    provider_id?: string | null;
+    appointment_id?: string | null;
+    sale_id?: string | null;
+    entity_type?: string | null;
+    entity_id?: string | null;
+    group_booking_id?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null = null;
   if (yocoPaymentId) {
     const { data: payment } = await supabase
       .from("provider_yoco_payments")
-      .select("provider_id, appointment_id")
+      .select(
+        "provider_id, appointment_id, sale_id, entity_type, entity_id, group_booking_id, metadata",
+      )
       .eq("yoco_payment_id", yocoPaymentId)
       .single();
-    const row = payment as { provider_id?: string; appointment_id?: string } | null;
-    providerId = row?.provider_id ?? null;
-    bookingId = row?.appointment_id ?? null;
+    yocoPaymentRow = (payment as typeof yocoPaymentRow) ?? null;
+    providerId = yocoPaymentRow?.provider_id ?? null;
+    bookingId = yocoPaymentRow?.appointment_id ?? null;
   }
 
   let lastResortCurrency: string = LAST_RESORT_CURRENCY;
@@ -618,11 +587,45 @@ async function handleRefundSuccess(
       .eq("yoco_payment_id", yocoPaymentId);
   }
 
-  // Sync to booking: create booking_refund so booking total_refunded and payment_status stay in sync
-  if (bookingId && amountCents > 0) {
+  if (!(amountCents > 0) || !yocoPaymentId || !providerId || !id) {
+    return;
+  }
+
+  const isFullRefund =
+    originalAmount > 0 ? amountCents === originalAmount : amountCents > 0;
+  const settleEntity = resolveYocoSettleEntity({
+    entity_type: yocoPaymentRow?.entity_type,
+    entity_id: yocoPaymentRow?.entity_id,
+    appointment_id: yocoPaymentRow?.appointment_id ?? bookingId,
+    sale_id: yocoPaymentRow?.sale_id,
+    group_booking_id: yocoPaymentRow?.group_booking_id,
+    metadata: {
+      ...(yocoPaymentRow?.metadata ?? {}),
+      ...metadata,
+    },
+  });
+
+  // Full refunds reverse every settle suffix (base/tip/charge/group) like PayCloud void.
+  if (isFullRefund && settleEntity) {
+    const reverseResult = await reverseYocoSettlement(supabase, {
+      entityType: settleEntity.entityType,
+      entityId: settleEntity.entityId,
+      providerId,
+      origProviderPaymentId: yocoPaymentId,
+      voidReference: id,
+      processedBy:
+        typeof metadata.processed_by === "string" ? metadata.processed_by : null,
+    });
+    if (!reverseResult.reversed && reverseResult.reason) {
+      console.warn(`Yoco full reverse skipped/failed for ${yocoPaymentId}: ${reverseResult.reason}`);
+    }
+    return;
+  }
+
+  // Partial refunds: keep a single booking_refund against the base capture row.
+  if (bookingId) {
     const supabaseAdmin = getSupabaseAdmin();
 
-    // Idempotency: skip if we already recorded this Yoco refund as a booking_refund
     const { data: existingRefund } = await supabaseAdmin
       .from("booking_refunds")
       .select("id")
@@ -632,9 +635,8 @@ async function handleRefundSuccess(
       return;
     }
 
-    const amountInCurrency = amountCents / 100; // Yoco amounts are in cents
+    const amountInCurrency = amountCents / 100;
 
-    // Optionally link to the booking_payment that was created when the Yoco payment succeeded
     const { data: bookingPayment } = await supabaseAdmin
       .from("booking_payments")
       .select("id")
@@ -655,11 +657,6 @@ async function handleRefundSuccess(
 
     if (refundError) {
       console.error("Yoco webhook: failed to create booking_refund:", refundError);
-    } else {
-      console.log(`Yoco refund ${id} synced to booking ${bookingId} (booking_refund created).`);
-      // finance_transactions row is written by trigger
-      // `create_finance_ledger_from_booking_refund` (migration 490) via the
-      // booking_refunds insert above — no app-side insert (B1).
     }
   }
 }

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
+import { creditWalletForCustomOfferAbandon } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
 import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
 
 type ExpiredRequestRow = {
@@ -182,6 +183,37 @@ export async function GET(request: NextRequest) {
     let cascadedOfferIds: string[] = [];
 
     if (expiredRequestIds.length > 0) {
+      // Claim payment_pending offers first so we can refund any upfront wallet debit
+      // before the status flips to expired (cancel-payment becomes a no-op after).
+      const { data: pendingPaymentOffers } = await admin
+        .from("custom_offers")
+        .select("id, provider_id, request:custom_requests(customer_id)")
+        .eq("status", "payment_pending")
+        .in("request_id", expiredRequestIds);
+
+      for (const row of (pendingPaymentOffers ?? []) as Array<{
+        id: string;
+        provider_id?: string | null;
+        request?: { customer_id?: string | null } | null;
+      }>) {
+        const customerId = row.request?.customer_id;
+        if (!customerId) continue;
+        try {
+          await creditWalletForCustomOfferAbandon(
+            admin,
+            row.id,
+            customerId,
+            row.provider_id ?? null,
+            { reason: "expired" },
+          );
+        } catch (walletErr) {
+          console.error(
+            `[expire-custom-requests] wallet refund failed for payment_pending offer ${row.id}:`,
+            walletErr,
+          );
+        }
+      }
+
       const { data: cascadedOffers } = await admin
         .from("custom_offers")
         .update({ status: "expired", updated_at: now })

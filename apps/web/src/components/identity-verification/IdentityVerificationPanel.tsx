@@ -68,8 +68,18 @@ export function IdentityVerificationPanel({
   }, [sessionUrl]);
 
   // Determine whether to show the confirm-legal-details form
-  const showConfirmForm = (status === "not_started" || status === "session_created") && !sessionUrl;
+  const effectiveStatus = status ?? "not_started";
+  const showConfirmForm = (effectiveStatus === "not_started" || effectiveStatus === "session_created") && !sessionUrl;
   const showStatus = !showConfirmForm;
+
+  if (loading && status == null) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="sr-only">Loading verification status</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

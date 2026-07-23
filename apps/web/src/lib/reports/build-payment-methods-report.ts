@@ -184,6 +184,7 @@ export async function buildProviderPaymentMethodsReport(
   /** ---------- Successful payment_transactions in settlement window ---------- */
   let offset = 0;
   const scopedPtBookingIds = new Set<string>();
+  const ptMethodKeysByBooking = new Map<string, Set<string>>();
 
   for (;;) {
     const { data: ptPage, error: ptErr } = await supabase
@@ -206,6 +207,12 @@ export async function buildProviderPaymentMethodsReport(
       if (!pt.booking_id || !bookingScope.has(pt.booking_id)) continue;
       scopedPtBookingIds.add(pt.booking_id);
       const key = normalizePtProviderKey(pt.provider);
+      let keys = ptMethodKeysByBooking.get(pt.booking_id);
+      if (!keys) {
+        keys = new Set<string>();
+        ptMethodKeysByBooking.set(pt.booking_id, keys);
+      }
+      keys.add(key);
       const b = getBucket(key);
       b.ptCount += 1;
       b.ptAmount += Number(pt.amount ?? 0);
@@ -247,18 +254,26 @@ export async function buildProviderPaymentMethodsReport(
   const bpBookingIds = [...new Set(bpList.map((r) => r.booking_id))];
   const bpScope = await fetchBookingsForProvider(supabase, providerId, bpBookingIds, locationId);
 
+  function resolveBpMethodKey(row: BpRow): string {
+    const provider = (row.payment_provider ?? "").toLowerCase();
+    if (provider === "paycloud") return "paycloud";
+    if (provider === "yoco") return "yoco";
+    return normalizeRecordedPaymentMethod(row.payment_method);
+  }
+
   for (const row of bpList) {
     if (!bpScope.has(row.booking_id)) continue;
-    // Provider-collected card-machine tenders (PayCloud) store payment_method='card';
-    // attribute them to their own bucket via payment_provider so the mix isn't
-    // collapsed into generic "Card (terminal)".
-    const methodKey =
-      (row.payment_provider ?? "").toLowerCase() === "paycloud"
-        ? "paycloud"
-        : normalizeRecordedPaymentMethod(row.payment_method);
-    // Skip if the booking already has a gateway PT that would cover this same
-    // payment leg (prevents double-counting gateway captures).
-    if (scopedPtBookingIds.has(row.booking_id) && isGatewayCardCaptureProvider(methodKey)) continue;
+    const methodKey = resolveBpMethodKey(row);
+    const ptKeysForBooking = ptMethodKeysByBooking.get(row.booking_id);
+    // Skip only when a gateway PT already covers this same tender leg — not when
+    // the booking has an unrelated gateway capture (e.g. Paystack deposit + PayCloud balance).
+    if (
+      ptKeysForBooking &&
+      isGatewayCardCaptureProvider(methodKey) &&
+      ptKeysForBooking.has(methodKey)
+    ) {
+      continue;
+    }
     const b = getBucket(methodKey);
     b.bpCount += 1;
     b.bpAmount += Number(row.amount ?? 0);

@@ -9,9 +9,11 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import {
   applyAssignedToFilter,
   applyActiveLeadFilter,
+  applyContactFilter,
   escapeLike,
   LEADS_EXPORT_SELECT,
   parseCategoryIds,
+  parseContactFilter,
   parseDeletedFilter,
 } from "@/lib/provider-ops/lead-query-filters";
 import { formatReferrerDisplayName } from "@/lib/provider-ops/resolve-referrer";
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest) {
     const province = searchParams.get("province")?.trim();
     const categoryIds = parseCategoryIds(searchParams);
     const deletedMode = parseDeletedFilter(searchParams);
+    const contactFilter = parseContactFilter(searchParams);
 
     let categoryLeadIds: string[] | null = null;
     if (categoryIds.length > 0) {
@@ -72,17 +75,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const applyFilters = <
-      T extends {
-        eq: (a: string, b: string) => T;
-        is: (a: string, b: null) => T;
-        not: (a: string, op: string, b: null) => T;
-        in: (a: string, b: string[]) => T;
-        or: (a: string) => T;
-        order: (a: string, b: { ascending: boolean }) => T;
-        range: (from: number, to: number) => T;
-      },
-    >(query: T): T => {
+    const applyFilters = (query: any): any => {
       let q = applyActiveLeadFilter(query, deletedMode);
       if (stage && stage !== "all") q = q.eq("commercial_stage", stage);
       if (source && source !== "all") q = q.eq("source", source);
@@ -100,7 +93,7 @@ export async function GET(request: NextRequest) {
           `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`,
         );
       }
-      return q;
+      return applyContactFilter(q, contactFilter);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

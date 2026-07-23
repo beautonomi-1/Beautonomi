@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
@@ -26,8 +26,11 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   sendToUser: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
+
 vi.mock("@/lib/supabase/api-helpers", () => ({
-  requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
   getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
   successResponse: (data: unknown, status = 200) =>
     Response.json({ data, error: null }, { status }),
@@ -43,7 +46,7 @@ vi.mock("@/lib/supabase/api-helpers", () => ({
 }));
 
 function setupOffer(status: string) {
-  mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+  mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
   mockGetProviderIdForUser.mockResolvedValue("provider-1");
   mockGetNotificationTemplate.mockResolvedValue(null);
   mockPatchCustomOfferMessageAttachments.mockResolvedValue(undefined);

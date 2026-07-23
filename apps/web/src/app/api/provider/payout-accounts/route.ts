@@ -21,6 +21,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
 
 // §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
@@ -128,6 +129,15 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const sessionSupabase = await getSupabaseServer(request);
+
+    const canViewBanking =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "edit_settings", undefined, request));
+    if (!canViewBanking) {
+      return errorResponse("Only business owners can view bank accounts.", "FORBIDDEN", 403);
+    }
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 
@@ -189,6 +199,15 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const sessionSupabase = await getSupabaseServer(request);
+
+    const canManageBanking =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "edit_settings", undefined, request));
+    if (!canManageBanking) {
+      return errorResponse("Only business owners can manage bank accounts.", "FORBIDDEN", 403);
+    }
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 

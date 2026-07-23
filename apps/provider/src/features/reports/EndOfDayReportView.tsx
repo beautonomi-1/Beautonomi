@@ -12,9 +12,11 @@ const METHOD_LABEL: Record<string, string> = {
   bank_transfer: "Bank transfer",
   paystack: "Paystack",
   yoco: "Yoco",
+  paycloud: "Card machine",
   gift_card: "Gift card",
   wallet: "Wallet",
   other: "Other",
+  cashback: "Cashback",
 };
 
 function omitKeys(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -126,6 +128,17 @@ export function EndOfDayReportView({ data }: { data: unknown }) {
           </Text>
         </View>
       </View>
+
+      {Number((data as { cashbackTotal?: number }).cashbackTotal ?? 0) > 0 ? (
+        <View style={twStyle("rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3")}>
+          <Text style={twStyle("text-xs text-slate-700")}>
+            Cashback (till cash-out) — not included in recorded total
+          </Text>
+          <Text style={twStyle("mt-1 text-lg font-semibold tabular-nums text-slate-950")}>
+            {formatCurrency(Number((data as { cashbackTotal?: number }).cashbackTotal ?? 0))}
+          </Text>
+        </View>
+      ) : null}
 
       {methods.length > 0 ? (
         <View>

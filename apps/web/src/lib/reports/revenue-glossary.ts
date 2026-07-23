@@ -42,7 +42,7 @@ export const REVENUE_GLOSSARY = {
     label: "Available to withdraw",
     short: "Ready to pay out now",
     definition:
-      "Platform-held money you can withdraw right now: payoutable earnings minus already-paid-out and pending payout requests, and money still on hold. Direct cash, EFT, manual card and Yoco takings are excluded.",
+      "Platform-held money you can withdraw right now: payoutable earnings minus already-paid-out and pending payout requests, and money still on hold. Direct cash, EFT, manual card, Yoco and PayCloud card-machine takings are excluded.",
   },
   retailSales: {
     label: "Retail sales",

@@ -1,6 +1,9 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
+import type { CreateOrderApiError } from "@/features/shop/productOrderCheckoutHelpers";
+
+export type { CreateOrderApiError };
 
 export interface ProductOrder {
   id: string;
@@ -118,17 +121,39 @@ export function useProductOrders() {
   }, []);
 
   const createOrder = useCallback(
-    async (payload: {
-      provider_id: string;
-      fulfillment_type: "collection" | "delivery";
-      delivery_address_id?: string;
-      delivery_instructions?: string;
-      collection_location_id?: string;
-      payment_method?: string;
-      use_wallet?: boolean;
-    }) => {
-      const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>("/api/me/orders", payload);
-      if (res.error) return { data: null, paid_with_wallet: false, amount_due: undefined, error: getApiErrorMessage(res.error, "Your order could not be placed.") };
+    async (
+      payload: {
+        provider_id: string;
+        fulfillment_type: "collection" | "delivery";
+        delivery_address_id?: string;
+        delivery_instructions?: string;
+        collection_location_id?: string;
+        payment_method?: string;
+        use_wallet?: boolean;
+        idempotency_key?: string;
+      },
+      opts?: { idempotencyKey?: string },
+    ) => {
+      const idempotencyKey = opts?.idempotencyKey ?? payload.idempotency_key;
+      const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>(
+        "/api/me/orders",
+        idempotencyKey ? { ...payload, idempotency_key: idempotencyKey } : payload,
+        {
+          timeout: 120_000,
+          headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+        },
+      );
+      if (res.error) {
+        return {
+          data: null,
+          paid_with_wallet: false,
+          amount_due: undefined,
+          error: {
+            message: getApiErrorMessage(res.error, "Your order could not be placed."),
+            code: getApiErrorCode(res.error),
+          } satisfies CreateOrderApiError,
+        };
+      }
       return {
         data: res.data?.order ?? null,
         paid_with_wallet: res.data?.paid_with_wallet ?? false,

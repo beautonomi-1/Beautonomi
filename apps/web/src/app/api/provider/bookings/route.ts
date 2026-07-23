@@ -23,7 +23,10 @@ import { startOfDay, startOfMonth } from "date-fns";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  dashboardBookingLocationOrFilter,
+  dashboardGroupBookingLocationOrFilter,
+} from "@/lib/server/provider/dashboard-booking-location-filter";
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
@@ -584,7 +587,7 @@ async function handleGetProviderBookings(request: NextRequest) {
     if (fromNow) {
       groupQuery = groupQuery.gte("scheduled_at", new Date().toISOString());
     }
-    if (locationId) groupQuery = groupQuery.or(dashboardBookingLocationOrFilter(locationId));
+    if (locationId) groupQuery = groupQuery.or(dashboardGroupBookingLocationOrFilter(locationId));
     if (searchRaw && searchRaw.trim().length > 0) {
       const safe = searchRaw.trim().replace(/[%_,()]/g, "");
       groupQuery = groupQuery.or(`ref_number.ilike.%${safe}%,title.ilike.%${safe}%`);

@@ -30,6 +30,7 @@ type RefundStatistics = {
   total_transactions?: number;
   /** @deprecated use total_transactions */
   total?: number;
+  actionable_refundable?: number;
   total_refunded_amount?: number;
   /** @deprecated */
   total_refunded?: number;
@@ -126,6 +127,7 @@ export function RefundsListPage() {
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.refunds(filters) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.activity() });
       setProcessId(null);
       setProcessRow(null);
       setRefundAmount("");
@@ -191,12 +193,13 @@ export function RefundsListPage() {
     "partially_refunded",
   ] as const;
 
+  const byStatus = stats?.by_status ?? {};
   const totalListed = stats?.total_transactions ?? stats?.total ?? 0;
+  const actionableRefundable = stats?.actionable_refundable ?? byStatus.success ?? 0;
   const totalRefundedAmt = stats?.total_refunded_amount ?? stats?.total_refunded ?? 0;
   const rowsWithRefund = stats?.rows_with_refund_recorded ?? 0;
   const avgRecorded =
     stats?.average_refund_among_recorded ?? stats?.average_refund ?? "0.00";
-  const byStatus = stats?.by_status ?? {};
 
   return (
     <div className="space-y-6">
@@ -220,10 +223,21 @@ export function RefundsListPage() {
       {/* Statistics */}
       {stats && typeof stats === "object" && Object.keys(stats).length > 0 && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AdminPanel className="!p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Transactions listed
+                Refundable payments
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {actionableRefundable}
+              </p>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Successful captures that can still be refunded
+              </p>
+            </AdminPanel>
+            <AdminPanel className="!p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Rows matching filter
               </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
                 {totalListed}
@@ -326,7 +340,7 @@ export function RefundsListPage() {
               const statusStr = String(row.status ?? "pending");
               const badgeClass =
                 STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
-              const isPending = statusStr === "pending";
+              const isRefundable = statusStr === "success";
               const isExpanded = expandedId === id;
 
               return (
@@ -367,7 +381,7 @@ export function RefundsListPage() {
                         : ""}
                     </AdminTd>
                     <AdminTd>
-                      {isPending && (
+                      {isRefundable && (
                         <button
                           type="button"
                           className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"

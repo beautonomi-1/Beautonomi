@@ -18,7 +18,7 @@ report APIs, or admin/provider finance UIs.
 | **Ledger revenue**        | Settled `finance_transactions` activity for the range; admin-side platform truth.                                        | `aggregateFinanceLedgerRows` |
 | **Provider earnings**     | `provider_earnings` ledger rows after commission. May differ from collected.                                             | `finance_transactions.transaction_type='provider_earnings'` |
 | **Provider net activity** | Provider earnings + tips + travel + cancellation_fee − refunds.                                                          | `payments/summary.providerNetActivity` |
-| **Payoutable amount**     | Platform-held provider earnings excluding direct (cash/EFT/manual/Yoco) walk-in money, less completed/pending payouts.   | `getAvailablePayoutBalance.availableBalance` |
+| **Payoutable amount**     | Platform-held provider earnings excluding direct (cash/EFT/manual/Yoco/PayCloud) walk-in money, less completed/pending payouts.   | `getAvailablePayoutBalance.availableBalance` |
 | **Actual payout**         | A row in `payouts` with `status='completed'`, mirrored once into `finance_transactions(type='payout', payout_id)` (idempotent on `payout_id`). | `payouts` + `recordPayoutLedger` |
 | **Commission / platform fee** | Platform-retained portion: `commission` column on `payment` rows; reversed proportionally on refund via `refund.commission`. | trigger `create_finance_ledger_from_payment` (migration 559) + webhook `charge-success.ts` |
 | **End-of-day**            | Cash-register style total per provider per day. Not the same as ledger revenue or payout earnings.                        | `getRecordedTakingsForRange` |
@@ -84,18 +84,15 @@ report APIs, or admin/provider finance UIs.
 | `walk_in`      | `bank_transfer` (EFT)              | No (provider bank)       | **No**      |
 | `walk_in`      | `other` (manual card)              | No (provider terminal)   | **No**      |
 | `walk_in`      | `yoco` (provider terminal)         | No (provider Yoco)       | **No**      |
+| `walk_in`      | `paycloud` (Beautonomi card machine) | No (provider PayCloud merchant) | **No** |
+| `online`       | Mixed Paystack + PayCloud          | Partial (Paystack leg only) | **Partial** (per `source_payment_id`) |
 
 **Operational acceptance check (not a code blocker, by design):**
-If a *customer-led online* booking is later collected by the provider via a
-Yoco terminal or manual card (i.e. the customer didn't pay via Paystack but
-the provider still tapped a payment), the booking_source remains `online`
-and the platform marks the resulting `provider_earnings` rows as payoutable.
-Today this is treated as the rare exception — Beautonomi's product flow
-keeps online bookings on Paystack. If this flow is operationalised, the
-helper `getAvailablePayoutBalance` must switch from booking-level
-`booking_source` to row-level `source_payment_id → booking_payments.payment_provider`
-gating. Tests `available-payout-balance-scenarios.test.ts` would need to add
-an "online booked, Yoco-collected" case at that point.
+Mixed-tender bookings (Paystack deposit + PayCloud balance) are handled per payment
+tender via `source_payment_id → booking_payments.payment_provider`. Only
+platform-held-sourced `provider_earnings` / `tip` / `travel_fee` rows increase
+withdrawable balance. Tests in `available-payout-balance-scenarios.test.ts`
+cover pure PayCloud exclusion and mixed Paystack+PayCloud partial inclusion.
 
 ## Scenario matrix — payout, commission, ledger, reporting
 

@@ -121,6 +121,8 @@ export default function App() {
           <Route path="provider-ops/settings" element={<P.ProviderOpsSettingsPage />} />
           {/* ── Commercial Operations ── */}
           <Route path="commercial/terminal-insights" element={<P.TerminalInsightsPage />} />
+          <Route path="commercial/terminal-onboarding" element={<P.TerminalOnboardingPage />} />
+          <Route path="commercial/terminal-onboarding/:id" element={<P.TerminalOnboardingDetailPage />} />
           <Route path="commercial/terminal-products" element={<P.TerminalProductsPage />} />
           <Route path="commercial/terminal-orders" element={<P.TerminalOrdersPage />} />
           <Route path="commercial/terminal-campaigns" element={<P.TerminalCampaignsPage />} />

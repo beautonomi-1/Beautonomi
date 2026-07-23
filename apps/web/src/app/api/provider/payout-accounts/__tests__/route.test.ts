@@ -44,6 +44,11 @@ vi.mock("@/lib/bookings/resolve-payment-tenant", () => ({
   resourceTenantMatchesHostTenant: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/permissions", () => ({
+  isProviderOwner: vi.fn(async () => true),
+  hasPermission: vi.fn(async () => false),
+}));
+
 vi.mock("@/lib/payments/paystack-complete", () => ({
   verifyAccount: vi.fn(),
   createTransferRecipient: vi.fn(),

@@ -173,13 +173,15 @@ export function TenantResetPage() {
             <strong>Clean slate for a tenant.</strong> Wipes bookings, payments, orders, ledger/journal entries,
             reviews, conversations, notifications, support tickets, provider gamification, group bookings, explore
             posts, waitlist, ad campaigns, payouts, provider invoices, recurring appointments, VAT reminders,
-            payment webhook events, promotion usage, gift-card/loyalty redemptions, terminal orders/assets/campaigns,
-            provider Paystack terminal payment history, and fee reconciliations scoped to that tenant — then
-            recomputes cached aggregates from surviving data (provider rating, reviews, bookings, payouts, badge,
-            and wallet balances). Preserves users, providers, services, products, badge/coupon/loyalty config,
+            payment webhook events, promotion usage, gift-card/loyalty redemptions, salon memberships
+            (<code>user_memberships</code>), provider-linked <code>customer_memberships</code>, terminal
+            orders/assets/campaigns, Paystack/PayCloud/Yoco terminal payment history, merchant onboarding
+            applications, and fee reconciliations scoped to that tenant — then recomputes cached aggregates from
+            surviving data (provider rating, reviews, bookings, payouts, badge, wallet balances, and PayCloud
+            terminal counters). Preserves users, providers, services, products, badge/coupon/loyalty config,
             platform settings, tenant config, and cross-tenant user-global data (referrals, coupons, milestone
-            awards, non-booking loyalty). Terminal catalog and vendor/credential config are preserved; only transactional
-            terminal history is cleared.
+            awards, non-booking loyalty, platform memberships with null provider_id). Terminal catalog and
+            vendor/credential config are preserved; only transactional terminal history is cleared.
           </>
         }
       />
@@ -188,17 +190,26 @@ export function TenantResetPage() {
         <p className="text-sm font-medium text-amber-900">Before you run this:</p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-amber-900/90">
           <li>
-            Terminal commerce history cleared:{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_campaign_recipients</code>,{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_campaigns</code>,{" "}
+            Terminal commerce (764/765):{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_campaigns</code> (+ recipients),{" "}
             <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_admin_notes</code>,{" "}
             <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_orders</code>,{" "}
             <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_assets</code>,{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_paystack_terminal_payments</code>,{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_terminal_payment_allocations</code>,{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_paystack_virtual_terminal_setup_requests</code>,{" "}
-            <code className="rounded bg-amber-100/80 px-1 text-xs">fee_reconciliations</code> (after migration 765).
-            Catalog/config preserved: <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_products</code>, provider terminal credentials/vendor configs.
+            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_paystack_terminal_payments</code> (+ allocations / VT setup),{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">fee_reconciliations</code>.
+          </li>
+          <li>
+            Added in migration 815:{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_paycloud_payments</code>,{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">paycloud_webhook_events</code>,{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_yoco_payments</code>,{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_yoco_refunds</code>,{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">provider_yoco_webhook_events</code>,{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_merchant_applications</code> (+ documents/events),{" "}
+            <code className="rounded bg-amber-100/80 px-1 text-xs">user_memberships</code>,{" "}
+            provider-linked <code className="rounded bg-amber-100/80 px-1 text-xs">customer_memberships</code>.
+            Catalog/config preserved: <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_products</code>, PayCloud merchants/terminals/settings, Yoco devices/integrations/webhook config, membership plans.
+            Platform memberships (<code className="rounded bg-amber-100/80 px-1 text-xs">customer_memberships.provider_id IS NULL</code>) and merchant-onboarding storage objects are not purged.
           </li>
           <li>Use the <em>Preview (dry run)</em> button first — it returns per-table counts without deleting anything.</li>
           <li>The default ZA tenant is blocked unless you explicitly tick <em>Allow default tenant</em>. Do not tick it unless you are truly wiping production.</li>

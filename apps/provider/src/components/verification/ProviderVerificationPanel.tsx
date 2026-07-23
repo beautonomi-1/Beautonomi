@@ -100,7 +100,7 @@ export function ProviderVerificationPanel({
 
   // Policy + availability from the canonical verification status endpoint.
   const env = bundle?.meta?.env ?? "production";
-  const { data: legacyStatus, loading, error, refresh: refreshLegacy } = useApi<{
+  const { data: legacyStatus, error, refresh: refreshLegacy } = useApi<{
     didit_available?: boolean;
     manual_available?: boolean;
     verification_mode?: string;
@@ -134,46 +134,10 @@ export function ProviderVerificationPanel({
     legacyStatus?.required_for_providers ??
     verificationPolicyFromBundle(bundle).required_for_providers;
 
-  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
-  const isApproved      = status === "approved";
-  const isUnderReview   = status === "in_progress" || status === "pending_review";
-  const canAct          = !isApproved && !isUnderReview;
-  const needsRetry      = status === "rejected" || status === "expired" || status === "abandoned" || status === "requires_retry";
-
-  const planIncomplete = legacyStatus?.verification_plan?.is_complete === false;
-  const businessVerificationPending =
-    planIncomplete &&
-    (legacyStatus?.verification_plan?.required_steps?.includes("business_kyb") ||
-      legacyStatus?.verification_plan?.required_steps?.includes("manual_business_review"));
-  const displayConfig =
-    businessVerificationPending && status !== "rejected"
-      ? {
-          label: "Business verification pending",
-          icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
-          color: "#3b82f6",
-          bg: "bg-blue-100",
-        }
-      : config;
-  const statusLabel = displayConfig.label;
-  const statusMessage = businessVerificationPending
-    ? legacyStatus?.verification_plan?.effective_summary
-      ? `Your personal identity is verified. ${legacyStatus.verification_plan.effective_summary}`
-      : "Your personal identity is verified. Complete business verification to finish setup and go live."
-    : isApproved
-      ? "Your identity is verified."
-      : isUnderReview
-        ? "Your verification is under review. We'll notify you once it's confirmed."
-        : status === "rejected"
-          ? "Verification was not approved. Please try again."
-          : status === "expired" || status === "abandoned"
-            ? "Your session ended. Start a new verification."
-            : verificationRequired
-              ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
-              : "Optional — verify with your government ID or passport to earn the Verified trust badge.";
-
-  // Notify parent on status transitions (useRef so stale closures don't block)
-  const prevStatusRef = useRef<NormalizedVerificationStatus>(status);
+  // Notify parent on status transitions (hooks must run before any early return)
+  const prevStatusRef = useRef<NormalizedVerificationStatus | null>(status);
   useEffect(() => {
+    if (status == null) return;
     if (prevStatusRef.current !== status) {
       onStatusChange?.(status);
       if (status === "approved") onApproved?.();
@@ -218,6 +182,47 @@ export function ProviderVerificationPanel({
     }
   }, [validateAndGetErrors, legalDetails, bundle, startPolling, refreshStatus, manualAvailable]);
 
+  if (statusLoading && status == null) {
+    return <View style={twStyle("flex-1 items-center justify-center py-12")}><LoadingState /></View>;
+  }
+
+  const effectiveStatus = status ?? "not_started";
+  const config = STATUS_CONFIG[effectiveStatus] ?? STATUS_CONFIG.not_started;
+  const isApproved      = effectiveStatus === "approved";
+  const isUnderReview   = effectiveStatus === "in_progress" || effectiveStatus === "pending_review";
+  const canAct          = !isApproved && !isUnderReview;
+  const needsRetry      = effectiveStatus === "rejected" || effectiveStatus === "expired" || effectiveStatus === "abandoned" || effectiveStatus === "requires_retry";
+  const planIncomplete = legacyStatus?.verification_plan?.is_complete === false;
+  const businessVerificationPending =
+    planIncomplete &&
+    (legacyStatus?.verification_plan?.required_steps?.includes("business_kyb") ||
+      legacyStatus?.verification_plan?.required_steps?.includes("manual_business_review"));
+  const displayConfig =
+    businessVerificationPending && effectiveStatus !== "rejected"
+      ? {
+          label: "Business verification pending",
+          icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
+          color: "#3b82f6",
+          bg: "bg-blue-100",
+        }
+      : config;
+  const statusLabel = displayConfig.label;
+  const statusMessage = businessVerificationPending
+    ? legacyStatus?.verification_plan?.effective_summary
+      ? `Your personal identity is verified. ${legacyStatus.verification_plan.effective_summary}`
+      : "Your personal identity is verified. Complete business verification to finish setup and go live."
+    : isApproved
+      ? "Your identity is verified."
+      : isUnderReview
+        ? "Your verification is under review. We'll notify you once it's confirmed."
+        : effectiveStatus === "rejected"
+          ? "Verification was not approved. Please try again."
+          : effectiveStatus === "expired" || effectiveStatus === "abandoned"
+            ? "Your session ended. Start a new verification."
+            : verificationRequired
+              ? "Required for your marketplace — verify with your government ID or passport to earn the Verified trust badge."
+              : "Optional — verify with your government ID or passport to earn the Verified trust badge.";
+
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
     try {
@@ -261,10 +266,6 @@ export function ProviderVerificationPanel({
       setUploading(false);
     }
   };
-
-  if (statusLoading && !status) {
-    return <View style={twStyle("flex-1 items-center justify-center py-12")}><LoadingState /></View>;
-  }
 
   if (error && !legacyStatus) {
     return <View style={twStyle("flex-1 justify-center px-4")}><ErrorState message={error} onRetry={onRefresh} /></View>;
@@ -329,7 +330,7 @@ export function ProviderVerificationPanel({
         )}
 
         {/* Rejection reason */}
-        {status === "rejected" && rejectionReason ? (
+        {effectiveStatus === "rejected" && rejectionReason ? (
           <View style={twStyle("mt-4 rounded-2xl bg-red-50 p-4")}>
             <View style={twStyle("flex-row items-start gap-2")}>
               <Ionicons name="alert-circle-outline" size={18} color="#ef4444" style={{ marginTop: 1 }} />
@@ -475,11 +476,11 @@ export function ProviderVerificationPanel({
             <View style={twStyle("flex-row items-center gap-2 mb-2")}>
               <Ionicons name="hourglass-outline" size={18} color="#3b82f6" />
               <Text style={twStyle("text-sm font-semibold text-blue-800")}>
-                {status === "pending_review" ? "Under review" : "Document under review"}
+                {effectiveStatus === "pending_review" ? "Under review" : "Document under review"}
               </Text>
             </View>
             <Text style={twStyle("text-sm text-blue-700")}>
-              {status === "pending_review"
+              {effectiveStatus === "pending_review"
                 ? "We're reviewing your documents — this can take a few minutes if additional checks are running. You can continue setup; we'll notify you when verification is complete."
                 : "Your verification is being reviewed. We'll notify you once it's confirmed — no action needed."}
             </Text>

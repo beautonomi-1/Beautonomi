@@ -9,6 +9,7 @@ import type { UserRole } from "@/types/beautonomi";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { ProviderStatus, UserRoleResult, UsersRoleFromDb } from "./role";
+import { resolveEffectiveProviderRole } from "@/lib/provider/staff-invite";
 
 /**
  * §Release-audit 2026-04: self-heal a missing `public.users` row for a Bearer/mobile caller,
@@ -100,7 +101,9 @@ export async function getUserRoleServer(
 
   if (userError || !userRow?.role) return null;
 
-  const role = userRow.role as UsersRoleFromDb;
+  const rawRole = userRow.role as UsersRoleFromDb;
+  const role = await resolveEffectiveProviderRole(userRow.id, rawRole, { persist: false });
+
   let provider_id: string | null = null;
   let provider_status: ProviderStatus = null;
 

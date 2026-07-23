@@ -29,12 +29,19 @@ export function humanizePaycloudResponse(code: string | null | undefined): strin
 
 export type PaycloudPayMethod = "card" | "qr";
 
+/**
+ * Cloud Mode QR uses BSCANQR_PAY + a local pay_method_id.
+ * SA methods per PayCloud reference: ScanToPay, MomoPay (not UnionPay).
+ * @see https://developers.paycloud.africa/docs/addpay/PosIntegratesrReference/
+ */
+export const PAYCLOUD_DEFAULT_QR_PAY_METHOD_ID = "ScanToPay";
+
 export function resolvePayScenario(method: PaycloudPayMethod): {
   pay_scenario: string;
   pay_method_id?: string;
 } {
   if (method === "qr") {
-    return { pay_scenario: "BSCANQR_PAY", pay_method_id: "UnionPay" };
+    return { pay_scenario: "BSCANQR_PAY", pay_method_id: PAYCLOUD_DEFAULT_QR_PAY_METHOD_ID };
   }
   return { pay_scenario: "SWIPE_CARD" };
 }

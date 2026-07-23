@@ -25,6 +25,8 @@ export default function MembershipPaystackReturnScreen() {
         fallbackCta: "Go to Explore",
         continueCta: "View membership",
       }}
+      pendingSubtext="Your membership may take a moment to activate. Check Membership in your account."
+      failedSubtext="Membership payment did not complete. You can retry from the provider profile."
     />
   );
 }

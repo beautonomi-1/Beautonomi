@@ -366,6 +366,7 @@ function isTerminalProductOrderStatus(status?: string | null): boolean {
 }
 
 type ProviderPermissionsResponse = {
+  isOwner?: boolean;
   permissions?: {
     edit_appointments?: boolean;
     cancel_appointments?: boolean;
@@ -618,13 +619,15 @@ export default function BookingDetailScreen() {
   const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
   const providerTimezone = providerProfile?.timezone ?? null;
   const permissions = permissionData?.permissions;
-  const canEditAppointments = permissions?.edit_appointments === true;
+  const isOwner = permissionData?.isOwner === true;
+  const canEditAppointments = isOwner || permissions?.edit_appointments === true;
   const canCancelAppointments =
-    permissions?.cancel_appointments === true || canEditAppointments;
-  const canProcessPayments = permissions?.process_payments === true;
-  const canCreateSales = permissions?.create_sales === true;
-  const canRateClients = permissions?.rate_clients === true;
-  const canViewClientRatings = permissions?.view_client_ratings === true || canRateClients;
+    isOwner || permissions?.cancel_appointments === true || canEditAppointments;
+  const canProcessPayments = isOwner || permissions?.process_payments === true;
+  const canCreateSales = isOwner || permissions?.create_sales === true;
+  const canRateClients = isOwner || permissions?.rate_clients === true;
+  const canViewClientRatings =
+    isOwner || permissions?.view_client_ratings === true || canRateClients;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
 
   useFocusEffect(

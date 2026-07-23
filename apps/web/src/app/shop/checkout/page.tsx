@@ -4,7 +4,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FetchError, fetcher } from "@/lib/http/fetcher";
+import { FetchError, fetcher, isTransientNetworkFetchError } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -359,6 +359,48 @@ export default function ProductCheckoutPage() {
 
   const hasOutOfStock = items.some((i) => i.in_stock === false);
 
+  const createWebOrderIdempotencyKey = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
+
+  const recoverRecentWebOrder = async (
+    forProviderId: string,
+  ): Promise<{ id: string; order_number: string; paid_with_wallet?: boolean; amount_due?: number } | null> => {
+    try {
+      const listRes = await fetcher.get<{ data?: { orders?: Array<{ id: string; order_number: string; provider?: { id?: string }; created_at: string; payment_status?: string; status?: string; wallet_amount?: number | null }> } }>(
+        "/api/me/orders?limit=10",
+      );
+      const orders = listRes?.data?.orders ?? [];
+      const cutoff = Date.now() - 5 * 60 * 1000;
+      const match = orders.find(
+        (o) =>
+          o.provider?.id === forProviderId &&
+          new Date(o.created_at).getTime() >= cutoff &&
+          o.payment_status !== "failed" &&
+          o.status !== "cancelled",
+      );
+      if (!match) return null;
+      const walletApplied = Number(match.wallet_amount ?? 0);
+      const alreadyPaid = match.payment_status === "paid";
+      return {
+        id: match.id,
+        order_number: match.order_number,
+        // Reused by checkout to skip Paystack when recovery finds a settled order.
+        paid_with_wallet: alreadyPaid,
+        amount_due: alreadyPaid ? 0 : Math.max(0, total - walletApplied),
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const handlePlaceOrder = useCallback(async () => {
     if (!providerId) {
       setPageError("Missing provider. Please go back to cart and try again.");
@@ -376,6 +418,13 @@ export default function ProductCheckoutPage() {
     setPlacing(true);
     setPageError(null);
 
+    const idempotencyKey = createWebOrderIdempotencyKey();
+    let order:
+      | { id: string; order_number: string }
+      | undefined;
+    let paidWithWallet = false;
+    let amountDue = total;
+
     try {
       const orderRes = await fetcher.post<{
         data: {
@@ -383,20 +432,55 @@ export default function ProductCheckoutPage() {
           paid_with_wallet?: boolean;
           amount_due?: number;
         };
-      }>("/api/me/orders", {
-        provider_id: providerId,
-        fulfillment_type: fulfillment,
-        delivery_address_id: fulfillment === "delivery" ? selectedAddress : undefined,
-        collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
-        payment_method: paymentMethod,
-        use_wallet: paymentMethod === "paystack" ? useWallet : false,
-      });
+      }>(
+        "/api/me/orders",
+        {
+          provider_id: providerId,
+          fulfillment_type: fulfillment,
+          delivery_address_id: fulfillment === "delivery" ? selectedAddress : undefined,
+          collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
+          payment_method: paymentMethod,
+          use_wallet: paymentMethod === "paystack" ? useWallet : false,
+          idempotency_key: idempotencyKey,
+        },
+        {
+          timeoutMs: 120_000,
+          headers: { "Idempotency-Key": idempotencyKey },
+        },
+      );
 
-      const order = orderRes?.data?.order;
-      const paidWithWallet = orderRes?.data?.paid_with_wallet === true;
-      const amountDue = orderRes?.data?.amount_due ?? total;
+      order = orderRes?.data?.order;
+      paidWithWallet = orderRes?.data?.paid_with_wallet === true;
+      amountDue = orderRes?.data?.amount_due ?? total;
+    } catch (createErr) {
+      if (isTransientNetworkFetchError(createErr)) {
+        const recovered = await recoverRecentWebOrder(providerId);
+        if (recovered) {
+          order = recovered;
+          paidWithWallet = recovered.paid_with_wallet === true;
+          amountDue = recovered.amount_due ?? total;
+        } else {
+          setPageError(
+            "We could not confirm whether your order went through. Check My Orders before trying again.",
+          );
+          setPlacing(false);
+          return;
+        }
+      } else {
+        setPageError(
+          createErr instanceof FetchError
+            ? createErr.message
+            : createErr instanceof Error
+              ? createErr.message
+              : "Could not place order. Please try again.",
+        );
+        setPlacing(false);
+        return;
+      }
+    }
 
-      if (paymentMethod === "card_on_delivery" || paidWithWallet) {
+    try {
+      if (paymentMethod === "card_on_delivery" || paidWithWallet || amountDue <= 0.005) {
         router.push("/account-settings/orders");
         return;
       }
@@ -411,14 +495,17 @@ export default function ProductCheckoutPage() {
       const usingSavedCard =
         paymentMethod === "paystack" &&
         paystackEnabled &&
-        !useWallet &&
         !useNewCard &&
         Boolean(selectedCardId) &&
-        savedCards.some((c) => c.id === selectedCardId);
+        savedCards.some((c) => c.id === selectedCardId) &&
+        amountDue > 0.005;
 
       if (usingSavedCard && selectedCardId) {
         try {
-          await fetcher.post("/api/payments/charge-saved-card", {
+          const chargeRes = await fetcher.post<{
+            data?: { status?: string; transaction?: { status?: string } };
+            status?: string;
+          }>("/api/payments/charge-saved-card", {
             payment_method_id: selectedCardId,
             email: user.email,
             metadata: {
@@ -426,6 +513,17 @@ export default function ProductCheckoutPage() {
               type: "product_order",
             },
           });
+          const txStatus =
+            chargeRes?.data?.status ??
+            chargeRes?.data?.transaction?.status ??
+            chargeRes?.status ??
+            "";
+          if (String(txStatus).toLowerCase() !== "success") {
+            setPageError(
+              `Your order #${order.order_number} was created. Complete payment from My Orders — the card charge did not finish yet.`,
+            );
+            return;
+          }
           router.push("/account-settings/orders");
           return;
         } catch (chargeErr) {
@@ -435,7 +533,9 @@ export default function ProductCheckoutPage() {
               : chargeErr instanceof Error
                 ? chargeErr.message
                 : "Card charge failed";
-          setPageError(`${msg} Complete payment below, or retry from your orders.`);
+          setPageError(
+            `${msg} Your order #${order.order_number} was created. Complete payment from My Orders or try again below.`,
+          );
         }
       }
 
@@ -456,16 +556,24 @@ export default function ProductCheckoutPage() {
       if (payRes?.data?.authorization_url) {
         window.location.href = payRes.data.authorization_url;
       } else {
-        router.push("/account-settings/orders");
+        setPageError(
+          `Your order #${order.order_number} was created but we could not open payment. Complete it from My Orders.`,
+        );
       }
     } catch (err) {
-      setPageError(
-        err instanceof FetchError
-          ? err.message
-          : err instanceof Error
+      if (order) {
+        setPageError(
+          `Your order #${order.order_number} was created but payment could not be started. Complete it from My Orders.`,
+        );
+      } else {
+        setPageError(
+          err instanceof FetchError
             ? err.message
-            : "Could not place order. Please try again."
-      );
+            : err instanceof Error
+              ? err.message
+              : "Could not complete checkout. Please try again.",
+        );
+      }
     } finally {
       setPlacing(false);
     }

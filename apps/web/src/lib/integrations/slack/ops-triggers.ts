@@ -219,6 +219,44 @@ export function slackNotifyCustomOfferFinalizeFailed(params: {
   });
 }
 
+/**
+ * A Paystack charge for a product order succeeded on the gateway, but
+ * `recordProductOrderPayment` refused to settle it (e.g. the order was
+ * already cancelled/failed/refunded by the time the webhook or saved-card
+ * verify ran). The customer's card was charged; the order will not show as
+ * paid until ops manually reconciles (refund or force-settle).
+ */
+export function slackNotifyProductOrderPaymentNotRecorded(params: {
+  tenantId?: string | null;
+  productOrderId: string;
+  reference?: string | null;
+  source?: string | null;
+  amountMajor?: number | null;
+  currency?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.PRODUCT_ORDER_PAYMENT_NOT_RECORDED,
+    dedupeKey: `product_order:${params.productOrderId}:payment_not_recorded:${params.reference ?? "unknown"}`,
+    entityType: "product_order",
+    entityId: params.productOrderId,
+    title: "Product order charged but payment not recorded",
+    detailLines: [
+      `Order: ${params.productOrderId.slice(0, 8)}…`,
+      params.reference ? `Payment ref: ${params.reference}` : null,
+      params.amountMajor != null
+        ? `Amount: ${params.amountMajor}${params.currency ? ` ${params.currency}` : ""}`
+        : null,
+      params.source ? `Source: ${params.source}` : null,
+      "The customer's card was charged. Action: review in Admin → Product orders and refund or force-settle.",
+    ].filter(Boolean) as string[],
+    actionUrl: `/product-orders/${params.productOrderId}`,
+  }).catch((err) => {
+    console.error("[slack] product_order payment_not_recorded notify error", err);
+  });
+}
+
 export function slackNotifyPaystackTerminalAssetRequested(params: {
   tenantId?: string | null;
   terminalId: string;

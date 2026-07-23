@@ -3,6 +3,7 @@ export const PROVIDER_COLLECTED_RETAIL_PAYMENT_METHODS = [
   "cash",
   "card_on_delivery",
   "yoco",
+  "paycloud",
 ] as const;
 
 /**

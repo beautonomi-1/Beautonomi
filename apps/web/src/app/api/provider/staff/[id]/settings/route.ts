@@ -86,7 +86,8 @@ export async function GET(
       is_service_provider: staff.is_service_provider ?? true,
       enable_in_online_booking: staff.enable_in_online_booking ?? true,
       can_be_assigned_to_product_sales: staff.can_be_assigned_to_product_sales ?? false,
-      is_admin: staff.is_admin ?? (staff.role === "owner" || staff.role === "manager"),
+      // Only owner role defaults to admin; managers use permission packs (not full is_admin).
+      is_admin: staff.is_admin ?? staff.role === "owner",
       email_notifications_enabled: staff.email_notifications_enabled ?? true,
       sms_notifications_enabled: planAllowsSms && rawStaffSms,
       sms_plan_allowed: planAllowsSms,

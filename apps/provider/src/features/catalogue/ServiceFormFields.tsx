@@ -399,17 +399,17 @@ export function ServiceFormFields({
 
       {form.supportsAtHome ? (
         <>
-          {mode === "onboarding" ? (
-            <Text style={twStyle("mb-2 text-xs text-emerald-700")}>
-              No travel distance limit by default — set max km to restrict range.
-            </Text>
-          ) : null}
           <FormField
             label="At-home radius (km)"
             value={form.atHomeRadiusKm}
             onChangeText={(t) => setForm({ atHomeRadiusKm: t })}
             keyboardType="decimal-pad"
             placeholder={mode === "onboarding" ? "Unlimited" : undefined}
+            hint={
+              mode === "onboarding"
+                ? "Maximum distance from your base for at-home bookings. Leave blank for no limit."
+                : undefined
+            }
             onFieldFocus={onFieldFocus}
             inputAccessoryViewID="provider-service-at-home-radius"
           />
@@ -418,6 +418,11 @@ export function ServiceFormFields({
             value={form.atHomePriceAdjustment}
             onChangeText={(t) => setForm({ atHomePriceAdjustment: t })}
             keyboardType="decimal-pad"
+            hint={
+              mode === "onboarding"
+                ? "Additional charge (or discount if negative) for at-home service."
+                : undefined
+            }
             onFieldFocus={onFieldFocus}
             inputAccessoryViewID="provider-service-at-home-price"
           />
@@ -434,11 +439,18 @@ export function ServiceFormFields({
 
       <View
         style={twStyle(
-          "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
+          "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
         )}
       >
-        <Text style={twStyle("text-sm font-medium text-gray-700")}>Online bookable</Text>
-        <Switch value={form.onlineBookable} onValueChange={(v) => setForm({ onlineBookable: v })} />
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Online bookable</Text>
+          <Switch value={form.onlineBookable} onValueChange={(v) => setForm({ onlineBookable: v })} />
+        </View>
+        {mode === "onboarding" ? (
+          <Text style={twStyle("mt-2 text-xs text-gray-400")}>
+            When on, customers can book this service online through Beautonomi.
+          </Text>
+        ) : null}
       </View>
 
       {showTeam ? (
@@ -476,14 +488,21 @@ export function ServiceFormFields({
 
       <View
         style={twStyle(
-          "mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
+          "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
         )}
       >
-        <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
-        <Switch
-          value={form.extraTimeEnabled}
-          onValueChange={(v) => setForm({ extraTimeEnabled: v })}
-        />
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
+          <Switch
+            value={form.extraTimeEnabled}
+            onValueChange={(v) => setForm({ extraTimeEnabled: v })}
+          />
+        </View>
+        {mode === "onboarding" ? (
+          <Text style={twStyle("mt-2 text-xs text-gray-400")}>
+            Add buffer time after the service for cleanup or transition between appointments.
+          </Text>
+        ) : null}
       </View>
       {form.extraTimeEnabled ? (
         <View style={twStyle("mb-3")}>

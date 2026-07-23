@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { canAccessReport } from "@/lib/subscriptions/report-gating";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { startOfMonth, endOfMonth } from "date-fns";
@@ -27,7 +28,11 @@ function sumLedgerSplits(result: ProviderRevenueResult) {
 export async function GET(request: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const accessCheck = await canAccessReport(user.id, "basic");
     if (!accessCheck.allowed) {

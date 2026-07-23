@@ -109,10 +109,11 @@ export async function POST(
 
     const { refund_amount, refund_reason, notes } = validationResult.data;
 
-    // Fetch and validate the transaction
+    // Fetch and validate the transaction. Allow `partially_refunded` so admins
+    // can refund a remaining balance after a prior partial refund.
     const { data: transaction } = await supabase
       .from("payment_transactions")
-      .select("id, booking_id, amount, status, transaction_type")
+      .select("id, booking_id, amount, status, transaction_type, refund_amount")
       .eq("id", id)
       .single();
 
@@ -120,21 +121,31 @@ export async function POST(
       return notFoundResponse("Transaction not found");
     }
 
-    if (transaction.status !== "success") {
+    if (
+      transaction.status !== "success" &&
+      transaction.status !== "partially_refunded"
+    ) {
       const statusMsg =
-        transaction.status === "refunded" ||
-        transaction.status === "partially_refunded"
+        transaction.status === "refunded"
           ? "Transaction already refunded"
           : `Cannot refund a transaction with status "${transaction.status}"`;
       return errorResponse(statusMsg, "INVALID_STATUS", 400);
     }
 
     const txnAmount = parseFloat(String(transaction.amount || "0"));
-    if (refund_amount > txnAmount) {
+    const alreadyRefunded = Math.max(
+      0,
+      parseFloat(String(transaction.refund_amount || "0")),
+    );
+    const remainingRefundable = Math.round((txnAmount - alreadyRefunded) * 100) / 100;
+    if (remainingRefundable <= 0) {
+      return errorResponse("Transaction already fully refunded", "INVALID_STATUS", 400);
+    }
+    if (refund_amount > remainingRefundable + 0.001) {
       return errorResponse(
-        "Refund amount cannot exceed transaction amount",
+        "Refund amount cannot exceed remaining refundable amount",
         "INVALID_AMOUNT",
-        400
+        400,
       );
     }
 
@@ -153,6 +164,7 @@ export async function POST(
       bookingId: transaction.booking_id,
       amount: refund_amount,
       originalChargeAmount: txnAmount,
+      priorRefundAmount: alreadyRefunded,
       reason: refund_reason,
       actorUserId: user.id,
       actorRole: user.role ?? "superadmin",

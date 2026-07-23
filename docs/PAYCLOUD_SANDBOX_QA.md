@@ -32,7 +32,7 @@ Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox en
 
 - `merchant_no`, `store_no`, `terminal_sn`
 - `message_receiving_application=WISECASHIER`
-- `pay_scenario=SWIPE_CARD` (card) or `BSCANQR_PAY` (+ `pay_method_id` for QR)
+- `pay_scenario=SWIPE_CARD` (card) or `BSCANQR_PAY` (+ `pay_method_id`; SA default `ScanToPay` per [POS reference](https://developers.paycloud.africa/docs/addpay/PosIntegratesrReference/))
 - `trans_type=1` (sale) or `11` (sale + cashback)
 - `order_amount`, `price_currency`, `merchant_order_no`, `notify_url`
 - Optional: `tip_amount`, `cashback_amount`, `expires=300`, `reject_trade_when_terminal_offline=true`
@@ -89,11 +89,17 @@ Beautonomi does **not** subscribe clients to PayCloud payment realtime (RLS is s
 
 ## Go-live checklist
 
-1. Apply migrations `770_paycloud_integration.sql`, `771_paycloud_terminal_products.sql`, and `772_paycloud_initiation_channel.sql`.
+1. Apply PayCloud migrations (in order):
+   - `770_paycloud_integration.sql`
+   - `771_paycloud_terminal_products.sql`
+   - `772_paycloud_initiation_channel.sql`
+   - `797_paycloud_payment_notify_url.sql` — required (`provider_paycloud_payments.notify_url` on create)
+   - `800_paycloud_tip_finance_ledger.sql` — tip ledger
+   - `809_yoco_settle_parity_and_cashback_ledger.sql` — cashback ledger (shared card-machine settle)
 2. Superadmin: configure `tenant_paycloud_apps` (RSA keys, sandbox/live gateway roots).
 3. Superadmin: register `paycloud_merchants` (`merchant_no`, `store_no`) per tenant — **required** on terminal assign.
 4. Assign terminals to providers (Operations or Provider detail); device in **Cloud Mode** on WiseCashier.
-5. Enable platform flag `payment_paycloud` + plan feature `paycloud_terminal`.
+5. Enable platform flag `payment_paycloud` + plan feature `paycloud_terminal`. For QR/cashback also enable `payment_paycloud_qr` / `payment_paycloud_cashback` and provider Card machines toggles (create API enforces both).
 6. Provider: complete Card machines setup checklist → turn on **Accept in-person card payments**.
 7. Sandbox E2E: run scenario matrix below.
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Settings2 } from "lucide-react";
 import { ADMIN_SECTION_COMMERCIAL } from "@beautonomi/admin-access";
@@ -21,6 +22,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -196,6 +198,11 @@ export function TerminalOrdersPage() {
                   </AdminTd>
                   <AdminTd className="capitalize text-xs text-gray-500">
                     {(o.integration_setup_status ?? "not_required").replace(/_/g, " ")}
+                    {o.integration_setup_status === "awaiting_merchant_onboarding" ? (
+                      <span className="ml-1 text-amber-600" title="Dispatch blocked until merchant application is approved">
+                        · gated
+                      </span>
+                    ) : null}
                   </AdminTd>
                   <AdminTd className="text-gray-500">{new Date(o.created_at).toLocaleDateString()}</AdminTd>
                   <AdminTd>
@@ -283,6 +290,18 @@ export function TerminalOrdersPage() {
               )}
             </div>
           )}
+          {editOrder?.integration_setup_status === "awaiting_merchant_onboarding" ? (
+            <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Dispatch is blocked until the provider completes merchant onboarding and an admin approves the application.
+              {" "}
+              <Link
+                to={adminSpaTo("/admin/commercial/terminal-onboarding")}
+                className="font-medium text-amber-950 underline"
+              >
+                Open onboarding queue
+              </Link>
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Invoice status</label>
             <select

@@ -3,7 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getAllPermissions } from "@/lib/auth/permissions";
+import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
+import { sendStaffInvite } from "@/lib/provider/staff-invite";
+import { trackServer } from "@/lib/analytics/amplitude/server";
+import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
@@ -546,6 +549,7 @@ export async function POST(request: Request) {
     // Add staff member
     const staffPhone = phone || foundUser.phone || null;
     const staffName = name || foundUser.full_name || foundUser.email?.split("@")[0] || "Staff Member";
+    const defaultPermissions = getDefaultStaffPermissionsForDbRole(dbRole);
     const { data: newStaff, error: insertError } = await supabase
       .from("provider_staff")
       .insert({
@@ -555,7 +559,7 @@ export async function POST(request: Request) {
         email: foundUser.email,
         phone: staffPhone,
         role: dbRole,
-        permissions: getAllPermissions(),
+        permissions: defaultPermissions,
         is_active: true,
         mobile_ready: mobileReady || false,
         commission_rate: commission_rate != null ? Number(commission_rate) : null,
@@ -611,25 +615,41 @@ export async function POST(request: Request) {
       await supabase.from("provider_staff").update({ assigned_service_ids: service_ids }).eq("id", staffId);
     }
 
-    // Optionally send invite (push for existing user)
-    if (invite_email) {
+    // Optionally send invite (email via Resend + push when registered)
+    const inviteRecipientEmail = (foundUser.email || email || "").trim().toLowerCase();
+    if (invite_email && inviteRecipientEmail) {
       try {
-        const { sendToUser } = await import("@/lib/notifications/onesignal");
-        const { data: provider } = await supabase.from("providers").select("business_name").eq("id", providerId).single();
-        const businessName = (provider as { business_name?: string } | null)?.business_name ?? "the team";
-        if (newStaff.user_id) {
-          await sendToUser(
-            newStaff.user_id,
-            {
-              title: `Invitation to join ${businessName}`,
-              message: `You've been invited to join ${businessName} as a team member.`,
-              data: { type: "staff_invitation", staff_id: staffId, provider_id: providerId },
-              url: "/provider/onboarding",
-            },
-            ["push"],
-            { appType: "provider" }
-          );
-        }
+        const { data: providerRow } = await supabase
+          .from("providers")
+          .select("business_name, tenant_id")
+          .eq("id", providerId)
+          .single();
+        const { data: inviterProfile } = await supabase
+          .from("users")
+          .select("full_name, email")
+          .eq("id", user.id)
+          .maybeSingle();
+        const inviter = inviterProfile as {
+          full_name?: string | null;
+          email?: string | null;
+        } | null;
+        const delivery = await sendStaffInvite({
+          supabase,
+          staffId,
+          providerId,
+          tenantId: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+          inviterUserId: user.id,
+          inviterName: inviter?.full_name ?? inviter?.email ?? null,
+          recipientUserId: newStaff.user_id ?? null,
+          recipientEmail: inviteRecipientEmail,
+        });
+        void trackServer(EVENT_STAFF_INVITED, {
+          user_id: user.id,
+          staff_id: staffId,
+          provider_id: providerId,
+          email_delivered: delivery.email.delivered,
+          push_delivered: delivery.push.delivered,
+        }).catch((err) => console.warn("[staff-invite] analytics failed:", err));
       } catch (inviteErr) {
         console.warn("Staff invite notification failed:", inviteErr);
       }

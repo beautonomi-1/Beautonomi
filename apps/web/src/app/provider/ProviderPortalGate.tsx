@@ -35,6 +35,11 @@ function clearGateCache() {
   } catch { /* ignore */ }
 }
 
+/** Clear cached portal gate after staff join or logout so routing re-resolves. */
+export function clearProviderGateCache() {
+  clearGateCache();
+}
+
 type GateState =
   | { kind: "loading" }
   | { kind: "ready" }
@@ -62,7 +67,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const { signOut } = useAuth();
 
-  const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/embed"];
+  const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/join", "/provider/embed"];
   const isAllowedPath = allowedPaths.some((p) => pathname === p || pathname?.startsWith(p + "/"));
 
   // SSR and the first client render must match. Do not read sessionStorage in useState — on the

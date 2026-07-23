@@ -31,7 +31,8 @@ Rules:
 - `payout` rows are completed payout deductions and are subtracted by amount.
 - Pending and processing rows in `payouts` are reserved and subtracted.
 - `provider_earnings` newer than the configured payout hold period are deferred; refunds are never deferred.
-- Exclusion is by **settling tender, not `booking_source`**. A booking is excluded from platform-held payout balance when every completed `booking_payments` row is a provider-collected tender (`cash`, `manual`, `yoco`, `bank_transfer`, `other`) — the provider already holds that money. This applies regardless of whether the booking is `walk_in`, `provider`, or `online`.
+- Exclusion is by **settling tender, not `booking_source`**. A booking is excluded from platform-held payout balance when every completed `booking_payments` row is a provider-collected tender (`cash`, `manual`, `yoco`, `paycloud`, `bank_transfer`, `other`) — the provider already holds that money. This applies regardless of whether the booking is `walk_in`, `provider`, or `online`.
+- When a `finance_transactions` row carries `source_payment_id`, payout exclusion is **per payment tender**: mixed bookings (e.g. Paystack deposit + PayCloud balance) only include earnings sourced from platform-held payments in withdrawable balance.
 - A booking is included when it has at least one platform-held tender (`paystack`, `stripe`, `flutterwave`, `wallet`, `gift_card`), because the platform/gateway holds the money. Walk-in Paystack and wallet/gift-card bookings therefore remain payoutable.
 
 Excluded rows are still important for audit, liability, or revenue reporting, but are not directly payoutable by themselves:
@@ -57,7 +58,22 @@ Excluded rows are still important for audit, liability, or revenue reporting, bu
 
 Paystack booking payments are application-settled in webhook/verify handlers. The database trigger skips Paystack booking payment rows to avoid duplicate ledger entries.
 
-Cash, Yoco, and other in-salon booking collections settle through `booking_payments`; the database trigger creates proportional `finance_transactions` rows for non-Paystack completed payments.
+Cash, Yoco, PayCloud card machines, and other in-salon booking collections settle through `booking_payments`; the database trigger creates proportional `finance_transactions` rows for non-Paystack completed payments with **zero platform commission** on provider-collected tenders.
+
+### PayCloud (Beautonomi card machines) and Yoco terminals
+
+Both rails are **provider-collected in-person** money. They settle to the provider's acquiring/merchant account outside Beautonomi online payouts. Shared settle/reverse lives in `settle-card-machine-payment.ts` (`settlePaycloudPayment` / `settleYocoPayment`).
+
+| Step | Records |
+|------|---------|
+| Capture settle | `booking_payments` with `payment_provider = paycloud` or `yoco`, `payment_method = card` |
+| Ledger | DB trigger writes `provider_earnings` (commission 0); card-machine tips post `tip` (migration 800; `…:tip` payment row); PayCloud cashback posts `cashback` (migration 809; `…:cashback` — cash-out wash, not revenue) |
+| Add-ons | `record_walk_in_additional_charge_payment` with matching `p_payment_provider` → `walk_in_additional_charge` |
+| Group | Allocate across children (`…:{bookingId}`); tip/cashback on primary child when base fully allocated |
+| Product orders | `recordProductOrderPayment(..., platformHeld: false)` → stamps `product_orders.payment_method` + `payment_transactions` only |
+| Void | `reverseCardMachineSettlement` inserts `booking_refunds` (never a new positive payment); order base → tip → cashback; tip un-bumps booking totals after refunds; cashback refunds reverse only the cashback component |
+| Payout | Excluded from `getAvailablePayoutBalance` |
+| Reporting | EOD buckets `paycloud` / `yoco`; tips in `tipsTotal`; cashback in `cashbackTotal` (till recon, not recognized revenue) |
 
 Wallet and gift card booking spend must affect provider earnings through the booking settlement ledger. Wallet top-ups and gift card purchases are liability movements until spent or redeemed.
 
@@ -93,7 +109,7 @@ These three figures are deliberately different and must not be conflated in UI c
 - **Recognized revenue** (provider dashboard, `get-provider-dashboard.ts`): all earned revenue in the period — `provider_earnings` + `tip` + `travel_fee` + `cancellation_fee` + `walk_in_additional_charge`. This includes provider-collected in-person add-ons because they are earned and inflate `bookings.total_amount`, even though the platform never held that cash.
 - **Period earnings** (Finance API, `/api/provider/finance`): `total_earnings` is **`provider_earnings` only**. Walk-in additional charges are surfaced separately as `walk_in_additional_charges_total` (audit/reporting), not folded into `total_earnings`.
 - **Sales history `provider_net`** (`provider-sales-history.ts`): reconciles against `gross_total` (= `bookings.total_amount`) per row and therefore **does** include `walk_in_additional_charge` so gross and net tie out.
-- **Available to withdraw** (`getAvailablePayoutBalance`): excludes every provider-collected tender (see Provider Payoutable Balance) and so excludes `walk_in_additional_charge` and any cash/Yoco/manual booking. This is always ≤ recognized revenue.
+- **Available to withdraw** (`getAvailablePayoutBalance`): excludes every provider-collected tender (cash, EFT, manual card, Yoco, PayCloud card machines, etc.) and so excludes `walk_in_additional_charge` and any provider-collected booking. This is always ≤ recognized revenue.
 
 UI surfaces must label these distinctly (e.g. "Revenue earned" vs "Available to withdraw") so a provider never reads recognized revenue as withdrawable cash.
 
@@ -110,7 +126,7 @@ Additional charges on existing bookings can be settled via multiple tenders. The
 | Paystack online (redirect/checkout) | `handleAdditionalChargeSuccess` in webhook | Yes |
 | Paystack card-on-file (`charge-saved-card` with `additional_charge_id`) | `settleAdditionalChargePlatformHeld` | Yes |
 | Paystack Terminal (terminal allocation with `entity_type: "additional_charge"`) | `settleAdditionalChargePlatformHeld` | Yes |
-| Cash / manual card / Yoco (provider marks paid) | `record_walk_in_additional_charge_payment` RPC | No |
+| Cash / manual card / Yoco / PayCloud card machine (provider marks paid) | `record_walk_in_additional_charge_payment` RPC | No |
 
 All platform-held paths write `additional_charge_payment` (commission) + `provider_earnings` (provider share) into `finance_transactions`. The idempotency guard is the unique `payment_transactions(provider, reference)` constraint — any path that re-runs with the same reference returns early (`alreadySettled: true`) without double-writing ledger rows.
 

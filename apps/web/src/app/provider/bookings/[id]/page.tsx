@@ -98,6 +98,7 @@ import {
   type ProviderBookingAction,
 } from "@/lib/provider-booking/action-policy";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
@@ -133,6 +134,11 @@ export default function ProviderBookingDetail() {
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const { hasPermission, isOwner } = usePermissions();
+  const canEditAppointments = isOwner || hasPermission("edit_appointments");
+  const canCancelAppointments =
+    isOwner || hasPermission("cancel_appointments") || canEditAppointments;
+  const canProcessPayments = isOwner || hasPermission("process_payments");
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -1309,10 +1315,12 @@ export default function ProviderBookingDetail() {
   const isConfirmedOrLater = ["booked", "confirmed", "waiting", "checked_in", "started", "in_progress"].includes(bookingLifecycleStatus);
   const isAtHome = b.location_type === "at_home";
   const canStartJourney =
+    canEditAppointments &&
     isAtHome &&
     (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked") &&
     (b.current_stage == null || b.current_stage === "confirmed");
-  const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
+  const canMarkArrived =
+    canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = isAtHome && b.current_stage === "provider_on_way";
   const isArrived = isAtHome && b.current_stage === "provider_arrived";
   const arrivalVerified =
@@ -1330,6 +1338,7 @@ export default function ProviderBookingDetail() {
     !(!arrivalVerified && (arrivalOtpPending || qrArrivalPending));
   /** Same lifecycle gate as provider mobile `allowedStatusTargets` / PATCH policy. */
   const canStartService =
+    canEditAppointments &&
     ["confirmed", "booked", "checked_in", "waiting"].includes(bookingLifecycleStatus) &&
     (!isAtHome || atHomeHouseCallReadyForServiceStart);
   const canStartServiceInJourney = canStartService && isArrived;
@@ -1355,10 +1364,15 @@ export default function ProviderBookingDetail() {
   });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
-  const canMarkPaid = outstanding > 0 && (bookingLifecycleStatus === "completed" || isStarted);
-  const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
+  const canMarkPaid =
+    canProcessPayments &&
+    outstanding > 0 &&
+    (bookingLifecycleStatus === "completed" || isStarted);
+  const canRefund =
+    canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
   const canSendPaymentLink =
+    canProcessPayments &&
     paymentLinkEnabled &&
     outstanding > 0 &&
     bookingLifecycleStatus !== "cancelled" &&
@@ -1406,7 +1420,21 @@ export default function ProviderBookingDetail() {
     ],
   );
 
+  const actionAllowedByPermission = (action: ProviderBookingAction) => {
+    if (action.id === "cancel" || action.id === "mark_no_show") return canCancelAppointments;
+    return canEditAppointments;
+  };
+
+  const permittedPrimaryAction =
+    actionModel.primaryAction && actionAllowedByPermission(actionModel.primaryAction)
+      ? actionModel.primaryAction
+      : null;
+
   const runBookingAction = (action: ProviderBookingAction) => {
+    if (!actionAllowedByPermission(action)) {
+      toast.error("You do not have permission for this action");
+      return;
+    }
     if (action.id === "start_journey") return void handleStartJourney();
     if (action.id === "mark_arrived") return void handleMarkArrived();
     if (action.id === "start_service") return void handleStatusChange("started");
@@ -1894,7 +1922,7 @@ export default function ProviderBookingDetail() {
                   )}
                 </div>
               )}
-              {isEnRoute && (
+              {canEditAppointments && isEnRoute && (
                 <ProviderLocationTracker
                   bookingId={bookingId}
                   destination={
@@ -2466,14 +2494,14 @@ export default function ProviderBookingDetail() {
                 {actionModel.stepDescription}
               </p>
             </div>
-            {actionModel.primaryAction && (
+            {permittedPrimaryAction && (
               <Button
-                onClick={() => runBookingAction(actionModel.primaryAction!)}
+                onClick={() => runBookingAction(permittedPrimaryAction)}
                 disabled={isUpdating || isStartingJourney || isMarkingArrived}
                 className="min-h-[44px] shrink-0 bg-blue-600 hover:bg-blue-700"
               >
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                {actionModel.primaryAction.label}
+                {permittedPrimaryAction.label}
               </Button>
             )}
           </div>
@@ -2503,7 +2531,8 @@ export default function ProviderBookingDetail() {
             {actionModel.actions
               .filter(
                 (action) =>
-                  action.id !== actionModel.primaryAction?.id &&
+                  actionAllowedByPermission(action) &&
+                  action.id !== permittedPrimaryAction?.id &&
                   action.id !== "cancel" &&
                   action.id !== "mark_no_show",
               )
@@ -2609,39 +2638,45 @@ export default function ProviderBookingDetail() {
         <div className="flex flex-col sm:flex-row gap-3">
           {(isActive || isStarted) && (
             <>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (booking.scheduled_at) {
-                    const dt = new Date(booking.scheduled_at);
-                    setRescheduleDate(dt.toISOString().slice(0, 10));
-                    setRescheduleTime(dt.toISOString().slice(11, 16));
-                  }
-                  setShowReschedule(true);
-                }}
-                disabled={isUpdating}
-                className="flex-1 min-h-[44px]"
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Reschedule
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleStatusChange("no_show")}
-                disabled={isUpdating}
-                className="flex-1 min-h-[44px] text-amber-700 border-amber-300 hover:bg-amber-50"
-              >
-                No Show
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => handleStatusChange("cancelled")}
-                disabled={isUpdating}
-                className="flex-1 min-h-[44px]"
-              >
-                <XCircle className="w-4 h-4 mr-2" />
-                Cancel
-              </Button>
+              {canEditAppointments && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (booking.scheduled_at) {
+                      const dt = new Date(booking.scheduled_at);
+                      setRescheduleDate(dt.toISOString().slice(0, 10));
+                      setRescheduleTime(dt.toISOString().slice(11, 16));
+                    }
+                    setShowReschedule(true);
+                  }}
+                  disabled={isUpdating}
+                  className="flex-1 min-h-[44px]"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Reschedule
+                </Button>
+              )}
+              {canCancelAppointments && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleStatusChange("no_show")}
+                  disabled={isUpdating}
+                  className="flex-1 min-h-[44px] text-amber-700 border-amber-300 hover:bg-amber-50"
+                >
+                  No Show
+                </Button>
+              )}
+              {canCancelAppointments && (
+                <Button
+                  variant="destructive"
+                  onClick={() => handleStatusChange("cancelled")}
+                  disabled={isUpdating}
+                  className="flex-1 min-h-[44px]"
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Cancel
+                </Button>
+              )}
             </>
           )}
         </div>

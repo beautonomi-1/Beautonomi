@@ -13,7 +13,7 @@ import {
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { rescheduleBookingServicesSequential } from "@/lib/bookings/reschedule-booking-services";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requirePermission, requireAnyPermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
@@ -44,10 +44,11 @@ function normalizeGroupBookingId(rawId: string): string {
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const supabase = await getSupabaseServer(request);
@@ -271,13 +272,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const body = await request.json();
+    const cancelRequested =
+      body?.status === "cancelled" || body?.status === "canceled";
+    const permissionCheck = cancelRequested
+      ? await requireAnyPermission(["cancel_appointments", "edit_appointments"], request)
+      : await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
-    const body = await request.json();
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -668,13 +674,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const action = new URL(request.url).searchParams.get("action") ?? "";
+    const permissionCheck = await requirePermission(
+      action === "mark_paid" ? "process_payments" : "edit_appointments",
+      request,
+    );
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const body = await request.json().catch(() => ({}));
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
@@ -761,11 +771,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (action === "mark_paid") {
-      const permissionCheck = await requirePermission("process_payments", request);
-      if (!permissionCheck.authorized) {
-        return permissionCheck.response!;
-      }
-
       const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
       if (
         paymentMethod === "paystack_terminal" ||
@@ -947,10 +952,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
+    const permissionCheck = await requireAnyPermission(
+      ["cancel_appointments", "edit_appointments"],
+      request,
     );
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const body = await request.json().catch(() => ({}) as Record<string, unknown>);

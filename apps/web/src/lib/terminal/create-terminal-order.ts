@@ -72,6 +72,7 @@ export async function createTerminalOrderForProvider(
     requires_integration_setup?: boolean;
     fulfillment_type?: CreateTerminalOrderFulfillmentInput["fulfillment_type"] | null;
     stock_status?: string | null;
+    integration_vendor_slug?: string | null;
   };
 
   if (["out_of_stock", "discontinued"].includes(String(p.stock_status ?? ""))) {
@@ -139,6 +140,20 @@ export async function createTerminalOrderForProvider(
 
   if (orderErr) throw orderErr;
 
+  const orderId = (order as { id: string }).id;
+  const vendorSlug =
+    (p.integration_vendor_slug ?? p.vendor ?? "").trim().toLowerCase() || "paycloud";
+  if (p.requires_integration_setup && vendorSlug === "paycloud") {
+    const { applyMerchantOnboardingGateToOrder } = await import("@/lib/terminal-merchant/gate");
+    await applyMerchantOnboardingGateToOrder(
+      supabase,
+      orderId,
+      providerId,
+      tenantId,
+      vendorSlug,
+    );
+  }
+
   const option = eligibility.options.find((o) => o.commercial_model === commercialModel);
   return {
     order: order as Record<string, unknown>,
@@ -173,6 +188,7 @@ export async function allocateTerminalFromSubscription(
     requires_integration_setup?: boolean;
     fulfillment_type?: CreateTerminalOrderFulfillmentInput["fulfillment_type"] | null;
     stock_status?: string | null;
+    integration_vendor_slug?: string | null;
   };
 
   if (["out_of_stock", "discontinued"].includes(String(p.stock_status ?? ""))) {
@@ -237,6 +253,19 @@ export async function allocateTerminalFromSubscription(
 
   const orderId = (order as { id: string }).id;
   const reference = `terminal_sub_alloc_${orderId}`;
+
+  const vendorSlug =
+    (p.integration_vendor_slug ?? p.vendor ?? "").trim().toLowerCase() || "paycloud";
+  if (p.requires_integration_setup && vendorSlug === "paycloud") {
+    const { applyMerchantOnboardingGateToOrder } = await import("@/lib/terminal-merchant/gate");
+    await applyMerchantOnboardingGateToOrder(
+      supabase,
+      orderId,
+      providerId,
+      tenantId,
+      vendorSlug,
+    );
+  }
 
   const { recordTerminalOrderPayment } = await import("@/lib/terminal/record-terminal-order-payment");
   const paymentResult = await recordTerminalOrderPayment({

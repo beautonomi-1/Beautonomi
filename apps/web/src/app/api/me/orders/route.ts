@@ -17,8 +17,16 @@ import {
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
-import { cancelStalePendingPaystackProductOrders } from "@/lib/orders/product-order-lifecycle";
+import {
+  cancelStalePendingPaystackProductOrders,
+  rollbackFailedProductOrderCheckout,
+} from "@/lib/orders/product-order-lifecycle";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  extractIdempotencyKey,
+  lookupIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/http/idempotency";
 import { calculateProductDeliveryFee, distanceKmBetween } from "@/lib/orders/delivery-fee";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 
@@ -30,7 +38,10 @@ const createOrderSchema = z.object({
   collection_location_id: z.string().uuid().optional(),
   payment_method: z.enum(["paystack", "cash", "yoco", "card_on_delivery", "wallet"]).optional(),
   use_wallet: z.boolean().optional(),
+  idempotency_key: z.string().uuid().optional(),
 });
+
+const ME_ORDERS_POST_ENDPOINT = "POST /api/me/orders";
 
 /**
  * GET /api/me/orders
@@ -121,6 +132,11 @@ export async function POST(request: NextRequest) {
     );
     const body = await request.json();
     const parsed = createOrderSchema.parse(body);
+    const idempotencyKey = extractIdempotencyKey(request, body);
+    if (idempotencyKey) {
+      const cached = await lookupIdempotentResponse(ME_ORDERS_POST_ENDPOINT, idempotencyKey);
+      if (cached) return cached.toResponse();
+    }
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
 
@@ -332,7 +348,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate platform fee for online orders
     let platformFee = 0;
-    const isOnline = !["cash", "yoco", "card_on_delivery"].includes(parsed.payment_method ?? "paystack");
+    const isOnline = !["cash", "yoco", "paycloud", "card_on_delivery"].includes(parsed.payment_method ?? "paystack");
     if (isOnline) {
       const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
         supabase,
@@ -401,7 +417,7 @@ export async function POST(request: NextRequest) {
         total_amount: totalAmount.toFixed(2),
         wallet_amount: walletAmountApplied.toFixed(2),
         payment_method: paidWithWalletOnly ? "wallet" : (parsed.payment_method ?? "paystack"),
-        payment_status: paidWithWalletOnly ? "paid" : "pending",
+        payment_status: "pending",
         order_source: "online",
       })
       .select()
@@ -437,81 +453,183 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let paymentRecordResult: Awaited<ReturnType<typeof recordProductOrderPayment>> | null = null;
-    if (paidWithWalletOnly) {
-      paymentRecordResult = await recordProductOrderPayment({
-        supabase: supabase as any,
-        productOrderId: order.id,
-        reference: `wallet_product_order_${order.id}`,
-        amountMajor: totalAmount,
-        feesMajor: 0,
-        source: "wallet_checkout",
-        provider: "wallet",
-      });
-    }
+    const orderRowForRollback = {
+      id: order.id as string,
+      customer_id: user.id,
+      provider_id: parsed.provider_id,
+      tenant_id: orderTenantId,
+      wallet_amount: walletAmountApplied,
+      currency: (order as { currency?: string | null }).currency ?? "ZAR",
+    };
 
-    // Create order items
-    const itemsToInsert = orderItems.map((oi) => ({
-      ...oi,
-      order_id: order.id,
-      unit_price: oi.unit_price.toFixed(2),
-      total_price: oi.total_price.toFixed(2),
-    }));
+    /** True only after every stock decrement succeeded (avoids over-restock on partial failure). */
+    let stockFullyApplied = false;
+    /** True after wallet-only payment was recorded (must not reverse wallet/ledger). */
+    let paymentSettled = false;
 
-    const { error: itemsErr } = await (supabase.from("product_order_items") as any).insert(
-      itemsToInsert,
-    );
-    if (itemsErr) throw itemsErr;
+    try {
+      // Create order items
+      const itemsToInsert = orderItems.map((oi) => ({
+        ...oi,
+        order_id: order.id,
+        unit_price: oi.unit_price.toFixed(2),
+        total_price: oi.total_price.toFixed(2),
+      }));
 
-    // Decrement stock for each product (variant or product-level)
-    for (const item of validatedCartItems) {
-      if (item.product_variant_id) {
-        await (supabase.rpc as any)("decrement_product_variant_stock", {
-          p_variant_id: item.product_variant_id,
-          p_quantity: item.quantity,
-        });
-      } else {
-        await supabase.rpc("decrement_product_stock" as any, {
-          p_product_id: item.product.id,
-          p_quantity: item.quantity,
+      const { error: itemsErr } = await (supabase.from("product_order_items") as any).insert(
+        itemsToInsert,
+      );
+      if (itemsErr) throw itemsErr;
+
+      // Decrement stock for each product (variant or product-level).
+      // If a later line fails, reverse only what we already decremented so the
+      // outer rollback does not over-restock untouched lines.
+      const appliedStock: Array<{
+        product_variant_id: string | null;
+        product_id: string;
+        quantity: number;
+      }> = [];
+      for (const item of validatedCartItems) {
+        let stockErr: { message?: string } | null = null;
+        if (item.product_variant_id) {
+          const { error } = await (supabase.rpc as any)("decrement_product_variant_stock", {
+            p_variant_id: item.product_variant_id,
+            p_quantity: item.quantity,
+          });
+          stockErr = error;
+        } else {
+          const { error } = await supabase.rpc("decrement_product_stock" as any, {
+            p_product_id: item.product.id,
+            p_quantity: item.quantity,
+          });
+          stockErr = error;
+        }
+        if (stockErr) {
+          for (const applied of appliedStock) {
+            if (applied.product_variant_id) {
+              await (adminSupabase.rpc as any)("increment_product_variant_stock", {
+                p_variant_id: applied.product_variant_id,
+                p_quantity: applied.quantity,
+              }).catch(() => undefined);
+            } else {
+              await (adminSupabase.rpc as any)("increment_product_stock", {
+                p_product_id: applied.product_id,
+                p_quantity: applied.quantity,
+              }).catch(() => undefined);
+            }
+          }
+          throw new Error(stockErr.message || "Insufficient stock");
+        }
+        appliedStock.push({
+          product_variant_id: item.product_variant_id ?? null,
+          product_id: item.product.id,
+          quantity: item.quantity,
         });
       }
+      stockFullyApplied = true;
+
+      let paymentRecordResult: Awaited<ReturnType<typeof recordProductOrderPayment>> | null = null;
+      if (paidWithWalletOnly) {
+        paymentRecordResult = await recordProductOrderPayment({
+          supabase: adminSupabase as any,
+          productOrderId: order.id,
+          reference: `wallet_product_order_${order.id}`,
+          amountMajor: totalAmount,
+          feesMajor: 0,
+          source: "wallet_checkout",
+          provider: "wallet",
+        });
+        paymentSettled = true;
+      }
+
+      // Clear cart when checkout is complete or does not depend on Paystack success
+      if (!deferCartClearForPaystack) {
+        await (supabase.from("cart_items") as any)
+          .delete()
+          .eq("user_id", user.id)
+          .eq("provider_id", parsed.provider_id);
+      }
+
+      const isPaystackCheckoutPending =
+        paymentMethod === "paystack" && !paidWithWalletOnly && amountAfterWallet > 0;
+      const isPayOnDelivery =
+        paymentMethod === "cash" || paymentMethod === "card_on_delivery";
+
+      // Notifications / idempotency cache are best-effort after money has moved.
+      try {
+        if (paidWithWalletOnly && paymentRecordResult) {
+          await notifyProductOrderPaidIfTransitioned(supabase as any, order.id, {
+            transitionedToPaid: paymentRecordResult.transitionedToPaid,
+          });
+        } else if (!isPaystackCheckoutPending && isPayOnDelivery) {
+          await notifyProductOrderPlacedPendingPayment({
+            providerId: parsed.provider_id,
+            productOrderId: order.id,
+            orderNumber: orderNum,
+            totalAmount,
+            tenantId: orderTenantId,
+            itemCount: orderItems.length,
+            paymentMethod,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("[me/orders] post-create notify failed (order kept):", notifyErr);
+      }
+
+      const responsePayload = {
+        order: { ...order, items: orderItems, payment_status: paidWithWalletOnly ? "paid" : "pending" },
+        paid_with_wallet: paidWithWalletOnly,
+        amount_due: amountAfterWallet,
+      };
+
+      if (idempotencyKey) {
+        await rememberIdempotentResponse(ME_ORDERS_POST_ENDPOINT, idempotencyKey, {
+          status: 201,
+          body: { data: responsePayload, error: null },
+          tenantId: orderTenantId,
+          userId: user.id,
+        });
+      }
+
+      return successResponse(responsePayload, 201);
+    } catch (finalizeErr) {
+      if (paymentSettled) {
+        // Wallet debit + paid ledger already committed. Never reverse money or
+        // tell the client the order failed — return success with the settled order.
+        console.error(
+          "[me/orders] Post-settlement step failed — returning success with paid order",
+          finalizeErr,
+        );
+        const settledPayload = {
+          order: {
+            ...order,
+            items: orderItems,
+            payment_status: "paid" as const,
+          },
+          paid_with_wallet: true,
+          amount_due: 0,
+        };
+        if (idempotencyKey) {
+          await rememberIdempotentResponse(ME_ORDERS_POST_ENDPOINT, idempotencyKey, {
+            status: 201,
+            body: { data: settledPayload, error: null },
+            tenantId: orderTenantId,
+            userId: user.id,
+          });
+        }
+        return successResponse(settledPayload, 201);
+      }
+
+      await rollbackFailedProductOrderCheckout(
+        adminSupabase,
+        orderRowForRollback,
+        "Checkout could not be completed",
+        // Partial stock was already reversed in-loop; only restock when all
+        // decrements completed (e.g. failure during cart clear before settle).
+        { restock: stockFullyApplied },
+      );
+      throw finalizeErr;
     }
-
-    // Clear cart when checkout is complete or does not depend on Paystack success
-    if (!deferCartClearForPaystack) {
-      await (supabase.from("cart_items") as any)
-        .delete()
-        .eq("user_id", user.id)
-        .eq("provider_id", parsed.provider_id);
-    }
-
-    const isPaystackCheckoutPending =
-      paymentMethod === "paystack" && !paidWithWalletOnly && amountAfterWallet > 0;
-    const isPayOnDelivery =
-      paymentMethod === "cash" || paymentMethod === "card_on_delivery";
-
-    if (paidWithWalletOnly && paymentRecordResult) {
-      await notifyProductOrderPaidIfTransitioned(supabase as any, order.id, {
-        transitionedToPaid: paymentRecordResult.transitionedToPaid,
-      });
-    } else if (!isPaystackCheckoutPending && isPayOnDelivery) {
-      await notifyProductOrderPlacedPendingPayment({
-        providerId: parsed.provider_id,
-        productOrderId: order.id,
-        orderNumber: orderNum,
-        totalAmount,
-        tenantId: orderTenantId,
-        itemCount: orderItems.length,
-        paymentMethod,
-      });
-    }
-
-    return successResponse({
-      order: { ...order, items: orderItems },
-      paid_with_wallet: paidWithWalletOnly,
-      amount_due: amountAfterWallet,
-    }, 201);
   } catch (err) {
     return handleApiError(err, "Failed to create order");
   }

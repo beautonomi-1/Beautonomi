@@ -413,7 +413,9 @@ export default function TerminalShopPage() {
   const pendingActivationOrder = useMemo(
     () =>
       orders.find((o) => {
-        if (o.invoice_status !== "paid" || o.integration_setup_status !== "pending") return false;
+        if (o.invoice_status !== "paid") return false;
+        if (o.integration_setup_status === "awaiting_merchant_onboarding") return true;
+        if (o.integration_setup_status !== "pending") return false;
         const vendor = (o.terminal_products?.vendor ?? "").toLowerCase();
         return !vendor || vendor === "paycloud";
       }) ?? null,
@@ -426,6 +428,10 @@ export default function TerminalShopPage() {
   );
 
   function integrationSetupHref(order: TerminalOrder): string {
+    if (order.integration_setup_status === "awaiting_merchant_onboarding") {
+      const qs = order.id ? `?order=${encodeURIComponent(order.id)}` : "";
+      return `/provider/settings/sales/terminal-merchant-application${qs}`;
+    }
     const product = order.terminal_products ?? {};
     const path = resolveIntegrationSetupPath(product);
     return `${path}?order=${encodeURIComponent(order.id)}`;
@@ -676,10 +682,10 @@ export default function TerminalShopPage() {
               </div>
               {paymentBanner === "confirmed" && pendingActivationOrder && paycloudEnabled ? (
                 <Button asChild size="sm">
-                  <Link
-                    href={`/provider/settings/sales/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}`}
-                  >
-                    Activate machine
+                  <Link href={integrationSetupHref(pendingActivationOrder)}>
+                    {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                      ? "Complete application"
+                      : "Activate machine"}
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Link>
                 </Button>
@@ -694,19 +700,22 @@ export default function TerminalShopPage() {
                 <Package className="mt-0.5 h-5 w-5 text-pink-600" />
                 <div>
                   <p className="text-sm font-medium text-pink-900">
-                    {pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is paid and
-                    waiting for activation
+                    {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                      ? "Complete your card machine application"
+                      : `${pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is paid and waiting for activation`}
                   </p>
                   <p className="text-xs text-pink-700">
-                    Enter the serial number from the device label to finish setup.
+                    {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                      ? "We need a few business details before we can ship your device."
+                      : "Enter the serial number from the device label to finish setup."}
                   </p>
                 </div>
               </div>
               <Button asChild size="sm">
-                <Link
-                  href={`/provider/settings/sales/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}`}
-                >
-                  Activate machine
+                <Link href={integrationSetupHref(pendingActivationOrder)}>
+                  {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                    ? "Complete application"
+                    : "Activate machine"}
                   <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Link>
               </Button>
@@ -888,7 +897,9 @@ export default function TerminalShopPage() {
                             <Button size="sm" asChild>
                               <Link href={integrationSetupHref(o)}>
                                 <Wrench className="mr-1.5 h-4 w-4" />
-                                Complete setup
+                                {o.integration_setup_status === "awaiting_merchant_onboarding"
+                                  ? "Complete application"
+                                  : "Complete setup"}
                               </Link>
                             </Button>
                           ) : null}

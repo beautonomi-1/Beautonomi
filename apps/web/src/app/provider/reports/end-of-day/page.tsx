@@ -24,7 +24,9 @@ const PAYMENT_LABELS: Record<string, string> = {
   card: "Card",
   bank_transfer: "Bank transfer",
   paystack: "Paystack",
+  paystack_terminal: "Paystack Terminal",
   yoco: "Yoco",
+  paycloud: "Card machine",
   gift_card: "Gift card",
   wallet: "Wallet",
   other: "Other",
@@ -222,6 +224,11 @@ export default function EndOfDayReportPage() {
                   <p className="text-xs text-gray-500 mt-2">
                     <code className="text-[11px]">finance_transactions</code> tip rows settled this day
                   </p>
+                  {Number(data.cashbackTotal ?? 0) > 0 ? (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Cashback (till cash-out): {fmt(data.cashbackTotal)} — not included in recorded total
+                    </p>
+                  ) : null}
                 </CardContent>
               </Card>
               <Card className="rounded-xl border-gray-200 shadow-sm">

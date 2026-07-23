@@ -24,8 +24,9 @@ function ShopCancelledInner() {
         )}
 
         <p className="text-gray-500 text-sm mb-8">
-          No charge was made. Your order is still pending — you can complete payment from your
-          orders page, or go back to the shop to start a new cart.
+          No card charge was completed. Your order may still be pending — finish payment from My
+          Orders whenever you&apos;re ready. If you used wallet credit, it stays applied to this
+          order until you pay, start a new checkout, or the pending order expires.
         </p>
 
         <div className="flex flex-col gap-3">

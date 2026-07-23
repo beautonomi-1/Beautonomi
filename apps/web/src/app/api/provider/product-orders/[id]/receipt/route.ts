@@ -7,6 +7,7 @@ import {
   forbiddenResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
@@ -115,6 +116,14 @@ export async function GET(
         request,
       );
       user = { id: authed.user.id, role: authed.user.role as string };
+      const owner = await isProviderOwner(user.id, request);
+      if (
+        !owner &&
+        user.role !== "superadmin" &&
+        !(await hasPermission(user.id, "view_sales", undefined, request))
+      ) {
+        return forbiddenResponse("You do not have permission to view product order receipts");
+      }
     }
 
     const { data: orderRaw, error } = await (admin.from("product_orders") as any)

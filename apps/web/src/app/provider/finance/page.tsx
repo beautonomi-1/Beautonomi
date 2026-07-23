@@ -146,7 +146,7 @@ export default function ProviderFinance() {
   const { selectedLocationId, provider: portalProvider } = useProviderPortal();
   const { hasPermission } = usePermissions();
   const { currencyCode, format: fmt } = useReportCurrency();
-  const canRequestPayout = hasPermission("process_payments");
+  const canRequestPayout = hasPermission("edit_settings");
 
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);

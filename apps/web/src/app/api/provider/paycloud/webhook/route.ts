@@ -123,12 +123,6 @@ export async function POST(request: NextRequest) {
           .from("paycloud_webhook_events")
           .update({ processed: true })
           .eq("merchant_order_no", merchantOrderNo);
-        if (payment.terminal_id) {
-          await supabase
-            .from("paycloud_terminals")
-            .update({ in_flight_payment_id: null, last_used_at: new Date().toISOString() })
-            .eq("id", payment.terminal_id);
-        }
       } else if (matchStatus === "exact" || matchStatus === "over") {
         const settleResult = await settlePaycloudPayment(supabase, {
           paymentId: payment.id,
@@ -141,21 +135,24 @@ export async function POST(request: NextRequest) {
           processedBy: payment.processed_by,
           currency: payment.currency,
           tipAmount: Number(payment.tip_amount ?? 0),
+          cashbackAmount: Number(payment.cashback_amount ?? 0),
         });
 
         await handlePaycloudPostSettle(supabase, payment, settleResult, captured);
 
         await supabase.from("paycloud_webhook_events").update({ processed: true }).eq("merchant_order_no", merchantOrderNo);
-
-        if (payment.terminal_id) {
-          await supabase
-            .from("paycloud_terminals")
-            .update({
-              in_flight_payment_id: null,
-              last_used_at: new Date().toISOString(),
-            })
-            .eq("id", payment.terminal_id);
-        }
+      }
+      // Always release the terminal after a completed capture (exact / over / under /
+      // mismatch). Under/mismatch skips auto-settle for admin force-settle but must
+      // not leave in_flight stuck — reconcile cannot recover once status=successful.
+      if (payment.terminal_id) {
+        await supabase
+          .from("paycloud_terminals")
+          .update({
+            in_flight_payment_id: null,
+            last_used_at: new Date().toISOString(),
+          })
+          .eq("id", payment.terminal_id);
       }
     } else if (
       payment &&

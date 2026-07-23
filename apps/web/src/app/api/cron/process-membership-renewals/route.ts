@@ -34,8 +34,14 @@ function retryDelayDays(failureCount: number): number {
 }
 
 function advanceOneMonth(from: Date): Date {
+  // Clamp to the last day of the target month so month-end anchors don't drift
+  // (Jan 31 + 1 month = Feb 28/29, not Mar 3).
   const d = new Date(from);
+  const day = d.getDate();
+  d.setDate(1);
   d.setMonth(d.getMonth() + 1);
+  const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDayOfTargetMonth));
   return d;
 }
 
@@ -99,11 +105,13 @@ export async function GET(request: NextRequest) {
         user_id,
         provider_id,
         plan_id,
+        status,
         expires_at,
         next_billing_at,
         paystack_authorization_code,
         payment_method_id,
         renewal_failure_count,
+        past_due_since,
         billing_period,
         plan:membership_plans(id, name, price_monthly, currency, is_active),
         provider:providers(id, tenant_id)
@@ -166,16 +174,34 @@ export async function GET(request: NextRequest) {
         if (isPaymentMethodExpired(pmRow.expiry_month, pmRow.expiry_year)) {
           results.skipped_card_expired++;
           // Transition to past_due (card expired), notify customer.
-          const newPastDueSince = row.past_due_since ?? nowIso;
-          await (supabase.from("user_memberships") as any)
-            .update({
-              status: "past_due",
-              past_due_since: newPastDueSince,
-              renewal_failure_count: (row.renewal_failure_count ?? 0) + 1,
-              next_billing_at: new Date(Date.now() + retryDelayDays((row.renewal_failure_count ?? 0)) * 24 * 60 * 60 * 1000).toISOString(),
-              updated_at: nowIso,
-            })
-            .eq("id", membershipId);
+          const priorFailureCount: number = row.renewal_failure_count ?? 0;
+          const newFailureCount = priorFailureCount + 1;
+          // Keep the original past_due anchor so the grace window can actually
+          // elapse; only start the clock on the first failure.
+          const newPastDueSince: string = row.status === "past_due" ? (row.past_due_since ?? nowIso) : nowIso;
+          if (newFailureCount >= MEMBERSHIP_MAX_RENEWAL_RETRIES) {
+            // Retries exhausted — stop scheduling; grace expiry (Step 1) will expire it.
+            await (supabase.from("user_memberships") as any)
+              .update({
+                status: "past_due",
+                past_due_since: newPastDueSince,
+                renewal_failure_count: newFailureCount,
+                next_billing_at: null,
+                auto_renew: false,
+                updated_at: nowIso,
+              })
+              .eq("id", membershipId);
+          } else {
+            await (supabase.from("user_memberships") as any)
+              .update({
+                status: "past_due",
+                past_due_since: newPastDueSince,
+                renewal_failure_count: newFailureCount,
+                next_billing_at: new Date(Date.now() + retryDelayDays(priorFailureCount) * 24 * 60 * 60 * 1000).toISOString(),
+                updated_at: nowIso,
+              })
+              .eq("id", membershipId);
+          }
           await notifyMembershipCardExpiredSafe(supabase, userId, providerId, planId, plan?.name, membershipId);
           continue;
         }
@@ -231,31 +257,73 @@ export async function GET(request: NextRequest) {
         const nextBillingAt = advanceOneMonth(new Date(row.next_billing_at ?? now));
         const newExpiresAt = advanceOneMonth(new Date(row.expires_at ?? now));
 
-        await (supabase.from("user_memberships") as any)
+        // Atomic compare-and-swap on the exact next_billing_at we read: only one
+        // cron invocation can win the claim. Without this guard two overlapping
+        // runs both pass the `next_billing_at <= now` filter, both advance the
+        // date, and both charge the customer's card. If the claim matches no rows
+        // another run already took this cycle — skip to avoid a double charge.
+        const { data: claimedRenewal } = await (supabase.from("user_memberships") as any)
           .update({
             next_billing_at: nextBillingAt.toISOString(),
             updated_at: nowIso,
           })
-          .eq("id", membershipId);
+          .eq("id", membershipId)
+          .eq("next_billing_at", row.next_billing_at)
+          .select("id");
 
-        // Charge the saved card.
-        const chargeResult = await chargeAuthorization(
-          authCode,
-          customerEmail,
-          amountSmallest,
-          {
-            membership_order_id: renewalOrder.id,
-            user_id: userId,
-            provider_id: providerId,
-            plan_id: planId,
-            kind: "membership_renewal",
-          },
-          { tenantId, reference: renewalReference },
-        );
+        if ((claimedRenewal?.length ?? 0) === 0) {
+          // Roll back the accounting order we optimistically created; another run owns this cycle.
+          await (supabase.from("membership_orders") as any)
+            .update({ status: "failed", updated_at: nowIso })
+            .eq("id", renewalOrder.id);
+          console.log(`[membership-renewals] skip ${membershipId}: renewal cycle already claimed by another run`);
+          continue;
+        }
 
-        const chargeStatus: boolean = chargeResult?.data?.status === "success" || chargeResult?.status === true;
+        // Charge the saved card. A thrown error (network, Paystack 4xx/5xx) is
+        // treated as a synchronous failure so the row still enters dunning —
+        // if the charge actually settled, the charge.success webhook repairs
+        // the membership and the failed order idempotently.
+        let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>> | null = null;
+        try {
+          chargeResult = await chargeAuthorization(
+            authCode,
+            customerEmail,
+            amountSmallest,
+            {
+              membership_order_id: renewalOrder.id,
+              user_id: userId,
+              provider_id: providerId,
+              plan_id: planId,
+              kind: "membership_renewal",
+            },
+            { tenantId, reference: renewalReference },
+          );
+        } catch (chargeErr) {
+          console.error(`[membership-renewals] chargeAuthorization threw for ${membershipId}:`, chargeErr);
+        }
 
-        if (chargeStatus) {
+        // Paystack returns HTTP 200 with envelope status:true even for declined
+        // charges (data.status === "failed"), so BOTH must be checked. A truthy
+        // envelope alone must never be treated as payment success.
+        const envelopeOk = chargeResult?.status === true;
+        const dataStatus: string | undefined = chargeResult?.data?.status;
+        const chargeSucceeded = envelopeOk && dataStatus === "success";
+        const chargePending =
+          envelopeOk && ["pending", "processing", "queued", "ongoing"].includes(dataStatus ?? "");
+
+        if (chargePending) {
+          // Charge is in flight — neither success nor failure. Store the
+          // reference and let the webhook settle the order; do not retry
+          // (a retry would risk a double charge).
+          await (supabase.from("membership_orders") as any)
+            .update({ paystack_reference: renewalReference, updated_at: nowIso })
+            .eq("id", renewalOrder.id);
+          console.log(`[membership-renewals] charge pending for ${membershipId}, awaiting webhook (${renewalReference})`);
+          continue;
+        }
+
+        if (chargeSucceeded) {
           // ── Synchronous success ──────────────────────────────────────────
           const grossAmount = convertFromSmallestUnit(chargeResult.data?.amount ?? amountSmallest);
           const feeAmount = convertFromSmallestUnit(chargeResult.data?.fees ?? 0);
@@ -295,25 +363,44 @@ export async function GET(request: NextRequest) {
           // ── Synchronous failure ──────────────────────────────────────────
           // Webhook will retry idempotently; we only transition state here.
           await (supabase.from("membership_orders") as any)
-            .update({ status: "failed", updated_at: nowIso })
+            .update({ status: "failed", paystack_reference: renewalReference, updated_at: nowIso })
             .eq("id", renewalOrder.id);
 
-          const newFailureCount = (row.renewal_failure_count ?? 0) + 1;
-          const isPastDue = row.status === "past_due";
-          const newPastDueSince: string = isPastDue ? (row.past_due_since ?? nowIso) : nowIso;
+          const priorFailureCount: number = row.renewal_failure_count ?? 0;
+          const newFailureCount = priorFailureCount + 1;
+          // Keep the original past_due anchor so grace can elapse; only start
+          // the clock on the first failure into past_due.
+          const newPastDueSince: string =
+            row.status === "past_due" ? (row.past_due_since ?? nowIso) : nowIso;
 
-          // Retry delay: +1d first, +2d second, +3d thereafter.
-          const retryAt = new Date(Date.now() + retryDelayDays(newFailureCount) * 24 * 60 * 60 * 1000);
-
-          await (supabase.from("user_memberships") as any)
-            .update({
-              status: "past_due",
-              past_due_since: newPastDueSince,
-              renewal_failure_count: newFailureCount,
-              next_billing_at: retryAt.toISOString(),
-              updated_at: nowIso,
-            })
-            .eq("id", membershipId);
+          if (newFailureCount >= MEMBERSHIP_MAX_RENEWAL_RETRIES) {
+            // Retries exhausted — stop scheduling; grace expiry (Step 1) will expire it.
+            await (supabase.from("user_memberships") as any)
+              .update({
+                status: "past_due",
+                past_due_since: newPastDueSince,
+                renewal_failure_count: newFailureCount,
+                next_billing_at: null,
+                auto_renew: false,
+                updated_at: nowIso,
+              })
+              .eq("id", membershipId);
+          } else {
+            // Retry delay uses the pre-increment count so first retry is +1d,
+            // second +2d, third +3d — matching the card-expired branch.
+            const retryAt = new Date(
+              Date.now() + retryDelayDays(priorFailureCount) * 24 * 60 * 60 * 1000,
+            );
+            await (supabase.from("user_memberships") as any)
+              .update({
+                status: "past_due",
+                past_due_since: newPastDueSince,
+                renewal_failure_count: newFailureCount,
+                next_billing_at: retryAt.toISOString(),
+                updated_at: nowIso,
+              })
+              .eq("id", membershipId);
+          }
 
           results.failed++;
 

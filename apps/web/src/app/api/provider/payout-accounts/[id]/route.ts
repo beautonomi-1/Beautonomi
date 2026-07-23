@@ -13,6 +13,7 @@ import { updateTransferRecipient } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const updateAccountSchema = z.object({
@@ -39,6 +40,15 @@ export async function GET(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const sessionSupabase = await getSupabaseServer(request);
+
+    const canViewBanking =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "edit_settings", undefined, request));
+    if (!canViewBanking) {
+      return errorResponse("Only business owners can view bank accounts.", "FORBIDDEN", 403);
+    }
+
     const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 
     if (!providerId) {
@@ -85,6 +95,15 @@ export async function PATCH(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const sessionSupabase = await getSupabaseServer(request);
+
+    const canManageBanking =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "edit_settings", undefined, request));
+    if (!canManageBanking) {
+      return errorResponse("Only business owners can manage bank accounts.", "FORBIDDEN", 403);
+    }
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 
@@ -247,6 +266,15 @@ export async function DELETE(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const sessionSupabase = await getSupabaseServer(request);
+
+    const canManageBanking =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "edit_settings", undefined, request));
+    if (!canManageBanking) {
+      return errorResponse("Only business owners can manage bank accounts.", "FORBIDDEN", 403);
+    }
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 

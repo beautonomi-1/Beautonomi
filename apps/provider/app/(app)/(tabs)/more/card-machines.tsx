@@ -54,6 +54,12 @@ type PendingTerminalOrder = {
   terminal_products?: { name?: string; vendor?: string };
 };
 
+type MerchantApplicationSummary = {
+  id: string;
+  application_no: string;
+  status: string;
+};
+
 function formatLastUsedShort(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return "recently";
@@ -118,6 +124,7 @@ export default function CardMachinesScreen() {
   const [reconcileExceptions, setReconcileExceptions] = useState(0);
   const [recentPayments, setRecentPayments] = useState<ReconciliationPayment[]>([]);
   const [pendingOrder, setPendingOrder] = useState<PendingTerminalOrder | null>(null);
+  const [merchantApplication, setMerchantApplication] = useState<MerchantApplicationSummary | null>(null);
   const [activationSerial, setActivationSerial] = useState("");
   const [activationName, setActivationName] = useState("");
   const [activating, setActivating] = useState(false);
@@ -243,6 +250,24 @@ export default function CardMachinesScreen() {
   }
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const res = await api.get<{ application?: MerchantApplicationSummary | null }>(
+          "/api/provider/terminal-merchant-application?create=false",
+        );
+        const app = res.data?.application;
+        if (app && !["approved", "declined", "cancelled"].includes(app.status)) {
+          setMerchantApplication(app);
+        } else {
+          setMerchantApplication(null);
+        }
+      } catch {
+        setMerchantApplication(null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (!terminalShopEnabled) {
       setPendingOrder(null);
       return;
@@ -250,9 +275,9 @@ export default function CardMachinesScreen() {
 
     const isPendingActivation = (order: PendingTerminalOrder | undefined | null) => {
       if (!order) return false;
-      if (order.invoice_status !== "paid" || order.integration_setup_status !== "pending") {
-        return false;
-      }
+      if (order.invoice_status !== "paid") return false;
+      if (order.integration_setup_status === "awaiting_merchant_onboarding") return false;
+      if (order.integration_setup_status !== "pending") return false;
       const vendor = (order.terminal_products?.vendor ?? "").toLowerCase();
       return !vendor || vendor === "paycloud" || Boolean(activationOrderId);
     };
@@ -431,6 +456,27 @@ export default function CardMachinesScreen() {
             : ""}
         </Text>
       </View>
+
+      {merchantApplication && ["draft", "submitted", "info_required", "in_review", "sent_to_acquirer", "awaiting_term_sheet"].includes(merchantApplication.status) ? (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/terminal-merchant-application" as never)}
+          style={twStyle("mb-4 flex-row items-center rounded-2xl border border-indigo-200 bg-indigo-50 p-4")}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="document-text-outline" size={22} color="#4338ca" />
+          <View style={twStyle("ml-3 flex-1")}>
+            <Text style={twStyle("text-sm font-semibold text-indigo-900")}>
+              Finish card machine application ({merchantApplication.application_no})
+            </Text>
+            <Text style={twStyle("mt-0.5 text-xs text-indigo-700")}>
+              {merchantApplication.status === "draft" || merchantApplication.status === "info_required"
+                ? "Complete your details so we can ship your terminal."
+                : "Track your application status."}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#4338ca" />
+        </TouchableOpacity>
+      ) : null}
 
       {terminalShopEnabled && terminals.length === 0 && !pendingOrder ? (
         <TouchableOpacity

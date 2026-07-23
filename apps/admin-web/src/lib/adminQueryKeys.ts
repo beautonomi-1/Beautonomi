@@ -347,6 +347,9 @@ export const adminQueryKeys = {
   // NOTE: Use hardcoded roots here (not adminQueryKeys.root) to avoid a
   // circular initializer reference that breaks TypeScript inference.
   commercialTerminalInsights: ["admin", "commercial", "terminal-insights"] as const,
+  commercialTerminalOnboarding: ["admin", "commercial", "terminal-onboarding"] as const,
+  commercialTerminalOnboardingDetail: (id: string) =>
+    ["admin", "commercial", "terminal-onboarding", id] as const,
   commercialTerminalUpsellLead: ["admin", "commercial", "terminal-upsell-lead"] as const,
   commercialAssignableUsers: ["admin", "commercial", "assignable-users"] as const,
   commercialTerminalProducts: ["admin", "commercial", "terminal-products"] as const,

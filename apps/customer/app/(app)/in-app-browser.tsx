@@ -1,7 +1,7 @@
 /**
- * In-app browser: loads a URL (e.g. Paystack payment, web cart) in a WebView
- * so customers never leave the app.
- * Route: (app)/in-app-browser?url=<encoded>&title=...
+ * In-app browser: loads external web URLs (legal pages, cart, hosted checkout)
+ * in a WebView so customers stay in the app.
+ * Route: (app)/in-app-browser?url=<encoded>&title=...&intent=content|payment
  */
 import { useCallback, useState } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking, Alert } from "react-native";
@@ -19,11 +19,12 @@ export default function InAppBrowserScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ url?: string; title?: string }>();
+  const params = useLocalSearchParams<{ url?: string; title?: string; intent?: string }>();
   let rawUrl = "";
   let displayTitle = "Link";
   try { rawUrl = params.url ? decodeURIComponent(params.url) : ""; } catch { rawUrl = params.url ?? ""; }
   try { displayTitle = params.title ? decodeURIComponent(params.title) : "Link"; } catch { displayTitle = params.title ?? "Link"; }
+  const isPaymentIntent = params.intent === "payment";
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastWebUrl, setLastWebUrl] = useState(rawUrl);
 
@@ -160,8 +161,20 @@ export default function InAppBrowserScreen() {
           renderLoading={() => (
             <View style={styles.loading}>
               <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.loadingTitle}>Please wait</Text>
-              <Text style={styles.loadingText}>Opening secure payment…{"\n"}Do not close this screen.</Text>
+              {isPaymentIntent ? (
+                <>
+                  <Text style={styles.loadingTitle}>Please wait</Text>
+                  <Text style={styles.loadingText}>
+                    {t("customer.mobile.screens.customOfferCheckout.openingSecurePayment", {
+                      defaultValue: "Opening secure payment…",
+                    })}
+                    {"\n"}
+                    Do not close this screen.
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.loadingTitle}>{t("common.loading")}</Text>
+              )}
             </View>
           )}
         />

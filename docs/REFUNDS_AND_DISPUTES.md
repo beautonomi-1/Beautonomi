@@ -6,9 +6,10 @@
 
 ### What the page shows
 
-- **Data source:** Rows are **payment_transactions** that either have `transaction_type = 'refund'` or `refund_amount` set (i.e. original charges that were refunded, or refund-type transactions). So you see both “charge” transactions that have been refunded and any separate “refund” records.
-- **Filters:** Search by booking number / customer / reference; filter by status (all, success, failed, pending, refunded, partially_refunded).
-- **Tabs:** All, Refunded, Pending, Failed — same list, filtered in the UI.
+- **Data source:** Rows are **payment_transactions** for this tenant: refund-related rows (`transaction_type = refund` or `refund_amount` set) **or** successful captures (`status = success`) that can still be refunded.
+- **Metrics:** **Refundable payments** counts successful captures in the current filter; **Total refunded** sums recorded `refund_amount` values; **Rows matching filter** follows the active status tab.
+- **Filters:** Filter by status (all, success, failed, pending, refunded, partially_refunded).
+- **Tabs:** All, success, Pending, Failed, Refunded, partially_refunded — same list, filtered in the UI.
 - **Each row:** Booking number, amount, customer, provider, status badge, refund amount/reason/date and “refunded by” user when already processed.
 
 ### Who can do what
@@ -16,8 +17,8 @@
 | Who | What |
 |-----|------|
 | **Superadmin** | Opens `/admin/refunds`, sees the list, uses filters/tabs and search. |
-| **Superadmin** | Clicks **Process Refund** on a row that is **not** yet refunded (status is success, failed, or pending). |
-| **Nobody** | Cannot “process” a transaction that is already refunded or partially_refunded (button is hidden). |
+| **Superadmin** | Clicks **Process Refund** on a row with status **success** (a successful payment capture not yet refunded). |
+| **Nobody** | Cannot process rows already **refunded** or **partially_refunded** (button is hidden). |
 
 ### What “Process Refund” does (when superadmin clicks it)
 

@@ -22,6 +22,7 @@ import { formatCurrency } from "@/lib/format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -72,6 +73,8 @@ type PayoutScheduleData = {
 
 type TeamAccessData = {
   can_process_payments?: boolean;
+  can_request_payouts?: boolean;
+  is_business_owner?: boolean;
 };
 
 type ProviderNavCounts = {
@@ -248,11 +251,61 @@ export default function MoreScreen() {
   const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
   const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
   const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
+  const { data: permissionData } = useApi<{ isOwner?: boolean; permissions?: Record<string, boolean> }>(
+    "/api/provider/permissions",
+    { staleTimeMs: 60_000 },
+  );
+  const isBusinessOwner = permissionData?.isOwner === true;
+  const canEditSettings =
+    isBusinessOwner || permissionData?.permissions?.edit_settings === true;
+  const canProcessPayments =
+    teamAccess?.can_process_payments === true ||
+    permissionData?.permissions?.process_payments === true;
+  const canRequestPayouts =
+    canEditSettings ||
+    teamAccess?.can_request_payouts === true ||
+    teamAccess?.is_business_owner === true;
+  const canViewSales =
+    isBusinessOwner ||
+    permissionData?.permissions?.view_sales === true ||
+    permissionData?.permissions?.create_sales === true;
+  const canViewReports =
+    isBusinessOwner || permissionData?.permissions?.view_reports === true;
+
+  const filteredQuickActions = QUICK_ACTIONS.filter((action) => {
+    const route = action.route;
+    if (
+      route.includes("payment-setup") ||
+      route.includes("billing") ||
+      route.includes("settings/ads") ||
+      route.includes("yoco-devices") ||
+      route.includes("card-machines") ||
+      route.includes("paystack-terminal")
+    ) {
+      return canEditSettings;
+    }
+    if (route.includes("money") || route.includes("payouts") || route.includes("finance")) {
+      return canRequestPayouts || canEditSettings;
+    }
+    if (route.includes("reports")) {
+      return canViewReports;
+    }
+    if (
+      route.includes("products-ecommerce-hub") ||
+      route.includes("product-orders") ||
+      route.includes("orders-hub") ||
+      route.includes("walk-in")
+    ) {
+      return canViewSales;
+    }
+    return true;
+  });
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>("/api/provider/nav-counts", { staleTimeMs: 30_000 });
   const completion = completionData ?? null;
   const completionItems = completion?.steps ?? [];
   const completionPct = completion?.completionPercentage ?? 0;
-  const showCompletionCard = completionItems.length > 0 && !completion?.isComplete;
+  const showCompletionCard =
+    isBusinessOwner && completionItems.length > 0 && !completion?.isComplete;
   // Prefer the next *required* blocker for the card's primary CTA so tapping
   // the card lands the provider on a step that actually gates accepting
   // bookings (Yoco / portfolio are optional and should not steal the slot).
@@ -293,7 +346,6 @@ export default function MoreScreen() {
     accounts[0];
   const hasPayoutAccount = accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
-  const canRequestPayouts = teamAccess?.can_process_payments === true;
   const requestPayoutDisabledReason = !canRequestPayouts
     ? "Requires payment-processing permission"
     : !hasPayoutAccount
@@ -503,7 +555,10 @@ export default function MoreScreen() {
           <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
 
+        <ProviderOrgSwitcher />
+
         {/* Payouts - web payout center parity: balance, request action, and bank setup above the fold */}
+        {(canEditSettings) ? (
         <View
           style={{
             marginBottom: 16,
@@ -564,7 +619,13 @@ export default function MoreScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => handleMenuPress(hasPayoutAccount ? "/(app)/(tabs)/more/money?tab=payouts" : "/(app)/(tabs)/more/payment-setup")}
+            onPress={() =>
+              handleMenuPress(
+                hasPayoutAccount || !canEditSettings
+                  ? "/(app)/(tabs)/more/money?tab=payouts"
+                  : "/(app)/(tabs)/more/payment-setup",
+              )
+            }
             activeOpacity={0.75}
             style={{
               marginTop: 14,
@@ -585,6 +646,7 @@ export default function MoreScreen() {
             <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
           </TouchableOpacity>
 
+          {canEditSettings ? (
           <TouchableOpacity
             onPress={() => handleMenuPress("/(app)/(tabs)/more/settings/payout-accounts")}
             activeOpacity={0.75}
@@ -617,6 +679,7 @@ export default function MoreScreen() {
             </View>
             <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
           </TouchableOpacity>
+          ) : null}
 
           {requestPayoutDisabledReason && (
             <Text style={{ marginTop: 10, fontSize: 12, color: "#92400e", lineHeight: 16 }}>
@@ -624,6 +687,7 @@ export default function MoreScreen() {
             </Text>
           )}
         </View>
+        ) : null}
 
         {/* Highlight ads + memberships above the fold (also listed under “Grow your business”) */}
         <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>
@@ -699,7 +763,7 @@ export default function MoreScreen() {
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
-          {QUICK_ACTIONS.filter(
+          {filteredQuickActions.filter(
             (action) =>
               (paystackTerminalEnabled || !action.route.includes("paystack-terminal")) &&
               (yocoEnabled || !action.route.includes("yoco")) &&
@@ -964,10 +1028,48 @@ export default function MoreScreen() {
               {isExpanded && (
                 <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
                   {section.items.filter(
-                    (item) =>
-                      (paystackTerminalEnabled || !item.route.includes("paystack-terminal")) &&
-                      (yocoEnabled || !item.route.includes("yoco")) &&
-                      (paycloudEnabled || !item.route.includes("card-machines")),
+                    (item) => {
+                      if (
+                        !(
+                          (paystackTerminalEnabled || !item.route.includes("paystack-terminal")) &&
+                          (yocoEnabled || !item.route.includes("yoco")) &&
+                          (paycloudEnabled || !item.route.includes("card-machines"))
+                        )
+                      ) {
+                        return false;
+                      }
+                      const route = item.route;
+                      if (
+                        route.includes("payment-setup") ||
+                        route.includes("billing") ||
+                        route.includes("settings/ads") ||
+                        route.includes("payout-accounts") ||
+                        route.includes("yoco-devices") ||
+                        route.includes("card-machines") ||
+                        route.includes("paystack-terminal")
+                      ) {
+                        return canEditSettings;
+                      }
+                      if (
+                        route.includes("money") ||
+                        route.includes("payouts") ||
+                        route.includes("finance")
+                      ) {
+                        return canRequestPayouts || canEditSettings;
+                      }
+                      if (route.includes("reports")) {
+                        return canViewReports;
+                      }
+                      if (
+                        route.includes("products-ecommerce-hub") ||
+                        route.includes("product-orders") ||
+                        route.includes("orders-hub") ||
+                        route.includes("walk-in")
+                      ) {
+                        return canViewSales;
+                      }
+                      return true;
+                    },
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
                     return (

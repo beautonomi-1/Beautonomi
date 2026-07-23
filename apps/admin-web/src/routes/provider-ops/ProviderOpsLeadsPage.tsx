@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,11 +33,21 @@ import {
   Phone, Mail, MapPin, Calendar, Tag, User, ChevronDown,
   Clock, MessageSquare, MessageCircle, ArrowUpDown, CheckSquare, Square,
   Trash2, UserPlus, X, ChevronUp, Filter, MoreHorizontal, RotateCcw,
-  StickyNote, TrendingUp, ArrowRight, ExternalLink, Pencil,
+  StickyNote, TrendingUp, ArrowRight, ExternalLink, Pencil, AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { WhatsAppSendModal } from "@/components/whatsapp/WhatsAppSendModal";
 import { BulkWhatsAppModal } from "@/components/whatsapp/BulkWhatsAppModal";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
+import {
+  canWhatsAppLead,
+  CONTACT_FILTER_OPTIONS,
+  getLeadContactAlertLabel,
+  getWhatsAppBlockedReason,
+  hasLeadEmail,
+  hasLeadPhone,
+  normalizeContactFilterParam,
+} from "@/lib/providerOpsLeadContact";
 import {
   AssigneeSearchPanel,
   LeadAssigneeInline,
@@ -201,6 +211,130 @@ function DoNotContactChip({
   );
 }
 
+function LeadContactAlert({ lead, compact = false }: { lead: Lead; compact?: boolean }) {
+  const label = getLeadContactAlertLabel(lead);
+  if (!label) return null;
+  return (
+    <span
+      title={label}
+      className={cn(
+        "inline-flex shrink-0 items-center text-amber-600",
+        compact ? "gap-0.5" : "gap-1",
+      )}
+    >
+      <AlertTriangle className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden />
+      {!compact ? <span className="text-[10px] font-medium">{label}</span> : null}
+    </span>
+  );
+}
+
+function LeadQuickActions({
+  lead,
+  variant = "compact",
+  onCallClick,
+  onWhatsAppClick,
+  showFullPageLink = false,
+}: {
+  lead: Lead;
+  variant?: "compact" | "buttons";
+  onCallClick: (lead: Lead) => void;
+  onWhatsAppClick?: (lead: Lead) => void;
+  showFullPageLink?: boolean;
+}) {
+  const waBlocked = getWhatsAppBlockedReason(lead);
+  const waEnabled = canWhatsAppLead(lead);
+
+  if (variant === "buttons") {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {hasLeadPhone(lead) ? (
+          <button
+            type="button"
+            onClick={() => onCallClick(lead)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50"
+          >
+            <Phone className="h-3 w-3" />Call
+          </button>
+        ) : null}
+        {hasLeadEmail(lead) ? (
+          <a
+            href={`mailto:${lead.email}`}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50"
+          >
+            <Mail className="h-3 w-3" />Email
+          </a>
+        ) : null}
+        {waEnabled ? (
+          <button
+            type="button"
+            onClick={() => onWhatsAppClick?.(lead)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 touch-manipulation hover:bg-green-100"
+          >
+            <MessageCircle className="h-3 w-3" />WhatsApp
+          </button>
+        ) : (
+          <span
+            title={waBlocked ?? "WhatsApp unavailable"}
+            className="inline-flex min-h-9 cursor-not-allowed items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs font-medium text-gray-400"
+          >
+            <MessageCircle className="h-3 w-3" />WhatsApp
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+      {hasLeadPhone(lead) ? (
+        <button
+          type="button"
+          onClick={() => onCallClick(lead)}
+          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          title="Call"
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      {waEnabled ? (
+        <button
+          type="button"
+          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
+          title="WhatsApp"
+          onClick={() => onWhatsAppClick?.(lead)}
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <span
+          title={waBlocked ?? "WhatsApp unavailable"}
+          className="inline-flex min-h-9 min-w-9 cursor-not-allowed items-center justify-center rounded-md p-1.5 text-gray-300"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+        </span>
+      )}
+      {hasLeadEmail(lead) ? (
+        <a
+          href={`mailto:${lead.email}`}
+          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          title="Email"
+        >
+          <Mail className="h-3.5 w-3.5" />
+        </a>
+      ) : null}
+      {showFullPageLink ? (
+        <Link
+          to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)}
+          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          title="Full page"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 function asLeadTagList(raw: unknown): string[] {
   if (raw == null) return [];
   if (Array.isArray(raw)) return raw.map(String);
@@ -284,6 +418,7 @@ export function ProviderOpsLeadsPage() {
   const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
   const categoryKey = categoryIds.join(",");
   const assignedToFilter = sp.get("assigned_to") || "";
+  const contactFilter = normalizeContactFilterParam(sp.get("contact"));
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
   const viewParam = sp.get("view");
@@ -325,6 +460,8 @@ export function ProviderOpsLeadsPage() {
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const lastCallLogAtRef = useRef<Map<string, number>>(new Map());
+  const noteInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (viewParam === "table" || viewParam === "card") {
@@ -349,9 +486,9 @@ export function ProviderOpsLeadsPage() {
   const qk = useMemo(
     () =>
       adminQueryKeys.providerOps.leads(
-        `s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|a=${assignedToFilter}|sb=${sortBy}|sd=${sortDir}|del=${deletedView ? "only" : "active"}`,
+        `s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|a=${assignedToFilter}|ct=${contactFilter}|sb=${sortBy}|sd=${sortDir}|del=${deletedView ? "only" : "active"}`,
       ),
-    [stage, page, search, country, province, categoryKey, assignedToFilter, sortBy, sortDir, deletedView],
+    [stage, page, search, country, province, categoryKey, assignedToFilter, contactFilter, sortBy, sortDir, deletedView],
   );
 
   const q = useQuery({
@@ -366,6 +503,7 @@ export function ProviderOpsLeadsPage() {
       if (province) p.set("province", province);
       categoryIds.forEach((id) => p.append("category_ids", id));
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
+      if (contactFilter) p.set("contact", contactFilter);
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
       if (deletedView) p.set("deleted", "only");
@@ -579,7 +717,7 @@ export function ProviderOpsLeadsPage() {
       adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
         activity_type: "call_logged",
         description: noteText.trim() || "Phone call with lead",
-        metadata: { direction: "outbound" },
+        metadata: { direction: "outbound", source: "manual_log" },
       }),
     onSuccess: () => {
       setNoteText("");
@@ -588,6 +726,56 @@ export function ProviderOpsLeadsPage() {
     },
     onError: (e: Error) => adminToast.error(`Failed: ${e.message}`),
   });
+
+  const handleLeadCallClick = useCallback(
+    async (lead: Lead) => {
+      if (!hasLeadPhone(lead)) return;
+      if (lead.do_not_contact) {
+        const ok = window.confirm("This lead is marked Do Not Contact. Place the call anyway?");
+        if (!ok) return;
+      }
+
+      const now = Date.now();
+      const last = lastCallLogAtRef.current.get(lead.id) ?? 0;
+      const shouldLog = now - last >= 2000;
+      if (shouldLog) lastCallLogAtRef.current.set(lead.id, now);
+
+      // Open dialer via temporary anchor so SPA navigation/unload is less likely to
+      // cancel the auto-log request (window.location.href = tel: can race on some clients).
+      const a = document.createElement("a");
+      a.href = `tel:${lead.phone_e164}`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      if (!shouldLog) return;
+
+      // Ensure drawer is open so "Add note" can focus the timeline input.
+      if (selectedLeadId !== lead.id) setSelectedLeadId(lead.id);
+
+      try {
+        await adminApi.postJson(`/api/admin/provider-ops/leads/${lead.id}/activities`, {
+          activity_type: "call_logged",
+          description: "Phone call with lead",
+          metadata: { direction: "outbound", source: "tel_link" },
+        });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(lead.id) });
+        toast.success("Call logged", {
+          action: {
+            label: "Add note",
+            onClick: () => {
+              setSelectedLeadId(lead.id);
+              window.setTimeout(() => noteInputRef.current?.focus(), 50);
+            },
+          },
+        });
+      } catch (e) {
+        adminToast.error(e instanceof Error ? e.message : "Failed to log call");
+      }
+    },
+    [qc, selectedLeadId],
+  );
 
   const updateLeadMut = useMutation({
     mutationFn: (fields: Record<string, unknown>) => {
@@ -772,6 +960,7 @@ export function ProviderOpsLeadsPage() {
       if (province) p.set("province", province);
       categoryIds.forEach((id) => p.append("category_ids", id));
       if (assignedToFilter) p.set("assigned_to", assignedToFilter);
+      if (contactFilter) p.set("contact", contactFilter);
       if (deletedView) p.set("deleted", "only");
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
@@ -788,7 +977,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter, deletedView]);
+  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter, contactFilter, deletedView]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -1047,8 +1236,15 @@ export function ProviderOpsLeadsPage() {
             <button type="button" className="min-h-11 shrink-0 touch-manipulation rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800" onClick={commitSearch}>Search</button>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-            <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation", filtersOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
-              <Filter className="h-4 w-4" />Filters{filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation", filtersOpen || country || province || categoryIds.length > 0 || assignedToFilter || contactFilter ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
+              <Filter className="h-4 w-4" />
+              Filters
+              {(country || province || categoryIds.length > 0 || assignedToFilter || contactFilter) ? (
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">
+                  {[country, province, assignedToFilter, contactFilter].filter(Boolean).length + (categoryIds.length > 0 ? 1 : 0)}
+                </span>
+              ) : null}
+              {filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </button>
             {selectedIds.size > 0 && (
               <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:flex sm:flex-initial">
@@ -1161,6 +1357,23 @@ export function ProviderOpsLeadsPage() {
                 </option>
               ))}
             </select>
+            <select
+              value={contactFilter}
+              onChange={(e) => {
+                const n = new URLSearchParams(sp);
+                if (e.target.value) n.set("contact", e.target.value);
+                else n.delete("contact");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
+            >
+              {CONTACT_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value || "all"} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <div className="min-w-[240px] rounded-lg border border-gray-300 bg-white p-2">
               <div className="mb-1 text-xs font-medium text-gray-600">Categories</div>
               <div className="max-h-44 space-y-1 overflow-auto pr-1">
@@ -1190,8 +1403,8 @@ export function ProviderOpsLeadsPage() {
                 })}
               </div>
             </div>
-            {(country || province || categoryIds.length > 0 || assignedToFilter) && (
-              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
+            {(country || province || categoryIds.length > 0 || assignedToFilter || contactFilter) && (
+              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("contact"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
             )}
           </div>
         )}
@@ -1250,6 +1463,23 @@ export function ProviderOpsLeadsPage() {
                   <option value="unassigned">Unassigned</option>
                   {assigneeFilterOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>)}
                 </select>
+                <select
+                  value={contactFilter}
+                  onChange={(e) => {
+                    const n = new URLSearchParams(sp);
+                    if (e.target.value) n.set("contact", e.target.value);
+                    else n.delete("contact");
+                    n.delete("page");
+                    setSp(n, { replace: true });
+                  }}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base text-gray-700"
+                >
+                  {CONTACT_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value || "all"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Categories</div>
                   <div className="max-h-60 space-y-1 overflow-auto">
@@ -1282,7 +1512,7 @@ export function ProviderOpsLeadsPage() {
                 <div className="flex gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("page"); setSp(n, { replace: true }); }}
+                    onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("contact"); n.delete("page"); setSp(n, { replace: true }); }}
                     className="min-h-11 flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
                   >
                     Clear
@@ -1323,6 +1553,7 @@ export function ProviderOpsLeadsPage() {
               onSort={toggleSort}
               onStageChange={(id, s, expectedAt) => stageChangeMut.mutate({ id, newStage: s, expected_updated_at: expectedAt })}
               onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
+              onCallClick={handleLeadCallClick}
               assignLeadMut={assignLeadMut}
               density={density}
             />
@@ -1331,6 +1562,8 @@ export function ProviderOpsLeadsPage() {
               rows={rows}
               selectedLeadId={selectedLeadId}
               onSelectLead={setSelectedLeadId}
+              onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
+              onCallClick={handleLeadCallClick}
               assignLeadMut={assignLeadMut}
               density={density}
             />
@@ -1369,10 +1602,13 @@ export function ProviderOpsLeadsPage() {
               isLoading={detailQ.isLoading}
               noteText={noteText}
               setNoteText={setNoteText}
+              noteInputRef={noteInputRef}
               onAddNote={() => addNoteMut.mutate(selectedLeadId)}
               addingNote={addNoteMut.isPending}
               onLogCall={() => logCallMut.mutate(selectedLeadId)}
               loggingCall={logCallMut.isPending}
+              onCallClick={handleLeadCallClick}
+              onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
               onStageChange={(s) =>
                 stageChangeMut.mutate({
                   id: selectedLeadId!,
@@ -1417,10 +1653,13 @@ export function ProviderOpsLeadsPage() {
                 isLoading={detailQ.isLoading}
                 noteText={noteText}
                 setNoteText={setNoteText}
+                noteInputRef={noteInputRef}
                 onAddNote={() => addNoteMut.mutate(selectedLeadId)}
                 addingNote={addNoteMut.isPending}
                 onLogCall={() => logCallMut.mutate(selectedLeadId)}
                 loggingCall={logCallMut.isPending}
+                onCallClick={handleLeadCallClick}
+                onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
                 onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s, detail?.updated_at)}
                 onDelete={() => {
                   if (confirm("Move this lead to trash?")) deleteMut.mutate(selectedLeadId);
@@ -1577,7 +1816,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: { label: string;
   );
 }
 
-function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick, assignLeadMut, density }: {
+function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick, onCallClick, assignLeadMut, density }: {
   rows: Lead[];
   selectedLeadId: string | null;
   selectedIds: Set<string>;
@@ -1589,6 +1828,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
   onSort: (col: string) => void;
   onStageChange: (id: string, stage: string, expectedUpdatedAt?: string) => void;
   onWhatsAppClick?: (lead: Lead) => void;
+  onCallClick: (lead: Lead) => void;
   assignLeadMut: {
     mutate: (args: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string }) => void;
     isPending: boolean;
@@ -1654,11 +1894,16 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <p className="truncate text-sm font-medium text-gray-900">{name}</p>
+                        <LeadContactAlert lead={lead} compact />
                         {lead.phone_e164 && (
                           <WhatsAppStatusChip status={lead.whatsapp_status} compact />
                         )}
                       </div>
-                      {lead.email && <p className="truncate text-xs text-gray-400">{lead.email}</p>}
+                      {hasLeadEmail(lead) ? (
+                        <p className="truncate text-xs text-gray-400">{lead.email}</p>
+                      ) : (
+                        <p className="truncate text-xs italic text-amber-600">No email</p>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -1723,31 +1968,12 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                   <span className="text-xs text-gray-500">{new Date(lead.created_at).toLocaleDateString()}</span>
                 </td>
                 <td className={cn("px-3", rowPad)} onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
-                      {lead.phone_e164 && (
-                        <a href={`tel:${lead.phone_e164}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Call">
-                          <Phone className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                      {lead.phone_e164 && (
-                        <button
-                          type="button"
-                          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
-                          title="WhatsApp"
-                          onClick={() => onWhatsAppClick?.(lead)}
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {lead.email && (
-                        <a href={`mailto:${lead.email}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Email">
-                          <Mail className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                      <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Full page">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
+                  <LeadQuickActions
+                    lead={lead}
+                    onCallClick={onCallClick}
+                    onWhatsAppClick={onWhatsAppClick}
+                    showFullPageLink
+                  />
                 </td>
               </tr>
             );
@@ -1760,10 +1986,12 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
 
 // ─── Card grid view ───────────────────────────────────────────────────────────
 
-function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, density }: {
+function LeadCardGrid({ rows, selectedLeadId, onSelectLead, onWhatsAppClick, onCallClick, assignLeadMut, density }: {
   rows: Lead[];
   selectedLeadId: string | null;
   onSelectLead: (id: string) => void;
+  onWhatsAppClick?: (lead: Lead) => void;
+  onCallClick: (lead: Lead) => void;
   assignLeadMut: {
     mutate: (args: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string }) => void;
     isPending: boolean;
@@ -1784,23 +2012,29 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
           const isSelected = lead.id === selectedLeadId;
 
           return (
-            <button
+            <div
               key={lead.id}
-              type="button"
-              onClick={() => onSelectLead(lead.id)}
               className={cn(
-                "w-full rounded-xl border bg-white text-left transition-all hover:shadow-md",
+                "group w-full rounded-xl border bg-white text-left transition-all hover:shadow-md",
                 density === "compact" ? "p-3" : "p-4",
                 isSelected ? "border-blue-300 ring-2 ring-blue-100 shadow-md" : "border-gray-200",
               )}
             >
+              <button
+                type="button"
+                onClick={() => onSelectLead(lead.id)}
+                className="w-full text-left"
+              >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600">
                     {name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-900">{name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-gray-900">{name}</p>
+                      <LeadContactAlert lead={lead} compact />
+                    </div>
                     <span className={cn("mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", badge)}>
                       {getLeadStageLabel(lead.commercial_stage)}
                     </span>
@@ -1814,13 +2048,19 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
                 <span className="inline-block rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">{lead.source}</span>
               </div>
               <div className="mt-3 space-y-1 text-xs text-gray-500">
-                {lead.email && <div className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.email}</div>}
-                {lead.phone_e164 && (
+                {hasLeadEmail(lead) ? (
+                  <div className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.email}</div>
+                ) : (
+                  <div className="flex items-center gap-1.5 italic text-amber-600"><Mail className="h-3 w-3 flex-shrink-0" />No email</div>
+                )}
+                {hasLeadPhone(lead) ? (
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />
                     <span>{lead.phone_e164}</span>
                     <WhatsAppStatusChip status={lead.whatsapp_status} compact />
                   </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 italic text-amber-600"><Phone className="h-3 w-3 flex-shrink-0" />No phone</div>
                 )}
                 {lead.suggested_location_text && <div className="flex items-center gap-1.5 truncate"><MapPin className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.suggested_location_text}</div>}
               </div>
@@ -1829,8 +2069,16 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
                   {cats.map((c) => <span key={c} className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{c}</span>)}
                 </div>
               )}
-              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400" onClick={(e) => e.stopPropagation()}>
-                <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:justify-start">
+              </button>
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400">
+                <div className="flex min-w-0 flex-1 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <LeadQuickActions
+                    lead={lead}
+                    onCallClick={onCallClick}
+                    onWhatsAppClick={onWhatsAppClick}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-1 sm:justify-start" onClick={(e) => e.stopPropagation()}>
                   <span className="text-gray-500">Owner</span>
                   <LeadAssigneeInline
                     leadId={lead.id}
@@ -1847,7 +2095,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
                   <span className="flex items-center gap-0.5"><Tag className="h-2.5 w-2.5" />{tagCount}</span>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -1857,16 +2105,19 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
 
 // ─── Detail panel (right side) ────────────────────────────────────────────────
 
-function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAddNote, addingNote, onLogCall, loggingCall, onStageChange, onDelete, onRestore, onClose, isDeleting, isRestoring, onSave, isSaving }: {
+function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, noteInputRef, onAddNote, addingNote, onLogCall, loggingCall, onCallClick, onWhatsAppClick, onStageChange, onDelete, onRestore, onClose, isDeleting, isRestoring, onSave, isSaving }: {
   lead: Lead | null;
   activities: Activity[];
   isLoading: boolean;
   noteText: string;
   setNoteText: (v: string) => void;
+  noteInputRef?: RefObject<HTMLInputElement | null>;
   onAddNote: () => void;
   addingNote: boolean;
   onLogCall: () => void;
   loggingCall: boolean;
+  onCallClick: (lead: Lead) => void;
+  onWhatsAppClick?: (lead: Lead) => void;
   onStageChange: (stage: string) => void;
   onDelete: () => void;
   onRestore?: () => void;
@@ -2030,6 +2281,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
                   onToggle={onSave ? () => onSave({ do_not_contact: !l.do_not_contact }) : undefined}
                   toggling={isSaving}
                 />
+                <LeadContactAlert lead={l} />
                 <span className="inline-block rounded-md border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500">{lead.source}</span>
                 {(() => {
                   const invite = leadInviteStatusChip(lead);
@@ -2053,17 +2305,13 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
         </div>
 
         {/* Quick actions */}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {lead.phone_e164 && (
-            <a href={`tel:${lead.phone_e164}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
-              <Phone className="h-3 w-3" />Call
-            </a>
-          )}
-          {lead.email && (
-            <a href={`mailto:${lead.email}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
-              <Mail className="h-3 w-3" />Email
-            </a>
-          )}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <LeadQuickActions
+            lead={l}
+            variant="buttons"
+            onCallClick={onCallClick}
+            onWhatsAppClick={onWhatsAppClick}
+          />
           {!editing && onSave && (
             <button type="button" onClick={startEditing} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 touch-manipulation hover:bg-blue-50">
               <Pencil className="h-3 w-3" />Edit
@@ -2155,9 +2403,9 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           <div className="space-y-2">
             {lead.contact_person_name && <InfoRow icon={User} label="Contact Person" value={lead.contact_person_name} />}
             {lead.business_name && <InfoRow icon={User} label="Business Name" value={lead.business_name} />}
-            <InfoRow icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} />
-            <InfoRow icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${lead.phone_e164}` : undefined} />
-            {lead.phone_e164 && (
+            <InfoRow icon={Mail} label="Email" value={lead.email || "No email"} href={hasLeadEmail(lead) ? `mailto:${lead.email}` : undefined} />
+            <InfoRow icon={Phone} label="Phone" value={lead.phone_e164 || "No phone"} href={hasLeadPhone(lead) ? `tel:${lead.phone_e164}` : undefined} />
+            {hasLeadPhone(lead) && (
               <div className="ml-7 mt-2">
                 <LeadVoiceDialer
                   leadId={lead.id}
@@ -2168,7 +2416,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
                 />
               </div>
             )}
-            {lead.phone_e164 && (
+            {hasLeadPhone(lead) && (
               <div className="ml-7 -mt-1 flex flex-wrap items-center gap-2">
                 <WhatsAppStatusChip status={lead.whatsapp_status} />
                 <DoNotContactChip
@@ -2315,6 +2563,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
+                  ref={noteInputRef}
                   type="text"
                   placeholder="Add a note or call summary…"
                   value={noteText}

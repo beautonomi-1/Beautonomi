@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockResolveTenant = vi.fn();
@@ -12,15 +12,18 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
+
 vi.mock("@/lib/supabase/api-helpers", () => ({
-  requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
   getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
   successResponse: (data: unknown, status = 200) =>
     Response.json({ data, error: null }, { status }),
-  handleApiError: (error: unknown, fallback: string) =>
+  handleApiError: (error: unknown, fallback: string, status = 500) =>
     Response.json(
       { data: null, error: { message: error instanceof Error ? error.message : fallback } },
-      { status: 500 },
+      { status },
     ),
   notFoundResponse: (msg: string) =>
     Response.json({ data: null, error: { message: msg, code: "NOT_FOUND" } }, { status: 404 }),
@@ -43,6 +46,28 @@ vi.mock("@/lib/server/feature-flags", () => ({
 vi.mock("@/lib/subscriptions/feature-access", () => ({
   checkNewGateFeatureAccess: vi.fn().mockResolvedValue(true),
   SUBSCRIPTION_FEATURE_KEYS: { customRequests: "custom_requests" },
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: () => ({
+      insert: () => Promise.resolve({ error: null }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    }),
+  }),
+}));
+
+vi.mock("@/lib/chat/resolve-conversation", () => ({
+  resolveCustomerProviderConversation: vi.fn().mockResolvedValue({ id: "conv-1" }),
+  updateConversationAfterMessage: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/notifications/insert-notification", () => ({
+  insertNotifications: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/notifications/onesignal", () => ({
+  sendTemplateNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 function makeSupabase(request: Record<string, unknown> | null) {
@@ -101,7 +126,13 @@ function makeSupabase(request: Record<string, unknown> | null) {
           select: () => ({
             eq: () => ({
               eq: () => ({
-                single: vi.fn().mockResolvedValue({ data: null, error: null }),
+                single: vi.fn().mockResolvedValue({
+                  data:
+                    table === "provider_locations"
+                      ? { id: "11111111-1111-4111-8111-111111111111" }
+                      : { id: "22222222-2222-4222-8222-222222222222" },
+                  error: null,
+                }),
               }),
             }),
           }),
@@ -113,7 +144,10 @@ function makeSupabase(request: Record<string, unknown> | null) {
 }
 
 async function callRoute(reqRow: Record<string, unknown> | null, body: Record<string, unknown>) {
-  mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", role: "provider_owner" } });
+  mockRequirePermission.mockResolvedValue({
+    authorized: true,
+    user: { id: "user-1", role: "provider_owner" },
+  });
   mockGetProviderIdForUser.mockResolvedValue("provider-1");
   mockResolveTenant.mockResolvedValue("tenant-1");
   mockGetTenantRegionConfig.mockResolvedValue({ defaultCurrency: "ZAR" });
@@ -185,17 +219,40 @@ describe("POST /api/provider/custom-requests/[id]/offers", () => {
         customer_id: "customer-1",
         status: "pending",
         expires_at: FUTURE_REQUEST_EXPIRY,
+        location_type: "at_salon",
         providers: { business_name: "Salon" },
       },
       {
         price: 100,
         duration_minutes: 60,
         expiration_at: PAST_EXPIRATION,
+        location_id: "11111111-1111-4111-8111-111111111111",
       },
     );
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("INVALID_EXPIRATION");
+  });
+
+  it("rejects at-salon offers without a location", async () => {
+    const res = await callRoute(
+      {
+        id: "req-1",
+        customer_id: "customer-1",
+        status: "pending",
+        expires_at: FUTURE_REQUEST_EXPIRY,
+        location_type: "at_salon",
+        providers: { business_name: "Salon" },
+      },
+      {
+        price: 100,
+        duration_minutes: 60,
+        expiration_at: FUTURE_EXPIRATION,
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("accepts a valid offer on an open request", async () => {
@@ -205,12 +262,14 @@ describe("POST /api/provider/custom-requests/[id]/offers", () => {
         customer_id: "customer-1",
         status: "pending",
         expires_at: FUTURE_REQUEST_EXPIRY,
+        location_type: "at_salon",
         providers: { business_name: "Salon" },
       },
       {
         price: 100,
         duration_minutes: 60,
         expiration_at: FUTURE_EXPIRATION,
+        location_id: "11111111-1111-4111-8111-111111111111",
       },
     );
     expect(res.status).toBe(200);

@@ -1,0 +1,712 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "prior_audit_id": "AUDIT-2026-07-11",
+  "generated_at": "2026-07-22T19:30:48.853Z",
+  "findings": [
+    {
+      "id": "FND-P0-001",
+      "severity": "P1",
+      "prior_status": "mitigated",
+      "status": "mitigated",
+      "title": "CSRF uses CRON_SECRET fallback; dedicated CSRF_SECRET recommended",
+      "agent": 8,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-001",
+        "EVD-039"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-002",
+      "severity": "P0",
+      "prior_status": "open",
+      "status": "resolved",
+      "resolution_basis": "user_attested_staging_run",
+      "title": "E2E coverage critically thin for money paths",
+      "agent": 13,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-002",
+        "EVD-003",
+        "EVD-040",
+        "EVD-064",
+        "EVD-068"
+      ],
+      "notes": "2026-07-22: added route.signature-idempotency.test.ts (8 integration tests) exercising the REAL /api/payments/webhook router locally — HMAC-SHA512 signature gate (unsigned=400, forged=401, valid=200), per-tenant secret verification, idempotent replay (duplicate no re-dispatch), in-flight lease, and charge.success/refund.processed/transfer.success routing. 2026-07-23: RESOLVED — product owner attests the staging money-path E2E (money-path.spec.ts: live signed webhook + browser Paystack checkout + payout) passed. CAVEAT: user-attested, no CI link/log artifact captured; attach the CI run before final production sign-off.",
+      "go_live_impact": "resolved_pending_ci_artifact",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P0-003",
+      "severity": "P0",
+      "prior_status": "open",
+      "status": "resolved",
+      "resolution_basis": "user_attested_staging_run",
+      "title": "Multi-market tenant isolation unverified at runtime",
+      "agent": 7,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-004",
+        "EVD-005",
+        "EVD-041",
+        "EVD-065",
+        "EVD-066",
+        "EVD-067",
+        "EVD-069"
+      ],
+      "notes": "281 resolveTenantIdWithZaFallback call sites in 127 files. 2026-07-22 remediation: (1) behavioural GET /api/me/orders isolation tests against a filtering 2-tenant in-memory Supabase — proves cross-tenant orders never leak and the query is scoped to the host tenant's providers (fails closed to [] when host has no providers); (2) route-tenant-scope.guard.test.ts statically enforces that all 118 tenant-resolving API routes actually consume the resolved tenant (0 offenders) — regression guard against resolved-but-ignored leaks; (3) tenant-isolation.spec.ts staging E2E wired (env-gated). 2026-07-23: RESOLVED — product owner attests the staging tenant-isolation E2E (distinct tenant per market host + cross-host provider non-resolution) passed against two live market hosts. CAVEAT: user-attested, no CI link/log artifact captured; attach the CI run before final production sign-off.",
+      "go_live_impact": "resolved_pending_ci_artifact",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P0-004",
+      "severity": "P0",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Search map displays fake coordinates",
+      "agent": 2,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-006",
+        "EVD-042"
+      ],
+      "notes": "Live path search-results.tsx uses real coords; orphan slider.tsx retains fake data (FND-P2-004)",
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-005",
+      "severity": "P0",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Shipping integration gated off (courier stubs remain)",
+      "agent": 10,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-007",
+        "EVD-043"
+      ],
+      "notes": "ECOMMERCE_SHIPPING_ENABLED gate returns skipped; couriers still throw if enabled",
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-006",
+      "severity": "P0",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "POS creates unpersisted client IDs",
+      "agent": 4,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-008"
+      ],
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P0-007",
+      "severity": "P0",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Time-clock returns fake success on missing tables",
+      "agent": 4,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-009"
+      ],
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-001",
+      "severity": "P1",
+      "prior_status": "mitigated",
+      "status": "mitigated",
+      "title": "PayCloud same-terminal incomplete",
+      "agent": 10,
+      "application": "APP-004",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-010"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-002",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Advanced search filters no-op",
+      "agent": 2,
+      "application": "APP-001",
+      "regression": true,
+      "resolution_evidence": [
+        "EVD-011",
+        "EVD-044",
+        "EVD-070"
+      ],
+      "notes": "2026-07-23 RESOLVED: the offending /api/search/advanced route was dead code (no customer/provider/admin/mobile caller; repo-wide grep found only audit docs) AND unlike the canonical /api/public/search it applied no-op price/availability/location_type filters and resolved no tenant (cross-tenant leak risk). Deleted the route. The UI-wired /api/public/search already implements price (getProviderIdsForOfferingFilters), availability (getProviderIdsAvailableOnDate), at_home and rating filters correctly and tenant-scoped. Net effect: removed a misleading no-op endpoint + latent multi-tenant read path.",
+      "go_live_impact": "resolved",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-003",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "open",
+      "title": "ZA postal areas placeholder seed only",
+      "agent": 11,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-012"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-004",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "open",
+      "title": "KYB verification flags off by default",
+      "agent": 4,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-013"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-005",
+      "severity": "P1",
+      "prior_status": "partial",
+      "status": "partial",
+      "title": "Rate limiting in-memory fallback on multi-instance",
+      "agent": 8,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-014"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-006",
+      "severity": "P1",
+      "prior_status": "partial",
+      "status": "partial",
+      "title": "CSP allows unsafe-inline and unsafe-eval",
+      "agent": 8,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-015"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-007",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Stripe and Flutterwave appear but not implemented",
+      "agent": 10,
+      "application": "APP-002",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-016",
+        "EVD-045"
+      ],
+      "notes": "Stripe processor now implemented for bookings; Flutterwave still enum-only",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-008",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "open",
+      "title": "7-day staging drift gate unsigned",
+      "agent": 15,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-017"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-009",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "open",
+      "title": "Game-day drills documented but unverified",
+      "agent": 16,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-018"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-010",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Custom offer image upload not implemented",
+      "agent": 2,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-019"
+      ],
+      "notes": "Web resolved; mobile parity gap FND-P2-007",
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-011",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Admin SPA HTML served without edge role gate",
+      "agent": 7,
+      "application": "APP-002",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-020"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-012",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "open",
+      "title": "API authorization relies on service-role bypass",
+      "agent": 7,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-021",
+        "EVD-046"
+      ],
+      "notes": "710/1282 API routes use getSupabaseAdmin",
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-013",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "QR scanner manual input only",
+      "agent": 4,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-022"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-014",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Service zone analytics ignores polygon/radius zones",
+      "agent": 4,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-023"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-015",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "LAUNCH_READINESS_100 contradicts discovered gaps",
+      "agent": 19,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-017"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-016",
+      "severity": "P1",
+      "prior_status": "partial",
+      "status": "partial",
+      "title": "Backup restore not verified",
+      "agent": 15,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-024"
+      ],
+      "go_live_impact": "high",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P1-017",
+      "severity": "P1",
+      "prior_status": "open",
+      "status": "partial",
+      "title": "Legal documents not verifiable in repository",
+      "agent": 17,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-025",
+        "EVD-047"
+      ],
+      "notes": "Migration 780 seeds CMS legal pages; counsel sign-off still required",
+      "go_live_impact": "high",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P1-018",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Web typecheck failure blocks release:check",
+      "agent": 15,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-036",
+        "EVD-048"
+      ],
+      "notes": "tsc --noEmit passes 2026-07-22",
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-019",
+      "severity": "P1",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Provider API routes missing tenant guard heuristic",
+      "agent": 7,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-037",
+        "EVD-049"
+      ],
+      "notes": "check-provider-tenant-guards.mjs status ok count 0",
+      "go_live_impact": "none",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-020",
+      "severity": "P1",
+      "prior_status": "partial",
+      "status": "partial",
+      "title": "Production config-bundle exposes test Paystack key",
+      "agent": 8,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-038"
+      ],
+      "notes": "Cannot verify DB value locally; no code guard rejecting pk_test_",
+      "go_live_impact": "high",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P1-021",
+      "severity": "P1",
+      "prior_status": null,
+      "status": "open",
+      "title": "Stripe webhook ignores non-booking PaymentIntents",
+      "agent": 9,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-050"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-022",
+      "severity": "P1",
+      "prior_status": null,
+      "status": "open",
+      "title": "Stripe alternate settlement models unimplemented",
+      "agent": 9,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-051"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-023",
+      "severity": "P1",
+      "prior_status": null,
+      "status": "open",
+      "title": "Admin payout transfer path is Paystack-only",
+      "agent": 9,
+      "application": "APP-002",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-052"
+      ],
+      "go_live_impact": "high",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P1-024",
+      "severity": "P1",
+      "prior_status": null,
+      "status": "open",
+      "title": "Payment webhooks under /api/payments/* may fail CSRF check",
+      "agent": 8,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-053"
+      ],
+      "notes": "proxy.ts exempts /api/webhooks/ only; canonical Paystack/Stripe webhooks live under /api/payments/",
+      "go_live_impact": "high",
+      "confidence": "medium"
+    },
+    {
+      "id": "FND-P2-001",
+      "severity": "P2",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "provider_onboarding role not in PG enum",
+      "agent": 7,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-026"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-002",
+      "severity": "P2",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Hardcoded category fallback on mobile",
+      "agent": 3,
+      "application": "APP-003",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-027"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-003",
+      "severity": "P2",
+      "prior_status": "partial",
+      "status": "partial",
+      "title": "No recent load test results in repository",
+      "agent": 14,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-028"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-004",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Orphan search slider.tsx retains fake London map pins",
+      "agent": 18,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-054"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-005",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "audit-finance-ledger.mjs silently skips on missing RPC",
+      "agent": 9,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-055"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-006",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Integration register stale for Stripe (was mock)",
+      "agent": 10,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-045"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-007",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Custom offer image upload missing on provider mobile",
+      "agent": 5,
+      "application": "APP-004",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-056"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-008",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Membership subscribers UI mobile-only (no provider web page)",
+      "agent": 4,
+      "application": "APP-004",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-057"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-009",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Agent tool support.classifyTicket registered but not bound in production",
+      "agent": 18,
+      "application": "APP-001",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-058"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-010",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Fraud cases absent from admin API inventory and criticalFlows",
+      "agent": 6,
+      "application": "APP-002",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-059"
+      ],
+      "go_live_impact": "medium",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P2-011",
+      "severity": "P2",
+      "prior_status": null,
+      "status": "open",
+      "title": "Mobile parity contract misroutes onboarding screen",
+      "agent": 3,
+      "application": "APP-003",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-060"
+      ],
+      "go_live_impact": "low",
+      "confidence": "high"
+    },
+    {
+      "id": "FND-P3-001",
+      "severity": "P3",
+      "prior_status": "resolved",
+      "status": "resolved",
+      "title": "Support ticket labels mention Stripe for payouts",
+      "agent": 18,
+      "application": "APP-002",
+      "regression": false,
+      "resolution_evidence": [
+        "EVD-029"
+      ],
+      "go_live_impact": "none",
+      "confidence": "high"
+    }
+  ],
+  "summary": {
+    "total": 43,
+    "P0_open": 2,
+    "P1_open": 15,
+    "P2_open": 9,
+    "P3_open": 0,
+    "regressions": [
+      "FND-P1-002"
+    ],
+    "new_findings": [
+      "FND-P1-021",
+      "FND-P1-022",
+      "FND-P1-023",
+      "FND-P1-024",
+      "FND-P2-004",
+      "FND-P2-005",
+      "FND-P2-006",
+      "FND-P2-007",
+      "FND-P2-008",
+      "FND-P2-009",
+      "FND-P2-010",
+      "FND-P2-011"
+    ],
+    "resolved_since_prior": []
+  }
+}

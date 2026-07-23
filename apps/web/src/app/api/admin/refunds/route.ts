@@ -160,8 +160,11 @@ export async function GET(request: NextRequest) {
       0,
     );
 
+    const actionableRefundable = merged.filter((r) => r.status === "success").length;
+
     const statistics = {
       total_transactions: total,
+      actionable_refundable: actionableRefundable,
       total_refunded_amount: totalRefundedAmount,
       rows_with_refund_recorded: rowsWithRefundRecorded.length,
       by_status: {

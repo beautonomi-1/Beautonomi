@@ -10,10 +10,11 @@ export type GetAvailablePayoutBalanceOptions = {
 
 /**
  * Compute available balance for payout (ledger-based):
- * - Sum provider_earnings (net) excluding any booking the platform never held funds
- *   for — i.e. settled entirely by provider-collected tenders (cash, in-person card,
- *   the provider's own Yoco terminal, bank transfer, etc.). Only paystack/stripe/
- *   flutterwave/wallet/gift_card are platform-held and therefore payoutable.
+ * - Sum provider_earnings (net) excluding provider-collected tenders (cash, PayCloud
+ *   card machines, the provider's own Yoco terminal, bank transfer, manual card, etc.).
+ *   Only paystack/stripe/flutterwave/wallet/gift_card are platform-held and payoutable.
+ *   When a finance row carries source_payment_id, exclusion is per payment tender
+ *   (mixed Paystack deposit + PayCloud balance only the Paystack-sourced rows count).
  * - Add refund rows (net is negative), with the same exclusion when tied to a booking.
  * - Optionally exclude earnings newer than holdDays (payout hold period) for **provider_earnings, tip, and travel_fee**
  *   (F15: hold applies consistently to platform-held booking take). Refunds always apply (clawback).
@@ -49,13 +50,17 @@ export type PayoutBalanceBreakdown = {
   /** Final withdrawable amount (floored at 0). */
   availableBalance: number;
 };
-const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
+export const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
   "paystack",
   "stripe",
   "flutterwave",
   "wallet",
   "gift_card",
 ]);
+
+function isPlatformHeldPaymentProvider(provider: string | null | undefined): boolean {
+  return PLATFORM_HELD_PAYMENT_PROVIDERS.has(String(provider || "").toLowerCase());
+}
 export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
@@ -87,7 +92,7 @@ export async function getAvailablePayoutBalance(
   // the payout balance (see the function doc — that would double-charge the provider).
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
-    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component")
+    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id")
     .eq("provider_id", providerId)
     .in("transaction_type", [
       "provider_earnings",
@@ -126,7 +131,7 @@ export async function getAvailablePayoutBalance(
       acc[bid] = {
         hasAnyCompletedPayment: payments.length > 0,
         hasPlatformHeldPayment: payments.some((p: any) =>
-          PLATFORM_HELD_PAYMENT_PROVIDERS.has(String(p.payment_provider || "").toLowerCase()),
+          isPlatformHeldPaymentProvider(p.payment_provider),
         ),
       };
       return acc;
@@ -153,12 +158,50 @@ export async function getAvailablePayoutBalance(
   //     all of which write a completed booking_payments row. The "no payment info"
   //     case therefore covers legacy/manual rows where excluding would wrongly
   //     withhold money the platform is holding.
-  const excludeProviderCollected = (bookingId: string | null | undefined): boolean => {
+  const excludeProviderCollectedBooking = (bookingId: string | null | undefined): boolean => {
     if (!bookingId) return false;
     const meta = bookingMap[bookingId];
     if (!meta) return false;
     if (!meta.hasAnyCompletedPayment) return false;
     return !meta.hasPlatformHeldPayment;
+  };
+
+  const sourcePaymentIds = [
+    ...new Set(
+      rows
+        .filter((r: any) => r.source_payment_id)
+        .map((r: any) => r.source_payment_id as string),
+    ),
+  ];
+  let sourcePaymentProviderMap: Record<string, string> = {};
+  if (sourcePaymentIds.length > 0) {
+    let sourcePaymentsQuery = supabase
+      .from("booking_payments")
+      .select("id, payment_provider")
+      .in("id", sourcePaymentIds);
+    const tid = options?.tenantId;
+    if (typeof tid === "string" && tid.trim()) {
+      sourcePaymentsQuery = sourcePaymentsQuery.eq("tenant_id", tid.trim());
+    }
+    const { data: sourcePayments } = await sourcePaymentsQuery;
+    sourcePaymentProviderMap = (sourcePayments ?? []).reduce(
+      (acc: Record<string, string>, p: any) => {
+        acc[p.id] = String(p.payment_provider || "").toLowerCase();
+        return acc;
+      },
+      {},
+    );
+  }
+
+  const shouldExcludeProviderCollectedRow = (row: {
+    booking_id?: string | null;
+    source_payment_id?: string | null;
+  }): boolean => {
+    const sourceId = row.source_payment_id;
+    if (sourceId && sourcePaymentProviderMap[sourceId] !== undefined) {
+      return !isPlatformHeldPaymentProvider(sourcePaymentProviderMap[sourceId]);
+    }
+    return excludeProviderCollectedBooking(row.booking_id);
   };
 
   for (const r of rows) {
@@ -178,7 +221,7 @@ export async function getAvailablePayoutBalance(
       // fee/commission, tax, discount contras, wallet/gift tender legs and provider-
       // collected (walk-in) add-ons were never platform-held provider money.
       if (!isPayoutRefundComponent(row.refund_component)) continue;
-      if (excludeProviderCollected(row.booking_id)) continue;
+      if (shouldExcludeProviderCollectedRow(row)) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }
@@ -196,7 +239,7 @@ export async function getAvailablePayoutBalance(
     // Tips and travel fees are platform-held pass-throughs owed to the provider.
     if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
       const value = Number(row.net ?? row.amount ?? 0);
-      if (excludeProviderCollected(row.booking_id)) {
+      if (shouldExcludeProviderCollectedRow(row)) {
         excludedProviderCollectedAmount += value;
         continue;
       }
@@ -209,7 +252,7 @@ export async function getAvailablePayoutBalance(
     }
     if (row.transaction_type !== "provider_earnings") continue;
     const earnings = Number(row.net ?? row.amount ?? 0);
-    if (excludeProviderCollected(row.booking_id)) {
+    if (shouldExcludeProviderCollectedRow(row)) {
       excludedProviderCollectedAmount += earnings;
       continue;
     }

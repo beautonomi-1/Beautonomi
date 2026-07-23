@@ -58,7 +58,13 @@ export function getPortalForUser(params: {
     return "provider_onboarding";
   }
 
-  if (role === "provider_owner" || role === "provider_staff") {
+  // Joined staff must never be routed to the owner onboarding wizard — only
+  // provider_owner accounts with an incomplete business setup belong there.
+  if (role === "provider_staff") {
+    return "provider";
+  }
+
+  if (role === "provider_owner") {
     if (provider_status === "active" || provider_status === "pending_approval") return "provider";
     // draft / suspended / null
     return "provider_onboarding";
