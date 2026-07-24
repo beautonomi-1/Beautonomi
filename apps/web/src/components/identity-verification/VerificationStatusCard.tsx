@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 interface Props {
-  status: NormalizedVerificationStatus;
+  status: NormalizedVerificationStatus | null;
   rejectionReason?: string | null;
   onStart?: () => void;
   onRetry?: () => void;
@@ -140,10 +140,22 @@ export function VerificationStatusCard({
   businessVerificationPending = false,
   businessVerificationSummary,
 }: Props) {
+  if (loading && status == null) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+          <span className="sr-only">Loading verification status</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const resolvedStatus = status ?? "not_started";
   const liveRef = useRef<HTMLDivElement>(null);
-  const baseConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_started;
+  const baseConfig = STATUS_CONFIG[resolvedStatus] ?? STATUS_CONFIG.not_started;
   const config =
-    businessVerificationPending && status === "approved"
+    businessVerificationPending && resolvedStatus === "approved"
       ? {
           ...baseConfig,
           badgeLabel: "Identity verified",
@@ -160,11 +172,11 @@ export function VerificationStatusCard({
     if (liveRef.current) {
       liveRef.current.textContent = `Verification status: ${config.badgeLabel}. ${config.description}`;
     }
-  }, [status, config.badgeLabel, config.description]);
+  }, [resolvedStatus, config.badgeLabel, config.description]);
 
-  const showContinue = status === "in_progress";
-  const showStart    = status === "not_started" || status === "session_created";
-  const showRetry    = status === "rejected" || status === "expired" || status === "abandoned" || status === "requires_retry";
+  const showContinue = resolvedStatus === "in_progress";
+  const showStart    = resolvedStatus === "not_started" || resolvedStatus === "session_created";
+  const showRetry    = resolvedStatus === "rejected" || resolvedStatus === "expired" || resolvedStatus === "abandoned" || resolvedStatus === "requires_retry";
 
   return (
     <Card>
@@ -192,7 +204,7 @@ export function VerificationStatusCard({
         </div>
 
         {/* Rejection reason */}
-        {status === "rejected" && rejectionReason && (
+        {resolvedStatus === "rejected" && rejectionReason && (
           <div
             className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2"
             role="alert"
@@ -202,7 +214,7 @@ export function VerificationStatusCard({
         )}
 
         {/* Pending review spinner */}
-        {status === "pending_review" && (
+        {resolvedStatus === "pending_review" && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-label="Under review">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             <span>Reviewing your documents…</span>

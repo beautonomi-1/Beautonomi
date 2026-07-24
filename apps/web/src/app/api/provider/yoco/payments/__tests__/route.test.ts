@@ -18,6 +18,13 @@ vi.mock("@/lib/auth/requireRole", () => ({
     }),
 }));
 
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: vi.fn(async () => ({
+    authorized: true,
+    user: { id: "provider-user-1" },
+  })),
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));

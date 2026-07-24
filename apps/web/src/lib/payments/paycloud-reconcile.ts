@@ -47,11 +47,19 @@ export async function reconcilePaycloudPayment(
   supabase: SupabaseClient,
   payment: PaycloudReconcilePaymentRow,
 ): Promise<PaycloudReconcileResult> {
-  if (payment.status !== "pending" && payment.status !== "processing") {
-    return { payment_id: payment.id, action: "unchanged", reason: "not_pending" };
-  }
   if (!payment.terminal_id) {
     return { payment_id: payment.id, action: "unchanged", reason: "no_terminal" };
+  }
+
+  // Recover terminals stuck on a finished payment (e.g. legacy webhook under/mismatch
+  // that marked successful without clearing in_flight).
+  if (payment.status !== "pending" && payment.status !== "processing") {
+    await supabase
+      .from("paycloud_terminals")
+      .update({ in_flight_payment_id: null })
+      .eq("id", payment.terminal_id)
+      .eq("in_flight_payment_id", payment.id);
+    return { payment_id: payment.id, action: "unchanged", reason: "not_pending" };
   }
 
   const ctx = await resolvePaycloudContextForProvider(
@@ -137,6 +145,7 @@ export async function reconcilePaycloudPayment(
         processedBy: payment.processed_by,
         currency: payment.currency,
         tipAmount: Number(payment.tip_amount ?? 0),
+        cashbackAmount: Number(payment.cashback_amount ?? 0),
       });
       await handlePaycloudPostSettle(supabase, payment, settleResult, captured);
       didSettle = settleResult.settled;

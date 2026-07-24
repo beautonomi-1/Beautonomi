@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Link, NavLink, Outlet, useNavigate, type NavLinkRenderProps } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, type NavLinkRenderProps } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
@@ -40,6 +40,7 @@ export function AdminChrome() {
     refetchSectionPermissions,
   } = useAdminSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -323,6 +324,15 @@ export function AdminChrome() {
 
   /** `/admin/foo/bar?x=1` → root-absolute path under the admin basename (leading `/`). */
   const activityLinkTo = (href: string) => adminSpaTo(href);
+
+  useEffect(() => {
+    const hash = location.hash.replace(/^#/, "").trim();
+    if (!hash) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, location.search, location.hash]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -702,7 +712,7 @@ export function AdminChrome() {
                 <p className="text-gray-500">No items needing attention in the feed.</p>
               ) : (
                 <ul className="space-y-1">
-                  {activityItems.slice(0, 12).map((a) => {
+                  {activityItems.map((a) => {
                     const to = a.link ? activityLinkTo(a.link) : "/dashboard";
                     const primary = a.title ?? "Update";
                     const body = a.message ?? a.id;

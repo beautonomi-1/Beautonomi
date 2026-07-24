@@ -38,7 +38,7 @@
  *   requirePermission, requirePublicTenant, validatePortalToken, usePortalToken,
  *   checkPortalRateLimit, verifyEmbedRefreshToken, parseRetentionToken,
  *   verifyCronSecret, verifyWebhookSignature, verifyPaystackSignature,
- *   verifyCronRequest.
+ *   verifyCronRequest, requireTerminalMerchantAdmin.
  *
  * Additional inline patterns (text match): `auth.getUser`, `auth.getSession`,
  * `Bearer ${cronSecret}`, and explicit HMAC signature verification via the
@@ -71,6 +71,7 @@ const GUARD_IDENTIFIERS = new Set([
   "verifyWebhookSignature",
   "verifyPaycloudWebhookSignature",
   "verifyPaystackSignature",
+  "requireTerminalMerchantAdmin",
 ]);
 
 /**

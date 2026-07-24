@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
+import { isProviderOwner } from "@/lib/auth/permissions";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
 
@@ -9,6 +18,43 @@ const createDayOffSchema = z.object({
   reason: z.string().optional(),
   type: z.string().optional(),
 });
+
+async function canAccessStaffDaysOff(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  providerId: string,
+  routeStaffId: string,
+  userId: string,
+  request: NextRequest,
+  write: boolean,
+) {
+  const resolvedStaffId = await resolveProviderStaffRowId(supabase, providerId, routeStaffId);
+  if (!resolvedStaffId) return { ok: false as const, reason: "not_found" as const };
+
+  const owner = await isProviderOwner(userId, request);
+  if (owner) return { ok: true as const, staffId: resolvedStaffId };
+
+  const { data: selfStaff } = await supabase
+    .from("provider_staff")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (selfStaff?.id === resolvedStaffId) {
+    return { ok: true as const, staffId: resolvedStaffId };
+  }
+
+  if (!write) {
+    const viewCheck = await requirePermission("view_team", request);
+    if (viewCheck.authorized) return { ok: true as const, staffId: resolvedStaffId };
+    return { ok: false as const, reason: "forbidden" as const };
+  }
+
+  const manageCheck = await requirePermission("manage_team", request);
+  if (manageCheck.authorized) return { ok: true as const, staffId: resolvedStaffId };
+  return { ok: false as const, reason: "forbidden" as const };
+}
 
 /**
  * GET /api/provider/staff/[id]/days-off
@@ -20,36 +66,32 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const authCheck = await requirePermission("view_calendar", request);
+    if (!authCheck.authorized) {
+      return authCheck.response!;
+    }
+    const { user } = authCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify staff belongs to provider
-    const { data: staff } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!staff) {
-      return notFoundResponse("Staff member not found");
+    const access = await canAccessStaffDaysOff(supabase, providerId, id, user.id, request, false);
+    if (!access.ok) {
+      if (access.reason === "not_found") return notFoundResponse("Staff member not found");
+      return errorResponse("Permission denied", "FORBIDDEN", 403);
     }
 
-    // Build query
     let query = supabase
       .from("staff_days_off")
       .select("*")
-      .eq("staff_id", id)
+      .eq("staff_id", access.staffId)
       .order("date", { ascending: true });
 
     if (dateFrom) {
@@ -84,10 +126,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const authCheck = await requirePermission("view_calendar", request);
+    if (!authCheck.authorized) {
+      return authCheck.response!;
+    }
+    const { user } = authCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
@@ -103,29 +146,21 @@ export async function POST(
       );
     }
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify staff belongs to provider
-    const { data: staff } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!staff) {
-      return notFoundResponse("Staff member not found");
+    const access = await canAccessStaffDaysOff(supabase, providerId, id, user.id, request, true);
+    if (!access.ok) {
+      if (access.reason === "not_found") return notFoundResponse("Staff member not found");
+      return errorResponse("Permission denied", "FORBIDDEN", 403);
     }
 
-    // Check if day off already exists
     const { data: existing } = await supabase
       .from("staff_days_off")
       .select("id")
-      .eq("staff_id", id)
+      .eq("staff_id", access.staffId)
       .eq("date", validationResult.data.date)
       .maybeSingle();
 
@@ -137,7 +172,7 @@ export async function POST(
     const { data: dayOff, error: insertError } = await supabase
       .from("staff_days_off")
       .insert({
-        staff_id: id,
+        staff_id: access.staffId,
         provider_id: providerId,
         date: validationResult.data.date,
         reason: validationResult.data.reason || null,
@@ -159,7 +194,7 @@ export async function POST(
       await supabase
         .from("staff_time_off")
         .delete()
-        .eq("staff_id", id)
+        .eq("staff_id", access.staffId)
         .eq("provider_id", providerId)
         .eq("start_date", validationResult.data.date)
         .eq("end_date", validationResult.data.date);

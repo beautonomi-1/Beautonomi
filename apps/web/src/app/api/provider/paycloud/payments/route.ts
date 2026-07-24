@@ -4,7 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { requirePaycloudPlatformEnabledForProvider, isPaycloudSameTerminalEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
+import {
+  requirePaycloudPlatformEnabledForProvider,
+  isPaycloudSameTerminalEnabledForProvider,
+  isPaycloudQrEnabledForProvider,
+  isPaycloudCashbackEnabledForProvider,
+} from "@/lib/payments/paycloud-feature-gate";
 import { createPaycloudOrder } from "@/lib/payments/paycloud-client";
 import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
@@ -62,6 +67,45 @@ export async function POST(request: NextRequest) {
     const { data: provider } = await supabase.from("providers").select("accept_paycloud, tenant_id").eq("id", providerId).single();
     if (!provider?.accept_paycloud) {
       return NextResponse.json({ data: null, error: { message: "Turn on Accept in-person card payments in Card machines settings.", code: "PAYCLOUD_NOT_ACCEPTED" } }, { status: 403 });
+    }
+
+    const { data: paycloudSettings } = await supabase
+      .from("provider_paycloud_settings")
+      .select("qr_payments_enabled, cashback_enabled")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (parsed.data.pay_method === "qr") {
+      const qrFlagOn = await isPaycloudQrEnabledForProvider(supabase, providerId);
+      if (!qrFlagOn || paycloudSettings?.qr_payments_enabled !== true) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "QR payments are not enabled for this account.",
+              code: "QR_NOT_ENABLED",
+            },
+          },
+          { status: 403 },
+        );
+      }
+    }
+
+    const cashbackAmount = parsed.data.cashback_amount ?? 0;
+    if (cashbackAmount > 0) {
+      const cashbackFlagOn = await isPaycloudCashbackEnabledForProvider(supabase, providerId);
+      if (!cashbackFlagOn || paycloudSettings?.cashback_enabled !== true) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Cashback is not enabled for this account.",
+              code: "CASHBACK_NOT_ENABLED",
+            },
+          },
+          { status: 403 },
+        );
+      }
     }
 
     const expected = await computeExpectedAmountForEntity(supabase, providerId, parsed.data.entity_type, parsed.data.entity_id);

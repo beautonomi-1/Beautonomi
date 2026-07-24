@@ -1,18 +1,19 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   errorResponse,
   getProviderIdForUser,
   handleApiError,
   notFoundResponse,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 
 const markCollectedSchema = z.object({
-  payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paystack_terminal"]),
+  payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paycloud", "paystack_terminal"]),
   reference: z.string().trim().max(200).optional(),
   idempotency_key: z.string().trim().max(200).optional(),
 });
@@ -23,7 +24,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const body = markCollectedSchema.parse(await request.json());
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -67,6 +72,13 @@ export async function POST(
         400,
       );
     }
+    if (body.payment_method === "paycloud" && !explicitReference) {
+      return errorResponse(
+        "PayCloud card machine collections require the terminal payment reference.",
+        "PAYCLOUD_REFERENCE_REQUIRED",
+        400,
+      );
+    }
 
     const reference =
       explicitReference ||
@@ -74,7 +86,7 @@ export async function POST(
       `product_collect_${id}_${body.payment_method}`;
 
     const result = await recordProductOrderPayment({
-      supabase: supabase as never,
+      supabase: getSupabaseAdmin() as never,
       productOrderId: id,
       reference,
       amountMajor: Number(order.total_amount || 0),

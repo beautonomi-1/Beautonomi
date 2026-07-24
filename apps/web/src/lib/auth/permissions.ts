@@ -8,6 +8,7 @@
 
 import type { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
 
 /** Incoming HTTP request (cookies or Authorization Bearer) for Supabase server client. */
 export type PermissionRequestContext = NextRequest | Request | undefined;
@@ -168,10 +169,9 @@ function getDefaultPermissionsForRole(role: string): StaffPermissions {
     case "owner":
       return getAllPermissions();
     case "manager":
+      return getDefaultStaffPermissionsForDbRole("manager");
     case "employee":
-      // Default policy: staff can use the full app unless access is explicitly
-      // revoked from the permissions UI or a custom role.
-      return getAllPermissions();
+      return getDefaultStaffPermissionsForDbRole("employee");
     default:
       return {};
   }

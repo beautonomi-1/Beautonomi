@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
@@ -15,7 +15,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);

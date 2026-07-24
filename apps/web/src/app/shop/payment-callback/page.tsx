@@ -9,7 +9,7 @@ import Link from "next/link";
 function ProductPaymentCallbackInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error" | "pending">("loading");
   const [message, setMessage] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
 
@@ -86,9 +86,9 @@ function ProductPaymentCallbackInner() {
             if (!cancelled) router.replace("/account-settings/orders");
           }, 4000);
         } else {
-          setStatus("success");
+          setStatus("pending");
           setMessage(
-            "We received your payment. Your order will appear in your orders shortly.",
+            "We are still confirming your payment. Your order will appear in My Orders shortly.",
           );
           notifyWebView({
             type: "checkout_pending",
@@ -101,11 +101,11 @@ function ProductPaymentCallbackInner() {
         }
       } catch (error: unknown) {
         if (cancelled) return;
-        setStatus("success");
+        setStatus("pending");
         setMessage(
           error instanceof Error
-            ? `We received your payment. ${error.message}`
-            : "We received your payment. Please check your orders in a few minutes.",
+            ? `We are still confirming your payment. ${error.message}`
+            : "We are still confirming your payment. Please check My Orders in a few minutes.",
         );
         notifyWebView({
           type: "checkout_pending",
@@ -149,6 +149,21 @@ function ProductPaymentCallbackInner() {
             )}
             <p className="text-gray-500 mb-6">{message}</p>
             <p className="text-sm text-gray-400 mb-4">Redirecting to your orders…</p>
+            <Link
+              href="/account-settings/orders"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 transition-colors"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              View My Orders
+            </Link>
+          </>
+        )}
+
+        {status === "pending" && (
+          <>
+            <Loader2 className="w-16 h-16 text-amber-500 animate-spin mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Payment Pending</h2>
+            <p className="text-gray-500 mb-6">{message}</p>
             <Link
               href="/account-settings/orders"
               className="inline-flex items-center gap-2 px-6 py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 transition-colors"

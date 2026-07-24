@@ -34,7 +34,7 @@ export interface UseIdentityVerificationOptions {
 }
 
 export interface UseIdentityVerificationReturn {
-  status: NormalizedVerificationStatus;
+  status: NormalizedVerificationStatus | null;
   loading: boolean;
   launching: boolean;
   sessionToken: string | null;
@@ -98,7 +98,7 @@ export function useIdentityVerification(
 ): UseIdentityVerificationReturn {
   const { persona, locale, returnTo, pollIntervalMs = 4000 } = options;
 
-  const [status, setStatus] = useState<NormalizedVerificationStatus>("not_started");
+  const [status, setStatus] = useState<NormalizedVerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export function useIdentityVerification(
     let cancelled = false;
     fetchStatus()
       .then(s => { if (!cancelled) setStatus(s); })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setStatus("not_started"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [fetchStatus]);

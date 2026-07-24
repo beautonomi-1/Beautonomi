@@ -93,6 +93,10 @@ async function handleGetRole(request: NextRequest) {
       const staffRow = (staffRowResult as { data?: { id: string } | null } | null)?.data;
       if (staffRow) {
         role = "provider_staff";
+        await supabaseAdmin
+          .from("users")
+          .update({ role: "provider_staff" })
+          .eq("id", user.id);
       }
     }
 

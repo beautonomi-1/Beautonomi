@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
+import { getApiErrorMessage, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -2652,13 +2652,18 @@ export default function BookCheckoutScreen() {
               reason: "cancel_action",
               source: "customer_mobile",
             });
-            Alert.alert(
-              t("checkout.paymentCancelledTitle", "Payment cancelled"),
-              t(
-                "checkout.paymentCancelledBody",
-                "You cancelled the payment. Your booking has not been confirmed."
-              )
-            );
+            if (bookingId) {
+              trackBookingConfirmed(bookingId, paymentMethod, total);
+              navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
+            } else {
+              Alert.alert(
+                t("checkout.paymentCancelledTitle", "Payment cancelled"),
+                t(
+                  "checkout.paymentCancelledBody",
+                  "You cancelled the payment. Your booking has not been confirmed."
+                )
+              );
+            }
             return;
           }
 
@@ -2671,13 +2676,18 @@ export default function BookCheckoutScreen() {
                 reason: "cancel_action",
                 source: "customer_mobile",
               });
-              Alert.alert(
-                t("checkout.paymentCancelledTitle", "Payment cancelled"),
-                t(
-                  "checkout.paymentCancelledBody",
-                  "You cancelled the payment. Your booking has not been confirmed."
-                )
-              );
+              if (bookingId) {
+                trackBookingConfirmed(bookingId, paymentMethod, total);
+                navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
+              } else {
+                Alert.alert(
+                  t("checkout.paymentCancelledTitle", "Payment cancelled"),
+                  t(
+                    "checkout.paymentCancelledBody",
+                    "You cancelled the payment. Your booking has not been confirmed."
+                  )
+                );
+              }
               return;
             }
             const extracted = extractPaystackReferenceFromUrl(authResult.url);
@@ -2767,6 +2777,20 @@ export default function BookCheckoutScreen() {
     } catch (e) {
       setProcessingPayment(false);
       setProcessingStep(undefined);
+      if (isTransientApiFailure(e)) {
+        Alert.alert(
+          t("checkout.paymentPendingPollTitle"),
+          t("checkout.paymentPendingPollBody"),
+          [
+            {
+              text: t("checkout.viewBookingsCta"),
+              onPress: () => router.replace("/(app)/(tabs)/bookings" as never),
+            },
+            { text: t("common.ok"), style: "cancel" },
+          ]
+        );
+        return;
+      }
       setError(getApiErrorMessage(e, t("checkout.failedComplete")));
     } finally {
       consumeInFlightRef.current = false;

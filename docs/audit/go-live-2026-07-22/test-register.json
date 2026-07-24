@@ -1,0 +1,68 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "generated_at": "2026-07-22T19:30:48.870Z",
+  "test_file_count": 934,
+  "critical_journey_coverage": [
+    {
+      "journey": "JRN-004",
+      "risk": "P0",
+      "coverage": "partial",
+      "tests": [
+        "apps/web/e2e/money-path.spec.ts",
+        "payment webhook unit tests"
+      ],
+      "gap": "no signed webhook E2E"
+    },
+    {
+      "journey": "JRN-026",
+      "risk": "P0",
+      "coverage": "partial",
+      "tests": [
+        "route.post-rpc.test.ts",
+        "available-payout-balance.test.ts"
+      ],
+      "gap": "no initiate-transfer E2E"
+    },
+    {
+      "journey": "JRN-052",
+      "risk": "P0",
+      "coverage": "partial",
+      "tests": [
+        "isolation-runtime.test.ts (mocked)"
+      ],
+      "gap": "no live cross-tenant test"
+    }
+  ],
+  "e2e_specs": [
+    "apps/web/e2e/booking-happy-path.spec.ts",
+    "apps/web/e2e/money-path.spec.ts",
+    "apps/admin-web/e2e/login-shell.spec.ts"
+  ],
+  "unit_suites_verified": {
+    "customer": {
+      "suites": 32,
+      "tests": 216,
+      "status": "pass"
+    },
+    "provider": {
+      "suites": 72,
+      "tests": 357,
+      "status": "pass"
+    },
+    "admin_web": {
+      "suites": 18,
+      "tests": 256,
+      "status": "pass"
+    },
+    "web": {
+      "suites": 451,
+      "tests": 2353,
+      "passed": 2353,
+      "failed": 0,
+      "status": "pass",
+      "note": "After fixes: 2 real test-mock gaps repaired; 3 timeouts were parallel-load artifacts (pass in isolation)"
+    }
+  },
+  "release_quality_score": 60,
+  "confidence": "high"
+}

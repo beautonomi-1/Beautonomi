@@ -109,11 +109,35 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
     }
 
     if (
+      templateKey.startsWith("terminal_merchant_application_") ||
+      data.application_id
+    ) {
+      router.push("/(app)/(tabs)/more/terminal-merchant-application" as never);
+      return true;
+    }
+
+    if (
+      templateKey === "support_ticket_updated" ||
+      type === "support_ticket" ||
+      type === "ticket_update" ||
+      type === "ticket_reply" ||
+      data.ticket_id
+    ) {
+      const tid = String(data.ticket_id ?? "").trim();
+      if (tid) {
+        router.push({ pathname: "/(app)/(tabs)/more/support-tickets/[id]", params: { id: tid } });
+      } else {
+        router.push("/(app)/(tabs)/more/support-tickets" as never);
+      }
+      return true;
+    }
+
+    if (
       typeLc === "ads_payment_confirmed" ||
       actionUrlLc.includes("/provider/settings/ads") ||
       actionUrlLc.includes("settings/ads")
     ) {
-      router.push("/(app)/(tabs)/more/settings/ads" as never);
+      router.push("/(app)/(tabs)/bookings" as never);
       return true;
     }
 
@@ -131,7 +155,7 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
     }
 
     if (templateKey.startsWith("provider_payout_") || templateKey === "provider_earnings_summary") {
-      router.push("/(app)/(tabs)/more/finance");
+      router.push("/(app)/(tabs)/more" as never);
       return true;
     }
 
@@ -182,7 +206,7 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
       templateKey === "provider_holiday_mode" ||
       templateKey === "provider_holiday_mode_ending"
     ) {
-      router.push("/(app)/(tabs)/more/settings/hours");
+      router.push("/(app)/(tabs)/more/time-blocks" as never);
       return true;
     }
 
@@ -317,21 +341,31 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
         return true;
       case "staff_schedule_change":
       case "team_update":
-      case "staff_invitation":
         router.push("/(app)/(tabs)/more/team");
         return true;
+      case "staff_invitation": {
+        const token =
+          getLinkParam(actionUrl, "token") ||
+          (typeof data?.invitation_token === "string" ? data.invitation_token : null);
+        if (token) {
+          router.push(`/join?token=${encodeURIComponent(token)}` as never);
+        } else {
+          router.push("/join" as never);
+        }
+        return true;
+      }
       case "custom_order_paid":
         if (bookingId) {
           router.push({ pathname: "/(app)/(tabs)/bookings/[id]", params: { id: bookingId } });
         } else {
-          router.push("/(app)/(tabs)/more/finance");
+          router.push("/(app)/(tabs)/more" as never);
         }
         return true;
       case "payout_completed":
       case "payout_sent":
       case "payment_received":
       case "payment_failed":
-        router.push("/(app)/(tabs)/more/finance");
+        router.push("/(app)/(tabs)/more" as never);
         return true;
       case "waitlist_update":
         router.push("/(app)/(tabs)/more/waitlist");

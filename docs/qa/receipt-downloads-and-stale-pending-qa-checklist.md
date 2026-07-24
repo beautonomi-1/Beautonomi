@@ -45,12 +45,15 @@ Automated coverage already in place (does not need manual re-verification):
 
 ## Stale pending bookings — provider app
 
-- [ ] Seed (or find) a `pending` booking scheduled more than 30 days in the past. Confirm it is **not** reachable via the Day view date strip (expected — strip is capped at ±30 days).
-- [ ] Bookings tab shows a "needs-attention" banner ("N booking requests from past dates need your attention — Review") when `stale_pending_bookings > 0`.
-- [ ] Tapping the banner switches to Overview mode, filters to Pending, widens date range to "all", and sorts oldest-first — the stale booking(s) now appear in the list.
+- [ ] Seed (or find) a `pending` booking scheduled more than 30 days in the past. Confirm it is **not** reachable via the Day view date strip alone (expected — strip is capped at ±30 days around the current anchor).
+- [ ] Bookings tab shows a "needs-attention" banner ("N booking requests from past dates need your attention — Review") when `stale_pending_bookings > 0` for the **currently selected location** (banner should not appear for stale bookings at another branch).
+- [ ] Tapping the banner switches to Overview mode, filters to **To review** (`pending` + `pending_payment`), widens date range to "All", sets stats to "All", clears search, and sorts oldest-first — the stale booking(s) now appear in the list.
 - [ ] From that list, Confirm and Cancel actions on a stale booking work exactly as they do for a normal pending booking (via `BookingScheduleCard`).
-- [ ] In Overview mode, tapping the "Pending" stat card (with no stale bookings) also applies the pending filter + "all" date range and the list matches the count shown on the card.
-- [ ] After confirming/cancelling all stale pending bookings, the banner disappears and `stale_pending_bookings` in nav-counts returns to 0.
+- [ ] In Overview mode, tapping the "Pending" stat card also applies the To review filter + "All" date range and the list matches actionable pending rows.
+- [ ] After confirming/cancelling all stale pending bookings, the banner disappears and `stale_pending_bookings` in nav-counts returns to 0 for that location.
+- [ ] **Calendar date jump:** On Day view, tap the calendar control (shows selected date). Pick a date more than 30 days in the past that has bookings — the strip re-centers around that date and the day's schedule shows those appointments (including pending).
+- [ ] **Deep link:** Open Bookings with `?date=YYYY-MM-DD` for a date outside the default ±30-day window — same behaviour as the calendar jump (strip re-anchors, day schedule loads).
+- [ ] **Pending deep link:** Open Bookings with `?status=pending` or `?status=pending_payment` — Overview opens with To review (or matching status), date range "All", and past pending rows are visible.
 
 ## Stale pending bookings — auto-expiry cron
 

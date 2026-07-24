@@ -1,0 +1,97 @@
+import type { StaffPermissions } from "@/lib/auth/permissions";
+
+/** Default permissions for new staff rows — aligned with SQL `get_default_permissions_for_role`. */
+export function getDefaultStaffPermissionsForDbRole(
+  dbRole: "owner" | "manager" | "employee",
+): StaffPermissions {
+  switch (dbRole) {
+    case "owner":
+      return {
+        view_calendar: true,
+        create_appointments: true,
+        edit_appointments: true,
+        cancel_appointments: true,
+        delete_appointments: true,
+        view_sales: true,
+        create_sales: true,
+        process_payments: true,
+        view_reports: true,
+        view_services: true,
+        edit_services: true,
+        view_products: true,
+        edit_products: true,
+        view_team: true,
+        manage_team: true,
+        view_settings: true,
+        edit_settings: true,
+        view_clients: true,
+        edit_clients: true,
+        view_reviews: true,
+        edit_reviews: true,
+        view_messages: true,
+        send_messages: true,
+        create_explore_posts: true,
+        rate_clients: true,
+        view_client_ratings: true,
+      };
+    case "manager":
+      return {
+        view_calendar: true,
+        create_appointments: true,
+        edit_appointments: true,
+        cancel_appointments: true,
+        delete_appointments: false,
+        view_sales: true,
+        create_sales: true,
+        process_payments: true,
+        view_reports: true,
+        view_services: true,
+        edit_services: true,
+        view_products: true,
+        edit_products: true,
+        view_team: true,
+        manage_team: true,
+        view_settings: true,
+        edit_settings: false,
+        view_clients: true,
+        edit_clients: true,
+        view_reviews: true,
+        edit_reviews: false,
+        view_messages: true,
+        send_messages: true,
+        create_explore_posts: true,
+        rate_clients: true,
+        view_client_ratings: true,
+      };
+    case "employee":
+    default:
+      return {
+        view_calendar: true,
+        create_appointments: true,
+        edit_appointments: true,
+        cancel_appointments: true,
+        delete_appointments: false,
+        view_sales: true,
+        create_sales: true,
+        process_payments: true,
+        view_reports: false,
+        view_services: true,
+        edit_services: false,
+        view_products: true,
+        edit_products: false,
+        view_team: true,
+        manage_team: false,
+        view_settings: false,
+        edit_settings: false,
+        view_clients: true,
+        edit_clients: true,
+        view_reviews: true,
+        edit_reviews: false,
+        view_messages: true,
+        send_messages: true,
+        create_explore_posts: false,
+        rate_clients: false,
+        view_client_ratings: false,
+      };
+  }
+}

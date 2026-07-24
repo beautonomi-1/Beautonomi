@@ -48,6 +48,162 @@ function resolveBillingPeriod(
 }
 
 const LOCAL_DRAFT_KEY = "beautonomi_provider_onboarding_draft_local";
+const ONBOARDING_CHECKOUT_PENDING_KEY = "beautonomi_provider_onboarding_checkout_pending";
+const ONBOARDING_CHECKOUT_PENDING_TTL_MS = 2 * 60 * 60 * 1000;
+
+type PendingOnboardingCheckout = {
+  reference?: string;
+  orderId?: string | null;
+  createdAt: number;
+};
+
+async function savePendingOnboardingCheckout(payload: {
+  reference?: string;
+  orderId?: string | null;
+}): Promise<void> {
+  try {
+    const pending: PendingOnboardingCheckout = {
+      reference: payload.reference?.trim() || undefined,
+      orderId: payload.orderId ?? null,
+      createdAt: Date.now(),
+    };
+    await AsyncStorage.setItem(ONBOARDING_CHECKOUT_PENDING_KEY, JSON.stringify(pending));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function clearPendingOnboardingCheckout(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(ONBOARDING_CHECKOUT_PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function readPendingOnboardingCheckout(): Promise<PendingOnboardingCheckout | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ONBOARDING_CHECKOUT_PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingOnboardingCheckout;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function completeCheckoutAfterReturn(options: {
+  result: InAppPaystackResult;
+  reference?: string | null;
+  orderId?: string | null;
+  router: Router;
+}): Promise<boolean> {
+  const { result, reference: initialReference, orderId, router } = options;
+
+  if (result.outcome === "cancel") {
+    await clearPendingOnboardingCheckout();
+    Alert.alert(
+      "Payment cancelled",
+      "No charge was made. Complete your subscription any time from Settings.",
+      [
+        {
+          text: "Open subscription",
+          onPress: () => router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+        },
+        {
+          text: "Continue to app",
+          style: "cancel",
+          onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+        },
+      ],
+    );
+    return false;
+  }
+
+  const isClosed = result.outcome === "closed";
+  if (result.outcome !== "success" && !isClosed) {
+    return false;
+  }
+
+  let reference = initialReference?.trim() || null;
+  if (result.outcome === "success" && result.url) {
+    if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
+      await clearPendingOnboardingCheckout();
+      Alert.alert(
+        "Payment not completed",
+        "Something went wrong. Complete your subscription any time from Settings.",
+        [
+          {
+            text: "Open subscription",
+            onPress: () => router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+          },
+          {
+            text: "Continue to app",
+            style: "cancel",
+            onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+          },
+        ],
+      );
+      return false;
+    }
+    const extracted = extractPaystackReferenceFromUrl(result.url);
+    if (extracted) reference = extracted;
+  }
+
+  const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+  if (verifyResult?.status === "failed") {
+    Alert.alert(
+      "Payment not completed",
+      verifyResult.errorMessage || "Something went wrong. Complete your subscription any time from Settings.",
+      [
+        {
+          text: "Open subscription",
+          onPress: () => router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+        },
+        {
+          text: "Continue to app",
+          style: "cancel",
+          onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+        },
+      ],
+    );
+    return false;
+  }
+
+  await pollSubscriptionProvisioned({
+    orderId: orderId ?? null,
+    maxAttempts: 6,
+    delayMs: 1500,
+  });
+  await clearPendingOnboardingCheckout();
+  router.replace("/(app)/onboarding/verify-identity" as never);
+  return true;
+}
+
+export async function resumePendingOnboardingCheckout(router: Router): Promise<boolean> {
+  const pending = await readPendingOnboardingCheckout();
+  if (!pending?.reference?.trim()) return false;
+  if (Date.now() - (pending.createdAt ?? 0) > ONBOARDING_CHECKOUT_PENDING_TTL_MS) {
+    await clearPendingOnboardingCheckout();
+    return false;
+  }
+
+  const verifyResult = await verifyPaystackWithRetry(pending.reference.trim());
+  if (verifyResult?.status === "failed") {
+    await clearPendingOnboardingCheckout();
+    return false;
+  }
+
+  await pollSubscriptionProvisioned({
+    orderId: pending.orderId ?? null,
+    maxAttempts: 6,
+    delayMs: 1500,
+  });
+  await clearPendingOnboardingCheckout();
+  router.replace("/(app)/onboarding/verify-identity" as never);
+  return true;
+}
 
 export interface OnboardingCompletionData {
   message?: string;
@@ -234,6 +390,11 @@ export async function finalizeOnboardingSuccess(options: {
           return;
         }
 
+        await savePendingOnboardingCheckout({
+          reference: checkoutStart.reference,
+          orderId: checkoutStart.orderId ?? null,
+        });
+
         const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
         const result = await waitForCheckout(checkoutStart.authorizationUrl, {
           returnUrl: subscriptionReturnUrl,
@@ -241,56 +402,12 @@ export async function finalizeOnboardingSuccess(options: {
           matchCancel: (u) => matchesSubscriptionPaystackReturnUrl(u, { cancelled: true }),
         });
 
-        if (result.outcome === "success") {
-          const reference = extractPaystackReferenceFromUrl(result.url);
-          const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
-          if (verifyResult?.status === "failed") {
-            Alert.alert(
-              "Payment not completed",
-              verifyResult.errorMessage || "Something went wrong. Complete your subscription any time from Settings.",
-              [
-                {
-                  text: "Open subscription",
-                  onPress: () =>
-                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
-                },
-                {
-                  text: "Continue to app",
-                  style: "cancel",
-                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
-                },
-              ],
-            );
-            return;
-          }
-
-          await pollSubscriptionProvisioned({
-            orderId: checkoutStart.orderId ?? null,
-            maxAttempts: 6,
-            delayMs: 1500,
-          });
-          router.replace("/(app)/onboarding/verify-identity" as never);
-        } else {
-          const isCancelled = result.outcome === "cancel";
-          Alert.alert(
-            isCancelled ? "Payment cancelled" : "Payment not completed",
-            isCancelled
-              ? "No charge was made. Complete your subscription any time from Settings."
-              : "Something went wrong. Complete your subscription any time from Settings.",
-            [
-              {
-                text: "Open subscription",
-                onPress: () =>
-                  router.replace("/(app)/(tabs)/more/settings/subscription" as never),
-              },
-              {
-                text: "Continue to app",
-                style: "cancel",
-                onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
-              },
-            ],
-          );
-        }
+        await completeCheckoutAfterReturn({
+          result,
+          reference: checkoutStart.reference ?? null,
+          orderId: checkoutStart.orderId ?? null,
+          router,
+        });
       } catch (e) {
         Alert.alert(
           "Checkout failed",

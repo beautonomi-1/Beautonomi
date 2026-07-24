@@ -19,6 +19,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
@@ -86,6 +87,7 @@ const walkInSaleSchema = z
     payment_method: z.enum(["cash", "yoco", "card", "eft", "other", "paycloud", "paystack_terminal"]),
     payment_reference: z.string().max(200).optional(),
     finalize_paycloud_order_id: z.string().uuid().optional(),
+    finalize_walk_in_order_id: z.string().uuid().optional(),
     customer_name: z.string().max(100).optional(),
     customer_phone: z.string().max(32).optional(),
     /** Optional dial digits / ISO hint for national-format phones (matches clients/create). */
@@ -95,7 +97,7 @@ const walkInSaleSchema = z
     location_id: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.finalize_paycloud_order_id) return;
+    if (data.finalize_paycloud_order_id || data.finalize_walk_in_order_id) return;
     if (!data.items?.length) {
       ctx.addIssue({ code: "custom", message: "At least one item is required", path: ["items"] });
     }
@@ -127,7 +129,7 @@ function variantLabel(optionValues: Record<string, unknown> | null | undefined, 
   return "Option";
 }
 
-async function finalizePaycloudWalkInOrder(params: {
+async function finalizePaidWalkInOrder(params: {
   supabase: Awaited<ReturnType<typeof getSupabaseServer>>;
   providerId: string;
   userId: string;
@@ -137,7 +139,9 @@ async function finalizePaycloudWalkInOrder(params: {
 
   const { data: order, error: orderErr } = await supabase
     .from("product_orders")
-    .select("id, order_number, provider_id, payment_status, payment_reference, status, total_amount, order_source")
+    .select(
+      "id, order_number, provider_id, payment_status, payment_reference, payment_method, status, total_amount, order_source",
+    )
     .eq("id", orderId)
     .eq("provider_id", providerId)
     .maybeSingle();
@@ -162,93 +166,76 @@ async function finalizePaycloudWalkInOrder(params: {
     return successResponse({ order: { ...order, items: items ?? [] } });
   }
 
-  const { data: lineItems, error: itemsErr } = await supabase
-    .from("product_order_items")
-    .select("product_id, product_variant_id, quantity")
-    .eq("order_id", orderId);
-  if (itemsErr) throw itemsErr;
+  const paymentMethod = String(order.payment_method ?? "");
+  const isPlatformPaystack = paymentMethod === "paystack";
 
-  const posItems = (lineItems ?? []).map((item) => ({
-    type: "product" as const,
-    item_id: item.product_id,
-    product_variant_id: item.product_variant_id ?? null,
-    quantity: item.quantity,
-  }));
-
-  const stockValidation = await validatePosProductStock(supabase, providerId, posItems);
-  if (stockValidation) {
-    return errorResponse(stockValidation, "STOCK_ERROR", 400);
+  if (!isPlatformPaystack) {
+    const totalAmount = Number(order.total_amount ?? 0);
+    try {
+      const payResult = await recordProductOrderPayment({
+        supabase: getSupabaseAdmin() as never,
+        productOrderId: orderId,
+        reference: order.payment_reference?.trim() || `walk_in_pos_${orderId}`,
+        amountMajor: totalAmount,
+        feesMajor: 0,
+        source: "walk_in_pos",
+        provider: paymentMethod === "paycloud" ? "paycloud" : "card_on_delivery",
+        platformHeld: false,
+      });
+      if (payResult.ledgerIncomplete) {
+        return errorResponse(
+          "Payment ledger could not be recorded. Try again in a moment.",
+          "LEDGER_INCOMPLETE",
+          500,
+        );
+      }
+    } catch (ledgerErr) {
+      console.error("[product-sales] finalize walk-in recordProductOrderPayment failed", {
+        orderId,
+        error: ledgerErr,
+      });
+      return errorResponse(
+        "Payment ledger could not be recorded. Try again in a moment.",
+        "LEDGER_ERROR",
+        500,
+      );
+    }
   }
 
-  const totalAmount = Number(order.total_amount ?? 0);
-  let payResult = { transitionedToPaid: false, duplicate: false };
-  try {
-    payResult = await recordProductOrderPayment({
-      supabase: getSupabaseAdmin() as never,
-      productOrderId: orderId,
-      reference: order.payment_reference?.trim() || `walk_in_paycloud_${orderId}`,
-      amountMajor: totalAmount,
-      feesMajor: 0,
-      source: "walk_in_pos",
-      provider: "card_on_delivery",
-      platformHeld: false,
-    });
-  } catch (ledgerErr) {
-    console.error("[product-sales] finalize paycloud recordProductOrderPayment failed", {
-      orderId,
-      error: ledgerErr,
-    });
+  const delivery = await fulfillWalkInProductOrderDelivery({
+    supabase,
+    providerId,
+    orderId,
+    actorUserId: userId,
+  });
+  if (delivery.ok === false) {
+    return errorResponse(delivery.reason, "FULFILLMENT_ERROR", 400);
   }
-
-  await applyPosProductStockDecrements(supabase, posItems);
-
-  try {
-    const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
-    await logSaleStockMovements(supabase, {
-      providerId,
-      referenceId: orderId,
-      actorUserId: userId,
-      lines: (lineItems ?? []).map((i) => ({
-        productId: i.product_id,
-        productVariantId: i.product_variant_id ?? null,
-        quantity: i.quantity,
-      })),
-    });
-  } catch (logErr) {
-    console.error("[product-sales] finalize paycloud stock movement log failed:", logErr);
-  }
-
-  const { data: updated, error: updateErr } = await supabase
-    .from("product_orders")
-    .update({
-      status: "delivered",
-      delivered_at: new Date().toISOString(),
-      paid_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .eq("provider_id", providerId)
-    .select()
-    .single();
-  if (updateErr) throw updateErr;
 
   try {
     const { notifyProductOrderPaidIfTransitioned } = await import(
       "@/lib/notifications/notify-product-order-paid"
     );
     await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, orderId, {
-      transitionedToPaid: payResult.transitionedToPaid,
+      transitionedToPaid: false,
     });
   } catch (notifyErr) {
-    console.error("[product-sales] finalize paycloud notify failed:", notifyErr);
+    console.error("[product-sales] finalize walk-in notify failed:", notifyErr);
   }
+
+  const { data: updated } = await supabase
+    .from("product_orders")
+    .select("*")
+    .eq("id", orderId)
+    .eq("provider_id", providerId)
+    .maybeSingle();
 
   const { data: displayItems } = await supabase
     .from("product_order_items")
     .select("product_name, quantity, unit_price")
     .eq("order_id", orderId);
 
-  return successResponse({ order: { ...updated, items: displayItems ?? [] } }, 200);
+  return successResponse({ order: { ...(updated ?? order), items: displayItems ?? [] } }, 200);
 }
 
 /**
@@ -269,12 +256,14 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    if (parsed.finalize_paycloud_order_id) {
-      return finalizePaycloudWalkInOrder({
+    const finalizeOrderId =
+      parsed.finalize_walk_in_order_id ?? parsed.finalize_paycloud_order_id;
+    if (finalizeOrderId) {
+      return finalizePaidWalkInOrder({
         supabase,
         providerId,
         userId: user.id,
-        orderId: parsed.finalize_paycloud_order_id,
+        orderId: finalizeOrderId,
       });
     }
 
@@ -566,7 +555,10 @@ export async function POST(request: NextRequest) {
     }));
 
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      await supabase.from("product_orders").delete().eq("id", order.id);
+      throw insertErr;
+    }
 
     if (isPendingTerminal) {
       return successResponse({ order: { ...order, items: orderItems } }, 201);

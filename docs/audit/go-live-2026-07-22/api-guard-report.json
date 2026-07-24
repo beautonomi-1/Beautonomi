@@ -1,0 +1,193 @@
+{
+  "generated_at": "2026-07-22T19:07:58.838Z",
+  "summary": {
+    "admin": {
+      "total": 451,
+      "with_auth_guard": 438,
+      "without_auth_guard": 13,
+      "provider_missing_tenant_guard": 0,
+      "cron_with_secret": 1
+    },
+    "provider": {
+      "total": 464,
+      "with_auth_guard": 355,
+      "without_auth_guard": 109,
+      "provider_missing_tenant_guard": 16,
+      "cron_with_secret": 1
+    },
+    "me": {
+      "total": 133,
+      "with_auth_guard": 129,
+      "without_auth_guard": 4,
+      "provider_missing_tenant_guard": 0,
+      "cron_with_secret": 0
+    },
+    "public": {
+      "total": 95,
+      "with_auth_guard": 2,
+      "without_auth_guard": 93,
+      "provider_missing_tenant_guard": 0,
+      "cron_with_secret": 0
+    },
+    "cron": {
+      "total": 49,
+      "with_auth_guard": 0,
+      "without_auth_guard": 49,
+      "provider_missing_tenant_guard": 0,
+      "cron_with_secret": 4
+    },
+    "other": {
+      "total": 90,
+      "with_auth_guard": 35,
+      "without_auth_guard": 55,
+      "provider_missing_tenant_guard": 0,
+      "cron_with_secret": 0
+    }
+  },
+  "samples": {
+    "admin_unguarded": [
+      {
+        "path": "/api/admin/ads/campaigns",
+        "file": "apps/web/src/app/api/admin/ads/campaigns/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/ads/campaigns/[id]",
+        "file": "apps/web/src/app/api/admin/ads/campaigns/[id]/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/ads/overview",
+        "file": "apps/web/src/app/api/admin/ads/overview/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye/audit",
+        "file": "apps/web/src/app/api/admin/gods-eye/audit/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye/booking/[id]/track",
+        "file": "apps/web/src/app/api/admin/gods-eye/booking/[id]/track/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye/config",
+        "file": "apps/web/src/app/api/admin/gods-eye/config/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye/map-state",
+        "file": "apps/web/src/app/api/admin/gods-eye/map-state/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye/retention",
+        "file": "apps/web/src/app/api/admin/gods-eye/retention/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/gods-eye",
+        "file": "apps/web/src/app/api/admin/gods-eye/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/admin/impersonation/check",
+        "file": "apps/web/src/app/api/admin/impersonation/check/route.ts",
+        "hasRequireRole": false,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      }
+    ],
+    "provider_missing_tenant": [
+      {
+        "path": "/api/provider/bookings/[id]/receipt/pdf",
+        "file": "apps/web/src/app/api/provider/bookings/[id]/receipt/pdf/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/calendar/auth-url",
+        "file": "apps/web/src/app/api/provider/calendar/auth-url/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/calendar/syncs",
+        "file": "apps/web/src/app/api/provider/calendar/syncs/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/calendar/syncs/[id]",
+        "file": "apps/web/src/app/api/provider/calendar/syncs/[id]/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/custom-offers/upload",
+        "file": "apps/web/src/app/api/provider/custom-offers/upload/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/invoices/generate",
+        "file": "apps/web/src/app/api/provider/invoices/generate/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/notification-preferences",
+        "file": "apps/web/src/app/api/provider/notification-preferences/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/notification-preferences/test",
+        "file": "apps/web/src/app/api/provider/notification-preferences/test/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/onboarding/draft",
+        "file": "apps/web/src/app/api/provider/onboarding/draft/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      },
+      {
+        "path": "/api/provider/onboarding/invite/redeem",
+        "file": "apps/web/src/app/api/provider/onboarding/invite/redeem/route.ts",
+        "hasRequireRole": true,
+        "hasGetProviderId": false,
+        "hasCronSecret": false
+      }
+    ]
+  }
+}

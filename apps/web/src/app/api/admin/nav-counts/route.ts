@@ -4,7 +4,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
-import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
+import { countRefundableSuccessPaymentTxsForTenant } from "@/lib/admin/refundable-payment-transactions";
 import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
       opsActivationResult,
       safetyOpenResult,
       paystackTerminalSetupResult,
+      diditSessionsResult,
+      terminalMerchantOnboardingResult,
     ] = await Promise.all([
       (async () => {
         const { data: rows, error } = await supabase
@@ -101,19 +103,8 @@ export async function GET(request: NextRequest) {
         return { count: 0, sla_breached: 0 };
       })(),
       (async () => {
-        const { count: bookingPending } = await supabase
-          .from("payment_transactions")
-          .select("id, booking:bookings!inner(tenant_id)", { count: "exact", head: true })
-          .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success")
-          .eq("status", "pending")
-          .eq("booking.tenant_id", tenantId);
-        const orphanPending = await fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
-          startDate: null,
-          endDate: null,
-          status: "pending",
-          transactionType: null,
-        });
-        return { count: (bookingPending ?? 0) + orphanPending.length };
+        const count = await countRefundableSuccessPaymentTxsForTenant(supabase, tenantId);
+        return { count };
       })(),
       supabase
         .from("booking_disputes")
@@ -249,6 +240,26 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
+      isSuperadmin
+        ? supabase
+            .from("identity_verification_sessions")
+            .select("id", { count: "exact", head: true })
+            .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+            .eq("status", "pending_review")
+        : Promise.resolve({ count: 0, error: null }),
+      (async () => {
+        try {
+          const { count, error } = await supabase
+            .from("terminal_merchant_applications")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenantId)
+            .in("status", ["submitted", "in_review", "info_required", "sent_to_acquirer", "awaiting_term_sheet"]);
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
     ]);
 
     const counts: Record<string, number> = {
@@ -270,6 +281,8 @@ export async function GET(request: NextRequest) {
       "/admin/provider-ops/activation": opsActivationResult.count ?? 0,
       "/admin/control-plane/safety-logs": safetyOpenResult.count ?? 0,
       "/admin/paystack-terminal": paystackTerminalSetupResult.count ?? 0,
+      "/admin/identity-trust/sessions": diditSessionsResult.count ?? 0,
+      "/admin/commercial/terminal-onboarding": terminalMerchantOnboardingResult.count ?? 0,
     };
 
     return successResponse(counts);

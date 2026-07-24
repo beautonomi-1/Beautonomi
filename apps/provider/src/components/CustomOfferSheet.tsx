@@ -45,17 +45,6 @@ const EMPTY_GLOBAL_CATEGORIES: GlobalCategory[] = [];
 /** Matches API + web provider modal minimum. */
 const MIN_DESC = 5;
 
-interface AvailableSlotRow {
-  time: string;
-  available?: boolean;
-}
-
-interface AvailableSlotsResponse {
-  slots?: string[];
-  slot_grid?: AvailableSlotRow[];
-  provider_timezone?: string | null;
-}
-
 function dateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -92,7 +81,7 @@ export function CustomOfferSheet({
   }, [globalCategories, categoryQuery]);
   const { data: locationsData } = useApi<{ id: string; name: string }[]>("/api/provider/locations", { enabled: visible });
   const { data: teamData } = useApi<{ id: string; name: string }[]>("/api/provider/team", { enabled: visible });
-  const locations = locationsData ?? [];
+  const locations = useMemo(() => locationsData ?? [], [locationsData]);
   const staffList = Array.isArray(teamData) ? teamData : [];
 
   const [serviceName, setServiceName] = useState("");
@@ -125,6 +114,11 @@ export function CustomOfferSheet({
   const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
   const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!visible || locationType !== "at_salon" || locationId || locations.length === 0) return;
+    setLocationId(locations[0]!.id);
+  }, [visible, locationType, locationId, locations]);
   const tenantCurrency = getTenantDefaultCurrency();
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);
@@ -310,8 +304,14 @@ export function CustomOfferSheet({
     if (expirationDays.trim() === "") return "Enter how many days until the offer expires (at least 1).";
     const ex = Number(expirationDays);
     if (!Number.isFinite(ex) || ex < 1) return "Expiration must be at least 1 day.";
+    if (locationType === "at_home" && !addressLine1.trim()) {
+      return "House-call offers need a service address.";
+    }
+    if (locationType === "at_salon" && !locationId) {
+      return "At-salon offers need a salon location.";
+    }
     return null;
-  }, [description, price, duration, expirationDays]);
+  }, [description, price, duration, expirationDays, locationType, addressLine1, locationId]);
 
   const isValid = validationHint === null;
 

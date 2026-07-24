@@ -1011,6 +1011,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clear auth cache and fetcher response cache first
       clearAuthCache();
       clearFetcherCache();
+      try {
+        sessionStorage.removeItem("provider_gate_status");
+      } catch {
+        /* ignore */
+      }
 
       // Call server to clear HTTP-only cookies
       await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => {});

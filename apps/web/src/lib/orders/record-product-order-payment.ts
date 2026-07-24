@@ -20,7 +20,8 @@ type RecordProductOrderPaymentInput = {
     | "wallet_checkout"
     | "provider_mark_collected"
     | "walk_in_pos"
-    | "paycloud_terminal";
+    | "paycloud_terminal"
+    | "yoco_terminal";
   provider: "paystack" | "wallet" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
   /** True when Beautonomi/gateway holds money that can become provider payout balance. */
   platformHeld?: boolean;
@@ -28,7 +29,7 @@ type RecordProductOrderPaymentInput = {
 
 export async function recordProductOrderPayment(
   input: RecordProductOrderPaymentInput,
-): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean }> {
+): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean; ledgerIncomplete?: boolean }> {
   return Sentry.startSpan(
     {
       name: "finance.recordProductOrderPayment",
@@ -46,7 +47,7 @@ export async function recordProductOrderPayment(
 
 async function recordProductOrderPaymentInner(
   input: RecordProductOrderPaymentInput,
-): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean }> {
+): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean; ledgerIncomplete?: boolean }> {
   const { supabase, productOrderId, reference, amountMajor, feesMajor = 0, source, provider } = input;
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
@@ -92,24 +93,41 @@ async function recordProductOrderPaymentInner(
     return { ok: true, duplicate: true, transitionedToPaid: false };
   }
 
-  const { error: orderUpdateError } = await (supabase.from("product_orders") as any)
-    .update({
-      tenant_id: financeTenantId,
-      payment_status: "paid",
-      payment_reference: reference,
-      status: ["pending", "cancelled", "refunded"].includes(String((order as any).status ?? ""))
-        ? "confirmed"
-        : (order as any).status,
-      confirmed_at: new Date().toISOString(),
-      paid_at: new Date().toISOString(),
-    })
-    .eq("id", productOrderId);
-  if (orderUpdateError) throw orderUpdateError;
+  // product_orders stores tender on payment_method (cash/yoco/paycloud/paystack/…);
+  // there is no payment_provider column — payment_provider_id is the gateway reference.
+  const paymentMethodForOrder =
+    provider === "card_on_delivery" ? "card_on_delivery" : provider;
 
-  const customerId = (order as any).customer_id as string | undefined;
-  const providerId = (order as any).provider_id as string | undefined;
-  if (customerId && providerId) {
-    await clearCustomerCartForProvider(supabase, customerId, providerId);
+  let transitionedToPaid = false;
+  if (!wasAlreadyPaid) {
+    const { data: updatedRows, error: orderUpdateError } = await (supabase.from("product_orders") as any)
+      .update({
+        tenant_id: financeTenantId,
+        payment_status: "paid",
+        payment_reference: reference,
+        payment_method: paymentMethodForOrder,
+        status: String((order as any).status ?? "") === "pending" ? "confirmed" : (order as any).status,
+        confirmed_at: new Date().toISOString(),
+        paid_at: new Date().toISOString(),
+      })
+      .eq("id", productOrderId)
+      .eq("payment_status", "pending")
+      .select("id");
+    if (orderUpdateError) throw orderUpdateError;
+    if ((updatedRows?.length ?? 0) === 0) {
+      const currentStatus = String((order as any).payment_status ?? "");
+      if (currentStatus === "paid" || alreadyRecorded) {
+        return { ok: true, duplicate: true, transitionedToPaid: false };
+      }
+      return { ok: false, duplicate: false, transitionedToPaid: false };
+    }
+    transitionedToPaid = true;
+
+    const customerId = (order as any).customer_id as string | undefined;
+    const providerId = (order as any).provider_id as string | undefined;
+    if (customerId && providerId) {
+      await clearCustomerCartForProvider(supabase, customerId, providerId);
+    }
   }
 
   if (!alreadyRecorded) {
@@ -131,9 +149,19 @@ async function recordProductOrderPaymentInner(
     });
     if (paymentTxError) {
       if (paymentTxError.code === "23505") {
-        return { ok: true, duplicate: true, transitionedToPaid: !wasAlreadyPaid };
+        return { ok: true, duplicate: true, transitionedToPaid };
       }
-      throw paymentTxError;
+      logger.error(
+        "recordProductOrderPayment.paymentTx.failed",
+        paymentTxError,
+        { productOrderId, reference },
+      );
+      return {
+        ok: true,
+        duplicate: alreadyRecorded,
+        transitionedToPaid,
+        ledgerIncomplete: true,
+      };
     }
   }
 
@@ -161,7 +189,7 @@ async function recordProductOrderPaymentInner(
   // finance_transactions because that ledger drives platform-held payouts and
   // shadow GL; adding provider-collected cash here would overstate payable cash.
   if (!isPlatformHeld) {
-    return { ok: true, duplicate: alreadyRecorded, transitionedToPaid: !wasAlreadyPaid };
+    return { ok: true, duplicate: alreadyRecorded, transitionedToPaid };
   }
 
   const financeRows = [
@@ -211,8 +239,20 @@ async function recordProductOrderPaymentInner(
   }
 
   const { error: financeInsertError } = await (supabase.from("finance_transactions") as any).insert(financeRows);
-  if (financeInsertError) throw financeInsertError;
+  if (financeInsertError) {
+    logger.error(
+      "recordProductOrderPayment.financeInsert.failed",
+      financeInsertError,
+      { productOrderId, reference },
+    );
+    return {
+      ok: true,
+      duplicate: false,
+      transitionedToPaid,
+      ledgerIncomplete: true,
+    };
+  }
 
-  return { ok: true, duplicate: false, transitionedToPaid: !wasAlreadyPaid };
+  return { ok: true, duplicate: false, transitionedToPaid };
 }
 

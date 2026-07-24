@@ -817,7 +817,37 @@ export default function Index() {
     );
   }
 
+  // Profile 404: only send true onboarding candidates to the owner wizard.
+  // Joined staff (portal already resolved to provider) must not be trapped on
+  // owner get-started — show a recoverable membership error instead.
   if (hasProfile === false) {
+    if (!needsOnboarding) {
+      return (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
+          <Text style={{ fontSize: 16, color: Colors.gray[700], textAlign: "center", marginBottom: 8 }}>
+            Couldn&apos;t load your salon membership
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
+            Your account is signed in, but we couldn&apos;t attach a business profile. Try again, or ask the owner to resend your staff invite.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setProfileLoadError(false);
+              runProfileCheck(0);
+            }}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginBottom: 12 }}
+          >
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => signOut().catch(() => undefined)}
+            style={{ paddingHorizontal: 24, paddingVertical: 12 }}
+          >
+            <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
     return <Redirect href={"/(app)/onboarding" as never} />;
   }
 

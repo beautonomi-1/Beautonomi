@@ -69,6 +69,10 @@ interface LifecycleData {
     last_reviewed_at: string | null;
     updated_at: string | null;
   } | null;
+  identity_verification: {
+    platform: "didit" | "manual" | "unknown";
+    didit_session_id: string | null;
+  };
   tracking: Record<string, unknown> | null;
   lead: Record<string, unknown> | null;
   timeline: TimelineEvent[];
@@ -214,7 +218,13 @@ export function ProviderOpsLifecyclePage() {
     return <AdminRetryBlock message="Lifecycle data not found" onRetry={() => void q.refetch()} />;
   }
 
-  const { provider, user, kyc, lead, timeline, completeness, tracking } = data;
+  const { provider, user, kyc, identity_verification, lead, timeline, completeness, tracking } = data;
+  const identityPlatformLabel =
+    identity_verification?.platform === "didit"
+      ? "Didit"
+      : identity_verification?.platform === "manual"
+        ? "Manual upload"
+        : "Unknown";
   const verificationBusy = verifyMut.isPending;
   const statusBusy = statusMut.isPending;
 
@@ -339,8 +349,11 @@ export function ProviderOpsLifecyclePage() {
           </div>
 
           {/* Verification — all three layers in one card so admins can see and act in one place */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Verification</h2>
+          <div id="verification" className="rounded-xl border border-gray-200 bg-white p-5 scroll-mt-24">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Verification</h2>
+            <p className="mb-3 text-xs text-gray-500">
+              Identity review (KYC) and marketplace verified badge are managed separately.
+            </p>
             <div className="space-y-3">
               {/* Layer 1 — Marketplace admin badge */}
               <div className="flex items-start justify-between gap-2">
@@ -394,7 +407,19 @@ export function ProviderOpsLifecyclePage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-700">KYC status</p>
                   <p className="text-xs text-gray-500">
-                    Sumsub / manual review of the business owner&apos;s identity.
+                    Platform: <span className="font-medium text-gray-700">{identityPlatformLabel}</span>
+                    {" · "}
+                    Didit or manual review of the business owner&apos;s identity.
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    <a
+                      href="https://business.didit.me/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Open Didit Business Console
+                    </a>
                   </p>
                   {kyc?.last_reviewed_at && (
                     <p className="mt-0.5 text-[10px] text-gray-400">
@@ -405,11 +430,19 @@ export function ProviderOpsLifecyclePage() {
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                   <StatusBadge value={kyc?.status ?? "pending"} palette={KYC_BADGE} />
                   <Link
-                    to={adminSpaTo("/admin/verifications?status=all")}
+                    to={adminSpaTo("/admin/identity-trust/sessions?status=pending_review#verification")}
                     className="text-xs font-medium text-primary hover:underline"
                   >
-                    Verifications queue
+                    Didit verification sessions
                   </Link>
+                  {identity_verification?.platform === "manual" ? (
+                    <Link
+                      to={adminSpaTo("/admin/verifications?status=pending")}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Manual uploads queue
+                    </Link>
+                  ) : null}
                 </div>
               </div>
 

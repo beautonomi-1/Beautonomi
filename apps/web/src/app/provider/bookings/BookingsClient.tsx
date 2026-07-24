@@ -62,6 +62,7 @@ import {
   buildProviderBookingActionModel,
   type ProviderBookingAction,
 } from "@/lib/provider-booking/action-policy";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
@@ -103,6 +104,12 @@ export function BookingsClient({
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
+  const { hasPermission, isOwner } = usePermissions();
+  const canCreateAppointments = isOwner || hasPermission("create_appointments");
+  const canEditAppointments = isOwner || hasPermission("edit_appointments");
+  const canCancelAppointments =
+    isOwner || hasPermission("cancel_appointments") || canEditAppointments;
+  const canProcessPayments = isOwner || hasPermission("process_payments");
 
   // View mode — §Hydration 2026-04: initial state MUST match server render
   // (always "table") to avoid React error #418. We rehydrate from
@@ -394,6 +401,11 @@ export function BookingsClient({
     }
   };
 
+  const actionAllowedByPermission = (action: ProviderBookingAction) => {
+    if (action.id === "cancel" || action.id === "mark_no_show") return canCancelAppointments;
+    return canEditAppointments;
+  };
+
   const primaryBookingAction = (booking: ProviderBookingListItem): ProviderBookingAction | null => {
     const model = buildProviderBookingActionModel({
       id: booking.id,
@@ -409,10 +421,16 @@ export function BookingsClient({
       arrival_otp_pending: (booking as any).arrival_otp_pending,
       qr_arrival_pending: (booking as any).qr_arrival_pending,
     });
-    return model.primaryAction;
+    const action = model.primaryAction;
+    if (!action || !actionAllowedByPermission(action)) return null;
+    return action;
   };
 
   const runPrimaryBookingAction = (booking: ProviderBookingListItem, action: ProviderBookingAction) => {
+    if (!actionAllowedByPermission(action)) {
+      toast.error("You do not have permission for this action");
+      return;
+    }
     if (action.id === "start_journey") {
       return handleStatusChange(booking.id, "start_journey", booking.version);
     }
@@ -615,6 +633,7 @@ export function BookingsClient({
 
   // ─── Yoco ──────────────────────────────────────────────────────────────────
   const shouldShowPayButton = (b: ProviderBookingListItem) => {
+    if (!canProcessPayments) return false;
     if (!yocoEnabled && !paycloudEnabled) return false;
     const s = (b.status || "").toLowerCase();
     if (s === "cancelled" || s === "canceled") return false;
@@ -1022,14 +1041,16 @@ export function BookingsClient({
               { label: "Bookings" },
             ]}
           />
-          <Button
-            onClick={() => window.dispatchEvent(new CustomEvent("open-appointment-sidebar"))}
-            className="provider-btn-brand px-5"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">New Appointment</span>
-            <span className="sm:hidden">New</span>
-          </Button>
+          {canCreateAppointments && (
+            <Button
+              onClick={() => window.dispatchEvent(new CustomEvent("open-appointment-sidebar"))}
+              className="provider-btn-brand px-5"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">New Appointment</span>
+              <span className="sm:hidden">New</span>
+            </Button>
+          )}
         </div>
 
         {/* Snapshot stats strip with its own time-period filter. Revenue

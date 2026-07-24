@@ -31,6 +31,11 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: vi.fn(async () => ({ authorized: true, user: mockUser })),
+  requireAnyPermission: vi.fn(async () => ({ authorized: true, user: mockUser })),
+}));
+
 vi.mock("@/lib/supabase/api-helpers", async () => {
   const actual = await vi.importActual("@/lib/supabase/api-helpers");
   return {

@@ -307,8 +307,14 @@ export default function CustomOfferModal({
     if (!Number.isFinite(dm) || dm < 15 || dm > 480) return "Duration must be between 15 and 480 minutes.";
     const ex = Number(expirationDays);
     if (!Number.isFinite(ex) || ex <= 0) return "Expiration must be at least 1 day.";
+    if (locationType === "at_home" && !addressLine1.trim()) {
+      return "House-call offers need a service address.";
+    }
+    if (locationType === "at_salon" && !locationId) {
+      return "At-salon offers need a salon location.";
+    }
     return null;
-  }, [description, price, durationMinutes, expirationDays]);
+  }, [description, price, durationMinutes, expirationDays, locationType, addressLine1, locationId]);
 
   const handleSubmit = async () => {
     if (!isValid()) {

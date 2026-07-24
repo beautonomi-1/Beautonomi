@@ -183,6 +183,27 @@ describe("customer/portal cancel wallet cap", () => {
     expect(walletRefundAmount).toBe(80);
   });
 
+  it("excludes gift-card leg from wallet refund when full refund will restore the card", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 100,
+      total_paid: 100,
+      wallet_amount: 0,
+      gift_card_amount: 40,
+      total_refunded: 0,
+    };
+    const { walletRefundAmount, cancellationFeeApplied } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "provider",
+      currency: "ZAR",
+      policy: null,
+    });
+    // R40 restored to gift card + R60 to wallet = R100 total restitution, no double-pay.
+    expect(walletRefundAmount).toBe(60);
+    expect(cancellationFeeApplied).toBe(0);
+  });
+
   it("caps cancellation fee to collected minus wallet refund on deposit bookings", () => {
     const booking = {
       id: "b1",

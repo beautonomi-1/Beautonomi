@@ -187,10 +187,8 @@ export default function ProviderProducts() {
     toast.success(wasEdit ? "Product updated" : "Product created");
   };
 
-  const handleBarcodeSelect = async (
-    product: { id: string; name?: string },
-    _variant?: unknown
-  ) => {
+  const handleBarcodeSelect = async (result: { product: { id: string; name?: string } }) => {
+    const product = result.product;
     try {
       const res = await fetcher.get<{ data: ProductItem }>(
         `/api/provider/products/${product.id}`
@@ -326,8 +324,9 @@ export default function ProviderProducts() {
         {productsArray.length > 0 && (
           <div className="mb-4">
             <BarcodeLookup
-              label="Find by barcode"
-              placeholder="Scan or enter barcode / SKU"
+              label="Scan or enter barcode to edit product"
+              placeholder="Barcode / SKU"
+              autoFocus={false}
               onSelect={handleBarcodeSelect}
             />
           </div>

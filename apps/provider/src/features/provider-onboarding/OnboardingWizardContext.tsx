@@ -22,6 +22,7 @@ import {
   finalizeOnboardingSuccess,
   probeProviderProfileExists,
   resolveCheckoutFlagsForRecovery,
+  resumePendingOnboardingCheckout,
   type OnboardingCompletionData,
 } from "./finalize-onboarding";
 import {
@@ -201,6 +202,23 @@ export function OnboardingWizardProvider({
     focusUnmappedRef.current = focusUnmapped;
   }, [initialStep, focusUnmapped]);
   const paystackCheckout = useInAppPaystackCheckout();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resumed = await resumePendingOnboardingCheckout(router);
+        if (!cancelled && resumed) {
+          await refreshProvider();
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, refreshProvider]);
 
   const updateFormData = useCallback((u: Partial<OnboardingFormData>) => {
     setFormData((prev) => ({ ...prev, ...u }));

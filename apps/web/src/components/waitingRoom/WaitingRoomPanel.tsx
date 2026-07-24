@@ -54,6 +54,7 @@ import {
 
 import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
+import { usePermissions } from "@/hooks/usePermissions";
 
 /** Threshold for "waiting too long" warning in minutes */
 const WAITING_TOO_LONG_THRESHOLD = 15;
@@ -75,6 +76,10 @@ export function WaitingRoomPanel({
   onRefresh,
   onAppointmentClick,
 }: WaitingRoomPanelProps) {
+  const { hasPermission, isOwner } = usePermissions();
+  const canEditAppointments = isOwner || hasPermission("edit_appointments");
+  const canCancelAppointments =
+    isOwner || hasPermission("cancel_appointments") || canEditAppointments;
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<{
     type: "no_show" | "late_cancel";
@@ -151,6 +156,10 @@ export function WaitingRoomPanel({
 
   // Handle mark in service
   const handleMarkInService = async (appointment: Appointment) => {
+    if (!canEditAppointments) {
+      toast.error("You do not have permission to start service");
+      return;
+    }
     setLoadingIds(prev => new Set(prev).add(`service-${appointment.id}`));
     try {
       await providerApi.updateAppointment(appointment.id, {
@@ -172,6 +181,10 @@ export function WaitingRoomPanel({
 
   // Handle no-show
   const handleNoShow = async (appointment: Appointment) => {
+    if (!canCancelAppointments) {
+      toast.error("You do not have permission to mark no-show");
+      return;
+    }
     setLoadingIds(prev => new Set(prev).add(`noshow-${appointment.id}`));
     try {
       await providerApi.updateAppointment(appointment.id, {
@@ -201,6 +214,10 @@ export function WaitingRoomPanel({
 
   // Handle late cancel
   const handleLateCancel = async (appointment: Appointment) => {
+    if (!canCancelAppointments) {
+      toast.error("You do not have permission to cancel appointments");
+      return;
+    }
     setLoadingIds(prev => new Set(prev).add(`cancel-${appointment.id}`));
     try {
       await providerApi.updateAppointment(appointment.id, {
@@ -363,27 +380,31 @@ export function WaitingRoomPanel({
                                 <Send className="w-4 h-4 mr-2" />
                                 Send Reminder
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmAction({ type: "no_show", appointment: apt });
-                                }}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <UserX className="w-4 h-4 mr-2" />
-                                Mark as No-Show
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmAction({ type: "late_cancel", appointment: apt });
-                                }}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                Late Cancel
-                              </DropdownMenuItem>
+                              {canCancelAppointments && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmAction({ type: "no_show", appointment: apt });
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <UserX className="w-4 h-4 mr-2" />
+                                    Mark as No-Show
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmAction({ type: "late_cancel", appointment: apt });
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <XCircle className="w-4 h-4 mr-2" />
+                                    Late Cancel
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -421,28 +442,30 @@ export function WaitingRoomPanel({
                       )}
                       Notify
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "flex-1 h-8 text-xs",
-                        tooLong 
-                          ? "text-red-600 hover:text-red-700 hover:bg-red-50 font-medium"
-                          : "text-gray-600 hover:text-pink-600 hover:bg-pink-50"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMarkInService(apt);
-                      }}
-                      disabled={isMarking}
-                    >
-                      {isMarking ? (
-                        <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      Start Service
-                    </Button>
+                    {canEditAppointments && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "flex-1 h-8 text-xs",
+                          tooLong 
+                            ? "text-red-600 hover:text-red-700 hover:bg-red-50 font-medium"
+                            : "text-gray-600 hover:text-pink-600 hover:bg-pink-50"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkInService(apt);
+                        }}
+                        disabled={isMarking}
+                      >
+                        {isMarking ? (
+                          <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 mr-1" />
+                        )}
+                        Start Service
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -531,27 +554,31 @@ export function WaitingRoomPanel({
                                 <Send className="w-4 h-4 mr-2" />
                                 Send Reminder
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmAction({ type: "no_show", appointment: apt });
-                                }}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <UserX className="w-4 h-4 mr-2" />
-                                Mark as No-Show
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmAction({ type: "late_cancel", appointment: apt });
-                                }}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                Late Cancel
-                              </DropdownMenuItem>
+                              {canCancelAppointments && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmAction({ type: "no_show", appointment: apt });
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <UserX className="w-4 h-4 mr-2" />
+                                    Mark as No-Show
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmAction({ type: "late_cancel", appointment: apt });
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <XCircle className="w-4 h-4 mr-2" />
+                                    Late Cancel
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -589,28 +616,30 @@ export function WaitingRoomPanel({
                       )}
                       Notify
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "flex-1 h-8 text-xs",
-                        tooLong 
-                          ? "text-red-600 hover:text-red-700 hover:bg-red-50 font-medium"
-                          : "text-gray-600 hover:text-pink-600 hover:bg-pink-50"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMarkInService(apt);
-                      }}
-                      disabled={isMarking}
-                    >
-                      {isMarking ? (
-                        <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      Start Service
-                    </Button>
+                    {canEditAppointments && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "flex-1 h-8 text-xs",
+                          tooLong 
+                            ? "text-red-600 hover:text-red-700 hover:bg-red-50 font-medium"
+                            : "text-gray-600 hover:text-pink-600 hover:bg-pink-50"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkInService(apt);
+                        }}
+                        disabled={isMarking}
+                      >
+                        {isMarking ? (
+                          <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 mr-1" />
+                        )}
+                        Start Service
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

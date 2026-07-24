@@ -65,7 +65,7 @@ const STATUS_ENDPOINT: Record<"customer" | "provider", string> = {
 };
 
 export interface UseIdentityVerificationReturn {
-  status: NormalizedVerificationStatus;
+  status: NormalizedVerificationStatus | null;
   loading: boolean;
   legalDetails: LegalDetails;
   legalDetailsErrors: LegalDetailsErrors;
@@ -80,7 +80,7 @@ export function useIdentityVerification(
   persona: "customer" | "provider",
   pollIntervalMs = 4000,
 ): UseIdentityVerificationReturn {
-  const [status, setStatus] = useState<NormalizedVerificationStatus>("not_started");
+  const [status, setStatus] = useState<NormalizedVerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [legalDetails, setLegalDetails] = useState<LegalDetails>({
     firstName: "", lastName: "", dateOfBirth: "", country: "",
@@ -133,7 +133,7 @@ export function useIdentityVerification(
     let cancelled = false;
     fetchStatus()
       .then(s => { if (!cancelled) setStatus(s); })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setStatus("not_started"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; stopPolling(); };
   }, [fetchStatus, stopPolling]);

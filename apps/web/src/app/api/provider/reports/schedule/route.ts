@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 
 /**
  * POST /api/provider/reports/schedule
@@ -9,7 +10,11 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -87,7 +92,11 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Undo2, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface ReturnRequest {
@@ -53,6 +54,8 @@ interface ActionDialog {
 
 export default function ProviderReturnsPage() {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { hasPermission, isOwner } = usePermissions();
+  const canProcessPayments = isOwner || hasPermission("process_payments");
   const [returns, setReturns] = useState<ReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
@@ -161,7 +164,9 @@ export default function ProviderReturnsPage() {
         ) : (
           <div className="divide-y">
             {returns.map((r) => {
-              const actions = ACTIONS[r.status] ?? [];
+              const actions = (ACTIONS[r.status] ?? []).filter(
+                (a) => a.action !== "process_refund" || canProcessPayments,
+              );
               return (
                 <div key={r.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">

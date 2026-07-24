@@ -35,6 +35,7 @@ export const NON_PROVIDER_REFUND_COMPONENTS = new Set<string>([
   "gift_card_payment",
   "gift_card_liability_reduction",
   "additional_charge_payment", // online add-on commission (platform's)
+  "cashback", // card-machine cash-out wash — never provider earnings
 ]);
 
 /**
@@ -61,6 +62,7 @@ export function isPayoutRefundComponent(
 ): boolean {
   if (!component) return true;
   if (component === "walk_in_additional_charge") return false;
+  if (component === "cashback") return false;
   return !NON_PROVIDER_REFUND_COMPONENTS.has(component);
 }
 

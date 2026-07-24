@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.77",
+  version: "1.0.78",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -91,8 +91,9 @@ const BASE_EXPO_CONFIG = {
         },
         android: {
           minSdkVersion: 24,
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          buildToolsVersion: "36.0.0",
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
         },
@@ -137,14 +138,14 @@ const BASE_EXPO_CONFIG = {
         photosPermission:
           "Allow Beautonomi Provider to access photos for your catalogue, profile, and documentation.",
         cameraPermission:
-          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, and to scan arrival QR codes.",
+          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, and to scan product barcodes.",
       },
     ],
     [
       "expo-camera",
       {
         cameraPermission:
-          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, and for identity verification.",
+          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, product barcodes, and for identity verification.",
         // Enable microphone access on Android for liveness video and future in-app features.
         recordAudioAndroid: true,
       },
@@ -185,12 +186,12 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "269",
+    buildNumber: "270",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
-        "Beautonomi Provider uses the camera for identity verification, profile photos, catalogue images, and scanning QR codes.",
+        "Beautonomi Provider uses the camera for identity verification, profile photos, catalogue images, scanning QR codes, and scanning product barcodes.",
       NSMicrophoneUsageDescription:
         "Beautonomi Provider uses the microphone during identity verification to record your liveness video, and when you choose to record a video for posts, messages, or work documentation.",
       // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
@@ -233,7 +234,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 270,
+    versionCode: 271,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

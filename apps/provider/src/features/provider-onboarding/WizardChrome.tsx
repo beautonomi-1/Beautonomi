@@ -82,6 +82,8 @@ export function WizardChrome() {
   const isLast = currentStep === STEPS.length;
   const milestoneLabel = getMilestoneLabel(currentStep);
   const milestoneProgress = getMilestoneProgress(currentStep);
+  const currentStepValidation = validateStep(currentStep, formData);
+  const canProceed = currentStepValidation.valid;
 
   const milestoneStates = MILESTONES.map((m, i) => {
     const isPast = milestoneProgress > i + 1;
@@ -234,23 +236,25 @@ export function WizardChrome() {
                 {canSkipCurrent && !isLast ? (
                   <TouchableOpacity
                     onPress={skipForward}
+                    disabled={!canProceed}
                     style={twStyle(
-                      "flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300",
+                      `flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300 ${!canProceed ? "opacity-40" : ""}`,
                     )}
                     accessibilityRole="button"
                     accessibilityLabel="Skip this step"
+                    accessibilityState={{ disabled: !canProceed }}
                   >
                     <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>Skip for now</Text>
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
                   onPress={isLast ? submit : goNext}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canProceed}
                   style={[
                     twStyle(
                       `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
                     ),
-                    { backgroundColor: Colors.primary, opacity: isSubmitting ? 0.7 : 1 },
+                    { backgroundColor: Colors.primary, opacity: isSubmitting || !canProceed ? 0.5 : 1 },
                     !isSubmitting ? Shadows.cardSmall : undefined,
                   ]}
                   accessibilityRole="button"

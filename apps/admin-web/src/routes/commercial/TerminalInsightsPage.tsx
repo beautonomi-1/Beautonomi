@@ -119,6 +119,17 @@ export function TerminalInsightsPage() {
     enabled: allowed,
   });
 
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const counts = data?.counts;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  useEffect(() => {
+    if (!selectedItem || !data?.items) return;
+    const fresh = data.items.find((i) => i.provider_id === selectedItem.provider_id);
+    if (fresh) setSelectedItem(fresh);
+  }, [data?.items, selectedItem?.provider_id]);
+
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(location.search);
     if (value) next.set(key, value);
@@ -144,17 +155,6 @@ export function TerminalInsightsPage() {
     if (isAdminApiAuthFailure(error)) return denied;
     return <AdminRetryBlock message="Failed to load terminal insights" onRetry={() => refetch()} />;
   }
-
-  const items = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const counts = data?.counts;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-
-  useEffect(() => {
-    if (!selectedItem) return;
-    const fresh = items.find((i) => i.provider_id === selectedItem.provider_id);
-    if (fresh) setSelectedItem(fresh);
-  }, [items, selectedItem?.provider_id]);
 
   const broadcastSegment = segment === "all" ? "upsell_opportunities" : segment;
   const broadcastSegmentLabel =

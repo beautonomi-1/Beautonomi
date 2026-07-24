@@ -73,7 +73,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.77",
+  version: "1.0.78",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -87,7 +87,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "269",
+    buildNumber: "270",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -139,7 +139,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 270,
+    versionCode: 271,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -190,8 +190,9 @@ const BASE_EXPO_CONFIG = {
         },
         android: {
           minSdkVersion: 24,
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          buildToolsVersion: "36.0.0",
           ndkVersion: "28.0.12433566",
           useLegacyPackaging: false,
         },

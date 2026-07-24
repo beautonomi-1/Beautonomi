@@ -28,7 +28,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 import {
   isProviderUnavailableError,
   reportProviderUnavailable,
@@ -1560,16 +1560,28 @@ export default function PartnerProfileScreen() {
             try {
               const membershipReturnUrl =
                 Platform.OS !== "web" ? ExpoLinking.createURL("membership-paystack") : undefined;
+              const membershipIdempotencyKey =
+                typeof crypto !== "undefined" && "randomUUID" in crypto
+                  ? crypto.randomUUID()
+                  : `membership-${plan.id}-${Date.now()}`;
               const res = await api.post("/api/me/membership/subscribe", {
                 membership_id: plan.id,
                 provider_id: provider.id,
                 source: "customer_app_partner_profile",
                 campaign_id: paramCampaignId,
+                idempotency_key: membershipIdempotencyKey,
                 ...(membershipReturnUrl ? { callback_url: membershipReturnUrl } : {}),
+              }, {
+                timeout: 120_000,
+                headers: { "Idempotency-Key": membershipIdempotencyKey },
               });
 
               if (res.error) {
                 haptic.error();
+                if (isTransientApiFailure(res.error)) {
+                  Alert.alert(pp("membershipPendingTitle"), pp("membershipPendingBody"));
+                  return;
+                }
                 Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || pp("subscribeError"));
                 return;
               }

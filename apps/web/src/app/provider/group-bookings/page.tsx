@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "yoco";
 
@@ -68,6 +69,12 @@ type PaystackTerminalData = {
 
 function GroupBookingsPageInner() {
   const searchParams = useSearchParams();
+  const { hasPermission, isOwner } = usePermissions();
+  const canCreateGroups = isOwner || hasPermission("create_appointments");
+  const canEditGroups = isOwner || hasPermission("edit_appointments");
+  const canCancelGroups =
+    isOwner || hasPermission("cancel_appointments") || hasPermission("edit_appointments");
+  const canProcessPayments = isOwner || hasPermission("process_payments");
   const [hasMounted, setHasMounted] = useState(false);
   const [groupBookings, setGroupBookings] = useState<GroupBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -383,13 +390,18 @@ function GroupBookingsPageInner() {
       <PageHeader
         title="Group Bookings"
         subtitle="Create and manage bridal parties, group events, and shared appointment sessions"
-        primaryAction={{
-          label: "New group booking",
-          onClick: handleCreate,
-          icon: <Plus className="w-4 h-4 mr-2 flex-shrink-0" />,
-        }}
+        primaryAction={
+          canCreateGroups
+            ? {
+                label: "New group booking",
+                onClick: handleCreate,
+                icon: <Plus className="w-4 h-4 mr-2 flex-shrink-0" />,
+              }
+            : undefined
+        }
       />
 
+      {canCreateGroups ? (
       <SectionCard className="mb-4 overflow-hidden border-rose-100 bg-gradient-to-r from-slate-950 via-slate-900 to-rose-950 p-0 text-white sm:mb-6">
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex min-w-0 gap-4">
@@ -409,6 +421,7 @@ function GroupBookingsPageInner() {
           </Button>
         </div>
       </SectionCard>
+      ) : null}
 
       {/* Filters */}
       <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
@@ -680,6 +693,9 @@ function GroupBookingsPageInner() {
           )}
           {detailBooking && <GroupBookingDetailPanel
             booking={detailBooking}
+            canEdit={canEditGroups}
+            canCancel={canCancelGroups}
+            canProcessPayments={canProcessPayments}
             onStatusChange={handleStatusChange}
             onCheckIn={handleCheckIn}
             onCheckOut={handleCheckOut}
@@ -847,6 +863,9 @@ function computeGroupOutstandingBalance(
 interface DetailPanelProps {
   booking: GroupBooking;
   onStatusChange: (id: string, status: string) => void;
+  canEdit: boolean;
+  canCancel: boolean;
+  canProcessPayments: boolean;
   onCheckIn: (bookingId: string, participantId: string) => void;
   onCheckOut: (bookingId: string, participantId: string) => void;
   onRequestRecordPayment: (
@@ -866,6 +885,9 @@ interface DetailPanelProps {
 
 function GroupBookingDetailPanel({
   booking,
+  canEdit,
+  canCancel,
+  canProcessPayments,
   onStatusChange,
   onCheckIn,
   onCheckOut,
@@ -947,7 +969,7 @@ function GroupBookingDetailPanel({
         )}>
           {booking.status}
         </Badge>
-        {statusActions.map(a => (
+        {canEdit && statusActions.map(a => (
           <Button key={a.value} variant="outline" size="sm" disabled={isStatusChanging}
             onClick={() => onStatusChange(booking.id, a.value)}
             className={cn("gap-1.5", a.className)}>
@@ -957,12 +979,12 @@ function GroupBookingDetailPanel({
         <Button variant="outline" size="sm" onClick={onDownloadReceipt} className="gap-1.5">
           <FileText className="w-4 h-4" />Group receipt
         </Button>
-        {!isFinal && (
+        {canEdit && !isFinal && (
           <Button variant="outline" size="sm" onClick={onEdit} className="gap-1.5">
             <Edit className="w-4 h-4" />Edit
           </Button>
         )}
-        {!cancelled && (
+        {canCancel && !cancelled && (
           <Button variant="outline" size="sm" onClick={onCancel} disabled={completed}
             className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
             <XCircle className="w-4 h-4" />Cancel booking
@@ -1105,7 +1127,7 @@ function GroupBookingDetailPanel({
             </p>
           )}
         </div>
-        {!isFinal && participants.length > 0 && (() => {
+        {canProcessPayments && !isFinal && participants.length > 0 && (() => {
           const hasLinkedBookings = participants.some(p => p.booking_id);
           if (!hasLinkedBookings) {
             return (
@@ -1310,7 +1332,7 @@ function GroupBookingDetailPanel({
                   </div>
                 </div>
 
-                {!isFinal && (
+                {canEdit && !isFinal && (
                   <div className="flex gap-2 ml-7">
                     {!p.checked_in ? (
                       <Button variant="outline" size="sm" onClick={() => onCheckIn(booking.id, p.id)} className="h-8 text-xs">
@@ -1323,7 +1345,7 @@ function GroupBookingDetailPanel({
                     ) : null}
                   </div>
                 )}
-                {p.booking_id ? (
+                {canProcessPayments && p.booking_id ? (
                   <div className="ml-7">
                     <Button
                       variant="outline"

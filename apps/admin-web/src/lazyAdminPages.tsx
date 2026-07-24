@@ -459,6 +459,14 @@ export const CpIntegrationWasenderPage = lazy(() =>
 export const TerminalInsightsPage = lazy(() =>
   import("@/routes/commercial/TerminalInsightsPage").then((m) => ({ default: m.TerminalInsightsPage }))
 );
+export const TerminalOnboardingPage = lazy(() =>
+  import("@/routes/commercial/TerminalOnboardingPage").then((m) => ({ default: m.TerminalOnboardingPage }))
+);
+export const TerminalOnboardingDetailPage = lazy(() =>
+  import("@/routes/commercial/TerminalOnboardingDetailPage").then((m) => ({
+    default: m.TerminalOnboardingDetailPage,
+  }))
+);
 export const TerminalProductsPage = lazy(() =>
   import("@/routes/commercial/TerminalProductsPage").then((m) => ({ default: m.TerminalProductsPage }))
 );

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { createClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
 import {
@@ -14,7 +15,11 @@ import { getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
 export async function GET(request: NextRequest) {
   try {
     // Require provider_owner or provider_staff role
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    // Use service role client for all queries to avoid RLS infinite recursion
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;    // Use service role client for all queries to avoid RLS infinite recursion
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,

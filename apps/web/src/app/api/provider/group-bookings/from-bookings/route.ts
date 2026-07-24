@@ -9,6 +9,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -27,10 +28,11 @@ async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("create_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);

@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { z } from "zod";
 
@@ -54,7 +54,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("view_sales", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -103,14 +107,24 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const body = await request.json();
     const parsed = updateSchema.parse(body);
+    const isMoneyAction =
+      parsed.status === "refunded" ||
+      parsed.refund_amount != null ||
+      Boolean(parsed.refund_reason?.trim());
+    const permissionCheck = await requirePermission(
+      isMoneyAction ? "process_payments" : "view_sales",
+      request,
+    );
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    // Get current order
     const { data: order, error: fetchErr } = await (supabase.from("product_orders") as any)
       .select(
         "id, status, provider_id, payment_status, total_amount, customer_id, currency, tenant_id, order_number",
@@ -263,6 +277,7 @@ export async function PATCH(
         p_reference_id: id,
         p_reference_type: "product_order_refund",
         p_tenant_id: order.tenant_id ?? null,
+        p_idempotency_key: `product_order_refund:${id}`,
       });
       if (walletError) {
         // Roll back the refund flags so the operator can retry; the order stays
@@ -319,27 +334,86 @@ export async function PATCH(
           .limit(1);
         const alreadyReversed = Array.isArray(existingRefund) && existingRefund.length > 0;
         if (!alreadyReversed) {
-          await (admin.from("finance_transactions") as any).insert({
+        const { data: captureRows } = await (admin.from("finance_transactions") as any)
+          .select("transaction_type, amount, net")
+          .eq("product_order_id", id)
+          .in("transaction_type", ["provider_earnings", "platform_fee"]);
+        const earningsRow = (captureRows ?? []).find(
+          (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
+        ) as { amount?: number; net?: number } | undefined;
+        const feeRow = (captureRows ?? []).find(
+          (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
+        ) as { amount?: number; net?: number } | undefined;
+        const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
+        const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
+        const orderTotal = Number(order.total_amount ?? 0);
+        const refundRatio =
+          orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
+        const refundProviderEarnings =
+          Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
+        const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
+        const refundDescription = `Refund for product order ${order.order_number || id.slice(0, 8)}${
+          parsed.refund_reason
+            ? ` (${parsed.refund_reason})`
+            : parsed.cancellation_reason
+              ? ` (cancelled: ${parsed.cancellation_reason})`
+              : ""
+        }`;
+        const refundRows: Record<string, unknown>[] = [];
+        if (refundProviderEarnings > 0) {
+          refundRows.push({
             booking_id: null,
             product_order_id: id,
             provider_id: providerId,
             tenant_id: ledgerTenantId,
             transaction_type: "refund",
-            refund_component: "_legacy",
+            refund_component: "provider_earnings",
+            amount: refundProviderEarnings,
+            fees: 0,
+            commission: 0,
+            net: -refundProviderEarnings,
+            currency: order.currency || LAST_RESORT_CURRENCY,
+            description: refundDescription,
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (refundPlatformFee > 0) {
+          refundRows.push({
+            booking_id: null,
+            product_order_id: id,
+            provider_id: providerId,
+            tenant_id: ledgerTenantId,
+            transaction_type: "refund",
+            refund_component: "platform_fee",
+            amount: refundPlatformFee,
+            fees: 0,
+            commission: 0,
+            net: -refundPlatformFee,
+            currency: order.currency || LAST_RESORT_CURRENCY,
+            description: refundDescription,
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (refundRows.length === 0 && ledgerRefundAmount > 0) {
+          refundRows.push({
+            booking_id: null,
+            product_order_id: id,
+            provider_id: providerId,
+            tenant_id: ledgerTenantId,
+            transaction_type: "refund",
+            refund_component: "provider_earnings",
             amount: ledgerRefundAmount,
             fees: 0,
             commission: 0,
             net: -ledgerRefundAmount,
             currency: order.currency || LAST_RESORT_CURRENCY,
-            description: `Refund for product order ${order.order_number || id.slice(0, 8)}${
-              parsed.refund_reason
-                ? ` (${parsed.refund_reason})`
-                : parsed.cancellation_reason
-                  ? ` (cancelled: ${parsed.cancellation_reason})`
-                  : ""
-            }`,
+            description: refundDescription,
             created_at: new Date().toISOString(),
           });
+        }
+        if (refundRows.length > 0) {
+          await (admin.from("finance_transactions") as any).insert(refundRows);
+        }
         }
       }
 

@@ -14,9 +14,11 @@ import { slackNotifyLeadCreated } from "@/lib/integrations/slack/lead-triggers";
 import {
   applyAssignedToFilter,
   applyActiveLeadFilter,
+  applyContactFilter,
   escapeLike,
   LEADS_ASSIGNED_USER_EMBED,
   parseCategoryIds,
+  parseContactFilter,
   parseDeletedFilter,
 } from "@/lib/provider-ops/lead-query-filters";
 
@@ -99,6 +101,7 @@ export async function GET(request: NextRequest) {
     const categoryIds = parseCategoryIds(searchParams);
     const province = searchParams.get("province")?.trim();
     const deletedMode = parseDeletedFilter(searchParams);
+    const contactFilter = parseContactFilter(searchParams);
 
     // Pre-resolve lead IDs for category filter
     // Multiple selected categories use OR semantics: a lead matching any selected
@@ -115,7 +118,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let query = supabase
+    // Typed as any after the base builder to avoid TS2589 on deep PostgREST generics.
+    let query: any = supabase
       .from("provider_leads")
       .select(LEADS_LIST_SELECT, { count: "exact" })
       .eq("tenant_id", tenantId)
@@ -147,6 +151,7 @@ export async function GET(request: NextRequest) {
         `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
       );
     }
+    query = applyContactFilter(query, contactFilter);
 
     const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
@@ -155,7 +160,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch accurate stage counts using individual head:true count queries (avoids PostgREST row limit)
     const buildBaseCountQuery = () => {
-      let q = supabase
+      let q: any = supabase
         .from("provider_leads")
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId);
@@ -178,6 +183,7 @@ export async function GET(request: NextRequest) {
           `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
         );
       }
+      q = applyContactFilter(q, contactFilter);
       return q;
     };
 

@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { ProviderOrgSwitcher } from "@/components/provider/ProviderOrgSwitcher";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -92,7 +93,7 @@ const navigationSections: { title: string; items: NavItemConfig[] }[] = [
       { icon: Clock, label: "Operating Hours", href: "/provider/settings/operating-hours", permission: "edit_settings" as keyof StaffPermissions },
       { icon: CalendarRange, label: "Shifts", href: "/provider/team/shifts", permission: "view_team" as keyof StaffPermissions },
       { icon: CalendarRange, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" as keyof StaffPermissions },
+      { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_calendar" as keyof StaffPermissions },
       { icon: CalendarOff, label: "Closed Periods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
@@ -124,7 +125,7 @@ const navigationSections: { title: string; items: NavItemConfig[] }[] = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions, featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
-      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "edit_settings" as keyof StaffPermissions },
       { icon: CreditCard, label: "Card machines", href: "/provider/settings/sales/card-machines", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paycloud" },
       { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
       { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
@@ -144,7 +145,7 @@ const navigationSections: { title: string; items: NavItemConfig[] }[] = [
       { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
       { icon: Users, label: "Team members", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
       { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" as keyof StaffPermissions },
-      { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" as keyof StaffPermissions },
+      { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_sales" as keyof StaffPermissions },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
@@ -474,6 +475,8 @@ export function ProviderSidebar() {
             </button>
           )}
         </div>
+
+        <ProviderOrgSwitcher collapsed={!isExpanded} />
 
         {/* Toggle button when collapsed */}
         {!isExpanded && (

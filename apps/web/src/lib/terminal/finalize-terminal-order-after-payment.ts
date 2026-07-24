@@ -94,16 +94,45 @@ export async function finalizeTerminalOrderAfterPayment(
 
   const needsSetup = o.terminal_products?.requires_integration_setup === true;
   if (needsSetup) {
-    await supabase
-      .from("terminal_orders")
-      .update({ integration_setup_status: "pending" })
-      .eq("id", terminalOrderId)
-      .eq("integration_setup_status", "not_required");
+    const vendorSlug = (
+      o.terminal_products?.integration_vendor_slug ?? o.terminal_products?.vendor ?? ""
+    )
+      .trim()
+      .toLowerCase();
 
-    try {
-      await notifyTerminalIntegrationSetupRequired(supabase, terminalOrderId);
-    } catch (err) {
-      console.error("[finalizeTerminalOrderAfterPayment] integration notify failed:", err);
+    const { data: orderGateRow } = await supabase
+      .from("terminal_orders")
+      .select("provider_id, tenant_id, integration_setup_status, merchant_application_id")
+      .eq("id", terminalOrderId)
+      .maybeSingle();
+
+    const gateStatus = (orderGateRow as { integration_setup_status?: string } | null)
+      ?.integration_setup_status;
+
+    if (gateStatus !== "awaiting_merchant_onboarding") {
+      await supabase
+        .from("terminal_orders")
+        .update({ integration_setup_status: "pending" })
+        .eq("id", terminalOrderId)
+        .eq("integration_setup_status", "not_required");
+
+      try {
+        await notifyTerminalIntegrationSetupRequired(supabase, terminalOrderId);
+      } catch (err) {
+        console.error("[finalizeTerminalOrderAfterPayment] integration notify failed:", err);
+      }
+    } else if (vendorSlug === "paycloud" && orderGateRow?.provider_id && orderGateRow?.tenant_id) {
+      try {
+        const { clearMerchantOnboardingGateForOrder } = await import("@/lib/terminal-merchant/gate");
+        await clearMerchantOnboardingGateForOrder(
+          supabase,
+          terminalOrderId,
+          orderGateRow.provider_id as string,
+          vendorSlug,
+        );
+      } catch (gateErr) {
+        console.error("[finalizeTerminalOrderAfterPayment] merchant onboarding gate clear failed:", gateErr);
+      }
     }
   }
 }

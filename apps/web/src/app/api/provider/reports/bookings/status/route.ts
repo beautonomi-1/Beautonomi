@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue, getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
@@ -38,7 +39,11 @@ function sortStatusKeys(statuses: Iterable<string>): string[] {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

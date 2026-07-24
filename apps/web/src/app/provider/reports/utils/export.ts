@@ -1249,6 +1249,10 @@ export function formatReportDataForExport(
         { Field: "Wallet total (split-safe)", Value: fm((d.walletTotal as number) || 0, currencyCode) },
         { Field: "Sales total", Value: fm((d.salesTotal as number) || 0, currencyCode) },
         { Field: "Tips total", Value: fm((d.tipsTotal as number) || 0, currencyCode) },
+        {
+          Field: "Cashback total (till cash-out, not in recorded total)",
+          Value: fm((d.cashbackTotal as number) || 0, currencyCode),
+        },
         { Field: "Cancellation fees", Value: fm((d.cancellationFeesTotal as number) || 0, currencyCode) },
         { Field: "Note", Value: String(d.note ?? "") },
         ...Object.keys(byM).map((k) => ({

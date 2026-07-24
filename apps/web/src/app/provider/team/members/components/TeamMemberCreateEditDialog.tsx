@@ -106,7 +106,7 @@ export function TeamMemberCreateEditDialog({
               enable_in_online_booking: settings?.enable_in_online_booking ?? true,
               can_be_assigned_to_product_sales: settings?.can_be_assigned_to_product_sales ?? false,
               mobileReady: settings?.mobileReady ?? false,
-              is_admin: settings?.is_admin ?? (member.role === "owner" || member.role === "manager"),
+              is_admin: settings?.is_admin ?? member.role === "owner",
               email_notifications_enabled: settings?.email_notifications_enabled ?? true,
               sms_notifications_enabled: settings?.sms_notifications_enabled ?? false,
               sms_plan_allowed: settings?.sms_plan_allowed === true,
@@ -135,7 +135,7 @@ export function TeamMemberCreateEditDialog({
               enable_in_online_booking: true,
               can_be_assigned_to_product_sales: false,
               mobileReady: false,
-              is_admin: member.role === "owner" || member.role === "manager",
+              is_admin: member.role === "owner",
               email_notifications_enabled: true,
               sms_notifications_enabled: false,
               sms_plan_allowed: false,
@@ -327,16 +327,35 @@ export function TeamMemberCreateEditDialog({
           }
         }
         
-        // Optionally send invitation
+        // Optionally send invitation (email via Resend + push when registered)
         if (formData.email && createdMember.id) {
           try {
             const { fetcher } = await import("@/lib/http/fetcher");
-            await fetcher.post(`/api/provider/staff/${createdMember.id}/invite`, {
+            const res = await fetcher.post<{
+              data?: { join_url?: string; channels?: { email?: boolean; push?: boolean } };
+            }>(`/api/provider/staff/${createdMember.id}/invite`, {
               email: formData.email,
             });
-          } catch (error) {
+            const joinUrl = res.data?.join_url;
+            if (joinUrl && !res.data?.channels?.email) {
+              toast.success("Team member created — share invite link if email did not send", {
+                description: joinUrl,
+                duration: 8000,
+              });
+            } else {
+              toast.success(`Team member created — invite sent to ${formData.email}`);
+            }
+          } catch (error: any) {
             console.error("Failed to send invitation:", error);
-            // Don't fail the whole operation if invitation fails
+            const joinUrl = error?.details?.join_url;
+            if (joinUrl) {
+              toast.warning("Team member created but email could not be sent", {
+                description: `Share this link: ${joinUrl}`,
+                duration: 10000,
+              });
+            } else {
+              toast.warning("Team member created but invite email failed to send");
+            }
           }
         }
       }
@@ -358,13 +377,31 @@ export function TeamMemberCreateEditDialog({
 
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.post(`/api/provider/staff/${member.id}/invite`, {
+      const res = await fetcher.post<{
+        data?: { join_url?: string; channels?: { email?: boolean; push?: boolean } };
+      }>(`/api/provider/staff/${member.id}/invite`, {
         email: formData.email,
       });
-      toast.success(`Invitation sent to ${formData.email}`);
+      const joinUrl = res.data?.join_url;
+      if (joinUrl && !res.data?.channels?.email) {
+        toast.success(`Invite link ready — copy and share if email did not send`, {
+          description: joinUrl,
+          duration: 8000,
+        });
+      } else {
+        toast.success(`Invitation sent to ${formData.email}`);
+      }
     } catch (error: any) {
       console.error("Failed to send invitation:", error);
-      toast.error(error?.message || "Failed to send invitation");
+      const joinUrl = error?.details?.join_url;
+      if (joinUrl) {
+        toast.error(error?.message || "Email not configured", {
+          description: `Share this link: ${joinUrl}`,
+          duration: 10000,
+        });
+      } else {
+        toast.error(error?.message || "Failed to send invitation");
+      }
     }
   };
 
@@ -380,7 +417,7 @@ export function TeamMemberCreateEditDialog({
               <DialogDescription className="text-xs sm:text-base text-gray-600 leading-relaxed line-clamp-2">
                 {member 
                   ? "Update staff member details and settings"
-                  : "Add a new staff member. They'll receive an email invitation to create their account."}
+                  : "Add a team member. They'll receive an email to join in the Provider app (download link included)."}
               </DialogDescription>
             </div>
           </div>
@@ -525,7 +562,7 @@ export function TeamMemberCreateEditDialog({
                     </Label>
                     <Select
                       value={formData.role}
-                      onValueChange={(value: any) => setFormData({ ...formData, role: value, is_admin: value === "owner" || value === "manager" })}
+                      onValueChange={(value: any) => setFormData({ ...formData, role: value, is_admin: value === "owner" })}
                     >
                       <SelectTrigger className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg">
                         <SelectValue />
@@ -546,7 +583,7 @@ export function TeamMemberCreateEditDialog({
                   </div>
                 </div>
 
-                {!member && (
+                {!member ? (
                   <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
@@ -554,20 +591,39 @@ export function TeamMemberCreateEditDialog({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm sm:text-base font-semibold text-blue-900 mb-1.5">
-                          Send Email Invitation
+                          Invite to the Provider app
+                        </p>
+                        <p className="text-xs sm:text-sm text-blue-700 leading-relaxed">
+                          When you save, we email them a join link with App Store / Play download links.
+                          They set a password and land in the Provider app — not the owner onboarding wizard.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                        <Send className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm sm:text-base font-semibold text-blue-900 mb-1.5">
+                          Resend invite
                         </p>
                         <p className="text-xs sm:text-sm text-blue-700 mb-4 leading-relaxed">
-                          After creating the staff member, you can send them an email invitation to create their Beautonomi login.
+                          Send a fresh join link to {formData.email || "this team member"}. If email is not
+                          configured, you will get a copyable link to share manually.
                         </p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           onClick={handleSendInvite}
+                          disabled={!formData.email}
                           className="min-h-[44px] touch-manipulation border-blue-300 text-blue-700 hover:bg-blue-100 hover:border-blue-400 w-full sm:w-auto"
                         >
                           <Send className="w-4 h-4 mr-2" />
-                          Send Invitation
+                          Resend invitation
                         </Button>
                       </div>
                     </div>

@@ -8,6 +8,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
@@ -88,7 +89,11 @@ function inScheduledWindow(scheduledAt: string, fromIso: string, toIso: string):
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);

@@ -65,15 +65,29 @@ export async function recordMembershipPayment(
   }
 
   // Idempotency: one recognized payment per Paystack reference.
+  // A prior failed row must not block a later successful recognition.
   const { data: existingTx } = await supabase
     .from("payment_transactions")
-    .select("id")
+    .select("id, status")
     .eq("provider", "paystack")
     .eq("reference", reference)
     .maybeSingle();
 
   if (existingTx) {
-    return { recorded: false, alreadyRecorded: true, netAmount, reference };
+    const existingStatus = String(
+      (existingTx as { status?: string }).status ?? "",
+    ).toLowerCase();
+    if (existingStatus === "success") {
+      return { recorded: false, alreadyRecorded: true, netAmount, reference };
+    }
+    if (existingStatus === "failed") {
+      await supabase
+        .from("payment_transactions")
+        .delete()
+        .eq("id", (existingTx as { id: string }).id);
+    } else {
+      return { recorded: false, alreadyRecorded: true, netAmount, reference };
+    }
   }
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {

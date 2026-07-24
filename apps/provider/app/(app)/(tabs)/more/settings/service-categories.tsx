@@ -21,7 +21,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { twStyle } from "@/lib/twStyle";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, getBackendUrl } from "@/config/public-env";
 import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
@@ -281,7 +281,10 @@ export default function ServiceCategoriesScreen() {
               );
             }
             const cat = item as Category & { type: "own" | "global" };
-            const iconUri = resolveGlobalCategoryIconUri(cat.icon, APP_URL);
+            const iconUri = resolveGlobalCategoryIconUri(
+              cat.icon,
+              (APP_URL || getBackendUrl()).replace(/\/$/, ""),
+            );
             return (
               <TouchableOpacity
                 style={twStyle(`rounded-xl border bg-white p-4 ${

@@ -23,6 +23,8 @@ export default function GiftCardPaystackReturnScreen() {
         fallbackCta: "Go to Explore",
         continueCta: "View payments",
       }}
+      pendingSubtext="Your gift card may take a moment to appear. Check Payments in your account."
+      failedSubtext="Gift card payment did not complete. You can retry the purchase."
     />
   );
 }

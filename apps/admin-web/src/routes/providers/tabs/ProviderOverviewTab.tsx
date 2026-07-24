@@ -120,10 +120,11 @@ export function ProviderOverviewTab({
     <div className="space-y-6">
       {/* Verification card */}
       {(canOpenLifecycle || canOpenVerifications) && providerCanonicalId ? (
-        <AdminPanel className="space-y-3">
+        <AdminPanel id="verification" className="space-y-3">
           <h2 className="text-base font-semibold text-gray-900">Verification</h2>
           <p className="text-sm text-gray-600">
-            Identity review (KYC) and marketplace verified badge are managed separately.
+            Identity review (KYC via Didit or manual upload) and the marketplace verified badge are
+            managed separately.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             {row.is_verified === true ? (
@@ -137,7 +138,9 @@ export function ProviderOverviewTab({
             )}
             {canOpenLifecycle ? (
               <Link
-                to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(providerCanonicalId)}`)}
+                to={adminSpaTo(
+                  `/admin/provider-ops/providers/${encodeURIComponent(providerCanonicalId)}#verification`,
+                )}
                 className="text-sm font-medium text-primary hover:underline"
               >
                 Provider Ops lifecycle →
@@ -145,10 +148,10 @@ export function ProviderOverviewTab({
             ) : null}
             {canOpenVerifications ? (
               <Link
-                to={adminSpaTo("/admin/verifications?status=pending")}
+                to={adminSpaTo("/admin/identity-trust/sessions?status=pending_review#verification")}
                 className="text-sm font-medium text-primary hover:underline"
               >
-                Verifications queue →
+                Didit verification sessions →
               </Link>
             ) : null}
           </div>

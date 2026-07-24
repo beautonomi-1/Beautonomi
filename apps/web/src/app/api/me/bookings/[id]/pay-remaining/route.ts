@@ -25,6 +25,11 @@ import {
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { z } from "zod";
+import {
+  extractIdempotencyKey,
+  lookupIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/http/idempotency";
 
 const payRemainingBodySchema = z.object({
   callback_url: z.string().optional(),
@@ -44,10 +49,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const idempotencyKey = extractIdempotencyKey(request);
+    const { id: bookingId } = await params;
+    const idempotencyEndpoint = `me/bookings/${bookingId}/pay-remaining`;
+    if (idempotencyKey) {
+      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey);
+      if (cached) return cached.toResponse();
+    }
+
     const { user } = await requireRoleInApi(["customer"], request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
-    const { id: bookingId } = await params;
     const rawBody = await request.json().catch(() => ({}));
     const parsedBody = payRemainingBodySchema.safeParse(rawBody);
     const body = parsedBody.success ? parsedBody.data : {};
@@ -157,44 +169,68 @@ export async function POST(
       paystackAmount = applied.paystackAmount;
 
       if (applied.fullySettled) {
-        if (giftCardAmountApplied > 0) {
-          await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
+        try {
+          if (giftCardAmountApplied > 0) {
+            await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
+          }
+          await completeWalletGiftSyntheticPayments(admin, bookingId);
+          await recordCollectibleSettlementLedger(admin, {
+            bookingId,
+            providerId,
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            bookingNumber,
+            bookingTotal: totalAmount,
+            tipAmount: Number((booking as { tip_amount?: number }).tip_amount ?? 0),
+            taxAmount: Number((booking as { tax_amount?: number }).tax_amount ?? 0),
+            travelFee: Number((booking as { travel_fee?: number }).travel_fee ?? 0),
+            serviceFeeAmount: Number(
+              (booking as { service_fee_amount?: number; platform_fee_amount?: number })
+                .service_fee_amount ??
+                (booking as { platform_fee_amount?: number }).platform_fee_amount ??
+                0,
+            ),
+            collectibleAmount: remaining,
+            walletAmountApplied,
+            giftCardAmountApplied,
+            idempotencyReference: reference,
+            settlementLabel: "Remaining balance (wallet/gift)",
+          });
+          await syncBookingAfterPaystackSuccess(admin, bookingId, {
+            paymentProvider: walletAmountApplied > 0 ? "wallet" : "gift_card",
+          });
+          const fullySettledBody = {
+            authorization_url: "",
+            access_code: "",
+            reference,
+            wallet_amount_applied: walletAmountApplied,
+            gift_card_amount_applied: giftCardAmountApplied,
+            paystack_amount: 0,
+            fully_settled: true,
+            message: "Remaining balance paid from wallet and gift card.",
+          };
+          if (idempotencyKey) {
+            await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+              status: 200,
+              body: fullySettledBody,
+            });
+          }
+          return successResponse(fullySettledBody);
+        } catch (settleErr) {
+          if (paymentLegSuffix && (walletAmountApplied > 0 || giftCardAmountApplied > 0)) {
+            await rollbackCollectibleSplitLeg(admin, {
+              bookingId,
+              customerId: user.id,
+              currency,
+              tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+              providerId,
+              walletAmountToReverse: walletAmountApplied,
+              giftCardAmountToReverse: giftCardAmountApplied,
+              paymentLegSuffix,
+              idempotencyKey: `pay_remaining_rollback:${reference}`,
+            });
+          }
+          throw settleErr;
         }
-        await completeWalletGiftSyntheticPayments(admin, bookingId);
-        await recordCollectibleSettlementLedger(admin, {
-          bookingId,
-          providerId,
-          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
-          bookingNumber,
-          bookingTotal: totalAmount,
-          tipAmount: Number((booking as { tip_amount?: number }).tip_amount ?? 0),
-          taxAmount: Number((booking as { tax_amount?: number }).tax_amount ?? 0),
-          travelFee: Number((booking as { travel_fee?: number }).travel_fee ?? 0),
-          serviceFeeAmount: Number(
-            (booking as { service_fee_amount?: number; platform_fee_amount?: number })
-              .service_fee_amount ??
-              (booking as { platform_fee_amount?: number }).platform_fee_amount ??
-              0,
-          ),
-          collectibleAmount: remaining,
-          walletAmountApplied,
-          giftCardAmountApplied,
-          idempotencyReference: reference,
-          settlementLabel: "Remaining balance (wallet/gift)",
-        });
-        await syncBookingAfterPaystackSuccess(admin, bookingId, {
-          paymentProvider: walletAmountApplied > 0 ? "wallet" : "gift_card",
-        });
-        return successResponse({
-          authorization_url: "",
-          access_code: "",
-          reference,
-          wallet_amount_applied: walletAmountApplied,
-          gift_card_amount_applied: giftCardAmountApplied,
-          paystack_amount: 0,
-          fully_settled: true,
-          message: "Remaining balance paid from wallet and gift card.",
-        });
       }
     }
 
@@ -277,7 +313,7 @@ export async function POST(
       throw new Error("Failed to generate payment link");
     }
 
-    return successResponse({
+    const payRemainingBody = {
       authorization_url: paystackResponse.data.authorization_url ?? "",
       access_code: paystackResponse.data.access_code ?? "",
       reference,
@@ -285,7 +321,14 @@ export async function POST(
       gift_card_amount_applied: giftCardAmountApplied,
       paystack_amount: paystackAmount,
       fully_settled: false,
-    });
+    };
+    if (idempotencyKey) {
+      await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        status: 200,
+        body: payRemainingBody,
+      });
+    }
+    return successResponse(payRemainingBody);
   } catch (error) {
     return handleApiError(error, "Failed to initiate pay remaining balance");
   }

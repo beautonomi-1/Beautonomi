@@ -6,12 +6,15 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchMergedFinanceLedgerSliceForTenant } from "@/lib/admin/finance-ledger-tenant";
 import {
-  countAllOpenSafetyEvents,
-  countOpenSafetyEventsForTenant,
   fetchOpenSafetyEventsGlobal,
   fetchOpenSafetyEventsForTenant,
 } from "@/lib/admin/safety-events-tenant-scope";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
+import {
+  ADMIN_ACTIVITY_LINKS,
+  computeActivityTotalUnreadFromCounts,
+} from "@/lib/admin/admin-activity-feed";
+import { fetchRefundableSuccessPaymentTxsForTenant } from "@/lib/admin/refundable-payment-transactions";
 
 /**
  * GET /api/admin/activity
@@ -36,12 +39,13 @@ export async function GET(request: NextRequest) {
     const [
       pendingPayouts,
       pendingVerifications,
+      pendingDiditSessions,
       newProviders,
       recentBookings,
       pendingProviderApprovals,
       webhookFailures,
       failedPayments,
-      refundRequests,
+      refundablePayments,
       highValueTransactions,
       providerViolations,
       accountIssues,
@@ -67,6 +71,19 @@ export async function GET(request: NextRequest) {
         .in('status', [...USER_VERIFICATION_QUEUE_STATUSES])
         .order('submitted_at', { ascending: false })
         .limit(10),
+
+      // Didit verification sessions awaiting review (superadmin ops console)
+      isSuperadmin
+        ? supabase
+            .from("identity_verification_sessions")
+            .select(
+              "id, user_id, persona_type, status, updated_at, created_at, users:user_id ( full_name, email )",
+            )
+            .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+            .eq("status", "pending_review")
+            .order("updated_at", { ascending: false })
+            .limit(10)
+        : Promise.resolve({ data: [] as unknown[], error: null }),
       
       // New providers (last 7 days)
       supabase
@@ -95,7 +112,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(10),
       
-      // Webhook failures (last 24 hours)
+      // Webhook failures (last 24 hours) — webhook_events has no tenant_id (platform-global)
       supabase
         .from('webhook_events')
         .select('id, source, event_type, status, error_message, created_at')
@@ -122,16 +139,10 @@ export async function GET(request: NextRequest) {
 
       (async () => {
         try {
-          const rows = await fetchMergedFinanceLedgerSliceForTenant(
-            supabase,
-            tenantId,
-            { start: last7Days.toISOString(), end: null },
-            { transactionType: 'refund' },
-            10,
-          );
+          const rows = await fetchRefundableSuccessPaymentTxsForTenant(supabase, tenantId, 10);
           return { data: rows, error: null };
         } catch (e) {
-          console.error('activity refunds ledger merge:', e);
+          console.error('activity refundable payments:', e);
           return { data: [], error: e };
         }
       })(),
@@ -154,24 +165,50 @@ export async function GET(request: NextRequest) {
         }
       })(),
       
-      // Provider violations/suspensions
+      // Provider suspensions (provider_status enum: draft | pending_approval | active | suspended)
       supabase
         .from('providers')
         .select('id, user_id, business_name, status, created_at, updated_at')
         .eq('tenant_id', tenantId)
-        .in('status', ['suspended', 'banned', 'inactive'])
+        .eq('status', 'suspended')
         .gte('updated_at', last7Days.toISOString())
         .order('updated_at', { ascending: false })
         .limit(10),
-      
-      // Account issues (deactivated, suspended users)
-      supabase
-        .from('users')
-        .select('id, full_name, email, role, is_active, deactivated_at, created_at')
-        .or('is_active.eq.false,deactivated_at.not.is.null')
-        .gte('deactivated_at', last7Days.toISOString())
-        .order('deactivated_at', { ascending: false })
-        .limit(10),
+
+      // Account issues — tenant-scoped deactivated users (last 7 days)
+      (async () => {
+        try {
+          const { data: scopedUsers, error } = await supabase.rpc('admin_users_in_tenant_scope', {
+            p_tenant_id: tenantId,
+            p_role: null,
+          });
+          if (error) return { data: [], error };
+          type ScopedUser = {
+            id: string;
+            full_name?: string;
+            email?: string;
+            role?: string;
+            deactivated_at?: string | null;
+            created_at?: string;
+          };
+          const filtered = ((scopedUsers || []) as ScopedUser[])
+            .filter(
+              (u) =>
+                u.deactivated_at &&
+                new Date(u.deactivated_at).getTime() >= last7Days.getTime(),
+            )
+            .sort(
+              (a, b) =>
+                new Date(b.deactivated_at ?? 0).getTime() -
+                new Date(a.deactivated_at ?? 0).getTime(),
+            )
+            .slice(0, 10);
+          return { data: filtered, error: null };
+        } catch (e) {
+          console.error('activity account issues tenant scope:', e);
+          return { data: [], error: e };
+        }
+      })(),
       
       // Booking disputes (open disputes)
       supabase
@@ -183,29 +220,30 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(10),
 
-      // Provider Ops: new leads (last 7 days)
+      // Provider Ops: new leads (same definition as nav-counts)
       (async () => {
         try {
           const { data, error } = await supabase
             .from('provider_leads')
             .select('id, name, source, commercial_stage, created_at')
             .eq('tenant_id', tenantId)
-            .gte('created_at', last7Days.toISOString())
+            .is('deleted_at', null)
+            .eq('commercial_stage', 'new')
             .order('created_at', { ascending: false })
             .limit(5);
           return { data: data ?? [], error };
         } catch { return { data: [], error: null }; }
       })(),
 
-      // Provider Ops: stalled onboarding
+      // Provider Ops: stalled onboarding (wizard_status column)
       (async () => {
         try {
           const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
           const { data, error } = await supabase
             .from('provider_onboarding_tracking')
-            .select('id, user_id, status, current_step, last_progress_at')
+            .select('id, user_id, wizard_status, current_step, last_progress_at')
             .eq('tenant_id', tenantId)
-            .in('status', ['in_progress', 'stalled'])
+            .in('wizard_status', ['in_progress', 'stalled'])
             .lt('last_progress_at', cutoff)
             .order('last_progress_at', { ascending: true })
             .limit(5);
@@ -293,8 +331,38 @@ export async function GET(request: NextRequest) {
               ? `${user.full_name || user.email} submitted ${verification.document_type ?? "identity"} verification`
               : `New ${verification.document_type ?? "identity"} verification submitted`,
             timestamp: verification.submitted_at || verification.created_at,
-            link: `/admin/verifications`,
+            link: ADMIN_ACTIVITY_LINKS.manualVerificationsPending,
             priority: 'high',
+          });
+        });
+      }
+    }
+
+    if (isSuperadmin && pendingDiditSessions.status === "fulfilled" && pendingDiditSessions.value.data) {
+      const { data: diditSessions } = pendingDiditSessions.value;
+      if (diditSessions && diditSessions.length > 0) {
+        type DiditSessionRow = {
+          id: string;
+          user_id: string;
+          persona_type?: string | null;
+          status?: string | null;
+          updated_at?: string | null;
+          created_at?: string | null;
+          users?: { full_name?: string | null; email?: string | null } | null;
+        };
+        (diditSessions as DiditSessionRow[]).forEach((session) => {
+          const user = session.users;
+          const persona = session.persona_type === "provider" ? "provider" : "customer";
+          activities.push({
+            id: `didit-session-${session.id}`,
+            type: "verification",
+            title: "Didit verification review",
+            message: user
+              ? `${user.full_name || user.email} — ${persona} session pending review (Didit)`
+              : `${persona} Didit session pending review`,
+            timestamp: session.updated_at || session.created_at || new Date().toISOString(),
+            link: ADMIN_ACTIVITY_LINKS.verificationsPending,
+            priority: "high",
           });
         });
       }
@@ -349,7 +417,7 @@ export async function GET(request: NextRequest) {
             title: 'New Booking',
             message: `Booking #${booking.booking_number ?? booking.id.slice(0, 8)} created`,
             timestamp: booking.created_at,
-            link: `/admin/bookings`,
+            link: ADMIN_ACTIVITY_LINKS.bookingDetail(booking.id),
             priority: 'medium',
           });
         });
@@ -367,7 +435,7 @@ export async function GET(request: NextRequest) {
             title: 'Webhook Failure',
             message: `${failure.source || 'System'} webhook failed: ${failure.event_type || 'Unknown event'}`,
             timestamp: failure.created_at,
-            link: `/admin/webhooks`,
+            link: ADMIN_ACTIVITY_LINKS.webhooksFailures,
             priority: 'high',
           });
         });
@@ -385,25 +453,25 @@ export async function GET(request: NextRequest) {
             title: 'Payment Failed',
             message: `Payment of ${tx.currency ?? ""} ${Number(tx.amount ?? 0).toFixed(2)} failed (${tx.status ?? "unknown"})`,
             timestamp: tx.created_at,
-            link: `/admin/finance`,
+            link: ADMIN_ACTIVITY_LINKS.financePayments,
             priority: 'high',
           });
         });
       }
     }
 
-    // Process refund requests
-    if (refundRequests.status === 'fulfilled' && refundRequests.value.data) {
-      const { data: refunds } = refundRequests.value;
+    // Process refundable success payments (actionable refund queue)
+    if (refundablePayments.status === 'fulfilled' && refundablePayments.value.data) {
+      const { data: refunds } = refundablePayments.value;
       if (refunds && refunds.length > 0) {
         (refunds as RefundRow[]).forEach((refund) => {
           activities.push({
-            id: `refund-${refund.id}`,
-            type: 'refund_request',
-            title: 'Refund Request',
-            message: `Refund request for ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)}`,
-            timestamp: refund.created_at,
-            link: `/admin/refunds`,
+            id: `refundable-${refund.id}`,
+            type: 'refundable_payment',
+            title: 'Refundable payment',
+            message: `Successful payment of ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)} can be refunded`,
+            timestamp: refund.created_at ?? "",
+            link: ADMIN_ACTIVITY_LINKS.refundsSuccess,
             priority: 'high',
           });
         });
@@ -421,7 +489,7 @@ export async function GET(request: NextRequest) {
             title: 'High-Value Transaction',
             message: `Large payment: ${tx.currency ?? ""} ${Number(tx.amount ?? 0).toFixed(2)}`,
             timestamp: tx.created_at,
-            link: `/admin/finance`,
+            link: ADMIN_ACTIVITY_LINKS.financePayments,
             priority: 'medium',
           });
         });
@@ -436,10 +504,10 @@ export async function GET(request: NextRequest) {
           activities.push({
             id: `provider-violation-${provider.id}`,
             type: 'provider_violation',
-            title: 'Provider Status Change',
-            message: `${provider.business_name || 'Provider'} status changed to ${provider.status}`,
+            title: 'Provider Suspended',
+            message: `${provider.business_name || 'Provider'} was suspended`,
             timestamp: provider.updated_at || provider.created_at,
-            link: `/admin/providers?status=${provider.status}`,
+            link: ADMIN_ACTIVITY_LINKS.providersSuspended,
             priority: 'high',
           });
         });
@@ -457,7 +525,7 @@ export async function GET(request: NextRequest) {
             title: 'Account Deactivated',
             message: `${user.full_name || user.email} (${user.role}) account was deactivated`,
             timestamp: user.deactivated_at || user.created_at,
-            link: `/admin/users`,
+            link: ADMIN_ACTIVITY_LINKS.users,
             priority: 'medium',
           });
         });
@@ -488,7 +556,7 @@ export async function GET(request: NextRequest) {
             title: 'Booking Dispute',
             message: `Dispute opened by ${dispute.opened_by ?? "unknown"} for booking #${booking?.booking_number ?? dispute.booking_id?.slice(0, 8) ?? dispute.id.slice(0, 8)}`,
             timestamp: dispute.created_at ?? "",
-            link: `/admin/bookings`,
+            link: ADMIN_ACTIVITY_LINKS.disputesOpen,
             priority: 'high',
           });
         });
@@ -507,7 +575,7 @@ export async function GET(request: NextRequest) {
             title: 'New Provider Lead',
             message: `${lead.name || 'Unnamed lead'} added via ${lead.source || 'manual'}`,
             timestamp: lead.created_at ?? "",
-            link: `/admin/provider-ops/leads`,
+            link: ADMIN_ACTIVITY_LINKS.opsLeadsNew,
             priority: 'medium',
           });
         });
@@ -526,7 +594,7 @@ export async function GET(request: NextRequest) {
             title: 'Stalled Onboarding',
             message: `Provider onboarding stalled at step ${t.current_step ?? '?'}`,
             timestamp: t.last_progress_at ?? "",
-            link: `/admin/provider-ops/tracker`,
+            link: ADMIN_ACTIVITY_LINKS.opsTrackerStalled,
             priority: 'high',
           });
         });
@@ -548,26 +616,20 @@ export async function GET(request: NextRequest) {
             title: 'User Report',
             message: direction,
             timestamp: report.created_at ?? "",
-            link: `/admin/user-reports`,
+            link: ADMIN_ACTIVITY_LINKS.userReportsPending,
             priority: 'high',
           });
         });
       }
     }
 
-    let safetyOpenForBadge = 0;
+    let safetyRowsInFeed = 0;
     if (isSuperadmin) {
       try {
-        const [openCount, rows] = safetyGlobalView
-          ? await Promise.all([
-              countAllOpenSafetyEvents(supabase),
-              fetchOpenSafetyEventsGlobal(supabase, 12),
-            ])
-          : await Promise.all([
-              countOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds),
-              fetchOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds, 12),
-            ]);
-        safetyOpenForBadge = openCount;
+        const rows = safetyGlobalView
+          ? await fetchOpenSafetyEventsGlobal(supabase, 12)
+          : await fetchOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds, 12);
+        safetyRowsInFeed = rows.length;
         for (const row of rows) {
           const title =
             row.event_type === "panic"
@@ -581,7 +643,7 @@ export async function GET(request: NextRequest) {
             title,
             message: `Open incident (${row.status}) — review in Safety logs`,
             timestamp: row.created_at,
-            link: "/admin/control-plane/safety-logs",
+            link: ADMIN_ACTIVITY_LINKS.safetyLogs,
             priority: "critical",
           });
         }
@@ -597,14 +659,22 @@ export async function GET(request: NextRequest) {
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
 
-    // Get counts for badge
+    const returnedActivities = activities.slice(0, 20);
+
+    // Per-bucket counts for diagnostics (informational types omitted from badge)
     const counts = {
       pending_payouts: pendingPayouts.status === 'fulfilled' && pendingPayouts.value.data
         ? pendingPayouts.value.data.length
         : 0,
-      pending_verifications: pendingVerifications.status === 'fulfilled' && pendingVerifications.value.data
-        ? pendingVerifications.value.data.length
-        : 0,
+      pending_verifications:
+        (pendingVerifications.status === "fulfilled" && pendingVerifications.value.data
+          ? pendingVerifications.value.data.length
+          : 0) +
+        (isSuperadmin &&
+        pendingDiditSessions.status === "fulfilled" &&
+        pendingDiditSessions.value.data
+          ? pendingDiditSessions.value.data.length
+          : 0),
       pending_provider_approvals: pendingProviderApprovals.status === 'fulfilled' && pendingProviderApprovals.value.data
         ? pendingProviderApprovals.value.data.length
         : 0,
@@ -614,8 +684,12 @@ export async function GET(request: NextRequest) {
       payment_failures: failedPayments.status === 'fulfilled' && failedPayments.value.data
         ? failedPayments.value.data.length
         : 0,
-      refund_requests: refundRequests.status === 'fulfilled' && refundRequests.value.data
-        ? refundRequests.value.data.length
+      refundable_payments: refundablePayments.status === 'fulfilled' && refundablePayments.value.data
+        ? refundablePayments.value.data.length
+        : 0,
+      /** @deprecated use refundable_payments */
+      refund_requests: refundablePayments.status === 'fulfilled' && refundablePayments.value.data
+        ? refundablePayments.value.data.length
         : 0,
       disputes: disputes.status === 'fulfilled' && disputes.value.data
         ? disputes.value.data.length
@@ -632,25 +706,13 @@ export async function GET(request: NextRequest) {
       ops_stalled: opsStalledOnboarding.status === 'fulfilled' && opsStalledOnboarding.value.data
         ? opsStalledOnboarding.value.data.length
         : 0,
-      safety_open: safetyOpenForBadge,
+      safety_in_feed: safetyRowsInFeed,
     };
 
-    const totalUnread = 
-      counts.pending_payouts + 
-      counts.pending_verifications + 
-      counts.pending_provider_approvals +
-      counts.webhook_failures +
-      counts.payment_failures +
-      counts.refund_requests +
-      counts.disputes +
-      counts.provider_violations +
-      counts.pending_user_reports +
-      counts.ops_new_leads +
-      counts.ops_stalled +
-      counts.safety_open;
+    const totalUnread = computeActivityTotalUnreadFromCounts(counts);
 
     return successResponse({
-      activities: activities.slice(0, 20), // Limit to 20 most recent
+      activities: returnedActivities,
       counts,
       total_unread: totalUnread,
     });

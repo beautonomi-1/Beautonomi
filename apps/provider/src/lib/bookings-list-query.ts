@@ -11,6 +11,9 @@ import {
 
 export type BookingsDateRange = "today" | "week" | "month" | "upcoming" | "all";
 
+/** Matches nav-counts stale/pending and the Overview "To review" deep link. */
+export const BOOKINGS_TO_REVIEW_STATUS = "pending,pending_payment";
+
 export type DateStripDayInfo = {
   bookings: number;
   hasPending: boolean;
@@ -72,12 +75,39 @@ export function filterBookingsForDayKey<T extends DateStripBookingRow>(
   return bookings.filter((b) => bookingScheduleYmd(b, providerTimezone) === selectedDateKey);
 }
 
-export function buildStripDateParams(providerTimezone?: string | null): {
+export function normalizeStripAnchorDate(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** ±30-day horizontal strip centered on `stripAnchorDate` (defaults to business today). */
+export function buildStripDays(stripAnchorDate: Date): Date[] {
+  const anchor = normalizeStripAnchorDate(stripAnchorDate);
+  return Array.from({ length: PROVIDER_BOOKINGS_STRIP_HALF_DAYS * 2 + 1 }, (_, i) =>
+    addDays(anchor, i - PROVIDER_BOOKINGS_STRIP_HALF_DAYS),
+  );
+}
+
+export function isDateWithinStripWindow(date: Date, stripAnchorDate: Date): boolean {
+  const anchor = normalizeStripAnchorDate(stripAnchorDate);
+  const target = normalizeStripAnchorDate(date);
+  const start = addDays(anchor, -PROVIDER_BOOKINGS_STRIP_HALF_DAYS);
+  const end = addDays(anchor, PROVIDER_BOOKINGS_STRIP_HALF_DAYS);
+  return target >= start && target <= end;
+}
+
+export function buildStripDateParams(
+  providerTimezone?: string | null,
+  stripAnchorDate?: Date | null,
+): {
   start_date: string;
   end_date: string;
 } {
   const tz = resolveBookingDisplayTimezone(providerTimezone);
-  const anchor = startOfBusinessDayLocalDate(providerTimezone);
+  const anchor = stripAnchorDate
+    ? normalizeStripAnchorDate(stripAnchorDate)
+    : startOfBusinessDayLocalDate(providerTimezone);
   return {
     start_date: formatBusinessDayYYYYMMDD(addDays(anchor, -PROVIDER_BOOKINGS_STRIP_HALF_DAYS), tz),
     end_date: formatBusinessDayYYYYMMDD(addDays(anchor, PROVIDER_BOOKINGS_STRIP_HALF_DAYS), tz),

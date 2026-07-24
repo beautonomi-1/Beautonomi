@@ -8,6 +8,9 @@ import {
   notFoundResponse,
   forbiddenResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { isProviderOwner } from "@/lib/auth/permissions";
+import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
 import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
@@ -91,13 +94,40 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const authCheck = await requirePermission("view_calendar", request);
+    if (!authCheck.authorized) {
+      return authCheck.response!;
+    }
+    const { user } = authCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const resolvedStaffId = await resolveProviderStaffRowId(supabase, providerId, id);
+    if (!resolvedStaffId) {
+      return notFoundResponse("Staff member not found");
+    }
+
+    const owner = await isProviderOwner(user.id, request);
+    if (!owner) {
+      const { data: selfStaff } = await supabase
+        .from("provider_staff")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle();
+      const isSelf = selfStaff?.id === resolvedStaffId;
+      if (!isSelf) {
+        const manageCheck = await requirePermission("manage_team", request);
+        if (!manageCheck.authorized) {
+          return manageCheck.response!;
+        }
+      }
     }
 
     const body = patchSchema.parse(await request.json());
@@ -113,7 +143,7 @@ export async function PATCH(
     const { data: existing } = await supabase
       .from("provider_staff")
       .select("id, notification_settings")
-      .eq("id", id)
+      .eq("id", resolvedStaffId)
       .eq("provider_id", providerId)
       .single();
 
@@ -159,7 +189,7 @@ export async function PATCH(
         notification_settings: updatedSettings,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
+      .eq("id", resolvedStaffId)
       .select("notification_settings")
       .single();
 

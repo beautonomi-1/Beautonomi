@@ -20,6 +20,8 @@ export type RecordBookingOnlineChargeLedgerInput = {
   customerEmail?: string | null;
   feeSource?: string;
   metadata?: Record<string, unknown>;
+  /** When true, defer tip/tax/travel/platform_fee until a later non-deposit charge. */
+  isDeposit?: boolean;
 };
 
 export type RecordBookingOnlineChargeLedgerResult =
@@ -69,10 +71,6 @@ export async function recordBookingOnlineChargeLedger(
     .eq("reference", input.reference)
     .maybeSingle();
 
-  if (existingPaymentTxForRef) {
-    return { ok: true, skipped: true, isSecondCharge: false };
-  }
-
   const { data: existingFinancePaymentRow } = await supabase
     .from("finance_transactions")
     .select("id")
@@ -80,6 +78,10 @@ export async function recordBookingOnlineChargeLedger(
     .eq("transaction_type", "payment")
     .maybeSingle();
   const isSecondCharge = Boolean(existingFinancePaymentRow);
+
+  if (existingPaymentTxForRef && existingFinancePaymentRow) {
+    return { ok: true, skipped: true, isSecondCharge: false };
+  }
 
   const amountInCurrency = Math.max(0, Number(input.amountMajor || 0));
   const feesInCurrency = Math.max(0, Number(input.feesMajor ?? 0));
@@ -115,27 +117,29 @@ export async function recordBookingOnlineChargeLedger(
   const webhookNow = new Date().toISOString();
   const bookingNumber = bookingData.booking_number ?? input.bookingId;
 
-  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
-    booking_id: input.bookingId,
-    reference: input.reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: input.provider,
-    metadata: {
-      ...(input.metadata ?? {}),
-      fee_source: input.feeSource ?? `${input.provider}_webhook`,
-      customer_email: input.customerEmail ?? null,
-    },
-    created_at: webhookNow,
-  });
+  if (!existingPaymentTxForRef) {
+    const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
+      booking_id: input.bookingId,
+      reference: input.reference,
+      amount: amountInCurrency,
+      fees: feesInCurrency,
+      net_amount: netAmount,
+      status: "success",
+      provider: input.provider,
+      metadata: {
+        ...(input.metadata ?? {}),
+        fee_source: input.feeSource ?? `${input.provider}_webhook`,
+        customer_email: input.customerEmail ?? null,
+      },
+      created_at: webhookNow,
+    });
 
-  if (paymentTxInsertError) {
-    if (paymentTxInsertError.code === "23505") {
-      return { ok: true, skipped: true, isSecondCharge };
+    if (paymentTxInsertError) {
+      if (paymentTxInsertError.code === "23505") {
+        return { ok: true, skipped: true, isSecondCharge };
+      }
+      return { ok: false, reason: "insert_failed", error: paymentTxInsertError };
     }
-    return { ok: false, reason: "insert_failed", error: paymentTxInsertError };
   }
 
   if (!isSecondCharge) {
@@ -165,7 +169,9 @@ export async function recordBookingOnlineChargeLedger(
       created_at: webhookNow,
     });
 
-    if (serviceFeeAmount > 0) {
+    const postBookingLevelFees = !input.isDeposit;
+
+    if (postBookingLevelFees && serviceFeeAmount > 0) {
       await supabase.from("finance_transactions").insert({
         booking_id: input.bookingId,
         provider_id: bookingData.provider_id ?? null,
@@ -180,56 +186,58 @@ export async function recordBookingOnlineChargeLedger(
       });
     }
 
-    await supabase.from("finance_transactions").insert([
-      ...(tipAmount > 0
-        ? [
-            {
-              booking_id: input.bookingId,
-              provider_id: bookingData.provider_id ?? null,
-              tenant_id: financeTenantId,
-              transaction_type: "tip",
-              amount: tipAmount,
-              fees: 0,
-              commission: 0,
-              net: tipAmount,
-              description: `Tip for booking ${bookingNumber}`,
-              created_at: webhookNow,
-            },
-          ]
-        : []),
-      ...(taxAmount > 0
-        ? [
-            {
-              booking_id: input.bookingId,
-              provider_id: bookingData.provider_id ?? null,
-              tenant_id: financeTenantId,
-              transaction_type: "tax",
-              amount: taxAmount,
-              fees: 0,
-              commission: 0,
-              net: 0,
-              description: `Tax for booking ${bookingNumber}`,
-              created_at: webhookNow,
-            },
-          ]
-        : []),
-      ...(travelFee > 0
-        ? [
-            {
-              booking_id: input.bookingId,
-              provider_id: bookingData.provider_id ?? null,
-              tenant_id: financeTenantId,
-              transaction_type: "travel_fee",
-              amount: travelFee,
-              fees: 0,
-              commission: 0,
-              net: travelFee,
-              description: `Travel fee for booking ${bookingNumber}`,
-              created_at: webhookNow,
-            },
-          ]
-        : []),
-    ]);
+    if (postBookingLevelFees) {
+      await supabase.from("finance_transactions").insert([
+        ...(tipAmount > 0
+          ? [
+              {
+                booking_id: input.bookingId,
+                provider_id: bookingData.provider_id ?? null,
+                tenant_id: financeTenantId,
+                transaction_type: "tip",
+                amount: tipAmount,
+                fees: 0,
+                commission: 0,
+                net: tipAmount,
+                description: `Tip for booking ${bookingNumber}`,
+                created_at: webhookNow,
+              },
+            ]
+          : []),
+        ...(taxAmount > 0
+          ? [
+              {
+                booking_id: input.bookingId,
+                provider_id: bookingData.provider_id ?? null,
+                tenant_id: financeTenantId,
+                transaction_type: "tax",
+                amount: taxAmount,
+                fees: 0,
+                commission: 0,
+                net: 0,
+                description: `Tax for booking ${bookingNumber}`,
+                created_at: webhookNow,
+              },
+            ]
+          : []),
+        ...(travelFee > 0
+          ? [
+              {
+                booking_id: input.bookingId,
+                provider_id: bookingData.provider_id ?? null,
+                tenant_id: financeTenantId,
+                transaction_type: "travel_fee",
+                amount: travelFee,
+                fees: 0,
+                commission: 0,
+                net: travelFee,
+                description: `Travel fee for booking ${bookingNumber}`,
+                created_at: webhookNow,
+              },
+            ]
+          : []),
+      ]);
+    }
   } else {
     await supabase.from("finance_transactions").insert([
       {
@@ -257,6 +265,78 @@ export async function recordBookingOnlineChargeLedger(
         created_at: webhookNow,
       },
     ]);
+
+    // Catch up booking-level fees deferred from a prior deposit charge.
+    const { data: existingBookingLevelRows } = await supabase
+      .from("finance_transactions")
+      .select("transaction_type")
+      .eq("booking_id", input.bookingId)
+      .in("transaction_type", ["tip", "tax", "travel_fee", "platform_fee"]);
+    const existingTypes = new Set(
+      ((existingBookingLevelRows ?? []) as Array<{ transaction_type?: string }>).map((r) =>
+        String(r.transaction_type ?? ""),
+      ),
+    );
+    const deferred: Array<Record<string, unknown>> = [];
+    if (serviceFeeAmount > 0 && !existingTypes.has("platform_fee")) {
+      deferred.push({
+        booking_id: input.bookingId,
+        provider_id: bookingData.provider_id ?? null,
+        tenant_id: financeTenantId,
+        transaction_type: "platform_fee",
+        amount: serviceFeeAmount,
+        fees: 0,
+        commission: 0,
+        net: serviceFeeAmount,
+        description: `Platform fee for booking ${bookingNumber}`,
+        created_at: webhookNow,
+      });
+    }
+    if (tipAmount > 0 && !existingTypes.has("tip")) {
+      deferred.push({
+        booking_id: input.bookingId,
+        provider_id: bookingData.provider_id ?? null,
+        tenant_id: financeTenantId,
+        transaction_type: "tip",
+        amount: tipAmount,
+        fees: 0,
+        commission: 0,
+        net: tipAmount,
+        description: `Tip for booking ${bookingNumber}`,
+        created_at: webhookNow,
+      });
+    }
+    if (taxAmount > 0 && !existingTypes.has("tax")) {
+      deferred.push({
+        booking_id: input.bookingId,
+        provider_id: bookingData.provider_id ?? null,
+        tenant_id: financeTenantId,
+        transaction_type: "tax",
+        amount: taxAmount,
+        fees: 0,
+        commission: 0,
+        net: 0,
+        description: `Tax for booking ${bookingNumber}`,
+        created_at: webhookNow,
+      });
+    }
+    if (travelFee > 0 && !existingTypes.has("travel_fee")) {
+      deferred.push({
+        booking_id: input.bookingId,
+        provider_id: bookingData.provider_id ?? null,
+        tenant_id: financeTenantId,
+        transaction_type: "travel_fee",
+        amount: travelFee,
+        fees: 0,
+        commission: 0,
+        net: travelFee,
+        description: `Travel fee for booking ${bookingNumber}`,
+        created_at: webhookNow,
+      });
+    }
+    if (deferred.length > 0) {
+      await supabase.from("finance_transactions").insert(deferred);
+    }
   }
 
   return { ok: true, skipped: false, isSecondCharge };

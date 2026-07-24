@@ -105,6 +105,8 @@ export function PayCloudPaymentSheet({
   const router = useRouter();
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const sameTerminalFlag = useFeatureFlag("payment_paycloud_same_terminal");
+  const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
+  const cashbackFlagEnabled = useFeatureFlag("payment_paycloud_cashback");
   const {
     terminals,
     acceptPaycloud,
@@ -132,10 +134,11 @@ export function PayCloudPaymentSheet({
   const closingRef = useRef(false);
 
   const activeTerminals = terminals.filter((t) => t.is_active);
-  const qrEnabled = qrPaymentsEnabled || settings?.qr_payments_enabled === true;
+  // Platform flag AND provider setting (same as web PayCloudPaymentDialog).
+  const qrEnabled =
+    qrFlagEnabled && (qrPaymentsEnabled || settings?.qr_payments_enabled === true);
   const cashbackOn =
-    cashbackEnabled ||
-    settings?.cashback_enabled === true;
+    cashbackFlagEnabled && (cashbackEnabled || settings?.cashback_enabled === true);
   const isReady = acceptPaycloud || settings?.accept_paycloud === true;
   const loading = terminalsLoading;
 

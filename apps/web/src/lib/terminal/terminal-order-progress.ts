@@ -94,7 +94,10 @@ export function resolveTerminalOrderPrimaryAction(
   ) {
     return "pay";
   }
-  if (order.integration_setup_status === "pending") {
+  if (
+    order.integration_setup_status === "pending" ||
+    order.integration_setup_status === "awaiting_merchant_onboarding"
+  ) {
     return "setup";
   }
   if (paid) {

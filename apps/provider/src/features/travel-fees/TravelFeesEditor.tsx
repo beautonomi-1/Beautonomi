@@ -15,6 +15,11 @@ export interface PlatformTravelLimits {
   allow_provider_customization: boolean;
   allow_provider_tiered: boolean;
   default_free_within_km?: number;
+  default_rate_per_km?: number;
+  default_minimum_fee?: number;
+  default_maximum_fee?: number | null;
+  default_currency?: string;
+  pricing_model?: string;
 }
 
 export type TravelFeesEditorMode = "settings" | "onboarding";
@@ -63,6 +68,31 @@ export function formatTravelFeesSummary(
   }
   if (tf.maximum_fee != null) parts.push(`max ${formatCurrency(tf.maximum_fee, currency)}`);
   return parts.length > 0 ? parts.join(" · ") : "Custom per-km (incomplete)";
+}
+
+export function formatPlatformTravelDefaultsSummary(
+  limits: PlatformTravelLimits | null | undefined,
+  currency: string,
+): string | null {
+  if (!limits) return null;
+  const cur = limits.default_currency?.trim() || currency;
+  const parts: string[] = [];
+  if (limits.default_rate_per_km != null && Number.isFinite(limits.default_rate_per_km)) {
+    parts.push(`${formatCurrency(limits.default_rate_per_km, cur)}/km`);
+  }
+  if (limits.default_minimum_fee != null && Number.isFinite(limits.default_minimum_fee)) {
+    parts.push(`min ${formatCurrency(limits.default_minimum_fee, cur)}`);
+  }
+  const freeKm = limits.default_free_within_km;
+  if (freeKm != null && freeKm > 0) {
+    parts.push(`free within ${freeKm} km`);
+  } else if (freeKm === 0) {
+    parts.push("charged from first km");
+  }
+  if (limits.default_maximum_fee != null && Number.isFinite(limits.default_maximum_fee)) {
+    parts.push(`max ${formatCurrency(limits.default_maximum_fee, cur)}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 const TRAVEL_FEES_ACCESSORY = {
@@ -228,6 +258,25 @@ export function TravelFeesEditor({
                 thumbColor={usePlatformDefault ? "#6366f1" : "#f4f4f5"}
               />
             </View>
+
+            {usePlatformDefault ? (
+              <View
+                style={twStyle(
+                  "mb-3 rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3",
+                )}
+              >
+                <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-700")}>
+                  Platform standard
+                </Text>
+                <Text style={twStyle("mt-1 text-sm text-gray-800")}>
+                  {formatPlatformTravelDefaultsSummary(platformLimits, currency) ??
+                    "Loading platform rates…"}
+                </Text>
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                  You can customize travel fees later in Settings.
+                </Text>
+              </View>
+            ) : null}
 
             {!usePlatformDefault && allowCustomization && (
               <>

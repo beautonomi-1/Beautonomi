@@ -8,6 +8,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import {
   getProviderReportContext,
@@ -25,6 +26,7 @@ export interface EndOfDayResponse {
   walletTotal: number;
   salesTotal: number;
   tipsTotal: number;
+  cashbackTotal: number;
   cancellationFeesTotal: number;
   total: number;
   /** Distinct bookings that contributed via booking_payments and/or wallet takings in range. */
@@ -41,7 +43,11 @@ export interface EndOfDayResponse {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -86,6 +92,7 @@ export async function GET(request: NextRequest) {
       walletTotal: rt.walletTotal,
       salesTotal: rt.salesTotal,
       tipsTotal: rt.tipsTotal,
+      cashbackTotal: rt.cashbackTotal,
       cancellationFeesTotal: rt.cancellationFeesTotal,
       total: rt.totalRecorded,
       bookingCount: rt.bookingCount,

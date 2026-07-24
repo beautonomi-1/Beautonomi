@@ -7,6 +7,7 @@ import {
   forbiddenResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -131,6 +132,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         request
       );
       user = { id: authed.user.id, role: authed.user.role as string };
+      const owner = await isProviderOwner(user.id, request);
+      if (
+        !owner &&
+        user.role !== "superadmin" &&
+        !(await hasPermission(user.id, "view_calendar", undefined, request))
+      ) {
+        return forbiddenResponse("You do not have permission to view group booking receipts");
+      }
     }
 
     const { data: group, error } = await admin

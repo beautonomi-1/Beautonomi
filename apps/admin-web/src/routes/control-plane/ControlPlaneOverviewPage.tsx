@@ -1,96 +1,9 @@
 import { Link } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
-import {
-  Activity,
-  BarChart3,
-  Bot,
-  Eye,
-  FileText,
-  Flag,
-  Gauge,
-  Globe2,
-  Layers,
-  Link2,
-  MapPin,
-  Network,
-  Puzzle,
-  Route,
-  Scale,
-  ScrollText,
-  Shield,
-  ShieldAlert,
-  Sparkles,
-  ToggleLeft,
-  Wrench,
-} from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { CONTROL_PLANE_OVERVIEW_GROUPS } from "./controlPlaneOverviewGroups";
 
-type CpLink = { title: string; to: string; description?: string; icon: LucideIcon };
-
-const GROUPS: { label: string; description: string; items: CpLink[] }[] = [
-  {
-    label: "Flags & discovery",
-    description: "Experiments and tenant-visible toggles",
-    items: [
-      {
-        title: "Control plane feature flags",
-        to: "/admin/control-plane/feature-flags",
-        description: "Preview + resolver",
-        icon: Sparkles,
-      },
-      {
-        title: "Settings feature flags",
-        to: "/admin/settings/feature-flags",
-        description: "Tenant flag list",
-        icon: ToggleLeft,
-      },
-    ],
-  },
-  {
-    label: "Integrations",
-    description: "Third-party credentials and SDK hooks",
-    items: [
-      { title: "Integrations hub", to: "/admin/control-plane/integrations", icon: Puzzle },
-      { title: "Didit", to: "/admin/control-plane/integrations/didit", icon: Shield },
-      { title: "Gemini", to: "/admin/control-plane/integrations/gemini", icon: Bot },
-      { title: "Aura", to: "/admin/control-plane/integrations/aura", icon: Activity },
-    ],
-  },
-  {
-    label: "Modules",
-    description: "Runtime tuning for marketplace behaviour",
-    items: [
-      { title: "Distance", to: "/admin/control-plane/modules/distance", icon: MapPin },
-      { title: "On-demand", to: "/admin/control-plane/modules/on-demand", icon: Route },
-      { title: "Safety", to: "/admin/control-plane/modules/safety", icon: Shield },
-      { title: "Ranking", to: "/admin/control-plane/modules/ranking", icon: Gauge },
-      { title: "Ranking scores", to: "/admin/control-plane/modules/ranking/scores", icon: Scale },
-      { title: "AI module", to: "/admin/control-plane/modules/ai", icon: Bot },
-      { title: "Agentic workforce", to: "/admin/control-plane/modules/agents", icon: Bot },
-      { title: "AI usage", to: "/admin/control-plane/modules/ai/usage", icon: Activity },
-      { title: "AI entitlements", to: "/admin/control-plane/modules/ai/entitlements", icon: Flag },
-      { title: "AI templates", to: "/admin/control-plane/modules/ai/templates", icon: Layers },
-      { title: "Ads", to: "/admin/control-plane/modules/ads", icon: Sparkles },
-    ],
-  },
-  {
-    label: "Operations & audit",
-    description: "Safety data, maintenance, and configuration history",
-    items: [
-      { title: "Safety logs", to: "/admin/control-plane/safety-logs", icon: ScrollText },
-      { title: "Maintenance", to: "/admin/control-plane/maintenance", icon: Wrench },
-      { title: "Sign-ups notify", to: "/admin/control-plane/maintenance/sign-ups", icon: Link2 },
-      { title: "Config change log", to: "/admin/control-plane/audit-log", icon: ScrollText },
-      {
-        title: "Compliance purge",
-        to: "/admin/control-plane/compliance",
-        description: "User / provider erasure + audit trail",
-        icon: ShieldAlert,
-      },
-    ],
-  },
-];
+export { CONTROL_PLANE_OVERVIEW_GROUPS } from "./controlPlaneOverviewGroups";
 
 export function ControlPlaneOverviewPage() {
   const { denied } = useSuperadminPage("Control plane overview is superadmin-only (matches child routes and nav).");
@@ -111,7 +24,7 @@ export function ControlPlaneOverviewPage() {
         </p>
       </div>
 
-      {GROUPS.map((group) => (
+      {CONTROL_PLANE_OVERVIEW_GROUPS.map((group) => (
         <section key={group.label}>
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-gray-900">{group.label}</h2>

@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
@@ -30,6 +31,14 @@ const createPaymentSchema = z
     appointment_id: z.string().uuid().optional().nullable(),
     booking_id: z.string().uuid().optional().nullable(),
     sale_id: z.string().uuid().optional().nullable(),
+    tip_amount: z.number().min(0).optional(),
+    entity_type: z
+      .enum(["booking", "group_booking", "sale", "product_order", "additional_charge"])
+      .optional(),
+    entity_id: z.string().uuid().optional().nullable(),
+    group_booking_id: z.string().uuid().optional().nullable(),
+    product_order_id: z.string().uuid().optional().nullable(),
+    additional_charge_id: z.string().uuid().optional().nullable(),
     metadata: z.record(z.string(), z.any()).optional(),
   })
   .refine((d) => d.amount != null || d.amount_cents != null, {
@@ -46,9 +55,9 @@ const createPaymentSchema = z
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"], request);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
+    const auth = await requirePermission("process_payments", request);
+    if (!auth.authorized) {
+      return auth.response ?? unauthorizedResponse("Authentication required");
     }
 
     const supabase = await getSupabaseServer(request);
@@ -471,12 +480,44 @@ export async function POST(request: Request) {
       crypto.randomUUID();
 
     // Yoco expects amount as Money object and metadata values as strings (API reference)
+    const tipAmount = Math.max(0, Number(validationResult.data.tip_amount ?? 0));
+    const groupBookingId = validationResult.data.group_booking_id ?? null;
+    const productOrderId = validationResult.data.product_order_id ?? null;
+    const additionalChargeId = validationResult.data.additional_charge_id ?? null;
+    const resolvedEntityType =
+      validationResult.data.entity_type ??
+      (groupBookingId
+        ? "group_booking"
+        : productOrderId
+          ? "product_order"
+          : additionalChargeId
+            ? "additional_charge"
+            : validationResult.data.sale_id
+              ? "sale"
+              : appointmentId
+                ? "booking"
+                : undefined);
+    const resolvedEntityId =
+      validationResult.data.entity_id ??
+      groupBookingId ??
+      productOrderId ??
+      additionalChargeId ??
+      validationResult.data.sale_id ??
+      appointmentId ??
+      null;
+
     const metadataRecord: Record<string, string> = {
       provider_id: providerId,
       device_id: validationResult.data.device_id,
       processed_by: auth.user.id,
       ...(appointmentId ? { appointment_id: appointmentId } : {}),
       ...(validationResult.data.sale_id ? { sale_id: validationResult.data.sale_id } : {}),
+      ...(tipAmount > 0 ? { tip_amount: String(tipAmount) } : {}),
+      ...(resolvedEntityType ? { entity_type: resolvedEntityType } : {}),
+      ...(resolvedEntityId ? { entity_id: resolvedEntityId } : {}),
+      ...(groupBookingId ? { group_booking_id: groupBookingId } : {}),
+      ...(productOrderId ? { product_order_id: productOrderId } : {}),
+      ...(additionalChargeId ? { additional_charge_id: additionalChargeId } : {}),
     };
     if (validationResult.data.metadata) {
       for (const [k, v] of Object.entries(validationResult.data.metadata)) {
@@ -654,6 +695,10 @@ export async function POST(request: Request) {
         status: initialStatus,
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
+        tip_amount: tipAmount,
+        entity_type: resolvedEntityType ?? null,
+        entity_id: resolvedEntityId,
+        group_booking_id: groupBookingId,
         metadata: {
           client_reference: String(clientReference),
           yoco_response: yocoPayment,
@@ -661,6 +706,9 @@ export async function POST(request: Request) {
           ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
           ...(checkoutUrl ? { checkout_url: checkoutUrl } : {}),
           ...(qrPayload ? { qr_payload: qrPayload } : {}),
+          ...(tipAmount > 0 ? { tip_amount: tipAmount } : {}),
+          ...(resolvedEntityType ? { entity_type: resolvedEntityType } : {}),
+          ...(resolvedEntityId ? { entity_id: resolvedEntityId } : {}),
           ...validationResult.data.metadata,
         },
         created_at: new Date().toISOString(),
@@ -790,16 +838,16 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"], request);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
+    const auth = await requirePermission("view_sales", request);
+    if (!auth.authorized) {
+      return auth.response ?? unauthorizedResponse("Authentication required");
     }
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     // Resolve active provider context (owner/staff, multi-provider safe).
-    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
+    const providerId = await getProviderIdForUser(auth.user!.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {

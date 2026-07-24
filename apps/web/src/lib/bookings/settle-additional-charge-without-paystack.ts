@@ -53,6 +53,25 @@ export async function settleAdditionalChargeWithoutPaystack(
     return { ok: false, error: "Tender amounts do not cover the charge." };
   }
 
+  const reference = `addl_nogw_${chargeId}`;
+
+  const { data: existingFinance } = await admin
+    .from("finance_transactions")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("transaction_type", "provider_earnings")
+    .ilike("description", `%${chargeId}%`)
+    .limit(1);
+  if (Array.isArray(existingFinance) && existingFinance.length > 0) {
+    if ((charge as { status?: string }).status !== "paid") {
+      await admin.from("additional_charges").update({
+        status: "paid",
+        paid_at: new Date().toISOString(),
+      }).eq("id", chargeId).eq("booking_id", bookingId);
+    }
+    return { ok: true };
+  }
+
   if (giftCardAmountApplied > 0) {
     await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
   }
@@ -73,7 +92,31 @@ export async function settleAdditionalChargeWithoutPaystack(
     commissionRate > 0 ? percentOf(collectible, commissionRate) : 0;
   const providerEarnings = subtractMoney(collectible, platformCommission);
 
-  const reference = `addl_nogw_${chargeId}`;
+  await admin.from("finance_transactions").insert({
+    booking_id: bookingId,
+    provider_id: providerId,
+    tenant_id: financeTenantId,
+    transaction_type: "additional_charge_payment",
+    amount: collectible,
+    fees: 0,
+    commission: platformCommission,
+    net: platformCommission,
+    description: `Additional charge (wallet/gift) for booking ${bookingNumber} (${chargeId})`,
+    created_at: new Date().toISOString(),
+  });
+
+  await admin.from("finance_transactions").insert({
+    booking_id: bookingId,
+    provider_id: providerId,
+    tenant_id: financeTenantId,
+    transaction_type: "provider_earnings",
+    amount: providerEarnings,
+    fees: 0,
+    commission: 0,
+    net: providerEarnings,
+    description: `Provider earnings (additional charge, wallet/gift) for booking ${bookingNumber} (${chargeId})`,
+    created_at: new Date().toISOString(),
+  });
 
   await admin.from("additional_charges").update({
     status: "paid",
@@ -93,32 +136,6 @@ export async function settleAdditionalChargeWithoutPaystack(
       updated_at: new Date().toISOString(),
     })
     .eq("id", bookingId);
-
-  await admin.from("finance_transactions").insert({
-    booking_id: bookingId,
-    provider_id: providerId,
-    tenant_id: financeTenantId,
-    transaction_type: "additional_charge_payment",
-    amount: collectible,
-    fees: 0,
-    commission: platformCommission,
-    net: platformCommission,
-    description: `Additional charge (wallet/gift) for booking ${bookingNumber}`,
-    created_at: new Date().toISOString(),
-  });
-
-  await admin.from("finance_transactions").insert({
-    booking_id: bookingId,
-    provider_id: providerId,
-    tenant_id: financeTenantId,
-    transaction_type: "provider_earnings",
-    amount: providerEarnings,
-    fees: 0,
-    commission: 0,
-    net: providerEarnings,
-    description: `Provider earnings (additional charge, wallet/gift) for booking ${bookingNumber}`,
-    created_at: new Date().toISOString(),
-  });
 
   await admin.from("booking_events").insert({
     booking_id: bookingId,

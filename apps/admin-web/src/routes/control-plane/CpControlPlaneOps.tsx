@@ -6,6 +6,7 @@ import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpBack, CpField, EnvSelect } from "./cpShared";
+import { ProviderAiSubnav } from "./ProviderAiSubnav";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -552,8 +553,9 @@ export function CpAiUsagePage() {
 
   return (
     <div className="space-y-6">
-      <CpBack to=".." label="AI module" />
-      <AdminPageHeader title="AI usage" description="Token usage and cost estimates." />
+      <CpBack to=".." label="Provider AI" />
+      <AdminPageHeader title="Usage" description="Token usage and cost estimates for provider AI." />
+      <ProviderAiSubnav />
       <div className="flex flex-wrap gap-4">
         <CpField label="Feature key">
           <input
@@ -696,8 +698,9 @@ export function CpAiEntitlementsPage() {
 
   return (
     <div className="space-y-6">
-      <CpBack to=".." label="AI module" />
-      <AdminPageHeader title="AI plan entitlements" description="Per-plan limits." />
+      <CpBack to=".." label="Provider AI" />
+      <AdminPageHeader title="Entitlements" description="Per-plan limits for provider AI features." />
+      <ProviderAiSubnav />
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>
@@ -1030,8 +1033,9 @@ export function CpAiTemplatesPage() {
 
   return (
     <div className="space-y-6">
-      <CpBack to=".." label="AI module" />
-      <AdminPageHeader title="AI prompt templates" description="Create and list templates by key/version." />
+      <CpBack to=".." label="Provider AI" />
+      <AdminPageHeader title="Templates" description="Create and manage prompt templates by key and version." />
+      <ProviderAiSubnav />
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>

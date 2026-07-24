@@ -115,6 +115,8 @@ export {
 } from "./geo/verification-country";
 export {
   resolveGlobalCategoryIconUri,
+  resolveLegacyGlobalCategoryIconPath,
+  LEGACY_GLOBAL_CATEGORY_ICON_PATHS,
   withGlobalCategoryIconCacheBust,
   GLOBAL_CATEGORY_ICON_CACHE_REVISION,
 } from "./globalCategoryIcon";

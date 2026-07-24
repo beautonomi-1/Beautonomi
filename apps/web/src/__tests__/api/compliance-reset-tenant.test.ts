@@ -380,7 +380,7 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(mockWriteAuditLog).not.toHaveBeenCalled();
   });
 
-  it("dry-run: surfaces terminal commerce + fee reconciliation table keys from migration 764/765", async () => {
+  it("dry-run: surfaces terminal commerce + PayCloud/Yoco/membership keys from migration 764/765/815", async () => {
     const terminalCounts = {
       terminal_campaign_recipients: { rows: 2, via: "terminal_campaign" },
       terminal_campaigns: { rows: 1, via: "tenant_id" },
@@ -391,6 +391,17 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
       terminal_assets: { rows: 1, via: "tenant_id" },
       terminal_orders: { rows: 4, via: "tenant_id" },
       fee_reconciliations: { rows: 7, via: "tenant_id" },
+      paycloud_webhook_events: { rows: 2, via: "paycloud" },
+      provider_paycloud_payments: { rows: 6, via: "tenant_id" },
+      provider_yoco_webhook_events: { rows: 1, via: "yoco" },
+      provider_yoco_refunds: { rows: 0, via: "yoco" },
+      provider_yoco_payments: { rows: 3, via: "provider" },
+      terminal_merchant_application_documents: { rows: 2, via: "merchant_application" },
+      terminal_merchant_application_events: { rows: 4, via: "merchant_application" },
+      terminal_merchant_applications: { rows: 1, via: "tenant_id" },
+      customer_memberships: { rows: 2, via: "provider" },
+      user_memberships: { rows: 1, via: "provider" },
+      _paycloud_terminal_counters_reset: { terminals_affected: 2, via: "recompute_preview" },
     };
     const rpcResult = {
       tenant_id: VALID_TENANT_ID,

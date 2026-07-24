@@ -222,7 +222,15 @@ export async function POST(request: Request) {
 
     // ── 3. Idempotency check ────────────────────────────────────────────────
     const supabase = getSupabaseAdmin();
-    const eventId = event.id || data.id || data.reference;
+    // Prefer Paystack's top-level event id when present. Otherwise namespace by
+    // event type: many Paystack payloads share the same data.id across
+    // transfer.success / transfer.reversed / transfer.failed (and similarly for
+    // invoice.*), and UNIQUE(event_id, source) would otherwise drop the later
+    // event as a duplicate — leaving payouts stuck as completed after a bounce.
+    const eventId =
+      event.id ||
+      (data.id != null ? `${eventType}:${data.id}` : null) ||
+      (data.reference ? `${eventType}:${data.reference}` : null);
     const { data: defaultTenant } = await supabase.from("tenants").select("id").eq("slug", "za").maybeSingle();
 
     const paymentWebhookTenantId = await resolvePaymentWebhookTenantId(supabase, {
@@ -438,7 +446,7 @@ export async function POST(request: Request) {
             );
             await openFraudCaseFromPaystackDispute({
               eventType,
-              eventId,
+              eventId: eventId != null ? String(eventId) : undefined,
               reference: String(disputeRef),
               disputeData: disputeData as Record<string, unknown> | null,
               supabase: supabase as never,

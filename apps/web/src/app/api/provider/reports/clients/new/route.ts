@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatInTz } from "@/lib/dates/provider-tz";
 import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";

@@ -43,6 +43,13 @@ export function validateStep(
         errors.push("Please upload a profile image/avatar for your provider card");
       }
       break;
+    case 9:
+      if (formData.business_type === "mobile" || formData.business_type === "both") {
+        if (!formData.selected_zone_ids?.length) {
+          errors.push("Please select at least one service zone");
+        }
+      }
+      break;
     case 10: {
       // Travel fees — optional/skippable. Only validate when the provider opts
       // into custom pricing (server re-checks against platform limits on submit).

@@ -257,7 +257,9 @@ export default function TerminalShopScreen() {
   const pendingActivationOrder = useMemo(
     () =>
       orders.find((o) => {
-        if (o.invoice_status !== "paid" || o.integration_setup_status !== "pending") return false;
+        if (o.invoice_status !== "paid") return false;
+        if (o.integration_setup_status === "awaiting_merchant_onboarding") return true;
+        if (o.integration_setup_status !== "pending") return false;
         const vendor = (o.terminal_products?.vendor ?? "").toLowerCase();
         return !vendor || vendor === "paycloud";
       }) ?? null,
@@ -265,6 +267,12 @@ export default function TerminalShopScreen() {
   );
 
   function openIntegrationSetup(order: TerminalOrder) {
+    if (order.integration_setup_status === "awaiting_merchant_onboarding") {
+      router.push(
+        `/(app)/(tabs)/more/terminal-merchant-application?order_id=${encodeURIComponent(order.id)}` as never,
+      );
+      return;
+    }
     const vendor = (
       order.terminal_products?.integration_vendor_slug ??
       order.terminal_products?.vendor ??
@@ -464,24 +472,28 @@ export default function TerminalShopScreen() {
             {/* Pending activation nudge */}
             {pendingActivationOrder && paycloudEnabled ? (
               <TouchableOpacity
-                onPress={() =>
-                  router.push(
-                    `/(app)/(tabs)/more/card-machines?order=${encodeURIComponent(pendingActivationOrder.id)}` as never,
-                  )
-                }
+                onPress={() => openIntegrationSetup(pendingActivationOrder)}
                 style={twStyle("mb-5 flex-row items-center rounded-2xl border border-pink-200 bg-white p-4")}
                 accessibilityRole="button"
-                accessibilityLabel="Activate your card machine"
+                accessibilityLabel={
+                  pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                    ? "Complete card machine application"
+                    : "Activate your card machine"
+                }
               >
                 <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-pink-50")}>
                   <Ionicons name="cube-outline" size={20} color="#db2777" />
                 </View>
                 <View style={twStyle("ml-3 flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                    {pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is ready to activate
+                    {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                      ? "Complete your card machine application"
+                      : `${pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is ready to activate`}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    Enter the serial number from the device label to finish setup.
+                    {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
+                      ? "We need a few details before we can ship your device."
+                      : "Enter the serial number from the device label to finish setup."}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color="#db2777" />

@@ -17,7 +17,7 @@ export interface PaycloudAppCredentials {
   app_id: string;
   app_rsa_private_key: string;
   gateway_rsa_public_key: string;
-  /** Gateway root e.g. https://addpay-op.wangtest.cn — paths are appended */
+  /** Gateway root e.g. https://addpay-open.wangtest.cn — paths are appended */
   api_base_url?: string;
 }
 

@@ -27,6 +27,8 @@ export default function PaystackCallbackScreen() {
         fallbackCta: "Back to app",
         continueCta: "Continue",
       }}
+      pendingSubtext="We are still confirming your payment. Check the relevant section in your account shortly."
+      failedSubtext="Payment did not complete. You can retry from where you started checkout."
     />
   );
 }

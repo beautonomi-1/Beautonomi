@@ -20,11 +20,14 @@ import { writeAuditLog } from "@/lib/audit/audit";
  * children), payments, orders, ledger/journal entries, reviews, conversations, support tickets,
  * notifications, provider gamification, group bookings, explore posts, waitlist, ad campaigns,
  * payouts, provider invoices, recurring appointments, VAT reminders, payment webhook events,
- * promotion usage, gift-card/loyalty redemptions, and the booking-linked loyalty ledger.
+ * promotion usage, gift-card/loyalty redemptions, the booking-linked loyalty ledger, salon
+ * memberships (user_memberships) and provider-linked customer_memberships, PayCloud/Yoco payment +
+ * webhook history, and terminal merchant onboarding applications. Platform memberships with null
+ * provider_id are preserved (cross-tenant).
  *
  * Then it RECOMPUTES cached aggregates from the surviving rows: provider rating/review_count/
- * total_bookings/total_paid_out/current_badge_id, and user_wallets.balance (recomputed from remaining
- * wallet_transactions — multi-tenant safe, never blind-zeroed).
+ * total_bookings/total_paid_out/current_badge_id, user_wallets.balance (recomputed from remaining
+ * wallet_transactions — multi-tenant safe, never blind-zeroed), and PayCloud terminal counters.
  *
  * Explicitly preserves the structural spine (users, providers, services, products, badge/coupon/
  * loyalty config, platform settings, tenant config) and cross-tenant user-global rows that cannot be

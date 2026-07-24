@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderNetAfterRefundsDetailed } from "@/lib/reports/revenue-helpers";
 import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";

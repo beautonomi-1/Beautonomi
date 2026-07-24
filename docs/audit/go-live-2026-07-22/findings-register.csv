@@ -1,0 +1,44 @@
+finding_id,severity,status,prior_status,regression,title,agent,application,go_live_impact
+FND-P0-001,P1,mitigated,mitigated,false,CSRF uses CRON_SECRET fallback,8,APP-001,high
+FND-P0-002,P0,resolved,open,false,E2E coverage critically thin for money paths,13,APP-001,resolved_pending_ci_artifact
+FND-P0-003,P0,resolved,open,false,Multi-market tenant isolation unverified,7,APP-001,resolved_pending_ci_artifact
+FND-P0-004,P0,resolved,resolved,false,Search map displays fake coordinates,2,APP-001,none
+FND-P0-005,P0,resolved,resolved,false,Shipping integration gated off,10,APP-001,none
+FND-P0-006,P0,resolved,resolved,false,POS creates unpersisted client IDs,4,APP-001,none
+FND-P0-007,P0,resolved,resolved,false,Time-clock fake success removed,4,APP-001,none
+FND-P1-001,P1,mitigated,mitigated,false,PayCloud same-terminal incomplete,10,APP-004,high
+FND-P1-002,P1,resolved,resolved,true,Advanced search filters no-op,2,APP-001,resolved
+FND-P1-003,P1,open,open,false,ZA postal areas placeholder seed only,11,APP-001,high
+FND-P1-004,P1,open,open,false,KYB verification flags off by default,4,APP-001,high
+FND-P1-005,P1,partial,partial,false,Rate limiting in-memory fallback,8,APP-001,high
+FND-P1-006,P1,partial,partial,false,CSP allows unsafe-inline and unsafe-eval,8,APP-001,medium
+FND-P1-007,P1,resolved,resolved,false,Stripe/Flutterwave operator UI,10,APP-002,medium
+FND-P1-008,P1,open,open,false,7-day staging drift gate unsigned,15,APP-001,high
+FND-P1-009,P1,open,open,false,Game-day drills unverified,16,APP-001,high
+FND-P1-010,P1,resolved,resolved,false,Custom offer image upload web,2,APP-001,medium
+FND-P1-011,P1,resolved,resolved,false,Admin SPA edge role gate,7,APP-002,medium
+FND-P1-012,P1,open,open,false,API relies on service-role bypass,7,APP-001,high
+FND-P1-013,P1,resolved,resolved,false,QR scanner consolidated,4,APP-001,medium
+FND-P1-014,P1,resolved,resolved,false,Service zone analytics polygon/radius,4,APP-001,medium
+FND-P1-015,P1,resolved,resolved,false,LAUNCH_READINESS_100 contradictions,19,APP-001,high
+FND-P1-016,P1,partial,partial,false,Backup restore not verified,15,APP-001,high
+FND-P1-017,P1,partial,open,false,Legal documents counsel sign-off pending,17,APP-001,high
+FND-P1-018,P1,resolved,resolved,false,Web typecheck blocks release,15,APP-001,none
+FND-P1-019,P1,resolved,resolved,false,Provider tenant guard heuristic,7,APP-001,none
+FND-P1-020,P1,partial,partial,false,Paystack test key in production config,8,APP-001,high
+FND-P1-021,P1,open,,false,Stripe webhook ignores non-booking PaymentIntents,9,APP-001,high
+FND-P1-022,P1,open,,false,Stripe alternate settlement models unimplemented,9,APP-001,high
+FND-P1-023,P1,open,,false,Admin payout transfer Paystack-only,9,APP-002,high
+FND-P1-024,P1,open,,false,Payment webhooks CSRF exemption gap,8,APP-001,high
+FND-P2-001,P2,resolved,resolved,false,provider_onboarding role enum,7,APP-001,low
+FND-P2-002,P2,resolved,resolved,false,Hardcoded mobile category fallback,3,APP-003,low
+FND-P2-003,P2,partial,partial,false,No recent load test results,14,APP-001,medium
+FND-P2-004,P2,open,,false,Orphan slider.tsx fake London pins,18,APP-001,low
+FND-P2-005,P2,open,,false,audit-finance-ledger silent skip,9,APP-001,medium
+FND-P2-006,P2,open,,false,Integration register stale for Stripe,10,APP-001,low
+FND-P2-007,P2,open,,false,Custom offer images mobile-only gap,5,APP-004,medium
+FND-P2-008,P2,open,,false,Membership subscribers web UI missing,4,APP-004,medium
+FND-P2-009,P2,open,,false,Agent classifyTicket unbound,18,APP-001,low
+FND-P2-010,P2,open,,false,Fraud cases missing from admin inventory,6,APP-002,medium
+FND-P2-011,P2,open,,false,Parity contract misroutes onboarding,3,APP-003,low
+FND-P3-001,P3,resolved,resolved,false,Support labels Stripe mismatch,18,APP-002,none

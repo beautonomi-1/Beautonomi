@@ -77,6 +77,55 @@ type OrderRow = {
   currency?: string | null;
 };
 
+/**
+ * Reverse wallet debit, restock, and cancel a product order when checkout
+ * finalization fails after money was already moved.
+ *
+ * Never reverses an order that is already `payment_status=paid` — that would
+ * leave finance_transactions / payment_transactions out of sync with wallet.
+ */
+export async function rollbackFailedProductOrderCheckout(
+  supabase: SupabaseClient,
+  order: OrderRow,
+  reason = "Checkout could not be completed",
+  opts?: { restock?: boolean },
+): Promise<{ rolledBack: boolean; skippedPaid: boolean }> {
+  const { data: live } = await (supabase.from("product_orders") as any)
+    .select("id, payment_status, status")
+    .eq("id", order.id)
+    .maybeSingle();
+
+  if (String((live as { payment_status?: string } | null)?.payment_status ?? "") === "paid") {
+    console.error(
+      "[product-order] Skipping checkout rollback — order already paid (ledger must stay intact)",
+      { orderId: order.id, reason },
+    );
+    return { rolledBack: false, skippedPaid: true };
+  }
+
+  await creditWalletForProductOrderIfNeeded(
+    supabase,
+    order,
+    `Wallet refund (${reason})`,
+    "product_order_checkout_failed",
+  );
+  if (opts?.restock !== false) {
+    await restockProductOrderLineItems(supabase, order.id);
+  }
+  await (supabase.from("product_orders") as any)
+    .update({
+      status: "cancelled",
+      payment_status: "failed",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", order.id)
+    .neq("payment_status", "paid");
+
+  return { rolledBack: true, skippedPaid: false };
+}
+
 export async function creditWalletForProductOrderIfNeeded(
   supabase: SupabaseClient,
   order: OrderRow,
@@ -156,14 +205,8 @@ export async function cancelStalePendingPaystackProductOrders(
 
   for (const row of stale ?? []) {
     const o = row as OrderRow;
-    await creditWalletForProductOrderIfNeeded(
-      supabase,
-      o,
-      `Wallet refund (checkout restarted) for order`,
-      "product_order_superseded",
-    );
-    await restockProductOrderLineItems(supabase, o.id);
-    await (supabase.from("product_orders") as any)
+    // Atomically claim cancellation while still pending (matches expire cron).
+    const { data: claimed } = await (supabase.from("product_orders") as any)
       .update({
         status: "cancelled",
         cancelled_at: new Date().toISOString(),
@@ -171,6 +214,19 @@ export async function cancelStalePendingPaystackProductOrders(
         payment_status: "failed",
         updated_at: new Date().toISOString(),
       })
-      .eq("id", o.id);
+      .eq("id", o.id)
+      .eq("payment_status", "pending")
+      .eq("status", "pending")
+      .select("id");
+
+    if ((claimed?.length ?? 0) === 0) continue;
+
+    await creditWalletForProductOrderIfNeeded(
+      supabase,
+      o,
+      `Wallet refund (checkout restarted) for order`,
+      "product_order_superseded",
+    );
+    await restockProductOrderLineItems(supabase, o.id);
   }
 }

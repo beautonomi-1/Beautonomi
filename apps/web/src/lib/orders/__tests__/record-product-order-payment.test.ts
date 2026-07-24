@@ -54,9 +54,24 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
     })),
     update(payload: Row) {
       state.updates[table] = [...(state.updates[table] ?? []), payload];
-      return {
-        eq: vi.fn(async () => ({ data: null, error: null })),
+      const updateFilters: Array<{ key: string; value: unknown }> = [];
+      const updateChain = {
+        eq: vi.fn((key: string, value: unknown) => {
+          updateFilters.push({ key, value });
+          return updateChain;
+        }),
+        select: vi.fn(async () => {
+          const rows = state.rows[table] ?? [];
+          const matched = rows.filter((row) =>
+            updateFilters.every((filter) => row[filter.key] === filter.value),
+          );
+          return {
+            data: matched.length > 0 ? [{ id: matched[0].id }] : [],
+            error: null,
+          };
+        }),
       };
+      return updateChain;
     },
     insert(payload: Row | Row[]) {
       state.inserts[table] = [...(state.inserts[table] ?? []), Array.isArray(payload) ? payload : [payload]];
@@ -171,5 +186,133 @@ describe("recordProductOrderPayment", () => {
 
     expect(result).toEqual({ ok: true, duplicate: true, transitionedToPaid: false });
     expect(state.inserts.finance_transactions).toBeUndefined();
+  });
+
+  it("does not throw after paid flip when finance insert fails (ledgerIncomplete)", async () => {
+    const state = {
+      rows: {
+        product_orders: [orderRow],
+        payment_transactions: [],
+        finance_transactions: [],
+      } as Record<string, Row[]>,
+      inserts: {} as Record<string, Row[][]>,
+      updates: {} as Record<string, Row[]>,
+    };
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        const filters: Array<{ key: string; value: unknown }> = [];
+        const applyFilters = (rows: Row[]) =>
+          rows.filter((row) => filters.every((f) => row[f.key] === f.value));
+        const query = {
+          select: vi.fn(() => query),
+          eq(key: string, value: unknown) {
+            filters.push({ key, value });
+            return query;
+          },
+          maybeSingle: vi.fn(async () => ({
+            data: applyFilters(state.rows[table] ?? [])[0] ?? null,
+            error: null,
+          })),
+          update(payload: Row) {
+            state.updates[table] = [...(state.updates[table] ?? []), payload];
+            const updateFilters: Array<{ key: string; value: unknown }> = [];
+            const updateChain = {
+              eq: vi.fn((key: string, value: unknown) => {
+                updateFilters.push({ key, value });
+                return updateChain;
+              }),
+              select: vi.fn(async () => {
+                const rows = state.rows[table] ?? [];
+                const matched = rows.filter((row) =>
+                  updateFilters.every((filter) => row[filter.key] === filter.value),
+                );
+                return {
+                  data: matched.length > 0 ? [{ id: matched[0].id }] : [],
+                  error: null,
+                };
+              }),
+            };
+            return updateChain;
+          },
+          insert(payload: Row | Row[]) {
+            if (table === "finance_transactions") {
+              return Promise.resolve({ data: null, error: { message: "finance down", code: "XX000" } });
+            }
+            state.inserts[table] = [
+              ...(state.inserts[table] ?? []),
+              Array.isArray(payload) ? payload : [payload],
+            ];
+            return Promise.resolve({ data: null, error: null });
+          },
+          then(resolve: (value: { data: Row[]; error: null }) => unknown, reject?: (reason: unknown) => unknown) {
+            return Promise.resolve({ data: applyFilters(state.rows[table] ?? []), error: null }).then(
+              resolve,
+              reject,
+            );
+          },
+        };
+        return query;
+      }),
+    };
+
+    const result = await recordProductOrderPayment({
+      supabase: supabase as never,
+      productOrderId: "order-1",
+      reference: "wallet_product_order_order-1",
+      amountMajor: 100,
+      source: "wallet_checkout",
+      provider: "wallet",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.transitionedToPaid).toBe(true);
+    expect(result.ledgerIncomplete).toBe(true);
+    expect(state.updates.product_orders?.[0]).toMatchObject({ payment_status: "paid" });
+  });
+
+  it("stamps paycloud provider-collected attribution on the product order", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [orderRow],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "pc-order-1",
+      amountMajor: 100,
+      source: "paycloud_terminal",
+      provider: "paycloud",
+      platformHeld: false,
+    });
+
+    expect(state.updates.product_orders?.[0]).toMatchObject({
+      payment_method: "paycloud",
+      payment_reference: "pc-order-1",
+    });
+    expect(state.updates.product_orders?.[0]).not.toHaveProperty("payment_provider");
+    expect(state.inserts.finance_transactions).toBeUndefined();
+  });
+
+  it("does not revive cancelled product orders when payment_status is not pending", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, payment_status: "failed", status: "cancelled" }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-late-success",
+      amountMajor: 100,
+      source: "paystack_webhook",
+      provider: "paystack",
+    });
+
+    expect(result).toEqual({ ok: false, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.payment_transactions).toBeUndefined();
   });
 });

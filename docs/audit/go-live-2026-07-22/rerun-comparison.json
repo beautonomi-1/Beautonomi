@@ -1,0 +1,154 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "prior_audit_id": "AUDIT-2026-07-11",
+  "generated_at": "2026-07-22T19:30:48.860Z",
+  "overall": {
+    "previous": 72,
+    "current": 73,
+    "change": 1
+  },
+  "domain_changes": [
+    {
+      "domain": "core_business_functionality",
+      "previous_final": 74,
+      "current_final": 76,
+      "change": 2
+    },
+    {
+      "domain": "customer_web",
+      "previous_final": 75,
+      "current_final": 79,
+      "change": 4
+    },
+    {
+      "domain": "customer_mobile",
+      "previous_final": 74,
+      "current_final": 78,
+      "change": 4
+    },
+    {
+      "domain": "provider_web",
+      "previous_final": 72,
+      "current_final": 72,
+      "change": 0
+    },
+    {
+      "domain": "provider_mobile",
+      "previous_final": 70,
+      "current_final": 72,
+      "change": 2
+    },
+    {
+      "domain": "superadmin_operations",
+      "previous_final": 80,
+      "current_final": 79,
+      "change": -1
+    },
+    {
+      "domain": "security_identity_privacy",
+      "previous_final": 65,
+      "current_final": 64,
+      "change": -1
+    },
+    {
+      "domain": "payments_financial_integrity",
+      "previous_final": 80,
+      "current_final": 76,
+      "change": -4
+    },
+    {
+      "domain": "data_reporting_integrations",
+      "previous_final": 72,
+      "current_final": 74,
+      "change": 2
+    },
+    {
+      "domain": "quality_assurance_testing",
+      "previous_final": 52,
+      "current_final": 56,
+      "change": 4
+    },
+    {
+      "domain": "infrastructure_devops",
+      "previous_final": 76,
+      "current_final": 80,
+      "change": 4
+    },
+    {
+      "domain": "performance_reliability",
+      "previous_final": 63,
+      "current_final": 63,
+      "change": 0
+    },
+    {
+      "domain": "ux_accessibility",
+      "previous_final": 66,
+      "current_final": 67,
+      "change": 1
+    },
+    {
+      "domain": "operational_readiness",
+      "previous_final": 68,
+      "current_final": 68,
+      "change": 0
+    },
+    {
+      "domain": "legal_regulatory",
+      "previous_final": 70,
+      "current_final": 72,
+      "change": 2
+    }
+  ],
+  "blockers": {
+    "p0_closed": [
+      "FND-P0-004",
+      "FND-P0-005",
+      "FND-P0-006",
+      "FND-P0-007",
+      "FND-P0-002",
+      "FND-P0-003"
+    ],
+    "p0_closed_2026_07_23": {
+      "findings": ["FND-P0-002", "FND-P0-003"],
+      "basis": "local test suites + user-attested staging E2E pass",
+      "caveat": "user-attested, no CI link/log artifact captured; attach before final production sign-off"
+    },
+    "p0_still_open": [],
+    "p0_reopened": [],
+    "p1_regressions": [],
+    "p1_regressions_resolved": [
+      "FND-P1-002"
+    ],
+    "new_p1": [
+      "FND-P1-021",
+      "FND-P1-022",
+      "FND-P1-023",
+      "FND-P1-024"
+    ],
+    "new_p2_count": 8
+  },
+  "platform_delta": {
+    "api_routes": {
+      "previous": 1143,
+      "current": 1282
+    },
+    "migrations": {
+      "previous": 662,
+      "current": 818
+    },
+    "packages": {
+      "previous": 12,
+      "current": 20
+    },
+    "test_files": {
+      "previous": 565,
+      "current": 934
+    },
+    "e2e_specs": {
+      "previous": 2,
+      "current": 3
+    }
+  },
+  "journeys_cannot_verify": 11,
+  "evidence_limitation": "No staging/production credentials; 11 journeys remain cannot_verify"
+}

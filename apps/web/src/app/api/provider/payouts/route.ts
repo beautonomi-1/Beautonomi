@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireOwnerOrEditSettings } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -22,7 +22,11 @@ import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireOwnerOrEditSettings(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
@@ -87,7 +91,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const permissionCheck = await requirePermission("process_payments", request);
+    const permissionCheck = await requireOwnerOrEditSettings(request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

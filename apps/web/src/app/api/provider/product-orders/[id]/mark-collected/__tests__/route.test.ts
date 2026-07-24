@@ -1,22 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
     ...actual,
-    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
     getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
   };
 });
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({ from: vi.fn() }),
 }));
 
 vi.mock("@/lib/orders/record-product-order-payment", () => ({
@@ -47,7 +54,7 @@ function makeSupabase(order: Record<string, unknown> | null) {
 describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
   });
 

@@ -75,6 +75,8 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { BarcodeLookup, type BarcodeLookupResult } from "@/components/provider-portal/BarcodeLookup";
+import { resolveBarcodeForPosSale } from "@/lib/provider-portal/resolveBarcodeForPosSale";
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -237,6 +239,7 @@ export function NewSaleDialog({
       paycloudPendingSaleIdRef.current = null;
       setPaycloudLinkedSaleId(null);
       setShowPaycloudDialog(false);
+      setBarcodeScanError("");
     }
   }, [open]);
 
@@ -244,6 +247,7 @@ export function NewSaleDialog({
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   const [showCustomServiceDialog, setShowCustomServiceDialog] = useState(false);
   const [productForVariantPick, setProductForVariantPick] = useState<ProductItem | null>(null);
+  const [barcodeScanError, setBarcodeScanError] = useState("");
   
   // New client form
   const [newClientForm, setNewClientForm] = useState({
@@ -630,6 +634,25 @@ export function NewSaleDialog({
       return;
     }
     addSimpleProductToCart(product);
+  };
+
+  const handleBarcodeSelect = (result: BarcodeLookupResult) => {
+    const resolved = resolveBarcodeForPosSale(result, products);
+    if (resolved.action === "error") {
+      setBarcodeScanError(resolved.message);
+      toast.error(resolved.message);
+      return;
+    }
+    setBarcodeScanError("");
+    if (resolved.action === "pick_variant") {
+      setProductForVariantPick(resolved.product);
+      return;
+    }
+    if (resolved.variant) {
+      addProductVariantToCart(resolved.product, resolved.variant);
+      return;
+    }
+    addSimpleProductToCart(resolved.product);
   };
 
   const addSimpleProductToCart = (product: ProductItem) => {
@@ -1688,6 +1711,17 @@ export function NewSaleDialog({
                 </TabsContent>
 
                 <TabsContent value="products" className="mt-4">
+                  <div className="mb-4">
+                    <BarcodeLookup
+                      label="Scan or enter barcode"
+                      placeholder="Barcode / SKU"
+                      autoFocus={activeTab === "products"}
+                      onSelect={handleBarcodeSelect}
+                    />
+                    {barcodeScanError ? (
+                      <p className="mt-1.5 text-xs text-red-600">{barcodeScanError}</p>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {Array.isArray(products) && products.length > 0 ? (
                       products.map((product) => (

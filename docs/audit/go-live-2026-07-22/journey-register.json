@@ -1,0 +1,764 @@
+{
+  "journeys": [
+    {
+      "id": "JRN-001",
+      "name": "Registration to verified account",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/me/verification",
+        "/api/me/identity-verification/session"
+      ],
+      "findings": [
+        "FND-P1-004"
+      ]
+    },
+    {
+      "id": "JRN-002",
+      "name": "Login, logout and recovery",
+      "lead_agent": 2,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/auth/signout-global"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-003",
+      "name": "Search to booking or purchase",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/public/search",
+        "/api/public/booking-holds"
+      ],
+      "findings": [
+        "FND-P0-004",
+        "FND-P1-002"
+      ]
+    },
+    {
+      "id": "JRN-004",
+      "name": "Checkout to payment confirmation",
+      "lead_agent": 2,
+      "result": "cannot_verify",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/payments/initialize",
+        "/api/payments/webhook"
+      ],
+      "findings": [
+        "FND-P0-002"
+      ]
+    },
+    {
+      "id": "JRN-005",
+      "name": "Promotion redemption",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/promotions/validate"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-006",
+      "name": "Cancellation and refund",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/me/bookings/[id]/cancel"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-007",
+      "name": "Rescheduling",
+      "lead_agent": 2,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "reschedule-core.ts"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-008",
+      "name": "Complaint and dispute",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/me/support-tickets"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-009",
+      "name": "Review and rating",
+      "lead_agent": 2,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/me/bookings/[id]/review"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-010",
+      "name": "Subscription purchase and upgrade",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [
+        "/api/me/membership/subscribe"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-011",
+      "name": "Account closure",
+      "lead_agent": 2,
+      "result": "pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/me/account/delete"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-012",
+      "name": "Privacy request",
+      "lead_agent": 2,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "compliance purge RPCs"
+      ],
+      "findings": [
+        "FND-P1-017"
+      ]
+    },
+    {
+      "id": "JRN-013",
+      "name": "Failed payment recovery",
+      "lead_agent": 2,
+      "result": "cannot_verify",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/payments/webhook"
+      ],
+      "findings": [
+        "FND-P0-002"
+      ]
+    },
+    {
+      "id": "JRN-014",
+      "name": "Weak-network recovery",
+      "lead_agent": 3,
+      "result": "partial_pass",
+      "apps": [
+        "APP-003"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-015",
+      "name": "Web-to-mobile continuity",
+      "lead_agent": 3,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001",
+        "APP-003"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-016",
+      "name": "Provider registration",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/onboarding"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-017",
+      "name": "KYC and business verification",
+      "lead_agent": 4,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/identity-verification/session"
+      ],
+      "findings": [
+        "FND-P1-004"
+      ]
+    },
+    {
+      "id": "JRN-018",
+      "name": "Document rejection and resubmission",
+      "lead_agent": 4,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/admin/identity-verification/sessions"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-019",
+      "name": "Superadmin approval",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/providers"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-020",
+      "name": "Service configuration",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/services"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-021",
+      "name": "Pricing and availability",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/settings/operating-hours"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-022",
+      "name": "First booking acceptance",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/bookings"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-023",
+      "name": "Service fulfilment",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/bookings/[id]/complete-service"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-024",
+      "name": "Proof of completion",
+      "lead_agent": 4,
+      "result": "partial_pass",
+      "apps": [
+        "APP-004"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-025",
+      "name": "Earnings calculation",
+      "lead_agent": 9,
+      "result": "pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "finance_transactions trigger"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-026",
+      "name": "Settlement and payout",
+      "lead_agent": 9,
+      "result": "cannot_verify",
+      "apps": [
+        "APP-001",
+        "APP-002"
+      ],
+      "apis": [
+        "/api/provider/payouts",
+        "/api/admin/payouts/[id]/initiate-transfer"
+      ],
+      "findings": [
+        "FND-P0-002"
+      ]
+    },
+    {
+      "id": "JRN-027",
+      "name": "Failed payout recovery",
+      "lead_agent": 9,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/payouts/[id]/mark-failed"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-028",
+      "name": "Subscription upgrade",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001",
+        "APP-004"
+      ],
+      "apis": [
+        "/api/provider/subscription/upgrade"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-029",
+      "name": "Feature entitlement activation",
+      "lead_agent": 4,
+      "result": "pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/feature-flags/check"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-030",
+      "name": "Suspension and reinstatement",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/providers/[id]"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-031",
+      "name": "Provider account termination",
+      "lead_agent": 4,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "compliance purge"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-032",
+      "name": "Provider review and approval",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/providers"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-033",
+      "name": "Customer investigation",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/users"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-034",
+      "name": "Refund approval",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/refunds"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-035",
+      "name": "Dispute resolution",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/disputes"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-036",
+      "name": "Payout investigation",
+      "lead_agent": 6,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/payouts"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-037",
+      "name": "Data correction",
+      "lead_agent": 6,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/bookings"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-038",
+      "name": "Role assignment",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/settings/admin-team"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-039",
+      "name": "Feature flag activation",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/feature-flags"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-040",
+      "name": "Subscription plan management",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/subscription-plans"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-041",
+      "name": "Promotion creation",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/promotions"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-042",
+      "name": "Announcement publication",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/broadcast"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-043",
+      "name": "Integration failure investigation",
+      "lead_agent": 6,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/control-plane/integrations"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-044",
+      "name": "Failed-job recovery",
+      "lead_agent": 6,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "cron routes"
+      ],
+      "findings": [
+        "FND-P1-009"
+      ]
+    },
+    {
+      "id": "JRN-045",
+      "name": "Impersonation or assisted support",
+      "lead_agent": 6,
+      "result": "partial_pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-046",
+      "name": "Audit-history review",
+      "lead_agent": 6,
+      "result": "pass",
+      "apps": [
+        "APP-002"
+      ],
+      "apis": [
+        "/api/admin/audit-logs"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-047",
+      "name": "Payment to provider payout reconciliation",
+      "lead_agent": 9,
+      "result": "cannot_verify",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "reconciliation-gate cron"
+      ],
+      "findings": [
+        "FND-P1-008"
+      ]
+    },
+    {
+      "id": "JRN-048",
+      "name": "Integration failure and retry",
+      "lead_agent": 10,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "webhook idempotency"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-049",
+      "name": "Notification failure and recovery",
+      "lead_agent": 10,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "/api/cron/process-notification-queue"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-050",
+      "name": "Document expiry and suspension",
+      "lead_agent": 4,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "identity-verification-reconcile cron"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-051",
+      "name": "Role change and immediate permission enforcement",
+      "lead_agent": 7,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-052",
+      "name": "Cross-tenant access attempt",
+      "lead_agent": 7,
+      "result": "cannot_verify",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "tenant RLS"
+      ],
+      "findings": [
+        "FND-P0-003"
+      ]
+    },
+    {
+      "id": "JRN-053",
+      "name": "Duplicate request handling",
+      "lead_agent": 9,
+      "result": "pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [
+        "webhook-idempotency.ts"
+      ],
+      "findings": []
+    },
+    {
+      "id": "JRN-054",
+      "name": "Backup restore",
+      "lead_agent": 15,
+      "result": "cannot_verify",
+      "apps": [],
+      "apis": [],
+      "findings": [
+        "FND-P1-016"
+      ]
+    },
+    {
+      "id": "JRN-055",
+      "name": "Deployment rollback",
+      "lead_agent": 15,
+      "result": "partial_pass",
+      "apps": [
+        "APP-001"
+      ],
+      "apis": [],
+      "findings": []
+    },
+    {
+      "id": "JRN-056",
+      "name": "Major incident escalation",
+      "lead_agent": 16,
+      "result": "partial_pass",
+      "apps": [],
+      "apis": [],
+      "findings": [
+        "FND-P1-009"
+      ]
+    }
+  ],
+  "summary": {
+    "pass": 25,
+    "partial_pass": 25,
+    "fail": 0,
+    "blocked": 0,
+    "cannot_verify": 6
+  }
+}

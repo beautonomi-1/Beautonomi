@@ -1,0 +1,15 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "dependencies": [
+    { "id": "DEP-001", "from": "FND-P0-002", "to": "REM-006", "type": "remediation" },
+    { "id": "DEP-002", "from": "JRN-004", "to": "FND-P0-002", "type": "blocked_by" },
+    { "id": "DEP-003", "from": "JRN-052", "to": "FND-P0-003", "type": "blocked_by" },
+    { "id": "DEP-004", "from": "REM-010", "to": "staging_access", "type": "requires" },
+    { "id": "DEP-005", "from": "REM-011", "to": "staging_access", "type": "requires" },
+    { "id": "DEP-006", "from": "FND-P1-002", "to": "JRN-003", "type": "blocks_journey" },
+    { "id": "DEP-007", "from": "FND-P1-024", "to": "JRN-004", "type": "risk_if_csrf_active" },
+    { "id": "DEP-008", "from": "FND-P1-021", "to": "CAP-PAY-004", "type": "capability_gap" },
+    { "id": "DEP-009", "from": "REM-006", "to": "staging_access", "type": "requires" },
+    { "id": "DEP-010", "from": "REM-007", "to": "staging_access", "type": "requires" }
+  ]
+}

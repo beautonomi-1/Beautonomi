@@ -57,7 +57,6 @@ export const STEPS: OnboardingStepMeta[] = [
     id: 9,
     title: "Service zones",
     description: "Where you offer mobile visits",
-    canSkip: true,
     conditional: (d) => d.business_type === "mobile" || d.business_type === "both",
   },
   {

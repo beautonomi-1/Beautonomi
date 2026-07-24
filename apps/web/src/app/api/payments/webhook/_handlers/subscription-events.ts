@@ -295,11 +295,26 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
 
   const { data: existingTx } = await supabase
     .from("payment_transactions")
-    .select("id")
+    .select("id, status")
     .eq("provider", "paystack")
     .eq("reference", txnReference)
     .maybeSingle();
-  if (existingTx) {
+  const existingStatus = String(
+    (existingTx as { status?: string } | null)?.status ?? "",
+  ).toLowerCase();
+  // Failed-then-success: a prior invoice.payment_failed / charge.failed may have
+  // inserted a failed row under the same reference (invoice code). Clear it so
+  // recognition + activation can proceed; money posting is still idempotent.
+  if (existingTx && existingStatus === "failed") {
+    console.warn(
+      `[subscription] upgrading failed renewal row to success for ref ${txnReference}`,
+    );
+    await supabase
+      .from("payment_transactions")
+      .delete()
+      .eq("id", (existingTx as { id: string }).id);
+  } else if (existingTx) {
+    // success or unknown status — already recorded; do not double-post.
     console.log(`[subscription] renewal already recorded for ref ${txnReference}`);
     return;
   }
@@ -519,25 +534,75 @@ async function handleSubscriptionInvoice(
     };
     if (dueDate) updatePayload.next_payment_date = new Date(dueDate).toISOString();
     if (invoiceStatus === "failed" || invoiceStatus === "attention") {
-      updatePayload.status = "past_due";
+      // Do not flip past_due when this invoice (or its charge) already succeeded —
+      // Paystack can deliver a stale failed invoice.update after a successful renew.
+      const txnRefForGuard =
+        typeof (payload as { transaction?: { reference?: string } }).transaction?.reference ===
+        "string"
+          ? (payload as { transaction: { reference: string } }).transaction.reference
+          : null;
+      const refsToCheck = [txnRefForGuard, invoiceCode ? String(invoiceCode) : null].filter(
+        Boolean,
+      ) as string[];
+      let alreadySucceeded = false;
+      for (const ref of refsToCheck) {
+        const { data: successTx } = await supabase
+          .from("payment_transactions")
+          .select("id")
+          .eq("provider", "paystack")
+          .eq("reference", ref)
+          .eq("status", "success")
+          .maybeSingle();
+        if (successTx) {
+          alreadySucceeded = true;
+          break;
+        }
+      }
+      if (alreadySucceeded) {
+        console.log(
+          `[subscription] skip past_due on invoice.update — renewal already succeeded for ${subscriptionCode}`,
+        );
+      } else {
+        updatePayload.status = "past_due";
+      }
     }
     await supabase.from("provider_subscriptions")
       .update(updatePayload)
       .eq("paystack_subscription_code", subscriptionCode);
   } else if (eventType === "invoice.payment_failed") {
-    await supabase.from("provider_subscriptions")
-      .update({
-        status: "past_due",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("paystack_subscription_code", subscriptionCode);
-
     // Idempotency: a failed-renewal webhook can arrive more than once. Dedupe on
     // the failed payment_transactions reference so we don't pile up rows / notify
-    // repeatedly. Fall back to a stable synthetic key when the invoice code is
-    // absent so dedupe still works.
+    // repeatedly. Fall back to a day-bucketed synthetic key when the invoice code
+    // is absent so later cycles are not silently swallowed.
     const failedReference =
-      (invoiceCode && String(invoiceCode)) || `sub_renew_failed:${subscriptionCode}`;
+      (invoiceCode && String(invoiceCode)) ||
+      `sub_renew_failed:${subscriptionCode}:${new Date().toISOString().slice(0, 10)}`;
+    const txnRefForGuard =
+      typeof (payload as { transaction?: { reference?: string } }).transaction?.reference ===
+      "string"
+        ? (payload as { transaction: { reference: string } }).transaction.reference
+        : null;
+
+    // Success-then-failed race: never downgrade after a recognized renewal.
+    const successRefs = [txnRefForGuard, invoiceCode ? String(invoiceCode) : null].filter(
+      Boolean,
+    ) as string[];
+    for (const ref of successRefs) {
+      const { data: successTx } = await supabase
+        .from("payment_transactions")
+        .select("id")
+        .eq("provider", "paystack")
+        .eq("reference", ref)
+        .eq("status", "success")
+        .maybeSingle();
+      if (successTx) {
+        console.log(
+          `[subscription] skip invoice.payment_failed — renewal already succeeded for ref ${ref}`,
+        );
+        return;
+      }
+    }
+
     const { data: existingFailedTx } = await supabase
       .from("payment_transactions")
       .select("id")
@@ -550,6 +615,14 @@ async function handleSubscriptionInvoice(
       console.log(`[subscription] renewal failure already recorded for ref ${failedReference}`);
       return;
     }
+
+    await supabase.from("provider_subscriptions")
+      .update({
+        status: "past_due",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("paystack_subscription_code", subscriptionCode)
+      .in("status", ["active", "past_due"]);
 
     await supabase.from("payment_transactions").insert({
       booking_id: null,

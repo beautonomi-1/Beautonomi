@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -412,16 +413,38 @@ export default function TeamMemberDetailScreen() {
 
   const handleSendInvite = useCallback(async () => {
     if (!id || !member?.email || !canManageTeam) return;
-    const { error: err } = await postAction(`/api/provider/staff/${id}/invite`, {
+    const res = await api.post<{
+      join_url?: string;
+      channels?: { email?: boolean; push?: boolean };
+    }>(`/api/provider/staff/${id}/invite`, {
       email: member.email,
     });
-    if (err) {
-      Alert.alert("Error", err);
+    if (res.error) {
+      const joinUrl =
+        res.error.details &&
+        typeof res.error.details === "object" &&
+        "join_url" in res.error.details &&
+        typeof (res.error.details as { join_url?: string }).join_url === "string"
+          ? (res.error.details as { join_url: string }).join_url
+          : null;
+      if (joinUrl) {
+        Alert.alert("Invite link ready", `Email may not have sent. Share this link:\n\n${joinUrl}`);
+      } else {
+        Alert.alert("Error", res.error.message ?? "Failed to send invitation");
+      }
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const joinUrl = res.data?.join_url;
+    if (joinUrl && !res.data?.channels?.email) {
+      Alert.alert(
+        "Invite link ready",
+        `Email may not have sent. Share this link:\n\n${joinUrl}`,
+      );
+      return;
+    }
     Alert.alert("Invite sent", `Invitation sent to ${member.email}.`);
-  }, [id, member?.email, postAction, canManageTeam]);
+  }, [id, member?.email, canManageTeam]);
 
   const handleResetPassword = useCallback(async () => {
     if (!id || !canManageTeam) return;

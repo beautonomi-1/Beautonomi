@@ -24,6 +24,8 @@ export default function WalletPaystackReturnScreen() {
         fallbackCta: "Go to Wallet",
         continueCta: "View wallet",
       }}
+      pendingSubtext="Your wallet balance will update shortly. Check Wallet if it does not change in a minute."
+      failedSubtext="No wallet credit was completed. You can retry from Wallet."
     />
   );
 }

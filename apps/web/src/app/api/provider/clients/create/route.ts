@@ -1,17 +1,17 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
   normalizePhoneToE164,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { getTenantRegionConfig } from "@/lib/regions/config";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import {
   parseAddressFromBody,
@@ -71,7 +71,11 @@ async function _waitForUserProfileRow(
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);

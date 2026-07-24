@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -135,6 +135,12 @@ export default function CustomOfferCheckoutScreen() {
   const [giftCardCode, setGiftCardCode] = useState("");
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
   const [payError, setPayError] = useState<string | null>(null);
+  const payInFlightRef = useRef(false);
+  const payIdempotencyKeyRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `offer-pay-${Date.now()}`,
+  );
   const paystackHostedCheckout = useInAppPaystackCheckout();
 
   const currency = offer?.currency || getTenantDefaultCurrency();
@@ -305,6 +311,8 @@ export default function CustomOfferCheckoutScreen() {
       save_card?: boolean;
     }) => {
       if (!offerId) return;
+      if (payInFlightRef.current) return;
+      payInFlightRef.current = true;
       setPayError(null);
       setProcessingPayment(true);
       setProcessingMessage(
@@ -320,10 +328,34 @@ export default function CustomOfferCheckoutScreen() {
           total_amount?: number;
           deposit_amount?: number;
           payment_option?: string;
-        }>(`/api/me/custom-offers/${offerId}/pay`, body);
+        }>(`/api/me/custom-offers/${offerId}/pay`, {
+          ...body,
+          idempotency_key: payIdempotencyKeyRef.current,
+        }, {
+          timeout: 120_000,
+          headers: { "Idempotency-Key": payIdempotencyKeyRef.current },
+        });
 
         if (res.error) {
           setProcessingPayment(false);
+          payInFlightRef.current = false;
+          const statusRes = await api.get<{ status?: string; booking_id?: string | null }>(
+            `/api/me/custom-offers/${offerId}`,
+          ).catch(() => null);
+          const latestStatus = statusRes?.data?.status;
+          const latestBookingId = statusRes?.data?.booking_id ?? null;
+          if (latestStatus === "paid" && latestBookingId) {
+            haptic.success();
+            setSuccessOverlay({ rows: buildOfferSuccessRows() });
+            setTimeout(() => {
+              router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
+            }, 2200);
+            return;
+          }
+          if (latestStatus === "payment_pending") {
+            setPayError("Payment is still processing. Check Bookings in a moment or tap Pay to retry.");
+            return;
+          }
           const msg = getApiErrorMessage(res.error, "Could not start payment");
           setPayError(msg);
           Alert.alert("Payment failed", msg);
@@ -463,13 +495,32 @@ export default function CustomOfferCheckoutScreen() {
         }
       } catch (e) {
         setProcessingPayment(false);
-        // Best-effort reset in case the error occurred after the server already
-        // set the offer to payment_pending but before Paystack opened/finished.
+        payInFlightRef.current = false;
+        const statusRes = await api.get<{ status?: string; booking_id?: string | null }>(
+          `/api/me/custom-offers/${offerId}`,
+        ).catch(() => null);
+        const latestStatus = statusRes?.data?.status;
+        const latestBookingId = statusRes?.data?.booking_id ?? null;
+        if (latestStatus === "paid" && latestBookingId) {
+          haptic.success();
+          setSuccessOverlay({ rows: buildOfferSuccessRows() });
+          setTimeout(() => {
+            router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
+          }, 2200);
+          return;
+        }
+        if (latestStatus === "payment_pending") {
+          setPayError("Payment may still be processing. Check Bookings shortly.");
+          await loadOffer().catch(() => {});
+          return;
+        }
         await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
         await loadOffer().catch(() => {});
         const msg = e instanceof Error ? e.message : "Payment failed";
         setPayError(msg);
         Alert.alert("Error", msg);
+      } finally {
+        payInFlightRef.current = false;
       }
     },
     [
@@ -484,6 +535,7 @@ export default function CustomOfferCheckoutScreen() {
   );
 
   const handlePay = useCallback(async () => {
+    if (payInFlightRef.current) return;
     if (!offer || !user?.email) {
       Alert.alert("Sign in required", "Please sign in to pay.");
       return;

@@ -1,0 +1,97 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "capabilities": [
+    {
+      "id": "CAP-BOOK-001",
+      "name": "Public booking checkout",
+      "status": "full",
+      "change": "unchanged"
+    },
+    {
+      "id": "CAP-PAY-001",
+      "name": "Paystack online payments",
+      "status": "full",
+      "change": "runtime unverified"
+    },
+    {
+      "id": "CAP-PAY-004",
+      "name": "Stripe Connect booking payments",
+      "status": "partial",
+      "change": "new",
+      "gap": "non-booking PI unhandled"
+    },
+    {
+      "id": "CAP-PAY-002",
+      "name": "PayCloud terminal payments",
+      "status": "partial",
+      "change": "unchanged"
+    },
+    {
+      "id": "CAP-PAYOUT-001",
+      "name": "Provider payout requests",
+      "status": "full",
+      "change": "transfer E2E unverified"
+    },
+    {
+      "id": "CAP-KYC-001",
+      "name": "Didit identity verification",
+      "status": "full",
+      "change": "unchanged"
+    },
+    {
+      "id": "CAP-KYB-001",
+      "name": "Provider KYB verification",
+      "status": "partial",
+      "gap": "flags off by default"
+    },
+    {
+      "id": "CAP-SEARCH-001",
+      "name": "Provider search",
+      "status": "partial",
+      "gap": "advanced filters no-op (regression)"
+    },
+    {
+      "id": "CAP-ECOM-001",
+      "name": "Product shipping",
+      "status": "gated",
+      "gap": "ECOMMERCE_SHIPPING_ENABLED gate"
+    },
+    {
+      "id": "CAP-ADMIN-001",
+      "name": "Superadmin portal",
+      "status": "full",
+      "change": "fraud cases + voice dialer added"
+    },
+    {
+      "id": "CAP-FRAUD-001",
+      "name": "Fraud case management",
+      "status": "full",
+      "change": "new"
+    },
+    {
+      "id": "CAP-AGENT-001",
+      "name": "Agent workforce copilot",
+      "status": "partial",
+      "change": "new",
+      "gap": "unbound classifyTicket tool"
+    },
+    {
+      "id": "CAP-TENANT-001",
+      "name": "Multi-tenant isolation",
+      "status": "partial",
+      "gap": "runtime unverified"
+    },
+    {
+      "id": "CAP-TERMINAL-001",
+      "name": "Terminal shop B2B",
+      "status": "full",
+      "change": "new since prior audit"
+    },
+    {
+      "id": "CAP-MEMBERSHIP-001",
+      "name": "Membership billing",
+      "status": "full",
+      "change": "renewal cron + webhook tests added"
+    }
+  ]
+}

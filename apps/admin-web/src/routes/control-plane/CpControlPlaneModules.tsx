@@ -7,6 +7,7 @@ import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { CpBack, CpField, EnvSelect } from "./cpShared";
+import { ProviderAiSubnav } from "./ProviderAiSubnav";
 
 export function CpModuleDistancePage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
@@ -593,7 +594,7 @@ export function CpModuleRankingPage() {
   return (
     <div className="space-y-6">
       <CpBack />
-      <AdminPageHeader title="Ranking module" description="Quality scoring weights." />
+      <AdminPageHeader title="Ranking module" description="Quality scoring weights and provider score inspector." />
       <div className="flex flex-wrap gap-3 text-sm">
         <Link to="scores" className="font-medium text-primary underline">
           Provider scores
@@ -716,18 +717,11 @@ export function CpModuleAiPage() {
   return (
     <div className="space-y-6">
       <CpBack />
-      <AdminPageHeader title="AI module" description="Budgets, limits, cache TTL." />
-      <div className="flex flex-wrap gap-3 text-sm">
-        <Link to="templates" className="font-medium text-primary underline">
-          Templates
-        </Link>
-        <Link to="usage" className="font-medium text-primary underline">
-          Usage
-        </Link>
-        <Link to="entitlements" className="font-medium text-primary underline">
-          Entitlements
-        </Link>
-      </div>
+      <AdminPageHeader
+        title="Provider AI"
+        description="Runtime budgets, limits, and cache settings for the provider Gemini assistant."
+      />
+      <ProviderAiSubnav />
       <EnvSelect value={env} onChange={setEnv} />
       {msg ? (
         <AdminPanel>

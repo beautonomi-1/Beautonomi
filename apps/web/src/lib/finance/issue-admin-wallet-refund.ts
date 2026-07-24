@@ -43,6 +43,11 @@ export interface IssueAdminWalletRefundOptions {
    * `getCollectedTotalForBooking` for dispute-level refunds.
    */
   originalChargeAmount: number;
+  /**
+   * Amount already refunded on this transaction (from `refund_amount`). Used to
+   * accumulate further partial refunds and to size the atomic claim.
+   */
+  priorRefundAmount?: number;
   reason: string;
   actorUserId: string;
   actorRole?: string;
@@ -98,6 +103,7 @@ export async function issueAdminWalletRefund(
     bookingId,
     amount,
     originalChargeAmount,
+    priorRefundAmount = 0,
     reason,
     actorUserId,
     actorRole = "superadmin",
@@ -181,12 +187,30 @@ export async function issueAdminWalletRefund(
     );
   }
 
-  // 4. Insert booking_refunds row (pending) — provides idempotency key for wallet credit
+  // 4. Insert booking_refunds row (pending) — provides idempotency key for wallet credit.
+  // When a full refund will also void the gift-card redemption, exclude that leg
+  // from the wallet credit so the customer is not refunded twice for the same money
+  // (custom-offer charge rows embed the gift leg in `amount`).
+  const giftCardAmount = Number(booking.gift_card_amount ?? 0);
+  const prior = Math.max(0, Number(priorRefundAmount ?? 0));
+  const cumulativeRefundPreview = Math.round((prior + amount) * 100) / 100;
+  const isFullRefundForGiftCard =
+    originalChargeAmount > 0 && cumulativeRefundPreview + 0.001 >= originalChargeAmount;
+  const willVoidGiftCard = isFullRefundForGiftCard && giftCardAmount > 0;
+  // Only subtract the gift leg once — on the refund that completes the full amount.
+  const giftOffset =
+    willVoidGiftCard && prior < giftCardAmount
+      ? Math.max(0, Math.round((giftCardAmount - prior) * 100) / 100)
+      : 0;
+  const walletCreditAmount = willVoidGiftCard
+    ? Math.max(0, Math.round((amount - giftOffset) * 100) / 100)
+    : amount;
+
   const { data: refundRecord, error: refundInsertErr } = await supabase
     .from("booking_refunds")
     .insert({
       booking_id: bookingId,
-      amount,
+      amount: walletCreditAmount,
       reason,
       refund_method: "store_credit",
       status: "pending",
@@ -202,7 +226,53 @@ export async function issueAdminWalletRefund(
 
   const refundId = (refundRecord as { id: string }).id;
 
-  // 5. Wallet credit — idempotent via refund row id
+  // 6. Atomically claim the payment_transactions charge row BEFORE crediting
+  // the wallet so concurrent admin POSTs cannot both succeed. Accumulates
+  // refund_amount across partial refunds and CAS on the expected prior amount.
+  if (resolvedTransactionId) {
+    const cumulativeRefund = Math.round((prior + amount) * 100) / 100;
+    const isFullRefund =
+      originalChargeAmount <= 0 || cumulativeRefund + 0.001 >= originalChargeAmount;
+    const refundReference = `wallet_refund_${resolvedTransactionId}_${Date.now()}`;
+
+    let claimQuery = supabase
+      .from("payment_transactions")
+      .update({
+        refund_amount: cumulativeRefund,
+        refund_reason: reason,
+        refund_reference: refundReference,
+        refunded_at: new Date().toISOString(),
+        refunded_by: actorUserId,
+        status: isFullRefund ? "refunded" : "partially_refunded",
+      })
+      .eq("id", resolvedTransactionId)
+      .in("status", ["success", "partially_refunded"]);
+
+    claimQuery =
+      prior > 0
+        ? claimQuery.eq("refund_amount", prior)
+        : claimQuery.or("refund_amount.is.null,refund_amount.eq.0");
+
+    const { data: claimedTxn, error: txnUpdateErr } = await claimQuery.select("id");
+
+    if (txnUpdateErr) {
+      console.error(
+        "[issueAdminWalletRefund] failed to claim payment_transaction:",
+        txnUpdateErr
+      );
+      await supabase.from("booking_refunds").delete().eq("id", refundId);
+      return err("Failed to claim transaction for refund", "TXN_CLAIM_ERROR", 500);
+    }
+    if ((claimedTxn?.length ?? 0) === 0) {
+      await supabase.from("booking_refunds").delete().eq("id", refundId);
+      return err("Transaction already refunded", "INVALID_STATUS", 400);
+    }
+  }
+
+  // 7. Wallet credit — idempotent via refund row id.
+  // When this refund will also void the gift-card redemption, exclude that leg
+  // from the wallet credit so the customer is not refunded twice for the same money
+  // (custom-offer charge rows embed the gift leg in `amount`).
   type RpcFn = (
     name: string,
     args: Record<string, unknown>
@@ -211,7 +281,7 @@ export async function issueAdminWalletRefund(
 
   const { error: walletError } = await rpc("wallet_credit_admin", {
     p_user_id: booking.customer_id,
-    p_amount: amount,
+    p_amount: walletCreditAmount,
     p_currency: currency,
     p_description: `Refund for booking ${booking.booking_number}: ${reason}`,
     p_reference_id: resolvedTransactionId ?? bookingId,
@@ -222,39 +292,25 @@ export async function issueAdminWalletRefund(
 
   if (walletError) {
     console.error("[issueAdminWalletRefund] wallet_credit_admin failed:", walletError);
-    // Roll back the pending refund row
+    // Roll back the pending refund row and release the transaction claim.
     await supabase.from("booking_refunds").delete().eq("id", refundId);
+    if (resolvedTransactionId) {
+      await supabase
+        .from("payment_transactions")
+        .update({
+          status: prior > 0 ? "partially_refunded" : "success",
+          refund_amount: prior > 0 ? prior : null,
+          refund_reason: null,
+          refund_reference: null,
+          refunded_at: null,
+          refunded_by: null,
+        })
+        .eq("id", resolvedTransactionId);
+    }
     return err("Failed to credit customer wallet", "WALLET_ERROR", 500);
   }
 
-  // 6. Update the payment_transactions charge row to keep it in sync
-  if (resolvedTransactionId) {
-    const isFullRefund =
-      originalChargeAmount <= 0 || amount >= originalChargeAmount;
-    const refundReference = `wallet_refund_${resolvedTransactionId}_${Date.now()}`;
-
-    const { error: txnUpdateErr } = await supabase
-      .from("payment_transactions")
-      .update({
-        refund_amount: amount,
-        refund_reason: reason,
-        refund_reference: refundReference,
-        refunded_at: new Date().toISOString(),
-        refunded_by: actorUserId,
-        status: isFullRefund ? "refunded" : "partially_refunded",
-      })
-      .eq("id", resolvedTransactionId);
-
-    if (txnUpdateErr) {
-      // Wallet already credited — log but continue; mismatch is detectable via reconciliation
-      console.error(
-        "[issueAdminWalletRefund] failed to update payment_transaction:",
-        txnUpdateErr
-      );
-    }
-  }
-
-  // 7. Finalize booking_refunds row — DB trigger writes ledger entry on status=completed
+  // 8. Finalize booking_refunds row — DB trigger writes ledger entry on status=completed
   const { error: finalizeErr } = await supabase
     .from("booking_refunds")
     .update({ status: "completed" })
@@ -268,12 +324,8 @@ export async function issueAdminWalletRefund(
     );
   }
 
-  // 8. Restore gift card balance on full refund (best-effort)
-  const giftCardAmount = Number(booking.gift_card_amount ?? 0);
-  const isFullRefundForGiftCard =
-    originalChargeAmount > 0 && amount >= originalChargeAmount;
-
-  if (isFullRefundForGiftCard && giftCardAmount > 0) {
+  // 9. Restore gift card balance on full refund (best-effort)
+  if (willVoidGiftCard) {
     try {
       const { error: gcError } = await rpc("void_gift_card_redemption", {
         p_booking_id: bookingId,
@@ -293,7 +345,7 @@ export async function issueAdminWalletRefund(
       booking.customer_id,
       {
         title: "Refund added to wallet",
-        message: `A refund of ${currency} ${amount.toFixed(2)} for booking ${booking.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+        message: `A refund of ${currency} ${walletCreditAmount.toFixed(2)} for booking ${booking.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
         data: {
           type: "refund_processed",
           booking_id: bookingId,
@@ -338,12 +390,13 @@ export async function issueAdminWalletRefund(
       entity_id: bookingId,
       metadata: {
         refund_amount: amount,
+        wallet_credit_amount: walletCreditAmount,
+        gift_card_restored: willVoidGiftCard ? giftCardAmount : 0,
         refund_reason: reason,
         notes: notes ?? null,
         wallet_credit: true,
         refund_id: refundId,
         transaction_id: resolvedTransactionId ?? null,
-        gift_card_restored: isFullRefundForGiftCard && giftCardAmount > 0,
         provider_balance_warning: providerBalanceWarning,
       },
     });
@@ -354,7 +407,7 @@ export async function issueAdminWalletRefund(
   return {
     success: true,
     refundId,
-    amount,
+    amount: walletCreditAmount,
     providerBalanceWarning,
   };
 }

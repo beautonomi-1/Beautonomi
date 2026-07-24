@@ -18,6 +18,7 @@ function RouteTracker() {
 export default function ProviderLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isOnboardingPage = pathname === "/provider/onboarding";
+  const isJoinPage = pathname === "/provider/join" || pathname?.startsWith("/provider/join/");
   const isEmbedPage = pathname === "/provider/embed";
   const isSubscriptionCheckout = pathname === "/provider/subscription-checkout";
   const isAdsPaymentReturn =
@@ -28,7 +29,7 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
     (pathname?.startsWith("/provider/get-started/") ?? false);
 
   // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
-  if (isOnboardingPage || isEmbedPage || isSubscriptionCheckout || isAdsPaymentReturn) {
+  if (isOnboardingPage || isJoinPage || isEmbedPage || isSubscriptionCheckout || isAdsPaymentReturn) {
     return <>{children}</>;
   }
 

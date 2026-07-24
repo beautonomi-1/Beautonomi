@@ -10,6 +10,7 @@ import {
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { settlePaycloudPayment, type PaycloudEntityType } from "@/lib/payments/settle-paycloud-payment";
+import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
 
 const SETTLEABLE_ENTITY_TYPES = new Set<PaycloudEntityType>([
   "booking",
@@ -23,7 +24,9 @@ const SETTLEABLE_ENTITY_TYPES = new Set<PaycloudEntityType>([
  * POST /api/admin/paycloud-operations/payments/[id]/force-settle
  *
  * Superadmin manual settlement for successful PayCloud captures that did not
- * auto-settle (e.g. amount mismatch exceptions).
+ * auto-settle (e.g. amount mismatch exceptions). Requires local status=successful
+ * and trans_status=2 (completed capture). Always clears terminal in_flight for
+ * this payment so amount-mismatch rows cannot leave the machine stuck.
  */
 export async function POST(
   request: NextRequest,
@@ -48,6 +51,14 @@ export async function POST(
       return errorResponse(
         "Only successful PayCloud payments can be force-settled.",
         "INVALID_STATUS",
+        409,
+      );
+    }
+
+    if (String(payment.trans_status ?? "") !== PAYCLOUD_TRANS_STATUS.COMPLETED) {
+      return errorResponse(
+        "Force-settle requires a completed PayCloud capture (trans_status=2).",
+        "TRANS_STATUS_NOT_COMPLETED",
         409,
       );
     }
@@ -77,7 +88,19 @@ export async function POST(
       processedBy: user.id,
       currency: payment.currency,
       tipAmount: Number(payment.tip_amount ?? 0),
+      cashbackAmount: Number(payment.cashback_amount ?? 0),
     });
+
+    if (payment.terminal_id) {
+      await supabase
+        .from("paycloud_terminals")
+        .update({
+          in_flight_payment_id: null,
+          last_used_at: new Date().toISOString(),
+        })
+        .eq("id", payment.terminal_id)
+        .eq("in_flight_payment_id", payment.id);
+    }
 
     await writeAuditLog({
       actor_user_id: user.id,
@@ -89,6 +112,7 @@ export async function POST(
         provider_id: payment.provider_id,
         merchant_order_no: payment.merchant_order_no,
         amount_match_status: payment.amount_match_status,
+        trans_status: payment.trans_status,
         settled: result.settled,
         reason: result.reason ?? null,
       },

@@ -16,11 +16,11 @@ applyKotlinExpoModulesCorePlugin()
 
 android {
   namespace "expo.modules.smsuserconsent"
-  compileSdk safeExtGet("compileSdkVersion", 35)
+  compileSdk safeExtGet("compileSdkVersion", 36)
 
   defaultConfig {
     minSdk safeExtGet("minSdkVersion", 24)
-    targetSdk safeExtGet("targetSdkVersion", 35)
+    targetSdk safeExtGet("targetSdkVersion", 36)
   }
 
   compileOptions {

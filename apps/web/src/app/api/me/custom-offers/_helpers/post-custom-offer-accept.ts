@@ -38,6 +38,7 @@ interface OfferRow {
   price?: number;
   currency?: string;
   request_id?: string;
+  provider_id?: string | null;
   location_id?: string | null;
   request?: RequestRow | null;
 }
@@ -242,10 +243,28 @@ export async function postCustomOfferAccept(
     if (offer.status === "payment_pending" && offer.payment_url) {
       if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
         const adminEarly = getSupabaseAdmin();
-        await adminEarly
+        const { data: claimedExpired } = await adminEarly
           .from("custom_offers")
           .update({ status: "expired", updated_at: new Date().toISOString() })
-          .eq("id", id);
+          .eq("id", id)
+          .eq("status", "payment_pending")
+          .select("id");
+        if ((claimedExpired?.length ?? 0) > 0) {
+          try {
+            const { creditWalletForCustomOfferAbandon } = await import(
+              "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+            );
+            await creditWalletForCustomOfferAbandon(
+              adminEarly,
+              id,
+              user.id,
+              offer.provider_id ?? req?.provider_id ?? null,
+              { reason: "expired" },
+            );
+          } catch (walletErr) {
+            console.error("[custom-offers/accept] wallet refund on expire failed:", walletErr);
+          }
+        }
         await patchCustomOfferMessageAttachments(adminEarly, id, { status: "expired" });
         void notifyCustomerCustomOfferExpiredBestEffort({
           customerId: user.id,

@@ -219,14 +219,29 @@ export async function recordProviderSubscriptionPayment(params: {
   }
 
   // Idempotency: one recognized payment per Paystack reference.
+  // A prior failed row (charge.failed / invoice.payment_failed) must not block
+  // a later successful recognition of the same reference — clear it and proceed.
   const { data: existingTx } = await supabase
     .from("payment_transactions")
-    .select("id")
+    .select("id, status")
     .eq("provider", "paystack")
     .eq("reference", reference)
     .maybeSingle();
   if (existingTx) {
-    return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+    const existingStatus = String(
+      (existingTx as { status?: string }).status ?? "",
+    ).toLowerCase();
+    if (existingStatus === "success") {
+      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+    }
+    if (existingStatus === "failed") {
+      await supabase
+        .from("payment_transactions")
+        .delete()
+        .eq("id", (existingTx as { id: string }).id);
+    } else {
+      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+    }
   }
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -236,7 +251,7 @@ export async function recordProviderSubscriptionPayment(params: {
 
   const nowIso = new Date().toISOString();
 
-  await supabase.from("payment_transactions").insert({
+  const { error: ptError } = await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
     amount: amountMajor,
@@ -255,6 +270,18 @@ export async function recordProviderSubscriptionPayment(params: {
     },
     created_at: nowIso,
   });
+
+  if (ptError) {
+    // 23505 = unique_violation on (provider, reference): a concurrent webhook
+    // (e.g. charge.success racing invoice.update for the same renewal) already
+    // inserted this payment. Bail out BEFORE posting finance_transactions so
+    // revenue is never double-recognized. Non-idempotency errors are surfaced.
+    if ((ptError as { code?: string }).code === "23505") {
+      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+    }
+    console.error("[provider_subscription] payment_transactions insert failed:", ptError);
+    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null };
+  }
 
   const { data: financeRow } = await supabase
     .from("finance_transactions")

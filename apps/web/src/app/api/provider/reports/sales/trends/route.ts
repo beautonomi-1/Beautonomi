@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays, subMonths, subYears, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
@@ -37,7 +38,11 @@ function trendBucketKey(ymd: string, granularity: string, tz: string): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);

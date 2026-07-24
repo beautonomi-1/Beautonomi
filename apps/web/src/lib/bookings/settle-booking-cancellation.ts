@@ -92,15 +92,39 @@ export function computeReconciledCancellationAmounts(
   walletRefundAmount: number;
   isLate: boolean;
 } {
+  const bookingTotal = Number(params.refundBookingTotal ?? params.booking.total_amount ?? 0);
   const effectiveCollected =
     params.maxWalletCredit ?? computeEffectiveCollectedAmount(params.booking);
   const { cancellationFeeApplied: theoreticalFee, policyRefundAmount, isLate } =
     computeCancellationFeeForSettlement(params);
+
+  // Mirror settleBookingCancellation: when a full refund will void the gift
+  // card, exclude that leg from the wallet credit so the customer is not
+  // refunded twice for the same money.
+  const giftCardCollected = roundCurrency2(
+    Math.max(0, Number(params.booking.gift_card_amount ?? 0)),
+  );
+  const willVoidGiftCard =
+    params.voidGiftCardOnFullRefund !== false &&
+    giftCardCollected > 0 &&
+    policyRefundAmount + 0.01 >= bookingTotal;
+  const refundableWithoutGift = roundCurrency2(
+    Math.max(0, effectiveCollected - (willVoidGiftCard ? giftCardCollected : 0)),
+  );
+
   const walletRefundAmount = roundCurrency2(
-    Math.min(policyRefundAmount, effectiveCollected),
+    Math.min(policyRefundAmount, refundableWithoutGift),
   );
   const cancellationFeeApplied = roundCurrency2(
-    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundAmount)),
+    Math.max(
+      0,
+      Math.min(
+        theoreticalFee,
+        effectiveCollected -
+          walletRefundAmount -
+          (willVoidGiftCard ? giftCardCollected : 0),
+      ),
+    ),
   );
   return { cancellationFeeApplied, policyRefundAmount, walletRefundAmount, isLate };
 }
@@ -290,13 +314,27 @@ export async function settleBookingCancellation(
   const { cancellationFeeApplied: theoreticalFee, policyRefundAmount, isLate } =
     computeCancellationFeeForSettlement(params);
 
+  // On a full refund we also void the gift-card redemption (restoring balance
+  // on the card). That gift leg must NOT also be credited to the wallet, or
+  // the customer is refunded twice for the same money.
+  const giftCardCollected = roundCurrency2(Math.max(0, Number(booking.gift_card_amount ?? 0)));
+  const willVoidGiftCard =
+    params.voidGiftCardOnFullRefund !== false &&
+    giftCardCollected > 0 &&
+    policyRefundAmount + 0.01 >= bookingTotal;
+  const refundableWithoutGift = roundCurrency2(
+    Math.max(0, effectiveCollected - (willVoidGiftCard ? giftCardCollected : 0)),
+  );
+
   const walletRefundTarget = roundCurrency2(
-    Math.min(policyRefundAmount, effectiveCollected),
+    Math.min(policyRefundAmount, refundableWithoutGift),
   );
 
   // Fee retained must reconcile with collected funds (deposit-only bookings).
+  // Use the pre-gift-void collected amount so the retained fee still covers the
+  // full non-refunded portion of what was actually taken.
   const cancellationFeeApplied = roundCurrency2(
-    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget)),
+    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget - (willVoidGiftCard ? giftCardCollected : 0))),
   );
 
   let refundResult: RefundResult = { success: true, amount: 0 };

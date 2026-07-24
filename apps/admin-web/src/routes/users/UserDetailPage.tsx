@@ -539,7 +539,7 @@ export function UserDetailPage() {
             <h2 className="text-lg font-semibold text-gray-900">Verification</h2>
             <Link
               className="text-sm font-medium text-primary underline"
-              to={adminSpaTo("/admin/verifications?status=pending")}
+              to={adminSpaTo("/admin/identity-trust/sessions?status=pending_review#verification")}
             >
               Open verification queue
             </Link>

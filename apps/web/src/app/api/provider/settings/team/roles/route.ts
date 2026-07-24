@@ -48,8 +48,8 @@ const DEFAULT_ROLES = [
   {
     id: "employee",
     name: "Staff Member",
-    description: "Can view own schedule and manage assigned bookings",
-    permissions: ["manage_bookings", "manage_clients"],
+    description: "Day-to-day floor ops: bookings, clients, POS, and messages",
+    permissions: ["manage_bookings", "manage_clients", "process_payments"],
     isSystem: true,
   },
 ];

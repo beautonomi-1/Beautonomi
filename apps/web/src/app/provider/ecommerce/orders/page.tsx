@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -115,6 +116,8 @@ export default function ProviderProductOrdersPage() {
   const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
   const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
   const { selectedLocationId } = useProviderPortal();
+  const { hasPermission, isOwner } = usePermissions();
+  const canProcessPayments = isOwner || hasPermission("process_payments");
   const searchParams = useSearchParams();
   const focusOrderId = searchParams.get("order")?.trim() ?? "";
   const highlightRef = useRef<HTMLDivElement | null>(null);
@@ -238,6 +241,10 @@ export default function ProviderProductOrdersPage() {
       return;
     }
     if (newStatus === "refunded") {
+      if (!canProcessPayments) {
+        setError("You do not have permission to refund orders.");
+        return;
+      }
       const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
       if (!order) return;
       setRefundDialog(order);
@@ -404,12 +411,18 @@ export default function ProviderProductOrdersPage() {
               const providerEarnings = Math.max(0, totalAmount - platformFee);
               const isAppointmentOrder = o.order_source === "appointment";
               const canCollectPayment =
+                canProcessPayments &&
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
               const canCollectWithYoco = yocoEnabled && canCollectPayment;
               const canCollectWithPaycloud =
                 paycloudEnabled && canCollectPayment && !isAppointmentOrder;
+              const canRefundOrder =
+                canProcessPayments &&
+                o.payment_status === "paid" &&
+                o.status !== "cancelled" &&
+                o.status !== "refunded";
               return (
                 <div
                   key={o.id}
@@ -486,7 +499,9 @@ export default function ProviderProductOrdersPage() {
                         className="mt-3 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:opacity-50"
                         aria-label={`Update order ${o.order_number} status`}
                       >
-                        {STATUS_OPTIONS.map((status) => (
+                        {STATUS_OPTIONS.filter(
+                          (status) => status !== "refunded" || canRefundOrder || o.status === "refunded",
+                        ).map((status) => (
                           <option key={status} value={status}>
                             {status.replace(/_/g, " ")}
                           </option>

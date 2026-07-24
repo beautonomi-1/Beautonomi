@@ -1,10 +1,13 @@
 import {
   appendBookingsQueryParts,
+  BOOKINGS_TO_REVIEW_STATUS,
   buildDateStripInfo,
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
   buildStripDateParams,
+  buildStripDays,
   filterBookingsForDayKey,
+  isDateWithinStripWindow,
   mergeAtHomeBookings,
 } from "@/lib/bookings-list-query";
 import { formatBusinessDayYYYYMMDD, startOfBusinessDayLocalDate } from "@beautonomi/utils";
@@ -15,6 +18,40 @@ describe("buildStripDateParams", () => {
     expect(start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(end_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(start_date <= end_date).toBe(true);
+  });
+
+  it("centers the strip window on a custom anchor date", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-10T12:00:00.000Z"));
+    const anchor = new Date(2026, 0, 15);
+    const { start_date, end_date } = buildStripDateParams("Africa/Johannesburg", anchor);
+    expect(start_date).toBe("2025-12-16");
+    expect(end_date).toBe("2026-02-14");
+    jest.useRealTimers();
+  });
+});
+
+describe("buildStripDays", () => {
+  it("returns 61 days centered on the anchor", () => {
+    const anchor = new Date(2026, 5, 15);
+    const days = buildStripDays(anchor);
+    expect(days).toHaveLength(61);
+    expect(days[30].getDate()).toBe(15);
+  });
+});
+
+describe("isDateWithinStripWindow", () => {
+  it("returns true for dates inside ±30 days of anchor", () => {
+    const anchor = new Date(2026, 5, 15);
+    expect(isDateWithinStripWindow(new Date(2026, 5, 1), anchor)).toBe(true);
+    expect(isDateWithinStripWindow(new Date(2026, 4, 16), anchor)).toBe(true);
+    expect(isDateWithinStripWindow(new Date(2026, 6, 15), anchor)).toBe(true);
+  });
+
+  it("returns false for dates outside ±30 days of anchor", () => {
+    const anchor = new Date(2026, 5, 15);
+    expect(isDateWithinStripWindow(new Date(2026, 3, 1), anchor)).toBe(false);
+    expect(isDateWithinStripWindow(new Date(2026, 8, 1), anchor)).toBe(false);
   });
 });
 
@@ -115,11 +152,11 @@ describe("appendBookingsQueryParts", () => {
     const overview = buildOverviewDateParams("all", "Africa/Johannesburg");
     const url = appendBookingsQueryParts(new URLSearchParams(), {
       ...overview,
-      status: "pending",
+      status: BOOKINGS_TO_REVIEW_STATUS,
       sort: "scheduled_at",
       order: "asc",
     });
-    expect(url).toContain("status=pending");
+    expect(url).toContain(`status=${encodeURIComponent(BOOKINGS_TO_REVIEW_STATUS)}`);
     expect(url).toContain("order=asc");
     expect(url).not.toContain("start_date=");
     expect(url).not.toContain("end_date=");

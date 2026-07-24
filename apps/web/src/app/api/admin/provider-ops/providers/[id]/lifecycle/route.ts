@@ -87,6 +87,41 @@ export async function GET(
       console.error("[lifecycle] provider_verification_status lookup failed:", kycErr);
     }
 
+    let identityVerification: {
+      platform: "didit" | "manual" | "unknown";
+      didit_session_id: string | null;
+    } = { platform: "unknown", didit_session_id: null };
+    if (provider.user_id) {
+      try {
+        const { data: diditSession } = await supabase
+          .from("identity_verification_sessions")
+          .select("id")
+          .eq("user_id", provider.user_id)
+          .eq("persona_type", "provider")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (diditSession?.id) {
+          identityVerification = {
+            platform: "didit",
+            didit_session_id: String(diditSession.id),
+          };
+        } else {
+          const { data: manualRow } = await supabase
+            .from("user_verifications")
+            .select("id")
+            .eq("user_id", provider.user_id)
+            .limit(1)
+            .maybeSingle();
+          if (manualRow?.id) {
+            identityVerification = { platform: "manual", didit_session_id: null };
+          }
+        }
+      } catch (identityErr) {
+        console.error("[lifecycle] identity platform lookup failed:", identityErr);
+      }
+    }
+
     const { data: tracking, error: trackErr } = await supabase
       .from("provider_onboarding_tracking")
       .select("*")
@@ -220,6 +255,7 @@ export async function GET(
       provider,
       user,
       kyc,
+      identity_verification: identityVerification,
       tracking,
       lead,
       timeline,

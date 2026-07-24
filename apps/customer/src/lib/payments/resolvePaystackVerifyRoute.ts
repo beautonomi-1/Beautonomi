@@ -78,7 +78,9 @@ export function resolvePaystackVerifyRoute(body: unknown): RouteTarget | null {
       return { pathname: "/(app)/account-settings/payments" };
     }
     if (type === "product_order") {
-      return { pathname: "/(app)/account-settings/payments" };
+      return productOrderId
+        ? { pathname: "/(app)/product-order-detail", params: { id: productOrderId } }
+        : { pathname: "/(app)/product-orders" };
     }
     cur = unwrap(cur.data, depth + 1);
   }

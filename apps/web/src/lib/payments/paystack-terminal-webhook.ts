@@ -492,12 +492,63 @@ export async function recordPaystackTerminalCharge(
     received_at: data.paid_at ?? data.created_at ?? new Date().toISOString(),
   };
 
-  const { data: row, error } = await (supabase
+  // Never clobber allocation decisions on reconcile/replay. Once a payment has
+  // been allocated, declined, or admin-resolved, only refresh gateway fields.
+  const TERMINAL_ALLOCATION_LOCKED = new Set([
+    "allocated",
+    "split_allocated",
+    "provider_confirmed",
+    "provider_declined",
+    "admin_review",
+    "admin_resolved",
+    "refunded",
+    "disputed",
+  ]);
+
+  const { data: existingRow } = await (supabase
     .from("provider_paystack_terminal_payments") as any)
-    .upsert(payload, { onConflict: "paystack_reference" })
-    .select()
-    .single();
-  if (error) throw error;
+    .select("id, allocation_status, allocated_amount, status, provider_notification_status")
+    .eq("paystack_reference", reference)
+    .maybeSingle();
+
+  const existingAllocation = String(
+    (existingRow as { allocation_status?: string } | null)?.allocation_status ?? "",
+  );
+  const allocationLocked = TERMINAL_ALLOCATION_LOCKED.has(existingAllocation);
+
+  let row: Record<string, unknown> | null = null;
+  if (allocationLocked && existingRow) {
+    const { data: updated, error: updateError } = await (supabase
+      .from("provider_paystack_terminal_payments") as any)
+      .update({
+        paystack_transaction_id: payload.paystack_transaction_id,
+        gross_amount: payload.gross_amount,
+        paid_amount: payload.paid_amount,
+        gateway_fee_amount: payload.gateway_fee_amount,
+        net_amount: payload.net_amount,
+        currency: payload.currency,
+        payer_name: payload.payer_name,
+        payer_email: payload.payer_email,
+        payer_phone: payload.payer_phone,
+        customer_reference: payload.customer_reference,
+        raw_payload: payload.raw_payload,
+        metadata: payload.metadata,
+        received_at: payload.received_at,
+      })
+      .eq("id", (existingRow as { id: string }).id)
+      .select()
+      .single();
+    if (updateError) throw updateError;
+    row = updated as Record<string, unknown>;
+  } else {
+    const { data: upserted, error } = await (supabase
+      .from("provider_paystack_terminal_payments") as any)
+      .upsert(payload, { onConflict: "paystack_reference" })
+      .select()
+      .single();
+    if (error) throw error;
+    row = upserted as Record<string, unknown>;
+  }
 
   if (context.id) {
     await (supabase.from("provider_paystack_virtual_terminals") as any)

@@ -1,0 +1,113 @@
+{
+  "audit_id": "AUDIT-2026-07-22",
+  "integrations": [
+    {
+      "id": "INT-001",
+      "name": "Paystack",
+      "status": "full",
+      "change_since_prior": "unchanged",
+      "monitoring": true,
+      "reconciliation": true
+    },
+    {
+      "id": "INT-002",
+      "name": "PayCloud",
+      "status": "partial",
+      "change_since_prior": "unchanged",
+      "gap": "same-terminal gated off"
+    },
+    {
+      "id": "INT-003",
+      "name": "Yoco",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-004",
+      "name": "Didit",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-005",
+      "name": "Wasender",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-006",
+      "name": "Amplitude",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-007",
+      "name": "Gemini",
+      "status": "full",
+      "change_since_prior": "control-plane IA expanded"
+    },
+    {
+      "id": "INT-008",
+      "name": "Aura",
+      "status": "partial",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-009",
+      "name": "OneSignal",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-010",
+      "name": "Mapbox",
+      "status": "full",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-011",
+      "name": "Stripe",
+      "status": "partial",
+      "change_since_prior": "mock→partial",
+      "gap": "booking destination charges only; no Connect account.updated webhook"
+    },
+    {
+      "id": "INT-012",
+      "name": "Flutterwave",
+      "status": "mock",
+      "change_since_prior": "unchanged"
+    },
+    {
+      "id": "INT-013",
+      "name": "Aramex/BobGo/CourierGuy",
+      "status": "stub",
+      "change_since_prior": "gated off at app layer"
+    },
+    {
+      "id": "INT-014",
+      "name": "Slack",
+      "status": "full",
+      "change_since_prior": "safety panic alerts added"
+    },
+    {
+      "id": "INT-015",
+      "name": "Twilio",
+      "status": "full",
+      "change_since_prior": "voice dialer for provider-ops leads"
+    },
+    {
+      "id": "INT-016",
+      "name": "Salestrail",
+      "status": "partial",
+      "change_since_prior": "new",
+      "gap": "webhook route present; ops reconciliation unverified locally"
+    },
+    {
+      "id": "INT-017",
+      "name": "Agent workforce (internal)",
+      "status": "partial",
+      "change_since_prior": "new",
+      "gap": "proposal-only crons; support.classifyTicket unbound"
+    }
+  ]
+}

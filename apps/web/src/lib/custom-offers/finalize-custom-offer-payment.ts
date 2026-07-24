@@ -173,6 +173,298 @@ async function lastResortCurrencyFromTenantId(
   return LAST_RESORT_CURRENCY;
 }
 
+type BookingFinanceBackfillRow = {
+  id: string;
+  provider_id?: string | null;
+  tenant_id?: string | null;
+  total_amount?: number | null;
+  tip_amount?: number | null;
+  tax_amount?: number | null;
+  travel_fee?: number | null;
+  service_fee_amount?: number | null;
+  platform_fee_amount?: number | null;
+  wallet_amount?: number | null;
+  gift_card_amount?: number | null;
+  promotion_discount_amount?: number | null;
+  loyalty_discount_amount?: number | null;
+  payment_reference?: string | null;
+  payment_provider?: string | null;
+};
+
+/**
+ * Safety net for a crash between "mark custom offer paid" (step 7, below) and
+ * "write finance ledger" (step 10, below) inside `finalizeCustomOfferPayment`.
+ * A Paystack webhook retry for the same reference short-circuits on
+ * `offer.status === "paid"` (or the `payment_transactions` dedupe check) and
+ * would otherwise never write the missing `finance_transactions` rows —
+ * silently leaving the booking's revenue unbooked forever. Idempotent:
+ * no-ops if a `provider_earnings` row already exists for the booking.
+ * Never touches the booking/offering rows — those already exist.
+ */
+async function backfillMissingCustomOfferFinance(
+  adminSupabase: SupabaseClient,
+  bookingId: string,
+  offerId: string,
+): Promise<void> {
+  const { data: existingFinance } = await adminSupabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("transaction_type", "provider_earnings")
+    .maybeSingle();
+  if (existingFinance) return;
+
+  const { data: bookingRow } = await adminSupabase
+    .from("bookings")
+    .select(
+      "id, provider_id, tenant_id, total_amount, tip_amount, tax_amount, travel_fee, service_fee_amount, platform_fee_amount, wallet_amount, gift_card_amount, promotion_discount_amount, loyalty_discount_amount, payment_reference, payment_provider",
+    )
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!bookingRow) {
+    console.error(
+      `[finalizeCustomOfferPayment] finance backfill: booking ${bookingId} not found for offer ${offerId}`,
+    );
+    return;
+  }
+  const b = bookingRow as BookingFinanceBackfillRow;
+
+  const tipAmount = Number(b.tip_amount ?? 0);
+  const taxAmount = Number(b.tax_amount ?? 0);
+  const travelFee = Number(b.travel_fee ?? 0);
+  const serviceFeeAmount = Number(b.platform_fee_amount ?? b.service_fee_amount ?? 0);
+  const walletAmountApplied = Math.max(0, Number(b.wallet_amount ?? 0));
+  const giftCardAmountApplied = Math.max(0, Number(b.gift_card_amount ?? 0));
+  const promotionDiscountAmount = Math.max(0, Number(b.promotion_discount_amount ?? 0));
+  const loyaltyDiscountAmount = Math.max(0, Number(b.loyalty_discount_amount ?? 0));
+  const bookingTotal = Number(b.total_amount ?? 0);
+
+  const commissionBase =
+    bookingTotal > 0
+      ? Math.max(0, bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount)
+      : 0;
+
+  const financeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+    tenant_id: b.tenant_id ?? null,
+    provider_id: b.provider_id ?? null,
+  });
+  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
+    tenantId: financeTenantId,
+    providerId: b.provider_id ?? null,
+  });
+  const platformCommission = percentOf(commissionBase, commissionRate);
+  const providerEarnings = subtractMoney(commissionBase, platformCommission);
+
+  const reference = b.payment_reference || `custom_offer_backfill:${offerId}`;
+  const provider = b.payment_provider || "paystack";
+
+  const { data: existingPaymentTx } = await adminSupabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", provider)
+    .eq("reference", reference)
+    .maybeSingle();
+  if (!existingPaymentTx) {
+    const paystackLeg = Math.max(0, bookingTotal - walletAmountApplied - giftCardAmountApplied);
+    try {
+      await adminSupabase.from("payment_transactions").insert({
+        booking_id: bookingId,
+        reference,
+        amount: bookingTotal,
+        fees: 0,
+        net_amount: paystackLeg,
+        status: "success",
+        provider,
+        metadata: {
+          custom_offer_id: offerId,
+          backfilled: true,
+          wallet_amount_applied: walletAmountApplied,
+          gift_card_amount_applied: giftCardAmountApplied,
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (ptErr) {
+      console.error(
+        `[finalizeCustomOfferPayment] finance backfill: payment_transactions insert failed for booking ${bookingId}:`,
+        ptErr,
+      );
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const rows: Array<Record<string, unknown>> = [
+    {
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "payment",
+      amount: commissionBase,
+      fees: 0,
+      commission: platformCommission,
+      net: platformCommission,
+      description: `Custom order payment (backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    },
+    {
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "provider_earnings",
+      amount: providerEarnings,
+      fees: 0,
+      commission: 0,
+      net: providerEarnings,
+      description: `Provider earnings (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    },
+  ];
+  if (serviceFeeAmount > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "platform_fee",
+      amount: serviceFeeAmount,
+      fees: 0,
+      commission: 0,
+      net: serviceFeeAmount,
+      description: `Platform fee (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (tipAmount > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "tip",
+      amount: tipAmount,
+      fees: 0,
+      commission: 0,
+      net: tipAmount,
+      description: `Tip (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (taxAmount > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "tax",
+      amount: taxAmount,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      description: `Tax (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (travelFee > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "travel_fee",
+      amount: travelFee,
+      fees: 0,
+      commission: 0,
+      net: travelFee,
+      description: `Travel fee (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (promotionDiscountAmount > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "promotion_discount",
+      amount: promotionDiscountAmount,
+      fees: 0,
+      commission: 0,
+      net: -promotionDiscountAmount,
+      description: `Promotion discount (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (walletAmountApplied > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "wallet_payment",
+      amount: walletAmountApplied,
+      fees: 0,
+      commission: 0,
+      net: walletAmountApplied,
+      description: `Wallet payment (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+  if (giftCardAmountApplied > 0) {
+    rows.push(
+      {
+        booking_id: bookingId,
+        provider_id: b.provider_id,
+        tenant_id: financeTenantId,
+        transaction_type: "gift_card_payment",
+        amount: giftCardAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: giftCardAmountApplied,
+        description: `Gift card payment (custom order, backfilled) [custom_offer:${offerId}]`,
+        created_at: nowIso,
+      },
+      {
+        booking_id: bookingId,
+        provider_id: b.provider_id,
+        tenant_id: financeTenantId,
+        transaction_type: "gift_card_liability_reduction",
+        amount: giftCardAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: -giftCardAmountApplied,
+        description: `Gift card liability redeemed (custom order, backfilled) [custom_offer:${offerId}]`,
+        created_at: nowIso,
+      },
+    );
+  }
+  if (loyaltyDiscountAmount > 0) {
+    rows.push({
+      booking_id: bookingId,
+      provider_id: b.provider_id,
+      tenant_id: financeTenantId,
+      transaction_type: "loyalty_redemption",
+      amount: loyaltyDiscountAmount,
+      fees: 0,
+      commission: 0,
+      net: -loyaltyDiscountAmount,
+      description: `Loyalty redemption (custom order, backfilled) [custom_offer:${offerId}]`,
+      created_at: nowIso,
+    });
+  }
+
+  try {
+    const { error } = await adminSupabase.from("finance_transactions").insert(rows);
+    if (error) {
+      console.error(
+        `[finalizeCustomOfferPayment] finance backfill: finance_transactions insert failed for booking ${bookingId}:`,
+        error,
+      );
+    } else {
+      console.warn(
+        `[finalizeCustomOfferPayment] backfilled missing finance ledger for booking ${bookingId} (offer ${offerId})`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[finalizeCustomOfferPayment] finance backfill: finance_transactions insert threw for booking ${bookingId}:`,
+      err,
+    );
+  }
+}
+
 export async function finalizeCustomOfferPayment(
   adminSupabase: SupabaseClient,
   input: FinalizeCustomOfferPaymentInput,
@@ -194,6 +486,12 @@ export async function finalizeCustomOfferPayment(
 
   // ── 2. Idempotency ─────────────────────────────────────────────────────────
   if (offer.status === "paid") {
+    if (offer.booking_id) {
+      // Defensive: a prior run may have marked the offer paid (this step) but
+      // crashed before writing the finance ledger (step 10). Don't leave the
+      // booking's revenue permanently unbooked on a webhook retry.
+      await backfillMissingCustomOfferFinance(adminSupabase, offer.booking_id, offerId);
+    }
     return { ok: true, bookingId: offer.booking_id, reason: "already_paid" };
   }
   if (offer.status === "withdrawn" || offer.status === "expired") {
@@ -201,6 +499,16 @@ export async function finalizeCustomOfferPayment(
       `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking`,
     );
     return { ok: false, reason: offer.status };
+  }
+  // Only settle from payment_pending. After cancel-payment the offer is
+  // `pending` again (and any wallet debit has been credited back). Accepting
+  // finalize from `pending` would recreate a booking that still counts the
+  // refunded wallet leg as tender — the platform would absorb the gap.
+  if (offer.status !== "payment_pending") {
+    console.warn(
+      `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking (expected payment_pending)`,
+    );
+    return { ok: false, reason: `unexpected_status:${offer.status}` };
   }
 
   // Reference-based dedupe: another concurrent finalize for the same payment.
@@ -210,11 +518,41 @@ export async function finalizeCustomOfferPayment(
     .eq("reference", input.reference)
     .maybeSingle();
   if (existingTx) {
-    return {
-      ok: true,
-      bookingId: (existingTx as { booking_id?: string }).booking_id,
-      reason: "duplicate_reference",
-    };
+    const bookingIdFromTx = (existingTx as { booking_id?: string }).booking_id;
+    if (bookingIdFromTx) {
+      const { data: existingFinance } = await adminSupabase
+        .from("finance_transactions")
+        .select("id")
+        .eq("booking_id", bookingIdFromTx)
+        .eq("transaction_type", "provider_earnings")
+        .maybeSingle();
+      if (existingFinance) {
+        return {
+          ok: true,
+          bookingId: bookingIdFromTx,
+          reason: "duplicate_reference",
+        };
+      }
+      // Booking already exists for this reference but the finance ledger
+      // never got written (crash between booking creation and ledger write).
+      // Backfill instead of falling through to a full re-finalize below,
+      // which would create a duplicate offering + booking for the same offer.
+      console.warn(
+        `[finalizeCustomOfferPayment] offer ${offerId} reference ${input.reference} has booking ${bookingIdFromTx} but no finance ledger; backfilling instead of re-finalizing`,
+      );
+      await backfillMissingCustomOfferFinance(adminSupabase, bookingIdFromTx, offerId);
+      return {
+        ok: true,
+        bookingId: bookingIdFromTx,
+        reason: "duplicate_reference_backfilled",
+      };
+    } else {
+      return {
+        ok: true,
+        bookingId: bookingIdFromTx,
+        reason: "duplicate_reference",
+      };
+    }
   }
 
   // ── 3. Currency + pricing inputs ───────────────────────────────────────────

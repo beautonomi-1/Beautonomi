@@ -49,8 +49,10 @@ import { useTranslation } from "@beautonomi/i18n";
 import {
   matchesExpoReturnUrl,
   isCancelledPaystackUrl,
+  extractPaystackReferenceFromUrl,
 } from "@/lib/paystack-webview-utils";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useSavedCards } from "@/hooks/useSavedCards";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
@@ -210,6 +212,15 @@ export default function BookingDetailScreen() {
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const [payRemainingUseWallet, setPayRemainingUseWallet] = useState(false);
   const [payRemainingGiftCode, setPayRemainingGiftCode] = useState("");
+  // Stable per-mount key so a double-tap or client retry of "Pay remaining
+  // balance" can't create two Paystack sessions / wallet-gift debits for the
+  // same booking. The server only caches successful responses, so a genuine
+  // retry after an error still proceeds normally.
+  const payRemainingIdempotencyKeyRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `pay-remaining-${Date.now()}`,
+  );
   const [walletBalance, setWalletBalance] = useState(0);
   const [additionalChargePayLoadingId, setAdditionalChargePayLoadingId] = useState<string | null>(
     null,
@@ -947,6 +958,9 @@ export default function BookingDetailScreen() {
         ...(payRemainingGiftCode.trim()
           ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
           : {}),
+        idempotency_key: payRemainingIdempotencyKeyRef.current,
+      }, {
+        headers: { "Idempotency-Key": payRemainingIdempotencyKeyRef.current },
       });
       if (res.error) {
         Alert.alert(
@@ -1546,18 +1560,61 @@ export default function BookingDetailScreen() {
         window.open(url, "_blank", "noopener,noreferrer");
       } else {
         const returnUrl = ExpoLinking.createURL("book/paystack");
-        if (res.data?.reference) {
-          markReferenceProcessing(res.data.reference);
+        let paymentReference = res.data?.reference ?? null;
+        if (paymentReference) {
+          markReferenceProcessing(paymentReference);
         }
-        await payRemainingCheckout.waitForCheckout(url, {
+        const checkoutResult = await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay additional charge",
           returnUrl,
           matchSuccess: (rawUrl) =>
             matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        if (checkoutResult.outcome === "cancel") {
+          Alert.alert(
+            bd("paymentPendingTitle"),
+            "Payment was cancelled. You can retry when ready.",
+          );
+          return;
+        }
+        if (checkoutResult.outcome === "success" && checkoutResult.url) {
+          const extracted = extractPaystackReferenceFromUrl(checkoutResult.url);
+          if (extracted) paymentReference = extracted;
+        }
+        if (paymentReference) {
+          await verifyPaystackWithRetry(paymentReference);
+        }
       }
-      await load();
+
+      const MAX_ATTEMPTS = 10;
+      const POLL_INTERVAL_MS = 2000;
+      let chargePaid = false;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          const check = await api.get<{ additional_charges?: Array<{ id?: string; status?: string }> }>(
+            `/api/me/bookings/${encodeURIComponent(id)}`,
+          );
+          const row = (check.data?.additional_charges ?? []).find((c) => c.id === chargeId);
+          if (String(row?.status ?? "").toLowerCase() === "paid") {
+            chargePaid = true;
+            break;
+          }
+        } catch {
+          /* ignore poll errors */
+        }
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+      }
+
+      if (chargePaid) {
+        haptic.success();
+        await load();
+      } else {
+        Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
+        await load({ silent: true });
+      }
     } catch (e) {
       Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not pay additional charge."));
     } finally {
@@ -1608,8 +1665,44 @@ export default function BookingDetailScreen() {
         Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not charge your saved card."));
         return;
       }
-      haptic.success();
-      Alert.alert("Payment Successful", "Your additional charge was paid with your saved card.");
+      const txStatus = String(
+        (res.data as { status?: string; transaction?: { status?: string } } | null)?.status ??
+          (res.data as { transaction?: { status?: string } } | null)?.transaction?.status ??
+          "",
+      ).toLowerCase();
+      if (txStatus && txStatus !== "success") {
+        Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
+        await load({ silent: true });
+        return;
+      }
+
+      const MAX_ATTEMPTS = 10;
+      const POLL_INTERVAL_MS = 2000;
+      let chargePaid = false;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          const check = await api.get<{ additional_charges?: Array<{ id?: string; status?: string }> }>(
+            `/api/me/bookings/${encodeURIComponent(id)}`,
+          );
+          const row = (check.data?.additional_charges ?? []).find((c) => c.id === chargeId);
+          if (String(row?.status ?? "").toLowerCase() === "paid") {
+            chargePaid = true;
+            break;
+          }
+        } catch {
+          /* ignore poll errors */
+        }
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+      }
+
+      if (chargePaid) {
+        haptic.success();
+        Alert.alert("Payment Successful", "Your additional charge was paid with your saved card.");
+      } else {
+        Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
+      }
       await load({ silent: true });
     } catch (e) {
       Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not charge your saved card."));

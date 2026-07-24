@@ -75,7 +75,7 @@ describe("permissions + Supabase request context", () => {
     expect(from).toHaveBeenCalledWith("providers");
   });
 
-  it("getStaffPermissions gives ordinary staff full access by default", async () => {
+  it("getStaffPermissions gives employee role-aligned defaults when permissions null", async () => {
     const req = new Request("https://example.com/api");
     const providerMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
     const providerEq = vi.fn().mockReturnValue({ maybeSingle: providerMaybeSingle });
@@ -102,10 +102,15 @@ describe("permissions + Supabase request context", () => {
 
     const perms = await getStaffPermissions("staff-user", undefined, req);
 
-    expect(perms.manage_team).toBe(true);
-    expect(perms.edit_settings).toBe(true);
+    expect(perms.view_calendar).toBe(true);
+    expect(perms.create_appointments).toBe(true);
+    expect(perms.manage_team).toBe(false);
+    expect(perms.edit_settings).toBe(false);
     expect(perms.process_payments).toBe(true);
-    expect(perms.create_explore_posts).toBe(true);
+    expect(perms.edit_appointments).toBe(true);
+    expect(perms.create_sales).toBe(true);
+    expect(perms.edit_clients).toBe(true);
+    expect(perms.view_team).toBe(true);
   });
 
   it("getStaffPermissions respects explicit revocations", async () => {

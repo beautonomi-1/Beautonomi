@@ -10,6 +10,17 @@ export function dashboardBookingLocationOrFilter(locationId: string): string {
   ].join(",");
 }
 
+/**
+ * Location scope for `group_bookings` (has `location_id` / `location_type`, not `booking_source`).
+ * Using {@link dashboardBookingLocationOrFilter} here fails with PostgREST 42703.
+ */
+export function dashboardGroupBookingLocationOrFilter(locationId: string): string {
+  return [
+    `location_id.eq.${locationId}`,
+    `and(location_id.is.null,location_type.eq.at_home)`,
+  ].join(",");
+}
+
 /** In-memory branch filter matching {@link dashboardBookingLocationOrFilter}. */
 export function bookingMatchesDashboardLocation(
   locationId: string | null | undefined,

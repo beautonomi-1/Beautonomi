@@ -2,8 +2,8 @@
  * Scenario tests for `getAvailablePayoutBalance` covering the full payout
  * exclusion matrix promised in the manual finance validation doc:
  *
- * - Walk-in cash, EFT (`bank_transfer`), manual card (`other`) and Yoco terminal
- *   bookings are NOT payoutable (provider already collected the money directly).
+ * - Walk-in cash, EFT (`bank_transfer`), manual card (`other`), Yoco terminal, and
+ *   PayCloud card-machine bookings are NOT payoutable (provider already collected).
  * - Walk-in **paystack** bookings ARE payoutable (platform held the money).
  * - Online bookings of every payment shape are payoutable (platform-held).
  * - Hold-period gates earnings but NEVER refund clawbacks.
@@ -88,7 +88,12 @@ function mockSupabase(rowsByTable: Record<string, Row[]>) {
 const providerId = "provider-1";
 const T = "2026-04-01T00:00:00.000Z";
 
-function earnings(bookingId: string, amount: number, createdAt: string = T) {
+function earnings(
+  bookingId: string,
+  amount: number,
+  createdAt: string = T,
+  sourcePaymentId?: string,
+) {
   return {
     provider_id: providerId,
     transaction_type: "provider_earnings",
@@ -96,6 +101,7 @@ function earnings(bookingId: string, amount: number, createdAt: string = T) {
     net: amount,
     booking_id: bookingId,
     created_at: createdAt,
+    ...(sourcePaymentId ? { source_payment_id: sourcePaymentId } : {}),
   };
 }
 
@@ -133,6 +139,110 @@ describe("getAvailablePayoutBalance — payout exclusion matrix", () => {
     expect(result.rawBalance).toBe(90);
     expect(result.availableBalance).toBe(90);
     expect(result.hasNegativeBalance).toBe(false);
+  });
+
+  it("excludes pure PayCloud card-machine bookings and tips from payout balance", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          earnings("walk-paycloud", 120, T, "bp-paycloud-base"),
+          {
+            provider_id: providerId,
+            transaction_type: "tip",
+            amount: 20,
+            net: 20,
+            booking_id: "walk-paycloud",
+            created_at: T,
+            source_payment_id: "bp-paycloud-tip",
+          },
+        ],
+        bookings: [{ id: "walk-paycloud", booking_source: "walk_in" }],
+        booking_payments: [
+          { id: "bp-paycloud-base", booking_id: "walk-paycloud", payment_provider: "paycloud", status: "completed" },
+          { id: "bp-paycloud-tip", booking_id: "walk-paycloud", payment_provider: "paycloud", status: "completed" },
+        ],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.rawBalance).toBe(0);
+    expect(result.breakdown.excludedProviderCollected).toBe(140);
+  });
+
+  it("mixed Paystack deposit + PayCloud balance only includes platform-held earnings", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          earnings("mixed", 50, T, "bp-paystack-deposit"),
+          earnings("mixed", 80, T, "bp-paycloud-balance"),
+          {
+            provider_id: providerId,
+            transaction_type: "tip",
+            amount: 10,
+            net: 10,
+            booking_id: "mixed",
+            created_at: T,
+            source_payment_id: "bp-paycloud-tip",
+          },
+        ],
+        bookings: [{ id: "mixed", booking_source: "online" }],
+        booking_payments: [
+          { id: "bp-paystack-deposit", booking_id: "mixed", payment_provider: "paystack", status: "completed" },
+          { id: "bp-paycloud-balance", booking_id: "mixed", payment_provider: "paycloud", status: "completed" },
+          { id: "bp-paycloud-tip", booking_id: "mixed", payment_provider: "paycloud", status: "completed" },
+        ],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.rawBalance).toBe(50);
+    expect(result.breakdown.excludedProviderCollected).toBe(90);
+  });
+
+  it("mixed Paystack (no source_payment_id) + PayCloud (with source) still only includes platform-held earnings", async () => {
+    /** Paystack webhook PE rows historically omit source_payment_id; PayCloud trigger rows include it. */
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          earnings("mixed-legacy", 60),
+          earnings("mixed-legacy", 90, T, "bp-paycloud-leg"),
+        ],
+        bookings: [{ id: "mixed-legacy", booking_source: "online" }],
+        booking_payments: [
+          { booking_id: "mixed-legacy", payment_provider: "paystack", status: "completed" },
+          {
+            id: "bp-paycloud-leg",
+            booking_id: "mixed-legacy",
+            payment_provider: "paycloud",
+            status: "completed",
+          },
+        ],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.rawBalance).toBe(60);
+    expect(result.breakdown.excludedProviderCollected).toBe(90);
+  });
+
+  it("excludes pure PayCloud even when finance rows lack source_payment_id (booking-level fallback)", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [earnings("pure-pc", 200)],
+        bookings: [{ id: "pure-pc", booking_source: "online" }],
+        booking_payments: [
+          { booking_id: "pure-pc", payment_provider: "paycloud", status: "completed" },
+        ],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.rawBalance).toBe(0);
+    expect(result.breakdown.excludedProviderCollected).toBe(200);
   });
 
   it("includes online bookings paid via wallet, gift_card, paystack, and split tender", async () => {

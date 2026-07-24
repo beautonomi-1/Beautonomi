@@ -5,6 +5,7 @@
  * Permission-gated to superadmin. All manual actions are audited.
  */
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { adminApi } from "@/lib/adminClient";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -51,9 +52,16 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function VerificationSessionsPage() {
   const { allowed, denied } = useSuperadminPage("Identity & Trust is superadmin-only.");
+  const [searchParams] = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "";
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ status: "", persona: "", sessionKind: "", flags: "" });
+  const [filter, setFilter] = useState({
+    status: initialStatus,
+    persona: "",
+    sessionKind: "",
+    flags: "",
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -65,6 +73,14 @@ export function VerificationSessionsPage() {
     void load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed, filter, search, page]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#verification") return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("verification")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [loading, filter.status]);
 
   async function load() {
     setLoading(true);
@@ -110,10 +126,24 @@ export function VerificationSessionsPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title="Verification Sessions"
-        description="Didit identity-verification sessions."
-      />
+      <div id="verification" className="scroll-mt-24">
+        <AdminPageHeader
+          title="Verification Sessions"
+          description="Didit identity-verification sessions. Open the Didit Business Console for credits and org settings."
+        />
+        <p className="mt-2 text-sm text-gray-600">
+          Platform: <span className="font-medium text-gray-900">Didit</span>
+          {" · "}
+          <a
+            href="https://business.didit.me/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-primary hover:underline"
+          >
+            business.didit.me
+          </a>
+        </p>
+      </div>
 
       {msg && (
         <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-2 text-sm text-blue-800 flex items-center justify-between">

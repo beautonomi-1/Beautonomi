@@ -3,13 +3,13 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -65,7 +65,11 @@ const createCustomOfferSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -104,6 +108,21 @@ export async function POST(request: NextRequest) {
 
     const parsed = createCustomOfferSchema.parse(await request.json());
     const body = { ...parsed, currency: parsed.currency ?? lastResortCurrency };
+
+    if (body.location_type === "at_home" && !body.address_line1?.trim()) {
+      return errorResponse(
+        "House-call custom offers require a service address (address_line1).",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+    if (body.location_type === "at_salon" && !body.location_id) {
+      return errorResponse(
+        "At-salon custom offers require a salon location.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
 
     // Verify customer exists (admin client bypasses RLS so provider can resolve customer_id)
     const supabaseAdmin = getSupabaseAdmin();

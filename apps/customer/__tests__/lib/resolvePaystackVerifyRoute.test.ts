@@ -21,6 +21,12 @@ describe("resolvePaystackVerifyRoute", () => {
     ).toEqual({ pathname: "/(app)/product-order-detail", params: { id: "p1" } });
   });
 
+  it("routes product orders without id to the product orders list", () => {
+    expect(resolvePaystackVerifyRoute({ status: "success", type: "product_order" })).toEqual({
+      pathname: "/(app)/product-orders",
+    });
+  });
+
   it("routes wallet top-ups to the wallet screen", () => {
     expect(resolvePaystackVerifyRoute({ status: "success", type: "wallet_topup" })).toEqual({
       pathname: "/(app)/account-settings/wallet",

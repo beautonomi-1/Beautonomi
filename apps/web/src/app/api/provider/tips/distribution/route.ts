@@ -1,15 +1,24 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from '@/lib/supabase/api-helpers';
+import {
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+} from '@/lib/supabase/api-helpers';
+import { requirePermission } from '@/lib/auth/requirePermission';
 
 /**
  * GET /api/provider/tips/distribution
- * 
+ *
  * Get provider's tip distribution settings
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const authCheck = await requirePermission('view_sales', request);
+    if (!authCheck.authorized) {
+      return authCheck.response!;
+    }
+    const { user } = authCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -26,7 +35,6 @@ export async function GET(request: NextRequest) {
         .maybeSingle(),
     ]);
 
-    // Return default if not found (PGRST116 is "not found" error)
     if (error && error.code === 'PGRST116') {
       const legacyDistribution = (providerRow as { tips_distribution?: string | null } | null)
         ?.tips_distribution;
@@ -52,12 +60,16 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/provider/tips/distribution
- * 
+ *
  * Update provider's tip distribution settings
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission('edit_settings', request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     const body = await request.json();
@@ -78,7 +90,7 @@ export async function PATCH(request: NextRequest) {
         },
         {
           onConflict: 'provider_id',
-        }
+        },
       )
       .select()
       .single();

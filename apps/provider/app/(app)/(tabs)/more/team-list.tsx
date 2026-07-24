@@ -420,7 +420,7 @@ export default function TeamListScreen() {
       Alert.alert(
         "Team member added",
         form.invite_email
-          ? "They have been added and an invite was requested. Open their profile to review shifts, days off, permissions, and password reset actions."
+          ? "They have been added and an invite email was sent (Provider app download link included). Open their profile to review shifts, permissions, and resend if needed."
           : "They have been added. Open their profile to send an invite or password reset, then set their shifts and permissions.",
         [
           { text: "Later", style: "cancel" },
@@ -829,10 +829,10 @@ export default function TeamListScreen() {
         <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
           <View>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Send invite/setup email
+              Send invite email
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Recommended. They can set their password and open the provider app.
+              Resend + Provider app links. They join via /provider/join — not owner onboarding.
             </Text>
           </View>
           <Switch
