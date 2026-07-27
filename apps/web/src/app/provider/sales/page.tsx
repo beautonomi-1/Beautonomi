@@ -127,6 +127,18 @@ function ProviderSalesContent() {
     setPaycloudDialogOpen(true);
   };
 
+  /**
+   * `sales.payment_status` is constrained to pending | completed | failed |
+   * refunded (migration 129) and defaults to 'completed'. Only the two unsettled
+   * states are collectable — offering a charge on a completed sale invites a
+   * duplicate payment.
+   */
+  const isSaleCollectable = (sale: Sale) => {
+    if (Number(sale.total ?? 0) <= 0) return false;
+    const status = (sale.payment_status || "").toLowerCase();
+    return status === "pending" || status === "failed";
+  };
+
   const handlePaymentSuccess = (_payment: YocoPayment) => {
     // Reload sales to reflect payment status
     loadSales();
@@ -301,23 +313,31 @@ function ProviderSalesContent() {
                     <TableCell>{sale.payment_method}</TableCell>
                     <TableCell>{sale.team_member_name || "-"}</TableCell>
                     <TableCell className="text-right">
-                      <PaycloudCollectButton
-                        amount={sale.total}
-                        currency={currencyCode}
-                        context="sale"
-                        onClick={() => handlePaycloudPayment(sale)}
-                        className="gap-2"
-                      />
-                      {yocoEnabled && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleYocoPayment(sale)}
-                          className="gap-2"
-                        >
-                          <CreditCard className="w-3 h-3" />
-                          Pay
-                        </Button>
+                      {isSaleCollectable(sale) ? (
+                        <>
+                          <PaycloudCollectButton
+                            amount={sale.total}
+                            currency={currencyCode}
+                            context="sale"
+                            onClick={() => handlePaycloudPayment(sale)}
+                            className="gap-2"
+                          />
+                          {yocoEnabled && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleYocoPayment(sale)}
+                              className="gap-2"
+                            >
+                              <CreditCard className="w-3 h-3" />
+                              Pay
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400 capitalize">
+                          {sale.payment_status || "completed"}
+                        </span>
                       )}
                     </TableCell>
                   </TableRow>

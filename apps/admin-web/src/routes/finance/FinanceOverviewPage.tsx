@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Download, TrendingDown, TrendingUp } from "lucide-react";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";

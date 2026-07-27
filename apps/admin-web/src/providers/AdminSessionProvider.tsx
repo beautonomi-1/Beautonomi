@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserRole } from "@beautonomi/types";
 import type { AdminSection } from "@beautonomi/admin-access";

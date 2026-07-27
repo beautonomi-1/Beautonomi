@@ -6,14 +6,21 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import org.json.JSONObject
+
 /**
- * Same-terminal WiseCashier Intent bridge for Wiseasy P5/P5L Android POS devices.
+ * Same-terminal WiseCashier Intent bridge for Wiseasy Android POS devices.
  *
- * Default Intent contract matches PayCloud Same-Terminal Application Integration;
- * override via `intent_contract` in the payload (sourced from tenant_paycloud_apps.metadata).
+ * Implements PayCloud SameTerminalAppIntegration:
+ * - Action: com.wiseasy.transaction.call
+ * - Extras: version (A01), appId, transType, transData (JSON string)
+ * - Result: result ("00" = approved), resultMsg, transData (JSON string)
+ *
+ * Contract overrides via intent_contract in payload (tenant_paycloud_apps.metadata).
  */
 class PaycloudSameTerminalModule : Module() {
 
@@ -23,62 +30,33 @@ class PaycloudSameTerminalModule : Module() {
 
   companion object {
     private const val SALE_REQUEST_CODE = 42_001
+    private const val PREINIT_REQUEST_CODE = 42_002
     private const val SALE_TIMEOUT_MS = 5 * 60 * 1000L
+    private const val PREINIT_TIMEOUT_MS = 30_000L
 
-    /** WiseCashier package on Wiseasy terminals — override via intent_contract.package_name */
     private const val DEFAULT_WISECASHIER_PACKAGE = "com.wiseasy.cashier"
+    private const val DEFAULT_INTENT_ACTION = "com.wiseasy.transaction.call"
+    private const val DEFAULT_VERSION = "A01"
 
-    /** PayCloud same-terminal sale action — override via intent_contract.action */
-    private const val DEFAULT_SALE_ACTION = "com.wiseasy.cashier.action.PAYMENT"
+    private const val RESULT_APPROVED = "00"
 
-    /** PayCloud trans_status=2 (completed) */
-    private const val TRANS_STATUS_COMPLETED = "2"
+    private val WISEASY_SERIAL_PROPERTIES =
+      listOf(
+        "ro.serialno",
+        "ro.boot.serialno",
+        "persist.sys.serialno",
+        "ro.wiseasy.serial",
+      )
   }
 
   override fun definition() = ModuleDefinition {
     Name("PaycloudSameTerminal")
 
     OnActivityResult { _, result ->
-      if (result.requestCode != SALE_REQUEST_CODE) return@OnActivityResult
-      clearTimeout()
-
-      val promise = pendingPromise
-      pendingPromise = null
-      if (promise == null) return@OnActivityResult
-
-      if (result.resultCode == Activity.RESULT_CANCELED) {
-        promise.resolve(
-          mapOf(
-            "success" to false,
-            "trans_status" to "3",
-            "message" to "Payment cancelled on device",
-          ),
-        )
-        return@OnActivityResult
+      when (result.requestCode) {
+        SALE_REQUEST_CODE -> handleSaleResult(result.resultCode, result.data)
+        PREINIT_REQUEST_CODE -> handlePreInitResult(result.resultCode, result.data)
       }
-
-      val data = result.data
-      val transStatus =
-        data?.getStringExtra("trans_status")
-          ?: data?.getStringExtra("TRANS_STATUS")
-          ?: if (result.resultCode == Activity.RESULT_OK) TRANS_STATUS_COMPLETED else null
-
-      val message =
-        data?.getStringExtra("message")
-          ?: data?.getStringExtra("error_message")
-          ?: data?.getStringExtra("response_message")
-
-      val success =
-        result.resultCode == Activity.RESULT_OK &&
-          (transStatus == null || transStatus == TRANS_STATUS_COMPLETED)
-
-      promise.resolve(
-        mapOf(
-          "success" to success,
-          "trans_status" to transStatus,
-          "message" to message,
-        ),
-      )
     }
 
     AsyncFunction("canLaunch") { promise: Promise ->
@@ -86,7 +64,78 @@ class PaycloudSameTerminalModule : Module() {
     }
 
     AsyncFunction("getDeviceSerial") { promise: Promise ->
-      promise.resolve(readDeviceSerial())
+      val info = readDeviceInfo()
+      promise.resolve(info["serial"])
+    }
+
+    AsyncFunction("getDeviceInfo") { promise: Promise ->
+      promise.resolve(readDeviceInfo())
+    }
+
+    AsyncFunction("preInit") { payload: Map<String, Any?>, promise: Promise ->
+      if (pendingPromise != null) {
+        promise.resolve(
+          mapOf(
+            "success" to false,
+            "message" to "Another payment operation is already in progress on this device.",
+          ),
+        )
+        return@AsyncFunction
+      }
+
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(
+          mapOf(
+            "success" to false,
+            "message" to "App is not in the foreground.",
+          ),
+        )
+        return@AsyncFunction
+      }
+
+      val contract = parseIntentContract(payload["intent_contract"])
+      if (!canLaunchWiseCashier(contract)) {
+        promise.resolve(
+          mapOf(
+            "success" to false,
+            "message" to "WiseCashier is not installed on this device.",
+          ),
+        )
+        return@AsyncFunction
+      }
+
+      val appId = payloadString(payload, "appId") ?: payloadString(payload, "app_id")
+      if (appId.isNullOrBlank()) {
+        promise.resolve(
+          mapOf(
+            "success" to false,
+            "message" to "Invalid PRE-INIT payload — appId is required.",
+          ),
+        )
+        return@AsyncFunction
+      }
+
+      val intent = buildBaseIntent(contract)
+      putExtra(intent, contract.versionKey, payloadString(payload, "version") ?: DEFAULT_VERSION)
+      putExtra(intent, contract.appIdKey, appId)
+      putExtra(intent, contract.transTypeKey, "PRE-INIT")
+
+      pendingPromise = promise
+      scheduleTimeout(PREINIT_TIMEOUT_MS)
+
+      try {
+        activity.startActivityForResult(intent, PREINIT_REQUEST_CODE)
+      } catch (e: Exception) {
+        clearTimeout()
+        pendingPromise = null
+        promise.resolve(
+          mapOf(
+            "success" to false,
+            "message" to (e.message ?: "Could not open WiseCashier."),
+          ),
+        )
+      }
     }
 
     AsyncFunction("startSale") { payload: Map<String, Any?>, promise: Promise ->
@@ -134,7 +183,7 @@ class PaycloudSameTerminalModule : Module() {
       }
 
       pendingPromise = promise
-      scheduleTimeout()
+      scheduleTimeout(SALE_TIMEOUT_MS)
 
       try {
         activity.startActivityForResult(intent, SALE_REQUEST_CODE)
@@ -165,15 +214,10 @@ class PaycloudSameTerminalModule : Module() {
   private data class IntentContract(
     val packageName: String,
     val action: String,
-    val merchantOrderNoKey: String,
-    val orderAmountKey: String,
-    val currencyKey: String,
-    val payScenarioKey: String,
-    val payMethodIdKey: String,
-    val transTypeKey: String,
-    val tipAmountKey: String,
-    val cashbackAmountKey: String,
+    val versionKey: String,
     val appIdKey: String,
+    val transTypeKey: String,
+    val transDataKey: String,
   )
 
   private fun parseIntentContract(raw: Any?): IntentContract {
@@ -184,34 +228,26 @@ class PaycloudSameTerminalModule : Module() {
     }
     return IntentContract(
       packageName = str("package_name", DEFAULT_WISECASHIER_PACKAGE),
-      action = str("action", DEFAULT_SALE_ACTION),
-      merchantOrderNoKey = str("merchant_order_no_key", "merchant_order_no"),
-      orderAmountKey = str("order_amount_key", "order_amount"),
-      currencyKey = str("currency_key", "price_currency"),
-      payScenarioKey = str("pay_scenario_key", "pay_scenario"),
-      payMethodIdKey = str("pay_method_id_key", "pay_method_id"),
-      transTypeKey = str("trans_type_key", "trans_type"),
-      tipAmountKey = str("tip_amount_key", "tip_amount"),
-      cashbackAmountKey = str("cashback_amount_key", "cashback_amount"),
-      appIdKey = str("app_id_key", "app_id"),
+      action = str("action", DEFAULT_INTENT_ACTION),
+      versionKey = str("version_key", "version"),
+      appIdKey = str("app_id_key", "appId"),
+      transTypeKey = str("trans_type_key", "transType"),
+      transDataKey = str("trans_data_key", "transData"),
     )
   }
 
   private fun canLaunchWiseCashier(contract: IntentContract?): Boolean {
     val ctx = appContext.reactContext ?: return false
-    val c = contract ?: IntentContract(
-      DEFAULT_WISECASHIER_PACKAGE,
-      DEFAULT_SALE_ACTION,
-      "merchant_order_no",
-      "order_amount",
-      "price_currency",
-      "pay_scenario",
-      "pay_method_id",
-      "trans_type",
-      "tip_amount",
-      "cashback_amount",
-      "app_id",
-    )
+    val c =
+      contract
+        ?: IntentContract(
+          DEFAULT_WISECASHIER_PACKAGE,
+          DEFAULT_INTENT_ACTION,
+          "version",
+          "appId",
+          "transType",
+          "transData",
+        )
 
     val pm = ctx.packageManager
     try {
@@ -224,35 +260,191 @@ class PaycloudSameTerminalModule : Module() {
     return probe.resolveActivity(pm) != null
   }
 
+  private fun buildBaseIntent(contract: IntentContract): Intent =
+    Intent(contract.action).setPackage(contract.packageName)
+
   private fun buildSaleIntent(payload: Map<String, Any?>, contract: IntentContract): Intent? {
-    val merchantOrderNo = payloadString(payload, "merchant_order_no") ?: return null
-    val orderAmount = payloadString(payload, "order_amount") ?: return null
-    val currency = payloadString(payload, "price_currency") ?: "ZAR"
-    val payScenario = payloadString(payload, "pay_scenario") ?: "SWIPE_CARD"
+    val appId = payloadString(payload, "appId") ?: payloadString(payload, "app_id") ?: return null
+    val transType = payloadString(payload, "transType") ?: payloadString(payload, "trans_type") ?: "SALE"
+    val version = payloadString(payload, "version") ?: DEFAULT_VERSION
+    val transDataJson = serializeTransData(payload["transData"] ?: payload["trans_data"]) ?: return null
 
-    val intent = Intent(contract.action).setPackage(contract.packageName)
-    intent.putExtra(contract.merchantOrderNoKey, merchantOrderNo)
-    intent.putExtra(contract.orderAmountKey, orderAmount)
-    intent.putExtra(contract.currencyKey, currency)
-    intent.putExtra(contract.payScenarioKey, payScenario)
-
-    payloadString(payload, "pay_method_id")?.let {
-      intent.putExtra(contract.payMethodIdKey, it)
-    }
-    payloadNumber(payload, "trans_type")?.let {
-      intent.putExtra(contract.transTypeKey, it)
-    }
-    payloadString(payload, "tip_amount")?.let {
-      intent.putExtra(contract.tipAmountKey, it)
-    }
-    payloadString(payload, "cashback_amount")?.let {
-      intent.putExtra(contract.cashbackAmountKey, it)
-    }
-    payloadString(payload, "app_id")?.let {
-      intent.putExtra(contract.appIdKey, it)
-    }
-
+    val intent = buildBaseIntent(contract)
+    putExtra(intent, contract.versionKey, version)
+    putExtra(intent, contract.appIdKey, appId)
+    putExtra(intent, contract.transTypeKey, transType)
+    putExtra(intent, contract.transDataKey, transDataJson)
     return intent
+  }
+
+  private fun serializeTransData(raw: Any?): String? {
+    when (raw) {
+      is String -> return raw.takeIf { it.isNotBlank() }
+      is Map<*, *> -> {
+        val json = JSONObject()
+        for ((key, value) in raw) {
+          if (key == null || value == null) continue
+          json.put(key.toString(), value)
+        }
+        return json.toString()
+      }
+      null -> return null
+      else -> return null
+    }
+  }
+
+  private fun handleSaleResult(resultCode: Int, data: Intent?) {
+    clearTimeout()
+    val promise = pendingPromise
+    pendingPromise = null
+    if (promise == null) return
+
+    if (resultCode == Activity.RESULT_CANCELED && data == null) {
+      promise.resolve(
+        mapOf(
+          "success" to false,
+          "result" to "K026",
+          "resultMsg" to "Payment cancelled on device",
+          "message" to humanizeResultCode("K026", "Payment cancelled on device"),
+        ),
+      )
+      return
+    }
+
+    val parsed = parseIntentResponse(data)
+    val approved = parsed["result"] == RESULT_APPROVED
+    promise.resolve(
+      mapOf(
+        "success" to approved,
+        "result" to parsed["result"],
+        "resultMsg" to parsed["resultMsg"],
+        "transData" to parsed["transData"],
+        "message" to humanizeResultCode(parsed["result"], parsed["resultMsg"]),
+      ),
+    )
+  }
+
+  private fun handlePreInitResult(resultCode: Int, data: Intent?) {
+    clearTimeout()
+    val promise = pendingPromise
+    pendingPromise = null
+    if (promise == null) return
+
+    val parsed = parseIntentResponse(data)
+    val approved = parsed["result"] == RESULT_APPROVED
+    promise.resolve(
+      mapOf(
+        "success" to approved,
+        "result" to parsed["result"],
+        "resultMsg" to parsed["resultMsg"],
+        "message" to humanizeResultCode(parsed["result"], parsed["resultMsg"]),
+      ),
+    )
+  }
+
+  private fun parseIntentResponse(data: Intent?): Map<String, String?> {
+    if (data == null) {
+      return mapOf("result" to null, "resultMsg" to null, "transData" to null)
+    }
+    return mapOf(
+      "result" to data.getStringExtra("result"),
+      "resultMsg" to data.getStringExtra("resultMsg"),
+      "transData" to data.getStringExtra("transData"),
+    )
+  }
+
+  private fun humanizeResultCode(code: String?, fallback: String?): String {
+    if (code == null || code.isBlank()) {
+      return fallback?.takeIf { it.isNotBlank() } ?: "Payment did not complete — try again"
+    }
+    if (code == RESULT_APPROVED) return "Payment approved"
+    val mapped =
+      when (code) {
+        "K026" -> "Payment cancelled on the card machine"
+        "K027" -> "Payment timed out — try again"
+        "M016" -> "Duplicate order number — start a new payment"
+        "M002" -> "Invalid payment details — check amount and try again"
+        "M003" -> "Invalid amount"
+        "M007" -> "This payment type is not supported on this device"
+        "M008" -> "Payment app version mismatch — contact support"
+        "J000", "J001" -> "Network error — check connection and try again"
+        "J002" -> "Network connection timed out"
+        "J003" -> "Network connection failed"
+        "G003" -> "PIN entry cancelled"
+        "G004" -> "PIN entry timed out"
+        "C009" -> "Card read timed out — try again"
+        "Q004", "Q007" -> "Card machine is not fully configured — contact support"
+        else -> null
+      }
+    return mapped ?: fallback?.takeIf { it.isNotBlank() } ?: "Payment error ($code)"
+  }
+
+  private fun readDeviceInfo(): Map<String, String?> {
+    val manufacturer = Build.MANUFACTURER?.takeIf { it.isNotBlank() }
+    val model = Build.MODEL?.takeIf { it.isNotBlank() }
+
+    val buildSerial =
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          Build.getSerial().takeIf { it.isNotBlank() && it != Build.UNKNOWN }
+        } else {
+          @Suppress("DEPRECATION")
+          Build.SERIAL.takeIf { it.isNotBlank() && it != Build.UNKNOWN }
+        }
+      } catch (_: SecurityException) {
+        null
+      } catch (_: Exception) {
+        null
+      }
+
+    if (!buildSerial.isNullOrBlank()) {
+      return mapOf(
+        "serial" to buildSerial,
+        "manufacturer" to manufacturer,
+        "model" to model,
+        "serialSource" to "build_serial",
+      )
+    }
+
+    for (prop in WISEASY_SERIAL_PROPERTIES) {
+      val value = readSystemProperty(prop)
+      if (!value.isNullOrBlank() && value != Build.UNKNOWN) {
+        return mapOf(
+          "serial" to value,
+          "manufacturer" to manufacturer,
+          "model" to model,
+          "serialSource" to "wiseasy_property",
+        )
+      }
+    }
+
+    val ctx = appContext.reactContext
+    val androidId =
+      ctx?.let {
+        Settings.Secure.getString(it.contentResolver, Settings.Secure.ANDROID_ID)
+          ?.takeIf { id -> id.isNotBlank() && id != "9774d56d682e549c" }
+      }
+
+    return mapOf(
+      "serial" to androidId,
+      "manufacturer" to manufacturer,
+      "model" to model,
+      "serialSource" to if (androidId != null) "android_id" else null,
+    )
+  }
+
+  private fun readSystemProperty(key: String): String? {
+    return try {
+      val clazz = Class.forName("android.os.SystemProperties")
+      val get = clazz.getMethod("get", String::class.java)
+      (get.invoke(null, key) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun putExtra(intent: Intent, key: String, value: String) {
+    intent.putExtra(key, value)
   }
 
   private fun payloadString(payload: Map<String, Any?>, key: String): String? {
@@ -264,33 +456,7 @@ class PaycloudSameTerminalModule : Module() {
     }
   }
 
-  private fun payloadNumber(payload: Map<String, Any?>, key: String): Int? {
-    val v = payload[key] ?: return null
-    return when (v) {
-      is Int -> v
-      is Double -> v.toInt()
-      is Float -> v.toInt()
-      is String -> v.toIntOrNull()
-      else -> null
-    }
-  }
-
-  private fun readDeviceSerial(): String? {
-    return try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        Build.getSerial().takeIf { it.isNotBlank() && it != Build.UNKNOWN }
-      } else {
-        @Suppress("DEPRECATION")
-        Build.SERIAL.takeIf { it.isNotBlank() && it != Build.UNKNOWN }
-      }
-    } catch (_: SecurityException) {
-      null
-    } catch (_: Exception) {
-      null
-    }
-  }
-
-  private fun scheduleTimeout() {
+  private fun scheduleTimeout(ms: Long) {
     clearTimeout()
     timeoutRunnable =
       Runnable {
@@ -299,11 +465,13 @@ class PaycloudSameTerminalModule : Module() {
         promise.resolve(
           mapOf(
             "success" to false,
-            "message" to "Payment timed out waiting for WiseCashier.",
+            "result" to "K027",
+            "resultMsg" to "Payment timed out waiting for WiseCashier.",
+            "message" to humanizeResultCode("K027", "Payment timed out waiting for WiseCashier."),
           ),
         )
       }
-    mainHandler.postDelayed(timeoutRunnable!!, SALE_TIMEOUT_MS)
+    mainHandler.postDelayed(timeoutRunnable!!, ms)
   }
 
   private fun clearTimeout() {

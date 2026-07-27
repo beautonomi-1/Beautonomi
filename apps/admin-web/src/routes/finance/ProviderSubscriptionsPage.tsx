@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { adminToast } from "@/lib/adminToast";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";

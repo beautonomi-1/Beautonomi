@@ -1933,6 +1933,7 @@ export default function SalesScreen() {
         entityId={paycloudLinkedSaleId ?? ""}
         saleId={paycloudLinkedSaleId ?? undefined}
         bookingLocationId={selectedLocationId}
+        tipIncludedInAmount={tipAmount > 0}
         onPaymentSuccess={(result) => void finalizePaycloudSale(result)}
       />
 

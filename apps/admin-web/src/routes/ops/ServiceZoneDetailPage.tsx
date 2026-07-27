@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Globe, Send, XCircle, MapPin, BarChart3, Crosshair } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";

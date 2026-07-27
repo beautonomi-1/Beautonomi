@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const { data: terminals, error } = await supabase
       .from("paycloud_terminals")
       .select(`
-        id, display_name, terminal_sn, location_id, status, source,
+        id, display_name, terminal_sn, location_id, status, source, model, metadata,
         is_active, total_transactions, total_amount, last_used_at, last_error,
         in_flight_payment_id,
         terminal_asset_id, assigned_at, created_at, updated_at,
@@ -43,12 +43,16 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const mapped = (terminals ?? []).map((t: any) => ({
+    const mapped = (terminals ?? []).map((t: any) => {
+      const meta = (t.metadata ?? {}) as Record<string, unknown>;
+      return {
       id: t.id,
       name: t.display_name,
       display_name: t.display_name,
       terminal_sn: t.terminal_sn,
       serial_number: t.terminal_sn,
+      model: t.model ?? null,
+      paired_device_id: typeof meta.paired_device_id === "string" ? meta.paired_device_id : null,
       location_id: t.location_id,
       location_name: t.provider_locations?.name ?? (t.location_id ? null : "All locations"),
       is_active: t.is_active,
@@ -67,7 +71,8 @@ export async function GET(request: NextRequest) {
             store_no: t.merchant.store_no ?? "",
           }
         : null,
-    }));
+    };
+    });
 
     const { data: settings } = await supabase
       .from("provider_paycloud_settings")

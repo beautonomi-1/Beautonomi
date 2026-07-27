@@ -3,7 +3,7 @@
  * (use the path after `/admin/`; add `<Navigate />` aliases for legacy URLs).
  * Unmatched paths render `AdminNotFoundPage`.
  */
-import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminChrome } from "@/components/layout/AdminChrome";
 import { LoginPage } from "@/routes/LoginPage";

@@ -7,7 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { Loader2, CheckCircle2, MessageCircle, AlertTriangle, Clock } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
 /** Minimal lead shape for bulk send — nullable strings match API / ProviderOps Lead rows */

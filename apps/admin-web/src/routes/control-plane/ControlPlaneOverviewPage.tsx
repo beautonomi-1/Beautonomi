@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { CONTROL_PLANE_OVERVIEW_GROUPS } from "./controlPlaneOverviewGroups";

@@ -36,8 +36,12 @@ const createPaymentSchema = z.object({
   sale_id: z.string().uuid().optional().nullable(),
   group_booking_id: z.string().uuid().optional().nullable(),
   channel: z.enum(["cloud", "same_terminal"]).optional().default("cloud"),
-  /** Best-effort device serial from the P5/P5L for same-terminal terminal_sn validation. */
+  /** Best-effort device serial from the terminal for same-terminal validation. */
   device_serial: z.string().min(1).optional(),
+  /** Device diagnostics from native module (any Wiseasy model). */
+  device_model: z.string().min(1).optional(),
+  device_manufacturer: z.string().min(1).optional(),
+  serial_source: z.enum(["build_serial", "wiseasy_property", "android_id"]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -164,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     const { data: terminal } = await supabase
       .from("paycloud_terminals")
-      .select("terminal_sn, in_flight_payment_id")
+      .select("terminal_sn, in_flight_payment_id, model, metadata")
       .eq("id", parsed.data.terminal_id)
       .eq("provider_id", providerId)
       .single();
@@ -194,23 +198,78 @@ export async function POST(request: NextRequest) {
       }
 
       const deviceSerial = parsed.data.device_serial?.trim();
-      if (deviceSerial && terminal?.terminal_sn) {
-        const normalizeSn = (s: string) => s.trim().toLowerCase();
-        if (normalizeSn(deviceSerial) !== normalizeSn(terminal.terminal_sn)) {
-          return NextResponse.json(
-            {
-              data: null,
-              error: {
-                message:
-                  "This device does not match the selected card machine serial. Choose the machine registered to this terminal.",
-                code: "DEVICE_TERMINAL_MISMATCH",
-              },
+      if (!deviceSerial) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "Could not identify this device. Link it to your card machine in Card machines, or send the payment to the terminal instead.",
+              code: "DEVICE_SERIAL_REQUIRED",
             },
-            { status: 400 },
-          );
+          },
+          { status: 400 },
+        );
+      }
+
+      const terminalMeta = (terminal?.metadata ?? {}) as Record<string, unknown>;
+      const pairedDeviceId =
+        typeof terminalMeta.paired_device_id === "string" ? terminalMeta.paired_device_id.trim() : null;
+
+      const normalizeSn = (s: string) => s.trim().toLowerCase();
+      const deviceNorm = normalizeSn(deviceSerial);
+      const terminalSn = terminal?.terminal_sn ? normalizeSn(terminal.terminal_sn) : null;
+      const pairedNorm = pairedDeviceId ? normalizeSn(pairedDeviceId) : null;
+      const matchesTerminal =
+        (terminalSn != null && deviceNorm === terminalSn) ||
+        (pairedNorm != null && deviceNorm === pairedNorm);
+
+      if (!matchesTerminal) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "This device does not match the selected card machine. Link this device in Card machines or choose the correct machine.",
+              code: "DEVICE_TERMINAL_MISMATCH",
+            },
+          },
+          { status: 400 },
+        );
+      }
+
+      // Persist device diagnostics onto the terminal record (best-effort).
+      if (parsed.data.device_model || parsed.data.device_manufacturer || parsed.data.serial_source) {
+        const admin = getSupabaseAdmin();
+        const nextMeta = { ...terminalMeta };
+        if (parsed.data.serial_source) nextMeta.last_serial_source = parsed.data.serial_source;
+        if (deviceSerial) nextMeta.last_device_serial = deviceSerial;
+        if (parsed.data.device_manufacturer) {
+          nextMeta.last_device_manufacturer = parsed.data.device_manufacturer.trim();
         }
+        await admin
+          .from("paycloud_terminals")
+          .update({
+            model: parsed.data.device_model?.trim() || terminal?.model || null,
+            metadata: nextMeta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", parsed.data.terminal_id);
       }
     }
+
+    /**
+     * Device identity is recorded per payment, not just on the terminal, because
+     * the terminal row only ever holds the most recent device. Support needs to
+     * know which physical device took *this* charge.
+     */
+    const deviceDiagnostics: Record<string, unknown> = {};
+    if (parsed.data.device_serial) deviceDiagnostics.serial = parsed.data.device_serial.trim();
+    if (parsed.data.device_model) deviceDiagnostics.model = parsed.data.device_model.trim();
+    if (parsed.data.device_manufacturer) {
+      deviceDiagnostics.manufacturer = parsed.data.device_manufacturer.trim();
+    }
+    if (parsed.data.serial_source) deviceDiagnostics.serial_source = parsed.data.serial_source;
 
     const { data: paymentRow, error: insertError } = await supabase
       .from("provider_paycloud_payments")
@@ -239,6 +298,9 @@ export async function POST(request: NextRequest) {
         status: "pending",
         notify_url: notifyUrl,
         initiation_channel: channel,
+        ...(Object.keys(deviceDiagnostics).length > 0
+          ? { metadata: { device: deviceDiagnostics } }
+          : {}),
       } as any)
       .select()
       .single();
@@ -280,13 +342,12 @@ export async function POST(request: NextRequest) {
       const intentPayload = buildSameTerminalIntentPayload({
         merchantOrderNo,
         chargeAmount,
-        currency,
         payScenario: scenario.pay_scenario,
         payMethodId: scenario.pay_method_id,
-        transType: parsed.data.cashback_amount ? 11 : 1,
         tipAmount: parsed.data.tip_amount,
         cashbackAmount: parsed.data.cashback_amount,
         appId: ctx.credentials.app_id,
+        notifyUrl,
         intentContract,
       });
 

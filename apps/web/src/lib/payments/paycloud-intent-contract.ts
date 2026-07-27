@@ -1,34 +1,75 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
 
-/** Default WiseCashier same-terminal Intent contract (override via tenant_paycloud_apps.metadata.intent_contract). */
-export const DEFAULT_PAYCLOUD_INTENT_CONTRACT = {
-  package_name: "com.wiseasy.cashier",
-  action: "com.wiseasy.cashier.action.PAYMENT",
-  merchant_order_no_key: "merchant_order_no",
-  order_amount_key: "order_amount",
-  currency_key: "price_currency",
-  pay_scenario_key: "pay_scenario",
-  pay_method_id_key: "pay_method_id",
-  trans_type_key: "trans_type",
-  tip_amount_key: "tip_amount",
-  cashback_amount_key: "cashback_amount",
-  app_id_key: "app_id",
+/** Official WiseCashier same-terminal Intent contract per PayCloud SameTerminalAppIntegration. */
+export const PAYCLOUD_INTENT_VERSION = "A01";
+export const PAYCLOUD_INTENT_ACTION = "com.wiseasy.transaction.call";
+export const PAYCLOUD_WISECASHIER_PACKAGE = "com.wiseasy.cashier";
+
+export type PaycloudSameTerminalTransType = "PRE-INIT" | "SALE" | "CASHBACK" | "REFUND";
+
+export type PaycloudSameTerminalPaymentScenario = "CARD" | "SCANQR" | "BSCANQR" | "CASH";
+
+/** Override via tenant_paycloud_apps.metadata.intent_contract */
+export type PaycloudIntentContract = {
+  package_name?: string;
+  action?: string;
+  version_key?: string;
+  app_id_key?: string;
+  trans_type_key?: string;
+  trans_data_key?: string;
 };
 
-export type PaycloudIntentContract = {
-  package_name: string;
-  action: string;
-  merchant_order_no_key: string;
-  order_amount_key: string;
-  currency_key: string;
-  pay_scenario_key: string;
-  pay_method_id_key: string;
-  trans_type_key: string;
-  tip_amount_key: string;
-  cashback_amount_key: string;
-  app_id_key: string;
+export const DEFAULT_PAYCLOUD_INTENT_CONTRACT: Required<PaycloudIntentContract> = {
+  package_name: PAYCLOUD_WISECASHIER_PACKAGE,
+  action: PAYCLOUD_INTENT_ACTION,
+  version_key: "version",
+  app_id_key: "appId",
+  trans_type_key: "transType",
+  trans_data_key: "transData",
 };
+
+export type PaycloudSameTerminalTransData = {
+  businessOrderNo: string;
+  paymentScenario: PaycloudSameTerminalPaymentScenario;
+  amt: string;
+  tipAmount?: string;
+  cashAmount?: string;
+  paymentMethod?: string;
+  notifyUrl?: string;
+  POSMode?: string;
+  note?: string;
+};
+
+export type PaycloudIntentPayload = {
+  version: string;
+  appId: string;
+  transType: PaycloudSameTerminalTransType;
+  transData: PaycloudSameTerminalTransData;
+  intent_contract?: PaycloudIntentContract;
+};
+
+/** Convert major currency units (e.g. ZAR rands) to zero-padded cents string (12 chars). */
+export function formatPaycloudIntentAmountCents(amountMajor: number): string {
+  const cents = Math.round(amountMajor * 100);
+  return Math.max(0, cents).toString().padStart(12, "0");
+}
+
+/** Map Cloud Mode pay_scenario values to same-terminal paymentScenario. */
+export function mapCloudScenarioToSameTerminal(scenario: string): PaycloudSameTerminalPaymentScenario {
+  const normalized = scenario.trim().toUpperCase();
+  if (normalized === "BSCANQR_PAY" || normalized === "BSCANQR") return "BSCANQR";
+  if (normalized === "SCANQR_PAY" || normalized === "SCANQR") return "SCANQR";
+  if (normalized === "CASH") return "CASH";
+  return "CARD";
+}
+
+export function resolveSameTerminalTransType(input: {
+  cashbackAmount?: number;
+}): PaycloudSameTerminalTransType {
+  if (input.cashbackAmount && input.cashbackAmount > 0) return "CASHBACK";
+  return "SALE";
+}
 
 export async function resolvePaycloudIntentContract(
   supabase: SupabaseClient,
@@ -80,7 +121,7 @@ export async function resolvePaycloudIntentContract(
 }
 
 function mergeIntentContract(raw: Record<string, unknown>): PaycloudIntentContract {
-  const pick = (key: keyof PaycloudIntentContract): string => {
+  const pick = (key: keyof Required<PaycloudIntentContract>): string => {
     const v = raw[key];
     if (typeof v === "string" && v.trim()) return v.trim();
     return DEFAULT_PAYCLOUD_INTENT_CONTRACT[key];
@@ -88,42 +129,53 @@ function mergeIntentContract(raw: Record<string, unknown>): PaycloudIntentContra
   return {
     package_name: pick("package_name"),
     action: pick("action"),
-    merchant_order_no_key: pick("merchant_order_no_key"),
-    order_amount_key: pick("order_amount_key"),
-    currency_key: pick("currency_key"),
-    pay_scenario_key: pick("pay_scenario_key"),
-    pay_method_id_key: pick("pay_method_id_key"),
-    trans_type_key: pick("trans_type_key"),
-    tip_amount_key: pick("tip_amount_key"),
-    cashback_amount_key: pick("cashback_amount_key"),
+    version_key: pick("version_key"),
     app_id_key: pick("app_id_key"),
+    trans_type_key: pick("trans_type_key"),
+    trans_data_key: pick("trans_data_key"),
   };
 }
 
 export function buildSameTerminalIntentPayload(input: {
   merchantOrderNo: string;
   chargeAmount: number;
-  currency: string;
   payScenario: string;
   payMethodId?: string | null;
-  transType: number;
+  transType?: PaycloudSameTerminalTransType;
   tipAmount?: number;
   cashbackAmount?: number;
   appId: string;
-  intentContract: PaycloudIntentContract;
-}) {
+  notifyUrl?: string;
+  intentContract?: PaycloudIntentContract;
+}): PaycloudIntentPayload {
+  const transType = input.transType ?? resolveSameTerminalTransType({ cashbackAmount: input.cashbackAmount });
+  const paymentScenario = mapCloudScenarioToSameTerminal(input.payScenario);
+
+  const transData: PaycloudSameTerminalTransData = {
+    businessOrderNo: input.merchantOrderNo,
+    paymentScenario,
+    amt: formatPaycloudIntentAmountCents(input.chargeAmount),
+    POSMode: "1",
+  };
+
+  if (input.tipAmount && input.tipAmount > 0) {
+    transData.tipAmount = formatPaycloudIntentAmountCents(input.tipAmount);
+  }
+  if (transType === "CASHBACK" && input.cashbackAmount && input.cashbackAmount > 0) {
+    transData.cashAmount = formatPaycloudIntentAmountCents(input.cashbackAmount);
+  }
+  if (input.payMethodId && (paymentScenario === "BSCANQR" || paymentScenario === "SCANQR")) {
+    transData.paymentMethod = input.payMethodId;
+  }
+  if (input.notifyUrl) {
+    transData.notifyUrl = input.notifyUrl;
+  }
+
   return {
-    merchant_order_no: input.merchantOrderNo,
-    order_amount: String(input.chargeAmount),
-    price_currency: input.currency,
-    pay_scenario: input.payScenario,
-    ...(input.payMethodId ? { pay_method_id: input.payMethodId } : {}),
-    trans_type: input.transType,
-    ...(input.tipAmount && input.tipAmount > 0 ? { tip_amount: String(input.tipAmount) } : {}),
-    ...(input.cashbackAmount && input.cashbackAmount > 0
-      ? { cashback_amount: String(input.cashbackAmount) }
-      : {}),
-    app_id: input.appId,
-    intent_contract: input.intentContract,
+    version: PAYCLOUD_INTENT_VERSION,
+    appId: input.appId,
+    transType,
+    transData,
+    intent_contract: input.intentContract ?? DEFAULT_PAYCLOUD_INTENT_CONTRACT,
   };
 }

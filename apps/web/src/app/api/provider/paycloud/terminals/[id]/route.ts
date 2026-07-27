@@ -8,6 +8,8 @@ const updateSchema = z.object({
   display_name: z.string().min(1).optional(),
   location_id: z.string().uuid().optional().nullable(),
   is_active: z.boolean().optional(),
+  /** Manual pairing when auto serial read fails on this device model. */
+  paired_device_id: z.string().min(1).optional().nullable(),
 });
 
 export async function PUT(
@@ -35,6 +37,24 @@ export async function PUT(
     if (parsed.data.display_name != null) updates.display_name = parsed.data.display_name;
     if (parsed.data.location_id !== undefined) updates.location_id = parsed.data.location_id;
     if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
+
+    if (parsed.data.paired_device_id !== undefined) {
+      const { data: existing } = await supabase
+        .from("paycloud_terminals")
+        .select("metadata")
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      const meta = (existing?.metadata ?? {}) as Record<string, unknown>;
+      if (parsed.data.paired_device_id) {
+        meta.paired_device_id = parsed.data.paired_device_id.trim();
+        meta.paired_at = new Date().toISOString();
+      } else {
+        delete meta.paired_device_id;
+        delete meta.paired_at;
+      }
+      updates.metadata = meta;
+    }
 
     const { data, error } = await supabase
       .from("paycloud_terminals")

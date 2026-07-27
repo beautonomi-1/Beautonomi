@@ -18,7 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
-import { CreditCard, Loader2, CheckCircle2, XCircle, QrCode } from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, XCircle, QrCode, AlertTriangle } from "lucide-react";
+import { isPaycloudCaptureUnderReview } from "@/lib/payments/paycloud-capture-review";
 import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -35,6 +36,11 @@ export interface PayCloudPaymentDialogProps {
   saleId?: string;
   groupBookingId?: string;
   bookingLocationId?: string | null;
+  /**
+   * Set when `amount` already includes a tip captured upstream (e.g. the checkout
+   * tip selector). Hides this dialog's tip input so staff cannot tip twice.
+   */
+  tipIncludedInAmount?: boolean;
   onSuccess?: (payment: PaycloudPayment) => void;
 }
 
@@ -51,6 +57,7 @@ export function PayCloudPaymentDialog({
   saleId,
   groupBookingId,
   bookingLocationId,
+  tipIncludedInAmount = false,
   onSuccess,
 }: PayCloudPaymentDialogProps) {
   const { bundle } = useConfigBundle();
@@ -167,7 +174,11 @@ export function PayCloudPaymentDialog({
       setPaymentResult(payment);
       setActivePaymentId(null);
 
-      if (payment.status === "successful") {
+      if (isPaycloudCaptureUnderReview(payment)) {
+        // Real money on the machine that did NOT settle to this entity. Firing
+        // onSuccess would mark the balance cleared and hide the discrepancy.
+        toast.warning("Card machine took a different amount — flagged for review.");
+      } else if (payment.status === "successful") {
         toast.success("Payment received on card machine");
         onSuccess?.(payment);
       } else if (payment.status === "pending" || payment.status === "processing") {
@@ -205,6 +216,7 @@ export function PayCloudPaymentDialog({
   if (!paycloudEnabled) return null;
 
   const selectedTerminal = terminals.find((t) => t.id === selectedTerminalId);
+  const captureNeedsReview = isPaycloudCaptureUnderReview(paymentResult);
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleCancel())}>
@@ -221,7 +233,34 @@ export function PayCloudPaymentDialog({
 
         {paymentResult ? (
           <div className="space-y-4 py-4">
-            {paymentResult.status === "successful" ? (
+            {captureNeedsReview ? (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-900">
+                  <div className="mb-1 font-semibold">Payment needs review</div>
+                  <div className="text-sm">
+                    <Money amount={paymentResult.amount} /> captured
+                    {typeof paymentResult.expected_amount === "number" ? (
+                      <>
+                        {" · "}
+                        <Money amount={paymentResult.expected_amount} /> was due
+                      </>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs">
+                    The card machine took a different amount than the balance due, so it
+                    was not applied to this charge automatically. It has been flagged for
+                    review — the balance still shows as owing until it is resolved.
+                  </p>
+                  <Link
+                    href="/provider/settings/sales/card-machines"
+                    className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                  >
+                    Review in card machine settings
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            ) : paymentResult.status === "successful" ? (
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
@@ -319,19 +358,25 @@ export function PayCloudPaymentDialog({
               />
             </div>
 
-            <div>
-              <Label htmlFor="tip">Tip (optional)</Label>
-              <Input
-                id="tip"
-                type="number"
-                min="0"
-                step="0.01"
-                value={tipAmount}
-                onChange={(e) => setTipAmount(e.target.value)}
-                className="mt-1"
-                placeholder="0.00"
-              />
-            </div>
+            {tipIncludedInAmount ? (
+              <p className="rounded-md border bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                Any tip entered at checkout is already included in this amount.
+              </p>
+            ) : (
+              <div>
+                <Label htmlFor="tip">Tip (optional)</Label>
+                <Input
+                  id="tip"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tipAmount}
+                  onChange={(e) => setTipAmount(e.target.value)}
+                  className="mt-1"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
 
             {cashbackEnabled ? (
               <div>

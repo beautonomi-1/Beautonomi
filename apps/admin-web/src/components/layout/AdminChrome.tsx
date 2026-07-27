@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate, type NavLinkRenderProps } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, type NavLinkRenderProps } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, CornerDownLeft, type LucideIcon } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";

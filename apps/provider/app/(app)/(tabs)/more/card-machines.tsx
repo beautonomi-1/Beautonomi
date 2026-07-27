@@ -31,6 +31,10 @@ import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
+import {
+  canLaunchPaycloudSameTerminal,
+  getPaycloudDeviceInfo,
+} from "@/lib/paycloud-same-terminal";
 
 interface Location {
   id: string;
@@ -87,6 +91,7 @@ export default function CardMachinesScreen() {
     (Array.isArray(orderIdParam) ? orderIdParam[0] : orderIdParam) ||
     null;
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const sameTerminalFlag = useFeatureFlag("payment_paycloud_same_terminal");
   const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
   const cashbackFlagEnabled = useFeatureFlag("payment_paycloud_cashback");
   const terminalEcommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
@@ -128,6 +133,14 @@ export default function CardMachinesScreen() {
   const [activationSerial, setActivationSerial] = useState("");
   const [activationName, setActivationName] = useState("");
   const [activating, setActivating] = useState(false);
+  const [sameDeviceAvailable, setSameDeviceAvailable] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<{
+    serial: string | null;
+    model: string | null;
+    manufacturer: string | null;
+    serialSource: string | null;
+  } | null>(null);
+  const [pairingTerminalId, setPairingTerminalId] = useState<string | null>(null);
 
   const resetForm = useCallback(() => {
     setFormName("");
@@ -246,6 +259,44 @@ export default function CardMachinesScreen() {
       }
     } catch {
       /* non-blocking */
+    }
+  }
+
+  useEffect(() => {
+    if (!paycloudEnabled || !sameTerminalFlag) {
+      setSameDeviceAvailable(false);
+      return;
+    }
+    void canLaunchPaycloudSameTerminal().then(async (ok) => {
+      setSameDeviceAvailable(ok);
+      if (ok) {
+        const info = await getPaycloudDeviceInfo();
+        setDeviceInfo(info);
+      }
+    });
+  }, [paycloudEnabled, sameTerminalFlag]);
+
+  async function handlePairDevice(terminal: PayCloudTerminal) {
+    if (!deviceInfo?.serial) {
+      Alert.alert(
+        "Could not read device ID",
+        "Enter the serial from your device label when adding the machine, or contact support.",
+      );
+      return;
+    }
+    setPairingTerminalId(terminal.id);
+    try {
+      const ok = await updateTerminal(terminal.id, {
+        paired_device_id: deviceInfo.serial,
+      });
+      if (ok) {
+        Alert.alert(
+          "Device linked",
+          `${terminal.name} is now linked to this device for Pay on this device.`,
+        );
+      }
+    } finally {
+      setPairingTerminalId(null);
     }
   }
 
@@ -723,6 +774,20 @@ export default function CardMachinesScreen() {
         </View>
       ) : null}
 
+      {sameDeviceAvailable && deviceInfo?.serial ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-indigo-900")}>This device</Text>
+          <Text style={twStyle("mt-1 text-xs text-indigo-800")}>
+            {deviceInfo.manufacturer ? `${deviceInfo.manufacturer} ` : ""}
+            {deviceInfo.model ?? "Wiseasy terminal"} · ID {deviceInfo.serial.slice(0, 12)}
+            {deviceInfo.serial.length > 12 ? "…" : ""}
+          </Text>
+          <Text style={twStyle("mt-1 text-xs text-indigo-700")}>
+            WiseCashier detected — you can pay on this device or link it to a registered machine below.
+          </Text>
+        </View>
+      ) : null}
+
       <SectionHeader title="Your machines" actionLabel="Add" onAction={openAdd} />
 
       {terminals.length === 0 ? (
@@ -804,6 +869,16 @@ export default function CardMachinesScreen() {
                         Merchant setup pending
                       </Text>
                     )}
+                    {terminal.model ? (
+                      <Text style={twStyle("text-[11px] text-gray-400 mt-0.5")}>
+                        Device model {terminal.model}
+                      </Text>
+                    ) : null}
+                    {terminal.paired_device_id ? (
+                      <Text style={twStyle("text-[11px] text-indigo-600 mt-0.5")}>
+                        Linked to device {terminal.paired_device_id.slice(0, 10)}…
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
 
@@ -842,6 +917,21 @@ export default function CardMachinesScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              {sameDeviceAvailable && deviceInfo?.serial ? (
+                <TouchableOpacity
+                  onPress={() => void handlePairDevice(terminal)}
+                  disabled={pairingTerminalId === terminal.id}
+                  style={twStyle("mt-3 self-start rounded-lg border border-indigo-300 bg-white px-3 py-2")}
+                >
+                  <Text style={twStyle("text-xs font-semibold text-indigo-700")}>
+                    {pairingTerminalId === terminal.id
+                      ? "Linking…"
+                      : terminal.paired_device_id === deviceInfo.serial
+                        ? "Linked to this device"
+                        : "Link this device"}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ))}
         </View>

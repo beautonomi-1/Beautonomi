@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Megaphone, Search } from "lucide-react";
 import { ADMIN_SECTION_COMMERCIAL } from "@beautonomi/admin-access";

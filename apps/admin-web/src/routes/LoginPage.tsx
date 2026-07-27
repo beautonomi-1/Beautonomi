@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Shield } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";

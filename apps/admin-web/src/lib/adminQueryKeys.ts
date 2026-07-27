@@ -251,6 +251,8 @@ export const adminQueryKeys = {
     all: () => [...adminQueryKeys.root, "paycloud-operations"] as const,
     payments: (signature: string) =>
       [...adminQueryKeys.paycloudOperations.all(), "payments", signature] as const,
+    payment: (paymentId: string) =>
+      [...adminQueryKeys.paycloudOperations.all(), "payment", paymentId] as const,
     terminalsSummary: () => [...adminQueryKeys.paycloudOperations.all(), "terminals-summary"] as const,
     terminals: (signature: string) =>
       [...adminQueryKeys.paycloudOperations.all(), "terminals", signature] as const,

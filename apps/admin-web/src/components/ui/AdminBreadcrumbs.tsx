@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { ChevronRight } from "lucide-react";
 import { breadcrumbsForPath } from "@/lib/breadcrumbMap";
 import { useAdminBreadcrumbContext } from "@/providers/AdminBreadcrumbProvider";
