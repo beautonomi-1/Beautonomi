@@ -22,6 +22,13 @@ function createMockSupabase(config: {
     };
   } | null;
   bundleOrderCount?: number;
+  /** Active is_free plan used when the provider has no provider_subscriptions row. */
+  freePlan?: {
+    id: string;
+    name: string;
+    features: Record<string, unknown>;
+    is_free: boolean;
+  } | null;
 }) {
   const terminalOrdersQuery = {
     eq: function eq() {
@@ -45,6 +52,21 @@ function createMockSupabase(config: {
                 or: () => ({
                   order: () => ({
                     maybeSingle: async () => ({ data: config.subscription ?? null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "subscription_plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: config.freePlan ?? null }),
                   }),
                 }),
               }),
@@ -115,6 +137,57 @@ describe("getTerminalCheckoutEligibility (Option C)", () => {
       "subscription_bundle",
     ]);
     expect(result.options.some((o) => o.commercial_model === "rental")).toBe(false);
+  });
+
+  it("offers included-with-plan to a free provider with no provider_subscriptions row", async () => {
+    const supabase = createMockSupabase({
+      subscription: null,
+      freePlan: {
+        id: "plan-free",
+        name: "Free",
+        is_free: true,
+        features: {
+          terminal_bundle: {
+            enabled: true,
+            included_terminal_count: 1,
+            terminal_model: "paycloud",
+          },
+        },
+      },
+      bundleOrderCount: 0,
+    });
+
+    const result = await getTerminalCheckoutEligibility(supabase, "provider-1", baseProduct, "tenant-1");
+
+    expect(result.options.map((o) => o.commercial_model)).toEqual([
+      "once_off_purchase",
+      "subscription_bundle",
+    ]);
+    expect(result.bundle.planName).toBe("Free");
+    expect(result.bundle.subscriptionId).toBeNull();
+  });
+
+  it("does not offer included-with-plan once the free plan's included machine is used", async () => {
+    const supabase = createMockSupabase({
+      subscription: null,
+      freePlan: {
+        id: "plan-free",
+        name: "Free",
+        is_free: true,
+        features: {
+          terminal_bundle: {
+            enabled: true,
+            included_terminal_count: 1,
+            terminal_model: "paycloud",
+          },
+        },
+      },
+      bundleOrderCount: 1,
+    });
+
+    const result = await getTerminalCheckoutEligibility(supabase, "provider-1", baseProduct, "tenant-1");
+
+    expect(result.options.map((o) => o.commercial_model)).toEqual(["once_off_purchase"]);
   });
 
   it("never offers rental when only monthly_price is set", async () => {

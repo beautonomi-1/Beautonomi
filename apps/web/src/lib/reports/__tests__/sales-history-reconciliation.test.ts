@@ -346,4 +346,29 @@ describe("provider sales history — gross vs provider_net reconciliation", () =
     expect(totals.total_provider_net).toBe(140); // 90 + 50
     expect(totals.total_commission).toBe(10);
   });
+
+  it("includes at-home bookings with null location_id when filtering by branch", async () => {
+    const { rows } = await buildProviderSalesHistoryRows({
+      db: mockSupabase({
+        users: usersTable,
+        bookings: [
+          booking("b-at-home", 200, {
+            location_id: null,
+            location_type: "at_home",
+            booking_source: "online",
+          }),
+        ],
+        finance_transactions: [ft("b-at-home", "provider_earnings", { amount: 180, net: 180 })],
+      }),
+      providerId,
+      timezone: "Africa/Johannesburg",
+      dateFromYmd: "2026-01-01",
+      dateToYmd: "2026-12-31",
+      locationId: "location-1",
+      source: "booking",
+    });
+
+    expect(rows.some((r) => r.id === "b-at-home")).toBe(true);
+    expect(rows.find((r) => r.id === "b-at-home")?.provider_net).toBe(180);
+  });
 });

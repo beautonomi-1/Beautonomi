@@ -173,6 +173,14 @@ export interface SafeVerificationPolicy {
   kyb_required_for_business: boolean;
 }
 
+/** Age assurance + social gate policy (App Store content safety). */
+export interface SafeContentSafetyPolicy {
+  social_min_age: number;
+  social_age_gate_mode: "off" | "log" | "enforce";
+  /** When true, customer app shows Content & Safety Controls in account settings. */
+  controls_enabled: boolean;
+}
+
 export interface SafeAuraModuleConfig {
   enabled: boolean;
 }
@@ -215,6 +223,8 @@ export interface PublicConfigBundle {
    * as authoritative; this bundle field is provided for cold-start screens.
    */
   verification: SafeVerificationPolicy;
+  /** Age assurance + social access gate (distinct from modules.safety check-in). */
+  content_safety: SafeContentSafetyPolicy;
 }
 
 export interface GetPublicConfigBundleParams {

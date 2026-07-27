@@ -62,8 +62,10 @@ import {
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { usePayCloudSettings } from "@/hooks/usePayCloud";
-import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
+import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
+import type { PayCloudEntityType } from "@/hooks/usePayCloud";
+import { formatPaycloudCollectLabel } from "@/lib/paycloud-collect-cta";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
@@ -672,14 +674,13 @@ export default function GroupBookingsScreen() {
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
-  const { settings: paycloudSettings } = usePayCloudSettings();
-  const paycloudReady =
-    paycloudEnabled &&
-    Boolean(paycloudSettings?.ready);
-  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
-  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    inFlight: paycloudInFlight,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
   const { data: permissionData } = useApi<{
@@ -940,7 +941,7 @@ export default function GroupBookingsScreen() {
   const [paymentRecordedNotice, setPaymentRecordedNotice] = useState<string | null>(null);
   const previousGroupRef = useRef<GroupBooking | null>(null);
   const [createPaymentMethod, setCreatePaymentMethod] = useState<
-    "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"
+    "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal" | "paycloud_terminal"
   >("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
   const [paystackTerminalSheet, setPaystackTerminalSheet] = useState<{
@@ -950,13 +951,55 @@ export default function GroupBookingsScreen() {
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
   const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
   const [paycloudAmount, setPaycloudAmount] = useState(0);
+  const [paycloudCollectTarget, setPaycloudCollectTarget] = useState<{
+    entityType: PayCloudEntityType;
+    entityId: string;
+    bookingId?: string;
+    groupBookingId?: string;
+    locationId?: string | null;
+  } | null>(null);
+
+  const openPaycloudCollect = useCallback(
+    (target: {
+      entityType: PayCloudEntityType;
+      entityId: string;
+      amount: number;
+      bookingId?: string;
+      groupBookingId?: string;
+      locationId?: string | null;
+    }) => {
+      setPaycloudCollectTarget({
+        entityType: target.entityType,
+        entityId: target.entityId,
+        bookingId: target.bookingId,
+        groupBookingId: target.groupBookingId,
+        locationId: target.locationId,
+      });
+      setPaycloudAmount(target.amount);
+      setShowPaycloudPayment(true);
+    },
+    [],
+  );
 
   // Reset payment method to "pay_later" if the selected method is gated off.
   useEffect(() => {
     if (createPaymentMethod === "yoco_pos" && !yocoEnabled) setCreatePaymentMethod("pay_later");
     if (createPaymentMethod === "paystack_terminal" && !paystackTerminalEnabled) setCreatePaymentMethod("pay_later");
     if (createPaymentMethod === "payment_link" && !paymentLinkEnabled) setCreatePaymentMethod("pay_later");
-  }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, createPaymentMethod]);
+    if (
+      (!paycloudEnabled || !paycloudCollectEnabled) &&
+      createPaymentMethod === "paycloud_terminal"
+    ) {
+      setCreatePaymentMethod("pay_later");
+    }
+  }, [
+    yocoEnabled,
+    paystackTerminalEnabled,
+    paymentLinkEnabled,
+    paycloudEnabled,
+    paycloudCollectEnabled,
+    createPaymentMethod,
+  ]);
 
   useEffect(() => {
     setExtraGroups([]);
@@ -2455,6 +2498,26 @@ export default function GroupBookingsScreen() {
       return;
     }
 
+    if (createPaymentMethod === "paycloud_terminal" && participantsSucceeded) {
+      setCreateStep("form");
+      setCreateReviewError(null);
+      setShowCreate(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+      InteractionManager.runAfterInteractions(() => {
+        void refresh();
+        openPaycloudCollect({
+          entityType: "group_booking",
+          entityId: createdGroupId,
+          amount: totalAmt,
+          groupBookingId: createdGroupId,
+          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        });
+        router.setParams({ open_group_id: createdGroupId } as never);
+      });
+      return;
+    }
+
     if (methodToMark) {
       const paymentResult = await postGroupAction(
         `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}?action=mark_paid`,
@@ -3714,6 +3777,53 @@ export default function GroupBookingsScreen() {
                           <Text style={twStyle("text-xs font-medium text-indigo-600")}>Open booking</Text>
                         </TouchableOpacity>
                       ) : null}
+                      {canProcessPayments &&
+                      paycloudEnabled &&
+                      paycloudCollectEnabled &&
+                      p.booking_id &&
+                      !p.paid &&
+                      p.payment_status !== "paid" &&
+                      (() => {
+                        const due =
+                          Number(p.balance_due ?? 0) > 0
+                            ? Number(p.balance_due ?? 0)
+                            : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                        return due > 0.01;
+                      })() ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const due =
+                              Number(p.balance_due ?? 0) > 0
+                                ? Number(p.balance_due ?? 0)
+                                : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                            openPaycloudCollect({
+                              entityType: "booking",
+                              entityId: p.booking_id!,
+                              amount: due,
+                              bookingId: p.booking_id!,
+                              groupBookingId: selectedGroup.id,
+                              locationId: selectedGroup.location_id ?? null,
+                            });
+                          }}
+                          style={twStyle(
+                            "mt-2 flex-row items-center justify-center rounded-md border border-slate-300 bg-slate-50 py-2"
+                          )}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Collect card payment for ${displayName}`}
+                        >
+                          <Ionicons name="card-outline" size={14} color="#334155" style={{ marginRight: 4 }} />
+                          <Text style={twStyle("text-xs font-semibold text-slate-900")}>
+                            {formatPaycloudCollectLabel({
+                              context: "booking",
+                              amount:
+                                Number(p.balance_due ?? 0) > 0
+                                  ? Number(p.balance_due ?? 0)
+                                  : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0)),
+                              inFlight: paycloudInFlight,
+                            })}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
                       {p.booking_id &&
                       participantMaxRefundable({
                         total_paid: p.total_paid,
@@ -3870,7 +3980,7 @@ export default function GroupBookingsScreen() {
             {/* Record payment — only when there is outstanding balance */}
             {(() => {
               const isFullyPaid = groupIsFullyPaid(selectedGroup);
-              return !isFullyPaid && selectedGroup.status !== "cancelled" ? (
+              return canProcessPayments && !isFullyPaid && selectedGroup.status !== "cancelled" ? (
               <View style={twStyle("mt-2")}>
                 <View style={twStyle("mb-2 flex-row items-center rounded-lg bg-amber-50 p-2")}>
                   <Ionicons name="alert-circle-outline" size={14} color="#b45309" style={{ marginRight: 6 }} />
@@ -3917,8 +4027,13 @@ export default function GroupBookingsScreen() {
                                   0
                                 )
                               : Number(selectedGroup.total_price ?? 0);
-                        setPaycloudAmount(outstanding);
-                        setShowPaycloudPayment(true);
+                        openPaycloudCollect({
+                          entityType: "group_booking",
+                          entityId: selectedGroup.id,
+                          amount: outstanding,
+                          groupBookingId: selectedGroup.id,
+                          locationId: selectedGroup.location_id ?? null,
+                        });
                       }}
                     >
                       <Text style={twStyle("text-xs font-medium text-slate-900")}>
@@ -3939,14 +4054,9 @@ export default function GroupBookingsScreen() {
                       </Text>
                     </TouchableOpacity>
                   ) : paycloudEnabled ? (
-                    <TouchableOpacity
-                      style={twStyle("mb-2 mr-2 rounded-full border border-dashed border-slate-300 bg-white px-3 py-1.5")}
-                      onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-                    >
-                      <Text style={twStyle("text-xs font-medium text-slate-600")}>
-                        {PAYCLOUD_SETUP_LABEL}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={twStyle("mb-2 mr-2 w-full")}>
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                    </View>
                   ) : null}
                 </View>
                 {paystackTerminalEnabled && (
@@ -5700,7 +5810,10 @@ export default function GroupBookingsScreen() {
                   paystackTerminalEnabled
                     ? { value: "paystack_terminal", label: "Paystack Terminal", icon: "qr-code-outline" as const }
                     : null,
-                ].filter(Boolean) as { value: "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"; label: string; icon: string }[]
+                  canProcessPayments && paycloudEnabled && paycloudCollectEnabled
+                    ? { value: "paycloud_terminal", label: "Card machine", icon: "card-outline" as const }
+                    : null,
+                ].filter(Boolean) as { value: "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal" | "paycloud_terminal"; label: string; icon: string }[]
               ).map((m) => {
                 const active = createPaymentMethod === m.value;
                 return (
@@ -5725,6 +5838,11 @@ export default function GroupBookingsScreen() {
                 );
               })}
             </View>
+            {paycloudEnabled && !paycloudCollectEnabled && canProcessPayments ? (
+              <View style={twStyle("mt-2")}>
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+              </View>
+            ) : null}
             {createPaymentMethod === "payment_link" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
                 Each participant gets their own payment link as soon as the group is created. Keep
@@ -5733,6 +5851,10 @@ export default function GroupBookingsScreen() {
             ) : createPaymentMethod === "paystack_terminal" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
                 After creating the group, a QR code will be shown for the customer to scan. Allocate the payment from the Paystack Payment Inbox.
+              </Text>
+            ) : createPaymentMethod === "paycloud_terminal" ? (
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                After creating the group, collect payment on your card machine for the full session total.
               </Text>
             ) : createPaymentMethod !== "pay_later" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
@@ -6085,18 +6207,25 @@ export default function GroupBookingsScreen() {
         onSuccess={handleParticipantRefundSuccess}
       />
 
-      {selectedGroup?.id ? (
+      {paycloudCollectTarget ? (
         <PayCloudPaymentSheet
           visible={showPaycloudPayment}
-          onClose={() => setShowPaycloudPayment(false)}
+          onClose={() => {
+            setShowPaycloudPayment(false);
+            setPaycloudCollectTarget(null);
+          }}
           amount={paycloudAmount}
           currency={getTenantDefaultCurrency()}
-          entityType="group_booking"
-          entityId={selectedGroup.id}
-          groupBookingId={selectedGroup.id}
-          bookingLocationId={selectedGroup.location_id ?? null}
+          entityType={paycloudCollectTarget.entityType}
+          entityId={paycloudCollectTarget.entityId}
+          bookingId={paycloudCollectTarget.bookingId}
+          groupBookingId={paycloudCollectTarget.groupBookingId}
+          bookingLocationId={
+            paycloudCollectTarget.locationId ?? selectedGroup?.location_id ?? null
+          }
           onPaymentSuccess={async () => {
             setShowPaycloudPayment(false);
+            setPaycloudCollectTarget(null);
             setPaymentRecordedNotice("Card machine payment received.");
             if (selectedGroup) {
               await openGroupDetail(selectedGroup);

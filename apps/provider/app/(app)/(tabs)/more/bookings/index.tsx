@@ -62,11 +62,15 @@ import {
   buildDateStripInfo,
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
+  buildStatsReconciliationLine,
   buildStripDateParams,
   buildStripDays,
   filterBookingsForDayKey,
   isDateWithinStripWindow,
   mergeAtHomeBookings,
+  statsRangeToDateRange,
+  statusFilterForStatsTile,
+  type BookingsStatsTileKey,
 } from "@/lib/bookings-list-query";
 
 /* ------------------------------------------------------------------ */
@@ -437,8 +441,11 @@ export default function BookingsListScreen() {
     recognized_revenue: number;
     appointment_count: number;
     pending_count: number;
+    confirmed_count: number;
     in_progress_count: number;
     completed_count: number;
+    cancelled_count: number;
+    no_show_count: number;
   }
 
   const statsLocationQ = selectedLocationId
@@ -836,14 +843,6 @@ export default function BookingsListScreen() {
     scheduleDateStripScrollRef.current();
   }, [viewMode, selectedDateStripIndex, businessTodayKey, stripAnchorDate]);
 
-  const isToReviewOverviewEmpty = useMemo(
-    () =>
-      viewMode === "overview" &&
-      dateRange === "all" &&
-      statusFilter === BOOKINGS_TO_REVIEW_STATUS &&
-      !search.trim(),
-    [viewMode, dateRange, statusFilter, search],
-  );
 
   const dateStripInfo = useMemo(
     () => buildDateStripInfo(stripBookingsMerged, timeBlocks, closedDateKeys, providerTimezone),
@@ -874,6 +873,17 @@ export default function BookingsListScreen() {
   }, [stripBookingsMerged, search]);
 
   const filtered = viewMode === "overview" ? overviewFiltered : daySearchFiltered;
+
+  const isToReviewOverviewEmpty = useMemo(
+    () =>
+      viewMode === "overview" &&
+      dateRange === "all" &&
+      statusFilter === BOOKINGS_TO_REVIEW_STATUS &&
+      !search.trim() &&
+      filtered.length === 0 &&
+      !overviewLoadingAny,
+    [viewMode, dateRange, statusFilter, search, filtered.length, overviewLoadingAny],
+  );
 
   const nextUpcomingId = useMemo(() => {
     const now = Date.now();
@@ -1010,8 +1020,11 @@ export default function BookingsListScreen() {
         bookedGmv: bookingsStatsApi.booked_gmv,
         recognizedRevenue: bookingsStatsApi.recognized_revenue,
         pendingCount: bookingsStatsApi.pending_count,
+        confirmedCount: bookingsStatsApi.confirmed_count,
         inProgressCount: bookingsStatsApi.in_progress_count,
         completedCount: bookingsStatsApi.completed_count,
+        cancelledCount: bookingsStatsApi.cancelled_count,
+        noShowCount: bookingsStatsApi.no_show_count,
       };
     }
     return {
@@ -1019,10 +1032,39 @@ export default function BookingsListScreen() {
       bookedGmv: 0,
       recognizedRevenue: 0,
       pendingCount: 0,
+      confirmedCount: 0,
       inProgressCount: 0,
       completedCount: 0,
+      cancelledCount: 0,
+      noShowCount: 0,
     };
   }, [bookingsStatsApi]);
+
+  const toReviewEmptyWithPendingMetric = useMemo(
+    () =>
+      viewMode === "overview" &&
+      statusFilter === BOOKINGS_TO_REVIEW_STATUS &&
+      !overviewLoadingAny &&
+      filtered.length === 0 &&
+      statsSnapshot.pendingCount > 0,
+    [viewMode, statusFilter, overviewLoadingAny, filtered.length, statsSnapshot.pendingCount],
+  );
+
+  const statsReconciliationLine = useMemo(
+    () =>
+      buildStatsReconciliationLine({
+        pending_count: statsSnapshot.pendingCount,
+        confirmed_count: statsSnapshot.confirmedCount,
+        in_progress_count: statsSnapshot.inProgressCount,
+        completed_count: statsSnapshot.completedCount,
+        cancelled_count: statsSnapshot.cancelledCount,
+        no_show_count: statsSnapshot.noShowCount,
+      }),
+    [statsSnapshot],
+  );
+
+  const statsListRangeMismatch =
+    viewMode === "overview" && statsRangeToDateRange(statsRange) !== dateRange;
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";
@@ -1067,6 +1109,28 @@ export default function BookingsListScreen() {
     setListSort("appointment");
     setViewMode("overview");
   }, []);
+
+  const applyStatsTileFilter = useCallback(
+    (tile: BookingsStatsTileKey) => {
+      void Haptics.selectionAsync();
+      if (tile === "earned") {
+        router.push("/(app)/(tabs)/more/reports" as never);
+        return;
+      }
+      setSearch("");
+      setDebouncedSearch("");
+      setStatusFilter(statusFilterForStatsTile(tile));
+      setDateRange(statsRangeToDateRange(statsRange));
+      setListSort("appointment");
+      setViewMode("overview");
+    },
+    [router, statsRange],
+  );
+
+  const syncListRangeToStats = useCallback(() => {
+    void Haptics.selectionAsync();
+    setDateRange(statsRangeToDateRange(statsRange));
+  }, [statsRange]);
 
   const openBooking = useCallback(
     (b: Booking) => {
@@ -1493,19 +1557,28 @@ export default function BookingsListScreen() {
               )}
             </View>
             <View style={twStyle("flex-row gap-2")}>
-              <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
+              <TouchableOpacity
+                onPress={() => applyStatsTileFilter("appointments")}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`${statsSnapshot.count} appointments — view all`}
+                style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}
+              >
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="calendar-outline" size={12} color="#6b7280" />
-                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>
+                    Appointments
+                  </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
-              </View>
+                <Text style={twStyle("text-[10px] text-gray-500")}>{statsRangeLabel}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
-                onPress={showAllPendingBookings}
+                onPress={() => applyStatsTileFilter("pending")}
                 activeOpacity={0.85}
                 disabled={statsSnapshot.pendingCount === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.pendingCount} pending bookings — view all`}
+                accessibilityLabel={`${statsSnapshot.pendingCount} pending bookings — filter list`}
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
                   statsSnapshot.pendingCount > 0
@@ -1526,7 +1599,40 @@ export default function BookingsListScreen() {
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
               </TouchableOpacity>
-              <View
+              <TouchableOpacity
+                onPress={() => applyStatsTileFilter("confirmed")}
+                activeOpacity={0.85}
+                disabled={statsSnapshot.confirmedCount === 0}
+                accessibilityRole="button"
+                accessibilityLabel={`${statsSnapshot.confirmedCount} confirmed bookings — filter list`}
+                style={[
+                  twStyle("flex-1 rounded-xl p-2.5 border"),
+                  statsSnapshot.confirmedCount > 0
+                    ? { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" }
+                    : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+                ]}
+              >
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="checkmark-outline" size={12} color={statsSnapshot.confirmedCount > 0 ? "#059669" : "#6b7280"} />
+                  <Text
+                    style={[
+                      twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                      { color: statsSnapshot.confirmedCount > 0 ? "#059669" : "#6b7280" },
+                    ]}
+                  >
+                    Confirmed
+                  </Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.confirmedCount}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={twStyle("mt-2 flex-row gap-2")}>
+              <TouchableOpacity
+                onPress={() => applyStatsTileFilter("active")}
+                activeOpacity={0.85}
+                disabled={statsSnapshot.inProgressCount === 0}
+                accessibilityRole="button"
+                accessibilityLabel={`${statsSnapshot.inProgressCount} active bookings — filter list`}
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
                   statsSnapshot.inProgressCount > 0
@@ -1546,17 +1652,28 @@ export default function BookingsListScreen() {
                   </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
-              </View>
-            </View>
-            <View style={twStyle("mt-2 flex-row gap-2")}>
-              <View style={twStyle("flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => applyStatsTileFilter("completed")}
+                activeOpacity={0.85}
+                disabled={statsSnapshot.completedCount === 0}
+                accessibilityRole="button"
+                accessibilityLabel={`${statsSnapshot.completedCount} completed bookings — filter list`}
+                style={twStyle("flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}
+              >
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="checkmark-circle-outline" size={12} color="#059669" />
                   <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
-              </View>
-              <View style={[twStyle("flex-1 rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => applyStatsTileFilter("earned")}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Earned ${formatCurrency(statsSnapshot.recognizedRevenue, currency)} — open reports`}
+                style={[twStyle("flex-1 rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}
+              >
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="cash-outline" size={12} color="#be185d" />
                   <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
@@ -1569,8 +1686,23 @@ export default function BookingsListScreen() {
                 <Text style={twStyle("text-[10px] text-gray-500")} numberOfLines={1}>
                   Booked {formatCurrency(statsSnapshot.bookedGmv, currency)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
+            <Text style={twStyle("mt-2 text-[11px] leading-4 text-gray-500")}>{statsReconciliationLine}</Text>
+            {statsListRangeMismatch ? (
+              <TouchableOpacity
+                onPress={syncListRangeToStats}
+                activeOpacity={0.85}
+                style={twStyle("mt-2 flex-row items-center gap-1 self-start rounded-full bg-gray-100 px-2.5 py-1")}
+                accessibilityRole="button"
+                accessibilityLabel="Match list date range to metrics"
+              >
+                <Ionicons name="sync-outline" size={12} color="#4b5563" />
+                <Text style={twStyle("text-[11px] font-semibold text-gray-600")}>
+                  List shows {dateRangeLabel} — tap to match metrics ({statsRangeLabel})
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -1644,6 +1776,11 @@ export default function BookingsListScreen() {
       isLive,
       statsRangeLabel,
       statsSnapshot,
+      statsReconciliationLine,
+      statsListRangeMismatch,
+      dateRangeLabel,
+      applyStatsTileFilter,
+      syncListRangeToStats,
       search,
       dateRange,
       listSort,
@@ -1769,26 +1906,38 @@ export default function BookingsListScreen() {
               <EmptyState
                 icon="calendar-outline"
                 title={
-                  isToReviewOverviewEmpty
-                    ? "No pending requests"
-                    : search || statusFilter
-                      ? "No bookings match"
-                      : "Nothing scheduled"
+                  toReviewEmptyWithPendingMetric
+                    ? "Pending count doesn't match this list yet"
+                    : isToReviewOverviewEmpty
+                      ? "No pending requests"
+                      : search || statusFilter
+                        ? "No bookings match"
+                        : "Nothing scheduled"
                 }
                 description={
-                  isToReviewOverviewEmpty
-                    ? "There are no pending or awaiting-payment bookings for this location."
-                    : search || statusFilter
-                      ? "Try adjusting your search or filters."
-                      : viewMode === "day"
-                        ? "No appointments or blocks for this day."
-                        : "Create a new booking to get started."
+                  toReviewEmptyWithPendingMetric
+                    ? "Metrics show pending bookings that may include group requests or another date range. Pull to refresh, or open Group bookings to review party requests."
+                    : isToReviewOverviewEmpty
+                      ? "There are no pending or awaiting-payment bookings for this location."
+                      : search || statusFilter
+                        ? "Try adjusting your search or filters."
+                        : viewMode === "day"
+                          ? "No appointments or blocks for this day."
+                          : "Create a new booking to get started."
                 }
-                actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
+                actionLabel={
+                  toReviewEmptyWithPendingMetric
+                    ? "Group bookings"
+                    : !search && !statusFilter && viewMode === "overview"
+                      ? "New booking"
+                      : undefined
+                }
                 onAction={
-                  !search && !statusFilter && viewMode === "overview"
-                    ? () => router.push("/(app)/(tabs)/bookings/new" as never)
-                    : undefined
+                  toReviewEmptyWithPendingMetric
+                    ? () => router.push("/(app)/(tabs)/more/group-bookings" as never)
+                    : !search && !statusFilter && viewMode === "overview"
+                      ? () => router.push("/(app)/(tabs)/bookings/new" as never)
+                      : undefined
                 }
               />
             )

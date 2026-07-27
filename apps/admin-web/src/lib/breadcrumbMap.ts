@@ -47,6 +47,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   refunds: { label: "Refunds", parentHref: null },
   reviews: { label: "Reviews & Ratings", parentHref: null },
   "user-reports": { label: "User Reports", parentHref: null },
+  "content-reports": { label: "Content Reports", parentHref: null },
   "fraud-cases": { label: "Fraud Cases", parentHref: null },
   verifications: { label: "Identity Verifications", parentHref: null },
   "verifications/[id]": { label: "Verification", parentHref: "/admin/verifications" },

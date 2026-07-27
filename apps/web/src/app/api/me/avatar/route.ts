@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import {
   getStorageServiceClientOrUser,
   hasSupabaseStorageServiceRole,
@@ -13,6 +14,9 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "ugc_create", request);
+    }
     const supabase = await getSupabaseServer(request);
     const storageClient = getStorageServiceClientOrUser(supabase);
 

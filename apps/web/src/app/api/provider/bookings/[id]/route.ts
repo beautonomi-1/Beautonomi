@@ -46,6 +46,7 @@ import {
 } from "@/lib/bookings/reconcile-booking-product-stock";
 import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
 import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
+import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -781,6 +782,7 @@ export async function PATCH(
       // Note: service_customization is stored in booking_services.customization, not bookings table
       cancellation_reason,
       cancellation_fee,
+      refund_rail,
       // Location and address fields
       location_type,
       location_id,
@@ -1259,6 +1261,15 @@ export async function PATCH(
       );
     }
 
+    const linkedGroupId = (currentBooking as { group_booking_id?: string | null }).group_booking_id;
+    if (linkedGroupId && updateData.status !== undefined) {
+      try {
+        await syncGroupBookingStatusFromChildren(supabaseAdminPatch, linkedGroupId);
+      } catch (syncErr) {
+        console.warn("[provider PATCH bookings/:id] group status sync failed:", syncErr);
+      }
+    }
+
     const actorProfile = user as {
       full_name?: string | null;
       email?: string | null;
@@ -1375,7 +1386,72 @@ export async function PATCH(
             policy,
             explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
             refundBookingTotal: preCancelGrossTotal,
+            refundRail:
+              refund_rail === "terminal" || refund_rail === "wallet" ? refund_rail : undefined,
           });
+
+          // When provider chose the card machine rail, start the terminal reverse.
+          // If it fails, credit the terminal portion to wallet so money is not stranded.
+          if (
+            refund_rail === "terminal" &&
+            cancellationSettlementResult &&
+            cancellationSettlementResult.terminalRefundDue > 0.01
+          ) {
+            try {
+              const { initiatePaycloudRefund } = await import("@/lib/payments/initiate-paycloud-refund");
+              const { getPaycloudNotifyUrl } = await import("@/lib/payments/paycloud-credentials");
+              const { data: pcSale } = await getSupabaseAdmin()
+                .from("provider_paycloud_payments")
+                .select("id, terminal_id")
+                .eq("provider_id", providerId)
+                .eq("booking_id", id)
+                .eq("status", "successful")
+                .in("trans_type", [1, 11])
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (pcSale?.id) {
+                const initiated = await initiatePaycloudRefund({
+                  supabase: getSupabaseAdmin(),
+                  providerId,
+                  paymentId: pcSale.id,
+                  amount: cancellationSettlementResult.terminalRefundDue,
+                  processedBy: user.id,
+                  notifyUrl: getPaycloudNotifyUrl(request),
+                  terminalId: pcSale.terminal_id,
+                });
+                if (initiated.ok === false) {
+                  const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
+                  const fallbackPolicy = {
+                    id: "provider_cancel_terminal_fallback",
+                    provider_id: providerId,
+                    location_type: null,
+                    hours_before_cutoff: 0,
+                    grace_window_minutes: 0,
+                    policy_text: "Terminal refund unavailable — wallet fallback",
+                    late_cancellation_type: "full_refund" as const,
+                    is_active: true,
+                    refund_percentage: 100,
+                    fee_amount: 0,
+                    fee_type: "fixed" as const,
+                  };
+                  await processBookingRefund(id, preCancelGrossTotal, currency, fallbackPolicy, {
+                    isLateCancellation: false,
+                    maxWalletCredit: cancellationSettlementResult.terminalRefundDue,
+                  });
+                  cancellationSettlementResult = {
+                    ...cancellationSettlementResult,
+                    walletRefundAmount:
+                      cancellationSettlementResult.walletRefundAmount +
+                      cancellationSettlementResult.terminalRefundDue,
+                    terminalRefundDue: 0,
+                  };
+                }
+              }
+            } catch (terminalRefundErr) {
+              console.error("[provider PATCH] terminal cancel refund failed:", terminalRefundErr);
+            }
+          }
         }
       } catch (settleErr) {
         console.error("[provider PATCH] booking cancellation settlement failed:", settleErr);

@@ -41,6 +41,10 @@ const patchTerminalSchema = z.discriminatedUnion("action", [
     action: z.literal("unassign"),
     terminal_id: z.string().uuid(),
   }),
+  /** Cutover safety: retire every sandbox machine in the admin-scoped tenant at once. */
+  z.object({
+    action: z.literal("decommission_sandbox"),
+  }),
 ]);
 
 function buildSummary(rows: Array<{ status?: string; is_active?: boolean; provider_id?: string | null }>) {
@@ -258,6 +262,43 @@ export async function PATCH(request: NextRequest) {
         "VALIDATION_ERROR",
         400,
       );
+    }
+
+    if (parsed.data.action === "decommission_sandbox") {
+      const now = new Date().toISOString();
+      const { data: sandboxTerminals, error: loadErr } = await (supabase.from("paycloud_terminals") as any)
+        .select("id, terminal_sn, merchant:paycloud_merchants(environment)")
+        .eq("tenant_id", tenantId)
+        .not("status", "eq", "decommissioned");
+      if (loadErr) throw loadErr;
+      const ids = (sandboxTerminals ?? [])
+        .filter(
+          (row: { merchant?: { environment?: string } | null }) =>
+            row.merchant?.environment === "sandbox",
+        )
+        .map((row: { id: string }) => row.id);
+      if (ids.length === 0) {
+        return successResponse({ decommissioned_count: 0, terminal_ids: [] });
+      }
+      const { error: updateErr } = await (supabase.from("paycloud_terminals") as any)
+        .update({
+          status: "decommissioned",
+          is_active: false,
+          in_flight_payment_id: null,
+          updated_at: now,
+        })
+        .in("id", ids)
+        .eq("tenant_id", tenantId);
+      if (updateErr) throw updateErr;
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: (user as { role?: string }).role ?? "superadmin",
+        action: "admin.paycloud.terminals.decommission_sandbox_bulk",
+        entity_type: "paycloud_terminals",
+        entity_id: null,
+        metadata: { terminal_ids: ids, count: ids.length },
+      });
+      return successResponse({ decommissioned_count: ids.length, terminal_ids: ids });
     }
 
     const { data: existing } = await (supabase.from("paycloud_terminals") as any)

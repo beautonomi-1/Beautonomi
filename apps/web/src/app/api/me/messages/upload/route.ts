@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import {
   MESSAGE_ATTACHMENTS_BUCKET,
   messageAttachmentRetentionDays,
@@ -20,6 +21,9 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "direct_message", request);
+    }
     const supabase = await getSupabaseServer(request);
 
     const formData = await request.formData();

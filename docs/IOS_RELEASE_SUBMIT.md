@@ -8,6 +8,7 @@ Use this when you want to ship new builds to TestFlight / App Store and Google P
 - **Xcode / SDK:** Build with the **Xcode version EAS “latest”** expects for SDK 54 (see Expo’s compatibility table).
 - **Encryption export:** `ITSAppUsesNonExemptEncryption` is **false** (standard HTTPS only). Answer App Store Connect’s export-compliance questions to match.
 - **Privacy:** Usage descriptions are set for location, photos, camera, tracking (ATT), push background mode, and **Face ID / Touch ID** (`expo-local-authentication`). Complete **Privacy Nutrition Labels** and any **Privacy Manifest** follow-ups in App Store Connect when Apple prompts.
+- **Age rating:** Before each submission, confirm answers against [APP_STORE_AGE_RATING.md](./APP_STORE_AGE_RATING.md) (parental controls, age assurance, UGC, social, messaging, medical/wellness frequency, and the public **Age Suitability URL** `https://www.beautonomi.com/age-suitability`). Social enforcement defaults to audit-only (`log` mode) until flipped in Admin feature flags — see the rollout section in that doc.
 - **After native changes:** Run a fresh **EAS production iOS build** so `prebuild` picks up plugin changes (`npx expo prebuild` locally is optional for verification).
 
 ## Submit both apps, both platforms (iOS + Android)

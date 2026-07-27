@@ -333,6 +333,7 @@ export async function proxy(request: NextRequest) {
       '/gift-card',
       '/privacy-policy',
       '/terms-and-condition',
+      '/age-suitability',
       '/accessibility',
       '/BCover-for-partners',
       '/beautonomi-friendly',

@@ -16,8 +16,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { usePayCloudSettings } from "@/hooks/usePayCloud";
-import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
+import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { getReportDateRange } from "@/lib/reportDateRanges";
 import { useApi, useApiPost } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
@@ -237,15 +237,21 @@ export default function SalesScreen() {
   const adsFeatureOn = useFeatureFlag("ads.enabled");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { settings: paycloudSettings } = usePayCloudSettings();
-  const paycloudReady =
-    paycloudEnabled &&
-    Boolean(paycloudSettings?.ready);
-  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
-  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    inFlight: paycloudInFlight,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
   const { isLoading: configLoading } = useConfigBundle();
   const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
+  const { data: permissionData } = useApi<{
+    isOwner?: boolean;
+    permissions?: Record<string, boolean>;
+  }>("/api/provider/permissions", { staleTimeMs: 60_000 });
+  const canProcessPayments =
+    permissionData?.isOwner === true ||
+    permissionData?.permissions?.process_payments === true;
 
   useEffect(() => {
     if (!configLoading && !unifiedPosEnabled) {
@@ -259,7 +265,7 @@ export default function SalesScreen() {
       ...(yocoEnabled
         ? [{ label: "Yoco terminal", value: "yoco" as const, icon: "card-outline" as const }]
         : []),
-      ...(paycloudEnabled && paycloudCollectEnabled
+      ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
         ? [{
             label: paycloudInFlight ? "Resume card machine" : "Card machine",
             value: "paycloud" as const,
@@ -270,7 +276,7 @@ export default function SalesScreen() {
       { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
     ];
     if (paystackTerminalEnabled) {
-      const insertAt = 2 + (yocoEnabled ? 1 : 0) + (paycloudEnabled && paycloudCollectEnabled ? 1 : 0);
+      const insertAt = 2 + (yocoEnabled ? 1 : 0) + (canProcessPayments && paycloudEnabled && paycloudCollectEnabled ? 1 : 0);
       base.splice(insertAt, 0, {
         label: "Paystack Terminal",
         value: "paystack_terminal",
@@ -278,7 +284,7 @@ export default function SalesScreen() {
       });
     }
     return base;
-  }, [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight]);
+  }, [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -1565,17 +1571,10 @@ export default function SalesScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-          {paycloudEnabled && !paycloudCollectEnabled ? (
-            <TouchableOpacity
-              style={[
-                { width: "48%", marginHorizontal: "1%", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", paddingVertical: 12, paddingHorizontal: 8, marginBottom: 8, borderColor: Colors.gray[300], backgroundColor: Colors.white },
-              ]}
-              onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-              accessibilityLabel={PAYCLOUD_SETUP_LABEL}
-              accessibilityRole="button"
-            >
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>{PAYCLOUD_SETUP_LABEL}</Text>
-            </TouchableOpacity>
+          {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
+            <View style={{ width: "100%", marginHorizontal: "1%", marginBottom: 8 }}>
+              <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+            </View>
           ) : null}
         </View>
 

@@ -13,9 +13,10 @@ import {
 import { slackNotifyTerminalMerchantApproved } from "@/lib/integrations/slack/terminal-merchant-triggers";
 import { ungateOrdersAfterApproval } from "@/lib/terminal-merchant/gate";
 
-type RouteParams = { params: Promise<{ id: string }> };
-
+import { derivePaycloudMerchantApprovalEnvironment } from "@/lib/payments/paycloud-merchant-helpers";
 import { requireTerminalMerchantAdmin } from "@/lib/terminal-merchant/admin-auth";
+
+type RouteParams = { params: Promise<{ id: string }> };
 
 /**
  * POST /api/admin/terminal-merchant-applications/[id]/approve
@@ -51,6 +52,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       (application as { providers?: { business_name?: string } }).providers?.business_name ??
       "PayCloud merchant";
 
+    const merchantEnvironment = await derivePaycloudMerchantApprovalEnvironment(supabase, tenantId);
+
     const { data: merchant, error: merchantErr } = await supabase
       .from("paycloud_merchants")
       .insert({
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         label,
         merchant_no: merchantNo,
         store_no: storeNo,
-        environment: "live",
+        environment: merchantEnvironment,
         is_active: true,
         metadata: { terminal_merchant_application_id: id },
       })

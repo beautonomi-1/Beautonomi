@@ -55,6 +55,8 @@ import {
   type ProviderBookingCreatedSuccessPayload,
 } from "@/components/bookings/ProviderBookingCreatedSuccessSheet";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
+import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -259,7 +261,14 @@ function sanitizeProviderFormResponsesForApi(
 }
 
 type DiscountType = "percentage" | "fixed";
-type PaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal";
+type PaymentMethod =
+  | "pay_later"
+  | "cash"
+  | "card"
+  | "yoco_pos"
+  | "paycloud_terminal"
+  | "payment_link"
+  | "paystack_terminal";
 type RecurrencePattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 /**
@@ -310,6 +319,7 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "Cash", value: "cash", icon: "cash-outline" },
   { label: "Manual Card", value: "card", icon: "card-outline" },
   { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
+  { label: "Card machine", value: "paycloud_terminal", icon: "card-outline" },
   { label: "Paystack Terminal", value: "paystack_terminal", icon: "qr-code-outline" },
   { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
@@ -414,6 +424,11 @@ export default function NewBookingScreen() {
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const paystackTerminalEnabled = bundle?.flags?.payment_paystack_virtual_terminal?.enabled === true;
   const paymentLinkEnabled = bundle?.flags?.payment_link?.enabled === true;
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
   const defaultPhoneDial = useDefaultPhoneDial();
   const mapboxCountryIso =
     bundle?.meta?.active_market_country?.trim().length === 2
@@ -672,7 +687,20 @@ export default function NewBookingScreen() {
     if (!paymentLinkEnabled && paymentMethod === "payment_link") {
       setPaymentMethod("pay_later");
     }
-  }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, paymentMethod]);
+    if (
+      (!paycloudEnabled || !paycloudCollectEnabled) &&
+      paymentMethod === "paycloud_terminal"
+    ) {
+      setPaymentMethod("pay_later");
+    }
+  }, [
+    yocoEnabled,
+    paystackTerminalEnabled,
+    paymentLinkEnabled,
+    paycloudEnabled,
+    paycloudCollectEnabled,
+    paymentMethod,
+  ]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [createdBookingSuccess, setCreatedBookingSuccess] =
     useState<ProviderBookingCreatedSuccessPayload | null>(null);
@@ -2052,6 +2080,13 @@ export default function NewBookingScreen() {
             `The first appointment is on the calendar. Use your Yoco terminal to complete card payment.${extra}`,
             [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${initialBookingId}?collectYoco=1` as never) }],
           );
+        } else if (paymentMethod === "paycloud_terminal" && initialBookingId) {
+          const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+          Alert.alert(
+            "Repeating visit created",
+            `The first appointment is on the calendar. Use your card machine to complete payment.${extra}`,
+            [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${initialBookingId}?collectPaycloud=1` as never) }],
+          );
         } else if (paymentMethod === "paystack_terminal" && initialBookingId) {
           const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
           Alert.alert(
@@ -2127,13 +2162,15 @@ export default function NewBookingScreen() {
         ? String((responseData as { id: unknown }).id)
         : "";
     const cardChargeTotal =
-      paymentMethod === "yoco_pos"
+      paymentMethod === "yoco_pos" || paymentMethod === "paycloud_terminal"
         ? paymentOption === "deposit"
           ? percentOf(summary.total, depositPercentage)
           : summary.total
         : 0;
     const goYoco =
       paymentMethod === "yoco_pos" && cardChargeTotal > 0 && newBookingId.length > 0;
+    const goPaycloud =
+      paymentMethod === "paycloud_terminal" && cardChargeTotal > 0 && newBookingId.length > 0;
     const paystackChargeTotal =
       paymentMethod === "paystack_terminal"
         ? paymentOption === "deposit"
@@ -2146,6 +2183,9 @@ export default function NewBookingScreen() {
     const navigateYoco = () => {
       router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectYoco=1` as never);
     };
+    const navigatePaycloud = () => {
+      router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectPaycloud=1` as never);
+    };
 
     if (goYoco) {
       const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
@@ -2153,6 +2193,13 @@ export default function NewBookingScreen() {
         "Booking created",
         `Use your Yoco terminal to complete card payment.${extra}`,
         [{ text: "Continue", onPress: navigateYoco }],
+      );
+    } else if (goPaycloud) {
+      const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+      Alert.alert(
+        "Booking created",
+        `Use your card machine to complete payment.${extra}`,
+        [{ text: "Continue", onPress: navigatePaycloud }],
       );
     } else if (goPaystack) {
       const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
@@ -3419,6 +3466,7 @@ export default function NewBookingScreen() {
                 {PAYMENT_METHODS.filter(
                   (pm) =>
                     (yocoEnabled || pm.value !== "yoco_pos") &&
+                    (paycloudEnabled && paycloudCollectEnabled || pm.value !== "paycloud_terminal") &&
                     (paystackTerminalEnabled || pm.value !== "paystack_terminal") &&
                     (paymentLinkEnabled || pm.value !== "payment_link"),
                 ).map((pm, idx) => (
@@ -3452,6 +3500,11 @@ export default function NewBookingScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              {paycloudEnabled && !paycloudCollectEnabled ? (
+                <View style={twStyle("mb-4")}>
+                  <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} />
+                </View>
+              ) : null}
 
               {/* -------- DEPOSIT OPTION -------- */}
               <View style={twStyle("mb-4")}>
@@ -4213,6 +4266,8 @@ function formatNewBookingPaymentLabel(method: string): string {
       return "Manual Card";
     case "yoco_pos":
       return "Yoco Terminal";
+    case "paycloud_terminal":
+      return "Card machine";
     case "paystack_terminal":
       return "Paystack Terminal";
     case "payment_link":

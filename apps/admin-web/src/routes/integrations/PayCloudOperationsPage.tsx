@@ -345,6 +345,19 @@ export function PayCloudOperationsPage() {
     onError: (error: Error) => adminToast.error(error.message),
   });
 
+  const decommissionSandboxMut = useMutation({
+    mutationFn: () =>
+      adminApi.patchJson<{ decommissioned_count: number }>(
+        "/api/admin/paycloud-operations/terminals",
+        { action: "decommission_sandbox" },
+      ),
+    onSuccess: async (data) => {
+      adminToast.success(`Decommissioned ${data.decommissioned_count ?? 0} sandbox terminal(s)`);
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.paycloudOperations.all() });
+    },
+    onError: (error: Error) => adminToast.error(error.message),
+  });
+
   if (denied) return denied;
   if (paymentsQ.isLoading && summaryQ.isLoading) {
     return (
@@ -368,6 +381,22 @@ export function PayCloudOperationsPage() {
         description="Search in-person card machine payments, review amount exceptions, and manage the terminal fleet."
         actions={
           <>
+            <button
+              type="button"
+              className={adminToolbarButtonClass(decommissionSandboxMut.isPending)}
+              disabled={decommissionSandboxMut.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Decommission all sandbox card machines for this tenant? This is the recommended cutover step after go-live.",
+                  )
+                ) {
+                  decommissionSandboxMut.mutate();
+                }
+              }}
+            >
+              {decommissionSandboxMut.isPending ? "Working…" : "Decommission sandbox terminals"}
+            </button>
             <button
               type="button"
               className={adminToolbarButtonClass(runReconcileMut.isPending)}

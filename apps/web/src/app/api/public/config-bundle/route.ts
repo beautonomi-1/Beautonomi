@@ -146,6 +146,24 @@ export async function GET(request: NextRequest) {
           aura: { enabled: false },
           safety: { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} },
         },
+        verification: {
+          mode: "off",
+          sumsub_enabled: false,
+          didit_enabled: false,
+          manual_enabled: true,
+          required_for_providers: false,
+          required_for_payouts: false,
+          required_for_customers: false,
+          cross_validate: false,
+          min_age: 18,
+          kyb_enabled: false,
+          kyb_required_for_business: false,
+        },
+        content_safety: {
+          social_min_age: 13,
+          social_age_gate_mode: "log",
+          controls_enabled: true,
+        },
       };
     const body = JSON.stringify(fallback);
     const etag = `"${Buffer.from(body).toString("base64").slice(0, 32)}"`;

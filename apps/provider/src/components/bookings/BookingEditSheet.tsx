@@ -99,9 +99,11 @@ type Props = {
   booking: BookingEditSheetBooking;
   onClose: () => void;
   onSave: (payload: ReturnType<typeof buildBookingEditPatchPayload>) => Promise<{ error?: string; errorCode?: string }>;
+  /** When edit would overpay the booking, offer refund on the payment section. */
+  onOverpaymentAction?: (amount: number) => void;
 };
 
-export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
+export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaymentAction }: Props) {
   const locationId = booking.location_id ?? null;
   const servicesUrl =
     "/api/provider/services?include_inactive=true&include_variants=true&include_offering_resources=false";
@@ -530,9 +532,27 @@ export function BookingEditSheet({ visible, booking, onClose, onSave }: Props) {
                   </Text>
                 ) : null}
                 {overpaymentAfterEdit > 0 ? (
-                  <Text style={twStyle("mt-1 text-xs font-semibold text-blue-800")}>
-                    Overpayment after save: {formatCurrency(overpaymentAfterEdit, currency)} — refund or credit the customer from the booking payment section.
-                  </Text>
+                  <View style={twStyle("mt-2")}>
+                    <Text style={twStyle("text-xs font-semibold text-blue-800")}>
+                      Overpayment after save: {formatCurrency(overpaymentAfterEdit, currency)}
+                    </Text>
+                    {onOverpaymentAction ? (
+                      <TouchableOpacity
+                        onPress={() => onOverpaymentAction(overpaymentAfterEdit)}
+                        style={twStyle("mt-2 rounded-lg bg-blue-600 py-2 px-3 self-start")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Refund overpayment"
+                      >
+                        <Text style={twStyle("text-xs font-semibold text-white")}>
+                          Refund {formatCurrency(overpaymentAfterEdit, currency)} on the correct payment method
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={twStyle("mt-1 text-xs text-blue-700")}>
+                        Refund or credit the customer from the booking payment section.
+                      </Text>
+                    )}
+                  </View>
                 ) : null}
               </View>
             ) : null}

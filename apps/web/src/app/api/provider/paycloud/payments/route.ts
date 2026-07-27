@@ -11,7 +11,7 @@ import {
   isPaycloudCashbackEnabledForProvider,
 } from "@/lib/payments/paycloud-feature-gate";
 import { createPaycloudOrder } from "@/lib/payments/paycloud-client";
-import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
+import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl, validatePaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { resolvePayScenario } from "@/lib/payments/paycloud-scenarios";
 import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-guards";
@@ -117,8 +117,23 @@ export async function POST(request: NextRequest) {
     if (!chargeAmount || chargeAmount <= 0) {
       return NextResponse.json({ data: null, error: { message: "Nothing to charge.", code: "ZERO_AMOUNT" } }, { status: 400 });
     }
-    if (expected && parsed.data.amount != null && Math.abs(parsed.data.amount - expected.amount) > 0.02) {
-      return NextResponse.json({ data: null, error: { message: "Amount does not match outstanding balance.", code: "AMOUNT_MISMATCH" } }, { status: 400 });
+    if (expected && parsed.data.amount != null) {
+      const acceptableAmounts = [expected.amount];
+      if (expected.depositAmount != null && expected.depositAmount > 0.01) {
+        acceptableAmounts.push(expected.depositAmount);
+      }
+      const matchesExpected = acceptableAmounts.some(
+        (candidate) => Math.abs(parsed.data.amount! - candidate) <= 0.02,
+      );
+      if (!matchesExpected) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: { message: "Amount does not match outstanding balance.", code: "AMOUNT_MISMATCH" },
+          },
+          { status: 400 },
+        );
+      }
     }
 
     const currency = parsed.data.currency ?? expected?.currency ?? "ZAR";
@@ -180,6 +195,13 @@ export async function POST(request: NextRequest) {
     const merchantOrderNo = buildMerchantOrderNo();
     const scenario = resolvePayScenario(parsed.data.pay_method);
     const notifyUrl = getPaycloudNotifyUrl(request);
+    const notifyCheck = validatePaycloudNotifyUrl(notifyUrl);
+    if (notifyCheck.ok === false) {
+      return NextResponse.json(
+        { data: null, error: { message: notifyCheck.message, code: notifyCheck.code } },
+        { status: 400 },
+      );
+    }
 
     const channel = parsed.data.channel ?? "cloud";
     if (channel === "same_terminal") {
@@ -281,7 +303,7 @@ export async function POST(request: NextRequest) {
         amount: chargeAmount,
         tip_amount: parsed.data.tip_amount ?? 0,
         cashback_amount: parsed.data.cashback_amount ?? 0,
-        expected_amount: expected?.amount ?? chargeAmount,
+        expected_amount: chargeAmount,
         currency,
         entity_type: parsed.data.entity_type,
         entity_id: parsed.data.entity_id,

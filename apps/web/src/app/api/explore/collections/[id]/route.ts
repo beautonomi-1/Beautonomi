@@ -6,6 +6,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import type { ExplorePost } from "@/types/explore";
 import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 
@@ -52,7 +53,8 @@ export async function GET(
       .from("explore_posts")
       .select("id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, tags, primary_category_id, offering_id, created_at, updated_at")
       .in("id", postIds)
-      .eq("status", "published");
+      .eq("status", "published")
+      .eq("is_hidden", false);
 
     const order = postIds;
     const postMap = new Map((postRows || []).map((p: any) => [p.id, p]));
@@ -132,6 +134,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { data: existing } = await supabaseAdmin

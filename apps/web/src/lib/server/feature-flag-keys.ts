@@ -176,6 +176,17 @@ export const FEATURE_FLAG_KEYS = {
   TERMINAL_VENDOR_ABSA: "terminal_vendor_absa_enabled",
   TERMINAL_VENDOR_STANDARD_BANK: "terminal_vendor_standard_bank_enabled",
 
+  // ── Age assurance / content safety ─────────────────────────────────────────
+
+  /** Minimum age (years) for social/UGC capabilities. Metadata: { min_age: 13 }. */
+  SAFETY_SOCIAL_MIN_AGE: "safety.social_min_age",
+
+  /** Social gate mode: off | log | enforce. Metadata: { mode: "log" }. */
+  SAFETY_SOCIAL_AGE_GATE_MODE: "safety.social_age_gate_mode",
+
+  /** Forced safety defaults for 13-17 and unknown bands. Metadata JSON booleans. */
+  SAFETY_RESTRICTED_MODE_DEFAULTS: "safety.restricted_mode_defaults",
+
   /** Platform user referral program (wallet rewards for inviting friends). */
   REFERRAL_PROGRAM: "referral_program",
 

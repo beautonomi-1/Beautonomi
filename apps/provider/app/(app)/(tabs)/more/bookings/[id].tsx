@@ -24,8 +24,12 @@ import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
-import { usePayCloudSettings } from "@/hooks/usePayCloud";
+import { formatPaycloudCollectLabel, inferBookingCollectContext } from "@/lib/paycloud-collect-cta";
+import {
+  usePaycloudCollectAvailability,
+  computePaycloudBookingChargeAmount,
+} from "@/hooks/usePaycloudCollectAvailability";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -544,9 +548,20 @@ const ETA_OPTIONS = [15, 30, 45] as const;
 /** At-home reschedule slot queries: matches `new.tsx` fallback before /api/location/validate returns. */
 const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
-type MarkPaidPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal";
+type MarkPaidPaymentMethod =
+  | "cash"
+  | "card"
+  | "bank_transfer"
+  | "other"
+  | "paystack_terminal"
+  | "paycloud_terminal";
 
-function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean, yocoEnabled: boolean) {
+function buildMarkPaidPaymentMethods(
+  paystackTerminalEnabled: boolean,
+  yocoEnabled: boolean,
+  paycloudEnabled: boolean,
+  paycloudCollectEnabled: boolean,
+) {
   const methods: { label: string; value: MarkPaidPaymentMethod }[] = [
     { label: "Cash", value: "cash" },
     {
@@ -559,15 +574,30 @@ function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean, yocoEnabl
   if (paystackTerminalEnabled) {
     methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
   }
+  if (paycloudEnabled && paycloudCollectEnabled) {
+    methods.splice(2, 0, {
+      label: formatPaycloudCollectLabel({ context: "booking", amount: 0 }),
+      value: "paycloud_terminal",
+    });
+  }
   return methods;
 }
 
-const PAYMENT_METHODS_CHARGE = [
-  { label: "Cash", value: "cash" as const },
-  { label: "Card", value: "card" as const },
-  { label: "Mobile", value: "mobile" as const },
-  { label: "EFT", value: "bank_transfer" as const },
-  { label: "Other", value: "other" as const },
+type ChargePaymentMethod =
+  | "cash"
+  | "card"
+  | "mobile"
+  | "bank_transfer"
+  | "other"
+  | "paycloud_terminal";
+
+const PAYMENT_METHODS_CHARGE: { label: string; value: ChargePaymentMethod }[] = [
+  { label: "Cash", value: "cash" },
+  { label: "Card", value: "card" },
+  { label: "Mobile", value: "mobile" },
+  { label: "EFT", value: "bank_transfer" },
+  { label: "Other", value: "other" },
+  { label: "Card machine", value: "paycloud_terminal" },
 ];
 
 const SEND_LINK_OPTIONS = [
@@ -603,12 +633,13 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco, collectPaystack, return_group_id, openReschedule, openCancel, highlightConfirm } =
+  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
     collectYoco?: string;
     collectPaystack?: string;
+    collectPaycloud?: string;
     return_group_id?: string;
     openReschedule?: string;
     openCancel?: string;
@@ -925,7 +956,7 @@ export default function BookingDetailScreen() {
   // Mark paid
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [markPaidMethod, setMarkPaidMethod] = useState<
-    "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal"
+    "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal" | "paycloud_terminal"
   >("card");
   const [markingPaid, setMarkingPaid] = useState(false);
 
@@ -933,32 +964,44 @@ export default function BookingDetailScreen() {
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit">("store_credit");
+  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit" | "original">("store_credit");
   const [refunding, setRefunding] = useState(false);
   const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
 
   // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
-  const [paycloudTerminalAmount, setPaycloudTerminalAmount] = useState(0);
+  const [paycloudAdditionalChargeAmount, setPaycloudAdditionalChargeAmount] = useState(0);
   const [paycloudEntityType, setPaycloudEntityType] = useState<
     "booking" | "additional_charge"
   >("booking");
   const [paycloudEntityId, setPaycloudEntityId] = useState(id ?? "");
   const { integration: yocoIntegration } = useYocoIntegration();
-  const { settings: paycloudSettings } = usePayCloudSettings();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
-  const paycloudReady =
-    paycloudEnabled &&
-    Boolean(paycloudSettings?.ready);
-  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
-  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    inFlight: paycloudInFlight,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
   const markPaidPaymentMethods = useMemo(
-    () => buildMarkPaidPaymentMethods(paystackTerminalEnabled, yocoEnabled),
-    [paystackTerminalEnabled, yocoEnabled],
+    () =>
+      buildMarkPaidPaymentMethods(
+        paystackTerminalEnabled,
+        yocoEnabled,
+        paycloudEnabled,
+        paycloudCollectEnabled,
+      ),
+    [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled],
+  );
+  const chargePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS_CHARGE.filter(
+        (pm) => pm.value !== "paycloud_terminal" || (paycloudEnabled && paycloudCollectEnabled),
+      ),
+    [paycloudEnabled, paycloudCollectEnabled],
   );
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
@@ -1144,7 +1187,9 @@ export default function BookingDetailScreen() {
 
   // Mark additional charge as paid
   const [chargeMarkPaidId, setChargeMarkPaidId] = useState<string | null>(null);
-  const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<"cash" | "card" | "mobile" | "bank_transfer" | "other">("card");
+  const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<
+    "cash" | "card" | "mobile" | "bank_transfer" | "other" | "paycloud_terminal"
+  >("card");
   const [markingChargePaid, setMarkingChargePaid] = useState(false);
 
   // "Send to client" — re-send the pay request for an existing charge so the
@@ -1712,6 +1757,23 @@ export default function BookingDetailScreen() {
     depositRemaining > 0 && (ps === "pending" || ps === "partially_paid")
       ? Math.min(outstanding, depositRemaining)
       : outstanding;
+  const paycloudBookingCharge = computePaycloudBookingChargeAmount({
+    outstanding,
+    depositRequired: b.deposit_required === true && b.payment_option === "deposit",
+    depositAmount: b.deposit_amount ?? null,
+    totalPaid: coverageLocal,
+    unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
+  });
+  const paycloudTerminalAmount =
+    paycloudEntityType === "additional_charge"
+      ? paycloudAdditionalChargeAmount
+      : paycloudBookingCharge.chargeAmount;
+  const paycloudCollectContext = inferBookingCollectContext({
+    totalAmount,
+    totalPaid: coverageLocal,
+    unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
+    outstanding,
+  });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   /** Align with POST /api/provider/bookings/[id]/mark-paid — collect cash/Yoco before or during visit. */
   const statusesAllowingPayment = new Set([
@@ -1769,6 +1831,39 @@ export default function BookingDetailScreen() {
     } catch (e) {
       Alert.alert("Share", e instanceof Error ? e.message : "Could not share this receipt.");
     }
+  }
+
+  async function openPaycloudCheckout() {
+    if (!id) return;
+    const chargeAmount = Number(paycloudBookingCharge.chargeAmount.toFixed(2));
+    if (chargeAmount <= 0) {
+      Alert.alert(
+        "Nothing to charge",
+        outstanding < 0
+          ? "This booking has no remaining balance to collect (it may be overpaid). Pull to refresh if you just recorded a payment elsewhere."
+          : "There is no remaining balance on this booking.",
+      );
+      return;
+    }
+    if (!canMarkPaid) {
+      Alert.alert(
+        "Cannot take card payment",
+        canProcessPayments
+          ? "This booking is not in a state where a card payment can be recorded (for example it may be cancelled)."
+          : "You do not have permission to process payments.",
+      );
+      return;
+    }
+    setPaycloudEntityType("booking");
+    setPaycloudEntityId(id);
+    setShowPaycloudPayment(true);
+  }
+
+  function openPaycloudAdditionalCharge(chargeId: string, amount: number) {
+    setPaycloudEntityType("additional_charge");
+    setPaycloudEntityId(chargeId);
+    setPaycloudAdditionalChargeAmount(amount);
+    setShowPaycloudPayment(true);
   }
 
   async function openYocoCheckout() {
@@ -2375,6 +2470,11 @@ export default function BookingDetailScreen() {
       await openPaystackTerminalCollection();
       return;
     }
+    if (markPaidMethod === "paycloud_terminal") {
+      setShowMarkPaid(false);
+      openPaycloudCheckout();
+      return;
+    }
     setMarkingPaid(true);
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
@@ -2422,14 +2522,20 @@ export default function BookingDetailScreen() {
       Alert.alert("Error", res.error);
       return;
     }
-    const pendingConfirmation =
-      res.data &&
-      typeof res.data === "object" &&
-      (res.data as { pending_customer_confirmation?: boolean }).pending_customer_confirmation === true;
+    const payload = res.data && typeof res.data === "object" ? (res.data as Record<string, unknown>) : null;
+    const pendingConfirmation = payload?.pending_customer_confirmation === true;
+    const pendingTerminal = payload?.pending_terminal === true;
     setShowRefund(false);
     setRefundAmount("");
     setRefundReason("");
-    if (pendingConfirmation) {
+    if (pendingTerminal) {
+      Alert.alert(
+        "Sent to card machine",
+        typeof payload?.message === "string"
+          ? payload.message
+          : "Follow the prompts on the card machine. The booking updates when the refund is confirmed.",
+      );
+    } else if (pendingConfirmation) {
       Alert.alert(
         "Refund recorded",
         "The customer will be asked to confirm they received this cash refund.",
@@ -2800,6 +2906,13 @@ export default function BookingDetailScreen() {
       Alert.alert("Permission", "You do not have permission to process payments.");
       return;
     }
+    if (chargeMarkPaidMethod === "paycloud_terminal") {
+      const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
+      if (!c) return;
+      setChargeMarkPaidId(null);
+      openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0));
+      return;
+    }
     setMarkingChargePaid(true);
     const res = await postMutation(
       `/api/provider/bookings/${id}/additional-charges/${chargeMarkPaidId}/mark-paid`,
@@ -2890,6 +3003,19 @@ export default function BookingDetailScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
+      <AutoYocoCollectGate
+        shouldRun={
+          providerParamTruthy(collectPaycloud) &&
+          paycloudBookingCharge.chargeAmount > 0 &&
+          paycloudEnabled &&
+          paycloudCollectEnabled &&
+          canMarkPaid
+        }
+        onTrigger={() => {
+          router.setParams({ collectPaycloud: undefined });
+          void openPaycloudCheckout();
+        }}
+      />
       <AutoYocoCollectGate
         shouldRun={
           providerParamTruthy(collectYoco) &&
@@ -4029,32 +4155,27 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>Collect payment</Text>
                     )}
                   </TouchableOpacity>
-                  {canCreateSales && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
+                  {canMarkPaid && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
                     <TouchableOpacity
-                      onPress={() => {
-                        setPaycloudEntityType("booking");
-                        setPaycloudEntityId(id);
-                        setPaycloudTerminalAmount(Number(outstanding.toFixed(2)));
-                        setShowPaycloudPayment(true);
-                      }}
+                      onPress={() => void openPaycloudCheckout()}
                       style={twStyle("rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-4")}
                     >
                       <Text style={twStyle("font-medium text-slate-900")}>
                         {formatPaycloudCollectLabel({
-                          context: "booking",
-                          amount: outstanding,
+                          context: paycloudCollectContext,
+                          amount: paycloudBookingCharge.chargeAmount,
+                          currency: b.currency ?? getTenantDefaultCurrency(),
                           inFlight: paycloudInFlight,
+                          depositAmount: paycloudBookingCharge.depositAmount,
+                          fullOutstanding: paycloudBookingCharge.fullOutstanding,
                         })}
                       </Text>
                     </TouchableOpacity>
                   )}
-                  {canCreateSales && paycloudEnabled && !paycloudCollectEnabled && outstanding > 0 && (
-                    <TouchableOpacity
-                      onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-                      style={twStyle("rounded-xl border border-dashed border-slate-300 bg-white py-2.5 px-4")}
-                    >
-                      <Text style={twStyle("font-medium text-slate-600")}>{PAYCLOUD_SETUP_LABEL}</Text>
-                    </TouchableOpacity>
+                  {canMarkPaid && paycloudEnabled && !paycloudCollectEnabled && outstanding > 0 && (
+                    <View style={twStyle("w-full")}>
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                    </View>
                   )}
                   {canCreateSales && yocoEnabled && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
                     <TouchableOpacity
@@ -4281,31 +4402,24 @@ export default function BookingDetailScreen() {
                       </TouchableOpacity>
                       {paycloudEnabled && paycloudCollectEnabled ? (
                         <TouchableOpacity
-                          onPress={() => {
-                            setPaycloudEntityType("additional_charge");
-                            setPaycloudEntityId(c.id);
-                            setPaycloudTerminalAmount(Number(c.amount ?? 0));
-                            setShowPaycloudPayment(true);
-                          }}
+                          onPress={() =>
+                            openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0))
+                          }
                           style={twStyle("flex-1 min-w-[120px] rounded-lg border border-slate-300 bg-slate-50 py-2 px-3 items-center")}
                         >
                           <Text style={twStyle("text-xs font-medium text-slate-900 text-center")}>
                             {formatPaycloudCollectLabel({
                               context: "additional_charge",
                               amount: Number(c.amount ?? 0),
+                              currency: c.currency ?? b.currency ?? getTenantDefaultCurrency(),
                               inFlight: paycloudInFlight,
                             })}
                           </Text>
                         </TouchableOpacity>
                       ) : paycloudEnabled ? (
-                        <TouchableOpacity
-                          onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-                          style={twStyle("flex-1 min-w-[120px] rounded-lg border border-dashed border-slate-300 bg-white py-2 px-3 items-center")}
-                        >
-                          <Text style={twStyle("text-xs font-medium text-slate-600 text-center")}>
-                            {PAYCLOUD_SETUP_LABEL}
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={twStyle("flex-1 min-w-[120px]")}>
+                          <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                        </View>
                       ) : null}
                     </View>
                   )}
@@ -4659,6 +4773,15 @@ export default function BookingDetailScreen() {
         }}
         onClose={() => setShowEditAppointment(false)}
         onSave={handleSaveAppointmentEdit}
+        onOverpaymentAction={(amount) => {
+          setShowEditAppointment(false);
+          setRefundAmount(amount.toFixed(2));
+          setRefundReason("Booking edited — services reduced after payment");
+          setShowRefund(true);
+          requestAnimationFrame(() => {
+            mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+          });
+        }}
       />
 
       {/* Reschedule modal */}
@@ -4737,8 +4860,21 @@ export default function BookingDetailScreen() {
                 <Text style={twStyle(`text-sm font-medium ${markPaidMethod === pm.value ? "text-white" : "text-gray-700"}`)}>{pm.label}</Text>
               </TouchableOpacity>
             ))}
+            {paycloudEnabled && !paycloudCollectEnabled ? (
+              <View style={twStyle("w-full")}>
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+              </View>
+            ) : null}
           </View>
-          <ActionButton label={markingPaid ? "Processing…" : "Record payment"} onPress={() => void handleMarkPaid()} loading={markingPaid} fullWidth />
+          {markPaidMethod === "paycloud_terminal" ? (
+            <ActionButton
+              label="Charge on card machine"
+              onPress={() => void handleMarkPaid()}
+              fullWidth
+            />
+          ) : (
+            <ActionButton label={markingPaid ? "Processing…" : "Record payment"} onPress={() => void handleMarkPaid()} loading={markingPaid} fullWidth />
+          )}
         </View>
       </BottomSheet>
 
@@ -4772,8 +4908,11 @@ export default function BookingDetailScreen() {
             textAlignVertical="top"
           />
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund method</Text>
-          <View style={twStyle("flex-row rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2")}>
+          <View style={twStyle("flex-row flex-wrap rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2 gap-1")}>
             {([
+              ...(paycloudCollectEnabled || paycloudEnabled
+                ? [{ key: "original" as const, label: "Back to card" }]
+                : []),
               { key: "cash" as const, label: "In person (cash)" },
               { key: "store_credit" as const, label: "Wallet credit" },
             ]).map((opt) => {
@@ -4782,7 +4921,7 @@ export default function BookingDetailScreen() {
                 <TouchableOpacity
                   key={opt.key}
                   onPress={() => setRefundMethod(opt.key)}
-                  style={twStyle(`flex-1 items-center rounded-lg px-3 py-2 ${active ? "bg-white" : ""}`)}
+                  style={twStyle(`flex-1 min-w-[30%] items-center rounded-lg px-3 py-2 ${active ? "bg-white" : ""}`)}
                 >
                   <Text style={twStyle(`text-sm font-medium ${active ? "text-indigo-600" : "text-gray-500"}`)}>
                     {opt.label}
@@ -4792,9 +4931,11 @@ export default function BookingDetailScreen() {
             })}
           </View>
           <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-            {refundMethod === "cash"
+            {refundMethod === "original"
+              ? "The money returns to the customer's card through the card machine or bank. Nothing is taken from your cash drawer."
+              : refundMethod === "cash"
               ? "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds."
-              : "The refund amount will be credited to the customer's wallet balance. The booking balance will update after this succeeds."}
+              : "Use when the customer is not present or the payment was made online. The refund is credited to their wallet."}
           </Text>
           <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
@@ -4884,7 +5025,7 @@ export default function BookingDetailScreen() {
                 </Text>
                 <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
                 <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
-                  {PAYMENT_METHODS_CHARGE.map((pm) => (
+                  {chargePaymentMethods.map((pm) => (
                     <TouchableOpacity
                       key={pm.value}
                       onPress={() => setChargeMarkPaidMethod(pm.value)}
@@ -4893,13 +5034,26 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle(`text-sm font-medium ${chargeMarkPaidMethod === pm.value ? "text-white" : "text-gray-700"}`)}>{pm.label}</Text>
                     </TouchableOpacity>
                   ))}
+                  {paycloudEnabled && !paycloudCollectEnabled ? (
+                    <View style={twStyle("w-full")}>
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                    </View>
+                  ) : null}
                 </View>
-                <ActionButton
-                  label={markingChargePaid ? "Processing…" : "Confirm"}
-                  onPress={handleChargeMarkPaid}
-                  loading={markingChargePaid}
-                  fullWidth
-                />
+                {chargeMarkPaidMethod === "paycloud_terminal" ? (
+                  <ActionButton
+                    label="Charge on card machine"
+                    onPress={handleChargeMarkPaid}
+                    fullWidth
+                  />
+                ) : (
+                  <ActionButton
+                    label={markingChargePaid ? "Processing…" : "Confirm"}
+                    onPress={handleChargeMarkPaid}
+                    loading={markingChargePaid}
+                    fullWidth
+                  />
+                )}
               </>
             );
           })()}

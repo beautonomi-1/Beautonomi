@@ -23,6 +23,8 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 import { CustomOfferCard } from "@beautonomi/ui/native";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useTranslation, i18n } from "@beautonomi/i18n";
+import { useSocialCapability } from "@/hooks/useSafetySettings";
+import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 
 interface MessageReplyTo {
   id: string;
@@ -284,8 +286,29 @@ export default function ChatScreen() {
   // history they're reading. Starts true because the thread opens at the end.
   const isNearBottomRef = useRef(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reportMessageId, setReportMessageId] = useState<string | null>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
+  const directMessaging = useSocialCapability("direct_message");
+  const canSendMessages = directMessaging.allowed;
+
+  const openMessageActions = useCallback(
+    (msg: Message) => {
+      Alert.alert(t("customer.chatScreen.messageActionsTitle"), undefined, [
+        {
+          text: t("customer.chatScreen.replyToMessage"),
+          onPress: () => setReplyingTo(msg),
+        },
+        {
+          text: t("customer.contentReport.reportMessage"),
+          style: "destructive",
+          onPress: () => setReportMessageId(msg.id),
+        },
+        { text: t("common.cancel"), style: "cancel" },
+      ]);
+    },
+    [t],
+  );
 
   useEffect(() => {
     setReplyingTo(null);
@@ -1466,7 +1489,7 @@ export default function ChatScreen() {
                 return (
                   <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
                     <Pressable
-                      onLongPress={() => setReplyingTo(msg)}
+                      onLongPress={() => openMessageActions(msg)}
                       delayLongPress={280}
                       style={{
                         maxWidth: "80%",
@@ -1827,6 +1850,7 @@ export default function ChatScreen() {
             ) : null}
 
             {/* Input bar — respects the iOS home indicator via `insets.bottom`. */}
+            {canSendMessages ? (
             <View
               style={{
                 flexDirection: "row",
@@ -1884,6 +1908,22 @@ export default function ChatScreen() {
                 )}
               </TouchableOpacity>
             </View>
+            ) : (
+              <View
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.gray[100],
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: 12 + insets.bottom,
+                  backgroundColor: Colors.gray[50],
+                }}
+              >
+                <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", lineHeight: 20 }}>
+                  {t("customer.chatScreen.safetyMessagingOff")}
+                </Text>
+              </View>
+            )}
           </>
         )}
       </KeyboardAvoidingView>
@@ -2133,6 +2173,16 @@ export default function ChatScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {reportMessageId ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportMessageId(null)}
+          targetType="message"
+          targetId={reportMessageId}
+          title={t("customer.contentReport.reportMessage")}
+        />
+      ) : null}
     </>
   );
 }

@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
-import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 
 function csvEscape(value: any): string {
@@ -14,16 +14,12 @@ function csvEscape(value: any): string {
 }
 
 /**
- * GET /api/provider/finance/export?range=today|week|month|year|all
- * Full CSV export of finance_transactions for the provider (org-wide; not branch-filtered).
+ * GET /api/provider/finance/export?range=today|week|month|year|all&location_id=
+ * Full CSV export of finance_transactions for the provider.
  *
- * Columns mirror the admin export shape so providers can reconcile their ledger against
- * the platform's view without a column-mapping step. Includes booking/order references,
- * gateway fees, commission, currency, status, and the underlying payment_method when the
- * row is sourced from a `booking_payments` row (via `source_payment_id`).
- *
- * `location_id` is ignored — use the location-scoped reports (end-of-day, payments
- * summary, payouts) for branch-filtered exports.
+ * Optional `location_id` scopes rows to the selected branch using the same inclusive
+ * semantics as the Money hub (at-home / walk-in bookings with no branch included;
+ * payouts and provider-level charges remain visible when a branch is selected).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -67,6 +63,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const range = searchParams.get("range") || "month";
+    const locationId = searchParams.get("location_id");
     const now = new Date();
     const reportContext = await getProviderReportContext(db as any, providerId);
     const startIso = resolveProviderFinanceRangeBounds(range, reportContext.timezone, now).startIso;
@@ -106,8 +103,14 @@ export async function GET(request: NextRequest) {
       if (!page || page.length < pageSize) break;
     }
 
-    const bookingIds = [...new Set(data.map((r) => r.booking_id).filter(Boolean) as string[])];
-    const sourcePaymentIds = [...new Set(data.map((r) => r.source_payment_id).filter(Boolean) as string[])];
+    const scopedData = locationId
+      ? await filterLedgerRowsForLocation(db, providerId, data, locationId, {
+          unattributedRows: "include",
+        })
+      : data;
+
+    const bookingIds = [...new Set(scopedData.map((r) => r.booking_id).filter(Boolean) as string[])];
+    const sourcePaymentIds = [...new Set(scopedData.map((r) => r.source_payment_id).filter(Boolean) as string[])];
 
     const bookingNumberMap = new Map<string, string>();
     if (bookingIds.length > 0) {
@@ -142,7 +145,7 @@ export async function GET(request: NextRequest) {
     }
 
     const lines = [header.join(",")];
-    for (const r of data) {
+    for (const r of scopedData) {
       const paymentInfo = r.source_payment_id ? paymentMethodMap.get(r.source_payment_id) : null;
       lines.push(
         [

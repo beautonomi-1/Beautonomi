@@ -39,6 +39,9 @@ export interface ReverseCardMachineSettlementInput {
   origProviderPaymentId: string;
   voidReference: string;
   processedBy?: string | null;
+  /** When set, records a partial reversal (terminal REFUND) instead of full void. */
+  refundAmount?: number | null;
+  reversalKind?: "void" | "refund";
 }
 
 type AdditionalChargeRow = {
@@ -652,8 +655,16 @@ async function reverseBookingCardMachinePayments(
   });
 
   const tipRowsToUnbump: Array<{ bookingId: string; amount: number }> = [];
+  const reversalKind = input.reversalKind ?? "void";
+  const partialCap =
+    input.refundAmount != null && input.refundAmount > 0 ? Number(input.refundAmount) : null;
 
   for (const p of sortedRows) {
+    const providerPaymentId = String((p as { payment_provider_id?: string }).payment_provider_id ?? "");
+    const isTipRow = providerPaymentId.endsWith(":tip");
+    const isCashbackRow = providerPaymentId.endsWith(":cashback");
+    if (partialCap != null && (isTipRow || isCashbackRow)) continue;
+
     const { data: existingRefund } = await supabase
       .from("booking_refunds")
       .select("id")
@@ -662,27 +673,46 @@ async function reverseBookingCardMachinePayments(
       .maybeSingle();
     if (existingRefund) continue;
 
+    const rowAmount = Number(p.amount ?? 0);
+    const refundInsertAmount =
+      partialCap != null ? Math.min(rowAmount, partialCap) : rowAmount;
+    if (refundInsertAmount <= 0) continue;
+
     const { error } = await supabase.from("booking_refunds").insert({
       booking_id: p.booking_id,
       payment_id: p.id,
-      amount: p.amount,
-      reason: `${input.paymentProvider}_void`,
+      amount: refundInsertAmount,
+      reason:
+        reversalKind === "refund"
+          ? `${input.paymentProvider}_refund`
+          : `${input.paymentProvider}_void`,
       refund_method: "original",
       refund_provider_id: input.voidReference,
       status: "completed",
-      notes: `${PROVIDER_LABEL[input.paymentProvider]} void of ${input.origProviderPaymentId}`,
+      notes: `${PROVIDER_LABEL[input.paymentProvider]} ${reversalKind} of ${input.origProviderPaymentId}`,
       created_by: input.processedBy ?? null,
     });
     if (error && error.code !== "23505") throw error;
 
-    const providerPaymentId = String((p as { payment_provider_id?: string }).payment_provider_id ?? "");
-    const isTipRow = providerPaymentId.endsWith(":tip");
+    if (!error) {
+      const nextStatus =
+        partialCap != null && refundInsertAmount + 0.01 < rowAmount
+          ? "partially_refunded"
+          : "refunded";
+      await supabase
+        .from("booking_payments")
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq("id", p.id);
+    }
+
     if (isTipRow && !error) {
       tipRowsToUnbump.push({
         bookingId: p.booking_id,
         amount: Number(p.amount ?? 0),
       });
     }
+
+    if (partialCap != null) break;
   }
 
   for (const tip of tipRowsToUnbump) {

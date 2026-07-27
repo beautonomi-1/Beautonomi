@@ -11,6 +11,14 @@ import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getPaycloudApiBase } from "@/lib/payments/paycloud";
 import { z } from "zod";
+import { getPaycloudNotifyUrl, validatePaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
+import {
+  paycloudSandboxFixtureMatchesLiveSave,
+} from "@/lib/payments/paycloud-sandbox-fixtures";
+import {
+  validatePrivateKeyPem,
+  validatePublicKeyPem,
+} from "@/lib/payments/paycloud-sign";
 
 type PaycloudEnv = "live" | "sandbox";
 
@@ -178,10 +186,24 @@ export async function GET(request: NextRequest) {
       terminalsQuery = terminalsQuery.eq("tenant_id", scopeTenantId);
     }
 
-    const [{ count: merchantsCount }, { count: terminalsCount }] = await Promise.all([
+    const [{ count: merchantsCount }, { count: terminalsCount }, planRows] = await Promise.all([
       merchantsQuery,
       terminalsQuery,
+      supabase
+        .from("subscription_plans")
+        .select("features")
+        .eq("is_active", true),
     ]);
+
+    const notifyUrl = getPaycloudNotifyUrl(request);
+    const notifyCheck = validatePaycloudNotifyUrl(notifyUrl);
+    const plans = planRows.data ?? [];
+    const paycloudPlanEnabled = plans.some((p) => {
+      const features = (p as { features?: Record<string, unknown> }).features ?? {};
+      const node = features.paycloud_integration;
+      if (!node || typeof node !== "object") return false;
+      return (node as { enabled?: boolean }).enabled === true;
+    });
 
     return successResponse({
       admin_scope: requestedScope.scope,
@@ -205,6 +227,15 @@ export async function GET(request: NextRequest) {
       counts: {
         merchants: merchantsCount ?? 0,
         terminals: terminalsCount ?? 0,
+      },
+      readiness: {
+        notify_url: notifyUrl,
+        notify_url_valid: notifyCheck.ok,
+        paycloud_plan_entitlement_enabled: paycloudPlanEnabled,
+        live_api_base:
+          liveApp?.api_base_url?.trim() ||
+          process.env.PAYCLOUD_API_BASE_LIVE?.trim() ||
+          getPaycloudApiBase("live"),
       },
       resolution_notes: {
         credentials_order:
@@ -286,6 +317,24 @@ export async function PATCH(request: NextRequest) {
         "VALIDATION_ERROR",
         400,
       );
+    }
+
+    const sandboxLiveConflict = paycloudSandboxFixtureMatchesLiveSave({
+      app_id: parsed.data.app_id,
+      gateway_rsa_public_key: parsed.data.gateway_rsa_public_key,
+      api_base_url: parsed.data.api_base_url,
+    });
+    if (parsed.data.environment === "live" && sandboxLiveConflict) {
+      return errorResponse(sandboxLiveConflict, "SANDBOX_FIXTURE_ON_LIVE", 400);
+    }
+
+    const privateKeyCheck = validatePrivateKeyPem(appRsaPrivateKey);
+    if (privateKeyCheck.ok === false) {
+      return errorResponse(privateKeyCheck.message, "INVALID_PRIVATE_KEY", 400);
+    }
+    const publicKeyCheck = validatePublicKeyPem(gatewayRsaPublicKey);
+    if (publicKeyCheck.ok === false) {
+      return errorResponse(publicKeyCheck.message, "INVALID_PUBLIC_KEY", 400);
     }
 
     const payload = {

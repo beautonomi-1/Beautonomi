@@ -62,9 +62,10 @@ export function PaycloudCollectButton({
 
   if (!ready && !hasInFlight) {
     const href = blockers[0]?.href ?? "/provider/settings/sales/card-machines";
+    const setupLabel = blockers[0]?.title ?? PAYCLOUD_SETUP_LABEL;
     return (
       <Button variant={variant} size={size} className={className} asChild>
-        <Link href={href}>{PAYCLOUD_SETUP_LABEL}</Link>
+        <Link href={href}>{setupLabel}</Link>
       </Button>
     );
   }

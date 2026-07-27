@@ -46,6 +46,7 @@ function buildAccountSettingsGroups(t: TFunction): SettingsGroup[] {
         { id: "identity-verification", title: t("customer.accountSettings.identityVerificationTitle"), desc: t("customer.accountSettings.identityVerificationDesc"), route: "identity-verification", icon: "card-outline" },
         { id: "addresses", title: t("customer.accountSettings.savedAddressesTitle"), desc: t("customer.accountSettings.savedAddressesDesc"), route: "addresses", icon: "location-outline" },
         { id: "privacy-and-sharing", title: t("customer.accountSettings.privacySharingTitle"), desc: t("customer.accountSettings.privacySharingDesc"), route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
+        { id: "content-and-safety-controls", title: t("customer.accountSettings.contentSafetyTitle"), desc: t("customer.accountSettings.contentSafetyDesc"), route: "content-and-safety-controls", icon: "eye-off-outline" },
       ],
     },
     {

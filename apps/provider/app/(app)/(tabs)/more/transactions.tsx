@@ -19,7 +19,6 @@ import { MoneyRangeChips, type MoneyRangeKey } from "@/components/finance/MoneyR
 import { formatLedgerUiBucket } from "@/lib/financeLabels";
 import { formatCurrency, formatDate, formatTimeAgo } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
-import { useProvider } from "@/providers/ProviderContext";
 
 interface Transaction {
   id: string;
@@ -109,16 +108,19 @@ function paymentMethodLabel(method: string | null): string {
   return method ?? "Other";
 }
 
-export function TransactionsContent({ embedded = false }: { embedded?: boolean } = {}) {
+export function TransactionsContent({
+  embedded = false,
+  locationId = null,
+}: { embedded?: boolean; locationId?: string | null } = {}) {
   const router = useRouter();
   const handleBack = useProviderStackBack();
-  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<MoneyRangeKey>("month");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [listLimit, setListLimit] = useState(50);
+  const MAX_LIST_LIMIT = 500;
 
   interface TransactionsApiPayload {
     transactions?: Transaction[];
@@ -136,7 +138,7 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
   }
 
   const transactionsPath = `/api/provider/transactions?period=${period}&limit=${listLimit}&offset=0${
-    selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
+    locationId ? `&location_id=${encodeURIComponent(locationId)}` : ""
   }`;
 
   /** Branch-scoped when a location is selected (matches Sales / Overview aggregates). */
@@ -161,16 +163,21 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
 
   const showTruncationBanner = useMemo(() => {
     if (!txnPayload || Array.isArray(txnPayload)) return false;
-    return Boolean(txnPayload.truncated_ledger || txnPayload.truncated_list);
+    return Boolean(txnPayload.truncated_ledger);
   }, [txnPayload]);
+
+  const listTotal = useMemo(() => {
+    if (!txnPayload || Array.isArray(txnPayload)) return transactions.length;
+    return txnPayload.list_total ?? transactions.length;
+  }, [txnPayload, transactions.length]);
 
   useEffect(() => {
     setListLimit(50);
-  }, [period, selectedLocationId]);
+  }, [period, locationId]);
 
-  const canLoadMore = showTruncationBanner && listLimit < 200;
+  const canLoadMore = listTotal > listLimit && listLimit < MAX_LIST_LIMIT;
   const { execute: exportTransactions, loading: exporting } = useApiPost<
-    { period: string; format: string },
+    { period: string; format: string; location_id?: string },
     { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
   >("/api/provider/transactions/export");
 
@@ -228,7 +235,11 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { data, error } = await exportTransactions({ period, format: "csv" });
+    const { data, error } = await exportTransactions({
+      period,
+      format: "csv",
+      ...(locationId ? { location_id: locationId } : {}),
+    });
     if (error) {
       Alert.alert("Export Failed", error);
       return;
@@ -345,7 +356,21 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
 
       {showTruncationBanner ? (
         <View style={twStyle("px-4")}>
-          <TruncationBanner />
+          <TruncationBanner message="Totals may be incomplete — only the first batch of ledger rows was scanned. Narrow the date range or export for the full period." />
+        </View>
+      ) : null}
+
+      {serverSummary?.basis_note && typeFilter === "all" && !search.trim() ? (
+        <View style={twStyle("mb-3 px-4")}>
+          <Text style={twStyle("text-xs leading-5 text-gray-500")}>{serverSummary.basis_note}</Text>
+        </View>
+      ) : null}
+
+      {listTotal > 0 ? (
+        <View style={twStyle("mb-2 px-4")}>
+          <Text style={twStyle("text-xs text-gray-500")}>
+            Showing {Math.min(filtered.length, listLimit)} of {listTotal} transactions
+          </Text>
         </View>
       ) : null}
 
@@ -353,7 +378,7 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
         <View style={twStyle("mb-3 px-4")}>
           <TouchableOpacity
             style={twStyle("items-center rounded-xl border border-gray-200 bg-white py-3")}
-            onPress={() => setListLimit((prev) => Math.min(prev + 50, 200))}
+            onPress={() => setListLimit((prev) => Math.min(prev + 50, MAX_LIST_LIMIT))}
           >
             <Text style={twStyle("text-sm font-medium text-gray-700")}>Load more transactions</Text>
           </TouchableOpacity>

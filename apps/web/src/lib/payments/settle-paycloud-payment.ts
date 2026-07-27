@@ -52,6 +52,8 @@ export interface ReversePaycloudSettlementInput {
   origProviderPaymentId: string;
   voidReference: string;
   processedBy?: string | null;
+  refundAmount?: number | null;
+  reversalKind?: "void" | "refund";
 }
 
 /**
@@ -69,5 +71,7 @@ export async function reversePaycloudSettlement(
     origProviderPaymentId: input.origProviderPaymentId,
     voidReference: input.voidReference,
     processedBy: input.processedBy,
+    refundAmount: input.refundAmount,
+    reversalKind: input.reversalKind,
   });
 }

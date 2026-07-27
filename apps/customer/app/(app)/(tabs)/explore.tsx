@@ -29,7 +29,17 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 import { useTranslation } from "@beautonomi/i18n";
+import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { APP_URL } from "@/config/public-env";
+import {
+  copyExplorePostLink,
+  isExploreVideoUrl,
+  presentExplorePostShareActions,
+  shareExplorePostLink,
+  shareExplorePostMedia,
+  type ExploreShareAction,
+} from "@/lib/share-explore-post";
 
 const GAP = 10;
 
@@ -68,14 +78,18 @@ const PinCard = React.memo(function PinCard({
   cardWidth,
   onLike,
   onSave,
+  onShare,
 }: {
   post: ExplorePost;
   onPress: () => void;
   cardWidth: number;
   onLike: (post: ExplorePost) => void;
   onSave: (post: ExplorePost) => void;
+  onShare: (post: ExplorePost) => void;
 }) {
+  const { t } = useTranslation();
   const img = post.media_urls?.[0] || "https://placehold.co/400x500/f5f5f5/999?text=Beauty";
+  const isVideo = isExploreVideoUrl(img);
   const aspect = getPostAspect(post);
   const imgHeight = cardWidth * aspect;
   const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
@@ -153,6 +167,24 @@ const PinCard = React.memo(function PinCard({
               cachePolicy="memory-disk"
               transition={200}
             />
+
+            {isVideo ? (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  left: 8,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: "rgba(0,0,0,0.45)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="play" size={14} color="#fff" />
+              </View>
+            ) : null}
 
             {/* Double-tap heart animation */}
             <Animated.View
@@ -266,7 +298,28 @@ const PinCard = React.memo(function PinCard({
           </View>
         </Pressable>
 
-        {/* Save button outside Pressable so tap doesn't trigger card navigation */}
+        {/* Share + save — outside Pressable so taps don't navigate */}
+        <TouchableOpacity
+          onPress={() => { haptic.light(); onShare(post); }}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 48,
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: "rgba(0,0,0,0.35)",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+          accessibilityLabel={t("customer.explorePost.share")}
+          accessibilityRole="button"
+        >
+          <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => { haptic.light(); onSave(post); }}
           style={{
@@ -429,8 +482,45 @@ function MasonrySkeleton({
 }
 
 /* ─── Empty State ─── */
-function EmptyState({ category }: { category: string }) {
+function EmptyState({ category, hideSocialFeed }: { category: string; hideSocialFeed?: boolean }) {
   const { t } = useTranslation();
+  if (hideSocialFeed) {
+    return (
+      <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 32 }}>
+        <View
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: Colors.gray[100],
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 20,
+          }}
+        >
+          <Ionicons name="eye-off-outline" size={36} color={Colors.gray[500]} />
+        </View>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8, textAlign: "center" }}>
+          {t("customer.mobile.tabs.explore.socialFeedHiddenTitle")}
+        </Text>
+        <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 22, marginBottom: 20 }}>
+          {t("customer.mobile.tabs.explore.socialFeedHiddenBody")}
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+          style={{
+            backgroundColor: Colors.primary,
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "600" }}>{t("customer.accountSettings.contentSafetyTitle")}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const isFiltered = category !== "all";
   return (
     <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 32 }}>
@@ -473,6 +563,9 @@ export default function ExploreScreen() {
   const { t } = useTranslation();
   const tx = useCallback((key: string) => t(`customer.mobile.tabs.explore.${key}`), [t]);
   const { user } = useAuth();
+  const { settings: safetySettings } = useSafetySettings();
+  const socialInteractions = useSocialCapability("like_or_save");
+  const hideSocialFeed = Boolean(user && safetySettings.hide_social_feed);
   const { width, columns, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
@@ -538,6 +631,10 @@ export default function ExploreScreen() {
   const handleLike = useCallback(
     async (post: ExplorePost) => {
       if (!user) return;
+      if (!socialInteractions.allowed) {
+        Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
+        return;
+      }
       haptic.light();
       const wasLiked = Boolean(post.is_liked);
       setPostLiked(post.id, !wasLiked, wasLiked ? -1 : 1);
@@ -556,12 +653,16 @@ export default function ExploreScreen() {
         setPostLiked(post.id, wasLiked, wasLiked ? 1 : -1);
       }
     },
-    [user, setPostLiked],
+    [user, setPostLiked, socialInteractions.allowed, t],
   );
 
   const handleSave = useCallback(
     async (post: ExplorePost) => {
       if (!user) return;
+      if (!socialInteractions.allowed) {
+        Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
+        return;
+      }
       haptic.light();
       const previous = post.is_saved;
       setPostSaved(post.id, !previous);
@@ -576,7 +677,56 @@ export default function ExploreScreen() {
         setPostSaved(post.id, !!previous);
       }
     },
-    [user, setPostSaved],
+    [user, setPostSaved, socialInteractions.allowed, t],
+  );
+
+  const handleShare = useCallback(
+    async (post: ExplorePost, action: ExploreShareAction) => {
+      const input = {
+        postId: post.id,
+        caption: post.caption,
+        providerName: post.provider?.business_name || "Beautonomi",
+        providerSlug: post.provider?.slug,
+        mediaUrls: post.media_urls,
+        webBaseUrl: APP_URL,
+        mediaIndex: 0,
+      };
+      if (action === "link") {
+        await shareExplorePostLink(input);
+      } else if (action === "media") {
+        await shareExplorePostMedia(input);
+      } else if (action === "copy") {
+        await copyExplorePostLink(input);
+        Alert.alert(t("customer.explorePost.linkCopied"));
+      }
+    },
+    [t],
+  );
+
+  const openShareSheet = useCallback(
+    (post: ExplorePost) => {
+      void presentExplorePostShareActions(
+        {
+          postId: post.id,
+          caption: post.caption,
+          providerName: post.provider?.business_name || "Beautonomi",
+          providerSlug: post.provider?.slug,
+          mediaUrls: post.media_urls,
+          webBaseUrl: APP_URL,
+          mediaIndex: 0,
+        },
+        {
+          sheetTitle: t("customer.explorePost.shareSheetTitle"),
+          shareLink: t("customer.explorePost.shareLink"),
+          shareMedia: t("customer.explorePost.sharePhoto"),
+          shareMediaVideo: t("customer.explorePost.shareVideo"),
+          copyLink: t("customer.explorePost.copyLink"),
+          cancel: t("common.cancel"),
+        },
+        (action) => handleShare(post, action),
+      );
+    },
+    [handleShare, t],
   );
 
   const onPostPress = useCallback((post: ExplorePost) => {
@@ -673,9 +823,10 @@ export default function ExploreScreen() {
         cardWidth={cardWidth}
         onLike={handleLike}
         onSave={handleSave}
+        onShare={openShareSheet}
       />
     ),
-    [cardWidth, onPostPress, handleLike, handleSave],
+    [cardWidth, onPostPress, handleLike, handleSave, openShareSheet],
   );
 
   const keyExtractor = useCallback((item: ExplorePost) => item.id, []);
@@ -821,7 +972,7 @@ export default function ExploreScreen() {
                   </View>
                 ) : null
               }
-              ListEmptyComponent={<EmptyState category={activeCategory} />}
+              ListEmptyComponent={<EmptyState category={activeCategory} hideSocialFeed={hideSocialFeed} />}
             />
           </View>
         </>

@@ -130,7 +130,8 @@ export async function computePaycloudReadiness(
   const active = rows.filter((t) => t.is_active && t.status !== "suspended").length;
   const suspended = rows.filter((t) => t.status === "suspended" || !t.is_active).length;
   const inFlight = rows.filter((t) => t.in_flight_payment_id).length;
-  const withoutMerchant = rows.filter((t) => !t.paycloud_merchant_id).length;
+  const activeRows = rows.filter((t) => t.is_active && t.status !== "suspended");
+  const withoutMerchant = activeRows.filter((t) => !t.paycloud_merchant_id).length;
   const portableCount = rows.filter((t) => !t.location_id && t.is_active && t.status !== "suspended").length;
 
   if (rows.length === 0) {
@@ -145,15 +146,26 @@ export async function computePaycloudReadiness(
       code: "ALL_SUSPENDED",
       title: "All card machines are inactive or suspended",
       actionLabel: "Contact support",
+      href: "/provider/settings/sales/card-machines",
     });
   }
 
   if (withoutMerchant > 0) {
-    blockers.push({
-      code: "NO_MERCHANT",
+    const merchantIssue = {
+      code: "NO_MERCHANT" as const,
       title: "A card machine is missing merchant setup",
       actionLabel: "Contact support",
-    });
+      href: "/provider/settings/sales/card-machines",
+    };
+    if (active > withoutMerchant) {
+      warnings.push({
+        code: "NO_MERCHANT",
+        message:
+          "One card machine still needs merchant setup. You can take payments on your other machines.",
+      });
+    } else {
+      blockers.push(merchantIssue);
+    }
   }
 
   if (accept && active > 0 && portableCount === 0) {
@@ -179,6 +191,11 @@ export async function computePaycloudReadiness(
     account_environment = [...envSet][0] as "sandbox" | "live";
   } else if (envSet.size > 1) {
     account_environment = "mixed";
+    warnings.push({
+      code: "MIXED_ENVIRONMENT",
+      message:
+        "You have both test and live card machines. Test payments can look like real ones — contact Beautonomi after go-live to retire sandbox machines.",
+    });
   }
 
   const ready = blockers.length === 0;

@@ -160,11 +160,65 @@ export interface PayCloudPaymentResult {
 
 /** Capture succeeded on the machine but did not settle because the captured
  *  amount fell short of the outstanding balance. Never treat as plain success. */
+/** Capture succeeded on the machine but did not settle because the captured
+ *  amount fell short of the outstanding balance. Never treat as plain success. */
 export function isPaycloudCaptureUnderReview(
   result: PayCloudPaymentResult | null | undefined,
 ): boolean {
   if (!result || result.status !== "successful") return false;
   return result.amount_match_status === "under" || result.amount_match_status === "mismatch";
+}
+
+export type PayCloudPaymentCreateResult =
+  | { ok: true; payment: PayCloudPaymentResult; reused?: boolean }
+  | { ok: false; code?: string; message: string; existingPaymentId?: string };
+
+export function humanizePaycloudPaymentError(code: string | undefined, fallback?: string): {
+  title: string;
+  message: string;
+} {
+  switch (code) {
+    case "SUBSCRIPTION_REQUIRED":
+      return { title: "Plan upgrade needed", message: "Upgrade your plan to use Beautonomi card machines." };
+    case "PAYCLOUD_NOT_ACCEPTED":
+      return { title: "Card payments are off", message: "Enable in-person card payments in Card machines settings." };
+    case "TERMINAL_UNAVAILABLE":
+    case "TERMINAL_NOT_FOUND":
+      return {
+        title: "Card machine unavailable",
+        message:
+          fallback ||
+          "Could not reach the card machine. Check it is powered on, online, and connected to the internet.",
+      };
+    case "TERMINAL_NOT_CONFIGURED":
+      return { title: "Card machine unavailable", message: "This card machine isn't fully set up yet." };
+    case "DEVICE_TERMINAL_MISMATCH":
+      return {
+        title: "Wrong card machine",
+        message: "This device does not match the selected card machine. Choose the machine registered to this device.",
+      };
+    case "DEVICE_SERIAL_REQUIRED":
+      return {
+        title: "Device not linked",
+        message: "Could not identify this device. Link it in Card machines or send to the card machine instead.",
+      };
+    case "AMOUNT_MISMATCH":
+      return { title: "Amount mismatch", message: "Amount does not match the outstanding balance." };
+    case "TERMINAL_IN_FLIGHT":
+    case "ENTITY_IN_FLIGHT":
+      return {
+        title: "Payment already in progress",
+        message: fallback || "A payment is already in progress. You can resume it or cancel it first.",
+      };
+    case "ALREADY_PAID":
+      return { title: "Already paid", message: fallback || "This item is already paid." };
+    case "BOOKING_NOT_COLLECTIBLE":
+      return { title: "Cannot charge", message: fallback || "This booking cannot be charged." };
+    case "ZERO_AMOUNT":
+      return { title: "Nothing to charge", message: "There is no outstanding balance to collect." };
+    default:
+      return { title: "Payment failed", message: fallback || "Card payment could not be started." };
+  }
 }
 
 /* ─── Terminal Management ─── */
@@ -635,7 +689,7 @@ export function usePayCloudPayment() {
   }, []);
 
   const createPayment = useCallback(
-    async (request: PayCloudPaymentRequest): Promise<PayCloudPaymentResult | null> => {
+    async (request: PayCloudPaymentRequest): Promise<PayCloudPaymentCreateResult> => {
       setProcessing(true);
       try {
         const res = await api.post<Record<string, unknown>>(
@@ -644,49 +698,37 @@ export function usePayCloudPayment() {
         );
         if (res.error) {
           const code = res.error.code;
-          const msg =
-            code === "SUBSCRIPTION_REQUIRED"
-              ? "Upgrade your plan to use Beautonomi card machines."
-              : code === "PAYCLOUD_NOT_ACCEPTED"
-                ? "Enable in-person card payments in Card machines settings."
-                : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
-                  ? res.error.message ||
-                    "Could not reach the card machine. Check it is powered on, online, and in Cloud Mode."
-                  : code === "TERMINAL_NOT_CONFIGURED"
-                    ? "This card machine isn't fully set up yet."
-                    : code === "DEVICE_TERMINAL_MISMATCH"
-                      ? "This device does not match the selected card machine. Choose the machine registered to this terminal."
-                    : code === "DEVICE_SERIAL_REQUIRED"
-                      ? "Could not identify this device. Link it in Card machines or send to the card machine instead."
-                    : code === "AMOUNT_MISMATCH"
-                      ? "Amount does not match the outstanding balance."
-                      : res.error.message || "Card payment could not be started";
-          const title =
-            code === "SUBSCRIPTION_REQUIRED"
-              ? "Plan upgrade needed"
-              : code === "PAYCLOUD_NOT_ACCEPTED"
-                ? "Card payments are off"
-                : code === "TERMINAL_UNAVAILABLE" ||
-                    code === "TERMINAL_NOT_FOUND" ||
-                    code === "TERMINAL_NOT_CONFIGURED"
-                  ? "Card machine unavailable"
-                  : "Payment failed";
-          Alert.alert(title, msg);
-          return null;
+          const existingPaymentId =
+            typeof (res.data as { payment_id?: string } | null)?.payment_id === "string"
+              ? (res.data as { payment_id: string }).payment_id
+              : undefined;
+          const humanized = humanizePaycloudPaymentError(code, res.error.message);
+          if (code !== "TERMINAL_IN_FLIGHT" && code !== "ENTITY_IN_FLIGHT") {
+            Alert.alert(humanized.title, humanized.message);
+          }
+          return {
+            ok: false,
+            code,
+            message: humanized.message,
+            existingPaymentId,
+          };
         }
 
         const raw = res.data;
-        if (!raw || typeof raw !== "object") return null;
+        if (!raw || typeof raw !== "object") {
+          return { ok: false, message: "Card payment could not be started." };
+        }
         const data = toPaymentResult(raw as Record<string, unknown>);
+        const reused = (raw as { reused?: boolean }).reused === true;
         const paymentId = data.id || data.payment_id;
-        if (!paymentId) return data;
+        if (!paymentId) return { ok: true, payment: data, reused };
 
         if (data.channel === "same_terminal" && data.intent_payload) {
-          return data;
+          return { ok: true, payment: data, reused };
         }
 
         if (data.status === "successful" || data.status === "failed") {
-          return data;
+          return { ok: true, payment: data, reused };
         }
 
         const deadline = Date.now() + POLL_TIMEOUT_MS;
@@ -700,18 +742,19 @@ export function usePayCloudPayment() {
             polled.status === "closed" ||
             polled.status === "cancelled"
           ) {
-            return polled;
+            return { ok: true, payment: polled, reused };
           }
         }
 
-        Alert.alert(
-          "Payment timed out",
-          "The card machine did not respond in time. You can try again or cancel.",
-        );
-        return null;
+        return {
+          ok: false,
+          code: "POLL_TIMEOUT",
+          message: "The card machine did not respond in time. You can resume or cancel the payment.",
+          existingPaymentId: paymentId,
+        };
       } catch {
         Alert.alert("Payment failed", "Could not process the card payment");
-        return null;
+        return { ok: false, message: "Could not process the card payment" };
       } finally {
         setProcessing(false);
       }

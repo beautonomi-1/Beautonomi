@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
-import { pushWebCookiePolicy, pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
+import { pushWebCookiePolicy, pushWebPrivacyPolicy, pushWebTermsOfService, pushWebAgeSuitability } from "@/lib/legal-web";
 import { useTranslation } from "@beautonomi/i18n";
 
 interface PrivacySettings {
@@ -185,10 +185,16 @@ export default function PrivacyAndSharingScreen() {
               Terms of service
             </Text>
             <Text
-              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
               onPress={() => pushWebCookiePolicy(router)}
             >
               Cookie policy
+            </Text>
+            <Text
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
+              onPress={() => pushWebAgeSuitability(router)}
+            >
+              Age suitability
             </Text>
           </View>
         </View>

@@ -47,6 +47,7 @@ import {
 import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
+import { useSafetySettings } from "@/hooks/useSafetySettings";
 
 const GAP = 16;
 
@@ -435,6 +436,8 @@ export default function HomeScreen() {
     trackHomeView();
   }, []);
   const { user } = useAuth();
+  const { settings: safetySettings } = useSafetySettings();
+  const hideExploreFeed = Boolean(user && safetySettings.hide_social_feed);
   const { unreadCount } = useNotifications();
   const { selectedAddress, setSelectedAddress, isLoading: selectedAddressLoading } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
@@ -655,6 +658,7 @@ export default function HomeScreen() {
               <Ionicons name="home" size={20} color={Colors.primary} />
               <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "600" }]}>Home</Text>
             </TouchableOpacity>
+            {!hideExploreFeed ? (
             <TouchableOpacity
               style={[styles.navTab, { paddingHorizontal: navTabPadH }]}
               onPress={() => router.push("/(app)/(tabs)/explore")}
@@ -668,6 +672,7 @@ export default function HomeScreen() {
                 Explore
               </Text>
             </TouchableOpacity>
+            ) : null}
           </View>
 
           {/* Right: wishlist · notifications (search is in the bottom tab bar) */}

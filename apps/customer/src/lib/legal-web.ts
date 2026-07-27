@@ -18,6 +18,10 @@ export function webCookiePolicyUrl(): string {
   return `${webOrigin()}/cookie-policy`;
 }
 
+export function webAgeSuitabilityUrl(): string {
+  return `${webOrigin()}/age-suitability`;
+}
+
 /** Marketing-site guides & articles (parity with web Help → Learning Center). */
 export function webLearningCenterUrl(): string {
   return `${webOrigin()}/learn`;
@@ -43,6 +47,13 @@ function cookieParams(): LegalParams {
   return {
     url: encodeURIComponent(webCookiePolicyUrl()),
     title: encodeURIComponent("Cookie policy"),
+  };
+}
+
+function ageSuitabilityParams(): LegalParams {
+  return {
+    url: encodeURIComponent(webAgeSuitabilityUrl()),
+    title: encodeURIComponent("Age suitability"),
   };
 }
 
@@ -78,6 +89,16 @@ export function replaceWebTermsOfService(router: Router): void {
 export function pushWebCookiePolicy(router: Router): void {
   const { url, title } = cookieParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
+}
+
+export function pushWebAgeSuitability(router: Router): void {
+  const { url, title } = ageSuitabilityParams();
+  router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
+}
+
+export function replaceWebAgeSuitability(router: Router): void {
+  const { url, title } = ageSuitabilityParams();
+  router.replace({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
 /** In-app WebView: guides & help articles on the public site. */

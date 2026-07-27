@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import {
   enrichMessagesWithReplyTo,
@@ -169,6 +170,9 @@ export async function POST(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "direct_message", request);
+    }
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();

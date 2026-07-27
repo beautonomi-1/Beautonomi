@@ -30,6 +30,8 @@ import type {
 } from "./types";
 import { mergeGlobalAndTenantFeatureFlags } from "./merge-feature-flags";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
+import { resolveAgeAssurancePolicy } from "@/lib/age-assurance/age-policy";
+import type { SafeContentSafetyPolicy } from "@/lib/config/types";
 
 const DEFAULT_AMPLITUDE: SafeAmplitudeConfig = {
   api_key_public: null,
@@ -473,6 +475,12 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
   // We call the resolver (which re-fetches flags) to avoid duplicating the derivation logic.
   // The bundle result is advisory; per-request API responses are authoritative.
   const verificationPolicyBundle = await resolveVerificationPolicy(tenantId ?? null, environment);
+  const ageAssurancePolicy = await resolveAgeAssurancePolicy(tenantId ?? null);
+  const content_safety: SafeContentSafetyPolicy = {
+    social_min_age: ageAssurancePolicy.socialMinAge,
+    social_age_gate_mode: ageAssurancePolicy.socialAgeGateMode,
+    controls_enabled: true,
+  };
   const verification: SafeVerificationPolicy = {
     mode: verificationPolicyBundle.mode,
     didit_enabled:          verificationPolicyBundle.diditEnabled,
@@ -553,5 +561,6 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       agents,
     },
     verification,
+    content_safety,
   };
 }

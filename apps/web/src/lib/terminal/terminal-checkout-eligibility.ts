@@ -59,6 +59,30 @@ type SubscriptionTier = {
   isFree: boolean;
 };
 
+/**
+ * Providers without a provider_subscriptions row are on the free plan, so their plan
+ * entitlements come from the active is_free plan. Mirrors getProviderSubscriptionTier
+ * in @/lib/subscriptions/feature-access.
+ */
+async function getFreePlanTier(supabase: SupabaseClient): Promise<SubscriptionTier | null> {
+  const { data: freePlan } = await supabase
+    .from("subscription_plans")
+    .select("id, name, features, is_free")
+    .eq("is_free", true)
+    .eq("is_active", true)
+    .order("display_order")
+    .limit(1)
+    .maybeSingle();
+
+  if (!freePlan) return null;
+  return {
+    planId: freePlan.id,
+    planName: freePlan.name,
+    features: (freePlan.features as Record<string, unknown>) ?? {},
+    isFree: true,
+  };
+}
+
 async function getProviderSubscriptionContext(
   supabase: SupabaseClient,
   providerId: string,
@@ -77,13 +101,13 @@ async function getProviderSubscriptionContext(
     .maybeSingle();
 
   if (!subscription?.plan) {
-    return { tier: null, subscriptionId: null };
+    return { subscriptionId: null, tier: await getFreePlanTier(supabase) };
   }
 
   if (subscription.status === "past_due") {
     const updatedAt = (subscription as { updated_at?: string }).updated_at;
     if (updatedAt && updatedAt < graceCutoff) {
-      return { tier: null, subscriptionId: null };
+      return { subscriptionId: null, tier: await getFreePlanTier(supabase) };
     }
   }
 

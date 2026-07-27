@@ -16,3 +16,7 @@ export function webTermsOfServiceUrl(): string {
 export function webCookiePolicyUrl(): string {
   return `${webOrigin()}/cookie-policy`;
 }
+
+export function webAgeSuitabilityUrl(): string {
+  return `${webOrigin()}/age-suitability`;
+}

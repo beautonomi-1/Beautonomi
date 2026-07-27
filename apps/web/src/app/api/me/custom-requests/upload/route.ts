@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { uploadCustomRequestAttachments } from "@/lib/uploads/custom-request-attachments";
 
 /**
@@ -18,6 +19,7 @@ import { uploadCustomRequestAttachments } from "@/lib/uploads/custom-request-att
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
+    await requireSocialAccess(user.id, "ugc_create", request);
     const supabase = await getSupabaseServer(request);
     const formData = await request.formData();
     return uploadCustomRequestAttachments(user.id, supabase, formData);

@@ -7,8 +7,14 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
-import { queryPaycloudOrder } from "@/lib/payments/paycloud-client";
-import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
+import { buildPaycloudEntryUrl, queryPaycloudOrder } from "@/lib/payments/paycloud-client";
+import { getPaycloudApiBase, type PaycloudEnvironment } from "@/lib/payments/paycloud";
+import {
+  formatPaycloudCredentialTestMessage,
+  isPaycloudCredentialTestPassing,
+  isPaycloudGatewayReachable,
+  isSynthesizedPaycloudHttpError,
+} from "@/lib/payments/paycloud-credential-test";
 import { z } from "zod";
 
 const testSchema = z.object({
@@ -116,25 +122,23 @@ export async function POST(request: NextRequest) {
     if (merchantRow?.merchant_no) merchantNo = merchantRow.merchant_no;
 
     const probeOrderNo = `beautonomi-credential-test-${Date.now()}`;
+    const gatewayUrl = buildPaycloudEntryUrl(
+      app.credentials.api_base_url ?? getPaycloudApiBase(env),
+      "orderquery",
+    );
     const response = await queryPaycloudOrder(env, app.credentials, merchantNo, probeOrderNo);
 
-    const gatewayReachable =
-      Object.keys(response.raw).length > 0 ||
-      !!response.response_code ||
-      !!response.error_message;
-
     return successResponse({
-      ok: gatewayReachable,
+      ok: isPaycloudCredentialTestPassing(response),
       environment: env,
       credential_source: app.source,
       merchant_no_used: merchantNo,
       probe_order_no: probeOrderNo,
+      gateway_url: gatewayUrl,
+      gateway_reachable: isPaycloudGatewayReachable(response),
+      http_status: isSynthesizedPaycloudHttpError(response) ? response.response_code ?? null : null,
       response_code: response.response_code ?? null,
-      message: gatewayReachable
-        ? response.success
-          ? "Gateway responded successfully."
-          : response.error_message || "Gateway reachable (expected order-not-found for probe)."
-        : "Could not reach PayCloud gateway — check API base URL and network.",
+      message: formatPaycloudCredentialTestMessage(response, gatewayUrl),
     });
   } catch (error) {
     return handleApiError(error, "Failed to test PayCloud credentials");

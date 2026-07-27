@@ -11,10 +11,12 @@ import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import {
+  filterLedgerRowsForLocation,
   getProviderPrimaryReportLocationId,
   getProviderReportContext,
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
+import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
@@ -100,6 +102,12 @@ export async function GET(request: NextRequest) {
     // - refunds (negative; impacts provider net depending on policy, shown separately)
     const startIso = rangeBounds.startIso;
     const nowIso = now.toISOString();
+    const ledgerFetchStartIso =
+      rangeBounds.comparable
+        ? new Date(
+            Math.min(new Date(startIso).getTime(), rangeBounds.lastPeriodStart.getTime()),
+          ).toISOString()
+        : startIso;
 
     // Build finance transactions query (service role: full ledger for this provider).
     // IMPORTANT: aggregates below (earnings, fees, tips, refunds, growth, etc.) must scan
@@ -113,7 +121,7 @@ export async function GET(request: NextRequest) {
         "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency, refund_component",
       )
       .eq("provider_id", providerId)
-      .gte("created_at", startIso)
+      .gte("created_at", ledgerFetchStartIso)
       .lte("created_at", nowIso)
       .order("created_at", { ascending: false });
 
@@ -200,19 +208,10 @@ export async function GET(request: NextRequest) {
 
     const enrichedBeforeLocationFilter = rows;
 
-    // Filter by location if location_id is provided
+    // Filter by location if location_id is provided (inclusive at-home / walk-in semantics).
     if (locationId && rows.length > 0) {
-      rows = rows.filter((r: any) => {
-        // If transaction has booking_id, check if booking is in selected location
-        if (r.booking_id && r.location_id) {
-          return r.location_id === locationId;
-        }
-        if (r.product_order_id) {
-          return r.product_order_location_id === locationId;
-        }
-        // For transactions without booking_id/product_order_id (e.g., gift cards, memberships),
-        // exclude them when filtering by location because they are provider-wide.
-        return false;
+      rows = await filterLedgerRowsForLocation(db, providerId, rows, locationId, {
+        unattributedRows: "include",
       });
     }
     const sumNet = (types: string[], within?: { start: Date; end: Date }, excludeWalkIn: boolean = false) =>
@@ -440,7 +439,7 @@ export async function GET(request: NextRequest) {
           .from("bookings")
           .select("membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
           .eq("provider_id", providerId);
-        if (locationId) bq = bq.eq("location_id", locationId);
+        if (locationId) bq = bq.or(dashboardBookingLocationOrFilter(locationId));
         if (fromIsoIn && toIsoIn) {
           bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
         }
@@ -471,7 +470,13 @@ export async function GET(request: NextRequest) {
     // semantics are kept aligned with the shared mapper (PROVIDER_LEDGER_VISIBLE_TYPES +
     // isProviderEarningsRefundComponent + ledgerRowDisplaySign) so totals reconcile with
     // GET /api/provider/transactions.
+    // Keep the activity list inside the selected range even though the ledger fetch may
+    // start earlier to power like-for-like growth comparison.
     const visibleTransactionRows = rowsForTransactionList
+      .filter((r: any) => {
+        const d = new Date(r.created_at);
+        return d >= startDate && d <= now;
+      })
       .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
       // A refund posts one row per component (migration 654). Show only the provider's
       // own refund legs in the feed; the platform-fee/tax/commission legs and parallel

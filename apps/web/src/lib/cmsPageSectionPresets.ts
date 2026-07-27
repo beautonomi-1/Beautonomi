@@ -96,6 +96,18 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "sidebar_description", label: "Sidebar — description" },
     { value: "hero_image", label: "Hero image URL" },
   ],
+  "age-suitability": [
+    { value: "hero_title", label: "Page title (H1)" },
+    { value: "page_title", label: "Alternate page title" },
+    { value: "intro_heading", label: "Intro block — heading" },
+    { value: "intro", label: "Intro — HTML" },
+    { value: "hero_description", label: "Intro — HTML (alternate key)" },
+    { value: "hero_content", label: "Intro — HTML (alternate key)" },
+    { value: "sections", label: "Body sections (JSON array of {title, content})" },
+    { value: "sidebar_heading", label: "Sidebar — heading" },
+    { value: "sidebar_description", label: "Sidebar — description" },
+    { value: "hero_image", label: "Hero image URL" },
+  ],
   "beautonomi-friendly": [
     { value: "hero_title", label: "Hero — title (use line breaks for stacked lines)" },
     { value: "hero_subtitle", label: "Hero — subtitle" },
@@ -193,6 +205,7 @@ const SLUG_TO_GROUP: Record<string, CmsPageContentGroupId> = {
   "terms-and-condition": "legal",
   "terms-of-service": "legal",
   "cookie-policy": "legal",
+  "age-suitability": "legal",
   "become-a-partner": "marketing",
   "gift-card": "marketing",
   "why-beautonomi": "marketing",
@@ -215,6 +228,7 @@ const CMS_PAGE_SLUG_TITLES: Record<string, string> = {
   "terms-and-condition": "Terms & conditions",
   "terms-of-service": "Terms of service",
   "cookie-policy": "Cookie policy",
+  "age-suitability": "Age suitability",
   "become-a-partner": "Become a partner",
   "gift-card": "Gift cards",
   "why-beautonomi": "Why Beautonomi",
@@ -266,6 +280,7 @@ export function cmsPagePublicApiHint(pageSlug: string): string | null {
     pageSlug === "privacy-policy" ||
     pageSlug === "terms-and-condition" ||
     pageSlug === "cookie-policy" ||
+    pageSlug === "age-suitability" ||
     pageSlug === "why-beautonomi" ||
     pageSlug === "beautonomi-friendly"
   ) {

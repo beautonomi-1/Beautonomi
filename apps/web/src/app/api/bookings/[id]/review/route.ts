@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { awardPointsForReview, checkProviderMilestones } from "@/lib/services/provider-gamification";
 import {
   isReviewContentEditBlocked,
@@ -14,6 +15,7 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(["customer"], request);
+    await requireSocialAccess(user.id, "review", request);
     const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
@@ -234,6 +236,9 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "review", request);
+    }
     const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;

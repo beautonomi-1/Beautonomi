@@ -65,11 +65,24 @@ export function ProviderBookingCreatedDialog({ open, payload, onOpenChange }: Pr
         dismiss();
         return;
       }
-      const suffix = highlightConfirm ? "?highlightConfirm=1" : "";
+      const params = new URLSearchParams();
+      if (highlightConfirm) params.set("highlightConfirm", "1");
+      if (
+        payload.postCreateCollect === "paycloud" &&
+        (payload.cardChargeAmount ?? 0) > 0
+      ) {
+        params.set("collectPaycloud", "1");
+      } else if (
+        payload.postCreateCollect === "yoco" &&
+        (payload.cardChargeAmount ?? 0) > 0
+      ) {
+        params.set("collectYoco", "1");
+      }
+      const qs = params.toString();
       dismiss();
-      router.push(`/provider/bookings/${payload.bookingId}${suffix}`);
+      router.push(`/provider/bookings/${payload.bookingId}${qs ? `?${qs}` : ""}`);
     },
-    [dismiss, payload?.bookingId, router],
+    [dismiss, payload?.bookingId, payload?.cardChargeAmount, payload?.postCreateCollect, router],
   );
 
   const handleConfirm = useCallback(async () => {

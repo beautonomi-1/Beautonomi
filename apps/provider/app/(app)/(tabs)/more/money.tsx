@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FinanceHubShell } from "@/components/finance/FinanceHubShell";
-import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
+import { MoneyBranchFilter } from "@/components/finance/MoneyBranchFilter";
 import { useApi } from "@/hooks/useApi";
 import { FinanceOverviewContent } from "./finance";
 import { TransactionsContent } from "./transactions";
@@ -13,6 +13,8 @@ type TeamAccessPayload = {
 };
 
 export default function MoneyHubScreen() {
+  const [moneyLocationId, setMoneyLocationId] = useState<string | null>(null);
+
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access", {
     staleTimeMs: 60_000,
   });
@@ -23,13 +25,25 @@ export default function MoneyHubScreen() {
 
   const tabs = useMemo(() => {
     const all = [
-      { id: "overview", label: "Overview", render: () => <FinanceOverviewContent /> },
-      { id: "ledger", label: "Ledger", render: () => <TransactionsContent embedded /> },
-      { id: "sales", label: "Sales", render: () => <SalesHistoryContent embedded /> },
+      {
+        id: "overview",
+        label: "Overview",
+        render: () => <FinanceOverviewContent locationId={moneyLocationId} />,
+      },
+      {
+        id: "ledger",
+        label: "Ledger",
+        render: () => <TransactionsContent embedded locationId={moneyLocationId} />,
+      },
+      {
+        id: "sales",
+        label: "Sales",
+        render: () => <SalesHistoryContent embedded locationId={moneyLocationId} />,
+      },
       { id: "payouts", label: "Payouts", render: () => <PayoutsContent /> },
     ];
     return canSeePayoutsTab ? all : all.filter((tab) => tab.id !== "payouts");
-  }, [canSeePayoutsTab]);
+  }, [canSeePayoutsTab, moneyLocationId]);
 
   return (
     <FinanceHubShell
@@ -37,7 +51,9 @@ export default function MoneyHubScreen() {
       subtitle="Earnings, ledger, sales & payouts"
       tabs={tabs}
       defaultTab="overview"
-      headerExtra={<ActiveLocationChip />}
+      headerExtra={
+        <MoneyBranchFilter value={moneyLocationId} onChange={setMoneyLocationId} />
+      }
     />
   );
 }

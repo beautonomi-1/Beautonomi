@@ -103,8 +103,15 @@ describe("booking_status enum contract", () => {
             offenders.push({ file, literal: singleLiteral, context: table });
           }
         } else if (arrayBody) {
+          // Only flag quoted string literals. Spreads/identifiers such as
+          // `[...PENDING_REVIEW_DB_STATUSES]` are resolved at runtime from
+          // the shared constant (already enum-backed) and must not be treated
+          // as status literals.
           for (const item of arrayBody.split(",")) {
-            const lit = item.trim().replace(/^["']|["']$/g, "");
+            const trimmed = item.trim();
+            const quoted = trimmed.match(/^["']([^"']+)["']$/);
+            if (!quoted) continue;
+            const lit = quoted[1];
             if (lit && !allowed.has(lit)) {
               offenders.push({ file, literal: lit, context: table });
             }

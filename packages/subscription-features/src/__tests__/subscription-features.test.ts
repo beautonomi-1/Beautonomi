@@ -16,15 +16,16 @@ describe("subscription-features registry", () => {
 
   it("free plan enables every product feature category", () => {
     const features = getFreePlanFeatures();
-    // Intentionally off on free: booking caps, paid terminal hardware, and card machines.
-    const freePlanDisabled = new Set(["booking_limits", "terminal_bundle", "paycloud_integration"]);
+    // Intentionally off on free: booking caps only.
+    const freePlanDisabled = new Set(["booking_limits"]);
     for (const key of ALL_FEATURE_CATEGORY_KEYS) {
       if (freePlanDisabled.has(key)) continue;
       const cat = features[key];
       expect(cat?.enabled, key).toBe(true);
     }
     expect(features.booking_limits?.enabled).toBe(false);
-    expect(features.terminal_bundle?.enabled).toBe(false);
+    expect(features.terminal_bundle?.enabled).toBe(true);
+    expect(features.paycloud_integration?.enabled).toBe(true);
   });
 
   it("normalizeFeatures merges partial DB rows", () => {

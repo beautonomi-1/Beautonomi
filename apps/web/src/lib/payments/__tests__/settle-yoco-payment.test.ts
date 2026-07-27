@@ -174,6 +174,9 @@ describe("reverseYocoSettlement", () => {
         ],
         error: null,
       })),
+      update: vi.fn(() => ({
+        eq: vi.fn(async () => ({ error: null })),
+      })),
     };
 
     const bookingRefunds = {

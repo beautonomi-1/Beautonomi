@@ -23,6 +23,7 @@ import {
   fetchPublicHomeHottestFromMv,
 } from "@/lib/public-home/fetch-public-home-top-rated-mv";
 import { withStorageListThumbnail } from "@/lib/supabase/storage-list-thumbnail";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -1816,6 +1817,9 @@ export async function GET(request: Request) {
     // Post-process: ranking, distance radius filter, sponsored ads (gated by module config)
     const env = process.env.NODE_ENV === "production" ? "production" : "development";
     const supabaseAdmin = getSupabaseAdmin();
+    const serverSupabase = await getSupabaseServer(request);
+    const { data: { user: homeUser } } = await serverSupabase.auth.getUser();
+    const viewerSafety = await getViewerSafetyContext(homeUser?.id, request as import("next/server").NextRequest);
     const [adsRow, rankingRow, distanceRow] = await Promise.all([
       supabaseAdmin
         .from("ads_module_config")
@@ -1861,7 +1865,7 @@ export async function GET(request: Request) {
       ads_disclosure_label: adsDisclosureLabel,
     } as typeof data & { ads_disclosure_label: string };
 
-    if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
+    if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots && !viewerSafety.hideSponsored) {
       const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 100);
       try {
         const url = new URL(request.url);

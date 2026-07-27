@@ -2,7 +2,7 @@
  * In-app WebView for provider dashboard / payment / receipt URLs.
  * Route: (app)/(tabs)/more/in-app-browser?url=<encoded>&title=<encoded>
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { api } from "@/lib/api-client";
 import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
+import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
@@ -157,6 +158,15 @@ export default function InAppBrowserScreen() {
   }, [screenReturnTo, verificationRequired]);
 
   const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
+  const isAllowlisted = isValid && isAllowedInAppWebViewUrl(rawUrl);
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (!rawUrl || !isValid || isAllowlisted || redirectedRef.current) return;
+    redirectedRef.current = true;
+    Linking.openURL(rawUrl).catch(() => {});
+    router.back();
+  }, [rawUrl, isValid, isAllowlisted, router]);
 
   const openExternally = useCallback(() => {
     if (!rawUrl || !isValid) return;
@@ -193,6 +203,33 @@ export default function InAppBrowserScreen() {
           >
             <Text style={styles.backLinkText}>Go back</Text>
           </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAllowlisted) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            style={styles.backBtn}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {displayTitle}
+          </Text>
+        </View>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={[styles.errorText, { marginTop: 16 }]}>Opening in your browser…</Text>
         </View>
       </SafeAreaView>
     );
@@ -363,10 +400,14 @@ export default function InAppBrowserScreen() {
           source={{ uri: rawUrl }}
           {...inAppWebViewUserAgentProps()}
           style={styles.webview}
-          originWhitelist={["https://*", "http://*", "provider://*"]}
+          originWhitelist={getWebViewOriginWhitelist()}
           onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("provider://")) {
+              Linking.openURL(u).catch(() => {});
+              return false;
+            }
+            if (!isAllowedInAppWebViewUrl(u)) {
               Linking.openURL(u).catch(() => {});
               return false;
             }

@@ -147,6 +147,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw, section: ADMIN_SECTION_FINANCE },
       { title: "Reviews & Ratings", href: "/admin/reviews", icon: Star, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },
+      { title: "Content Reports", href: "/admin/content-reports", icon: Flag, section: ADMIN_SECTION_PROVIDERS_OPERATIONS, superadminOnly: true },
       { title: "Fraud Cases", href: "/admin/fraud-cases", icon: ShieldAlert, section: ADMIN_SECTION_USERS_TRUST },
       { title: "Identity Verifications (legacy)", href: "/admin/verifications", icon: ShieldCheck, section: ADMIN_SECTION_USERS_TRUST },
       { title: "Identity & Trust — Sessions", href: "/admin/identity-trust/sessions", icon: ShieldCheck, section: ADMIN_SECTION_USERS_TRUST, superadminOnly: true },

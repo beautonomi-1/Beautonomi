@@ -9,6 +9,11 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import {
+  computeInPersonRefundableCap,
+  fetchBookingPaymentsForRefundCap,
+  fetchCompletedInPersonRefundsTotal,
+} from "@/lib/bookings/booking-refund-limits";
+import {
   computeCancellationRefundAmount,
   processBookingRefund,
   roundCurrency2,
@@ -58,17 +63,21 @@ export interface SettleBookingCancellationParams {
   maxWalletCredit?: number;
   /** When true, void gift card redemption after a full refund. */
   voidGiftCardOnFullRefund?: boolean;
+  /** Provider at till: reverse on card machine vs wallet credit for non-terminal portion. */
+  refundRail?: "terminal" | "wallet";
 }
 
 export interface SettleBookingCancellationResult {
   cancellationFeeApplied: number;
   policyRefundAmount: number;
   walletRefundAmount: number;
+  terminalRefundDue: number;
   refundResult: RefundResult;
   cancellationFeeLedgerPosted: boolean;
   loyaltyRedeemedRestored: boolean;
   loyaltyEarnClawedBack: boolean;
   giftCardVoidAttempted: boolean;
+  refundRail?: "terminal" | "wallet";
 }
 
 export function computeEffectiveCollectedAmount(booking: BookingFinancialSnapshot): number {
@@ -330,6 +339,41 @@ export async function settleBookingCancellation(
     Math.min(policyRefundAmount, refundableWithoutGift),
   );
 
+  let terminalRefundDue = 0;
+  let walletCreditTarget = walletRefundTarget;
+  const wantsTerminalRail =
+    params.refundRail === "terminal" &&
+    (params.cancelledBy === "provider" || params.cancelledBy === "no_show");
+
+  if (wantsTerminalRail && walletRefundTarget > 0) {
+    const bookingPayments = await fetchBookingPaymentsForRefundCap(
+      admin,
+      bookingId,
+      booking.tenant_id,
+    );
+    const completedInPersonRefunds = await fetchCompletedInPersonRefundsTotal(admin, bookingId);
+    const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedInPersonRefunds);
+    const candidateTerminal = roundCurrency2(Math.min(walletRefundTarget, inPersonCap));
+
+    // Split wallet vs terminal when a PayCloud capture exists. The caller must
+    // initiate the terminal reverse (or credit the terminal portion to wallet on failure).
+    if (candidateTerminal > 0.01) {
+      const { data: pcSale } = await admin
+        .from("provider_paycloud_payments")
+        .select("id")
+        .eq("provider_id", booking.provider_id)
+        .eq("booking_id", bookingId)
+        .eq("status", "successful")
+        .in("trans_type", [1, 11])
+        .limit(1)
+        .maybeSingle();
+      if (pcSale?.id) {
+        terminalRefundDue = candidateTerminal;
+        walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
+      }
+    }
+  }
+
   // Fee retained must reconcile with collected funds (deposit-only bookings).
   // Use the pre-gift-void collected amount so the retained fee still covers the
   // full non-refunded portion of what was actually taken.
@@ -364,7 +408,7 @@ export async function settleBookingCancellation(
       bookingTotal,
       params.currency,
       noShowRefundPolicy,
-      { isLateCancellation: false, maxWalletCredit: walletRefundTarget },
+      { isLateCancellation: false, maxWalletCredit: walletCreditTarget },
     );
   } else if (params.policy && walletRefundTarget > 0) {
     refundResult = await processBookingRefund(
@@ -377,7 +421,7 @@ export async function settleBookingCancellation(
           params.cancelledBy === "provider" || params.cancelledBy === "admin"
             ? false
             : isLate,
-        maxWalletCredit: walletRefundTarget,
+        maxWalletCredit: walletCreditTarget,
       },
     );
   } else if (
@@ -402,7 +446,7 @@ export async function settleBookingCancellation(
       bookingTotal,
       params.currency,
       fullRefundPolicy,
-      { isLateCancellation: false, maxWalletCredit: walletRefundTarget },
+      { isLateCancellation: false, maxWalletCredit: walletCreditTarget },
     );
   }
 
@@ -446,12 +490,14 @@ export async function settleBookingCancellation(
   return {
     cancellationFeeApplied,
     policyRefundAmount,
-    walletRefundAmount: walletRefundTarget,
+    walletRefundAmount: walletCreditTarget,
+    terminalRefundDue,
     refundResult,
     cancellationFeeLedgerPosted,
     loyaltyRedeemedRestored,
     loyaltyEarnClawedBack,
     giftCardVoidAttempted,
+    refundRail: params.refundRail,
   };
 }
 

@@ -15,6 +15,7 @@ import {
   PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
+import { enrichProviderLedgerRowsForUi } from "@/lib/provider/enrich-provider-ledger-rows";
 
 const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabaseAdmin
         .from("finance_transactions")
         .select(
-          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency",
+          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency, source_payment_id",
         )
         .eq("provider_id", providerId)
         .gte("created_at", providerTransactionsPeriodStart(period, reportContext.timezone).toISOString())
@@ -86,10 +87,14 @@ export async function POST(request: NextRequest) {
       if (!data || data.length < pageSize) break;
     }
 
-    const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txnsRaw ?? [], locationId);
+    const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txnsRaw ?? [], locationId, {
+      unattributedRows: "include",
+    });
+
+    const enrichment = await enrichProviderLedgerRowsForUi(supabaseAdmin, providerId, txns);
 
     const transactions = txns
-      .map((t: any) => mapFinanceLedgerRowToProviderUi(t))
+      .map((t: any) => mapFinanceLedgerRowToProviderUi(t, enrichment.get(String(t.id))))
       .filter((x): x is ProviderLedgerUiRow => x != null);
 
     return successResponse({
