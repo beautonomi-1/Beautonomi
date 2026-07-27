@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Coins, Medal, RotateCcw } from "lucide-react";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";

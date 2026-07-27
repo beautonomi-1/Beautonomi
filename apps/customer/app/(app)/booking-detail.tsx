@@ -20,11 +20,13 @@ import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
 import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
 import { formatBookingLiveStageLabel } from "@/lib/booking-live-stage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
+import { Skeleton } from "@/components/Skeleton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { downloadPdf } from "@/lib/pdf-file";
+import { shareCustomerBookingReceipt } from "@/lib/share-receipt";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
@@ -1234,8 +1236,13 @@ export default function BookingDetailScreen() {
     return (
       <>
         <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
-        <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+        <View style={{ flex: 1, backgroundColor: Colors.white, padding: 16 }}>
+          <Skeleton width="45%" height={20} />
+          <Skeleton width="70%" height={14} style={{ marginTop: 10 }} />
+          <Skeleton width="100%" height={120} borderRadius={12} style={{ marginTop: 20 }} />
+          <Skeleton width="100%" height={88} borderRadius={12} style={{ marginTop: 12 }} />
+          <Skeleton width="100%" height={88} borderRadius={12} style={{ marginTop: 12 }} />
+          <Skeleton width="100%" height={48} borderRadius={12} style={{ marginTop: 20 }} />
         </View>
       </>
     );
@@ -2634,71 +2641,12 @@ export default function BookingDetailScreen() {
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
                 onPress={() => {
                   haptic.light();
-                  const cur = booking.currency || "ZAR";
-                  const paymentExtras: string[] = [];
-                  if (booking.is_group_booking && booking.group_booking_ref) {
-                    paymentExtras.push(`Group reference: ${booking.group_booking_ref}`);
-                  }
-                  if (Number(booking.tax_amount) > 0) {
-                    paymentExtras.push(`Tax: ${cur} ${Number(booking.tax_amount).toFixed(2)}`);
-                  }
-                  if (platformFeeAmount > 0) {
-                    const pct = platformFeePercentage > 0
-                      ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)`
-                      : "";
-                    paymentExtras.push(`Platform fee${pct}: ${cur} ${platformFeeAmount.toFixed(2)}`);
-                  }
-                  if (Number((booking as any).tip_amount) > 0) {
-                    paymentExtras.push(`Tip: ${cur} ${Number((booking as any).tip_amount).toFixed(2)}`);
-                  }
-                  if (Number((booking as any).loyalty_discount_amount) > 0) {
-                    paymentExtras.push(`Loyalty: -${cur} ${Number((booking as any).loyalty_discount_amount).toFixed(2)}`);
-                  }
-                  // §Finance-truth 2026-05: wallet/gift are payment lines, not
-                  // discounts — they go into a "Paid via" block below total.
-                  const paidViaLines: string[] = [];
-                  if (Number((booking as any).gift_card_amount) > 0) {
-                    paidViaLines.push(`Gift card: ${cur} ${Number((booking as any).gift_card_amount).toFixed(2)}`);
-                  }
-                  if (Number((booking as any).wallet_amount) > 0) {
-                    paidViaLines.push(`Wallet: ${cur} ${Number((booking as any).wallet_amount).toFixed(2)}`);
-                  }
-                  const cardPaidEstimate = Math.max(
-                    0,
-                    Number((booking as any).total_paid ?? 0) -
-                      Number((booking as any).wallet_amount ?? 0) -
-                      Number((booking as any).gift_card_amount ?? 0),
+                  void shareCustomerBookingReceipt(
+                    String(booking.id),
+                    booking.booking_number ?? null,
+                  ).catch((e) =>
+                    Alert.alert("Share", e instanceof Error ? e.message : "Could not share booking."),
                   );
-                  if (cardPaidEstimate > 0.005) {
-                    paidViaLines.push(`Card / other: ${cur} ${cardPaidEstimate.toFixed(2)}`);
-                  }
-                  if (typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0) {
-                    paymentExtras.push(`Outstanding: ${cur} ${Number(booking.outstanding_balance).toFixed(2)}`);
-                  }
-                  const lines = [
-                    `Beautonomi Booking`,
-                    `Booking #${booking.booking_number || booking.id?.slice(0, 8) || ""}`,
-                    ``,
-                    `Provider: ${provider?.business_name || "N/A"}`,
-                    `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
-                    `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
-                    `Status: ${booking.status}`,
-                    ``,
-                    ...(services || []).map((svc: any) => {
-                      const title = svc.offering_name || svc.service_name || "Service";
-                      const guest = svc.guest_name ? ` (${String(svc.guest_name)})` : "";
-                      return `• ${title}${guest} – ${cur} ${Number(svc.price || 0).toFixed(2)}`;
-                    }),
-                    ...(paymentExtras.length > 0 ? ["", ...paymentExtras] : []),
-                    ``,
-                    `Total: ${cur} ${Number(booking.total_amount || 0).toFixed(2)}`,
-                    ...(paidViaLines.length > 0
-                      ? ["", "Paid via:", ...paidViaLines.map((l) => `• ${l}`)]
-                      : []),
-                    ``,
-                    `View: ${APP_URL}/account-settings/bookings/${booking.id}`,
-                  ];
-                  Share.share({ message: lines.join("\n"), title: "Booking" });
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Share"
@@ -3317,35 +3265,12 @@ export default function BookingDetailScreen() {
           <TouchableOpacity
             onPress={() => {
               haptic.light();
-              const lines = [
-                `Beautonomi Booking Confirmation`,
-                `Booking #${booking.booking_number || booking.id.slice(0, 8)}`,
-                ``,
-                `Provider: ${provider?.business_name || "N/A"}`,
-                `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
-                `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
-                `Status: ${booking.status}`,
-                isAtHome ? "Visit: House call" : "Visit: In-salon",
-                ``,
-                ...services.map(
-                  (svc: any) =>
-                    `• ${svc.offering_name || svc.service_name || svc.title || svc.name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`
-                ),
-                ...(platformFeeAmount > 0
-                  ? [
-                      ``,
-                      `Platform fee${platformFeePercentage > 0 ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)` : ""}: ${booking.currency} ${platformFeeAmount.toFixed(2)}`,
-                    ]
-                  : []),
-                ``,
-                `Total: ${booking.currency} ${Number(booking.total_amount || 0).toFixed(2)}`,
-                ``,
-                `View online: ${APP_URL}/account-settings/bookings/${booking.id}`,
-              ];
-              Share.share({
-                message: lines.join("\n"),
-                title: "Booking Confirmation",
-              });
+              void shareCustomerBookingReceipt(
+                String(booking.id),
+                booking.booking_number ?? null,
+              ).catch((e) =>
+                Alert.alert("Share", e instanceof Error ? e.message : "Could not share booking."),
+              );
             }}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
             accessibilityRole="button"

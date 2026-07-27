@@ -11,6 +11,7 @@ import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import {
   formatPaycloudCollectLabel,
@@ -508,6 +509,12 @@ export default function ProviderProductOrdersPage() {
                         ))}
                       </select>
                       <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
+                        <ShareReceiptButton
+                          kind="provider-order"
+                          subjectId={o.id}
+                          label="Share"
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1"
+                        />
                         <a
                           href={`/api/provider/product-orders/${o.id}/receipt/pdf`}
                           target="_blank"

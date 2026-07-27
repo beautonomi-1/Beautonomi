@@ -65,6 +65,97 @@ export function computeProviderCreateTaxableAmount({
   );
 }
 
+export interface ResolvedProviderBookingDeposit {
+  /** May differ from the requested option when the deposit could not be resolved. */
+  paymentOption: "full" | "deposit";
+  depositRequired: boolean;
+  depositPercentage: number | null;
+  depositAmount: number | null;
+  /** Provider-facing notes about anything that was corrected. */
+  warnings: string[];
+}
+
+/**
+ * Resolve the deposit a provider-created booking should record.
+ *
+ * The client computes its deposit against its own total, which the server
+ * recomputes from catalog prices — so the percentage is authoritative and the
+ * amount is always re-derived from the server total. A bare amount (custom
+ * deposit) is honoured but capped at what is owed.
+ *
+ * This never fails the booking. A deposit that cannot be resolved at all —
+ * usually a provider whose settings require a deposit but leave the percentage
+ * at zero — falls back to a full payment with a warning, because refusing to
+ * take the money at the counter is worse than taking all of it.
+ */
+export function resolveProviderBookingDeposit({
+  paymentOption,
+  depositRequired,
+  depositPercentage,
+  depositAmount,
+  totalAmount,
+}: {
+  paymentOption: unknown;
+  depositRequired: unknown;
+  depositPercentage: unknown;
+  depositAmount: unknown;
+  totalAmount: number;
+}): ResolvedProviderBookingDeposit {
+  const isDepositOption = paymentOption === "deposit";
+  const total = Math.max(0, Number(totalAmount) || 0);
+  const warnings: string[] = [];
+
+  const rawPercentage = Number(depositPercentage);
+  const rawAmount = Number(depositAmount);
+  const hasValidPercentage =
+    Number.isFinite(rawPercentage) && rawPercentage > 0 && rawPercentage <= 100;
+  const hasValidAmount = Number.isFinite(rawAmount) && rawAmount > 0;
+
+  if (!isDepositOption) {
+    return {
+      paymentOption: "full",
+      depositRequired: Boolean(depositRequired),
+      depositPercentage: hasValidPercentage ? Math.round(rawPercentage * 100) / 100 : null,
+      depositAmount: hasValidAmount ? Math.min(total, Math.round(rawAmount * 100) / 100) : null,
+      warnings,
+    };
+  }
+
+  if (!hasValidPercentage && !hasValidAmount) {
+    warnings.push(
+      "No valid deposit was set for this booking, so it was recorded as a full payment. Check the deposit percentage in your payment settings.",
+    );
+    return {
+      paymentOption: "full",
+      depositRequired: false,
+      depositPercentage: null,
+      depositAmount: null,
+      warnings,
+    };
+  }
+
+  const resolvedPercentage = hasValidPercentage ? Math.round(rawPercentage * 100) / 100 : null;
+  const requestedAmount =
+    resolvedPercentage != null
+      ? Math.round(total * resolvedPercentage) / 100
+      : Math.round(rawAmount * 100) / 100;
+  const resolvedAmount = Math.min(total, requestedAmount);
+
+  if (resolvedPercentage == null && requestedAmount > total + 0.01) {
+    warnings.push(
+      "The deposit was larger than the booking total, so the full total was recorded instead.",
+    );
+  }
+
+  return {
+    paymentOption: "deposit",
+    depositRequired: true,
+    depositPercentage: resolvedPercentage,
+    depositAmount: resolvedAmount,
+    warnings,
+  };
+}
+
 export function computeWalletGiftCoverageOutstanding({
   totalAmount,
   totalPaid,

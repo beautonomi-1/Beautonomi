@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Megaphone, History, Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";

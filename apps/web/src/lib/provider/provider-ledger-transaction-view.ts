@@ -9,7 +9,7 @@
  */
 
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
-import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth, startOfYear } from "date-fns";
 import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
 
 /** Default look-back window (days) for the provider transactions feed when period is unset/unknown. */
@@ -32,9 +32,9 @@ export function providerTransactionsPeriodStart(period: string, timezone: string
     case "3months":
       return fromBusinessTime(subMonths(businessNow, 3), timezone);
     case "year":
-      return fromBusinessTime(subMonths(businessNow, 12), timezone);
+      return fromBusinessTime(startOfYear(businessNow), timezone);
     case "all":
-      return new Date(2000, 0, 1);
+      return new Date("1970-01-01T00:00:00.000Z");
     default:
       return fromBusinessTime(subDays(businessNow, PROVIDER_TRANSACTIONS_DEFAULT_DAYS), timezone);
   }

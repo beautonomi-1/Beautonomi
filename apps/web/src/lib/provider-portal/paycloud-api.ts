@@ -109,6 +109,10 @@ export interface PaycloudPayment {
   cashback_amount?: number;
   pay_scenario?: string;
   error_message?: string;
+  /** Captured-vs-expected comparison. "under"/"mismatch" captures are NOT
+   *  auto-settled and must be resolved via reconciliation/superadmin. */
+  amount_match_status?: "exact" | "over" | "under" | "mismatch" | "pending" | null;
+  expected_amount?: number;
 }
 
 export class PaycloudApi {

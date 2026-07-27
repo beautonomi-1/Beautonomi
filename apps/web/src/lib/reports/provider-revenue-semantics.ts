@@ -103,6 +103,22 @@ export function recognizedRevenueInRange(
   return sum;
 }
 
+/** Filter ledger rows by inclusive `created_at` bounds (rows without a valid timestamp are excluded when bounded). */
+export function filterRowsByCreatedAtRange(
+  rows: ReadonlyArray<RecognizedRevenueInRangeRow>,
+  options?: RecognizedRevenueInRangeOptions,
+): RecognizedRevenueInRangeRow[] {
+  const { start, end } = options ?? {};
+  if (start == null && end == null) return [...rows];
+  return rows.filter((r) => {
+    const createdAt = r.created_at ? new Date(r.created_at) : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
+    if (start != null && createdAt < start) return false;
+    if (end != null && createdAt > end) return false;
+    return true;
+  });
+}
+
 /** Provider service earnings only (`provider_earnings` net, incl. legacy reversals). */
 export function providerServiceEarnings(rows: ReadonlyArray<ProviderRevenueLedgerRow>): number {
   let sum = 0;

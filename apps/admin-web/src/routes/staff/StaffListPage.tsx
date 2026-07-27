@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";

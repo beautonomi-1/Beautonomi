@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";

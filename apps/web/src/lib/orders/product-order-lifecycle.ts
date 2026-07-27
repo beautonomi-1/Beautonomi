@@ -1,9 +1,174 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { bookShippingForOrder } from "./shipping";
 
 // F28: re-export so callers can `import { bookShippingForOrder } from "@/lib/orders/product-order-lifecycle"`.
 export { bookShippingForOrder };
+
+export type ProductOrderSideEffectRow = {
+  id: string;
+  provider_id: string;
+  payment_status: string;
+  total_amount?: number | string | null;
+  customer_id?: string | null;
+  currency?: string | null;
+  tenant_id?: string | null;
+  order_number?: string | null;
+};
+
+export type ApplyProductOrderCancelRefundOptions = {
+  newStatus: "cancelled" | "refunded";
+  refundAmount?: number;
+  cancellationReason?: string | null;
+  refundReason?: string | null;
+};
+
+/**
+ * Reverse platform-held ledger rows and credit customer wallet when a paid
+ * product order is cancelled or refunded. Shared by provider and admin routes.
+ */
+export async function applyProductOrderCancelRefundSideEffects(
+  supabase: SupabaseClient,
+  admin: SupabaseClient,
+  order: ProductOrderSideEffectRow,
+  options: ApplyProductOrderCancelRefundOptions,
+): Promise<void> {
+  const { newStatus, refundAmount, cancellationReason, refundReason } = options;
+  const shouldReversePlatformLedger =
+    newStatus === "refunded" ||
+    (newStatus === "cancelled" && order.payment_status === "paid");
+  const ledgerRefundAmount =
+    newStatus === "refunded"
+      ? (refundAmount ?? Number(order.total_amount ?? 0))
+      : Number(order.total_amount ?? 0);
+
+  if (!shouldReversePlatformLedger) return;
+
+  const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
+    .select("id, tenant_id")
+    .eq("product_order_id", order.id)
+    .in("transaction_type", ["payment", "provider_earnings", "platform_fee"])
+    .limit(1);
+  const isPlatformHeld = Array.isArray(ledgerRows) && ledgerRows.length > 0;
+  if (isPlatformHeld) {
+    const ledgerTenantId =
+      (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
+    const { data: existingRefund } = await (admin.from("finance_transactions") as any)
+      .select("id")
+      .eq("product_order_id", order.id)
+      .eq("transaction_type", "refund")
+      .limit(1);
+    const alreadyReversed = Array.isArray(existingRefund) && existingRefund.length > 0;
+    if (!alreadyReversed) {
+      const { data: captureRows } = await (admin.from("finance_transactions") as any)
+        .select("transaction_type, amount, net")
+        .eq("product_order_id", order.id)
+        .in("transaction_type", ["provider_earnings", "platform_fee"]);
+      const earningsRow = (captureRows ?? []).find(
+        (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
+      ) as { amount?: number; net?: number } | undefined;
+      const feeRow = (captureRows ?? []).find(
+        (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
+      ) as { amount?: number; net?: number } | undefined;
+      const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
+      const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
+      const orderTotal = Number(order.total_amount ?? 0);
+      const refundRatio =
+        orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
+      const refundProviderEarnings =
+        Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
+      const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
+      const refundDescription = `Refund for product order ${order.order_number || order.id.slice(0, 8)}${
+        refundReason
+          ? ` (${refundReason})`
+          : cancellationReason
+            ? ` (cancelled: ${cancellationReason})`
+            : ""
+      }`;
+      const refundRows: Record<string, unknown>[] = [];
+      if (refundProviderEarnings > 0) {
+        refundRows.push({
+          booking_id: null,
+          product_order_id: order.id,
+          provider_id: order.provider_id,
+          tenant_id: ledgerTenantId,
+          transaction_type: "refund",
+          refund_component: "provider_earnings",
+          amount: refundProviderEarnings,
+          fees: 0,
+          commission: 0,
+          net: -refundProviderEarnings,
+          currency: order.currency || LAST_RESORT_CURRENCY,
+          description: refundDescription,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (refundPlatformFee > 0) {
+        refundRows.push({
+          booking_id: null,
+          product_order_id: order.id,
+          provider_id: order.provider_id,
+          tenant_id: ledgerTenantId,
+          transaction_type: "refund",
+          refund_component: "platform_fee",
+          amount: refundPlatformFee,
+          fees: 0,
+          commission: 0,
+          net: -refundPlatformFee,
+          currency: order.currency || LAST_RESORT_CURRENCY,
+          description: refundDescription,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (refundRows.length === 0 && ledgerRefundAmount > 0) {
+        refundRows.push({
+          booking_id: null,
+          product_order_id: order.id,
+          provider_id: order.provider_id,
+          tenant_id: ledgerTenantId,
+          transaction_type: "refund",
+          refund_component: "provider_earnings",
+          amount: ledgerRefundAmount,
+          fees: 0,
+          commission: 0,
+          net: -ledgerRefundAmount,
+          currency: order.currency || LAST_RESORT_CURRENCY,
+          description: refundDescription,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (refundRows.length > 0) {
+        await (admin.from("finance_transactions") as any).insert(refundRows);
+      }
+    }
+  }
+
+  if (
+    newStatus === "cancelled" &&
+    order.payment_status === "paid" &&
+    order.customer_id &&
+    ledgerRefundAmount > 0
+  ) {
+    await (admin.rpc as any)("wallet_credit_admin", {
+      p_user_id: order.customer_id,
+      p_amount: ledgerRefundAmount,
+      p_currency: order.currency || LAST_RESORT_CURRENCY,
+      p_description: `Refund for cancelled order ${order.order_number || order.id.slice(0, 8)}`,
+      p_reference_id: order.id,
+      p_reference_type: "product_order_refund",
+      p_tenant_id: order.tenant_id ?? null,
+      p_idempotency_key: `product_order_cancel_refund:${order.id}`,
+    });
+    await (supabase.from("product_orders") as any)
+      .update({
+        payment_status: "refunded",
+        refunded_amount: ledgerRefundAmount,
+        refunded_at: new Date().toISOString(),
+      })
+      .eq("id", order.id);
+  }
+}
 
 /**
  * Restore inventory for all line items on a product order (provider cancel / payment abandon).

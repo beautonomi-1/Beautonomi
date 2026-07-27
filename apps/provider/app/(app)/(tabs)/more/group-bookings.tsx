@@ -1919,6 +1919,12 @@ export default function GroupBookingsScreen() {
       customerId?: string;
     };
     isPrimary: boolean;
+    /**
+     * Forwarded to the booking API so it can act on the tender at create time.
+     * Only `payment_link` is passed today: cash / card / terminal are settled
+     * group-wide after every participant booking exists.
+     */
+    paymentMethod?: "payment_link";
   }) {
     const scheduledAt = buildZonedIsoForWallClock(
       args.scheduledDate,
@@ -1991,6 +1997,7 @@ export default function GroupBookingsScreen() {
         (args.products ?? []).reduce((sum, p) => sum + p.unitPrice * p.quantity, 0),
       booking_source: "provider",
       status: "confirmed",
+      ...(args.paymentMethod ? { payment_method: args.paymentMethod } : {}),
       special_requests: args.groupRef
         ? [`Group booking ${args.groupRef}`, args.participant.notes?.trim()]
             .filter(Boolean)
@@ -2338,6 +2345,7 @@ export default function GroupBookingsScreen() {
         unitPrice: line.price,
         participant: { ...participant, customerId: participant.customerId },
         isPrimary: idx === 0,
+        paymentMethod: createPaymentMethod === "payment_link" ? "payment_link" : undefined,
       });
       if (res.error) {
         participantFailures.push({
@@ -2475,7 +2483,9 @@ export default function GroupBookingsScreen() {
         createPaymentMethod === "pay_later"
           ? "Payment is due from participants."
           : createPaymentMethod === "payment_link"
-            ? "Send payment links to each participant from their booking."
+            ? createSendNotification
+              ? "A payment link was sent to each participant."
+              : "No payment links were sent because participant notifications are off. Send them from each booking."
             : "Session has been marked paid.";
       Alert.alert(
         "Group session created",
@@ -5606,6 +5616,11 @@ export default function GroupBookingsScreen() {
                             ? ` + ${line.addOns.length} add-on${line.addOns.length === 1 ? "" : "s"}`
                             : ""}
                         </Text>
+                        {p.notes?.trim() ? (
+                          <Text style={twStyle("mt-0.5 text-xs text-gray-600")} numberOfLines={2}>
+                            Note: {p.notes.trim()}
+                          </Text>
+                        ) : null}
                       </View>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {formatCurrency(line.price)}
@@ -5712,7 +5727,8 @@ export default function GroupBookingsScreen() {
             </View>
             {createPaymentMethod === "payment_link" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-                You will need to send payment links to each participant manually from their booking.
+                Each participant gets their own payment link as soon as the group is created. Keep
+                participant notifications on so the links can be delivered.
               </Text>
             ) : createPaymentMethod === "paystack_terminal" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>

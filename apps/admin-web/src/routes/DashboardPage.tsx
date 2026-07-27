@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { ArrowRight, Cpu, Eye, Shield, Wallet, FileText, Info, Megaphone, Activity } from "lucide-react";

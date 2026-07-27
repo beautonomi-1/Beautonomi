@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -19,6 +19,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { ProviderDetail, str, OWNERSHIP_STATUS_LABELS, TERMINAL_VENDOR_LABELS } from "./types";
+import { PaycloudPaymentDetailModal } from "@/routes/integrations/PaycloudPaymentDetailModal";
 
 type Props = {
   id: string;
@@ -155,6 +156,7 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
   const { bootstrap } = useAdminSession();
   const isSuperadmin = bootstrap?.isSuperadmin === true;
 
+  const [paycloudDetailPaymentId, setPaycloudDetailPaymentId] = useState<string | null>(null);
   const [showYocoSupport, setShowYocoSupport] = useState(false);
   const [yocoSupportForm, setYocoSupportForm] = useState({
     environment: (row.yoco_summary?.integration?.environment ?? "live") as "live" | "sandbox",
@@ -1409,26 +1411,33 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
                             <div className="font-mono text-xs text-gray-500">{payment.entity_id}</div>
                           </AdminTd>
                           <AdminTd>
-                            {canForceSettle ? (
+                            <div className="flex flex-col items-start gap-1.5">
                               <button
                                 type="button"
-                                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                                disabled={forceSettlePaycloud.isPending}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Force-settle ${paycloudMoney(payment.amount)} for ${payment.entity_type} ${payment.entity_id}?`,
-                                    )
-                                  ) {
-                                    forceSettlePaycloud.mutate(payment.id);
-                                  }
-                                }}
+                                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                                onClick={() => setPaycloudDetailPaymentId(payment.id)}
                               >
-                                Force settle
+                                View detail
                               </button>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )}
+                              {canForceSettle ? (
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                                  disabled={forceSettlePaycloud.isPending}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Force-settle ${paycloudMoney(payment.amount)} for ${payment.entity_type} ${payment.entity_id}?`,
+                                      )
+                                    ) {
+                                      forceSettlePaycloud.mutate(payment.id);
+                                    }
+                                  }}
+                                >
+                                  Force settle
+                                </button>
+                              ) : null}
+                            </div>
                           </AdminTd>
                         </tr>
                       );
@@ -1552,6 +1561,13 @@ export function ProviderCommercialTab({ id, providerCanonicalId, row, hasCommerc
           <p className="mt-4 text-sm text-gray-500">No Paystack Virtual Terminals registered yet.</p>
         ) : null}
       </AdminPanel>
+
+      {paycloudDetailPaymentId ? (
+        <PaycloudPaymentDetailModal
+          paymentId={paycloudDetailPaymentId}
+          onClose={() => setPaycloudDetailPaymentId(null)}
+        />
+      ) : null}
     </div>
   );
 }

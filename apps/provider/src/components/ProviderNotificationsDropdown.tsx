@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { twStyle } from "@/lib/twStyle";
 import {
@@ -103,6 +104,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
     replaceUnreadCount(0);
     resetNotificationUnreadBias();
     if (data?.notifications) {
+      invalidateApiCacheForPath("/api/provider/notifications");
       mutate({
         notifications: data.notifications.map((n) => ({ ...n, read: true, is_read: true })),
         total_unread: 0,
@@ -144,6 +146,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
       const wasUnread = !isNotificationRead(n);
       if (wasUnread && data) {
         adjustUnreadCount(-1);
+        invalidateApiCacheForPath("/api/provider/notifications");
         mutate({
           ...data,
           notifications:

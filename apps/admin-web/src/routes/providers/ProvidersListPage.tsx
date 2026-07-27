@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";

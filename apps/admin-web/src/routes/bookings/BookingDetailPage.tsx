@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";

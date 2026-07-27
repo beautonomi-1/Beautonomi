@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import {
   Calendar,
   MapPin,
@@ -1011,6 +1012,7 @@ export default function BookingDetailPage() {
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-wrap">
         <SafetyPanicButton bookingId={bookingId} />
+        <ShareReceiptButton kind="customer-booking" subjectId={bookingId} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:flex-none" />
         {canReschedule && (
           <Button
             variant="outline"

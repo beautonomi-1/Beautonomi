@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { Button } from "@/components/ui/button";
@@ -1517,16 +1518,24 @@ export default function ProviderBookingDetail() {
                   Custom offer
                 </span>
               ) : null}
+              {(booking as { referral_source_name?: string | null }).referral_source_name ? (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                  Found you via {(booking as { referral_source_name?: string | null }).referral_source_name}
+                </span>
+              ) : null}
             </div>
           </div>
-          <a
-            href={`/api/provider/bookings/${bookingId}/receipt/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
-          >
-            View Receipt PDF
-          </a>
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <ShareReceiptButton kind="provider-booking" subjectId={bookingId} />
+            <a
+              href={`/api/provider/bookings/${bookingId}/receipt/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
+            >
+              View Receipt PDF
+            </a>
+          </div>
         </div>
 
         {booking.status === "cancelled" && (

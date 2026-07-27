@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.78",
+  "version": "1.0.79",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -27,8 +27,8 @@
     "@beautonomi/analytics": "workspace:*",
     "@beautonomi/api": "workspace:*",
     "@beautonomi/expo-sms-user-consent": "workspace:*",
-    "@beautonomi/paycloud-same-terminal": "file:./modules/paycloud-same-terminal",
     "@beautonomi/i18n": "workspace:*",
+    "@beautonomi/paycloud-same-terminal": "file:./modules/paycloud-same-terminal",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/types": "workspace:*",
     "@beautonomi/ui": "workspace:*",
@@ -63,6 +63,7 @@
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "^17.0.11",
     "expo-intent-launcher": "~13.0.8",
+    "expo-keep-awake": "~15.0.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
     "expo-local-authentication": "^17.0.8",
@@ -108,6 +109,7 @@
     "@types/jest": "29.5.14",
     "@types/node": "^22.19.17",
     "@types/react": "~19.2.14",
+    "react-test-renderer": "19.1.0",
     "babel-plugin-module-resolver": "^5.0.3",
     "cross-env": "^10.1.0",
     "eslint": "^9.39.4",

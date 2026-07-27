@@ -3,6 +3,7 @@ import {
   RECOGNIZED_REVENUE_TYPES,
   recognizedRevenue,
   recognizedRevenueInRange,
+  filterRowsByCreatedAtRange,
   providerServiceEarnings,
   providerRefundDeduction,
   providerNetAfterRefunds,
@@ -117,5 +118,23 @@ describe("provider-revenue-semantics", () => {
     const start = new Date("2026-06-01T00:00:00.000Z");
     const end = new Date("2026-06-03T23:59:59.999Z");
     expect(recognizedRevenueInRange(rows, { start, end })).toBe(60);
+  });
+
+  it("filterRowsByCreatedAtRange + breakdown tips match recognized components", () => {
+    const rows = [
+      { transaction_type: "provider_earnings", net: 60, created_at: "2026-07-24T17:28:38.000Z" },
+      { transaction_type: "tip", net: 10, created_at: "2026-07-24T17:28:37.000Z" },
+      { transaction_type: "travel_fee", net: 120, created_at: "2026-07-24T17:28:37.000Z" },
+      { transaction_type: "tip", net: 5, created_at: "2026-06-01T10:00:00.000Z" },
+    ];
+    const start = new Date("2026-07-24T00:00:00.000Z");
+    const end = new Date("2026-07-25T23:59:59.999Z");
+    const periodBreakdown = computeProviderRevenueBreakdown(
+      filterRowsByCreatedAtRange(rows, { start, end }),
+    );
+    expect(periodBreakdown.tips).toBe(10);
+    expect(periodBreakdown.travelFees).toBe(120);
+    expect(periodBreakdown.serviceEarnings).toBe(60);
+    expect(periodBreakdown.recognizedRevenue).toBe(190);
   });
 });

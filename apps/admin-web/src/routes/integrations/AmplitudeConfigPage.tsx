@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3 } from "lucide-react";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";

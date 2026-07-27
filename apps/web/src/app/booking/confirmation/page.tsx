@@ -207,51 +207,15 @@ export default function BookingConfirmationPage() {
   };
 
   const handleShare = async () => {
-    if (!booking) return;
-    const tz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
-    const dateLine = formatBookingDateInTimeZone(booking.selected_datetime, tz);
-    const timeLine = formatBookingTimeInTimeZone(booking.selected_datetime, tz);
-    const totalStr = formatCurrency(booking.total_amount, booking.currency);
-    const providerName = booking.provider?.business_name || "the provider";
-    const lifecycleDisplay = getBookingLifecycleDisplay({
-      status: booking.status,
-      providerName,
-      paymentStatus: booking.payment_status,
-      outstandingBalance: booking.outstanding_balance,
-    });
-    const text = [
-      `Booking #${booking.booking_number} — ${providerName}.`,
-      `${dateLine}, ${timeLine}.`,
-      `${booking.services.length} service(s). Total ${totalStr}.`,
-    ].join(" ");
-    const shareData = {
-      title: `${lifecycleDisplay.title} - ${booking.booking_number}`,
-      text,
-      url: window.location.href,
-    };
-
-    // §Customer-launch (audit 2026-04): previously the Share button was a
-    // no-op on desktop (navigator.share doesn't exist). We now fall back to
-    // clipboard copy so desktop users get something useful instead of a
-    // dead button.
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        await navigator.share(shareData);
-        return;
-      } catch {
-        // user cancelled or denied – fall through to clipboard
-      }
-    }
+    if (!booking?.id) return;
     try {
-      const clip = `${text} ${window.location.href}`;
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(clip);
-        toast.success("Booking link copied to clipboard");
-      } else {
-        toast.info("Copy this link: " + window.location.href);
+      const { shareCustomerBookingReceiptWeb } = await import("@/lib/receipts/share-receipt-client");
+      const result = await shareCustomerBookingReceiptWeb(booking.id);
+      if (result === "copied") {
+        toast.success("Receipt copied to clipboard.");
       }
-    } catch {
-      toast.error("Couldn't copy the booking link. Try again.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not share booking.");
     }
   };
 

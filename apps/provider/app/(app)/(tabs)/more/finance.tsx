@@ -8,7 +8,8 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
@@ -16,8 +17,10 @@ import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
+import { formatLedgerTransactionType } from "@/lib/financeLabels";
 import { PayoutReconciliationCard } from "@/components/PayoutReconciliationCard";
 import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
+import { MoneyRangeChips, moneyRangeCaption, type MoneyRangeKey } from "@/components/finance/MoneyRangeChips";
 import { Colors } from "@/constants/colors";
 
 interface FinanceEarnings {
@@ -102,31 +105,7 @@ function formatDateTimeSafe(value: unknown): string {
 }
 
 function formatType(type: string): string {
-  const map: Record<string, string> = {
-    provider_earnings: "Earnings",
-    refund: "Refund",
-    tip: "Tip",
-    travel_fee: "Travel fee",
-    membership_sale: "Membership",
-    gift_card_sale: "Gift card",
-    walk_in_additional_charge: "Walk-in add-on",
-    payout: "Payout",
-    /** Ledger name for customer-paid Beautonomi fee on bookings (not provider revenue). */
-    service_fee: "Platform fee",
-    platform_fee: "Platform fee",
-    tax: "Tax",
-    additional_charge: "Additional charge",
-    additional_charge_payment: "Add. charge payment",
-    cancellation_fee: "Cancellation fee",
-    deposit: "Deposit",
-    booking_payment: "Booking payment",
-    wallet_topup: "Wallet top-up",
-    wallet_debit: "Wallet debit",
-    commission: "Commission",
-    product_sale: "Product sale",
-    product_refund: "Product refund",
-  };
-  return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return formatLedgerTransactionType(type);
 }
 
 function isPlatformRetainedFee(tx: FinanceTransaction): boolean {
@@ -137,17 +116,15 @@ function isPlatformRetainedFee(tx: FinanceTransaction): boolean {
   );
 }
 
-const RANGE_OPTIONS: { value: "week" | "month" | "year" | "all"; label: string }[] = [
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "year", label: "Year" },
-  { value: "all", label: "All" },
-];
+
+function periodMetric(value: number | undefined): number {
+  return value ?? 0;
+}
 
 /** Content-only for use in Finance hub (Overview tab). */
 export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
-  const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
+  const [range, setRange] = useState<MoneyRangeKey>("month");
   const [txLimit, setTxLimit] = useState(50);
   const { screenPadding } = useResponsive();
   const { selectedLocationId, provider } = useProvider();
@@ -156,7 +133,11 @@ export function FinanceOverviewContent() {
   const url = `/api/provider/finance?range=${range}&transaction_feed=all&tx_limit=${txLimit}${
     selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
   }`;
-  const { data, loading, error, errorCode, refresh } = useApi<FinanceData>(url);
+  const { data, loading, error, errorCode, refresh, silentRefresh } = useApi<FinanceData>(url, {
+    staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+    revalidateOnFocus: true,
+  });
+  useFocusRevalidate(silentRefresh);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -186,32 +167,17 @@ export function FinanceOverviewContent() {
   const transactions = data?.transactions ?? [];
   const transactionsTotal = data?.transactions_total ?? transactions.length;
   const canLoadMoreTx = transactions.length < transactionsTotal && txLimit < 200;
-  const rangeLabel =
-    range === "week" ? "Last 7 days" :
-    range === "month" ? "Month to date" :
-    range === "year" ? "Last 12 months" :
-    "All time";
+  const rangeLabel = moneyRangeCaption(range);
 
   return (
     <>
-      <View style={twStyle("mb-3 flex-row flex-wrap px-4")}>
-        {RANGE_OPTIONS.map((opt) => (
-          <TouchableOpacity
-            key={opt.value}
-            onPress={() => {
-              setTxLimit(50);
-              setRange(opt.value);
-            }}
-            style={[twStyle(`rounded-full px-3.5 py-2 ${range === opt.value ? "bg-emerald-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
-          >
-            <Text
-              style={twStyle(`text-sm font-medium ${range === opt.value ? "text-white" : "text-gray-700"}`)}
-            >
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <MoneyRangeChips
+        value={range}
+        onChange={(next) => {
+          setTxLimit(50);
+          setRange(next);
+        }}
+      />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
@@ -249,9 +215,9 @@ export function FinanceOverviewContent() {
               {rangeLabel} — total earned (ledger)
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
-              {formatCurrency(earnings.recognized_revenue_total ?? earnings.this_month ?? 0, currency)}
+              {formatCurrency(earnings.recognized_revenue_total ?? 0, currency)}
             </Text>
-            {(earnings.growth_percentage ?? 0) !== 0 && (
+            {(earnings.growth_percentage ?? 0) !== 0 && range !== "all" && (
               <Text
                 style={twStyle(`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`)}
               >
@@ -262,7 +228,7 @@ export function FinanceOverviewContent() {
           </View>
           <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>
-              {rangeLabel} — service earnings only
+              {rangeLabel} — provider earnings
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(
@@ -271,53 +237,65 @@ export function FinanceOverviewContent() {
               )}
             </Text>
             <Text style={twStyle("mt-1 text-[10px] text-gray-500")}>
-              provider_earnings rows only; tips/travel are separate below
+              All provider_earnings rows; tips and travel are listed separately below
             </Text>
           </View>
         </View>
 
         {/* Revenue Streams */}
-        {((earnings.product_sales_earnings_total ?? 0) > 0 ||
-          (earnings.tips_this_period ?? earnings.tips_total ?? 0) > 0 ||
-          (earnings.cancellation_fees_this_period ?? earnings.cancellation_fees_total ?? 0) > 0 ||
-          (earnings.additional_charges_this_period ?? earnings.additional_charges_total ?? 0) > 0 ||
-          (earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0) > 0 ||
-          (earnings.gift_card_sales_this_period ?? 0) > 0 ||
-          (earnings.membership_sales_this_period ?? 0) > 0 ||
-          (earnings.refunds_this_period ?? earnings.refunds_total ?? 0) > 0) && (
+        {((periodMetric(earnings.product_sales_earnings_this_period) > 0) ||
+          (periodMetric(earnings.travel_fees_this_period) > 0) ||
+          (periodMetric(earnings.tips_this_period) > 0) ||
+          (periodMetric(earnings.cancellation_fees_this_period) > 0) ||
+          (periodMetric(earnings.additional_charges_this_period) > 0) ||
+          (periodMetric(earnings.walk_in_additional_charges_this_period) > 0) ||
+          (periodMetric(earnings.gift_card_sales_this_period) > 0) ||
+          (periodMetric(earnings.membership_sales_this_period) > 0) ||
+          (periodMetric(earnings.refunds_this_period) > 0)) && (
           <>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Revenue Streams ({rangeLabel})</Text>
             <View style={twStyle("mb-4 flex-row flex-wrap")}>
-              {(earnings.product_sales_earnings_total ?? 0) > 0 && (
+              {periodMetric(earnings.product_sales_earnings_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
                   <Text style={twStyle("text-xs font-medium text-indigo-700")}>Product order earnings</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-indigo-900")}>
-                    {formatCurrency(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.product_sales_earnings_this_period), currency)}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Platform-held ecommerce net</Text>
                 </View>
               )}
-              {(earnings.tips_this_period ?? earnings.tips_total ?? 0) > 0 && (
+              {periodMetric(earnings.travel_fees_this_period) > 0 && (
+                <View style={[twStyle("rounded-2xl border border-sky-100 bg-sky-50/60 p-3 mb-2"), { width: "48%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-sky-700")}>Travel fees</Text>
+                  <Text style={twStyle("mt-0.5 text-base font-semibold text-sky-900")}>
+                    {formatCurrency(periodMetric(earnings.travel_fees_this_period), currency)}
+                  </Text>
+                </View>
+              )}
+              {periodMetric(earnings.tips_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
                   <Text style={twStyle("text-xs font-medium text-emerald-700")}>Tips</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-emerald-900")}>
-                    {formatCurrency(earnings.tips_this_period ?? earnings.tips_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.tips_this_period), currency)}
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-emerald-500")}>
+                    Ledger tip rows in {rangeLabel.toLowerCase()}
                   </Text>
                 </View>
               )}
-              {(earnings.cancellation_fees_this_period ?? earnings.cancellation_fees_total ?? 0) > 0 && (
+              {periodMetric(earnings.cancellation_fees_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-amber-100 bg-amber-50/60 p-3 mb-2"), { width: "48%" }]}>
                   <Text style={twStyle("text-xs font-medium text-amber-700")}>Cancellation Fees</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-amber-900")}>
-                    {formatCurrency(earnings.cancellation_fees_this_period ?? earnings.cancellation_fees_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.cancellation_fees_this_period), currency)}
                   </Text>
                 </View>
               )}
-              {(earnings.additional_charges_this_period ?? earnings.additional_charges_total ?? 0) > 0 && (
+              {periodMetric(earnings.additional_charges_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-blue-100 bg-blue-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
                   <Text style={twStyle("text-xs font-medium text-blue-700")}>Additional Charges</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-blue-900")}>
-                    {formatCurrency(earnings.additional_charges_this_period ?? earnings.additional_charges_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.additional_charges_this_period), currency)}
                   </Text>
                 </View>
               )}
@@ -337,19 +315,19 @@ export function FinanceOverviewContent() {
                   </Text>
                 </View>
               )}
-              {(earnings.refunds_this_period ?? earnings.refunds_total ?? 0) > 0 && (
+              {periodMetric(earnings.refunds_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-red-100 bg-red-50/60 p-3 mb-2"), { width: "48%" }]}>
                   <Text style={twStyle("text-xs font-medium text-red-700")}>Refunds</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-red-900")}>
-                    {formatCurrency(earnings.refunds_this_period ?? earnings.refunds_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.refunds_this_period), currency)}
                   </Text>
                 </View>
               )}
-              {(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0) > 0 && (
+              {periodMetric(earnings.walk_in_additional_charges_this_period) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-gray-100 bg-gray-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
                   <Text style={twStyle("text-xs font-medium text-gray-600")}>Walk-in Add-ons</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-gray-800")}>
-                    {formatCurrency(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0, currency)}
+                    {formatCurrency(periodMetric(earnings.walk_in_additional_charges_this_period), currency)}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-[10px] text-gray-500")}>Not in payout balance</Text>
                 </View>

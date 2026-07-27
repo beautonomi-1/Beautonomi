@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";

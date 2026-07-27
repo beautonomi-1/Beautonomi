@@ -1992,6 +1992,7 @@ export default function NewBookingScreen() {
           preferred_time: selectedTime.slice(0, 5),
           location_type: locationType,
           payment_method: paymentMethod,
+          referral_source_id: referralSourceId.trim() || undefined,
           metadata: {
             duration_minutes: summary.totalMinutes,
             price: summary.total,

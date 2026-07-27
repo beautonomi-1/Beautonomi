@@ -51,6 +51,7 @@ import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialo
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { AppointmentSidebar } from "@/components/appointments";
 import { openViewMode } from "@/stores/appointment-sidebar-store";
@@ -598,6 +599,9 @@ export function BookingsClient({
       recurrence_occurrences: (booking as any).recurrence_occurrences ?? null,
       services: (booking as any).services || [],
       products: (booking as any).products || [],
+      // Carried through so switching this sidebar to edit doesn't save the
+      // client source back as empty.
+      referral_source_id: (booking as any).referral_source_id ?? null,
     } as Appointment;
     openViewMode(apt);
   }, []);
@@ -638,7 +642,32 @@ export function BookingsClient({
     const s = (b.status || "").toLowerCase();
     if (s === "cancelled" || s === "canceled") return false;
     const ps = ((b as any).payment_status || "").toLowerCase();
-    return ps !== "paid";
+    if (ps === "paid") return false;
+    // A fully-covered or refunded booking has nothing left to charge, and the
+    // server rejects a zero-amount charge outright.
+    return collectableAmount(b) > 0.01;
+  };
+
+  /**
+   * Amount still collectable, mirroring `computeExpectedAmountForEntity` on the
+   * server. Charging `total_amount` on a part-paid booking is rejected with
+   * AMOUNT_MISMATCH, so the button must offer the outstanding balance.
+   */
+  const collectableAmount = (b: ProviderBookingListItem): number => {
+    if (typeof b.outstanding_balance === "number") return Math.max(0, b.outstanding_balance);
+    const unpaidAdditional = Array.isArray(b.additional_charges)
+      ? b.additional_charges
+          .filter((c) => c?.status !== "paid" && c?.status !== "rejected")
+          .reduce((sum, c) => sum + Number(c?.amount || 0), 0)
+      : 0;
+    return computeWalletGiftCoverageOutstanding({
+      totalAmount: Number(b.total_amount ?? 0),
+      totalPaid: Number(b.total_paid ?? 0),
+      totalRefunded: Number(b.total_refunded ?? 0),
+      walletAmount: Number(b.wallet_amount ?? 0),
+      giftCardAmount: Number(b.gift_card_amount ?? 0),
+      unpaidAdditionalCharges: unpaidAdditional,
+    });
   };
 
   const handleYocoPayment = (b: ProviderBookingListItem) => {
@@ -857,7 +886,7 @@ export function BookingsClient({
                             )}
                             {shouldShowPayButton(b) && paycloudEnabled ? (
                               <PaycloudCollectButton
-                                amount={b.total_amount || 0}
+                                amount={collectableAmount(b)}
                                 currency={(b as { currency?: string }).currency ?? "ZAR"}
                                 context="booking"
                                 onClick={() => handlePaycloudPayment(b)}
@@ -987,7 +1016,7 @@ export function BookingsClient({
                     )}
                     {shouldShowPayButton(b) && paycloudEnabled ? (
                       <PaycloudCollectButton
-                        amount={b.total_amount || 0}
+                        amount={collectableAmount(b)}
                         currency={(b as { currency?: string }).currency ?? "ZAR"}
                         context="booking"
                         onClick={() => handlePaycloudPayment(b)}
@@ -1296,7 +1325,7 @@ export function BookingsClient({
           <PayCloudPaymentDialog
             open={paycloudDialogOpen}
             onOpenChange={setPaycloudDialogOpen}
-            amount={paycloudBooking.total_amount || 0}
+            amount={collectableAmount(paycloudBooking)}
             entityType="booking"
             entityId={paycloudBooking.id}
             bookingId={paycloudBooking.id}

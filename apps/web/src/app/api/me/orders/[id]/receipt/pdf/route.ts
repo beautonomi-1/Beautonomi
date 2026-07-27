@@ -12,6 +12,7 @@ import {
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
+import { drawOrderReceiptPdfExtras } from "@/lib/receipts/draw-order-receipt-pdf-extras";
 
 export const maxDuration = 60;
 
@@ -55,6 +56,18 @@ type OrderReceiptPayload = {
     total?: number;
     currency?: string;
     payment_status?: string;
+    payment_method?: string | null;
+    payment_reference?: string | null;
+    amount_paid?: number | null;
+    balance_due?: number | null;
+    tracking_number?: string | null;
+    carrier?: string | null;
+    tracking_url?: string | null;
+    estimated_delivery_date?: string | null;
+    delivery_instructions?: string | null;
+    refunded_amount?: number | null;
+    refund_reason?: string | null;
+    refund_method?: string | null;
     receipt_header?: string | null;
     receipt_footer?: string | null;
   };
@@ -172,6 +185,8 @@ export async function GET(
       ],
       { label: "Total", value: moneyPdf(receipt.total, currency) },
     );
+
+    drawOrderReceiptPdfExtras(doc, receipt);
 
     drawPdfFooter(doc, receipt.receipt_footer);
 

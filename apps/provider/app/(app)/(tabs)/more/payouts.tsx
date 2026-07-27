@@ -12,11 +12,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, Redirect } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
-import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useApi, useApiMutation, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { LoadingState } from "@/components/ui/LoadingState";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -154,7 +155,7 @@ function confirmPayoutRequest(params: {
   return new Promise((resolve) => {
     Alert.alert(
       "Review payout request",
-      `Amount: ${params.amount}\nTo: ${params.account}\nAvailable after this request: ${params.available}\nPending queue: ${params.pending}${params.schedule ? `\nSchedule: ${params.schedule}` : ""}\n\nOnly platform-held payoutable earnings are withdrawn. Cash, EFT, manual card and Yoco takings collected directly are not included.`,
+      `Amount: ${params.amount}\nTo: ${params.account}\nAvailable after this request: ${params.available}\nPending queue: ${params.pending}${params.schedule ? `\nSchedule: ${params.schedule}` : ""}\n\nOnly platform-held payoutable earnings are withdrawn. Cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly are not included.`,
       [
         { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
         { text: "Submit request", onPress: () => resolve(true) },
@@ -173,10 +174,21 @@ export function PayoutsContent() {
   const [notes, setNotes] = useState("");
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
 
-  const { data: payoutsList, loading, error, refresh } = useApi<Payout[]>("/api/provider/payouts");
-  const { data: accountsList, refresh: refreshAccounts } = useApi<PayoutAccount[]>("/api/provider/payout-accounts");
+  const { data: payoutsList, loading, error, refresh, silentRefresh } = useApi<Payout[]>(
+    "/api/provider/payouts",
+    {
+      staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+      revalidateOnFocus: true,
+    },
+  );
+  useFocusRevalidate(silentRefresh);
+  const { data: accountsList, refresh: refreshAccounts } = useApi<PayoutAccount[]>("/api/provider/payout-accounts", {
+    revalidateOnFocus: true,
+  });
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const { data: nextDate, refresh: refreshNextDate } = useApi<NextDateData>("/api/provider/payouts/next-date");
+  const { data: nextDate, refresh: refreshNextDate } = useApi<NextDateData>("/api/provider/payouts/next-date", {
+    revalidateOnFocus: true,
+  });
   const { data: financeData, refresh: refreshFinance } = useApi<{
     earnings?: {
       available_balance?: number;
@@ -203,7 +215,7 @@ export function PayoutsContent() {
   );
   const availableBalance = financeData?.earnings?.available_balance ?? 0;
   const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
-  const minimumPayout = financeData?.earnings?.minimum_payout_amount ?? 100;
+  const minimumPayout = financeData?.earnings?.minimum_payout_amount;
   const defaultCurrency = getTenantDefaultCurrency();
 
   const canRequestPayouts =
@@ -228,7 +240,7 @@ export function PayoutsContent() {
     // available balance so providers get immediate feedback instead of a
     // round-trip 400. Server-side checks in POST /api/provider/payouts
     // remain authoritative (guards against stale UI balance).
-    if (num < minimumPayout) {
+    if (minimumPayout != null && num < minimumPayout) {
       Alert.alert(
         "Below minimum",
         `Minimum payout is ${formatCurrency(minimumPayout, defaultCurrency)}.`,
@@ -296,8 +308,8 @@ export function PayoutsContent() {
 
   if (loading && !payoutsList) {
     return (
-      <View style={twStyle("flex-1 items-center justify-center py-12")}>
-        <LoadingState />
+      <View style={twStyle("flex-1 px-4 py-6")}>
+        <SkeletonList rows={5} />
       </View>
     );
   }
@@ -323,7 +335,7 @@ export function PayoutsContent() {
         {!canRequestPayouts && teamAccess != null && (
           <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3")}>
             <Text style={twStyle("text-sm text-amber-900")}>
-              Payout requests require the Process payments permission. Ask a business owner or manager if you
+              Payout requests require Edit settings permission. Ask a business owner or manager if you
               need access.
             </Text>
           </View>
@@ -339,10 +351,11 @@ export function PayoutsContent() {
             </Text>
           )}
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-            Minimum payout: {formatCurrency(minimumPayout, defaultCurrency)}
+            Minimum payout:{" "}
+            {minimumPayout != null ? formatCurrency(minimumPayout, defaultCurrency) : "—"}
           </Text>
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-            This is platform-held payoutable money after completed payouts and pending requests. Direct cash, EFT, manual card and Yoco takings are excluded.
+            Business-wide balance (not filtered by branch). Platform-held payoutable money after completed payouts and pending requests. Cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly are excluded.
           </Text>
         </View>
 
@@ -422,7 +435,7 @@ export function PayoutsContent() {
                 if (!canRequestPayouts) {
                   Alert.alert(
                     "Permission required",
-                    'Payout requests need the "Process payments" permission. Ask your business owner to enable it under Settings → Team → Permissions.',
+                    'Payout requests need Edit settings permission. Ask your business owner to enable it under Settings → Team → Permissions.',
                   );
                   return;
                 }
@@ -514,7 +527,9 @@ export function PayoutsContent() {
           keyboardType="decimal-pad"
         />
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
-          {`Min ${formatCurrency(minimumPayout, defaultCurrency)} · Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`}
+          {minimumPayout != null
+            ? `Min ${formatCurrency(minimumPayout, defaultCurrency)} · Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`
+            : `Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`}
         </Text>
         {activeAccounts.length > 0 ? (
           <>

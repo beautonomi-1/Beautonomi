@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { BookOpen, Compass, FolderOpen, Globe2, Layers, HelpCircle, Info, FileText, MapPin, Link2 } from "lucide-react";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";

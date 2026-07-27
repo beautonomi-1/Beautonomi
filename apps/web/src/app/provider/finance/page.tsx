@@ -35,6 +35,9 @@ import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction
 
 interface EarningsData {
   total_earnings: number;
+  recognized_revenue_total?: number;
+  recognized_revenue_last_period?: number;
+  period_provider_earnings?: number;
   pending_payouts: number;
   available_balance: number;
   payout_hold_days?: number;
@@ -153,7 +156,7 @@ export default function ProviderFinance() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<"week" | "month" | "year" | "all">("month");
+  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "year" | "all">("month");
   const [showPayoutDialog, setShowPayoutDialog] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutNotes, setPayoutNotes] = useState("");
@@ -463,9 +466,10 @@ export default function ProviderFinance() {
   };
 
   const rangeLabel =
-    dateRange === "week" ? "Last 7 days" :
-    dateRange === "month" ? "Month to date" :
-    dateRange === "year" ? "Last 12 months" :
+    dateRange === "today" ? "Today" :
+    dateRange === "week" ? "This week (Mon–today)" :
+    dateRange === "month" ? "This month" :
+    dateRange === "year" ? "This year" :
     "All time";
 
   const handleTransactionClick = async (transaction: Transaction) => {
@@ -814,14 +818,25 @@ export default function ProviderFinance() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           <SectionCard className="p-5 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">{rangeLabel} earnings</p>
+              <p className="text-sm text-gray-600">{rangeLabel} — total earned (ledger)</p>
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold">
-              {fmt(earnings.total_earnings)}
+              {fmt(earnings.recognized_revenue_total ?? 0)}
             </p>
+            {(earnings.growth_percentage ?? 0) !== 0 && dateRange !== "all" ? (
+              <p
+                className={`text-sm mt-1 ${
+                  (earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
+                {earnings.growth_percentage}% vs comparison period
+              </p>
+            ) : null}
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              Net provider share from the selected period&apos;s ledger rows. This is not the same as all-time available payout balance.
+              Services, tips, travel, cancellation fees, and walk-in add-ons from ledger rows in the
+              selected period. Not the same as all-time available payout balance.
             </p>
             <p className="text-xs text-gray-400 mt-1">
               Gift card / membership sales below are liability movements — do not add them to earnings totals.
@@ -911,11 +926,11 @@ export default function ProviderFinance() {
         {/* Revenue Streams */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="provider-card provider-card-padding">
-            <p className="text-sm text-gray-600 mb-2">Service Earnings ({rangeLabel})</p>
+            <p className="text-sm text-gray-600 mb-2">Service earnings ({rangeLabel})</p>
             <p className="text-2xl font-semibold">
-              {fmt(earnings.bookings_earnings_this_period ?? earnings.bookings_earnings_total ?? 0)}
+              {fmt(earnings.period_provider_earnings ?? earnings.bookings_earnings_this_period ?? 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">From bookings &amp; appointments</p>
+            <p className="text-xs text-gray-500 mt-1">From provider_earnings ledger rows (bookings, products, etc.)</p>
           </div>
           {(earnings.product_sales_earnings_total ?? 0) > 0 && (
             <div className="provider-card provider-card-padding">
@@ -972,7 +987,7 @@ export default function ProviderFinance() {
             <p className="text-2xl font-semibold text-purple-600">
               {fmt(earnings.travel_fees_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Travel component (included in service earnings)</p>
+            <p className="text-xs text-gray-500 mt-1">Travel fee ledger rows (separate from service earnings)</p>
           </div>
           <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
@@ -991,13 +1006,13 @@ export default function ProviderFinance() {
           <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Refunds</p>
             <p className="text-2xl font-semibold text-red-600">
-              {fmt(earnings.refunds_this_period ?? earnings.refunds_total ?? 0)}
+              {fmt(earnings.refunds_this_period || 0)}
             </p>
           </div>
           <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">Walk-in add-ons</p>
             <p className="text-2xl font-semibold text-gray-700">
-              {fmt(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
+              {fmt(earnings.walk_in_additional_charges_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
           </div>
@@ -1029,41 +1044,52 @@ export default function ProviderFinance() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Earnings comparison</h2>
             <div className="flex gap-2">
-              {(["week", "month", "year", "all"] as const).map((range) => (
+              {([
+                { value: "today", label: "Today" },
+                { value: "week", label: "This week" },
+                { value: "month", label: "This month" },
+                { value: "year", label: "This year" },
+                { value: "all", label: "All time" },
+              ] as const).map((option) => (
                 <button
-                  key={range}
-                  onClick={() => setDateRange(range)}
-                  className={`px-3 py-1 rounded text-sm capitalize ${
-                    dateRange === range
+                  key={option.value}
+                  onClick={() => setDateRange(option.value)}
+                  className={`px-3 py-1 rounded text-sm ${
+                    dateRange === option.value
                       ? "bg-blue-600 text-white"
                       : "bg-gray-100 text-gray-700"
                   }`}
                 >
-                  {range}
+                  {option.label}
                 </button>
               ))}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Selected period</p>
+              <p className="text-sm text-gray-600 mb-1">Selected period (total earned)</p>
               <p className="text-2xl font-semibold">
-                {fmt(earnings.this_month)}
+                {fmt(earnings.recognized_revenue_total ?? 0)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Service earnings only: {fmt(earnings.period_provider_earnings ?? earnings.this_month ?? 0)}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 mb-1">Previous comparison</p>
+              <p className="text-sm text-gray-600 mb-1">Previous comparison (total earned)</p>
               <p className="text-2xl font-semibold">
-                {fmt(earnings.last_month)}
+                {fmt(earnings.recognized_revenue_last_period ?? 0)}
               </p>
-              <p
-                className={`text-sm mt-1 ${
-                  earnings.growth_percentage >= 0 ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {earnings.growth_percentage >= 0 ? "+" : ""}
-                {earnings.growth_percentage}% vs previous period
-              </p>
+              {dateRange !== "all" ? (
+                <p
+                  className={`text-sm mt-1 ${
+                    earnings.growth_percentage >= 0 ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {earnings.growth_percentage >= 0 ? "+" : ""}
+                  {earnings.growth_percentage}% vs previous period
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1090,7 +1116,7 @@ export default function ProviderFinance() {
           </div>
         ) : null}
 
-        <FinanceBookingPaymentsSection />
+        <FinanceBookingPaymentsSection timezone={portalProvider?.timezone} />
 
         {/* Payouts */}
         {payouts.length > 0 && (

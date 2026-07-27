@@ -1,3 +1,5 @@
+import { formatCurrency } from "@/lib/format";
+
 export type PaycloudCollectContext =
   | "booking"
   | "booking_addons"
@@ -8,7 +10,11 @@ export type PaycloudCollectContext =
 
 function formatAmount(amount: number, currency: string): string {
   const safe = Number.isFinite(amount) ? amount : 0;
-  return `${currency} ${safe.toFixed(2)}`;
+  try {
+    return formatCurrency(safe, currency);
+  } catch {
+    return `${currency || "ZAR"} ${safe.toFixed(2)}`;
+  }
 }
 
 export function formatPaycloudCollectLabel(params: {

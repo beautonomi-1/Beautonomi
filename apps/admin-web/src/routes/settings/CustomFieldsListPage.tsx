@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";

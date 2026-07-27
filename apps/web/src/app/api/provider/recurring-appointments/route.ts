@@ -39,6 +39,8 @@ const createRecurringSchema = z.object({
     .enum(["card", "cash", "pay_later", "yoco_pos", "payment_link"])
     .optional()
     .nullable(),
+  /** Not a column on the series — carried in metadata onto every occurrence. */
+  referral_source_id: z.string().uuid().optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -287,10 +289,33 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validated = createRecurringSchema.parse(body);
+    const { referral_source_id: requestedReferralSourceId, ...validated } =
+      createRecurringSchema.parse(body);
+
+    // Same ownership rule as a one-off booking: an unknown or deactivated source
+    // is dropped rather than failing the series, and the provider is told.
+    const referralWarnings: string[] = [];
+    let referralSourceId: string | null = requestedReferralSourceId ?? null;
+    if (referralSourceId) {
+      const { data: src } = await supabase
+        .from("referral_sources")
+        .select("id")
+        .eq("id", referralSourceId)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (!src) {
+        referralSourceId = null;
+        referralWarnings.push(
+          "The selected client source is no longer available, so the repeating visit was saved without it.",
+        );
+      }
+    }
+
     const metadata = {
       ...(validated.metadata ?? {}),
       booking_source: "provider",
+      ...(referralSourceId ? { referral_source_id: referralSourceId } : {}),
       services:
         Array.isArray((validated.metadata as { services?: unknown[] } | undefined)?.services)
           ? (validated.metadata as { services?: unknown[] }).services
@@ -336,7 +361,7 @@ export async function POST(request: NextRequest) {
       endDate: validated.end_date,
       occurrences: requestedOccurrences,
     });
-    const warnings: string[] = [];
+    const warnings: string[] = [...referralWarnings];
     const createdBookingIds: string[] = [];
     let lastCreatedDate: string | null = null;
 

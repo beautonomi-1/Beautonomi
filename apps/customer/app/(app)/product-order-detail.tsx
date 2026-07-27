@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Image,
   Platform,
-  Share,
   Alert,
   Linking,
 } from "react-native";
@@ -25,6 +24,7 @@ import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { downloadPdf } from "@/lib/pdf-file";
+import { shareCustomerOrderReceipt } from "@/lib/share-receipt";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
@@ -361,41 +361,10 @@ export default function ProductOrderDetailScreen() {
           AirDrop / email / message it like a booking receipt.
         */}
         <TouchableOpacity
-          onPress={async () => {
-            try {
-              const lines = [
-                `Beautonomi Order`,
-                `Order #${order.order_number}`,
-                order.created_at ? `Placed: ${formatDate(order.created_at)}` : null,
-                order.provider?.business_name ? `Seller: ${order.provider.business_name}` : null,
-                buyerName ? `Name: ${buyerName}` : null,
-                buyerEmail ? `Email: ${buyerEmail}` : null,
-                buyerPhone ? `Phone: ${buyerPhone}` : null,
-                `Status: ${order.status}`,
-                paymentMethodLabel ? `Payment: ${paymentMethodLabel}` : null,
-                ``,
-                ...(order.items ?? []).map((it) => {
-                  const variant = it.product_variant?.option_values
-                    ? ` · ${Object.values(it.product_variant.option_values).join(", ")}`
-                    : "";
-                  return `• ${it.product_name}${variant} — ${it.quantity} × ${fmt(Number(it.unit_price ?? 0))}`;
-                }),
-                ``,
-                `Subtotal: ${fmt(Number(order.subtotal ?? 0))}`,
-                Number(order.discount_amount ?? 0) > 0 ? `Discount: -${fmt(Number(order.discount_amount ?? 0))}` : null,
-                Number(order.delivery_fee ?? 0) > 0 ? `Delivery: ${fmt(Number(order.delivery_fee ?? 0))}` : null,
-                Number(order.tax_amount ?? 0) > 0 ? `Tax: ${fmt(Number(order.tax_amount ?? 0))}` : null,
-                platformFee > 0 ? `Platform fee: ${fmt(platformFee)}` : null,
-                walletAmt > 0 ? `Paid from wallet: ${fmt(walletAmt)}` : null,
-                `Total: ${fmt(Number(order.total_amount ?? 0))}`,
-              ].filter(Boolean);
-              await Share.share({
-                message: lines.join("\n"),
-                title: `Order ${order.order_number}`,
-              });
-            } catch (e) {
-              Alert.alert(pod("shareErrorTitle"), e instanceof Error ? e.message : pod("shareErrorBody"));
-            }
+          onPress={() => {
+            void shareCustomerOrderReceipt(order.id, order.order_number).catch((e) =>
+              Alert.alert(pod("shareErrorTitle"), e instanceof Error ? e.message : pod("shareErrorBody")),
+            );
           }}
           style={{ padding: 8 }}
           accessibilityRole="button"

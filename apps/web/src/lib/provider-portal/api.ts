@@ -3401,6 +3401,7 @@ export class ProviderApiClient implements ProviderApi {
       occurrences: ruleObj?.occurrences && ruleObj.occurrences > 0 ? Math.floor(ruleObj.occurrences) : undefined,
       preferred_time,
       location_type: (data as any).location_type ?? undefined,
+      referral_source_id: (data as any).referral_source_id || undefined,
       payment_method: ["cash", "card", "pay_later", "yoco_pos", "payment_link"].includes(
         String((data as any).payment_method || ""),
       )
@@ -4113,6 +4114,7 @@ export class ProviderApiClient implements ProviderApi {
       {
         booking_id: bookingId,
         participant_name: participant.client_name,
+        notes: participant.notes?.trim() || undefined,
         is_primary_contact: (participant as { is_primary_contact?: boolean }).is_primary_contact,
       }
     )) as { data?: { data?: any } };
@@ -4126,6 +4128,7 @@ export class ProviderApiClient implements ProviderApi {
       service_id: participant.service_id || "",
       service_name: participant.service_name || "",
       price: participant.price || 0,
+      notes: row.notes ?? null,
       checked_in: false,
       checked_out: false,
     };

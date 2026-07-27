@@ -14,6 +14,7 @@ import {
   drawPdfInfoGrid,
   drawPdfLineItems,
   drawPdfPayments,
+  drawPdfSectionTitle,
   drawPdfTotals,
   formatPaymentMethodLabel,
   formatPdfDate,
@@ -53,9 +54,18 @@ type ReceiptPayload = {
     booking_number?: string;
     booking_date?: string;
     service_date?: string;
+    location_type?: string;
+    service_address?: {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+    } | null;
+    group_booking_ref?: string | null;
     customer?: { full_name?: string | null; email?: string | null };
     provider?: { business_name?: string | null };
-    services?: Array<{ name?: string; quantity?: number; total?: number }>;
+    services?: Array<{ name?: string; quantity?: number; total?: number; staff?: string | null; duration?: number | null; tax_snapshot?: { rate?: number | null; is_inclusive?: boolean | null } | null }>;
     addons?: Array<{ name?: string; quantity?: number; total?: number }>;
     products?: Array<{ name?: string; quantity?: number; total?: number }>;
     subtotal?: number;
@@ -186,13 +196,19 @@ export async function GET(
 
     const items = [
       ...(receipt.services || []).map((s) => {
-        const sAny = s as typeof s & { tax_snapshot?: { rate?: number | null; is_inclusive?: boolean | null } | null };
+        const sAny = s as typeof s & {
+          staff?: string | null;
+          duration?: number | null;
+          tax_snapshot?: { rate?: number | null; is_inclusive?: boolean | null } | null;
+        };
         const vat = vatLabel(sAny.tax_snapshot);
         return {
           name: s.name || "Service",
           quantity: Number(s.quantity || 1),
           total: Number(s.total || 0),
           vat,
+          staff: sAny.staff,
+          duration: sAny.duration,
         };
       }),
       ...(receipt.addons || []).map((a) => ({
@@ -234,18 +250,38 @@ export async function GET(
           `Booked ${formatPdfDate(receipt.booking_date)}`,
           `Service ${formatPdfDate(receipt.service_date)}`,
           ...(receipt.package_name ? [`Package: ${receipt.package_name}`] : []),
+          ...(receipt.group_booking_ref ? [`Group: ${receipt.group_booking_ref}`] : []),
+          ...(receipt.location_type
+            ? [`Visit: ${receipt.location_type === "at_home" ? "House call" : "In-salon"}`]
+            : []),
         ],
       },
     ]);
 
+    if (receipt.location_type === "at_home" && receipt.service_address?.line1) {
+      drawPdfSectionTitle(doc, "Service location");
+      doc.fontSize(10).fillColor("#111827").text(receipt.service_address.line1);
+      if (receipt.service_address.line2) doc.text(receipt.service_address.line2);
+      const saCity = [receipt.service_address.city, receipt.service_address.state]
+        .filter(Boolean)
+        .join(", ");
+      if (saCity) doc.text(`${saCity} ${receipt.service_address.postal_code || ""}`);
+      doc.moveDown(0.5);
+    }
+
     drawPdfLineItems(
       doc,
       items.map((item) => {
-        const i = item as typeof item & { vat?: string };
-        const detail = i.vat ? `Qty ${item.quantity} · ${i.vat}` : `Quantity ${item.quantity}`;
+        const i = item as typeof item & { vat?: string; staff?: string | null; duration?: number | null };
+        const detailParts = [
+          i.staff ? `Staff: ${i.staff}` : null,
+          i.duration ? `${i.duration} min` : null,
+          i.vat ? i.vat : null,
+          `Quantity ${item.quantity}`,
+        ].filter(Boolean);
         return {
           description: item.name,
-          detail,
+          detail: detailParts.join(" · "),
           amount: moneyPdf(item.total, currency),
         };
       }),

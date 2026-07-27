@@ -388,6 +388,20 @@ export async function GET(
         | undefined;
       return Array.isArray(series) ? series[0] ?? null : series ?? null;
     })();
+
+    // Resolve the attribution label so detail views can show "Instagram" rather
+    // than a bare id. Deactivated sources still resolve — history shouldn't
+    // change because the provider retired the source.
+    let referralSourceName: string | null = null;
+    if (bookingData.referral_source_id) {
+      const { data: referralSource } = await supabaseAdmin
+        .from("referral_sources")
+        .select("name")
+        .eq("id", bookingData.referral_source_id)
+        .maybeSingle();
+      referralSourceName = (referralSource as { name?: string } | null)?.name ?? null;
+    }
+
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -555,6 +569,7 @@ export async function GET(
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
       referral_source_id: bookingData.referral_source_id || null,
+      referral_source_name: referralSourceName,
       provider_form_responses: bookingData.provider_form_responses || null,
       // Include joined data for provider portal (customers, locations)
       customers: bookingData.customers || null,

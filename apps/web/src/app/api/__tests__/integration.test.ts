@@ -60,21 +60,25 @@ function createWebhookSupabase() {
   const inserts: InsertRecord[] = [];
   const updates: InsertRecord[] = [];
 
+  function bookingRow(id: string) {
+    return {
+      id,
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      booking_number: "B-001",
+      total_amount: 100,
+      tip_amount: 0,
+      tax_amount: 0,
+      travel_fee: 0,
+      service_fee_amount: 0,
+      currency: "ZAR",
+      tenant_id: "tenant-1",
+    };
+  }
+
   function rowForSingle(table: string) {
     if (table === "bookings") {
-      return {
-        id: "booking-1",
-        provider_id: "provider-1",
-        customer_id: "customer-1",
-        booking_number: "B-001",
-        total_amount: 100,
-        tip_amount: 0,
-        tax_amount: 0,
-        travel_fee: 0,
-        service_fee_amount: 0,
-        currency: "ZAR",
-        tenant_id: "tenant-1",
-      };
+      return bookingRow("booking-1");
     }
     if (table === "gift_card_orders") {
       return {
@@ -96,6 +100,11 @@ function createWebhookSupabase() {
 
   function rowForMaybeSingle(table: string, filters: Record<string, unknown>) {
     if (table === "providers") return { tenant_id: "tenant-1" };
+    // The shared ledger writer reads the booking with maybeSingle, so a
+    // single()-only mock made every charge look like a missing booking.
+    if (table === "bookings") {
+      return typeof filters.id === "string" ? bookingRow(filters.id) : bookingRow("booking-1");
+    }
     if (table === "finance_transactions" && filters.booking_id === "booking-second") {
       return { id: "existing-finance-payment" };
     }

@@ -2058,6 +2058,7 @@ export function NewSaleDialog({
           open={showPaycloudDialog}
           onOpenChange={setShowPaycloudDialog}
           amount={total}
+          tipIncludedInAmount={tipAmount > 0}
           entityType="sale"
           entityId={paycloudLinkedSaleId}
           saleId={paycloudLinkedSaleId}

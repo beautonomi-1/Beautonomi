@@ -9,6 +9,7 @@ import {
   fuzzyTextRelevanceScore,
 } from '@/lib/search/fuzzy-rank';
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
+import { withStorageListThumbnail } from "@/lib/supabase/storage-list-thumbnail";
 import { z } from 'zod';
 
 const suggestionsSchema = z.object({
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest) {
           ? `/partner-profile?slug=${encodeURIComponent(provider.slug)}`
           : `/search?q=${encodeURIComponent(provider.business_name)}&type=provider`,
         slug: provider.slug || undefined,
-        image_url: provider.avatar_url || provider.thumbnail_url || null,
+        image_url: withStorageListThumbnail(provider.avatar_url || provider.thumbnail_url || null),
         distance_km: distanceMap.get(provider.id),
       });
     });

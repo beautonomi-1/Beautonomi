@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";

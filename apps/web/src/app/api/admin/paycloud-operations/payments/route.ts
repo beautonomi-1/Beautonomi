@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     const amountMatchStatus = searchParams.get("amount_match_status");
     const exceptionsOnly = searchParams.get("exceptions_only") === "true";
     const entityType = searchParams.get("entity_type");
+    const initiationChannel = searchParams.get("initiation_channel");
     const search = searchParams.get("search")?.trim();
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -57,10 +58,12 @@ export async function GET(request: NextRequest) {
           pay_method_id,
           response_code,
           error_message,
+          initiation_channel,
+          metadata,
           created_at,
           updated_at,
           provider:providers(id, business_name, slug),
-          terminal:paycloud_terminals(id, display_name, terminal_sn, status)
+          terminal:paycloud_terminals(id, display_name, terminal_sn, status, model)
         `,
         { count: "exact" },
       )
@@ -77,6 +80,9 @@ export async function GET(request: NextRequest) {
       query = query.eq("amount_match_status", amountMatchStatus);
     }
     if (entityType) query = query.eq("entity_type", entityType);
+    if (initiationChannel === "cloud" || initiationChannel === "same_terminal") {
+      query = query.eq("initiation_channel", initiationChannel);
+    }
     if (from) query = query.gte("created_at", from);
     if (to) query = query.lte("created_at", to);
     if (search) {

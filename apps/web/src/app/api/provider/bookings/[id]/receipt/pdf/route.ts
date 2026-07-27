@@ -172,9 +172,20 @@ export async function GET(
           r.invoice_date ? `Issued ${formatPdfDate(r.invoice_date)}` : null,
           r.booking_date ? `Booked ${formatPdfDate(r.booking_date)}` : null,
           r.package_name ? `Package: ${r.package_name}` : null,
+          r.group_booking_ref ? `Group: ${r.group_booking_ref}` : null,
+          r.referral_source_name ? `Client source: ${r.referral_source_name}` : null,
+          r.booking_source ? `Channel: ${r.booking_source}` : null,
         ],
       },
     ]);
+
+    if (r.group_participants && r.group_participants.length > 0) {
+      drawPdfSectionTitle(doc, "Group participants");
+      for (const p of r.group_participants) {
+        if (p.participant_name) doc.text(`• ${p.participant_name}`);
+      }
+      doc.moveDown(0.5);
+    }
 
     // Service address
     if (r.location_type === "at_home" && r.service_address?.line1) {
@@ -385,6 +396,10 @@ type ReceiptData = {
     postal_code?: string;
   };
   notes?: string | null;
+  group_booking_ref?: string | null;
+  referral_source_name?: string | null;
+  booking_source?: string | null;
+  group_participants?: Array<{ participant_name?: string | null }> | null;
   transactions?: Array<{
     id?: string;
     amount?: number | string;

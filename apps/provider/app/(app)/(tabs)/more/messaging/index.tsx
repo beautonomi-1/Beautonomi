@@ -21,7 +21,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LoadingState } from "@/components/ui/LoadingState";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { providerMessagingBaseFromPathname } from "@/lib/provider-messaging-routes";
@@ -206,8 +206,8 @@ export default function MessagingListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Messages" showBack={canGoBack} />
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
-          <LoadingState />
+        <View style={{ flex: 1, paddingHorizontal: screenPadding, paddingTop: 12 }}>
+          <SkeletonList rows={8} />
         </View>
       </ScreenContainer>
     );

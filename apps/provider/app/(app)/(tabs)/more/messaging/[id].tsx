@@ -24,6 +24,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
+import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { appendFormDataFileNative } from "@beautonomi/utils";
@@ -278,6 +279,7 @@ export default function ChatScreen() {
     if (unread > 0) {
       adjustChatUnreadCount(-unread);
     }
+    invalidateApiCacheForPath("/api/provider/conversations");
     void markReadRef
       .current(`/api/provider/conversations/${conversationId}/mark-read`, {})
       .then(() => {

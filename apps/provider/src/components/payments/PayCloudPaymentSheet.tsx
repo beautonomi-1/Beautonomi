@@ -9,10 +9,13 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  AppState,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import {
@@ -30,21 +33,65 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
   canLaunchPaycloudSameTerminal,
-  getPaycloudDeviceSerial,
+  getPaycloudDeviceInfo,
+  humanizePaycloudIntentResult,
+  isPaycloudIntentApproved,
+  parsePaycloudIntentTransData,
   startPaycloudSameTerminalSale,
+  type PaycloudDeviceInfo,
+  type PaycloudIntentResult,
 } from "@/lib/paycloud-same-terminal";
 
 const SAME_TERMINAL_POLL_INTERVAL_MS = 3000;
 const SAME_TERMINAL_POLL_TIMEOUT_MS = 2 * 60 * 1000;
+const KEEP_AWAKE_TAG = "paycloud-payment-sheet";
+
+type SameTerminalStep = "idle" | "opening" | "on_device" | "confirming";
 
 async function pollSameTerminalSettlement(
   paymentId: string,
-  confirmPayment: (id: string) => Promise<PayCloudPaymentResult | null>,
+  confirmPayment: (
+    id: string,
+    options?: {
+      intent_result?: {
+        result?: string;
+        resultMsg?: string;
+        transData?: string | Record<string, unknown>;
+      };
+      device_model?: string;
+      device_manufacturer?: string;
+      serial_source?: "build_serial" | "wiseasy_property" | "android_id";
+    },
+  ) => Promise<PayCloudPaymentResult | null>,
   pollPayment: (id: string) => Promise<PayCloudPaymentResult | null>,
+  intentResult?: PaycloudIntentResult | null,
+  deviceInfo?: PaycloudDeviceInfo | null,
 ): Promise<PayCloudPaymentResult | null> {
+  const confirmOptions = {
+    ...(intentResult
+      ? {
+          intent_result: {
+            result: intentResult.result,
+            resultMsg: intentResult.resultMsg,
+            transData:
+              typeof intentResult.transData === "string"
+                ? intentResult.transData
+                : intentResult.transData,
+          },
+        }
+      : {}),
+    ...(deviceInfo?.model ? { device_model: deviceInfo.model } : {}),
+    ...(deviceInfo?.manufacturer ? { device_manufacturer: deviceInfo.manufacturer } : {}),
+    ...(deviceInfo?.serialSource ? { serial_source: deviceInfo.serialSource } : {}),
+  };
+
+  if (intentResult) {
+    await confirmPayment(paymentId, confirmOptions);
+  }
+
   const deadline = Date.now() + SAME_TERMINAL_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    await confirmPayment(paymentId);
+    await confirmPayment(paymentId, confirmOptions);
     const polled = await pollPayment(paymentId);
     if (
       polled?.status === "successful" ||
@@ -86,6 +133,11 @@ interface PayCloudPaymentSheetProps {
   saleId?: string;
   groupBookingId?: string;
   bookingLocationId?: string | null;
+  /**
+   * Set when `amount` already includes a tip captured upstream (e.g. the POS tip
+   * field). Hides this sheet's tip input so staff cannot tip a second time.
+   */
+  tipIncludedInAmount?: boolean;
   onPaymentSuccess: (result: PayCloudPaymentResult) => void;
 }
 
@@ -100,9 +152,12 @@ export function PayCloudPaymentSheet({
   saleId,
   groupBookingId,
   bookingLocationId,
+  tipIncludedInAmount = false,
   onPaymentSuccess,
 }: PayCloudPaymentSheetProps) {
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompactLayout = windowWidth < 400;
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const sameTerminalFlag = useFeatureFlag("payment_paycloud_same_terminal");
   const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
@@ -131,7 +186,13 @@ export function PayCloudPaymentSheet({
   const [reviewResult, setReviewResult] = useState<PayCloudPaymentResult | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [resumingInFlight, setResumingInFlight] = useState(false);
+  const [sameTerminalStep, setSameTerminalStep] = useState<SameTerminalStep>("idle");
+  const [deviceInfo, setDeviceInfo] = useState<PaycloudDeviceInfo | null>(null);
+  const [maskedCard, setMaskedCard] = useState<string | null>(null);
   const closingRef = useRef(false);
+  const keepAwakeActiveRef = useRef(false);
+  // Lets the failure alert re-run a charge without a circular useCallback dependency.
+  const handleProcessRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeTerminals = terminals.filter((t) => t.is_active);
   // Platform flag AND provider setting (same as web PayCloudPaymentDialog).
@@ -141,6 +202,22 @@ export function PayCloudPaymentSheet({
     cashbackFlagEnabled && (cashbackEnabled || settings?.cashback_enabled === true);
   const isReady = acceptPaycloud || settings?.accept_paycloud === true;
   const loading = terminalsLoading;
+
+  const setKeepAwake = useCallback(async (active: boolean) => {
+    if (active && !keepAwakeActiveRef.current) {
+      keepAwakeActiveRef.current = true;
+      await activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+    } else if (!active && keepAwakeActiveRef.current) {
+      keepAwakeActiveRef.current = false;
+      await deactivateKeepAwake(KEEP_AWAKE_TAG);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      void setKeepAwake(false);
+    };
+  }, [setKeepAwake]);
 
   useEffect(() => {
     if (!visible || !paycloudEnabled) return;
@@ -155,16 +232,24 @@ export function PayCloudPaymentSheet({
     setVoiding(false);
     setResumingInFlight(false);
     setPayOnThisDevice(false);
+    setSameTerminalStep("idle");
+    setDeviceInfo(null);
+    setMaskedCard(null);
     closingRef.current = false;
+    void setKeepAwake(false);
     if (sameTerminalFlag) {
-      void canLaunchPaycloudSameTerminal().then((ok) => {
+      void canLaunchPaycloudSameTerminal().then(async (ok) => {
         setSameDeviceAvailable(ok);
-        if (ok) setPayOnThisDevice(true);
+        if (ok) {
+          setPayOnThisDevice(true);
+          const info = await getPaycloudDeviceInfo();
+          setDeviceInfo(info);
+        }
       });
     } else {
       setSameDeviceAvailable(false);
     }
-  }, [visible, paycloudEnabled, sameTerminalFlag, reloadTerminals, reloadSettings]);
+  }, [visible, paycloudEnabled, sameTerminalFlag, reloadTerminals, reloadSettings, setKeepAwake]);
 
   const isMobileBooking = !bookingLocationId;
 
@@ -195,6 +280,28 @@ export function PayCloudPaymentSheet({
     setInFlightPaymentId(selectedTerminal.in_flight_payment_id);
   }, [visible, selectedTerminal?.id, selectedTerminal?.in_flight_payment_id]);
 
+  const isSameDeviceMode = payOnThisDevice && sameDeviceAvailable && payMethod === "card";
+  const deviceSerialNorm = deviceInfo?.serial ? deviceInfo.serial.trim().toLowerCase() : null;
+  /**
+   * The machine record this physical device is allowed to charge on. The server
+   * rejects a same-device charge against any other record
+   * (DEVICE_TERMINAL_MISMATCH), so the picker must not offer them.
+   */
+  const deviceMatchedTerminal = deviceSerialNorm
+    ? (activeTerminals.find((t) => {
+        const sn = t.terminal_sn?.trim().toLowerCase();
+        const paired = t.paired_device_id?.trim().toLowerCase();
+        return sn === deviceSerialNorm || (paired != null && paired === deviceSerialNorm);
+      }) ?? null)
+    : null;
+
+  useEffect(() => {
+    if (!isSameDeviceMode || !deviceMatchedTerminal) return;
+    setSelectedTerminal((prev) =>
+      prev?.id === deviceMatchedTerminal.id ? prev : deviceMatchedTerminal,
+    );
+  }, [isSameDeviceMode, deviceMatchedTerminal]);
+
   /**
    * Route a terminal-confirmed capture to the right outcome. An "under" or
    * "mismatch" capture is real money on the machine that did NOT settle to the
@@ -217,12 +324,56 @@ export function PayCloudPaymentSheet({
     [onPaymentSuccess],
   );
 
+  // Recover pending same-terminal payments after app-switch to WiseCashier.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      const paymentId = inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id;
+      if (!paymentId || successResult || reviewResult) return;
+      void (async () => {
+        setSameTerminalStep("confirming");
+        await setKeepAwake(true);
+        const settled = await pollSameTerminalSettlement(
+          paymentId,
+          confirmPayment,
+          pollPayment,
+          null,
+          deviceInfo,
+        );
+        await setKeepAwake(false);
+        setSameTerminalStep("idle");
+        if (settled?.status === "successful") {
+          handleSettledSuccess(settled);
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [
+    visible,
+    inFlightPaymentId,
+    selectedTerminal?.in_flight_payment_id,
+    successResult,
+    reviewResult,
+    confirmPayment,
+    pollPayment,
+    deviceInfo,
+    setKeepAwake,
+    handleSettledSuccess,
+  ]);
+
   const handleResumeInFlight = useCallback(async () => {
     const paymentId = inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id;
     if (!paymentId) return;
     setResumingInFlight(true);
     try {
-      const settled = await pollSameTerminalSettlement(paymentId, confirmPayment, pollPayment);
+      const settled = await pollSameTerminalSettlement(
+        paymentId,
+        confirmPayment,
+        pollPayment,
+        null,
+        deviceInfo,
+      );
       if (settled?.status === "successful") {
         handleSettledSuccess(settled);
         return;
@@ -248,6 +399,7 @@ export function PayCloudPaymentSheet({
     confirmPayment,
     pollPayment,
     handleSettledSuccess,
+    deviceInfo,
   ]);
 
   const parsedTip = (() => {
@@ -264,7 +416,9 @@ export function PayCloudPaymentSheet({
     return Number.isFinite(n) && n >= 0 ? n : 0;
   })();
 
-  const totalAmount = amount + parsedTip;
+  // Cashback is handed to the client in cash and recovered on the card, so it is
+  // part of what the card is actually charged — the headline must include it.
+  const totalAmount = amount + parsedTip + parsedCashback;
   const displayAmount = formatCurrency(totalAmount, currency);
   const baseDisplay = formatCurrency(amount, currency);
 
@@ -273,14 +427,36 @@ export function PayCloudPaymentSheet({
     closingRef.current = true;
     // A review-state capture already completed on the machine — never close it,
     // that would try to cancel money that was actually taken.
-    if (inFlightPaymentId && !successResult && !reviewResult) {
-      await closePayment(inFlightPaymentId);
-      setInFlightPaymentId(null);
-    }
+    const stillOpenPaymentId =
+      inFlightPaymentId && !successResult && !reviewResult ? inFlightPaymentId : null;
     setSuccessResult(null);
     setReviewResult(null);
+    setSameTerminalStep("idle");
+    void setKeepAwake(false);
     onClose();
-  }, [inFlightPaymentId, successResult, reviewResult, closePayment, onClose]);
+
+    // The sheet dismisses on a backdrop tap, swipe or hardware back, any of which
+    // can happen by accident while the client is still paying. Cancelling the
+    // charge is destructive (and may target one that actually succeeded but
+    // hasn't confirmed yet), so it must be an explicit choice.
+    if (stillOpenPaymentId) {
+      Alert.alert(
+        "Charge still open",
+        "A charge is still open on the card machine. Keep it open to finish or resume it, or cancel it now.",
+        [
+          { text: "Keep it open", style: "cancel" },
+          {
+            text: "Cancel the charge",
+            style: "destructive",
+            onPress: () => {
+              void closePayment(stillOpenPaymentId);
+              setInFlightPaymentId(null);
+            },
+          },
+        ],
+      );
+    }
+  }, [inFlightPaymentId, successResult, reviewResult, closePayment, onClose, setKeepAwake]);
 
   const handleVoidOnTerminal = useCallback(async () => {
     const completed = successResult ?? reviewResult;
@@ -305,9 +481,70 @@ export function PayCloudPaymentSheet({
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const trySameDevice = payOnThisDevice && sameDeviceAvailable && payMethod === "card";
+    const trySameDevice = isSameDeviceMode;
     const channel: "cloud" | "same_terminal" = trySameDevice ? "same_terminal" : "cloud";
-    const deviceSerial = trySameDevice ? await getPaycloudDeviceSerial() : null;
+    const info = trySameDevice ? deviceInfo ?? (await getPaycloudDeviceInfo()) : null;
+    if (info) setDeviceInfo(info);
+
+    if (trySameDevice && !info?.serial) {
+      Alert.alert(
+        "Device not linked",
+        "Could not read this device's ID. Open Card machines and tap Link this device, or choose Send to card machine.",
+        [
+          {
+            text: "Open Card machines",
+            onPress: () => {
+              void handleClose();
+              router.push("/(app)/(tabs)/more/card-machines" as never);
+            },
+          },
+          { text: "Use card machine", onPress: () => setPayOnThisDevice(false) },
+        ],
+      );
+      return;
+    }
+
+    await setKeepAwake(true);
+    setSameTerminalStep(trySameDevice ? "opening" : "idle");
+
+    const runCloudFallback = async () => {
+      const cloudRetry = await createPayment({
+        terminal_id: selectedTerminal.id,
+        entity_type: entityType,
+        entity_id: entityId,
+        amount,
+        tip_amount: parsedTip > 0 ? parsedTip : undefined,
+        cashback_amount: parsedCashback > 0 ? parsedCashback : undefined,
+        pay_method: payMethod,
+        currency,
+        booking_id: bookingId ?? (entityType === "booking" ? entityId : null),
+        sale_id: saleId ?? (entityType === "sale" ? entityId : null),
+        group_booking_id:
+          groupBookingId ?? (entityType === "group_booking" ? entityId : null),
+        channel: "cloud",
+      });
+      if (!cloudRetry) return;
+      // Mirror the plain cloud path below: without tracking the new payment the
+      // charge is live on the machine with no Resume affordance to recover it.
+      const retryId = cloudRetry.id || cloudRetry.payment_id;
+      if (retryId) setInFlightPaymentId(retryId);
+      if (cloudRetry.status === "successful") {
+        handleSettledSuccess(cloudRetry);
+        return;
+      }
+      if (cloudRetry.status === "failed") {
+        setInFlightPaymentId(null);
+        Alert.alert(
+          "Payment failed",
+          cloudRetry.error_message || "The card payment didn't go through. Please try again.",
+        );
+        return;
+      }
+      Alert.alert(
+        "Waiting on card machine",
+        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+      );
+    };
 
     const result = await createPayment({
       terminal_id: selectedTerminal.id,
@@ -323,47 +560,54 @@ export function PayCloudPaymentSheet({
       group_booking_id:
         groupBookingId ?? (entityType === "group_booking" ? entityId : null),
       channel,
-      ...(deviceSerial ? { device_serial: deviceSerial } : {}),
+      ...(info?.serial ? { device_serial: info.serial } : {}),
+      ...(info?.model ? { device_model: info.model } : {}),
+      ...(info?.manufacturer ? { device_manufacturer: info.manufacturer } : {}),
+      ...(info?.serialSource ? { serial_source: info.serialSource } : {}),
     });
 
-    if (!result) return;
+    if (!result) {
+      await setKeepAwake(false);
+      setSameTerminalStep("idle");
+      return;
+    }
 
     const paymentId = result.id || result.payment_id;
     if (paymentId) setInFlightPaymentId(paymentId);
 
     if (channel === "same_terminal" && result.intent_payload) {
+      setSameTerminalStep("on_device");
       const intentResult = await startPaycloudSameTerminalSale(result.intent_payload);
-      if (!intentResult.success) {
+      const transData = parsePaycloudIntentTransData(intentResult.transData);
+      if (transData?.cardNo) setMaskedCard(transData.cardNo);
+
+      if (!isPaycloudIntentApproved(intentResult)) {
         if (paymentId) await closePayment(paymentId);
         setInFlightPaymentId(null);
-        Alert.alert(
-          "Pay on this device unavailable",
-          intentResult.message || "Sending to your card machine instead.",
-        );
-        const cloudRetry = await createPayment({
-          terminal_id: selectedTerminal.id,
-          entity_type: entityType,
-          entity_id: entityId,
-          amount,
-          tip_amount: parsedTip > 0 ? parsedTip : undefined,
-          cashback_amount: parsedCashback > 0 ? parsedCashback : undefined,
-          pay_method: payMethod,
-          currency,
-          booking_id: bookingId ?? (entityType === "booking" ? entityId : null),
-          sale_id: saleId ?? (entityType === "sale" ? entityId : null),
-          group_booking_id:
-            groupBookingId ?? (entityType === "group_booking" ? entityId : null),
-          channel: "cloud",
-        });
-        if (!cloudRetry) return;
-        if (cloudRetry.status === "successful") {
-          handleSettledSuccess(cloudRetry);
-        }
+        setSameTerminalStep("idle");
+        await setKeepAwake(false);
+        const friendly =
+          intentResult.message ??
+          humanizePaycloudIntentResult(intentResult.result, intentResult.resultMsg);
+        Alert.alert("Payment not completed", friendly, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Send to card machine", onPress: () => void runCloudFallback() },
+          { text: "Try again", onPress: () => void handleProcessRef.current?.() },
+        ]);
         return;
       }
 
+      setSameTerminalStep("confirming");
       if (paymentId) {
-        const settled = await pollSameTerminalSettlement(paymentId, confirmPayment, pollPayment);
+        const settled = await pollSameTerminalSettlement(
+          paymentId,
+          confirmPayment,
+          pollPayment,
+          intentResult,
+          info,
+        );
+        await setKeepAwake(false);
+        setSameTerminalStep("idle");
         if (settled?.status === "successful") {
           handleSettledSuccess(settled);
           return;
@@ -383,6 +627,8 @@ export function PayCloudPaymentSheet({
       );
       return;
     }
+
+    await setKeepAwake(false);
 
     if (result) {
       if (result.status === "successful") {
@@ -406,8 +652,7 @@ export function PayCloudPaymentSheet({
     }
   }, [
     selectedTerminal,
-    payOnThisDevice,
-    sameDeviceAvailable,
+    isSameDeviceMode,
     amount,
     parsedTip,
     parsedCashback,
@@ -423,7 +668,15 @@ export function PayCloudPaymentSheet({
     confirmPayment,
     pollPayment,
     handleSettledSuccess,
+    deviceInfo,
+    setKeepAwake,
+    handleClose,
+    router,
   ]);
+
+  useEffect(() => {
+    handleProcessRef.current = handleProcess;
+  }, [handleProcess]);
 
   if (!paycloudEnabled) {
     return null;
@@ -447,6 +700,9 @@ export function PayCloudPaymentSheet({
             <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
               {formatCurrency(Number(successResult.amount ?? amount), currency)} received
             </Text>
+            {maskedCard ? (
+              <Text style={twStyle("mt-1 text-xs text-emerald-700")}>Card {maskedCard}</Text>
+            ) : null}
           </View>
           <ActionButton
             label={voiding ? "Sending void…" : "Void on card machine"}
@@ -506,7 +762,31 @@ export function PayCloudPaymentSheet({
         </View>
       ) : (
       <>
-      <View style={twStyle("mb-4 items-center rounded-2xl bg-gray-50 py-6")}>
+      {sameTerminalStep !== "idle" ? (
+        <View style={twStyle("mb-4 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3")}>
+          <Text style={twStyle("text-sm font-medium text-indigo-900")}>
+            {sameTerminalStep === "opening"
+              ? "Opening card app…"
+              : sameTerminalStep === "on_device"
+                ? "Hand the terminal to your client"
+                : "Confirming payment…"}
+          </Text>
+          <Text style={twStyle("mt-1 text-xs text-indigo-800")}>
+            {sameTerminalStep === "on_device"
+              ? "Complete the payment in WiseCashier, then return here."
+              : "Keep this screen open until the payment finishes."}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2")}>
+        <Text style={twStyle("text-xs text-gray-600")}>Payment mode</Text>
+        <Text style={twStyle("text-xs font-semibold text-gray-900")}>
+          {isSameDeviceMode ? "Pay on this device" : "Send to card machine (Cloud)"}
+        </Text>
+      </View>
+
+      <View style={twStyle(`mb-4 items-center rounded-2xl bg-gray-50 py-6 ${isCompactLayout ? "px-3" : ""}`)}>
         <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
         <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
         {parsedTip > 0 ? (
@@ -521,20 +801,28 @@ export function PayCloudPaymentSheet({
         ) : null}
       </View>
 
-      <View style={twStyle("mb-4")}>
-        <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-          Tip (optional)
-        </Text>
-        <TextInput
-          style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-          value={tipAmount}
-          onChangeText={setTipAmount}
-          placeholder="0.00"
-          placeholderTextColor="#9ca3af"
-          keyboardType="decimal-pad"
-          accessibilityLabel="Tip amount"
-        />
-      </View>
+      {tipIncludedInAmount ? (
+        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2")}>
+          <Text style={twStyle("text-xs text-gray-600")}>
+            Any tip entered at checkout is already included in this amount.
+          </Text>
+        </View>
+      ) : (
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
+            Tip (optional)
+          </Text>
+          <TextInput
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
+            value={tipAmount}
+            onChangeText={setTipAmount}
+            placeholder="0.00"
+            placeholderTextColor="#9ca3af"
+            keyboardType="decimal-pad"
+            accessibilityLabel="Tip amount"
+          />
+        </View>
+      )}
 
       {cashbackOn ? (
         <View style={twStyle("mb-4")}>
@@ -613,6 +901,9 @@ export function PayCloudPaymentSheet({
                   style={twStyle(`mr-2 flex-1 rounded-xl border py-2.5 ${
                     selected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
                   }`)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={option.label}
                 >
                   <Text
                     style={twStyle(`text-center text-sm font-medium ${
@@ -629,7 +920,7 @@ export function PayCloudPaymentSheet({
       ) : null}
 
       <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>
-        {payOnThisDevice && sameDeviceAvailable ? "Linked card machine" : "Select card machine"}
+        {isSameDeviceMode ? "Linked card machine" : "Select card machine"}
       </Text>
       {loading ? (
         <View style={twStyle("items-center py-8")}>
@@ -695,6 +986,9 @@ export function PayCloudPaymentSheet({
                 onPress={() => void handleResumeInFlight()}
                 style={twStyle("mt-2 self-start rounded-lg bg-indigo-600 px-3 py-2")}
                 disabled={resumingInFlight}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: resumingInFlight, busy: resumingInFlight }}
+                accessibilityLabel="Resume the payment in progress and check its status"
               >
                 <Text style={twStyle("text-xs font-semibold text-white")}>
                   {resumingInFlight ? "Checking…" : "Resume payment"}
@@ -745,8 +1039,45 @@ export function PayCloudPaymentSheet({
             }
             return null;
           })()}
+          {isSameDeviceMode && !deviceMatchedTerminal ? (
+            <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-amber-900")}>
+                This device isn&apos;t linked to a card machine yet
+              </Text>
+              <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+                Link it once in Card machines to take payments right here, or send this
+                charge to another machine instead.
+              </Text>
+              <View style={twStyle("mt-2 flex-row")}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleClose();
+                    router.push("/(app)/(tabs)/more/card-machines" as never);
+                  }}
+                  style={twStyle("mr-2 rounded-lg bg-amber-600 px-3 py-2")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Link this device in Card machines"
+                >
+                  <Text style={twStyle("text-xs font-semibold text-white")}>Link this device</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setPayOnThisDevice(false)}
+                  style={twStyle("rounded-lg border border-amber-300 bg-white px-3 py-2")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send this payment to a card machine instead"
+                >
+                  <Text style={twStyle("text-xs font-semibold text-amber-800")}>
+                    Send to card machine
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
           {activeTerminals.map((terminal, idx) => {
             const isSelected = selectedTerminal?.id === terminal.id;
+            // In same-device mode only the linked record can be charged.
+            const unusableOnThisDevice =
+              isSameDeviceMode && deviceMatchedTerminal?.id !== terminal.id;
             const matchesBookingLocation =
               !!bookingLocationId && terminal.location_id === bookingLocationId;
             const isPortable = terminal.location_id == null;
@@ -757,15 +1088,21 @@ export function PayCloudPaymentSheet({
               <TouchableOpacity
                 key={terminal.id}
                 onPress={() => setSelectedTerminal(terminal)}
+                disabled={unusableOnThisDevice}
                 style={[
                   twStyle(`flex-row items-center rounded-xl border p-3 ${
                     isSelected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
                   }`),
                   idx > 0 ? { marginTop: 8 } : undefined,
+                  unusableOnThisDevice ? { opacity: 0.45 } : undefined,
                 ]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected }}
-                accessibilityLabel={`${terminal.name} card machine`}
+                accessibilityState={{ selected: isSelected, disabled: unusableOnThisDevice }}
+                accessibilityLabel={
+                  unusableOnThisDevice
+                    ? `${terminal.name} card machine — not available while paying on this device`
+                    : `${terminal.name} card machine`
+                }
               >
                 <View
                   style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
@@ -801,6 +1138,13 @@ export function PayCloudPaymentSheet({
                         </Text>
                       </View>
                     ) : null}
+                    {deviceMatchedTerminal?.id === terminal.id ? (
+                      <View style={twStyle("ml-2 rounded-full bg-slate-900 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-semibold text-white")}>
+                          This device
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {terminal.terminal_sn ? `Serial ${terminal.terminal_sn}` : "Card machine"}
@@ -830,7 +1174,7 @@ export function PayCloudPaymentSheet({
         label={
           processing
             ? "Waiting on card machine…"
-            : payOnThisDevice && sameDeviceAvailable
+            : isSameDeviceMode
               ? `Pay ${displayAmount} on this device`
               : `Send ${displayAmount} to card machine`
         }
@@ -839,9 +1183,12 @@ export function PayCloudPaymentSheet({
         disabled={
           !selectedTerminal ||
           processing ||
+          sameTerminalStep !== "idle" ||
+          resumingInFlight ||
           activeTerminals.length === 0 ||
           !isReady ||
-          totalAmount <= 0
+          totalAmount <= 0 ||
+          (isSameDeviceMode && !deviceMatchedTerminal)
         }
         fullWidth
       />

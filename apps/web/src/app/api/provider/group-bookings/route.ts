@@ -31,6 +31,9 @@ import {
   notifyGroupParticipantBooking,
 } from "@/lib/bookings/create-group-participant-booking";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
+import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 import { RECOGNIZED_REVENUE_TYPES, recognizedRevenue } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
@@ -155,7 +158,7 @@ export async function GET(request: NextRequest) {
       let query = admin
         .from("group_bookings")
         .select(
-          "*, service_packages:package_id(id, name, price, discount_percentage), booking_participants(id, booking_id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)",
+          "*, service_packages:package_id(id, name, price, discount_percentage), booking_participants(id, booking_id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, notes, checked_in_at, checked_out_at)",
           { count: "exact" }
         )
         .eq("provider_id", providerId)
@@ -316,6 +319,7 @@ export async function GET(request: NextRequest) {
             price: Number(p.price) || 0,
             duration_minutes: p.duration_minutes,
             addons: p.addons || [],
+            notes: p.notes ?? null,
             checked_in: !!p.checked_in_at,
             checked_in_time: p.checked_in_at,
             checked_out: !!p.checked_out_at,
@@ -635,6 +639,9 @@ export async function POST(request: NextRequest) {
       throw gbError;
     }
 
+    /** Non-fatal problems surfaced to the provider alongside the created group. */
+    const groupWarnings: string[] = [];
+
     // Add participants if provided (booking_id is nullable after migration 485).
     //
     // §Group-booking-audit 2026-05: previously a participant insert failure
@@ -802,6 +809,8 @@ export async function POST(request: NextRequest) {
         duration_minutes:
           typeof p.duration_minutes === "number" ? p.duration_minutes : duration_minutes || null,
         addons: Array.isArray(p.addons) ? p.addons : [],
+        notes:
+          typeof p.notes === "string" && p.notes.trim().length > 0 ? p.notes.trim() : null,
       }));
 
       const { error: pError } = await admin.from("booking_participants").insert(participantRows);
@@ -887,13 +896,70 @@ export async function POST(request: NextRequest) {
           void notifyGroupParticipantBooking(bookingId, customerId, providerId);
         }
       }
+
+      // Payment link is a per-participant tender: each guest pays their own
+      // child booking, so the link goes out per child booking rather than once
+      // for the group. Without this the review step offered "Payment link" and
+      // then sent nothing.
+      if (body?.payment_method === "payment_link") {
+        const paymentLinkEnabled = await isFeatureEnabledServer(
+          FEATURE_FLAG_KEYS.PAYMENT_LINK,
+          tenantId ?? null,
+        );
+        if (!paymentLinkEnabled) {
+          groupWarnings.push(
+            "Payment link is disabled, so no links were sent. Collect payment another way.",
+          );
+        } else if (!shouldNotifyParticipants) {
+          groupWarnings.push(
+            "Payment links were not sent because participant notifications are turned off.",
+          );
+        } else {
+          for (const p of participantsWithBookings) {
+            const bookingId =
+              typeof p.booking_id === "string" && p.booking_id.length > 0 ? p.booking_id : null;
+            const customerId =
+              typeof p.customer_id === "string" && p.customer_id.trim().length > 0
+                ? p.customer_id.trim()
+                : null;
+            if (!bookingId || !customerId) continue;
+
+            const { data: childBooking } = await admin
+              .from("bookings")
+              .select(
+                "booking_number, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status",
+              )
+              .eq("id", bookingId)
+              .maybeSingle();
+            const child = (childBooking ?? {}) as Record<string, unknown>;
+
+            const linkResult = await sendBookingPaymentLink(admin, {
+              bookingId,
+              bookingRef:
+                (child.booking_number as string | null) || bookingId.slice(0, 8).toUpperCase(),
+              customerId,
+              tenantId: tenantId ?? null,
+              source: "provider_group_booking_create",
+              amounts: {
+                totalAmount: Number(child.total_amount ?? 0),
+                totalPaid: Number(child.total_paid ?? 0),
+                totalRefunded: Number(child.total_refunded ?? 0),
+                walletAmount: Number(child.wallet_amount ?? 0),
+                giftCardAmount: Number(child.gift_card_amount ?? 0),
+                paymentStatus: (child.payment_status as string | null) ?? null,
+              },
+            });
+            groupWarnings.push(...linkResult.warnings);
+          }
+        }
+      }
     }
 
     // Refetch with participants joined (include new service/pricing columns)
     const { data: fullBooking } = await admin
       .from("group_bookings")
       .select(
-        "*, service_packages:package_id(id, name), booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)"
+        "*, service_packages:package_id(id, name), booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, notes, checked_in_at, checked_out_at)"
       )
       .eq("id", groupBooking.id)
       .single();
@@ -921,11 +987,14 @@ export async function POST(request: NextRequest) {
         price: p.price || 0,
         duration_minutes: p.duration_minutes,
         addons: p.addons || [],
+        notes: p.notes ?? null,
         checked_in: !!p.checked_in_at,
         checked_in_time: p.checked_in_at,
         checked_out: !!p.checked_out_at,
         checked_out_time: p.checked_out_at,
       })),
+      // Per-participant loops can raise the same warning many times over.
+      ...(groupWarnings.length > 0 ? { _warnings: Array.from(new Set(groupWarnings)) } : {}),
     });
   } catch (error) {
     return handleApiError(error, "Failed to create group booking");

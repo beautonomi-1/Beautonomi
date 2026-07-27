@@ -821,6 +821,8 @@ export interface GroupBookingParticipant {
   service_id: string;
   service_name: string;
   price: number;
+  /** Per-participant service notes (preferences, allergies, add-on instructions). */
+  notes?: string | null;
   checked_in: boolean;
   checked_in_time?: string;
   checked_out: boolean;

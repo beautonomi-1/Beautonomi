@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type RecordBookingStripePaymentResult =
-  | { ok: true; paymentProviderId: string; inserted: boolean }
+  | { ok: true; paymentProviderId: string; inserted: boolean; bookingPaymentId: string }
   | { ok: false; reason: "missing_provider_id" | "invalid_amount"; error?: unknown };
 
 /**
@@ -46,7 +46,12 @@ export async function recordBookingStripePayment(
     return { ok: false, reason: "missing_provider_id", error: existingError };
   }
   if (existing) {
-    return { ok: true, paymentProviderId, inserted: false };
+    return {
+      ok: true,
+      paymentProviderId,
+      inserted: false,
+      bookingPaymentId: String((existing as { id: string }).id),
+    };
   }
 
   const paymentRow: Record<string, unknown> = {
@@ -66,7 +71,11 @@ export async function recordBookingStripePayment(
     },
   };
 
-  const { error: insertError } = await supabase.from("booking_payments").insert(paymentRow);
+  const { data: insertedRow, error: insertError } = await supabase
+    .from("booking_payments")
+    .insert(paymentRow)
+    .select("id")
+    .maybeSingle();
 
   if (insertError && insertError.code !== "23505") {
     const message = String(insertError.message || "").toLowerCase();
@@ -85,10 +94,50 @@ export async function recordBookingStripePayment(
           .eq("payment_provider", "stripe")
           .eq("payment_provider_id", paymentProviderId);
       }
-      return { ok: true, paymentProviderId, inserted: fallbackError?.code !== "23505" };
+      const { data: fallbackRow } = await supabase
+        .from("booking_payments")
+        .select("id")
+        .eq("payment_provider", "stripe")
+        .eq("payment_provider_id", paymentProviderId)
+        .maybeSingle();
+      if (!fallbackRow?.id) {
+        return { ok: false, reason: "missing_provider_id", error: fallbackError ?? insertError };
+      }
+      return {
+        ok: true,
+        paymentProviderId,
+        inserted: fallbackError?.code !== "23505",
+        bookingPaymentId: String(fallbackRow.id),
+      };
     }
     return { ok: false, reason: "missing_provider_id", error: insertError };
   }
 
-  return { ok: true, paymentProviderId, inserted: insertError?.code !== "23505" };
+  if (insertError?.code === "23505") {
+    const { data: concurrentRow } = await supabase
+      .from("booking_payments")
+      .select("id")
+      .eq("payment_provider", "stripe")
+      .eq("payment_provider_id", paymentProviderId)
+      .maybeSingle();
+    if (concurrentRow?.id) {
+      return {
+        ok: true,
+        paymentProviderId,
+        inserted: false,
+        bookingPaymentId: String(concurrentRow.id),
+      };
+    }
+  }
+
+  if (!insertedRow?.id) {
+    return { ok: false, reason: "missing_provider_id", error: insertError };
+  }
+
+  return {
+    ok: true,
+    paymentProviderId,
+    inserted: true,
+    bookingPaymentId: String(insertedRow.id),
+  };
 }

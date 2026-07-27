@@ -16,6 +16,11 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { fetchBookingCommissionContext } from "@/lib/bookings/fetch-booking-commission-context";
+import {
+  resolveCommissionBaseForBookingPayment,
+  sumPendingBookingLevelCatchUpNet,
+} from "@/lib/bookings/resolve-commission-base-for-booking-payment";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
@@ -383,6 +388,7 @@ export async function processPayment(
       giftCardCode,
       walletAmountApplied,
       marketTenantId: flagTenantId,
+      isDeposit: isDepositPayment,
     });
 
     await (supabase.from("bookings") as any)
@@ -1015,6 +1021,7 @@ async function insertNoGatewayLedger(
     giftCardCode: string;
     walletAmountApplied: number;
     marketTenantId?: string | null;
+    isDeposit?: boolean;
   }
 ) {
   const {
@@ -1025,6 +1032,7 @@ async function insertNoGatewayLedger(
     giftCardCode: _giftCardCode,
     walletAmountApplied,
     marketTenantId,
+    isDeposit = false,
   } = ctx;
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -1038,24 +1046,9 @@ async function insertNoGatewayLedger(
     providerId: draft.provider_id,
   });
 
-  // Scale commission to the amount actually collected (deposit vs full, wallet/gift card only).
-  // Matches Paystack webhook: net_revenue_ratio × collected_amount (see charge-success.ts).
   const amountCollected = walletAmountApplied + giftCardAmountApplied;
   const effectiveAmount = amountCollected > 0 ? amountCollected : v.totalAmount;
-  const bookingTotalForScale = v.totalAmount;
-  const scale = bookingTotalForScale > 0 ? effectiveAmount / bookingTotalForScale : 1;
-  const scaledCommissionBase = Math.max(0, Math.round(v.commissionBase * scale * 100) / 100);
 
-  const platformCommission =
-    commissionRate > 0 ? percentOf(scaledCommissionBase, commissionRate) : 0;
-
-  // provider_earnings represents the service-base share going to the provider, EXCLUDING tip and
-  // travel fee — those are inserted as their own finance_transactions rows ("tip", "travel_fee")
-  // to match the Paystack webhook path and avoid double-counting in aggregate reports.
-  const providerEarnings = subtractMoney(scaledCommissionBase, platformCommission);
-
-  // Determine the settlement method label for ledger descriptions and provider field.
-  // Priority: wallet > gift_card > package/entitlement (zero-cost)
   const settlementMethod =
     walletAmountApplied > 0 && giftCardAmountApplied > 0
       ? "wallet_and_gift_card"
@@ -1074,6 +1067,41 @@ async function insertNoGatewayLedger(
           : "package/entitlement";
 
   const internalRef = `${settlementMethod}_booking_${booking.id}`;
+
+  const commissionContext = await fetchBookingCommissionContext(supabase, booking.id, {
+    chargeAmount: effectiveAmount,
+    excludeReference: internalRef,
+  });
+  const postBookingLevelFees =
+    !isDeposit && !commissionContext.bookingLevelItemsAlreadyPosted;
+  const pendingCatchUpNet = postBookingLevelFees
+    ? sumPendingBookingLevelCatchUpNet({
+        tipAmount: v.tipAmount,
+        travelFee: v.travelFee,
+        platformFee: v.serviceFeeAmount,
+        existingTypes: commissionContext.existingBookingLevelTypes,
+      })
+    : 0;
+  const postedLegsForResidual =
+    commissionContext.postedLegsSum +
+    (commissionContext.bookingLevelItemsAlreadyPosted ? pendingCatchUpNet : 0);
+
+  const scaledCommissionBase = resolveCommissionBaseForBookingPayment({
+    paymentAmount: effectiveAmount,
+    bookingTotal: v.totalAmount,
+    platformFee: v.serviceFeeAmount,
+    tip: v.tipAmount,
+    tax: v.taxAmount,
+    travel: v.travelFee,
+    postedLegsSum: postedLegsForResidual,
+    cumulativePaid: commissionContext.cumulativePaid,
+    bookingLevelItemsAlreadyPosted: commissionContext.bookingLevelItemsAlreadyPosted,
+  });
+
+  const platformCommission =
+    commissionRate > 0 ? percentOf(scaledCommissionBase, commissionRate) : 0;
+
+  const providerEarnings = subtractMoney(scaledCommissionBase, platformCommission);
 
   await (supabase.from("payment_transactions") as any).insert({
     booking_id: booking.id,
@@ -1134,7 +1162,7 @@ async function insertNoGatewayLedger(
       description: `Provider earnings for booking ${booking.booking_number} (${settlementLabel})`,
       created_at: now,
     },
-    ...(v.tipAmount > 0
+    ...(postBookingLevelFees && v.tipAmount > 0
       ? [
           {
             booking_id: booking.id,
@@ -1150,7 +1178,7 @@ async function insertNoGatewayLedger(
           },
         ]
       : []),
-    ...(v.taxAmount > 0
+    ...(postBookingLevelFees && v.taxAmount > 0
       ? [
           {
             booking_id: booking.id,
@@ -1166,7 +1194,7 @@ async function insertNoGatewayLedger(
           },
         ]
       : []),
-    ...(v.travelFee > 0
+    ...(postBookingLevelFees && v.travelFee > 0
       ? [
           {
             booking_id: booking.id,
@@ -1182,7 +1210,7 @@ async function insertNoGatewayLedger(
           },
         ]
       : []),
-    ...(v.serviceFeeAmount > 0
+    ...(postBookingLevelFees && v.serviceFeeAmount > 0
       ? [
           {
             booking_id: booking.id,

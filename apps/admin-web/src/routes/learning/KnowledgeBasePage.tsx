@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { BookOpen, GraduationCap, Lock, Search } from "lucide-react";

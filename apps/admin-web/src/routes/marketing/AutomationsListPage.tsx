@@ -1,4 +1,4 @@
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";

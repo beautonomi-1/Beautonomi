@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { ExternalLink, Lock, ChevronLeft, ChevronRight, GraduationCap, Clock } from "lucide-react";

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requireOwnerOrEditSettings } from "@/lib/auth/requirePermission";
+import { requireAnyPermission, requireOwnerOrEditSettings } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -22,7 +22,10 @@ import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireOwnerOrEditSettings(request);
+    const permissionCheck = await requireAnyPermission(
+      ["view_sales", "view_reports", "process_payments", "edit_settings"],
+      request,
+    );
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

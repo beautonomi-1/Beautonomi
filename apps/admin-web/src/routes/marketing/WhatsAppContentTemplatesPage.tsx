@@ -11,7 +11,7 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import {
   AdminDataTable,

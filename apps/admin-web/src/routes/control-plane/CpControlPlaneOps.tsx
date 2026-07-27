@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { ExternalLink } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";

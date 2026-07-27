@@ -1,4 +1,4 @@
-import { format, startOfWeek, startOfMonth, endOfMonth, subMonths, subDays } from "date-fns";
+import { format, startOfWeek, startOfMonth, startOfYear, endOfMonth, subMonths, subDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 
 /**
@@ -6,7 +6,7 @@ import { formatInTimeZone, toZonedTime } from "date-fns-tz";
  * Boundaries follow the **provider business timezone** (`/api/provider/profile`.timezone)
  * when supplied — matching GET `/api/provider/reports/*` which parses `from`/`to` in that zone.
  */
-export type ReportDateRangeKey = "today" | "week" | "month" | "last_month" | "3months";
+export type ReportDateRangeKey = "today" | "week" | "month" | "last_month" | "3months" | "year" | "all";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
 
@@ -69,6 +69,12 @@ export function getReportDateRange(
       const fromD = subDays(zNow, 89);
       return { from: formatYmdInTz(fromD, tz), to: todayYmd };
     }
+    case "year": {
+      const yearStart = startOfYear(zNow);
+      return { from: formatYmdInTz(yearStart, tz), to: todayYmd };
+    }
+    case "all":
+      return { from: "1970-01-01", to: todayYmd };
     default:
       return { from: todayYmd, to: todayYmd };
   }

@@ -291,12 +291,19 @@ export async function createBookingFromRecurringSeries(
     address?: Record<string, unknown>;
     pricing?: Record<string, unknown>;
     booking_source?: string;
+    referral_source_id?: string | null;
   } | null;
   const addr = metaAddr?.address;
   const locationType = (row.location_type || "at_salon") as string;
   const pricingMeta = metaAddr?.pricing ?? {};
   const bookingSource =
     typeof metaAddr?.booking_source === "string" ? metaAddr.booking_source : "online";
+  // Attribution is captured once on the series and inherited by every
+  // occurrence, so repeat visits stay credited to the source that won the client.
+  const referralSourceId =
+    typeof metaAddr?.referral_source_id === "string" && metaAddr.referral_source_id.length > 0
+      ? metaAddr.referral_source_id
+      : null;
   const { data: previousBookingPricing } =
     Object.keys(pricingMeta).length === 0
       ? await admin
@@ -359,6 +366,7 @@ export async function createBookingFromRecurringSeries(
     location_type: locationType,
     location_id: row.location_id,
     booking_source: bookingSource,
+    referral_source_id: referralSourceId,
     address_line1:
       typeof addr === "object" && addr && "line1" in addr
         ? String((addr as { line1?: string }).line1)
@@ -451,6 +459,7 @@ export async function createBookingFromRecurringSeries(
       .from("bookings")
       .update({
         booking_source: bookingSource,
+        referral_source_id: referralSourceId,
         tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
         ...(bookingData.payment_provider ? { payment_provider: bookingData.payment_provider } : {}),
       })

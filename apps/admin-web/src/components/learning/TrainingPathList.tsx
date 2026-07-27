@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { ChevronDown, ChevronUp, Lock, BookOpen, Play } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { audienceLabel, type KbTrainingPath } from "@/lib/learning";

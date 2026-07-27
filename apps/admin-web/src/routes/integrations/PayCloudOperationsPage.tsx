@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, RefreshCw, Terminal } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
@@ -27,6 +27,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { formatPaycloudMerchantOptionLabel } from "@/lib/formatPaycloudMerchantLabel";
 import { AdminProviderPicker } from "@/components/AdminProviderPicker";
+import { channelLabel, PaycloudPaymentDetailModal } from "./PaycloudPaymentDetailModal";
 
 type PaycloudProvider = {
   id?: string;
@@ -75,9 +76,12 @@ type PaycloudPayment = {
   pay_scenario?: string | null;
   error_message?: string | null;
   response_code?: string | null;
+  initiation_channel?: string | null;
   created_at: string;
   provider?: PaycloudProvider | null;
-  terminal?: Pick<PaycloudTerminalRow, "display_name" | "terminal_sn"> | null;
+  terminal?: (Pick<PaycloudTerminalRow, "display_name" | "terminal_sn"> & {
+    model?: string | null;
+  }) | null;
 };
 
 type PaycloudPaymentsResponse = {
@@ -148,6 +152,7 @@ function buildPaymentsQuery(filters: {
   search: string;
   status: string;
   environment: string;
+  channel: string;
   exceptionsOnly: boolean;
   offset: number;
   providerId: string;
@@ -158,6 +163,7 @@ function buildPaymentsQuery(filters: {
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (filters.status) params.set("status", filters.status);
   if (filters.environment) params.set("environment", filters.environment);
+  if (filters.channel) params.set("initiation_channel", filters.channel);
   if (filters.exceptionsOnly) params.set("exceptions_only", "true");
   if (filters.providerId.trim()) params.set("provider_id", filters.providerId.trim());
   return params.toString();
@@ -188,8 +194,10 @@ export function PayCloudOperationsPage() {
   const [search, setSearch] = useState(() => sp.get("search") ?? "");
   const [status, setStatus] = useState("");
   const [environment, setEnvironment] = useState("");
+  const [channel, setChannel] = useState(() => sp.get("initiation_channel") ?? "");
   const [exceptionsOnly, setExceptionsOnly] = useState(() => sp.get("exceptions_only") !== "false");
   const [offset, setOffset] = useState(0);
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(() => sp.get("payment"));
   const [paymentProviderId, setPaymentProviderId] = useState(() => sp.get("provider_id") ?? "");
   const [fleetSearch, setFleetSearch] = useState("");
   const [fleetStatus, setFleetStatus] = useState("");
@@ -214,11 +222,12 @@ export function PayCloudOperationsPage() {
         search,
         status,
         environment,
+        channel,
         exceptionsOnly,
         offset,
         providerId: paymentProviderId,
       }),
-    [search, status, environment, exceptionsOnly, offset, paymentProviderId],
+    [search, status, environment, channel, exceptionsOnly, offset, paymentProviderId],
   );
 
   const fleetSignature = useMemo(
@@ -814,6 +823,21 @@ export function PayCloudOperationsPage() {
               <option value="sandbox">Sandbox</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Started via</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              value={channel}
+              onChange={(event) => {
+                setChannel(event.target.value);
+                setOffset(0);
+              }}
+            >
+              <option value="">Any channel</option>
+              <option value="cloud">Cloud (sent to machine)</option>
+              <option value="same_terminal">On device (card app)</option>
+            </select>
+          </div>
           <div className="md:col-span-2 lg:col-span-4">
             <AdminProviderPicker
               label="Provider"
@@ -889,6 +913,7 @@ export function PayCloudOperationsPage() {
                 <AdminTh>Expected</AdminTh>
                 <AdminTh>Match</AdminTh>
                 <AdminTh>Status</AdminTh>
+                <AdminTh>Via</AdminTh>
                 <AdminTh>Entity</AdminTh>
                 <AdminTh>Actions</AdminTh>
               </tr>
@@ -924,32 +949,66 @@ export function PayCloudOperationsPage() {
                     </AdminTd>
                     <AdminTd>
                       <StatusBadge value={payment.status} />
+                      {payment.response_code || payment.error_message ? (
+                        <div
+                          className="mt-1 max-w-[14rem] truncate text-xs text-red-800"
+                          title={payment.error_message ?? undefined}
+                        >
+                          {payment.response_code ? (
+                            <span className="font-mono">{payment.response_code}</span>
+                          ) : null}
+                          {payment.response_code && payment.error_message ? " · " : null}
+                          {payment.error_message ?? null}
+                        </div>
+                      ) : null}
+                    </AdminTd>
+                    <AdminTd>
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                          payment.initiation_channel === "same_terminal"
+                            ? "bg-indigo-100 text-indigo-900"
+                            : "bg-gray-100 text-gray-800",
+                        )}
+                      >
+                        {channelLabel(payment.initiation_channel)}
+                      </span>
+                      {payment.terminal?.model ? (
+                        <div className="mt-1 text-xs text-gray-500">{payment.terminal.model}</div>
+                      ) : null}
                     </AdminTd>
                     <AdminTd>
                       <div className="text-xs text-gray-800">{payment.entity_type}</div>
                       <div className="font-mono text-xs text-gray-500">{payment.entity_id}</div>
                     </AdminTd>
                     <AdminTd>
-                      {canForceSettle ? (
+                      <div className="flex flex-col items-start gap-1.5">
                         <button
                           type="button"
-                          className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                          disabled={forceSettleMut.isPending}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Force-settle ${money(payment.amount, payment.currency)} for ${payment.entity_type} ${payment.entity_id}?`,
-                              )
-                            ) {
-                              forceSettleMut.mutate(payment.id);
-                            }
-                          }}
+                          className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                          onClick={() => setDetailPaymentId(payment.id)}
                         >
-                          Force settle
+                          View detail
                         </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
+                        {canForceSettle ? (
+                          <button
+                            type="button"
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                            disabled={forceSettleMut.isPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Force-settle ${money(payment.amount, payment.currency)} for ${payment.entity_type} ${payment.entity_id}?`,
+                                )
+                              ) {
+                                forceSettleMut.mutate(payment.id);
+                              }
+                            }}
+                          >
+                            Force settle
+                          </button>
+                        ) : null}
+                      </div>
                     </AdminTd>
                   </tr>
                 );
@@ -958,6 +1017,13 @@ export function PayCloudOperationsPage() {
           </AdminDataTable>
         )}
       </AdminPanel>
+
+      {detailPaymentId ? (
+        <PaycloudPaymentDetailModal
+          paymentId={detailPaymentId}
+          onClose={() => setDetailPaymentId(null)}
+        />
+      ) : null}
     </div>
   );
 }

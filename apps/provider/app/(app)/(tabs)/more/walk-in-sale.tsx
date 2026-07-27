@@ -37,6 +37,8 @@ import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
+import { downloadPdf } from "@/lib/pdf-file";
+import { shareProviderOrderReceipt } from "@/lib/share-receipt";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
   paystackTerminalCollectionIntentPayload,
@@ -1002,6 +1004,47 @@ export default function WalkInSaleScreen() {
 
             {/* Actions */}
             <View style={{ gap: 10, paddingBottom: 8 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  void shareProviderOrderReceipt(
+                    selectedSale.id,
+                    selectedSale.order_number,
+                  ).catch((e) =>
+                    Alert.alert("Share", e instanceof Error ? e.message : "Could not share receipt."),
+                  );
+                }}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Share order receipt"
+              >
+                <Ionicons name="share-outline" size={18} color={Colors.gray[700]} />
+                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Share receipt</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  void downloadPdf({
+                    router,
+                    pdfPath: `/api/provider/product-orders/${encodeURIComponent(selectedSale.id)}/receipt/pdf`,
+                    signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(selectedSale.id)}/receipt/signed-url`,
+                    filename: `order_${selectedSale.order_number || selectedSale.id}.pdf`,
+                    title: `Order ${selectedSale.order_number}`,
+                    label: "receipt",
+                  }).catch((e) =>
+                    Alert.alert(
+                      "Download receipt",
+                      e instanceof Error ? e.message : "Something went wrong.",
+                    ),
+                  );
+                }}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Download order receipt"
+              >
+                <Ionicons name="download-outline" size={18} color={Colors.gray[700]} />
+                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Download PDF</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() => {
                   setSelectedSale(null);

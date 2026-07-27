@@ -31,6 +31,7 @@ import {
   restockProductOrderLineItems,
   creditWalletForProductOrderIfNeeded,
 } from "@/lib/orders/product-order-lifecycle";
+import { dispatchProductOrderStatusNotification } from "@/lib/notifications/notify-product-order-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ type StaleOrderRow = {
   tenant_id: string | null;
   wallet_amount: number | string | null;
   currency: string | null;
+  order_number?: string | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
 
   const { data: stale, error } = await admin
     .from("product_orders")
-    .select("id, customer_id, provider_id, tenant_id, wallet_amount, currency")
+    .select("id, customer_id, provider_id, tenant_id, wallet_amount, currency, order_number")
     .eq("status", "pending")
     .eq("payment_status", "pending")
     .eq("payment_method", "paystack")
@@ -116,6 +118,23 @@ export async function GET(request: NextRequest) {
         "product_order_payment_abandoned",
       );
       await restockProductOrderLineItems(admin, order.id);
+
+      if (order.customer_id) {
+        try {
+          await dispatchProductOrderStatusNotification({
+            supabase: admin,
+            customerId: order.customer_id,
+            status: "cancelled",
+            orderId: order.id,
+            orderNumber: String(order.order_number ?? order.id.slice(0, 8)),
+            tenantId: order.tenant_id,
+            providerId: order.provider_id,
+            cancellationReason: "Payment was not completed in time — stock released",
+          });
+        } catch (notifyErr) {
+          console.warn("[expire-pending-payment-orders] notify failed", order.id, notifyErr);
+        }
+      }
 
       expired += 1;
     } catch (err) {

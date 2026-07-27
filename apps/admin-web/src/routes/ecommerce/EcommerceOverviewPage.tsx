@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";

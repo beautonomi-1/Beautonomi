@@ -138,9 +138,25 @@ export async function POST(request: NextRequest) {
 
     const requestedStart = body.preferred_start_at ?? body.scheduled_at ?? null;
     const preferredIso = requestedStart ? new Date(requestedStart).toISOString() : null;
+
+    const offerExpiresAt = new Date(body.expiration_at);
+    if (Number.isNaN(offerExpiresAt.getTime())) {
+      return errorResponse("Offer expiry is not a valid date.", "VALIDATION_ERROR", 400);
+    }
+    if (offerExpiresAt.getTime() <= Date.now()) {
+      return errorResponse("Offer expiry must be in the future.", "VALIDATION_ERROR", 400);
+    }
+
     const offerTz = resolveTz((prow as { timezone?: string | null } | null)?.timezone);
     const limitYmd = formatDateYmd(addDays(nowInTz(offerTz), 7), offerTz);
-    const { toIso: requestExpiresIso } = dateRangeBoundsUtc(limitYmd, limitYmd, offerTz);
+    const { toIso: defaultRequestExpiresIso } = dateRangeBoundsUtc(limitYmd, limitYmd, offerTz);
+    // The expiry cron and the accept handler both cascade the *request* expiry onto
+    // its offers. A 7-day default would silently kill an offer the provider set to
+    // expire later, so the request must outlive the offer it carries.
+    const requestExpiresIso =
+      offerExpiresAt.getTime() > new Date(defaultRequestExpiresIso).getTime()
+        ? offerExpiresAt.toISOString()
+        : defaultRequestExpiresIso;
 
     // Verify staff_id belongs to this provider (if provided)
     if (body.staff_id) {
@@ -220,7 +236,7 @@ export async function POST(request: NextRequest) {
       : 0;
 
     // Create the offer immediately
-    const expIso = new Date(body.expiration_at).toISOString();
+    const expIso = offerExpiresAt.toISOString();
     const { data: offer, error: createOfferError } = await supabase
       .from("custom_offers")
       .insert({

@@ -683,6 +683,7 @@ export function CheckoutDialog({
         open={showPaycloudDialog}
         onOpenChange={setShowPaycloudDialog}
         amount={calculations.total}
+        tipIncludedInAmount={calculations.tip > 0}
         entityType="booking"
         entityId={checkoutData.appointment_id}
         bookingId={checkoutData.appointment_id}

@@ -45,6 +45,8 @@ export interface PayCloudTerminal {
   display_name: string;
   terminal_sn: string;
   serial_number: string;
+  model?: string | null;
+  paired_device_id?: string | null;
   location_id: string | null;
   location_name?: string | null;
   is_active: boolean;
@@ -116,10 +118,13 @@ export interface PayCloudPaymentRequest {
   booking_id?: string | null;
   sale_id?: string | null;
   group_booking_id?: string | null;
-  /** cloud = ecrorder to terminal; same_terminal = Intent on this device (P5). */
+  /** cloud = ecrorder to terminal; same_terminal = Intent on this device. */
   channel?: "cloud" | "same_terminal";
-  /** Best-effort P5 serial for same-terminal validation. */
+  /** Best-effort device serial for same-terminal validation. */
   device_serial?: string;
+  device_model?: string;
+  device_manufacturer?: string;
+  serial_source?: "build_serial" | "wiseasy_property" | "android_id";
 }
 
 export type { PaycloudIntentContract, PaycloudIntentPayload };
@@ -187,6 +192,9 @@ function normalizeTerminal(raw: unknown): PayCloudTerminal | null {
     display_name: displayName,
     terminal_sn: terminalSn,
     serial_number: terminalSn,
+    model: typeof row.model === "string" ? row.model : null,
+    paired_device_id:
+      typeof row.paired_device_id === "string" ? row.paired_device_id : null,
     location_id: typeof row.location_id === "string" ? row.location_id : null,
     location_name:
       typeof row.location_name === "string" ? row.location_name : undefined,
@@ -314,6 +322,7 @@ export function usePayCloudTerminals() {
         display_name: string;
         location_id: string | null;
         is_active: boolean;
+        paired_device_id: string | null;
       }>,
     ) => {
       try {
@@ -321,6 +330,7 @@ export function usePayCloudTerminals() {
         if (updates.display_name !== undefined) body.display_name = updates.display_name;
         if (updates.location_id !== undefined) body.location_id = updates.location_id;
         if (updates.is_active !== undefined) body.is_active = updates.is_active;
+        if (updates.paired_device_id !== undefined) body.paired_device_id = updates.paired_device_id;
         const res = await api.put<PayCloudTerminal>(
           `/api/provider/paycloud/terminals/${id}`,
           body,
@@ -592,11 +602,24 @@ export function usePayCloudPayment() {
     }
   }, []);
 
-  const confirmPayment = useCallback(async (paymentId: string): Promise<PayCloudPaymentResult | null> => {
+  const confirmPayment = useCallback(
+    async (
+      paymentId: string,
+      options?: {
+        intent_result?: {
+          result?: string;
+          resultMsg?: string;
+          transData?: string | Record<string, unknown>;
+        };
+        device_model?: string;
+        device_manufacturer?: string;
+        serial_source?: "build_serial" | "wiseasy_property" | "android_id";
+      },
+    ): Promise<PayCloudPaymentResult | null> => {
     try {
       const res = await api.post<Record<string, unknown>>(
         `/api/provider/paycloud/payments/${paymentId}/confirm`,
-        {},
+        options ?? {},
       );
       if (res.error) return null;
       const raw = res.data;
@@ -633,6 +656,8 @@ export function usePayCloudPayment() {
                     ? "This card machine isn't fully set up yet."
                     : code === "DEVICE_TERMINAL_MISMATCH"
                       ? "This device does not match the selected card machine. Choose the machine registered to this terminal."
+                    : code === "DEVICE_SERIAL_REQUIRED"
+                      ? "Could not identify this device. Link it in Card machines or send to the card machine instead."
                     : code === "AMOUNT_MISMATCH"
                       ? "Amount does not match the outstanding balance."
                       : res.error.message || "Card payment could not be started";

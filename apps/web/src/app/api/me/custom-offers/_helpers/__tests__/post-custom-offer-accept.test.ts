@@ -21,6 +21,7 @@ const mockResolveTenantIdForFinanceLedger = vi.fn();
 const mockIsFeatureEnabledServer = vi.fn();
 const mockResourceTenantMatchesHostTenant = vi.fn();
 const mockComputeCustomOfferPricing = vi.fn();
+const mockComputeCustomOfferSplits = vi.fn();
 const mockInitializePaystackTransaction = vi.fn();
 const mockChargeAuthorization = vi.fn();
 const mockPatchCustomOfferMessageAttachments = vi.fn();
@@ -79,17 +80,7 @@ vi.mock("../custom-offer-pricing", () => ({
 }));
 
 vi.mock("../custom-offer-splits", () => ({
-  computeCustomOfferSplits: vi.fn().mockResolvedValue({
-    ok: true,
-    result: {
-      walletAmount: 0,
-      giftCardAmount: 0,
-      giftCardId: null,
-      loyaltyPointsRedeemed: 0,
-      loyaltyDiscountAmount: 0,
-      paystackAmount: 1000,
-    },
-  }),
+  computeCustomOfferSplits: (...args: unknown[]) => mockComputeCustomOfferSplits(...args),
 }));
 
 vi.mock("@/lib/payments/paystack-server", () => ({
@@ -228,6 +219,17 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
         loyaltyDiscountAmount: 0,
       },
     });
+    mockComputeCustomOfferSplits.mockResolvedValue({
+      ok: true,
+      result: {
+        walletAmount: 0,
+        giftCardAmount: 0,
+        giftCardId: null,
+        loyaltyPointsRedeemed: 0,
+        loyaltyDiscountAmount: 0,
+        paystackAmount: 1000,
+      },
+    });
     mockInitializePaystackTransaction.mockResolvedValue({
       data: { authorization_url: "https://checkout.paystack.test/pay" },
     });
@@ -302,5 +304,150 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
     const body = await res.json();
     expect(res.status).toBe(502);
     expect(body.error.code).toBe("PAYMENT_INIT_FAILED");
+  });
+});
+
+/**
+ * Zero-Paystack path: wallet (and/or gift card) fully covers the collectible,
+ * so no Paystack call happens and finalize runs inline. Finalize only settles
+ * from `payment_pending`, so accept must claim that status first — and reset
+ * to `pending` (tenders refunded) when finalize fails so the customer can retry.
+ */
+describe("postCustomOfferAccept — zero-Paystack (wallet fully covers)", () => {
+  function buildRecordingAdminMock() {
+    const updates: Array<Record<string, unknown>> = [];
+    const updateMock = vi.fn((payload: Record<string, unknown>) => {
+      updates.push(payload);
+      const chain: any = {
+        eq: vi.fn(() => chain),
+        then: (resolve: (v: unknown) => void) => resolve({ error: null }),
+      };
+      return chain;
+    });
+    return {
+      admin: { from: vi.fn().mockReturnValue({ update: updateMock }) },
+      updates,
+      updateMock,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: CUSTOMER_ID, email: "buyer@example.com", role: "customer" },
+    });
+    mockResolveTenantId.mockResolvedValue("tenant-1");
+    mockGetTenantRegionConfig.mockResolvedValue({ defaultCurrency: "ZAR" });
+    mockResolveTenantIdForFinanceLedger.mockResolvedValue("tenant-1");
+    mockIsFeatureEnabledServer.mockResolvedValue(true);
+    mockResourceTenantMatchesHostTenant.mockReturnValue(true);
+    mockComputeCustomOfferPricing.mockResolvedValue({
+      ok: true,
+      result: {
+        subtotal: 1000,
+        tipAmount: 0,
+        taxAmount: 0,
+        taxRate: 0,
+        travelFee: 0,
+        serviceFeeAmount: 0,
+        serviceFeePercentage: 0,
+        promotionId: null,
+        promotionDiscountAmount: 0,
+        membershipDiscountAmount: 0,
+        membershipPlanId: null,
+        membershipId: null,
+        commissionBase: 1000,
+        totalAmount: 1000,
+        loyaltyPointsRedeemed: 0,
+        loyaltyDiscountAmount: 0,
+      },
+    });
+    mockComputeCustomOfferSplits.mockResolvedValue({
+      ok: true,
+      result: {
+        walletAmount: 1000,
+        giftCardAmount: 0,
+        giftCardId: null,
+        loyaltyPointsRedeemed: 0,
+        loyaltyDiscountAmount: 0,
+        paystackAmount: 0,
+      },
+    });
+    mockFinalizeCustomOfferPayment.mockResolvedValue({ ok: true, bookingId: "booking-1" });
+    mockPatchCustomOfferMessageAttachments.mockResolvedValue(undefined);
+  });
+
+  function buildZeroPaystackSupabase() {
+    const supabase = buildSupabaseMock({});
+    supabase.rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+    return supabase;
+  }
+
+  it("claims payment_pending before calling finalize", async () => {
+    const { admin, updates, updateMock } = buildRecordingAdminMock();
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+    mockGetSupabaseServer.mockResolvedValue(buildZeroPaystackSupabase());
+
+    const { postCustomOfferAccept } = await import("../post-custom-offer-accept");
+    const res = await postCustomOfferAccept(
+      buildPostRequest({ payment_option: "full", use_wallet: true }),
+      { params: Promise.resolve({ id: OFFER_ID }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockInitializePaystackTransaction).not.toHaveBeenCalled();
+    expect(mockChargeAuthorization).not.toHaveBeenCalled();
+
+    expect(updates.some((u) => u.status === "payment_pending")).toBe(true);
+    // The payment_pending claim must land before finalize runs.
+    const pendingCallOrder = updateMock.mock.invocationCallOrder[0];
+    const finalizeCallOrder = mockFinalizeCustomOfferPayment.mock.invocationCallOrder[0];
+    expect(pendingCallOrder).toBeLessThan(finalizeCallOrder);
+
+    const finalizeInput = mockFinalizeCustomOfferPayment.mock.calls[0][1];
+    expect(finalizeInput).toMatchObject({
+      offerId: OFFER_ID,
+      paystackAmountMajor: 0,
+      walletAmountApplied: 1000,
+      paymentProvider: "wallet",
+    });
+
+    const body = await res.json();
+    expect(body.data).toMatchObject({ finalized: true, booking_id: "booking-1" });
+  });
+
+  it("refunds the wallet and resets to pending when finalize fails", async () => {
+    const { admin, updates } = buildRecordingAdminMock();
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+    const supabase = buildZeroPaystackSupabase();
+    mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockFinalizeCustomOfferPayment.mockResolvedValue({
+      ok: false,
+      reason: "unexpected_status:withdrawn",
+    });
+
+    const { postCustomOfferAccept } = await import("../post-custom-offer-accept");
+    const res = await postCustomOfferAccept(
+      buildPostRequest({ payment_option: "full", use_wallet: true }),
+      { params: Promise.resolve({ id: OFFER_ID }) },
+    );
+
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(body.error.code).toBe("FINALIZE_FAILED");
+
+    // Wallet debited then credited back.
+    const rpcNames = (supabase.rpc as any).mock.calls.map((c: unknown[]) => c[0]);
+    expect(rpcNames).toContain("wallet_debit_self");
+    expect(rpcNames).toContain("wallet_credit_self");
+
+    // Offer reset to pending so the customer can retry, chat card kept in sync.
+    expect(updates.some((u) => u.status === "payment_pending")).toBe(true);
+    expect(updates.some((u) => u.status === "pending" && u.payment_reference === null)).toBe(true);
+    expect(mockPatchCustomOfferMessageAttachments).toHaveBeenCalledWith(
+      expect.anything(),
+      OFFER_ID,
+      { status: "pending" },
+    );
   });
 });

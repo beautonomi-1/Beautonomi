@@ -3,10 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
-import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
+import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
-import { subDays, subYears, startOfMonth } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 
 function csvEscape(value: any): string {
   const s = String(value ?? "");
@@ -14,25 +13,8 @@ function csvEscape(value: any): string {
   return s;
 }
 
-function formatRangeStart(range: string, timezone: string): Date {
-  const now = new Date();
-  const todayYmd = formatDateYmd(now, timezone);
-  const zNow = toZonedTime(now, timezone);
-  if (range === "all") return new Date(0);
-  if (range === "week") {
-    const fromYmd = formatDateYmd(subDays(zNow, 7), timezone);
-    return new Date(dateRangeBoundsUtc(fromYmd, todayYmd, timezone).fromIso);
-  }
-  if (range === "year") {
-    const fromYmd = formatDateYmd(subYears(zNow, 1), timezone);
-    return new Date(dateRangeBoundsUtc(fromYmd, todayYmd, timezone).fromIso);
-  }
-  const monthStartYmd = formatDateYmd(startOfMonth(zNow), timezone);
-  return new Date(dateRangeBoundsUtc(monthStartYmd, monthStartYmd, timezone).fromIso);
-}
-
 /**
- * GET /api/provider/finance/export?range=month|week|year|all
+ * GET /api/provider/finance/export?range=today|week|month|year|all
  * Full CSV export of finance_transactions for the provider (org-wide; not branch-filtered).
  *
  * Columns mirror the admin export shape so providers can reconcile their ledger against
@@ -87,8 +69,7 @@ export async function GET(request: NextRequest) {
     const range = searchParams.get("range") || "month";
     const now = new Date();
     const reportContext = await getProviderReportContext(db as any, providerId);
-    const startDate = formatRangeStart(range, reportContext.timezone);
-    const startIso = startDate.toISOString();
+    const startIso = resolveProviderFinanceRangeBounds(range, reportContext.timezone, now).startIso;
     const endIso = now.toISOString();
 
     type LedgerRow = {

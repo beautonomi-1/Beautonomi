@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { adminApi } from "@/lib/adminClient";
 import { adminSpaTo } from "@/lib/adminSpaPath";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { adminApi } from "@/lib/adminClient";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";

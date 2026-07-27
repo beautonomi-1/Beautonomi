@@ -13,6 +13,8 @@ import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useProvider } from "@/providers/ProviderContext";
+import { useAuth } from "@/providers/AuthProvider";
+import { prefetchApi } from "@/hooks/useApi";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
@@ -80,9 +82,11 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
-  const { provider } = useProvider();
+  const { provider, selectedLocationId } = useProvider();
+  const { session } = useAuth();
   const { notificationUnread, chatUnreadCount, navCounts, refresh: refreshUnreadCount, refreshNavCounts } =
     useNotificationsCount();
+  const prefetchedTabsRef = useRef(false);
 
   const bookingsBadge = formatTabBadge(
     Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
@@ -115,6 +119,22 @@ export default function TabsLayout() {
     if (!isSentryEnabled()) return;
     authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
   }, []);
+
+  useEffect(() => {
+    const providerId = provider?.id;
+    const userId = session?.user?.id;
+    if (!providerId || !userId || prefetchedTabsRef.current) return;
+    prefetchedTabsRef.current = true;
+    const locQ = selectedLocationId
+      ? `?location_id=${encodeURIComponent(selectedLocationId)}`
+      : "";
+    // Only paths the destination screens read back through useApi's cache are
+    // worth warming. The bookings tab is deliberately absent: it loads through
+    // usePagedProviderBookings, which calls api.get directly with date-filtered
+    // paged URLs, so a prefetch there would just be an extra cold-start request.
+    void prefetchApi(`/api/provider/dashboard${locQ}`, { userId });
+    void prefetchApi("/api/provider/conversations", { userId });
+  }, [provider?.id, session?.user?.id, selectedLocationId]);
 
   useEffect(() => {
     const interval = setInterval(() => {

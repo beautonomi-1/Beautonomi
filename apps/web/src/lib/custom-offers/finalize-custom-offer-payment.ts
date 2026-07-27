@@ -33,6 +33,12 @@ import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-off
 import { slackNotifyCustomOfferFinalizeFailed } from "@/lib/integrations/slack/ops-triggers";
 import { resolveCustomerProviderConversation } from "@/lib/chat/resolve-conversation";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
+import { fetchBookingCommissionContext } from "@/lib/bookings/fetch-booking-commission-context";
+import {
+  resolveCommissionBaseForBookingPayment,
+  sumPendingBookingLevelCatchUpNet,
+} from "@/lib/bookings/resolve-commission-base-for-booking-payment";
+import { postBookingAuditLedgerLegsIfMissing } from "@/lib/bookings/post-booking-audit-ledger-legs";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -238,11 +244,23 @@ async function backfillMissingCustomOfferFinance(
   const promotionDiscountAmount = Math.max(0, Number(b.promotion_discount_amount ?? 0));
   const loyaltyDiscountAmount = Math.max(0, Number(b.loyalty_discount_amount ?? 0));
   const bookingTotal = Number(b.total_amount ?? 0);
+  const reference = b.payment_reference || `custom_offer_backfill:${offerId}`;
 
-  const commissionBase =
-    bookingTotal > 0
-      ? Math.max(0, bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount)
-      : 0;
+  const commissionContext = await fetchBookingCommissionContext(adminSupabase, bookingId, {
+    chargeAmount: bookingTotal,
+    excludeReference: reference,
+  });
+  const commissionBase = resolveCommissionBaseForBookingPayment({
+    paymentAmount: bookingTotal,
+    bookingTotal,
+    platformFee: serviceFeeAmount,
+    tip: tipAmount,
+    tax: taxAmount,
+    travel: travelFee,
+    postedLegsSum: commissionContext.postedLegsSum,
+    cumulativePaid: commissionContext.cumulativePaid,
+    bookingLevelItemsAlreadyPosted: commissionContext.bookingLevelItemsAlreadyPosted,
+  });
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
     tenant_id: b.tenant_id ?? null,
@@ -255,7 +273,6 @@ async function backfillMissingCustomOfferFinance(
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  const reference = b.payment_reference || `custom_offer_backfill:${offerId}`;
   const provider = b.payment_provider || "paystack";
 
   const { data: existingPaymentTx } = await adminSupabase
@@ -897,6 +914,7 @@ export async function finalizeCustomOfferPayment(
           source: "custom_offer_finalize",
           custom_offer_id: offerId,
           payment_option: coPaymentOption,
+          ...(coRequiresDeposit ? { requires_deposit: true } : {}),
         },
       });
     } catch (bpErr) {
@@ -1024,49 +1042,65 @@ export async function finalizeCustomOfferPayment(
   const tipForCommission = Number(bRow.tip_amount ?? tipAmount ?? 0);
   const taxForCommission = Number(bRow.tax_amount ?? taxAmount ?? 0);
   const travelForCommission = Number(bRow.travel_fee ?? travelFee ?? 0);
-  const customerPlatformFeeForCommission = Number(
+  const serviceFeeForCommission = Number(
     (bRow.platform_fee_amount as number | undefined) ??
       (bRow.service_fee_amount as number | undefined) ??
       serviceFeeAmount ??
       0,
   );
-  /** Align with Paystack `charge-success`: base excludes tip/tax/travel/customer platform fee (membership/loyalty already in total). */
-  const commissionBaseFromBookingTotals =
-    bookingTotalForCommission > 0
-      ? Math.max(
-          0,
-          bookingTotalForCommission -
-            tipForCommission -
-            taxForCommission -
-            travelForCommission -
-            customerPlatformFeeForCommission,
-        )
-      : Math.max(0, bookingSubtotal - promotionDiscountAmount);
 
-  const rawCommissionBaseMeta = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : null;
-  let rawCommissionBase = commissionBaseFromBookingTotals;
-  if (rawCommissionBaseMeta != null) {
-    const drift = Math.abs(rawCommissionBaseMeta - commissionBaseFromBookingTotals);
-    if (drift > 0.015) {
-      console.warn("[finalizeCustomOfferPayment] metadata.commission_base drift vs booking totals; using recomputed base", {
-        bookingId: booking.id,
-        metaBase: rawCommissionBaseMeta,
-        recomputed: commissionBaseFromBookingTotals,
-      });
-    } else {
-      rawCommissionBase = rawCommissionBaseMeta;
-    }
+  const customOfferFinanceTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+    tenant_id: bookingTenantId,
+    provider_id: req.provider_id,
+  });
+
+  let sourcePaymentId: string | null = null;
+  if (paystackTxId) {
+    const { data: paystackPaymentRow } = await adminSupabase
+      .from("booking_payments")
+      .select("id")
+      .eq("booking_id", booking.id)
+      .eq("payment_provider_id", paystackTxId)
+      .maybeSingle();
+    sourcePaymentId = (paystackPaymentRow as { id?: string } | null)?.id ?? null;
   }
 
-  // Scale commission to actually-collected cash — match Paystack: rawCommissionBase × (collected / bookingTotal).
-  const scaleDenom = isDepositPayment ? coTotalAmount : Math.max(0.01, bookingTotalForCommission);
-  const scaleNumer = isDepositPayment ? cashCollected : Math.max(0, cashCollected);
-  const commissionBase =
-    scaleDenom > 0
-      ? Math.max(0, Math.round((rawCommissionBase * scaleNumer) / scaleDenom * 100) / 100)
-      : rawCommissionBase;
+  const commissionContext = await fetchBookingCommissionContext(adminSupabase, booking.id, {
+    chargeAmount: cashCollected,
+    excludeReference: input.reference,
+    excludePaymentId: sourcePaymentId,
+  });
+  const postBookingLevelFees =
+    !isDepositPayment && !commissionContext.bookingLevelItemsAlreadyPosted;
+  const pendingCatchUpNet = postBookingLevelFees
+    ? sumPendingBookingLevelCatchUpNet({
+        tipAmount: tipForCommission,
+        travelFee: travelForCommission,
+        platformFee: serviceFeeForCommission,
+        existingTypes: commissionContext.existingBookingLevelTypes,
+      })
+    : 0;
+  const postedLegsForResidual =
+    commissionContext.postedLegsSum +
+    (commissionContext.bookingLevelItemsAlreadyPosted ? pendingCatchUpNet : 0);
+  const commissionBase = resolveCommissionBaseForBookingPayment({
+    paymentAmount: cashCollected,
+    bookingTotal: bookingTotalForCommission,
+    platformFee: serviceFeeForCommission,
+    tip: tipForCommission,
+    tax: taxForCommission,
+    travel: travelForCommission,
+    postedLegsSum: postedLegsForResidual,
+    cumulativePaid: commissionContext.cumulativePaid,
+    bookingLevelItemsAlreadyPosted: commissionContext.bookingLevelItemsAlreadyPosted,
+  });
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
+  const financeNow = new Date().toISOString();
+  const bookingNumber = String(bRow.booking_number ?? booking.id);
+
+  const withSourcePaymentId = (row: Record<string, unknown>) =>
+    sourcePaymentId ? { ...row, source_payment_id: sourcePaymentId } : row;
 
   await adminSupabase.from("payment_transactions").insert({
     booking_id: booking.id,
@@ -1093,14 +1127,9 @@ export async function finalizeCustomOfferPayment(
     created_at: new Date().toISOString(),
   });
 
-  const customOfferFinanceTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
-    tenant_id: bookingTenantId,
-    provider_id: req.provider_id,
-  });
-
   try {
     const { error: ftErr } = await adminSupabase.from("finance_transactions").insert([
-      {
+      withSourcePaymentId({
         booking_id: booking.id,
         provider_id: req.provider_id,
         tenant_id: customOfferFinanceTenantId,
@@ -1110,9 +1139,9 @@ export async function finalizeCustomOfferPayment(
         commission: platformCommission,
         net: platformCommission,
         description: `Custom order payment [custom_offer:${offerId}]`,
-        created_at: new Date().toISOString(),
-      },
-      {
+        created_at: financeNow,
+      }),
+      withSourcePaymentId({
         booking_id: booking.id,
         provider_id: req.provider_id,
         tenant_id: customOfferFinanceTenantId,
@@ -1122,8 +1151,8 @@ export async function finalizeCustomOfferPayment(
         commission: 0,
         net: providerEarnings,
         description: `Provider earnings (custom order) [custom_offer:${offerId}]`,
-        created_at: new Date().toISOString(),
-      },
+        created_at: financeNow,
+      }),
     ]);
     if (ftErr) {
       console.error(
@@ -1139,129 +1168,69 @@ export async function finalizeCustomOfferPayment(
   }
 
   const extraRows: Array<Record<string, unknown>> = [];
-  if (serviceFeeAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "platform_fee",
-      amount: serviceFeeAmount,
-      fees: 0,
-      commission: 0,
-      net: serviceFeeAmount,
-      description: `Platform fee (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
+  if (postBookingLevelFees && serviceFeeForCommission > 0) {
+    extraRows.push(
+      withSourcePaymentId({
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "platform_fee",
+        amount: serviceFeeForCommission,
+        fees: 0,
+        commission: 0,
+        net: serviceFeeForCommission,
+        description: `Platform fee (custom order) [custom_offer:${offerId}]`,
+        created_at: financeNow,
+      }),
+    );
   }
-  if (tipAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "tip",
-      amount: tipAmount,
-      fees: 0,
-      commission: 0,
-      net: tipAmount,
-      description: `Tip (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
+  if (postBookingLevelFees && tipForCommission > 0) {
+    extraRows.push(
+      withSourcePaymentId({
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "tip",
+        amount: tipForCommission,
+        fees: 0,
+        commission: 0,
+        net: tipForCommission,
+        description: `Tip (custom order) [custom_offer:${offerId}]`,
+        created_at: financeNow,
+      }),
+    );
   }
-  if (taxAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "tax",
-      amount: taxAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tax (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
+  if (postBookingLevelFees && taxForCommission > 0) {
+    extraRows.push(
+      withSourcePaymentId({
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "tax",
+        amount: taxForCommission,
+        fees: 0,
+        commission: 0,
+        net: 0,
+        description: `Tax (custom order) [custom_offer:${offerId}]`,
+        created_at: financeNow,
+      }),
+    );
   }
-  if (travelFee > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "travel_fee",
-      amount: travelFee,
-      fees: 0,
-      commission: 0,
-      net: travelFee,
-      description: `Travel fee (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (promotionDiscountAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "promotion_discount",
-      amount: promotionDiscountAmount,
-      fees: 0,
-      commission: 0,
-      net: -promotionDiscountAmount,
-      description: `Promotion discount (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (walletAmountApplied > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "wallet_payment",
-      amount: walletAmountApplied,
-      fees: 0,
-      commission: 0,
-      net: walletAmountApplied,
-      description: `Wallet payment (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (giftCardAmountApplied > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "gift_card_payment",
-      amount: giftCardAmountApplied,
-      fees: 0,
-      commission: 0,
-      net: giftCardAmountApplied,
-      description: `Gift card payment (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "gift_card_liability_reduction",
-      amount: giftCardAmountApplied,
-      fees: 0,
-      commission: 0,
-      net: -giftCardAmountApplied,
-      description: `Gift card liability redeemed (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (loyaltyDiscountAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "loyalty_redemption",
-      amount: loyaltyDiscountAmount,
-      fees: 0,
-      commission: 0,
-      net: -loyaltyDiscountAmount,
-      description: `Loyalty redemption (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
+  if (postBookingLevelFees && travelForCommission > 0) {
+    extraRows.push(
+      withSourcePaymentId({
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "travel_fee",
+        amount: travelForCommission,
+        fees: 0,
+        commission: 0,
+        net: travelForCommission,
+        description: `Travel fee (custom order) [custom_offer:${offerId}]`,
+        created_at: financeNow,
+      }),
+    );
   }
   if (extraRows.length > 0) {
     try {
@@ -1279,6 +1248,20 @@ export async function finalizeCustomOfferPayment(
       );
     }
   }
+
+  await postBookingAuditLedgerLegsIfMissing(adminSupabase, {
+    bookingId: booking.id,
+    providerId: req.provider_id ?? null,
+    tenantId: customOfferFinanceTenantId,
+    bookingNumber,
+    sourcePaymentId,
+    walletAmount: walletAmountApplied,
+    giftCardAmount: giftCardAmountApplied,
+    promotionDiscount: promotionDiscountAmount,
+    membershipDiscount: membershipDiscountAmount,
+    loyaltyDiscount: loyaltyDiscountAmount,
+    createdAt: financeNow,
+  });
 
   if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
     await completeWalletGiftSyntheticPayments(adminSupabase, booking.id);

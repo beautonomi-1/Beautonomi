@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { matchPath } from "react-router-dom";
+import { matchPath } from "react-router";
 import { extractSpaRoutePatternsFromAppTsx } from "./extractSpaRoutesFromAppTsx";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

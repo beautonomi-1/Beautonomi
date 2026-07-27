@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { downloadPdf } from "@/lib/pdf-file";
+import { shareProviderOrderReceipt } from "@/lib/share-receipt";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -1093,36 +1094,61 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </TouchableOpacity>
               ) : null}
 
-              {/* Download receipt */}
-              <TouchableOpacity
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  try {
-                    await downloadPdf({
-                      router,
-                      pdfPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`,
-                      signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/signed-url`,
-                      filename: `order_${activeOrder.order_number || activeOrder.id}.pdf`,
-                      title: `Order ${activeOrder.order_number}`,
-                      label: "receipt",
-                    });
-                  } catch (e) {
-                    Alert.alert(
-                      "Download receipt",
-                      e instanceof Error ? e.message : "Something went wrong.",
+              {/* Share + download receipt */}
+              <View style={twStyle("mb-4 flex-row gap-2")}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void shareProviderOrderReceipt(
+                      activeOrder.id,
+                      activeOrder.order_number,
+                    ).catch((e) =>
+                      Alert.alert(
+                        "Share receipt",
+                        e instanceof Error ? e.message : "Something went wrong.",
+                      ),
                     );
-                  }
-                }}
-                style={twStyle(
-                  "mb-4 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
-                )}
-                accessibilityLabel="Download order receipt"
-              >
-                <Ionicons name="download-outline" size={16} color="#374151" />
-                <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
-                  Download receipt
-                </Text>
-              </TouchableOpacity>
+                  }}
+                  style={twStyle(
+                    "flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
+                  )}
+                  accessibilityLabel="Share order receipt"
+                >
+                  <Ionicons name="share-outline" size={16} color="#374151" />
+                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
+                    Share receipt
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    try {
+                      await downloadPdf({
+                        router,
+                        pdfPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`,
+                        signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/signed-url`,
+                        filename: `order_${activeOrder.order_number || activeOrder.id}.pdf`,
+                        title: `Order ${activeOrder.order_number}`,
+                        label: "receipt",
+                      });
+                    } catch (e) {
+                      Alert.alert(
+                        "Download receipt",
+                        e instanceof Error ? e.message : "Something went wrong.",
+                      );
+                    }
+                  }}
+                  style={twStyle(
+                    "flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
+                  )}
+                  accessibilityLabel="Download order receipt"
+                >
+                  <Ionicons name="download-outline" size={16} color="#374151" />
+                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
+                    Download PDF
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Primary next step + destructive actions behind “More” */}
               {(() => {

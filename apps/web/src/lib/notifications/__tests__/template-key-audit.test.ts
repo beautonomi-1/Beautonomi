@@ -122,6 +122,7 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
   "product_order_shipped",
   "product_order_delivered",
   "product_order_cancelled",
+  "product_order_refunded",
   "product_return_requested",
   "product_return_approved",
   "product_return_rejected",

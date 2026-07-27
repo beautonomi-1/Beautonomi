@@ -8,7 +8,7 @@
       "CI": "true"
     }
   },
-  "regions": ["cpt1"],
+  "regions": ["fra1"],
   "crons": [
     { "path": "/api/cron/sync-paystack-terminal-payments", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/sync-paycloud-payments", "schedule": "*/15 * * * *" },
