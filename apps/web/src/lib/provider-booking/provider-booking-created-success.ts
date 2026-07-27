@@ -9,6 +9,9 @@ export type ProviderBookingCreatedSuccessInput = {
   warnings?: string[];
   isWalkIn?: boolean;
   sendNotification?: boolean;
+  /** After create with terminal payment method — detail page opens collect sheet. */
+  postCreateCollect?: "paycloud" | "yoco" | null;
+  cardChargeAmount?: number;
 };
 
 export type ProviderBookingCreatedSuccessModel = {

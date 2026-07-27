@@ -130,19 +130,26 @@ export interface ProviderLedgerUiRow {
   currency: string | null;
 }
 
-export function mapFinanceLedgerRowToProviderUi(row: {
-  id: string;
-  transaction_type: string;
-  amount?: number | null;
-  net?: number | null;
-  created_at: string;
-  description?: string | null;
-  booking_id?: string | null;
-  product_order_id?: string | null;
-  metadata?: unknown;
-  refund_component?: string | null;
-  currency?: string | null;
-}): ProviderLedgerUiRow | null {
+export function mapFinanceLedgerRowToProviderUi(
+  row: {
+    id: string;
+    transaction_type: string;
+    amount?: number | null;
+    net?: number | null;
+    created_at: string;
+    description?: string | null;
+    booking_id?: string | null;
+    product_order_id?: string | null;
+    metadata?: unknown;
+    refund_component?: string | null;
+    currency?: string | null;
+  },
+  enrichment?: {
+    client_name?: string | null;
+    payment_method?: string | null;
+    reference?: string | null;
+  } | null,
+): ProviderLedgerUiRow | null {
   const tt = row.transaction_type;
   if (PROVIDER_LEDGER_EXCLUDED_TYPES.has(tt)) return null;
   if (!PROVIDER_LEDGER_VISIBLE_TYPES.has(tt)) return null;
@@ -163,9 +170,9 @@ export function mapFinanceLedgerRowToProviderUi(row: {
     id: row.id,
     status: "completed",
     created_at: row.created_at,
-    client_name: null as string | null,
-    payment_method: null as string | null,
-    reference: null as string | null,
+    client_name: enrichment?.client_name ?? null,
+    payment_method: enrichment?.payment_method ?? null,
+    reference: enrichment?.reference ?? null,
     booking_id: row.booking_id ?? null,
     product_order_id: row.product_order_id ?? null,
     notes: typeof row.description === "string" ? row.description : null,

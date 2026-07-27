@@ -14,11 +14,28 @@ import {
   PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
+import { enrichProviderLedgerRowsForUi } from "@/lib/provider/enrich-provider-ledger-rows";
 
 const LEDGER_PAGE_SIZE = 1000;
 const MAX_LEDGER_SCAN = 50_000;
+const MAX_LIST_LIMIT = 500;
 
 const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
+
+type LedgerScanRow = {
+  id: string;
+  transaction_type: string;
+  amount?: number | null;
+  net?: number | null;
+  created_at: string;
+  description?: string | null;
+  booking_id?: string | null;
+  product_order_id?: string | null;
+  metadata?: unknown;
+  refund_component?: string | null;
+  currency?: string | null;
+  source_payment_id?: string | null;
+};
 
 function signedContributionForSummary(row: ProviderLedgerUiRow): number {
   if (row.type === "earning" || row.type === "tip") return row.amount;
@@ -41,7 +58,7 @@ function summarizeTransactions(rows: ProviderLedgerUiRow[], locationScoped = fal
     net,
     row_count: rows.length,
     basis_note: locationScoped
-      ? "Server totals for the full selected period (selected branch only). List below may show fewer rows due to the limit parameter."
+      ? "Server totals for the full selected period (selected branch). At-home and walk-in bookings with no branch are included. Payouts and provider-level charges are org-wide. List below may show fewer rows due to the limit parameter."
       : "Server totals for the full selected period (all branches). List below may show fewer rows due to the limit parameter.",
   };
 }
@@ -61,21 +78,21 @@ export async function GET(request: NextRequest) {
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const sp = request.nextUrl.searchParams;
     const period = sp.get("period") || "month";
-    const limit = Math.min(parseInt(sp.get("limit") || "50", 10), 200);
+    const limit = Math.min(parseInt(sp.get("limit") || "50", 10), MAX_LIST_LIMIT);
     const listOffset = Math.max(parseInt(sp.get("offset") || "0", 10) || 0, 0);
 
     const locationId = sp.get("location_id") || null;
     const fromDate = providerTransactionsPeriodStart(period, reportContext.timezone);
 
-    const allMapped: ProviderLedgerUiRow[] = [];
+    const pageRaw: LedgerScanRow[] = [];
     let offset = 0;
     let truncatedLedger = false;
 
     while (offset < MAX_LEDGER_SCAN) {
-      const { data: pageRaw, error: pageError } = await supabaseAdmin
+      const { data: chunk, error: pageError } = await supabaseAdmin
         .from("finance_transactions")
         .select(
-          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency",
+          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency, source_payment_id",
         )
         .eq("provider_id", providerId)
         .gte("created_at", fromDate.toISOString())
@@ -88,21 +105,31 @@ export async function GET(request: NextRequest) {
         return handleApiError(pageError, "Failed to load transactions");
       }
 
-      const page = pageRaw ?? [];
+      const page = (chunk ?? []) as LedgerScanRow[];
       if (page.length === 0) break;
-
-      const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, page, locationId);
-
-      for (const t of txns) {
-        const ui = mapFinanceLedgerRowToProviderUi(t);
-        if (ui) allMapped.push(ui);
-      }
+      pageRaw.push(...page);
 
       if (page.length < LEDGER_PAGE_SIZE) break;
       offset += LEDGER_PAGE_SIZE;
       if (offset >= MAX_LEDGER_SCAN) {
         truncatedLedger = true;
       }
+    }
+
+    const scopedRaw = await filterLedgerRowsForLocation(
+      supabaseAdmin,
+      providerId,
+      pageRaw,
+      locationId,
+      { unattributedRows: "include" },
+    );
+
+    const enrichment = await enrichProviderLedgerRowsForUi(supabaseAdmin, providerId, scopedRaw);
+
+    const allMapped: ProviderLedgerUiRow[] = [];
+    for (const t of scopedRaw) {
+      const ui = mapFinanceLedgerRowToProviderUi(t, enrichment.get(String(t.id)));
+      if (ui) allMapped.push(ui);
     }
 
     const summary = summarizeTransactions(allMapped, Boolean(locationId));
@@ -115,6 +142,10 @@ export async function GET(request: NextRequest) {
       truncated_ledger: truncatedLedger,
       list_offset: listOffset,
       list_total: allMapped.length,
+      location_scope: {
+        scoped_by_location: Boolean(locationId),
+        unattributed_included: Boolean(locationId),
+      },
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);

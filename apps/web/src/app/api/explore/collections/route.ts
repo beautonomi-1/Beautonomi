@@ -4,8 +4,9 @@ import {
   successResponse,
   errorResponse,
   handleApiError,
+  requireAuthInApi,
 } from "@/lib/supabase/api-helpers";
-import { requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 export interface ExploreCollection {
   id: string;
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const body = await request.json();

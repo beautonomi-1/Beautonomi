@@ -70,6 +70,7 @@ function makeSupabase(results: Record<string, unknown>) {
       },
       eq: () => chain,
       is: () => chain,
+      or: () => chain,
       not: () => chain,
       in: () => chain,
       order: () => chain,

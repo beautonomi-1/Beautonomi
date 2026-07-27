@@ -6,6 +6,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 /**
  * POST /api/explore/collections/[id]/posts
@@ -19,6 +20,7 @@ export async function POST(
   try {
     const { id: collectionId } = await params;
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { data: collection } = await supabaseAdmin
@@ -74,6 +76,7 @@ export async function DELETE(
   try {
     const { id: collectionId } = await params;
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { data: collection } = await supabaseAdmin

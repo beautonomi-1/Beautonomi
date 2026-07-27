@@ -66,13 +66,27 @@ export async function finalizeTerminalOrderAfterPayment(
 
     if (o.terminal_products?.integration_vendor_slug === "paycloud") {
       try {
-        const { data: orderRow } = await supabase
+        const { data: orderRow, error: orderSelectError } = await supabase
           .from("terminal_orders")
-          .select("provider_id, tenant_id, collection_location_id, terminal_assets(id, serial_number, label)")
+          .select(
+            "provider_id, tenant_id, collection_location_id, terminal_products(name), terminal_assets(id, serial_number)",
+          )
           .eq("id", terminalOrderId)
           .maybeSingle();
-        const assets = (orderRow as any)?.terminal_assets;
+        if (orderSelectError) {
+          console.error(
+            "[finalizeTerminalOrderAfterPayment] PayCloud bridge order select failed:",
+            orderSelectError,
+          );
+        }
+        const assets = (orderRow as { terminal_assets?: unknown } | null)?.terminal_assets;
         const asset = Array.isArray(assets) ? assets[0] : assets;
+        const productName = (() => {
+          const products = (orderRow as { terminal_products?: { name?: string } | { name?: string }[] | null })
+            ?.terminal_products;
+          if (Array.isArray(products)) return products[0]?.name;
+          return products?.name;
+        })();
         if (orderRow?.provider_id && orderRow?.tenant_id && asset?.serial_number) {
           const { registerPaycloudTerminalFromAsset } = await import(
             "@/lib/terminal/register-paycloud-terminal-from-asset"
@@ -83,7 +97,7 @@ export async function finalizeTerminalOrderAfterPayment(
             tenantId: orderRow.tenant_id,
             locationId: orderRow.collection_location_id,
             serialNumber: asset.serial_number,
-            displayName: asset.label,
+            displayName: productName ?? "Beautonomi Card Machine",
           });
         }
       } catch (paycloudErr) {

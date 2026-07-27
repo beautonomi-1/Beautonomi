@@ -23,6 +23,13 @@ import {
 } from "@/lib/sentry";
 import { useTranslation } from "@beautonomi/i18n";
 import { NotificationBannerListener } from "@/components/NotificationBannerListener";
+import {
+  explorePostRouterTarget,
+  parseExplorePostIdFromUrl,
+  parseExplorePostReturnToFromAppPath,
+  peekExplorePostReturnTo,
+  stashExplorePostReturnTo,
+} from "@/lib/explore-deep-link";
 
 const CUSTOMER_SCHEME = "customer://";
 const REFERRAL_REF_KEY = "referral_ref";
@@ -99,6 +106,26 @@ function handleCustomerDeepLink(url: string): boolean {
       return true;
     }
   }
+  const explorePostId = parseExplorePostIdFromUrl(url);
+  if (explorePostId) {
+    stashExplorePostReturnTo(explorePostId);
+    router.replace(explorePostRouterTarget(explorePostId) as never);
+    return true;
+  }
+  return false;
+}
+
+function handleIncomingUrl(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith(CUSTOMER_SCHEME)) {
+    return handleCustomerDeepLink(url);
+  }
+  const explorePostId = parseExplorePostIdFromUrl(url);
+  if (explorePostId) {
+    stashExplorePostReturnTo(explorePostId);
+    router.replace(explorePostRouterTarget(explorePostId) as never);
+    return true;
+  }
   return false;
 }
 
@@ -125,7 +152,11 @@ export default function AppLayout() {
       const current = pathnameRef.current || "";
       const isBookingDeepLink =
         current.startsWith("/book/l/") || current.startsWith("/book");
-      const returnTo = isBookingDeepLink ? `/(app)${current}` : undefined;
+      const exploreReturnTo =
+        parseExplorePostReturnToFromAppPath(current) ?? peekExplorePostReturnTo();
+      const returnTo = isBookingDeepLink
+        ? `/(app)${current}`
+        : exploreReturnTo ?? undefined;
       router.replace(
         returnTo
           ? ({ pathname: "/(auth)/login", params: { return_to: returnTo } } as never)
@@ -208,9 +239,9 @@ export default function AppLayout() {
   useEffect(() => {
     if (Platform.OS === "web") return;
     Linking.getInitialURL().then((url) => {
-      if (url) handleCustomerDeepLink(url);
+      if (url) handleIncomingUrl(url);
     });
-    const sub = Linking.addEventListener("url", ({ url }) => handleCustomerDeepLink(url));
+    const sub = Linking.addEventListener("url", ({ url }) => handleIncomingUrl(url));
     return () => sub.remove();
   }, []);
 
@@ -255,6 +286,7 @@ export default function AppLayout() {
         <Stack.Screen name="book-checkout" options={{ headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: true, title: stackTitle("chat") }} />
         <Stack.Screen name="explore-post" options={{ headerShown: true, title: stackTitle("post") }} />
+        <Stack.Screen name="explore/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="explore-collection/[id]" options={{ headerShown: true, title: stackTitle("board") }} />
         <Stack.Screen name="custom-request-create" options={{ headerShown: true, title: stackTitle("customRequest") }} />
         <Stack.Screen name="notifications" options={{ headerShown: true, title: stackTitle("notifications") }} />

@@ -9,6 +9,8 @@ import {
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { hasPermission } from "@/lib/auth/permissions";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
+import { postHasSensitiveContent } from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 
@@ -97,6 +99,14 @@ export async function GET(
       .single();
 
     if (error || !row) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+
+    const viewerSafety = await getViewerSafetyContext(user?.id, request);
+    if (viewerSafety.hideSocialFeed) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+    if (viewerSafety.sensitiveContentFilter && postHasSensitiveContent(row)) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
     }
 

@@ -127,6 +127,16 @@ export function parsePaycloudResponse(raw: Record<string, unknown>): PaycloudApi
   };
 }
 
+/** Resolve the full gateway URL for an entry path, tolerating base URLs that already include /api/entry. */
+export function buildPaycloudEntryUrl(
+  gatewayRootOrBase: string,
+  entryPath: "ecrorder" | "orderquery" | "ecrclose",
+): string {
+  const root = gatewayRootOrBase.replace(/\/$/, "");
+  const base = root.endsWith("/api/entry") ? root : `${root}/api/entry`;
+  return `${base}/${entryPath}`;
+}
+
 async function executePaycloudRequest(
   environment: PaycloudEnvironment,
   creds: PaycloudAppCredentials,
@@ -134,9 +144,10 @@ async function executePaycloudRequest(
   method: string,
   businessParams: Record<string, BizValue | undefined | null>,
 ): Promise<PaycloudApiResponse> {
-  const gatewayRoot = (creds.api_base_url ?? getPaycloudApiBase(environment)).replace(/\/$/, "");
-  const base = gatewayRoot.endsWith("/api/entry") ? gatewayRoot : `${gatewayRoot}/api/entry`;
-  const url = `${base}/${entryPath}`;
+  const url = buildPaycloudEntryUrl(
+    creds.api_base_url ?? getPaycloudApiBase(environment),
+    entryPath,
+  );
   const body = buildSignedBody(method, businessParams, creds);
 
   const res = await fetch(url, {
@@ -157,6 +168,16 @@ async function executePaycloudRequest(
       raw: {},
       response_code: String(res.status),
       error_message: `Card machine service error (${res.status})`,
+    };
+  }
+
+  if (!res.ok) {
+    const parsed = parsePaycloudResponse(raw);
+    return {
+      success: false,
+      raw: {},
+      response_code: String(res.status),
+      error_message: parsed.error_message ?? `Card machine service error (${res.status})`,
     };
   }
 
@@ -290,6 +311,52 @@ export async function createPaycloudVoid(
     pay_scenario: "SWIPE_CARD",
     trans_type: PAYCLOUD_TRANS_TYPE.VOID,
     description: params.description ?? "Void by Beautonomi",
+    notify_url: params.notify_url,
+    expires: 300,
+    reject_trade_when_terminal_offline: true,
+    required_terminal_authentication: false,
+    api_version: "2.0",
+  };
+  if (params.orig_trans_no) business.orig_trans_no = params.orig_trans_no;
+
+  return executePaycloudRequest(
+    environment,
+    creds,
+    getPaycloudEntryPath("order"),
+    PAYCLOUD_METHODS.CREATE_ORDER,
+    business,
+  );
+}
+
+/** Refund a completed capture on the card machine (trans_type=3). Supports partial amounts. */
+export async function createPaycloudRefund(
+  environment: PaycloudEnvironment,
+  creds: PaycloudAppCredentials,
+  params: {
+    merchant_no: string;
+    store_no: string;
+    terminal_sn: string;
+    merchant_order_no: string;
+    orig_merchant_order_no: string;
+    order_amount: number;
+    price_currency: string;
+    notify_url: string;
+    description?: string;
+    orig_trans_no?: string;
+  },
+): Promise<PaycloudApiResponse> {
+  const business: Record<string, BizValue | undefined | null> = {
+    merchant_no: params.merchant_no,
+    store_no: params.store_no,
+    terminal_sn: params.terminal_sn,
+    message_receiving_application: "WISECASHIER",
+    merchant_order_no: params.merchant_order_no,
+    orig_merchant_order_no: params.orig_merchant_order_no,
+    order_amount: params.order_amount,
+    price_currency: params.price_currency,
+    pay_scenario: "SWIPE_CARD",
+    trans_type: PAYCLOUD_TRANS_TYPE.REFUND,
+    description: params.description ?? "Refund by Beautonomi",
     notify_url: params.notify_url,
     expires: 300,
     reject_trade_when_terminal_offline: true,

@@ -8,6 +8,7 @@ import {
   getProviderPrimaryReportLocationId,
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
+import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
@@ -266,7 +267,7 @@ export async function buildProviderSalesHistoryRows(
       const { data: bookings, error: bErr } = await db
         .from("bookings")
         .select(
-          "id, booking_number, customer_id, guest_name, total_amount, currency, payment_status, location_id, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
+          "id, booking_number, customer_id, guest_name, total_amount, currency, payment_status, location_id, location_type, booking_source, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
         )
         .eq("provider_id", providerId)
         .in("id", bookingIds);
@@ -281,7 +282,16 @@ export async function buildProviderSalesHistoryRows(
 
       for (const b of bookings ?? []) {
         const row = b as any;
-        if (locationId && row.location_id !== locationId) continue;
+        if (
+          locationId &&
+          !bookingMatchesDashboardLocation(locationId, {
+            location_id: row.location_id,
+            location_type: row.location_type,
+            booking_source: row.booking_source,
+          })
+        ) {
+          continue;
+        }
         const agg = bookingAggs.get(row.id);
         if (!agg) continue;
         const customerName =
@@ -485,7 +495,6 @@ export async function buildProviderSalesHistoryRows(
       .lte("sale_date", toIso)
       .order("sale_date", { ascending: false });
 
-    if (locationId) posQuery = posQuery.eq("location_id", locationId);
     posQuery = posQuery.limit(MAX_POS_ROWS);
 
     const { data: sales, error: sErr } = await posQuery;
@@ -500,6 +509,10 @@ export async function buildProviderSalesHistoryRows(
 
     for (const s of sales ?? []) {
       const row = s as any;
+      const reportLoc =
+        row.location_id ??
+        (locationId ? primaryLocationId : null);
+      if (locationId && reportLoc !== locationId) continue;
       const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : null;
       const ref = row.ref_number || row.sale_number || row.id;
       if (
@@ -529,7 +542,7 @@ export async function buildProviderSalesHistoryRows(
         refunds: 0,
         payment_status: row.payment_status ?? null,
         currency: row.currency || "ZAR",
-        location_id: row.location_id ?? null,
+        location_id: reportLoc,
       });
     }
   }

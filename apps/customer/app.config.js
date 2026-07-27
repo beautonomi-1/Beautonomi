@@ -73,7 +73,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.79",
+  version: "1.0.80",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -87,7 +87,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "271",
+    buildNumber: "272",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -139,7 +139,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 272,
+    versionCode: 273,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -150,12 +150,16 @@ const BASE_EXPO_CONFIG = {
         data: [
           { scheme: "https", host: "beautonomi.com", pathPrefix: "/bookings" },
           { scheme: "https", host: "beautonomi.com", pathPrefix: "/account-settings" },
+          { scheme: "https", host: "beautonomi.com", pathPrefix: "/explore" },
           { scheme: "https", host: "www.beautonomi.com", pathPrefix: "/bookings" },
           { scheme: "https", host: "www.beautonomi.com", pathPrefix: "/account-settings" },
+          { scheme: "https", host: "www.beautonomi.com", pathPrefix: "/explore" },
           { scheme: "https", host: "beautonomi.co.za", pathPrefix: "/bookings" },
           { scheme: "https", host: "beautonomi.co.za", pathPrefix: "/account-settings" },
+          { scheme: "https", host: "beautonomi.co.za", pathPrefix: "/explore" },
           { scheme: "https", host: "www.beautonomi.co.za", pathPrefix: "/bookings" },
           { scheme: "https", host: "www.beautonomi.co.za", pathPrefix: "/account-settings" },
+          { scheme: "https", host: "www.beautonomi.co.za", pathPrefix: "/explore" },
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },

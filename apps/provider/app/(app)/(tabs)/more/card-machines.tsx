@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -667,6 +668,18 @@ export default function CardMachinesScreen() {
               <Text style={twStyle("text-xs font-semibold text-white")}>Upgrade plan</Text>
             </TouchableOpacity>
           ) : null}
+          {settings.blockers.some((b) => b.code === "NO_MERCHANT" || b.code === "ALL_SUSPENDED") ? (
+            <TouchableOpacity
+              style={twStyle("mt-3 self-start rounded-full border border-amber-900 px-3 py-2")}
+              onPress={() => {
+                void Linking.openURL(
+                  "mailto:support@beautonomi.com?subject=Card%20machine%20setup%20help",
+                );
+              }}
+            >
+              <Text style={twStyle("text-xs font-semibold text-amber-950")}>Contact Beautonomi</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : settings && !settings.ready ? (
         <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
@@ -827,6 +840,13 @@ export default function CardMachinesScreen() {
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {terminal.name}
                       </Text>
+                      {terminal.status === "assigned" ? (
+                        <View style={twStyle("ml-2 rounded-full bg-sky-100 px-2 py-0.5")}>
+                          <Text style={twStyle("text-[10px] font-semibold text-sky-800")}>
+                            Assigned by Beautonomi
+                          </Text>
+                        </View>
+                      ) : null}
                       {terminal.location_id == null ? (
                         <View style={twStyle("ml-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
                           <Text style={twStyle("text-[10px] font-semibold text-indigo-700")}>

@@ -1,6 +1,6 @@
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { pushWebLearningCenter, pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
+import { pushWebLearningCenter, pushWebPrivacyPolicy, pushWebTermsOfService, pushWebAgeSuitability } from "@/lib/legal-web";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
@@ -53,13 +53,22 @@ export default function HelpScreen() {
       </View>
       <View style={styles.quickLinksThirdRow}>
         <TouchableOpacity
-          style={[styles.quickLink, { flex: 1, marginRight: 0 }]}
+          style={[styles.quickLink, styles.quickLinkFirst]}
           onPress={() => pushWebTermsOfService(router)}
           accessibilityLabel="Open terms of service"
           accessibilityRole="button"
         >
           <Ionicons name="reader-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
           <Text style={styles.quickLinkText}>Terms</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickLink}
+          onPress={() => pushWebAgeSuitability(router)}
+          accessibilityLabel="Open age suitability information"
+          accessibilityRole="button"
+        >
+          <Ionicons name="shield-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>Age suitability</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.sectionCard}>

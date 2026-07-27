@@ -71,13 +71,20 @@ export async function createGroupBooking(
 ): Promise<GroupBooking> {
   const { data: primaryBooking, error: bookingError } = await supabase
     .from('bookings')
-    .select('scheduled_at')
+    .select('scheduled_at, status, location_id, location_type')
     .eq('id', primaryBookingId)
     .single();
 
   if (bookingError || !primaryBooking) {
     throw new Error('Primary booking not found');
   }
+
+  const primaryStatus = String((primaryBooking as { status?: string }).status ?? '').toLowerCase();
+  const initialGroupStatus =
+    primaryStatus === 'pending' || primaryStatus === 'pending_payment' ? 'pending' : 'confirmed';
+  const primaryLocationId = (primaryBooking as { location_id?: string | null }).location_id ?? null;
+  const primaryLocationType =
+    (primaryBooking as { location_type?: string | null }).location_type ?? 'at_salon';
 
   const { data: refNumberRaw } = await supabase.rpc('generate_group_booking_ref');
   const refNumber =
@@ -92,7 +99,9 @@ export async function createGroupBooking(
       primary_contact_booking_id: primaryBookingId,
       ref_number: refNumber,
       scheduled_at: primaryBooking.scheduled_at,
-      status: 'confirmed',
+      status: initialGroupStatus,
+      location_id: primaryLocationId,
+      location_type: primaryLocationType,
     })
     .select()
     .single();
@@ -309,4 +318,50 @@ export async function rescheduleGroupBooking(
     .from('group_bookings')
     .update({ scheduled_at: newScheduledAt.toISOString(), updated_at: now })
     .eq('id', groupBookingId);
+}
+
+const TERMINAL_CHILD_STATUSES = new Set(['cancelled', 'canceled', 'no_show']);
+const PENDING_CHILD_STATUSES = new Set(['pending', 'pending_payment']);
+
+/**
+ * Derive the parent group row status from linked child bookings so nav badges,
+ * Overview stats, and the bookings list stay aligned.
+ */
+export async function syncGroupBookingStatusFromChildren(
+  supabase: SupabaseClient,
+  groupBookingId: string,
+): Promise<string | null> {
+  const { data: children, error } = await supabase
+    .from('bookings')
+    .select('status')
+    .eq('group_booking_id', groupBookingId);
+
+  if (error) throw error;
+  const statuses = (children ?? [])
+    .map((row: { status?: string | null }) => String(row.status ?? '').toLowerCase())
+    .filter(Boolean);
+
+  if (statuses.length === 0) return null;
+
+  let nextStatus: GroupBooking['status'];
+  if (statuses.some((s) => PENDING_CHILD_STATUSES.has(s))) {
+    nextStatus = 'pending';
+  } else if (statuses.every((s) => TERMINAL_CHILD_STATUSES.has(s) || s === 'cancelled')) {
+    nextStatus = 'cancelled';
+  } else if (statuses.every((s) => s === 'completed')) {
+    nextStatus = 'completed';
+  } else if (statuses.some((s) => s === 'started' || s === 'in_progress')) {
+    nextStatus = 'started';
+  } else {
+    nextStatus = 'confirmed';
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from('group_bookings')
+    .update({ status: nextStatus, updated_at: now })
+    .eq('id', groupBookingId);
+
+  if (updateError) throw updateError;
+  return nextStatus;
 }

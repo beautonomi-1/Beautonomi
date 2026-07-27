@@ -6,6 +6,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 
@@ -143,6 +144,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const body = await request.json();
@@ -177,6 +179,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);

@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { z } from "zod";
 
 const createReviewSchema = z.object({
@@ -118,6 +119,9 @@ export async function POST(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "review", request);
+    }
     const body = await request.json();
     const parsed = createReviewSchema.parse(body);
     const supabase = await getSupabaseServer();

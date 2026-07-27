@@ -91,6 +91,7 @@ export function TerminalOrdersPage() {
   const [paymentReference, setPaymentReference] = useState("");
   const [trackingReference, setTrackingReference] = useState("");
   const [courierName, setCourierName] = useState("");
+  const [terminalAssetSerial, setTerminalAssetSerial] = useState("");
 
   const { data, isLoading, isError, refetch } = useQuery<{ items: TerminalOrder[]; total: number }>({
     queryKey: adminQueryKeys.commercialTerminalOrders,
@@ -109,6 +110,7 @@ export function TerminalOrdersPage() {
         payment_reference: paymentReference.trim() || null,
         tracking_reference: trackingReference.trim() || null,
         courier_name: courierName.trim() || null,
+        terminal_asset_serial_number: terminalAssetSerial.trim() || undefined,
       }),
     onSuccess: () => {
       adminToast.success("Order updated");
@@ -128,6 +130,7 @@ export function TerminalOrdersPage() {
     setPaymentReference("");
     setTrackingReference(o.tracking_reference ?? "");
     setCourierName(o.courier_name ?? "");
+    setTerminalAssetSerial("");
   }
 
   if (denied) return denied;
@@ -281,6 +284,18 @@ export function TerminalOrdersPage() {
               onChange={(e) => setTrackingReference(e.target.value)}
               placeholder="Waybill / tracking number"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Terminal serial number</label>
+            <input
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono"
+              value={terminalAssetSerial}
+              onChange={(e) => setTerminalAssetSerial(e.target.value)}
+              placeholder="Device serial — enables PayCloud auto-registration when paid"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Set when dispatching a PayCloud machine. Paid digital-activation orders register automatically.
+            </p>
           </div>
           {editOrder?.fulfillment_type && (
             <div className="sm:col-span-2 text-xs text-gray-500">

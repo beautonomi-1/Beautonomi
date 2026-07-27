@@ -6,13 +6,19 @@ export async function computeExpectedAmountForEntity(
   providerId: string,
   entityType: string,
   entityId: string,
-): Promise<{ amount: number; currency: string; bookingLocationId?: string | null } | null> {
+): Promise<{
+  amount: number;
+  currency: string;
+  bookingLocationId?: string | null;
+  depositAmount?: number | null;
+  fullOutstanding?: number;
+} | null> {
   switch (entityType) {
     case "booking": {
       const { data: booking } = await supabase
         .from("bookings")
         .select(
-          "id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, status, location_id, additional_charges(amount,status)",
+          "id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, status, location_id, deposit_required, deposit_amount, payment_option, additional_charges(amount,status)",
         )
         .eq("id", entityId)
         .eq("provider_id", providerId)
@@ -31,7 +37,25 @@ export async function computeExpectedAmountForEntity(
         giftCardAmount: Number(booking.gift_card_amount ?? 0),
         unpaidAdditionalCharges: unpaidAdditional,
       });
-      return { amount: remaining, currency: booking.currency ?? "ZAR", bookingLocationId: booking.location_id };
+      const depositRequired = Boolean((booking as { deposit_required?: boolean }).deposit_required);
+      const configuredDeposit = Math.max(0, Number((booking as { deposit_amount?: number }).deposit_amount ?? 0));
+      const totalPaid = Number(booking.total_paid ?? 0);
+      const depositStillDue =
+        depositRequired &&
+        configuredDeposit > 0 &&
+        totalPaid + 0.01 < configuredDeposit &&
+        unpaidAdditional <= 0.01
+          ? Math.min(configuredDeposit - totalPaid, remaining)
+          : null;
+      const depositAmount =
+        depositStillDue != null && depositStillDue > 0.01 ? Math.round(depositStillDue * 100) / 100 : null;
+      return {
+        amount: remaining,
+        currency: booking.currency ?? "ZAR",
+        bookingLocationId: booking.location_id,
+        depositAmount,
+        fullOutstanding: remaining,
+      };
     }
     case "group_booking": {
       const { data: bookings } = await supabase

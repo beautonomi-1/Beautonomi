@@ -15,6 +15,7 @@ const PREFIXES = [
   "/gift-card",
   "/privacy-policy",
   "/terms-and-condition",
+  "/age-suitability",
   "/accessibility",
   "/BCover-for-partners",
   "/beautonomi-friendly",

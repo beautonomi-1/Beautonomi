@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BookingPaymentForRefundCap = {
+  id?: string;
   amount?: number | string | null;
   payment_method?: string | null;
   payment_provider?: string | null;
@@ -35,14 +36,14 @@ export async function fetchBookingPaymentsForRefundCap(
 ): Promise<BookingPaymentForRefundCap[]> {
   let query = supabase
     .from("booking_payments")
-    .select("amount, payment_method, payment_provider, status")
+    .select("id, amount, payment_method, payment_provider, status")
     .eq("booking_id", bookingId);
   if (tenantId) query = query.eq("tenant_id", tenantId);
   const { data } = await query;
   return (data ?? []) as BookingPaymentForRefundCap[];
 }
 
-export async function fetchCompletedCashRefundsTotal(
+export async function fetchCompletedInPersonRefundsTotal(
   supabase: SupabaseClient,
   bookingId: string,
 ): Promise<number> {
@@ -52,6 +53,17 @@ export async function fetchCompletedCashRefundsTotal(
     .eq("booking_id", bookingId)
     .in("status", ["completed", "pending"]);
   return (data ?? [])
-    .filter((r) => (r.refund_method ?? "").toLowerCase() === "cash")
+    .filter((r) => {
+      const method = (r.refund_method ?? "").toLowerCase();
+      return method === "cash" || method === "original";
+    })
     .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+}
+
+/** @deprecated Use fetchCompletedInPersonRefundsTotal — subtracts cash and terminal reversals. */
+export async function fetchCompletedCashRefundsTotal(
+  supabase: SupabaseClient,
+  bookingId: string,
+): Promise<number> {
+  return fetchCompletedInPersonRefundsTotal(supabase, bookingId);
 }

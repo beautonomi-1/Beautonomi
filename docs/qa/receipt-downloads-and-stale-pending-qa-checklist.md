@@ -54,6 +54,9 @@ Automated coverage already in place (does not need manual re-verification):
 - [ ] **Calendar date jump:** On Day view, tap the calendar control (shows selected date). Pick a date more than 30 days in the past that has bookings — the strip re-centers around that date and the day's schedule shows those appointments (including pending).
 - [ ] **Deep link:** Open Bookings with `?date=YYYY-MM-DD` for a date outside the default ±30-day window — same behaviour as the calendar jump (strip re-anchors, day schedule loads).
 - [ ] **Pending deep link:** Open Bookings with `?status=pending` or `?status=pending_payment` — Overview opens with To review (or matching status), date range "All", and past pending rows are visible.
+- [ ] **Group booking pending mismatch:** Seed a `pending` child booking linked to a `group_booking_id` where the parent group was `confirmed` with null `location_id`. Before migration/backfill, `GET /api/provider/bookings/pending-audit` should report `group_parent_status_mismatch`. After deploy + migration `830`, the parent flips to `pending`, appears under Overview **To review**, and nav-counts no longer double-counts the hidden child row.
+- [ ] **Overview metric tiles:** In Overview, every tile (Appointments, Pending, Confirmed, Active, Completed, Earned) is tappable. Pending/Confirmed/Active/Completed filter the list below; Appointments clears status filter; Earned opens Reports. The reconciliation line under the tiles should add up (e.g. `2 pending · 1 confirmed · 0 active · 8 completed · excludes 1 cancelled/no-show`).
+- [ ] **Metrics/list range sync:** When the metrics strip is on "Week" but the list date chip is "All", a hint appears — tapping it aligns the list to Week and the filtered rows match the tile counts.
 
 ## Stale pending bookings — auto-expiry cron
 

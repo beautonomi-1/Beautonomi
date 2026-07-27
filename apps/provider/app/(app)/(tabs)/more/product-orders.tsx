@@ -20,8 +20,9 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { usePayCloudSettings } from "@/hooks/usePayCloud";
-import { formatPaycloudCollectLabel, PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
+import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
+import { formatPaycloudCollectLabel } from "@/lib/paycloud-collect-cta";
 import { PaystackTerminalCollectSheet } from "@/components/PaystackTerminalCollectSheet";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProvider } from "@/providers/ProviderContext";
@@ -277,14 +278,20 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [showPaycloudPaymentSheet, setShowPaycloudPaymentSheet] = useState(false);
   const [terminalSheetOpen, setTerminalSheetOpen] = useState(false);
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { settings: paycloudSettings } = usePayCloudSettings();
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    inFlight: paycloudInFlight,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
   const { selectedLocationId } = useProvider();
-  const paycloudReady =
-    paycloudEnabled &&
-    Boolean(paycloudSettings?.ready);
-  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
-  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
+  const { data: permissionData } = useApi<{
+    isOwner?: boolean;
+    permissions?: Record<string, boolean>;
+  }>("/api/provider/permissions", { staleTimeMs: 60_000 });
+  const canProcessPayments =
+    permissionData?.isOwner === true ||
+    permissionData?.permissions?.process_payments === true;
 
   const pageSize = 50;
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
@@ -1078,7 +1085,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </View>
               ) : (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
                 activeOrder.status !== "cancelled" &&
-                activeOrder.status !== "refunded" ? (
+                activeOrder.status !== "refunded" &&
+                canProcessPayments ? (
                 <TouchableOpacity
                   onPress={() => {
                     setRecordPaymentMethod("cash");
@@ -1295,6 +1303,31 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         subtitle="For cash/card-on-delivery collection orders"
       >
         <View style={twStyle("gap-3 pb-6")}>
+          {activeOrder?.order_source === "appointment" ? (
+            <View style={twStyle("rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
+              <Text style={twStyle("text-xs text-blue-900")}>
+                Payment is recorded on the linked appointment. Mark the product collected from the
+                booking detail or advance fulfillment on the order.
+              </Text>
+              {activeOrder.booking_id ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setRecordPaymentSheetOpen(false);
+                    setViewOrder(null);
+                    setOrderDetail(null);
+                    router.push(`/(app)/(tabs)/more/bookings/${activeOrder.booking_id}` as never);
+                  }}
+                  style={twStyle("mt-2 flex-row items-center")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go to linked booking"
+                >
+                  <Ionicons name="calendar-outline" size={14} color="#1d4ed8" />
+                  <Text style={twStyle("ml-1 text-xs font-semibold text-blue-800")}>Go to booking</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : (
+            <>
           <Text style={twStyle("text-sm text-gray-600")}>
             Record the payment collected at pickup or delivery. This updates the order and creates the matching accounting entry.
           </Text>
@@ -1303,7 +1336,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               { label: "Cash", value: "cash" as const },
               { label: "Card on delivery", value: "card_on_delivery" as const },
               { label: "Yoco", value: "yoco" as const },
-              ...(paycloudEnabled && paycloudCollectEnabled
+              ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
                 ? [{
                     label: formatPaycloudCollectLabel({
                       context: "product_order",
@@ -1332,16 +1365,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </TouchableOpacity>
               );
             })}
-            {paycloudEnabled && !paycloudCollectEnabled ? (
-              <TouchableOpacity
-                onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-                style={[
-                  twStyle("mb-2 rounded-full border border-dashed border-gray-300 bg-white px-3 py-2"),
-                  { marginRight: 8 },
-                ]}
-              >
-                <Text style={twStyle("text-xs font-semibold text-gray-600")}>{PAYCLOUD_SETUP_LABEL}</Text>
-              </TouchableOpacity>
+            {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
+              <View style={twStyle("mb-2 w-full")}>
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+              </View>
             ) : null}
           </View>
           <TextInput
@@ -1393,6 +1420,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               fullWidth
             />
           ) : null}
+            </>
+          )}
         </View>
       </BottomSheet>
 

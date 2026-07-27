@@ -574,6 +574,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return notFoundResponse("Group booking not found");
     }
 
+    if ("status" in sanitized) {
+      const newStatus = String(sanitized.status ?? "").toLowerCase();
+      if (newStatus === "confirmed" || newStatus === "booked") {
+        const nowIso = new Date().toISOString();
+        const { error: confirmChildrenError } = await admin
+          .from("bookings")
+          .update({ status: "confirmed", updated_at: nowIso })
+          .eq("group_booking_id", id)
+          .eq("provider_id", providerId)
+          .in("status", ["pending", "pending_payment"]);
+        if (confirmChildrenError) throw confirmChildrenError;
+      }
+    }
+
     if (shouldSyncChildBookings) {
       const childUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if ("scheduled_at" in sanitized) childUpdate.scheduled_at = sanitized.scheduled_at;

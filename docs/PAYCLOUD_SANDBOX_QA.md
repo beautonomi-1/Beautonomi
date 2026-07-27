@@ -26,7 +26,34 @@ Override via `PAYCLOUD_API_BASE_SANDBOX` / `PAYCLOUD_API_BASE_LIVE` or `tenant_p
 | `merchant_no` | `302100085224` |
 | `store_no` | `4021000637` |
 
-Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox environment). Use PayCloud's published RSA key pair from the test integration doc. **Never** copy test keys into production tenants.
+Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox environment). Use **Use PayCloud test credentials** on the Sandbox quick start panel to prefill the form, then save. Use PayCloud's published RSA key pair from the test integration doc. **Never** copy test keys into production tenants.
+
+### Credential test and HTTP 503
+
+**Test sandbox credentials** sends a signed `orderquery` probe. A green result means PayCloud returned a parseable JSON envelope *and* did not reject the credentials — an order-not-found reply is the expected pass, because it proves the app ID and signature were accepted. A signature or app-ID error reports as a failure even though the gateway replied.
+
+A **503 "success" was a bug** — it meant the gateway returned a non-JSON error page (WAF block, wrong base URL, or sandbox downtime) and your keys were **never validated**. After the fix, 503 reports as failure with the gateway URL in the message. Common causes:
+
+- `api_base_url` missing `/api/entry` or pointing at the wrong host
+- Sandbox gateway temporarily down (`https://addpay-open.wangtest.cn`)
+- Corporate firewall blocking outbound HTTPS to the test host
+
+### Notify URL requirement
+
+PayCloud cannot call a relative webhook URL. Before creating a charge, Beautonomi rejects non-absolute or non-HTTPS notify URLs with `NOTIFY_URL_INVALID`. Set `NEXT_PUBLIC_APP_URL` to your public site (e.g. `https://app.beautonomi.com`) in production. The admin PayCloud readiness checklist surfaces this before go-live.
+
+### Sandbox quick start (admin)
+
+On **Admin → Integrations → PayCloud Card Machines**:
+
+1. **Use PayCloud test credentials** — prefills the sandbox app form (review, then save).
+2. **Create test merchant** — prefills merchant `302100085224` / store `4021000637` for sandbox.
+3. **Test sandbox credentials** — truthful pass/fail against the gateway.
+4. Assign a terminal in **PayCloud Operations**, confirm the readiness checklist is green.
+
+Plan entitlements (`paycloud_integration`, `terminal_bundle`) are enabled on active subscription plans via migration `827_paycloud_enable_entitlements.sql`, which also turns on the global `payment_paycloud` flag. Tenant-level override rows are left untouched, so check those if a single market still sees `FLAG_OFF`.
+
+Provider-side visibility needs migration `826_paycloud_provider_rls.sql`: `paycloud_terminals`, `provider_paycloud_settings`, and `paycloud_merchants` shipped with service-role-only policies, so an assigned terminal was invisible in the provider app until those provider-scoped policies exist.
 
 ### Required create-order fields (v1)
 

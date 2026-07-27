@@ -40,5 +40,14 @@ export function resolvePostLoginHref(returnTo: string | string[] | undefined): H
     const id = new URLSearchParams(q).get("id");
     if (id) return { pathname: "/(app)/product-detail", params: { id } };
   }
+  if (t.startsWith("/(app)/explore-post")) {
+    const q = t.includes("?") ? t.split("?")[1] : "";
+    const id = new URLSearchParams(q).get("id");
+    if (id) return { pathname: "/(app)/explore-post", params: { id } };
+  }
+  if (/^\/\(app\)\/explore\/[0-9a-f-]{36}$/i.test(t)) {
+    const id = t.split("/").pop();
+    if (id) return { pathname: "/(app)/explore-post", params: { id } };
+  }
   return t as Href;
 }

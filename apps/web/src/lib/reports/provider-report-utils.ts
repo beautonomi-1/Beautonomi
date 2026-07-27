@@ -9,7 +9,12 @@ import {
   nowInTz,
   resolveTz,
 } from "@/lib/dates/provider-tz";
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  filterLedgerRowsByScope,
+  resolveLedgerLocationScope,
+  productOrderReportLocationId as scopeProductOrderReportLocationId,
+  type UnattributedLedgerRowPolicy,
+} from "@/lib/reports/provider-ledger-location-scope";
 
 export type ProviderReportContext = {
   providerId: string;
@@ -147,8 +152,7 @@ export function productOrderReportLocationId(
   order: LocationLinkedProductOrderRow,
   providerPrimaryLocationId?: string | null,
 ): string | null {
-  if (order.collection_location_id) return order.collection_location_id;
-  return order.fulfillment_type === "delivery" ? providerPrimaryLocationId ?? null : null;
+  return scopeProductOrderReportLocationId(order, providerPrimaryLocationId);
 }
 
 export async function filterProductOrdersForLocation<T extends LocationLinkedProductOrderRow>(
@@ -167,42 +171,9 @@ export async function filterLedgerRowsForLocation<T extends LocationLinkedLedger
   providerId: string,
   rows: T[],
   locationId?: string | null,
+  options: { unattributedRows?: UnattributedLedgerRowPolicy } = {},
 ): Promise<T[]> {
   if (!locationId || rows.length === 0) return rows;
-
-  const bookingIds = [...new Set(rows.map((r) => r.booking_id).filter(Boolean))] as string[];
-  const productOrderIds = [...new Set(rows.map((r) => r.product_order_id).filter(Boolean))] as string[];
-  const allowedBookingIds = new Set<string>();
-  const allowedOrderIds = new Set<string>();
-
-  if (bookingIds.length > 0) {
-    const { data } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("provider_id", providerId)
-      .or(dashboardBookingLocationOrFilter(locationId))
-      .in("id", bookingIds);
-    for (const row of data ?? []) allowedBookingIds.add((row as { id: string }).id);
-  }
-
-  if (productOrderIds.length > 0) {
-    const primaryLocationId = await getProviderPrimaryReportLocationId(supabase, providerId);
-    const { data } = await supabase
-      .from("product_orders")
-      .select("id, fulfillment_type, collection_location_id")
-      .eq("provider_id", providerId)
-      .in("id", productOrderIds);
-    for (const row of data ?? []) {
-      const order = row as LocationLinkedProductOrderRow;
-      if (productOrderReportLocationId(order, primaryLocationId) === locationId) {
-        allowedOrderIds.add(order.id);
-      }
-    }
-  }
-
-  return rows.filter((row) => {
-    if (row.booking_id) return allowedBookingIds.has(row.booking_id);
-    if (row.product_order_id) return allowedOrderIds.has(row.product_order_id);
-    return false;
-  });
+  const scope = await resolveLedgerLocationScope(supabase, providerId, rows, locationId, options);
+  return filterLedgerRowsByScope(rows, scope, options);
 }

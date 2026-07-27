@@ -106,4 +106,43 @@ describe("computeExpectedAmountForEntity", () => {
       bookingLocationId: "loc-1",
     });
   });
+
+  it("returns depositAmount when deposit is still outstanding", async () => {
+    const bookings = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: "booking-1",
+          total_amount: 1000,
+          total_paid: 0,
+          total_refunded: 0,
+          wallet_amount: 0,
+          gift_card_amount: 0,
+          currency: "ZAR",
+          status: "pending_payment",
+          location_id: "loc-1",
+          deposit_required: true,
+          deposit_amount: 300,
+          payment_option: "deposit",
+          additional_charges: [],
+        },
+      }),
+    };
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "bookings") return bookings;
+        throw new Error(`unexpected table ${table}`);
+      }),
+    } as never;
+
+    await expect(
+      computeExpectedAmountForEntity(supabase, "provider-1", "booking", "booking-1"),
+    ).resolves.toMatchObject({
+      amount: 1000,
+      depositAmount: 300,
+      fullOutstanding: 1000,
+      currency: "ZAR",
+    });
+  });
 });

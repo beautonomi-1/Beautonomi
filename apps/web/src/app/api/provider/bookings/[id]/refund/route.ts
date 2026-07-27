@@ -12,7 +12,7 @@ import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-hos
 import {
   computeInPersonRefundableCap,
   fetchBookingPaymentsForRefundCap,
-  fetchCompletedCashRefundsTotal,
+  fetchCompletedInPersonRefundsTotal,
 } from "@/lib/bookings/booking-refund-limits";
 import {
   cashRefundConfirmationDeadline,
@@ -74,14 +74,21 @@ export async function POST(
     // `cash` records the refund for audit/ledger WITHOUT a wallet credit.
     const rawMethod =
       typeof body?.refund_method === "string" ? body.refund_method.trim().toLowerCase() : "";
-    let refundMethod: "store_credit" | "cash";
+    let refundMethod: "store_credit" | "cash" | "original";
     if (rawMethod === "cash" || rawMethod === "in_person" || rawMethod === "in-person") {
       refundMethod = "cash";
+    } else if (
+      rawMethod === "original" ||
+      rawMethod === "terminal" ||
+      rawMethod === "card" ||
+      rawMethod === "paycloud"
+    ) {
+      refundMethod = "original";
     } else if (rawMethod === "" || rawMethod === "store_credit" || rawMethod === "wallet") {
       refundMethod = "store_credit";
     } else {
       return errorResponse(
-        "refund_method must be 'store_credit' or 'cash'",
+        "refund_method must be 'store_credit', 'cash', or 'original' (card machine reversal)",
         "VALIDATION_ERROR",
         400,
       );
@@ -194,8 +201,8 @@ export async function POST(
       bookingId,
       (booking as { tenant_id?: string | null }).tenant_id,
     );
-    const completedCashRefunds = await fetchCompletedCashRefundsTotal(supabaseAdmin, bookingId);
-    const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedCashRefunds);
+    const completedInPersonRefunds = await fetchCompletedInPersonRefundsTotal(supabaseAdmin, bookingId);
+    const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedInPersonRefunds);
 
     if (refundMethod === "cash" && amount > inPersonCap) {
       return errorResponse(
@@ -205,7 +212,95 @@ export async function POST(
       );
     }
 
+    if (refundMethod === "original" && amount > inPersonCap) {
+      return errorResponse(
+        `Card machine refunds are limited to ${formatMoney(inPersonCap)} collected on a terminal for this booking. Online portions should be refunded as wallet credit.`,
+        "TERMINAL_REFUND_CAP_EXCEEDED",
+        400,
+      );
+    }
+
+    const linkedPaymentId =
+      typeof body?.payment_id === "string" && body.payment_id.trim()
+        ? body.payment_id.trim()
+        : typeof body?.booking_payment_id === "string" && body.booking_payment_id.trim()
+          ? body.booking_payment_id.trim()
+          : null;
+
+    if (refundMethod === "original" && linkedPaymentId) {
+      const linked = bookingPayments.find((p) => String((p as { id?: string }).id ?? "") === linkedPaymentId);
+      const provider = String(linked?.payment_provider ?? "").toLowerCase();
+      if (!linked || (provider !== "paycloud" && provider !== "yoco")) {
+        return errorResponse(
+          "Select a card machine payment to reverse to the customer's card.",
+          "INVALID_PAYMENT_FOR_TERMINAL_REFUND",
+          400,
+        );
+      }
+    }
+
     const requiresCustomerConfirmation = refundMethod === "cash" && !!booking.customer_id;
+    const recordOnly =
+      body?.record_only === true ||
+      body?.record_only === "true" ||
+      body?.record_only === 1;
+
+    // Terminal reverse: send REFUND to PayCloud. Settlement writes booking_refunds
+    // via webhook/reconcile — do not insert a completed booking_refund here or the
+    // customer is told the money is returning while nothing hits the machine.
+    if (refundMethod === "original" && !recordOnly) {
+      const { data: pcPayments } = await supabaseAdmin
+        .from("provider_paycloud_payments")
+        .select("id, amount, tip_amount, cashback_amount, terminal_id, status, trans_type, metadata")
+        .eq("provider_id", providerId)
+        .eq("booking_id", bookingId)
+        .eq("status", "successful")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      const salePayment = (pcPayments ?? []).find((p) => {
+        const tt = Number(p.trans_type ?? 1);
+        return tt === 1 || tt === 11;
+      });
+
+      if (!salePayment) {
+        return errorResponse(
+          "No card machine payment found to reverse on this booking. Use wallet credit, or complete the refund on the machine and record it as a card refund.",
+          "NO_TERMINAL_PAYMENT",
+          400,
+        );
+      }
+
+      const { initiatePaycloudRefund } = await import("@/lib/payments/initiate-paycloud-refund");
+      const { getPaycloudNotifyUrl } = await import("@/lib/payments/paycloud-credentials");
+      const initiate = await initiatePaycloudRefund({
+        supabase: supabaseAdmin,
+        providerId,
+        paymentId: salePayment.id,
+        amount,
+        processedBy: user.id,
+        notifyUrl: getPaycloudNotifyUrl(request),
+        terminalId: salePayment.terminal_id,
+      });
+
+      if (initiate.ok === false) {
+        return errorResponse(
+          initiate.message ||
+            "Could not start the card machine refund. Complete it on the machine, then record it as a card refund.",
+          initiate.code || "TERMINAL_REFUND_FAILED",
+          initiate.status >= 400 ? initiate.status : 400,
+        );
+      }
+
+      return successResponse({
+        refund: null,
+        refund_method: "original",
+        paycloud_refund: initiate.refundPayment,
+        pending_terminal: true,
+        message: `Refund of ${formatMoney(amount)} sent to the card machine — follow the prompts. The booking updates when the machine confirms.`,
+        fully_refunded: false,
+      });
+    }
 
     const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
       tenant_id: (booking as { tenant_id?: string | null }).tenant_id,
@@ -223,11 +318,14 @@ export async function POST(
     const defaultNotes =
       refundMethod === "cash"
         ? "Provider refund – returned to customer in person"
-        : "Provider refund – credited to customer wallet";
+        : refundMethod === "original"
+          ? "Provider refund – recorded after card machine reversal"
+          : "Provider refund – credited to customer wallet";
     const { data: refund, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
         booking_id: bookingId,
+        payment_id: linkedPaymentId,
         amount,
         reason,
         refund_method: refundMethod,
@@ -347,6 +445,14 @@ export async function POST(
       if (finalizeResult.error) {
         return errorResponse(finalizeResult.error, "FINALIZE_ERROR", 500);
       }
+    } else if (refundMethod === "original") {
+      const { error: finalizeErr } = await supabaseAdmin
+        .from("booking_refunds")
+        .update({ status: "completed" })
+        .eq("id", refundId);
+      if (finalizeErr) {
+        return errorResponse("Failed to finalise card refund record.", "FINALIZE_ERROR", 500);
+      }
     } else {
       // Wallet credited successfully — finalise the refund. The status flip
       // to `completed` triggers (a) the finance_transactions reversal row
@@ -392,13 +498,23 @@ export async function POST(
     // when there is no customer account (walk-in cash refund with null customer).
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
     const notifyTitle =
-      refundMethod === "cash" ? "Refund processed" : "Refund added to wallet";
+      refundMethod === "cash"
+        ? "Refund processed"
+        : refundMethod === "original"
+          ? "Refund to your card"
+          : "Refund added to wallet";
     const notifyMessage =
       refundMethod === "cash"
         ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been returned to you in person.`
-        : `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking or request a payout.`;
+        : refundMethod === "original"
+          ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} is on its way back to your card. It may take a few days to appear on your statement.`
+          : `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking or request a payout.`;
     const notifyUrl =
-      refundMethod === "cash" ? `/account-settings/bookings/${bookingId}` : "/account-settings/wallet";
+      refundMethod === "cash"
+        ? `/account-settings/bookings/${bookingId}`
+        : refundMethod === "original"
+          ? `/account-settings/bookings/${bookingId}`
+          : "/account-settings/wallet";
     if (booking.customer_id) {
       try {
         const { insertNotification } = await import("@/lib/notifications/insert-notification");
@@ -473,7 +589,9 @@ export async function POST(
       message:
         refundMethod === "cash"
           ? `Refund of ${formatMoney(amount)} recorded as returned in person`
-          : `Refund of ${formatMoney(amount)} added to customer wallet`,
+          : refundMethod === "original"
+            ? `Refund of ${formatMoney(amount)} recorded as returned to the customer's card`
+            : `Refund of ${formatMoney(amount)} added to customer wallet`,
       fully_refunded: isFullyRefunded,
     });
   } catch (error) {

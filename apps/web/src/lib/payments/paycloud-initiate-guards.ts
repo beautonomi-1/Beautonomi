@@ -185,7 +185,7 @@ export async function validatePaycloudPaymentInitiate(
   if (params.entityType === "additional_charge") {
     const { data: charge } = await supabase
       .from("additional_charges")
-      .select("status, bookings!inner(provider_id)")
+      .select("status, booking_id, bookings!inner(provider_id)")
       .eq("id", params.entityId)
       .maybeSingle();
     if (!charge) return { ok: false, code: "CHARGE_NOT_FOUND", message: "Additional charge not found.", status: 404 };
@@ -198,6 +198,62 @@ export async function validatePaycloudPaymentInitiate(
     }
     if (charge.status === "rejected") {
       return { ok: false, code: "CHARGE_NOT_COLLECTIBLE", message: "This charge was rejected.", status: 400 };
+    }
+
+    const bookingId = (charge as { booking_id?: string }).booking_id;
+    if (bookingId) {
+      const { data: bookingLevelInFlight } = await supabase
+        .from("provider_paycloud_payments")
+        .select("id")
+        .eq("provider_id", params.providerId)
+        .eq("entity_type", "booking")
+        .eq("entity_id", bookingId)
+        .in("status", ["pending", "processing"])
+        .gte("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+        .limit(1)
+        .maybeSingle();
+      if (bookingLevelInFlight) {
+        return {
+          ok: false,
+          code: "ENTITY_IN_FLIGHT",
+          message:
+            "A payment is already in progress for this booking (including add-ons). Wait or cancel it first.",
+          status: 409,
+          existingPaymentId: bookingLevelInFlight.id,
+        };
+      }
+    }
+  }
+
+  if (params.entityType === "booking") {
+    const { data: chargeInFlight } = await supabase
+      .from("provider_paycloud_payments")
+      .select("id, additional_charge_id")
+      .eq("provider_id", params.providerId)
+      .eq("entity_type", "additional_charge")
+      .in("status", ["pending", "processing"])
+      .gte("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString());
+    if (chargeInFlight?.length) {
+      const { data: unpaidCharges } = await supabase
+        .from("additional_charges")
+        .select("id")
+        .eq("booking_id", params.entityId)
+        .neq("status", "paid")
+        .neq("status", "rejected");
+      const unpaidIds = new Set((unpaidCharges ?? []).map((c) => c.id));
+      const conflicting = chargeInFlight.find(
+        (p) => p.additional_charge_id && unpaidIds.has(p.additional_charge_id),
+      );
+      if (conflicting) {
+        return {
+          ok: false,
+          code: "ENTITY_IN_FLIGHT",
+          message:
+            "A payment is already in progress for an add-on on this booking. Wait or cancel it first.",
+          status: 409,
+          existingPaymentId: conflicting.id,
+        };
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Info, Key } from "lucide-react";
@@ -17,7 +17,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
-const RSA_PRIVATE_KEY_PLACEHOLDER = ["-----BEGIN ", "RSA PRIVATE KEY", "-----"].join("");
+const RSA_PRIVATE_KEY_PLACEHOLDER = ["-----BEGIN ", "PRIVATE KEY", "-----"].join("");
 const PUBLIC_KEY_PLACEHOLDER = ["-----BEGIN ", "PUBLIC KEY", "-----"].join("");
 
 type PaycloudEnv = "live" | "sandbox";
@@ -59,6 +59,12 @@ interface PaycloudAdminStatus {
     sandbox: PaycloudAppStatus | null;
   };
   counts: { merchants: number; terminals: number };
+  readiness?: {
+    notify_url: string;
+    notify_url_valid: boolean;
+    paycloud_plan_entitlement_enabled: boolean;
+    live_api_base: string;
+  };
   resolution_notes: {
     credentials_order: string;
     provider_connect: string;
@@ -79,12 +85,14 @@ function PaycloudAppEditor({
   defaultApiBase,
   onSave,
   saving,
+  prefillForm,
 }: {
   env: PaycloudEnv;
   app: PaycloudAppStatus | null;
   defaultApiBase: string;
   onSave: (env: PaycloudEnv, form: PaycloudAppForm) => void;
   saving: boolean;
+  prefillForm?: Partial<PaycloudAppForm> | null;
 }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PaycloudAppForm>({
@@ -94,6 +102,12 @@ function PaycloudAppEditor({
     api_base_url: app?.api_base_url ?? defaultApiBase,
     is_enabled: app?.is_enabled ?? true,
   });
+
+  useEffect(() => {
+    if (!prefillForm) return;
+    setForm((prev) => ({ ...prev, ...prefillForm }));
+    setOpen(true);
+  }, [prefillForm]);
 
   const configured = Boolean(
     app?.masked_app_id && app?.has_app_rsa_private_key && app?.has_gateway_rsa_public_key && app?.api_base_url,
@@ -139,7 +153,7 @@ function PaycloudAppEditor({
       {open ? (
         <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
           <p className="text-xs text-gray-500">
-            Leave app ID or RSA keys blank to keep the current value. API base URL is operational config, not a secret.
+            Leave app ID or RSA keys blank to keep the current value. PKCS#1 or PKCS#8 private keys are accepted.
           </p>
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -213,6 +227,29 @@ export function PayCloudIntegrationPage() {
   const { allowed, denied } = useSuperadminPage("PayCloud platform configuration is superadmin-only.");
   void allowed;
   const qc = useQueryClient();
+  const [sandboxPrefill, setSandboxPrefill] = useState<Partial<PaycloudAppForm> | null>(null);
+  const [merchantPrefillToken, setMerchantPrefillToken] = useState(0);
+
+  const loadSandboxFixtures = useMutation({
+    mutationFn: () =>
+      adminApi.getJson<{
+        app_id: string;
+        app_rsa_private_key: string;
+        gateway_rsa_public_key: string;
+        api_base_url: string;
+      }>("/api/admin/integrations/paycloud/sandbox-fixtures"),
+    onSuccess: (fixtures) => {
+      setSandboxPrefill({
+        app_id: fixtures.app_id,
+        app_rsa_private_key: fixtures.app_rsa_private_key,
+        gateway_rsa_public_key: fixtures.gateway_rsa_public_key,
+        api_base_url: fixtures.api_base_url,
+        is_enabled: true,
+      });
+      adminToast.success("Sandbox test credentials loaded — review the sandbox form and save.");
+    },
+    onError: (error: Error) => adminToast.error(error.message),
+  });
 
   const q = useQuery({
     queryKey: adminQueryKeys.paycloudIntegrationStatus(),
@@ -317,6 +354,100 @@ export function PayCloudIntegrationPage() {
       </AdminPanel>
 
       <AdminPanel>
+        <h2 className="text-base font-semibold text-gray-900">Sandbox quick start</h2>
+        <p className="mt-1 text-sm text-amber-800">
+          Test account — no real money moves. Do not copy these values into a live tenant.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(loadSandboxFixtures.isPending)}
+            disabled={loadSandboxFixtures.isPending}
+            onClick={() => loadSandboxFixtures.mutate()}
+          >
+            Use PayCloud test credentials
+          </button>
+          <button
+            type="button"
+            className={adminToolbarButtonClass(false)}
+            onClick={() => setMerchantPrefillToken((n) => n + 1)}
+          >
+            Create test merchant
+          </button>
+          <button
+            type="button"
+            className={adminToolbarButtonClass(testCredentials.isPending)}
+            disabled={testCredentials.isPending}
+            onClick={() => testCredentials.mutate("sandbox")}
+          >
+            Test sandbox credentials
+          </button>
+        </div>
+        <ul className="mt-4 space-y-2 text-sm">
+          {[
+            {
+              ok: Boolean(
+                d.tenant_paycloud_apps.sandbox?.masked_app_id &&
+                  d.tenant_paycloud_apps.sandbox?.has_app_rsa_private_key &&
+                  d.tenant_paycloud_apps.sandbox?.has_gateway_rsa_public_key &&
+                  d.tenant_paycloud_apps.sandbox?.is_enabled,
+              ),
+              label: "Sandbox app credentials configured",
+            },
+            { ok: d.counts.merchants > 0, label: "At least one merchant registered" },
+            { ok: d.counts.terminals > 0, label: "At least one terminal assigned" },
+            { ok: d.payment_paycloud_feature.effective_enabled, label: "payment_paycloud feature flag on" },
+            {
+              ok: d.readiness?.paycloud_plan_entitlement_enabled ?? false,
+              label: "paycloud_integration enabled on active plans",
+            },
+            { ok: d.readiness?.notify_url_valid ?? false, label: "Valid HTTPS notify URL (NEXT_PUBLIC_APP_URL)" },
+          ].map((row) => (
+            <li key={row.label} className="flex items-center gap-2">
+              {row.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              )}
+              <span className={row.ok ? "text-green-800" : "text-amber-900"}>{row.label}</span>
+            </li>
+          ))}
+        </ul>
+        <h3 className="mt-5 text-sm font-semibold text-gray-900">Live readiness</h3>
+        <ul className="mt-2 space-y-2 text-sm">
+          {[
+            {
+              ok: Boolean(
+                d.tenant_paycloud_apps.live?.masked_app_id &&
+                  d.tenant_paycloud_apps.live?.has_app_rsa_private_key &&
+                  d.tenant_paycloud_apps.live?.is_enabled,
+              ),
+              label: "Live app credentials configured",
+            },
+            { ok: d.payment_paycloud_feature.effective_enabled, label: "payment_paycloud feature flag on" },
+            {
+              ok: d.readiness?.paycloud_plan_entitlement_enabled ?? false,
+              label: "paycloud_integration on plans being sold",
+            },
+            { ok: d.readiness?.notify_url_valid ?? false, label: "Absolute HTTPS notify URL configured" },
+            {
+              ok: (d.readiness?.live_api_base ?? "").includes("api.paycloud.africa"),
+              label: "Live API base resolves to api.paycloud.africa",
+            },
+          ].map((row) => (
+            <li key={row.label} className="flex items-center gap-2">
+              {row.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              )}
+              <span className={row.ok ? "text-green-800" : "text-amber-900"}>{row.label}</span>
+            </li>
+          ))}
+        </ul>
+      </AdminPanel>
+
+      <AdminPanel>
         <h2 className="text-base font-semibold text-gray-900">App credentials</h2>
         <p className="mt-1 text-sm text-gray-600">
           Manage PayCloud RSA app credentials used when providers collect in-person card payments. Tenant rows override
@@ -336,6 +467,7 @@ export function PayCloudIntegrationPage() {
             defaultApiBase={d.platform_env.default_api_base.sandbox}
             saving={saveApp.isPending}
             onSave={(env, form) => saveApp.mutate({ env, form })}
+            prefillForm={sandboxPrefill}
           />
         </div>
       </AdminPanel>
@@ -437,7 +569,7 @@ export function PayCloudIntegrationPage() {
         <p className="mt-2 text-sm text-gray-600">{d.resolution_notes.provider_connect}</p>
       </AdminPanel>
 
-      <PaycloudMerchantsPanel />
+      <PaycloudMerchantsPanel merchantPrefillToken={merchantPrefillToken} />
     </div>
   );
 }
@@ -453,7 +585,7 @@ type PaycloudMerchantRow = {
   app?: { id: string; environment: string; app_id: string; is_enabled: boolean } | null;
 };
 
-function PaycloudMerchantsPanel() {
+function PaycloudMerchantsPanel({ merchantPrefillToken = 0 }: { merchantPrefillToken?: number }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -465,6 +597,34 @@ function PaycloudMerchantsPanel() {
     paycloud_app_id: "" as string,
     is_active: true,
   });
+
+  useEffect(() => {
+    if (!merchantPrefillToken) return;
+    let cancelled = false;
+    void adminApi
+      .getJson<{
+        merchant_no: string;
+        store_no: string;
+      }>("/api/admin/integrations/paycloud/sandbox-fixtures")
+      .then((fixtures) => {
+        if (cancelled) return;
+        setEditingId(null);
+        setForm({
+          label: "PayCloud sandbox test merchant",
+          merchant_no: fixtures.merchant_no,
+          store_no: fixtures.store_no,
+          environment: "sandbox",
+          paycloud_app_id: "",
+          is_active: true,
+        });
+        setShowForm(true);
+        adminToast.success("Test merchant prefilled — link the sandbox app row and save.");
+      })
+      .catch((error: Error) => adminToast.error(error.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [merchantPrefillToken]);
 
   const statusQ = useQuery({
     queryKey: adminQueryKeys.paycloudIntegrationStatus(),

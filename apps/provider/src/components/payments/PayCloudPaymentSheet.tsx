@@ -466,7 +466,10 @@ export function PayCloudPaymentSheet({
     try {
       const voidRow = await voidPayment(paymentId);
       if (voidRow && (voidRow.status === "processing" || voidRow.status === "successful")) {
-        Alert.alert("Void sent", "Follow the prompts on the card machine to complete the void.");
+        Alert.alert(
+          "Cancel sent to card machine",
+          "Follow the prompts on the card machine. The full amount will return to the customer's card if the bank has not settled the batch yet.",
+        );
       }
     } finally {
       setVoiding(false);
@@ -507,6 +510,74 @@ export function PayCloudPaymentSheet({
     await setKeepAwake(true);
     setSameTerminalStep(trySameDevice ? "opening" : "idle");
 
+    const processCreateResult = async (
+      createResult: Awaited<ReturnType<typeof createPayment>>,
+    ): Promise<boolean> => {
+      if (!createResult.ok) {
+        if (
+          (createResult.code === "TERMINAL_IN_FLIGHT" || createResult.code === "ENTITY_IN_FLIGHT") &&
+          createResult.existingPaymentId
+        ) {
+          Alert.alert(
+            "Payment already in progress",
+            createResult.message,
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Resume",
+                onPress: () => {
+                  setInFlightPaymentId(createResult.existingPaymentId!);
+                  void handleResumeInFlight();
+                },
+              },
+            ],
+          );
+          return false;
+        }
+        if (createResult.code === "POLL_TIMEOUT" && createResult.existingPaymentId) {
+          setInFlightPaymentId(createResult.existingPaymentId);
+          Alert.alert(
+            "Still waiting on card machine",
+            createResult.message,
+            [
+              { text: "Cancel charge", style: "destructive", onPress: () => void closePayment(createResult.existingPaymentId!) },
+              { text: "Resume", onPress: () => void handleResumeInFlight() },
+            ],
+          );
+          return false;
+        }
+        return false;
+      }
+
+      const payment = createResult.payment;
+      const paymentId = payment.id || payment.payment_id;
+      if (paymentId) setInFlightPaymentId(paymentId);
+
+      if (channel === "same_terminal" && payment.intent_payload) {
+        setSameTerminalStep("on_device");
+        return true;
+      }
+
+      if (payment.status === "successful") {
+        handleSettledSuccess(payment);
+        return true;
+      }
+      if (payment.status === "failed") {
+        setInFlightPaymentId(null);
+        Alert.alert(
+          "Payment failed",
+          payment.error_message || "The card payment didn't go through. Please try again.",
+        );
+        return false;
+      }
+
+      Alert.alert(
+        "Waiting on card machine",
+        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+      );
+      return true;
+    };
+
     const runCloudFallback = async () => {
       const cloudRetry = await createPayment({
         terminal_id: selectedTerminal.id,
@@ -523,20 +594,22 @@ export function PayCloudPaymentSheet({
           groupBookingId ?? (entityType === "group_booking" ? entityId : null),
         channel: "cloud",
       });
-      if (!cloudRetry) return;
-      // Mirror the plain cloud path below: without tracking the new payment the
-      // charge is live on the machine with no Resume affordance to recover it.
-      const retryId = cloudRetry.id || cloudRetry.payment_id;
-      if (retryId) setInFlightPaymentId(retryId);
-      if (cloudRetry.status === "successful") {
-        handleSettledSuccess(cloudRetry);
+      if (!cloudRetry.ok) {
+        await processCreateResult(cloudRetry);
         return;
       }
-      if (cloudRetry.status === "failed") {
+      const retryPayment = cloudRetry.payment;
+      const retryId = retryPayment.id || retryPayment.payment_id;
+      if (retryId) setInFlightPaymentId(retryId);
+      if (retryPayment.status === "successful") {
+        handleSettledSuccess(retryPayment);
+        return;
+      }
+      if (retryPayment.status === "failed") {
         setInFlightPaymentId(null);
         Alert.alert(
           "Payment failed",
-          cloudRetry.error_message || "The card payment didn't go through. Please try again.",
+          retryPayment.error_message || "The card payment didn't go through. Please try again.",
         );
         return;
       }
@@ -566,18 +639,22 @@ export function PayCloudPaymentSheet({
       ...(info?.serialSource ? { serial_source: info.serialSource } : {}),
     });
 
-    if (!result) {
-      await setKeepAwake(false);
-      setSameTerminalStep("idle");
+    if (!result.ok) {
+      const handled = await processCreateResult(result);
+      if (!handled) {
+        await setKeepAwake(false);
+        setSameTerminalStep("idle");
+      }
       return;
     }
 
-    const paymentId = result.id || result.payment_id;
+    const payment = result.payment;
+    const paymentId = payment.id || payment.payment_id;
     if (paymentId) setInFlightPaymentId(paymentId);
 
-    if (channel === "same_terminal" && result.intent_payload) {
+    if (channel === "same_terminal" && payment.intent_payload) {
       setSameTerminalStep("on_device");
-      const intentResult = await startPaycloudSameTerminalSale(result.intent_payload);
+      const intentResult = await startPaycloudSameTerminalSale(payment.intent_payload);
       const transData = parsePaycloudIntentTransData(intentResult.transData);
       if (transData?.cardNo) setMaskedCard(transData.cardNo);
 
@@ -630,25 +707,20 @@ export function PayCloudPaymentSheet({
 
     await setKeepAwake(false);
 
-    if (result) {
-      if (result.status === "successful") {
-        handleSettledSuccess(result);
-      } else if (result.status === "failed") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setInFlightPaymentId(null);
-        Alert.alert(
-          "Payment failed",
-          result.error_message || "The card payment didn't go through. Please try again.",
-        );
-      } else if (
-        result.status === "pending" ||
-        result.status === "processing"
-      ) {
-        Alert.alert(
-          "Waiting on card machine",
-          `Ask the customer to complete payment on ${selectedTerminal.name}.`,
-        );
-      }
+    if (payment.status === "successful") {
+      handleSettledSuccess(payment);
+    } else if (payment.status === "failed") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setInFlightPaymentId(null);
+      Alert.alert(
+        "Payment failed",
+        payment.error_message || "The card payment didn't go through. Please try again.",
+      );
+    } else if (payment.status === "pending" || payment.status === "processing") {
+      Alert.alert(
+        "Waiting on card machine",
+        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+      );
     }
   }, [
     selectedTerminal,

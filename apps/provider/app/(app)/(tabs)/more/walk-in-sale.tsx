@@ -33,8 +33,8 @@ import {
 } from "@/features/products/resolveBarcodeForWalkInSale";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { usePayCloudSettings } from "@/hooks/usePayCloud";
-import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
+import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { downloadPdf } from "@/lib/pdf-file";
@@ -246,13 +246,18 @@ export default function WalkInSaleScreen() {
   const { selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { settings: paycloudSettings } = usePayCloudSettings();
-  const paycloudReady =
-    paycloudEnabled &&
-    Boolean(paycloudSettings?.ready);
-  const paycloudInFlight = (paycloudSettings?.terminals?.inFlight ?? 0) > 0;
-  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
+  const {
+    paycloudEnabled,
+    collectEnabled: paycloudCollectEnabled,
+    primaryBlocker: paycloudPrimaryBlocker,
+  } = usePaycloudCollectAvailability();
+  const { data: permissionData } = useApi<{
+    isOwner?: boolean;
+    permissions?: Record<string, boolean>;
+  }>("/api/provider/permissions", { staleTimeMs: 60_000 });
+  const canProcessPayments =
+    permissionData?.isOwner === true ||
+    permissionData?.permissions?.process_payments === true;
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -1397,8 +1402,7 @@ export default function WalkInSaleScreen() {
                     (method) =>
                       (paystackTerminalEnabled || method.id !== "paystack_terminal") &&
                       (yocoEnabled || method.id !== "yoco") &&
-                      (paycloudEnabled || method.id !== "paycloud") &&
-                      (paycloudCollectEnabled || method.id !== "paycloud"),
+                      (canProcessPayments && paycloudEnabled && paycloudCollectEnabled || method.id !== "paycloud"),
                   ).map((method) => {
                     const active = paymentMethod === method.id;
                     return (
@@ -1420,25 +1424,10 @@ export default function WalkInSaleScreen() {
                       </TouchableOpacity>
                     );
                   })}
-                  {paycloudEnabled && !paycloudCollectEnabled ? (
-                    <TouchableOpacity
-                      onPress={() => router.push("/(app)/(tabs)/more/card-machines" as never)}
-                      style={{
-                        width: "48%",
-                        marginHorizontal: "1%",
-                        marginBottom: 8,
-                        borderRadius: 12,
-                        paddingVertical: 10,
-                        borderWidth: 1,
-                        borderStyle: "dashed",
-                        borderColor: Colors.gray[300],
-                        backgroundColor: Colors.white,
-                      }}
-                    >
-                      <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
-                        {PAYCLOUD_SETUP_LABEL}
-                      </Text>
-                    </TouchableOpacity>
+                  {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
+                    <View style={{ width: "100%", marginHorizontal: "1%", marginBottom: 8 }}>
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                    </View>
                   ) : null}
                 </View>
 

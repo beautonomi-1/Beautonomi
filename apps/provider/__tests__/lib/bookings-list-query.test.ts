@@ -4,11 +4,14 @@ import {
   buildDateStripInfo,
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
+  buildStatsReconciliationLine,
   buildStripDateParams,
   buildStripDays,
   filterBookingsForDayKey,
   isDateWithinStripWindow,
   mergeAtHomeBookings,
+  statsRangeToDateRange,
+  statusFilterForStatsTile,
 } from "@/lib/bookings-list-query";
 import { formatBusinessDayYYYYMMDD, startOfBusinessDayLocalDate } from "@beautonomi/utils";
 
@@ -289,5 +292,35 @@ describe("filterBookingsForDayKey", () => {
     expect(bookings).toHaveLength(1);
     expect(blocks.every((b) => b.date === selectedDateKey)).toBe(true);
     jest.useRealTimers();
+  });
+});
+
+describe("Overview metrics tile mappings", () => {
+  it("maps stats range to list date range", () => {
+    expect(statsRangeToDateRange("today")).toBe("today");
+    expect(statsRangeToDateRange("week")).toBe("week");
+    expect(statsRangeToDateRange("month")).toBe("month");
+    expect(statsRangeToDateRange("all")).toBe("all");
+  });
+
+  it("maps metric tiles to status filters", () => {
+    expect(statusFilterForStatsTile("pending")).toBe(BOOKINGS_TO_REVIEW_STATUS);
+    expect(statusFilterForStatsTile("confirmed")).toBe("confirmed");
+    expect(statusFilterForStatsTile("active")).toBe("in_progress");
+    expect(statusFilterForStatsTile("completed")).toBe("completed");
+    expect(statusFilterForStatsTile("appointments")).toBe("");
+  });
+
+  it("builds a reconciliation line that explains excluded cancelled/no-show rows", () => {
+    expect(
+      buildStatsReconciliationLine({
+        pending_count: 2,
+        confirmed_count: 1,
+        in_progress_count: 0,
+        completed_count: 8,
+        cancelled_count: 1,
+        no_show_count: 0,
+      }),
+    ).toBe("2 pending · 1 confirmed · 0 active · 8 completed · excludes 1 cancelled/no-show");
   });
 });

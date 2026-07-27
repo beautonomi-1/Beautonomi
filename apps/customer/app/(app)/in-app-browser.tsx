@@ -3,7 +3,7 @@
  * in a WebView so customers stay in the app.
  * Route: (app)/in-app-browser?url=<encoded>&title=...&intent=content|payment
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking, Alert } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
@@ -14,6 +14,7 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useTranslation } from "@beautonomi/i18n";
+import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
 
 export default function InAppBrowserScreen() {
   const { t } = useTranslation();
@@ -51,6 +52,15 @@ export default function InAppBrowserScreen() {
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
+  const isAllowlisted = isValid && isAllowedInAppWebViewUrl(rawUrl);
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (!rawUrl || !isValid || isAllowlisted || redirectedRef.current) return;
+    redirectedRef.current = true;
+    Linking.openURL(rawUrl).catch(() => {});
+    router.back();
+  }, [rawUrl, isValid, isAllowlisted, router]);
 
   if (!rawUrl || !isValid) {
     return (
@@ -85,6 +95,31 @@ export default function InAppBrowserScreen() {
     );
   }
 
+  if (!isAllowlisted) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            style={styles.backBtn}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
+        </View>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={[styles.errorText, { marginTop: 16 }]}>Opening in your browser…</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -106,10 +141,14 @@ export default function InAppBrowserScreen() {
           source={{ uri: rawUrl }}
           {...inAppWebViewUserAgentProps()}
           style={styles.webview}
-          originWhitelist={["https://*", "http://*", "customer://*"]}
+          originWhitelist={getWebViewOriginWhitelist()}
           onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("customer://")) {
+              Linking.openURL(u).catch(() => {});
+              return false;
+            }
+            if (!isAllowedInAppWebViewUrl(u)) {
               Linking.openURL(u).catch(() => {});
               return false;
             }

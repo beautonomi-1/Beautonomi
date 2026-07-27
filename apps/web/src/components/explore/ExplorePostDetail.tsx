@@ -211,7 +211,11 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   };
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-  const shareTitle = post.caption || "Explore post";
+  const providerName = post.provider?.business_name || "Beautonomi";
+  const shareTitle = post.caption?.trim()
+    ? `${post.caption.trim().slice(0, 100)}${post.caption.length > 100 ? "…" : ""} — @${providerName} on Beautonomi`
+    : `@${providerName} on Beautonomi`;
+  const shareBody = `${shareTitle}\n\n${shareUrl}`;
 
   const copyLink = async () => {
     try {
@@ -224,7 +228,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   };
 
   const shareToWhatsApp = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + " " + shareUrl)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareBody)}`, "_blank");
     setShowShareModal(false);
   };
 
@@ -239,8 +243,20 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   };
 
   const shareToEmail = () => {
-    window.location.href = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareUrl)}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareBody)}`;
     setShowShareModal(false);
+  };
+
+  const shareNative = async () => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareTitle, url: shareUrl });
+        setShowShareModal(false);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
   };
 
   const handleDownloadImage = async () => {
@@ -794,8 +810,21 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           />
           <div className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:right-auto lg:bottom-1/2 lg:translate-x-[-50%] lg:translate-y-[50%] lg:max-w-md w-full bg-white rounded-t-2xl lg:rounded-2xl shadow-xl z-[601] max-h-[85vh] overflow-hidden">
             <div className="p-5 pb-8 lg:pb-5">
-              <h3 className="text-lg font-bold text-gray-900 mb-5">Share</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Share</h3>
+              <p className="text-sm text-gray-500 mb-5">Share this look from Beautonomi Explore</p>
               <div className="grid grid-cols-4 gap-4">
+                {typeof navigator !== "undefined" && navigator.share ? (
+                  <button
+                    type="button"
+                    onClick={() => void shareNative()}
+                    className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
+                      <Share2 className="w-6 h-6 text-[#FF0077]" />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700 text-center">More</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={copyLink}

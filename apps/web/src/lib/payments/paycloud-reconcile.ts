@@ -3,6 +3,7 @@ import { queryPaycloudOrder, closePaycloudOrder } from "@/lib/payments/paycloud-
 import { resolvePaycloudContextForProvider } from "@/lib/payments/paycloud-credentials";
 import { settlePaycloudPayment } from "@/lib/payments/settle-paycloud-payment";
 import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud-void";
+import { isPaycloudRefundRow, completePaycloudRefund } from "@/lib/payments/paycloud-refund";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
@@ -129,6 +130,15 @@ export async function reconcilePaycloudPayment(
         .update({ in_flight_payment_id: null })
         .eq("id", payment.terminal_id);
       return { payment_id: payment.id, action: "settled", reason: "void_reversed" };
+    }
+
+    if (isPaycloudRefundRow(payment)) {
+      await completePaycloudRefund(supabase, payment);
+      await supabase
+        .from("paycloud_terminals")
+        .update({ in_flight_payment_id: null })
+        .eq("id", payment.terminal_id);
+      return { payment_id: payment.id, action: "settled", reason: "refund_reversed" };
     }
 
     let didSettle = false;

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Share, Alert, Keyboard, Platform, useWindowDimensions, Animated, FlatList, Pressable } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Keyboard, Platform, useWindowDimensions, Animated, FlatList, Pressable } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
+import { Video, ResizeMode } from "expo-av";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
@@ -16,6 +17,16 @@ import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
+import { useSocialCapability } from "@/hooks/useSafetySettings";
+import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
+import {
+  copyExplorePostLink,
+  isExploreVideoUrl,
+  presentExplorePostShareActions,
+  shareExplorePostLink,
+  shareExplorePostMedia,
+  type ExploreShareAction,
+} from "@/lib/share-explore-post";
 
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -39,6 +50,8 @@ export default function ExplorePostScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const socialInteractions = useSocialCapability("comment");
+  const canInteract = socialInteractions.allowed;
 
   const [post, setPost] = useState<ExplorePost | null>(null);
   const [comments, setComments] = useState<ExploreComment[]>([]);
@@ -51,6 +64,26 @@ export default function ExplorePostScreen() {
   const [liking, setLiking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
+  const [reportTarget, setReportTarget] = useState<{ type: ContentReportTargetType; id: string; title?: string } | null>(null);
+
+  const openContentReport = useCallback(
+    (type: ContentReportTargetType, targetId: string, title?: string) => {
+      if (!user) {
+        Alert.alert(
+          t("customer.contentReport.signInTitle"),
+          t("customer.contentReport.signInBody"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+          ],
+        );
+        return;
+      }
+      haptic.light();
+      setReportTarget({ type, id: targetId, title });
+    },
+    [router, t, user],
+  );
 
   const heartAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -204,22 +237,53 @@ export default function ExplorePostScreen() {
   }, [input, id, sending, user, t]);
 
   const postUrl = post?.id ? `${APP_URL}/explore/${post.id}` : "";
-  const shareMessage = post?.caption
-    ? t("customer.explorePost.shareWithCaption", {
-        caption: post.caption,
-        name: post.provider?.business_name || "Beautonomi",
-      })
-    : t("customer.explorePost.shareDefault", {
-        name: post?.provider?.business_name || "Beautonomi",
-      });
+
+  const shareInput = useCallback(() => {
+    if (!post) return null;
+    return {
+      postId: post.id,
+      caption: post.caption,
+      providerName: post.provider?.business_name || "Beautonomi",
+      providerSlug: post.provider?.slug,
+      mediaUrls: post.media_urls,
+      webBaseUrl: APP_URL,
+      mediaIndex,
+    };
+  }, [post, mediaIndex]);
+
+  const runShareAction = useCallback(
+    async (action: ExploreShareAction) => {
+      const input = shareInput();
+      if (!input) return;
+      haptic.light();
+      if (action === "link") {
+        await shareExplorePostLink(input);
+      } else if (action === "media") {
+        await shareExplorePostMedia(input);
+      } else if (action === "copy") {
+        await copyExplorePostLink(input);
+        Alert.alert(t("customer.explorePost.linkCopied"));
+      }
+    },
+    [shareInput, t],
+  );
 
   const handleShare = useCallback(() => {
-    Share.share({
-      message: shareMessage,
-      title: "Beautonomi",
-      url: postUrl || undefined,
-    }).catch(() => {});
-  }, [shareMessage, postUrl]);
+    const input = shareInput();
+    if (!input) return;
+    void presentExplorePostShareActions(
+      input,
+      {
+        sheetTitle: t("customer.explorePost.shareSheetTitle"),
+        shareLink: t("customer.explorePost.shareLink"),
+        shareMedia: t("customer.explorePost.sharePhoto"),
+        shareMediaVideo: t("customer.explorePost.shareVideo"),
+        copyLink: t("customer.explorePost.copyLink"),
+        cancel: t("common.cancel"),
+      },
+      runShareAction,
+    );
+  }, [runShareAction, shareInput, t]);
 
   const focusCommentInput = useCallback(() => {
     if (!user) {
@@ -233,8 +297,7 @@ export default function ExplorePostScreen() {
 
   const showMoreOptions = useCallback(() => {
     haptic.light();
-    Alert.alert(t("customer.explorePost.moreOptions"), undefined, [
-      { text: t("common.cancel"), style: "cancel" },
+    const actions: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
       { text: t("common.share"), onPress: handleShare },
       {
         text: t("customer.explorePost.copyLink"),
@@ -245,8 +308,17 @@ export default function ExplorePostScreen() {
           }
         },
       },
-    ]);
-  }, [handleShare, postUrl, t]);
+    ];
+    if (user && post?.id) {
+      actions.push({
+        text: t("customer.contentReport.reportPost"),
+        style: "destructive",
+        onPress: () => openContentReport("explore_post", post.id, t("customer.contentReport.reportPost")),
+      });
+    }
+    actions.push({ text: t("common.cancel"), style: "cancel" });
+    Alert.alert(t("customer.explorePost.moreOptions"), undefined, actions);
+  }, [handleShare, openContentReport, post?.id, postUrl, t, user]);
 
   const goToProvider = useCallback(() => {
     if (post?.provider?.slug) {
@@ -296,7 +368,7 @@ export default function ExplorePostScreen() {
     );
   }
 
-  const images = post.media_urls?.length ? post.media_urls : [];
+  const mediaItems = post.media_urls?.length ? post.media_urls : [];
   const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
 
   return (
@@ -316,25 +388,36 @@ export default function ExplorePostScreen() {
           keyboardDismissMode="on-drag"
         >
           {/* Media */}
-          {images.length > 0 ? (
+          {mediaItems.length > 0 ? (
             <View style={{ width: screenWidth, backgroundColor: "#F3F4F6" }}>
               <FlatList
                 {...horizontalFlatListPerf}
-                data={images}
+                data={mediaItems}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={(e) => setMediaIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
                 keyExtractor={(_, i) => String(i)}
-                renderItem={({ item }) => (
-                  <Image
-                    source={{ uri: item }}
-                    style={{ width: screenWidth, aspectRatio: 4 / 5 }}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                    transition={200}
-                  />
-                )}
+                renderItem={({ item }) =>
+                  isExploreVideoUrl(item) ? (
+                    <Video
+                      source={{ uri: item }}
+                      style={{ width: screenWidth, aspectRatio: 4 / 5 }}
+                      resizeMode={ResizeMode.COVER}
+                      useNativeControls
+                      isLooping
+                      shouldPlay={false}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: item }}
+                      style={{ width: screenWidth, aspectRatio: 4 / 5 }}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      transition={200}
+                    />
+                  )
+                }
               />
 
               {/* Double-tap heart overlay */}
@@ -414,9 +497,9 @@ export default function ExplorePostScreen() {
               </TouchableOpacity>
 
               {/* Photo counter */}
-              {images.length > 1 && (
+              {mediaItems.length > 1 && (
                 <View style={{ position: "absolute", bottom: 12, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{mediaIndex + 1}/{images.length}</Text>
+                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{mediaIndex + 1}/{mediaItems.length}</Text>
                 </View>
               )}
             </View>
@@ -531,6 +614,7 @@ export default function ExplorePostScreen() {
                 borderColor: "#F3F4F6",
               }}
             >
+              {canInteract ? (
               <TouchableOpacity
                 onPress={toggleLike}
                 disabled={liking}
@@ -551,7 +635,9 @@ export default function ExplorePostScreen() {
                   {post.like_count > 0 ? post.like_count : t("customer.explorePost.like")}
                 </Text>
               </TouchableOpacity>
+              ) : null}
 
+              {canInteract ? (
               <TouchableOpacity
                 onPress={focusCommentInput}
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4 }}
@@ -566,7 +652,9 @@ export default function ExplorePostScreen() {
                   {comments.length > 0 ? comments.length : t("customer.explorePost.comment")}
                 </Text>
               </TouchableOpacity>
+              ) : null}
 
+              {canInteract ? (
               <TouchableOpacity
                 onPress={toggleSave}
                 disabled={saving}
@@ -587,6 +675,7 @@ export default function ExplorePostScreen() {
                   {t("customer.explorePost.save")}
                 </Text>
               </TouchableOpacity>
+              ) : null}
 
               <TouchableOpacity
                 onPress={handleShare}
@@ -625,26 +714,39 @@ export default function ExplorePostScreen() {
                     </Text>
                   </TouchableOpacity>
                 ) : null}
+                <Text style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 18, marginTop: 8, fontStyle: "italic" }}>
+                  {t("customer.explorePost.medicalDisclaimer")}
+                </Text>
               </View>
             ) : null}
 
             {/* Comments */}
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>
               {t("customer.explorePost.commentsTitle")} {comments.length > 0 ? `(${comments.length})` : ""}
             </Text>
+            {user && comments.length > 0 ? (
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 12 }}>
+                {t("customer.explorePost.reportCommentHint")}
+              </Text>
+            ) : null}
 
             {comments.length === 0 ? (
               <View style={{ paddingVertical: 20, alignItems: "center" }}>
                 <Ionicons name="chatbubbles-outline" size={28} color="#D1D5DB" />
                 <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8 }}>
-                  {t("customer.explorePost.noCommentsYet")}
+                  {canInteract ? t("customer.explorePost.noCommentsYet") : t("customer.explorePost.safetyInteractionsOff")}
                 </Text>
               </View>
             ) : (
               comments.map((c) => {
                 const initial = (c.author?.full_name || "U").charAt(0).toUpperCase();
                 return (
-                  <View key={c.id} style={{ flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderColor: "#F9FAFB" }}>
+                  <Pressable
+                    key={c.id}
+                    onLongPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
+                    delayLongPress={400}
+                    style={{ flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderColor: "#F9FAFB" }}
+                  >
                     {c.author?.avatar_url ? (
                       <Image
                         source={{ uri: c.author.avatar_url }}
@@ -675,7 +777,17 @@ export default function ExplorePostScreen() {
                       </View>
                       <Text style={{ fontSize: 14, color: "#374151", marginTop: 2, lineHeight: 20 }}>{c.body}</Text>
                     </View>
-                  </View>
+                    {user ? (
+                      <TouchableOpacity
+                        onPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
+                        style={{ paddingLeft: 8, paddingVertical: 4 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("customer.contentReport.reportComment")}
+                      >
+                        <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </Pressable>
                 );
               })
             )}
@@ -738,7 +850,7 @@ export default function ExplorePostScreen() {
             the keyboard / indicator on every device, and pad
             non-iOS bottoms by 10dp to keep tap targets accessible. */}
         {/* Comment input bar */}
-        {user ? (
+        {user && canInteract ? (
           <View
             style={{
               flexDirection: "row",
@@ -797,6 +909,22 @@ export default function ExplorePostScreen() {
               )}
             </TouchableOpacity>
           </View>
+        ) : user && !canInteract ? (
+          <View
+            style={{
+              paddingHorizontal: contentPadding,
+              paddingVertical: 14,
+              paddingBottom: 14 + (Platform.OS === "ios" ? insets.bottom : 0),
+              borderTopWidth: 1,
+              borderColor: "#F3F4F6",
+              backgroundColor: "#F9FAFB",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#6B7280", fontWeight: "500", fontSize: 14, textAlign: "center", lineHeight: 20 }}>
+              {t("customer.explorePost.safetyInteractionsOff")}
+            </Text>
+          </View>
         ) : (
           <Pressable
             onPress={() => router.replace("/(auth)/login")}
@@ -816,6 +944,16 @@ export default function ExplorePostScreen() {
           </Pressable>
         )}
       </KeyboardAvoidingView>
+
+      {reportTarget ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportTarget(null)}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          title={reportTarget.title}
+        />
+      ) : null}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyPaycloudWebhookSignature } from "@/lib/payments/paycloud-client";
 import { settlePaycloudPayment } from "@/lib/payments/settle-paycloud-payment";
 import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud-void";
+import { isPaycloudRefundRow, completePaycloudRefund } from "@/lib/payments/paycloud-refund";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
 import { resolvePaycloudGatewayPublicKey } from "@/lib/payments/resolve-paycloud-app-credentials";
@@ -119,6 +120,16 @@ export async function POST(request: NextRequest) {
       // instead of settling — settling would insert a second positive payment.
       if (isPaycloudVoidRow(payment)) {
         await completePaycloudVoid(supabase, payment);
+        await supabase
+          .from("paycloud_webhook_events")
+          .update({ processed: true })
+          .eq("merchant_order_no", merchantOrderNo);
+      } else if (isPaycloudRefundRow(payment)) {
+        await completePaycloudRefund(supabase, payment);
+        await supabase
+          .from("paycloud_terminals")
+          .update({ in_flight_payment_id: null })
+          .eq("id", payment.terminal_id);
         await supabase
           .from("paycloud_webhook_events")
           .update({ processed: true })

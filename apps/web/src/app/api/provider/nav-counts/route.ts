@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { getProviderIdForUser, handleApiError, notFoundResponse, requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  dashboardBookingLocationOrFilter,
-  dashboardGroupBookingLocationOrFilter,
-} from "@/lib/server/provider/dashboard-booking-location-filter";
+  applyPendingBookingsScope,
+  applyPendingGroupsScope,
+} from "@/lib/server/provider/pending-bookings-scope";
 
 const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "ready_for_collection", "shipped"];
 
@@ -28,10 +28,6 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const locationId = request.nextUrl.searchParams.get("location_id")?.trim() || null;
-    const bookingLocationOrFilter = locationId ? dashboardBookingLocationOrFilter(locationId) : null;
-    const groupLocationOrFilter = locationId
-      ? dashboardGroupBookingLocationOrFilter(locationId)
-      : null;
 
     const startOfTodayUtc = new Date();
     startOfTodayUtc.setUTCHours(0, 0, 0, 0);
@@ -52,9 +48,8 @@ export async function GET(request: NextRequest) {
         let q = supabase
           .from("bookings")
           .select("id", { count: "exact", head: true })
-          .eq("provider_id", providerId)
-          .in("status", ["pending", "pending_payment"]);
-        if (bookingLocationOrFilter) q = q.or(bookingLocationOrFilter);
+          .eq("provider_id", providerId);
+        q = applyPendingBookingsScope(q, locationId);
         return q;
       })(),
       // Group bookings in pending state count towards the provider's pending badge
@@ -62,9 +57,8 @@ export async function GET(request: NextRequest) {
         let q = supabase
           .from("group_bookings")
           .select("id", { count: "exact", head: true })
-          .eq("provider_id", providerId)
-          .in("status", ["pending"]);
-        if (groupLocationOrFilter) q = q.or(groupLocationOrFilter);
+          .eq("provider_id", providerId);
+        q = applyPendingGroupsScope(q, locationId);
         return q;
       })(),
       (() => {
@@ -72,9 +66,8 @@ export async function GET(request: NextRequest) {
           .from("bookings")
           .select("id", { count: "exact", head: true })
           .eq("provider_id", providerId)
-          .in("status", ["pending", "pending_payment"])
           .lt("scheduled_at", staleCutoffIso);
-        if (bookingLocationOrFilter) q = q.or(bookingLocationOrFilter);
+        q = applyPendingBookingsScope(q, locationId);
         return q;
       })(),
       (() => {
@@ -82,9 +75,8 @@ export async function GET(request: NextRequest) {
           .from("group_bookings")
           .select("id", { count: "exact", head: true })
           .eq("provider_id", providerId)
-          .eq("status", "pending")
           .lt("scheduled_at", staleCutoffIso);
-        if (groupLocationOrFilter) q = q.or(groupLocationOrFilter);
+        q = applyPendingGroupsScope(q, locationId);
         return q;
       })(),
       (supabase.from("product_orders") as any)

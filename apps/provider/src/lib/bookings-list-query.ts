@@ -11,6 +11,63 @@ import {
 
 export type BookingsDateRange = "today" | "week" | "month" | "upcoming" | "all";
 
+export type BookingsStatsRange = "today" | "week" | "month" | "all";
+
+export type BookingsStatsTileKey =
+  | "appointments"
+  | "pending"
+  | "confirmed"
+  | "active"
+  | "completed"
+  | "earned";
+
+/** Keep Overview list date chips aligned with the metrics strip range. */
+export function statsRangeToDateRange(range: BookingsStatsRange): BookingsDateRange {
+  if (range === "today") return "today";
+  if (range === "week") return "week";
+  if (range === "month") return "month";
+  return "all";
+}
+
+/** Map a tapped Overview metric tile to the status chip value. */
+export function statusFilterForStatsTile(tile: BookingsStatsTileKey): string {
+  switch (tile) {
+    case "pending":
+      return BOOKINGS_TO_REVIEW_STATUS;
+    case "confirmed":
+      return "confirmed";
+    case "active":
+      return "in_progress";
+    case "completed":
+      return "completed";
+    case "appointments":
+    case "earned":
+    default:
+      return "";
+  }
+}
+
+export function buildStatsReconciliationLine(stats: {
+  pending_count: number;
+  confirmed_count: number;
+  in_progress_count: number;
+  completed_count: number;
+  cancelled_count: number;
+  no_show_count: number;
+}): string {
+  const parts = [
+    `${stats.pending_count} pending`,
+    `${stats.confirmed_count} confirmed`,
+    `${stats.in_progress_count} active`,
+    `${stats.completed_count} completed`,
+  ];
+  const excluded = stats.cancelled_count + stats.no_show_count;
+  if (excluded > 0) {
+    parts.push(`excludes ${excluded} cancelled/no-show`);
+  }
+  return parts.join(" · ");
+}
+
 /** Matches nav-counts stale/pending and the Overview "To review" deep link. */
 export const BOOKINGS_TO_REVIEW_STATUS = "pending,pending_payment";
 

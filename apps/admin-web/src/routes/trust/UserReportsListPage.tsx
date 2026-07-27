@@ -22,6 +22,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
+import { TrustReportsTabNav } from "@/routes/trust/TrustReportsTabNav";
 
 type UserReportsPayload = {
   data: Record<string, unknown>[];
@@ -126,6 +127,9 @@ export function UserReportsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="User reports" description="Manage user-submitted reports. Resolve or dismiss with notes." />
+      <AdminPanel>
+        <TrustReportsTabNav />
+      </AdminPanel>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

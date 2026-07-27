@@ -49,6 +49,7 @@ export default function AccountSettingsLayout() {
       <Stack.Screen name="notifications" options={{ title: t("customer.notifications") }} />
       <Stack.Screen name="preferences" options={{ title: t("customer.accountSettings.languageRegionTitle") }} />
       <Stack.Screen name="privacy-and-sharing" options={{ title: t("customer.accountSettings.privacySharingTitle") }} />
+      <Stack.Screen name="content-and-safety-controls" options={{ title: t("customer.accountSettings.contentSafetyTitle") }} />
       <Stack.Screen name="deactivate-account" options={{ title: t("customer.accountSettings.stackDeactivateAccount") }} />
       <Stack.Screen name="delete-account" options={{ title: t("customer.accountSettings.stackDeleteAccount") }} />
       <Stack.Screen name="referrals" options={{ title: t("customer.referrals") }} />

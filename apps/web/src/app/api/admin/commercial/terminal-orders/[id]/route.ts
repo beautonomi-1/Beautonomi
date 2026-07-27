@@ -42,6 +42,8 @@ const updateOrderSchema = z.object({
   cancellation_reason: z.string().optional().nullable(),
   tracking_reference: z.string().optional().nullable(),
   courier_name: z.string().optional().nullable(),
+  /** Writes serial_number on linked terminal_assets (enables PayCloud auto-registration). */
+  terminal_asset_serial_number: z.string().trim().min(1).optional(),
   /** When true, records payment in finance ledger (manual invoice / bank transfer). */
   record_payment: z.boolean().optional(),
   payment_reference: z.string().optional().nullable(),
@@ -76,7 +78,8 @@ export async function PATCH(
       return errorResponse("Validation failed", "VALIDATION_ERROR", 400, validation.error.issues);
     }
 
-    const { record_payment, payment_reference, ...patchFields } = validation.data;
+    const { record_payment, payment_reference, terminal_asset_serial_number, ...patchFields } =
+      validation.data;
 
     let financeTransactionId = (existing as { finance_transaction_id?: string | null }).finance_transaction_id ?? null;
 
@@ -159,7 +162,38 @@ export async function PATCH(
     const newInvoiceStatus = String(
       (data as { invoice_status?: string }).invoice_status ?? prevInvoiceStatus,
     );
-    if (newInvoiceStatus === "paid" && prevInvoiceStatus !== "paid" && !record_payment) {
+
+    let serialNumberWritten = false;
+    if (terminal_asset_serial_number) {
+      const { data: assets, error: assetLoadErr } = await supabase
+        .from("terminal_assets")
+        .select("id, serial_number")
+        .eq("order_id", params.id)
+        .order("created_at", { ascending: true });
+      if (assetLoadErr) {
+        console.error("[terminal-orders] load assets for serial update failed:", assetLoadErr);
+      } else if (assets?.length) {
+        // Prefer an asset that has no serial yet so re-fulfilment does not overwrite a live device.
+        const target = assets.find((a) => !a.serial_number) ?? assets[0];
+        const { error: serialErr } = await supabase
+          .from("terminal_assets")
+          .update({ serial_number: terminal_asset_serial_number })
+          .eq("id", target.id);
+        if (serialErr) {
+          console.error("[terminal-orders] serial_number update failed:", serialErr);
+        } else {
+          serialNumberWritten = true;
+        }
+      } else {
+        console.warn("[terminal-orders] no terminal_assets row for order, serial not written:", params.id);
+      }
+    }
+
+    // Finalize once: on the unpaid→paid transition, or when a serial arrives on an
+    // already-paid order (the PayCloud bridge needs the serial to register the device).
+    const transitionedToPaid =
+      newInvoiceStatus === "paid" && prevInvoiceStatus !== "paid" && !record_payment;
+    if (transitionedToPaid || (serialNumberWritten && newInvoiceStatus === "paid")) {
       try {
         const { finalizeTerminalOrderAfterPayment } = await import(
           "@/lib/terminal/finalize-terminal-order-after-payment"

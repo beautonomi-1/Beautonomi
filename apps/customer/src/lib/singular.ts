@@ -8,6 +8,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { Singular, SingularConfig, type SingularLinkParams } from "singular-react-native";
+import { isExplorePostId } from "@/lib/explore-deep-link";
 
 function getSingularKey(): string {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -123,6 +124,13 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
     return { pathname: "/(app)/(tabs)/bookings" };
   }
   if (screen === "explore" || path === "explore") {
+    return { pathname: "/(app)/(tabs)/explore" };
+  }
+  if (path.startsWith("explore/") || screen.startsWith("explore/")) {
+    const postId = (q.id ?? path.replace(/^explore\//i, "").split("/")[0] ?? "").trim();
+    if (isExplorePostId(postId)) {
+      return { pathname: "/(app)/explore-post", params: { id: postId } };
+    }
     return { pathname: "/(app)/(tabs)/explore" };
   }
   return null;

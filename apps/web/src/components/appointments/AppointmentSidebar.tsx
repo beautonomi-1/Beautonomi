@@ -141,6 +141,8 @@ import { isCompleteE164 } from "@/lib/phone";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import Link from "next/link";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
@@ -252,6 +254,15 @@ export function AppointmentSidebar({
   const { provider: portalProviderRaw } = useProviderPortal();
   const portalProvider = portalProviderRaw as PortalProviderProfile | null;
   const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const {
+    ready: paycloudReady,
+    loading: paycloudReadinessLoading,
+    blockers: paycloudBlockers,
+    terminals: paycloudTerminals,
+  } = usePaycloudCollectReady();
+  const paycloudInFlight = (paycloudTerminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const { currencyCode } = useReportCurrency();
   const recurringDetails = getRecurringDetails(selectedAppointment);
 
@@ -355,6 +366,15 @@ export function AppointmentSidebar({
     recurrenceEndDate: "",
     paymentMethod: "pay_later",
   });
+
+  useEffect(() => {
+    if (
+      (!paycloudEnabled || !paycloudCollectEnabled) &&
+      formData.paymentMethod === "paycloud_terminal"
+    ) {
+      setFormData((prev) => ({ ...prev, paymentMethod: "pay_later" }));
+    }
+  }, [formData.paymentMethod, paycloudCollectEnabled, paycloudEnabled]);
 
   /** Live hints from GET /api/provider/bookings/check-availability */
   const [slotAvailability, setSlotAvailability] = useState<{
@@ -2065,6 +2085,12 @@ export function AppointmentSidebar({
   // Handle create appointment
   const openCreatedBookingSuccessDialog = useCallback(
     (created: Appointment, warnings?: string[]) => {
+      const cardChargeTotal =
+        formData.paymentMethod === "yoco_pos" || formData.paymentMethod === "paycloud_terminal"
+          ? collectDeposit && depositSettings.required && formData.totalAmount > 0
+            ? percentOf(formData.totalAmount, depositSettings.percentage)
+            : formData.totalAmount
+          : 0;
       setCreatedBookingDialog({
         bookingId: created.id,
         status: created.status,
@@ -2076,9 +2102,27 @@ export function AppointmentSidebar({
         warnings,
         isWalkIn: formData.kind === AppointmentKind.WALK_IN,
         sendNotification,
+        postCreateCollect:
+          formData.paymentMethod === "paycloud_terminal" && cardChargeTotal > 0
+            ? "paycloud"
+            : formData.paymentMethod === "yoco_pos" && cardChargeTotal > 0
+              ? "yoco"
+              : null,
+        cardChargeAmount: cardChargeTotal,
       });
     },
-    [formData.clientName, formData.date, formData.kind, formData.startTime, sendNotification],
+    [
+      collectDeposit,
+      depositSettings.percentage,
+      depositSettings.required,
+      formData.clientName,
+      formData.date,
+      formData.kind,
+      formData.paymentMethod,
+      formData.startTime,
+      formData.totalAmount,
+      sendNotification,
+    ],
   );
 
   const handleCreate = async () => {
@@ -5477,7 +5521,34 @@ export function AppointmentSidebar({
                     ...(paymentLinkEnabled
                       ? [{ value: "payment_link" as const, label: "Payment Link", icon: Send }]
                       : []),
-                  ] as const).map(({ value, label, icon: Icon }) => (
+                    ...(paycloudEnabled
+                      ? [{ value: "paycloud_terminal" as const, label: "Card machine", icon: CreditCard }]
+                      : []),
+                  ] as const).map(({ value, label, icon: Icon }) => {
+                    const isPaycloudSetupBlocked =
+                      value === "paycloud_terminal" &&
+                      paycloudEnabled &&
+                      !paycloudReadinessLoading &&
+                      !paycloudCollectEnabled;
+                    if (isPaycloudSetupBlocked) {
+                      const setupHref =
+                        paycloudBlockers[0]?.href ?? "/provider/settings/sales/card-machines";
+                      const setupLabel = paycloudBlockers[0]?.title ?? PAYCLOUD_SETUP_LABEL;
+                      return (
+                        <Link
+                          key={value}
+                          href={setupHref}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                            "bg-amber-50 text-amber-900 border-amber-200 hover:border-amber-300 hover:bg-amber-100",
+                          )}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="leading-snug">{setupLabel}</span>
+                        </Link>
+                      );
+                    }
+                    return (
                     <button
                       key={value}
                       type="button"
@@ -5492,7 +5563,8 @@ export function AppointmentSidebar({
                       <Icon className="w-3.5 h-3.5" />
                       {label}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 {/* Gift card redemption requires reserve/capture/void RPC integration — deferred */}
               </div>

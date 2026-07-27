@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
@@ -86,7 +86,9 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
-import { inferBookingCollectContext } from "@/lib/payments/paycloud-collect-cta";
+import { inferBookingCollectContext, formatPaycloudCollectLabel } from "@/lib/payments/paycloud-collect-cta";
+import { computePaycloudBookingChargeAmount } from "@/lib/payments/paycloud-booking-charge";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { buildSaleItemsFromBookingDetail } from "@/lib/provider-booking/build-sale-items-from-booking-detail";
@@ -104,7 +106,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
 /** Aligned with provider mobile + POST /mark-paid */
-const PAYMENT_METHODS_MAIN = [
+const PAYMENT_METHODS_MAIN_BASE = [
   { label: "Cash", value: "cash" as const },
   { label: "Card (in-salon / terminal)", value: "card" as const },
   { label: "EFT", value: "bank_transfer" as const },
@@ -112,7 +114,7 @@ const PAYMENT_METHODS_MAIN = [
 ];
 
 /** Aligned with POST .../additional-charges/[chargeId]/mark-paid */
-const PAYMENT_METHODS_CHARGE = [
+const PAYMENT_METHODS_CHARGE_BASE = [
   { label: "Cash", value: "cash" as const },
   { label: "Card (in-salon / terminal)", value: "card" as const },
   { label: "Mobile", value: "mobile" as const },
@@ -120,14 +122,20 @@ const PAYMENT_METHODS_CHARGE = [
   { label: "Other", value: "other" as const },
 ];
 
+type PaymentMethodMain =
+  | (typeof PAYMENT_METHODS_MAIN_BASE)[number]["value"]
+  | "paystack_terminal"
+  | "paycloud_terminal";
+type PaymentMethodCharge =
+  | (typeof PAYMENT_METHODS_CHARGE_BASE)[number]["value"]
+  | "paycloud_terminal";
+
 const SEND_LINK_OPTIONS = [
   { label: "Email", value: "email" as const },
   { label: "SMS", value: "sms" as const },
   { label: "Email & SMS", value: "both" as const },
 ];
 
-type PaymentMethodMain = (typeof PAYMENT_METHODS_MAIN)[number]["value"];
-type PaymentMethodCharge = (typeof PAYMENT_METHODS_CHARGE)[number]["value"];
 type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 
 export default function ProviderBookingDetail() {
@@ -142,7 +150,16 @@ export default function ProviderBookingDetail() {
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const bookingId = params.id as string;
+  const {
+    ready: paycloudReady,
+    loading: paycloudReadinessLoading,
+    terminals: paycloudTerminals,
+  } = usePaycloudCollectReady();
+  const paycloudCollectEnabled =
+    paycloudReady || (paycloudTerminals?.inFlight ?? 0) > 0;
+  const postCreateCollectHandledRef = useRef(false);
 
   const [booking, setBooking] = useState<ProviderBookingDetail | null>(null);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
@@ -612,6 +629,11 @@ export default function ProviderBookingDetail() {
 
   const handleMarkPaid = async () => {
     if (!booking) return;
+    if (markPaidMethod === "paycloud_terminal") {
+      setShowMarkPaid(false);
+      openPaycloudCheckout();
+      return;
+    }
     const tp = booking.total_paid ?? 0;
     const tr = booking.total_refunded ?? 0;
     const ta = booking.total_amount ?? 0;
@@ -685,6 +707,13 @@ export default function ProviderBookingDetail() {
 
   const handleChargeMarkPaid = async () => {
     if (!chargeMarkPaidId) return;
+    if (chargeMarkPaidMethod === "paycloud_terminal") {
+      const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
+      if (!c) return;
+      setChargeMarkPaidId(null);
+      openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0));
+      return;
+    }
     try {
       setMarkingChargePaid(true);
       await fetcher.post(
@@ -874,24 +903,30 @@ export default function ProviderBookingDetail() {
           .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
           .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
       : Number((b as any).unpaid_additional_charges || 0);
-    const chargeAmount = Number(
-      computeBookingOutstandingDisplay({
-        totalAmount: Number(b.total_amount ?? 0),
-        totalPaid: Number(b.total_paid ?? 0),
-        totalRefunded: Number(b.total_refunded ?? 0),
-        walletAmount: Number((b as any).wallet_amount ?? 0),
-        giftCardAmount: Number((b as any).gift_card_amount ?? 0),
-        unpaidAdditionalCharges: unpaidChargesTotal,
-        paymentStatus: b.payment_status,
-      }).toFixed(2),
-    );
-    if (chargeAmount <= 0) {
+    const outstanding = computeBookingOutstandingDisplay({
+      totalAmount: Number(b.total_amount ?? 0),
+      totalPaid: Number(b.total_paid ?? 0),
+      totalRefunded: Number(b.total_refunded ?? 0),
+      walletAmount: Number((b as any).wallet_amount ?? 0),
+      giftCardAmount: Number((b as any).gift_card_amount ?? 0),
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      paymentStatus: b.payment_status,
+    });
+    const { chargeAmount } = computePaycloudBookingChargeAmount({
+      outstanding,
+      depositRequired: Boolean((b as { deposit_required?: boolean }).deposit_required),
+      depositAmount: Number((b as { deposit_amount?: number }).deposit_amount ?? 0),
+      totalPaid: Number(b.total_paid ?? 0),
+      unpaidAdditionalCharges: unpaidChargesTotal,
+    });
+    const rounded = Number(chargeAmount.toFixed(2));
+    if (rounded <= 0) {
       toast.error("There is no remaining balance to collect.");
       return;
     }
     setPaycloudEntityType("booking");
     setPaycloudEntityId(bookingId);
-    setPaycloudDialogAmount(chargeAmount);
+    setPaycloudDialogAmount(rounded);
     setShowPaycloudPayment(true);
   }, [booking, bookingId]);
 
@@ -908,6 +943,83 @@ export default function ProviderBookingDetail() {
     },
     [],
   );
+
+  useEffect(() => {
+    postCreateCollectHandledRef.current = false;
+  }, [bookingId]);
+
+  useEffect(() => {
+    if (postCreateCollectHandledRef.current) return;
+    const b = booking;
+    if (!b || isLoading || paycloudReadinessLoading) return;
+
+    const collectPaycloud = searchParams.get("collectPaycloud");
+    const collectYoco = searchParams.get("collectYoco");
+    if (collectPaycloud !== "1" && collectYoco !== "1") return;
+
+    const lifecycle = String(b.status ?? "");
+    const cancelled = lifecycle === "cancelled" || lifecycle === "canceled" || lifecycle === "no_show";
+    if (cancelled) return;
+
+    const unpaidCharges = additionalCharges
+      .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+      .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+    const outstandingAmt = computeBookingOutstandingDisplay({
+      totalAmount: Number(b.total_amount ?? 0),
+      totalPaid: Number(b.total_paid ?? 0),
+      totalRefunded: Number(b.total_refunded ?? 0),
+      walletAmount: Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0),
+      giftCardAmount: Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0),
+      unpaidAdditionalCharges: unpaidCharges,
+      paymentStatus: b.payment_status,
+    });
+    if (outstandingAmt <= 0 || !canProcessPayments) return;
+
+    if (collectPaycloud === "1") {
+      if (!paycloudEnabled || !paycloudCollectEnabled) return;
+      postCreateCollectHandledRef.current = true;
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("collectPaycloud");
+      const qs = nextParams.toString();
+      router.replace(
+        qs ? `/provider/bookings/${bookingId}?${qs}` : `/provider/bookings/${bookingId}`,
+        { scroll: false },
+      );
+      openPaycloudCheckout();
+      return;
+    }
+
+    if (
+      collectYoco === "1" &&
+      yocoEnabled &&
+      yocoIntegrationEnabled
+    ) {
+      postCreateCollectHandledRef.current = true;
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("collectYoco");
+      const qs = nextParams.toString();
+      router.replace(
+        qs ? `/provider/bookings/${bookingId}?${qs}` : `/provider/bookings/${bookingId}`,
+        { scroll: false },
+      );
+      void openYocoCheckout();
+    }
+  }, [
+    additionalCharges,
+    booking,
+    bookingId,
+    canProcessPayments,
+    isLoading,
+    openPaycloudCheckout,
+    openYocoCheckout,
+    paycloudCollectEnabled,
+    paycloudEnabled,
+    paycloudReadinessLoading,
+    router,
+    searchParams,
+    yocoEnabled,
+    yocoIntegrationEnabled,
+  ]);
 
   const openPaystackTerminalCollection = useCallback(async () => {
     const b = booking as ProviderBookingDetail | null;
@@ -1381,13 +1493,47 @@ export default function ProviderBookingDetail() {
     !!(b.customer_email || b.customer_phone);
   const showYocoPayButton = yocoEnabled && yocoIntegrationEnabled && canMarkPaid;
   const showPaycloudPayButton = paycloudEnabled && canMarkPaid;
+  const bookingCurrency = (b as { currency?: string }).currency ?? "ZAR";
   const paycloudCollectContext = inferBookingCollectContext({
     totalAmount,
     totalPaid,
     unpaidAdditionalCharges: unpaidChargesTotal,
     outstanding,
   });
-  const bookingCurrency = (b as { currency?: string }).currency ?? "ZAR";
+  const markPaidPaymentMethods = useMemo(() => {
+    const methods: { label: string; value: PaymentMethodMain }[] = [...PAYMENT_METHODS_MAIN_BASE];
+    if (paystackTerminalReady) {
+      methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
+    }
+    if (paycloudEnabled && paycloudCollectEnabled) {
+      methods.splice(2, 0, {
+        label: formatPaycloudCollectLabel({
+          context: paycloudCollectContext,
+          amount: outstanding,
+          currency: bookingCurrency,
+        }),
+        value: "paycloud_terminal",
+      });
+    }
+    return methods;
+  }, [
+    bookingCurrency,
+    outstanding,
+    paycloudCollectContext,
+    paycloudCollectEnabled,
+    paycloudEnabled,
+    paystackTerminalReady,
+  ]);
+  const chargePaymentMethods = useMemo(
+    () =>
+      [
+        ...PAYMENT_METHODS_CHARGE_BASE,
+        ...(paycloudEnabled && paycloudCollectEnabled
+          ? [{ label: "Card machine", value: "paycloud_terminal" as const }]
+          : []),
+      ],
+    [paycloudCollectEnabled, paycloudEnabled],
+  );
   const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
   const actionModel = useMemo(
     () =>
@@ -2816,7 +2962,7 @@ export default function ProviderBookingDetail() {
               <div>
                 <label className="text-sm font-medium mb-1 block">Payment method</label>
                 <div className="flex flex-wrap gap-2">
-                  {PAYMENT_METHODS_MAIN.map((pm) => (
+                  {markPaidPaymentMethods.map((pm) => (
                     <Button
                       key={pm.value}
                       type="button"
@@ -2831,8 +2977,16 @@ export default function ProviderBookingDetail() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button onClick={handleMarkPaid} disabled={isMarkingPaid} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                  {isMarkingPaid ? "Processing..." : "Confirm Payment"}
+                <Button
+                  onClick={() => void handleMarkPaid()}
+                  disabled={isMarkingPaid}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {isMarkingPaid
+                    ? "Processing..."
+                    : markPaidMethod === "paycloud_terminal"
+                      ? "Charge on card machine"
+                      : "Confirm Payment"}
                 </Button>
                 <Button variant="outline" onClick={() => setShowMarkPaid(false)} className="flex-1">
                   Cancel
@@ -3086,7 +3240,7 @@ export default function ProviderBookingDetail() {
                     <div>
                       <label className="text-sm font-medium mb-1 block">Payment method</label>
                       <div className="flex flex-wrap gap-2">
-                        {PAYMENT_METHODS_CHARGE.map((pm) => (
+                        {chargePaymentMethods.map((pm) => (
                           <Button
                             key={pm.value}
                             type="button"
@@ -3105,11 +3259,15 @@ export default function ProviderBookingDetail() {
               })()}
               <div className="flex gap-3">
                 <Button
-                  onClick={handleChargeMarkPaid}
+                  onClick={() => void handleChargeMarkPaid()}
                   disabled={markingChargePaid || !additionalCharges.some((x) => x.id === chargeMarkPaidId)}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
-                  {markingChargePaid ? "Processing…" : "Confirm"}
+                  {markingChargePaid
+                    ? "Processing…"
+                    : chargeMarkPaidMethod === "paycloud_terminal"
+                      ? "Charge on card machine"
+                      : "Confirm"}
                 </Button>
                 <Button variant="outline" onClick={() => setChargeMarkPaidId(null)} className="flex-1">
                   Cancel

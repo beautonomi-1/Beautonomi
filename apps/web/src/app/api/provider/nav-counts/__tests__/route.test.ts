@@ -48,6 +48,10 @@ function makeChain(resolveQuery: (state: ChainState) => { count?: number; data?:
       state.filters[`not:${col}`] = args;
       return chain;
     },
+    is: (col: string, value: unknown) => {
+      state.filters[`is:${col}`] = [value];
+      return chain;
+    },
     or: (filter: string) => {
       state.orFilters.push(filter);
       return chain;
@@ -207,5 +211,28 @@ describe("GET /api/provider/nav-counts", () => {
     expect(groupOrCalls.every((f) => f.includes("loc-branch-1") && !f.includes("booking_source"))).toBe(
       true,
     );
+  });
+
+  it("excludes group-linked child bookings from pending counts", async () => {
+    const bookingStates: ChainState[] = [];
+    mockGetSupabaseAdmin.mockReturnValue({
+      from(table: string) {
+        return makeChain((state) => {
+          if (table === "bookings") bookingStates.push(state);
+          return resolveTable(table, state, DEFAULT_COUNTS);
+        });
+      },
+    });
+
+    const { GET } = await import("../route");
+    await GET(new NextRequest("http://localhost/api/provider/nav-counts"));
+
+    const pendingBookingQueries = bookingStates.filter(
+      (s) => s.filters["in:status"] && !s.filters["not:checked_in_time"],
+    );
+    expect(pendingBookingQueries.length).toBeGreaterThan(0);
+    expect(
+      pendingBookingQueries.every((s) => s.filters["is:group_booking_id"]?.[0] === null),
+    ).toBe(true);
   });
 });

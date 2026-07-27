@@ -18,7 +18,22 @@ export function dashboardGroupBookingLocationOrFilter(locationId: string): strin
   return [
     `location_id.eq.${locationId}`,
     `and(location_id.is.null,location_type.eq.at_home)`,
+    // Legacy / provider-created groups may have null location_id with at_salon —
+    // include them under any selected branch so they are never orphaned.
+    `location_id.is.null`,
   ].join(",");
+}
+
+/** In-memory branch filter matching {@link dashboardGroupBookingLocationOrFilter}. */
+export function groupMatchesDashboardLocation(
+  locationId: string | null | undefined,
+  group: { location_id?: string | null; location_type?: string | null },
+): boolean {
+  if (!locationId) return true;
+  const loc = group.location_id ?? null;
+  if (loc === locationId) return true;
+  if (loc == null) return true;
+  return false;
 }
 
 /** In-memory branch filter matching {@link dashboardBookingLocationOrFilter}. */

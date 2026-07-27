@@ -346,7 +346,7 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
     description: "In-person card payments via PayCloud/WiseCashier terminals.",
     group: "payments",
     fields: [
-      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: false },
+      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: true, generousDefault: true },
       {
         key: "max_terminals",
         label: "Max terminals",
@@ -354,7 +354,7 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
         freePlanDefault: 1,
         generousDefault: 5,
       },
-      { key: "advanced_features", label: "Advanced terminal features", type: "toggle", freePlanDefault: false },
+      { key: "advanced_features", label: "Advanced terminal features", type: "toggle", freePlanDefault: false, generousDefault: true },
     ],
   },
   {
@@ -399,9 +399,9 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
     description: "Platform-supplied card machine / payment terminal included in the subscription plan.",
     group: "payments",
     fields: [
-      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: false },
-      { key: "included_terminal_count", label: "Included terminal count", type: "limit", freePlanDefault: null, generousDefault: 1 },
-      { key: "terminal_model", label: "Included terminal model / product code", type: "text", freePlanDefault: "" },
+      { key: "enabled", label: "Enabled", type: "toggle", freePlanDefault: true, generousDefault: true },
+      { key: "included_terminal_count", label: "Included terminal count", type: "limit", freePlanDefault: 1, generousDefault: 1 },
+      { key: "terminal_model", label: "Included terminal model / product code", type: "text", freePlanDefault: "paycloud", generousDefault: "paycloud" },
       { key: "commercial_model", label: "Commercial model (once_off_purchase/rental/lease_to_own)", type: "text", freePlanDefault: "rental" },
     ],
   },

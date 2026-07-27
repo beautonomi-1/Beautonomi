@@ -5,6 +5,7 @@ import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { moderationNotesForMedicalClaims } from "@/lib/safety/medical-claims-keywords";
 
 const _SORT_OPTIONS = [
   "published_at_desc",
@@ -229,5 +230,87 @@ export async function POST(request: NextRequest) {
     return successResponse({ updated: data?.length ?? 0, post_ids: allowedIds });
   } catch (error) {
     return handleApiError(error, "Failed to update posts");
+  }
+}
+
+/**
+ * PATCH /api/admin/explore/posts
+ * Update post caption (tenant-scoped). Auto-flags moderation_notes when caption matches medical claims.
+ * Body: { id: string, caption?: string }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+
+    const body = await request.json();
+    const postId = typeof body.id === "string" ? body.id.trim() : "";
+    if (!postId) {
+      return errorResponse("id is required", "VALIDATION_ERROR", 400);
+    }
+
+    const { data: scopedRow } = await supabaseAdmin
+      .from("explore_posts")
+      .select("id, caption, moderation_notes, providers:provider_id!inner(tenant_id)")
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (!scopedRow) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+    const prov = (scopedRow as { providers?: { tenant_id?: string } }).providers;
+    if (prov?.tenant_id !== tenantId) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+
+    const updates: Record<string, unknown> = {
+      moderated_at: new Date().toISOString(),
+      moderated_by: user.id,
+    };
+
+    if (body.caption !== undefined) {
+      const caption =
+        typeof body.caption === "string" ? body.caption.trim() : null;
+      updates.caption = caption || null;
+      const existingNotes = (scopedRow as { moderation_notes?: string | null })
+        .moderation_notes;
+      updates.moderation_notes = moderationNotesForMedicalClaims(
+        existingNotes,
+        caption
+      );
+    }
+
+    if (Object.keys(updates).length <= 2) {
+      return errorResponse("caption is required to update", "VALIDATION_ERROR", 400);
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("explore_posts")
+      .update(updates)
+      .eq("id", postId)
+      .select("id, caption, moderation_notes, moderated_at")
+      .single();
+
+    if (error) return handleApiError(error, "Failed to update post");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.explore.post.caption_update",
+      entity_type: "explore_post",
+      entity_id: postId,
+      module: "content_catalog",
+      risk_level: "medium",
+      retention_tier: "operational",
+      metadata: { has_medical_flag: Boolean(updates.moderation_notes) },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
+    return successResponse(data);
+  } catch (error) {
+    return handleApiError(error, "Failed to update post");
   }
 }

@@ -90,7 +90,7 @@ export interface CreateFormData {
   isRecurring: boolean;
   recurrencePattern: "daily" | "weekly" | "biweekly" | "monthly";
   recurrenceEndDate: string;
-  paymentMethod: "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
+  paymentMethod: "pay_later" | "cash" | "card" | "yoco_pos" | "paycloud_terminal" | "payment_link";
 }
 
 export type CancelReason = "normal" | "late_cancel" | "no_show";

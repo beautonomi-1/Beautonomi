@@ -108,6 +108,18 @@ export const DEFAULT_VERIFICATION_POLICY: PublicVerificationPolicy = {
   required_for_customers: false,
 };
 
+export interface PublicContentSafetyPolicy {
+  social_min_age?: number;
+  social_age_gate_mode?: "off" | "log" | "enforce";
+  controls_enabled?: boolean;
+}
+
+export const DEFAULT_CONTENT_SAFETY_POLICY: PublicContentSafetyPolicy = {
+  social_min_age: 13,
+  social_age_gate_mode: "log",
+  controls_enabled: true,
+};
+
 export interface PublicConfigBundle {
   meta: ConfigBundleMeta;
   amplitude: Record<string, unknown>;
@@ -128,6 +140,7 @@ export interface PublicConfigBundle {
     safety: Record<string, unknown>;
   };
   verification?: PublicVerificationPolicy;
+  content_safety?: PublicContentSafetyPolicy;
 }
 
 let cached: PublicConfigBundle | null = null;
@@ -164,6 +177,7 @@ function defaultStubBundle(environment: Environment, platform: Platform): Public
       safety: {},
     },
     verification: { ...DEFAULT_VERIFICATION_POLICY },
+    content_safety: { ...DEFAULT_CONTENT_SAFETY_POLICY },
   };
 }
 

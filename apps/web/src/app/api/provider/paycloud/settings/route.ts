@@ -86,7 +86,23 @@ export async function PATCH(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    await supabase.from("provider_paycloud_settings").upsert(settingsPayload, { onConflict: "provider_id" });
+    const { error: upsertError } = await supabase
+      .from("provider_paycloud_settings")
+      .upsert(settingsPayload, { onConflict: "provider_id" });
+
+    if (upsertError) {
+      console.error("PATCH /api/provider/paycloud/settings upsert failed:", upsertError);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: upsertError.message || "Failed to save card machine settings",
+            code: "SAVE_FAILED",
+          },
+        },
+        { status: 500 },
+      );
+    }
 
     return successResponse({ updated: true });
   } catch (error: any) {

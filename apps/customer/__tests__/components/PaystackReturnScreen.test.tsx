@@ -10,9 +10,12 @@
  *  - Success verify result → navigates to resolvedTarget.
  *  - Failed verify result → navigates to fallbackRoute.
  *  - onSuccess callback fires before navigation.
+ *
+ * Auto-redirect cases use fake timers so CI load cannot flake on the
+ * 1.5–2s wall-clock delays in PaystackReturnScreen.
  */
 import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -122,23 +125,34 @@ describe("PaystackReturnScreen", () => {
   // ── Cancelled payment ────────────────────────────────────────────────────
 
   it("auto-navigates to cancelledRoute when cancelled=1 param is set", async () => {
-    renderScreen({ cancelled: "1" });
-    await waitFor(() => {
+    jest.useFakeTimers();
+    try {
+      renderScreen({ cancelled: "1" });
+      act(() => {
+        jest.advanceTimersByTime(800);
+      });
       expect(mockReplace).toHaveBeenCalledWith(CANCELLED);
-    }, { timeout: 3000 });
-    expect(mockVerify).not.toHaveBeenCalled();
+      expect(mockVerify).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   // ── No reference ──────────────────────────────────────────────────────────
 
   it("navigates to fallbackRoute immediately when there is no reference", async () => {
-    renderScreen({});
-    await waitFor(() => {
+    jest.useFakeTimers();
+    try {
+      renderScreen({});
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
       expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
-    }, { timeout: 3000 });
-    expect(mockVerify).not.toHaveBeenCalled();
+      expect(mockVerify).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
-
   // ── Slow hint (fake timers) ───────────────────────────────────────────────
 
   it("shows 'taking longer' hint after slow timer fires while verifying", async () => {
@@ -173,88 +187,120 @@ describe("PaystackReturnScreen", () => {
     expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
   });
 
-  // ── Verify success (real timers + waitFor) ────────────────────────────────
+  // ── Verify success / failure (fake timers — avoid CI wall-clock flakes) ───
+
+  /** Flush the verify promise so the redirect setTimeout is scheduled. */
+  async function settleVerify() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
 
   it("auto-navigates to resolvedTarget on verify success", async () => {
-    mockVerify.mockResolvedValue({
-      status: "success",
-      data: { bookingId: "bk-1" },
-      attempts: 1,
-      errorMessage: null,
-    });
+    jest.useFakeTimers();
+    try {
+      mockVerify.mockResolvedValue({
+        status: "success",
+        data: { bookingId: "bk-1" },
+        attempts: 1,
+        errorMessage: null,
+      });
 
-    renderScreen({ reference: "ref-success" });
+      renderScreen({ reference: "ref-success" });
+      await settleVerify();
 
-    // With real timers, waitFor polls until the assertion passes.
-    await waitFor(() => {
+      act(() => {
+        jest.advanceTimersByTime(1_500);
+      });
+
       expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
-    }, { timeout: 4000 });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("shows continueCta label after verify resolves to a known target", async () => {
-    mockVerify.mockResolvedValue({
-      status: "success",
-      data: { bookingId: "bk-1" },
-      attempts: 1,
-      errorMessage: null,
-    });
+    jest.useFakeTimers();
+    try {
+      mockVerify.mockResolvedValue({
+        status: "success",
+        data: { bookingId: "bk-1" },
+        attempts: 1,
+        errorMessage: null,
+      });
 
-    const { findByRole } = renderScreen({ reference: "ref-success" });
+      const { getByRole } = renderScreen({ reference: "ref-success" });
+      await settleVerify();
 
-    const btn = await findByRole("button", { name: defaultLabels.continueCta }, { timeout: 4000 });
-    expect(btn).toBeTruthy();
+      const btn = getByRole("button", { name: defaultLabels.continueCta });
+      expect(btn).toBeTruthy();
 
-    // Manual press also navigates to the resolved target.
-    mockReplace.mockClear();
-    fireEvent.press(btn);
-    expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
+      // Manual press also navigates to the resolved target.
+      mockReplace.mockClear();
+      fireEvent.press(btn);
+      expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
+    } finally {
+      jest.useRealTimers();
+    }
   });
-
-  // ── Verify failed (real timers + waitFor) ─────────────────────────────────
 
   it("auto-navigates to fallbackRoute on verify failure", async () => {
-    mockVerify.mockResolvedValue({
-      status: "failed",
-      data: null,
-      attempts: 5,
-      errorMessage: "Could not confirm payment",
-    });
+    jest.useFakeTimers();
+    try {
+      mockVerify.mockResolvedValue({
+        status: "failed",
+        data: null,
+        attempts: 5,
+        errorMessage: "Could not confirm payment",
+      });
 
-    renderScreen({ reference: "ref-fail" });
+      renderScreen({ reference: "ref-fail" });
+      await settleVerify();
 
-    await waitFor(() => {
+      act(() => {
+        jest.advanceTimersByTime(2_000);
+      });
+
       expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
-    }, { timeout: 4000 });
+    } finally {
+      jest.useRealTimers();
+    }
   });
-
-  // ── onSuccess side-effect (real timers + waitFor) ─────────────────────────
 
   it("calls onSuccess before navigating on verify success", async () => {
-    const onSuccess = jest.fn();
-    mockVerify.mockResolvedValue({
-      status: "success",
-      data: { bookingId: "bk-1" },
-      attempts: 1,
-      errorMessage: null,
-    });
+    jest.useFakeTimers();
+    try {
+      const onSuccess = jest.fn();
+      mockVerify.mockResolvedValue({
+        status: "success",
+        data: { bookingId: "bk-1" },
+        attempts: 1,
+        errorMessage: null,
+      });
 
-    (useLocalSearchParams as jest.Mock).mockReturnValue({ reference: "ref-xyz" });
-    render(
-      <PaystackReturnScreen
-        resolveTarget={resolveBooking}
-        cancelledRoute={CANCELLED}
-        fallbackRoute={FALLBACK}
-        labels={defaultLabels}
-        onSuccess={onSuccess}
-      />,
-    );
+      (useLocalSearchParams as jest.Mock).mockReturnValue({ reference: "ref-xyz" });
+      render(
+        <PaystackReturnScreen
+          resolveTarget={resolveBooking}
+          cancelledRoute={CANCELLED}
+          fallbackRoute={FALLBACK}
+          labels={defaultLabels}
+          onSuccess={onSuccess}
+        />,
+      );
 
-    await waitFor(() => {
+      await settleVerify();
       expect(onSuccess).toHaveBeenCalledTimes(1);
-      expect(mockReplace).toHaveBeenCalled();
-    }, { timeout: 4000 });
-  });
 
+      act(() => {
+        jest.advanceTimersByTime(1_500);
+      });
+      expect(mockReplace).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   // ── Cooperative branch (parent owns verify) ───────────────────────────────
 
   it("dismisses cooperatively with router.back when parent owns verification", async () => {
@@ -301,22 +347,26 @@ describe("PaystackReturnScreen", () => {
   });
 
   it("shows Try again on failed verify and re-runs verification", async () => {
-    mockVerify
-      .mockResolvedValueOnce({
-        status: "failed",
-        data: null,
-        attempts: 5,
-        errorMessage: "Could not confirm payment",
-      })
-      .mockReturnValueOnce(new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      mockVerify
+        .mockResolvedValueOnce({
+          status: "failed",
+          data: null,
+          attempts: 5,
+          errorMessage: "Could not confirm payment",
+        })
+        .mockReturnValueOnce(new Promise(() => {}));
 
-    const { findByRole } = renderScreen({ reference: "ref-retry" });
+      const { getByRole } = renderScreen({ reference: "ref-retry" });
+      await settleVerify();
 
-    const retryBtn = await findByRole("button", { name: "Try again" }, { timeout: 4000 });
-    fireEvent.press(retryBtn);
+      fireEvent.press(getByRole("button", { name: "Try again" }));
 
-    await waitFor(() => {
+      await settleVerify();
       expect(mockVerify).toHaveBeenCalledTimes(2);
-    });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

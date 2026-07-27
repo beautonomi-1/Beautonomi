@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveSingleActivePaycloudMerchant } from "@/lib/payments/paycloud-merchant-helpers";
 import {
@@ -138,7 +139,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: { message: "Provider tenant not found", code: "TENANT_NOT_FOUND" } }, { status: 400 });
     }
 
-    const merchantPick = await resolveSingleActivePaycloudMerchant(supabase, provider.tenant_id);
+    // Merchant + app rows are admin-owned (no provider RLS read), so resolve with the
+    // service client. Still tenant-scoped, and the provider never sees the credentials.
+    const merchantPick = await resolveSingleActivePaycloudMerchant(
+      getSupabaseAdmin(),
+      provider.tenant_id,
+    );
     if ("error" in merchantPick) {
       const message =
         merchantPick.error === "MERCHANT_AMBIGUOUS"

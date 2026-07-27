@@ -12,6 +12,8 @@ import { hasPermission } from "@/lib/auth/permissions";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
+import { filterExplorePostsForViewer } from "@/lib/safety/filter-explore-posts";
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -115,6 +117,10 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = await getSupabaseAdmin();
     const supabase = await getSupabaseServer(request);
     const { data: { user } } = await supabase.auth.getUser();
+    const viewerSafety = await getViewerSafetyContext(user?.id, request);
+    if (viewerSafety.hideSocialFeed) {
+      return successResponse({ data: [], next_cursor: undefined, has_more: false });
+    }
 
     const { searchParams } = new URL(request.url);
     const cursorEncoded = searchParams.get("cursor");
@@ -432,7 +438,10 @@ export async function GET(request: NextRequest) {
       }
 
       return successResponse({
-        data: dataSearch,
+        data: filterExplorePostsForViewer(dataSearch, {
+          hideSocialFeed: false,
+          sensitiveFilter: viewerSafety.sensitiveContentFilter,
+        }),
         next_cursor: nextCursorSearch,
         has_more: hasMoreSearch,
       });
@@ -777,7 +786,10 @@ export async function GET(request: NextRequest) {
     }
 
     const response: ExplorePostsCursorResponse = {
-      data,
+      data: filterExplorePostsForViewer(data, {
+        hideSocialFeed: false,
+        sensitiveFilter: viewerSafety.sensitiveContentFilter,
+      }),
       next_cursor: nextCursor,
       has_more: hasMore,
     };

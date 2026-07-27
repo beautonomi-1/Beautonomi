@@ -9,6 +9,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import type { ExploreComment } from "@/types/explore";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 /** Returns true if the post is publicly visible (published + not hidden). */
 function isPostPublic(post: { status: string; is_hidden: boolean }) {
@@ -127,6 +128,7 @@ export async function POST(
 ) {
   try {
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "comment", request);
     const { id: postId } = await params;
 
     const body = await request.json();

@@ -8,6 +8,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 const createSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -23,6 +24,9 @@ const createSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    if (user.role === "customer") {
+      await requireSocialAccess(user.id, "direct_message", request);
+    }
     const body = createSchema.parse(await request.json());
     const { provider_id, booking_id } = body;
 

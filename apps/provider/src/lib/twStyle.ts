@@ -399,8 +399,8 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       const [, prop, value] = arbMatch;
       const num = value.endsWith("px") ? parsePx(value) : parseInt(value, 10);
       const isPct = value.endsWith("%");
-      if (prop === "min-h") style.minHeight = Number.isNaN(num) ? value : num;
-      else if (prop === "max-h") style.maxHeight = Number.isNaN(num) ? value : num;
+      if (prop === "min-h") style.minHeight = isPct || Number.isNaN(num) ? value : num;
+      else if (prop === "max-h") style.maxHeight = isPct || Number.isNaN(num) ? value : num;
       else if (prop === "min-w") style.minWidth = isPct || Number.isNaN(num) ? value : num;
       else if (prop === "max-w") style.maxWidth = isPct || Number.isNaN(num) ? value : num;
       else if (prop === "w") style.width = isPct || Number.isNaN(num) ? value : num;
@@ -588,6 +588,12 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     } else if (c === "rounded-t-2xl") {
       style.borderTopLeftRadius = 16;
       style.borderTopRightRadius = 16;
+    } else if (c === "rounded-t-xl") {
+      style.borderTopLeftRadius = 12;
+      style.borderTopRightRadius = 12;
+    } else if (c === "rounded-t-3xl") {
+      style.borderTopLeftRadius = 24;
+      style.borderTopRightRadius = 24;
     } else if (c.match(/^rounded-\[(.+)\]$/)) {
       const value = c.replace(/^rounded-\[|\]$/g, "");
       const radius = parseCssLength(value);

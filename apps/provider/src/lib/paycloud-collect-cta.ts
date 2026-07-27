@@ -22,21 +22,41 @@ export function formatPaycloudCollectLabel(params: {
   amount: number;
   currency?: string;
   inFlight?: boolean;
+  depositAmount?: number | null;
+  fullOutstanding?: number | null;
 }): string {
   if (params.inFlight) {
     return "Payment in progress — tap to resume";
   }
 
   const money = formatAmount(params.amount, params.currency ?? "ZAR");
+  const depositDue =
+    params.depositAmount != null &&
+    params.depositAmount > 0.01 &&
+    params.fullOutstanding != null &&
+    params.fullOutstanding > params.depositAmount + 0.01;
+  const depositMoney = depositDue
+    ? formatAmount(params.depositAmount!, params.currency ?? "ZAR")
+    : null;
+  const fullMoney =
+    depositDue && params.fullOutstanding != null
+      ? formatAmount(params.fullOutstanding, params.currency ?? "ZAR")
+      : null;
 
   switch (params.context) {
     case "booking":
+      if (depositMoney && fullMoney) {
+        return `Card machine · deposit ${depositMoney} of ${fullMoney}`;
+      }
       return `Card machine · ${money}`;
     case "booking_addons":
       return `Card machine · add-ons ${money}`;
     case "additional_charge":
       return "Card machine";
     case "group_booking":
+      if (depositMoney && fullMoney) {
+        return `Card machine · deposit ${depositMoney} of ${fullMoney}`;
+      }
       return `Card machine · group ${money}`;
     case "sale":
     case "product_order":

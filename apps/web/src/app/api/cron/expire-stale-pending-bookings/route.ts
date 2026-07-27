@@ -28,6 +28,7 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { settleBookingFinanceById } from "@/lib/bookings/settle-booking-cancellation";
 import { sendCancellationNotification } from "@/lib/bookings/notifications";
 import { matchWaitlistOnCancellation } from "@/lib/waitlist/matching";
+import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ async function cancelStalePendingBooking(
     })
     .eq("id", bookingId)
     .eq("status", "pending")
-    .select("id, currency, customer_id, customer_package_entitlement_id")
+    .select("id, currency, customer_id, customer_package_entitlement_id, group_booking_id")
     .limit(1);
 
   if (updateError) {
@@ -80,6 +81,7 @@ async function cancelStalePendingBooking(
         currency?: string | null;
         customer_id?: string | null;
         customer_package_entitlement_id?: string | null;
+        group_booking_id?: string | null;
       }
     | undefined;
   if (!updated) {
@@ -120,6 +122,18 @@ async function cancelStalePendingBooking(
     walletRefund: walletRefundAmount,
     currency: updated.currency ?? undefined,
   });
+
+  if (updated.group_booking_id) {
+    try {
+      await syncGroupBookingStatusFromChildren(admin, updated.group_booking_id);
+    } catch (syncErr) {
+      console.error(
+        "[expire-stale-pending-bookings] group status sync failed",
+        updated.group_booking_id,
+        syncErr,
+      );
+    }
+  }
 
   return { ok: true };
 }

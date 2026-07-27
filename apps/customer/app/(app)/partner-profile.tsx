@@ -693,6 +693,7 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
   onBook: (svc: ProviderService, offeringId?: string) => void;
   contentPadding: number;
 }) {
+  const { t } = useTranslation();
   const variants = service?.variants ?? [];
   const hasVariants = Boolean(service?.has_variants && variants.length > 0);
   const [pickedVariantId, setPickedVariantId] = useState<string | null>(null);
@@ -753,6 +754,9 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>About this service</Text>
                 <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}>{service.description}</Text>
+                <Text style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 18, marginTop: 10, fontStyle: "italic" }}>
+                  {t("customer.mobile.screens.partnerProfile.medicalDisclaimer")}
+                </Text>
               </View>
             ) : null}
 

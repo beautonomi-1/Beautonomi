@@ -58,6 +58,10 @@ import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/mapbox/LocationMapPickerDialog";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import Link from "next/link";
+import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -129,6 +133,15 @@ export function GroupBookingDialog({
   const { provider: portalProvider } = useProviderPortal();
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const {
+    ready: paycloudReady,
+    loading: paycloudReadinessLoading,
+    blockers: paycloudBlockers,
+    terminals: paycloudTerminals,
+  } = usePaycloudCollectReady();
+  const paycloudInFlight = (paycloudTerminals?.inFlight ?? 0) > 0;
+  const paycloudCollectEnabled = paycloudReady || paycloudInFlight;
   const [isLoading, setIsLoading] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
 
@@ -138,12 +151,26 @@ export function GroupBookingDialog({
   // Payment methods mirror the single-booking screen so providers see the
   // same set everywhere (pay_later, cash, manual card, Yoco terminal, link).
   const [createStep, setCreateStep] = useState<"form" | "review">("form");
-  type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal";
+  type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal" | "paycloud_terminal";
   const [createPaymentMethod, setCreatePaymentMethod] = useState<GroupCreatePaymentMethod>("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
+
+  useEffect(() => {
+    if (
+      (!paycloudEnabled || !paycloudCollectEnabled) &&
+      createPaymentMethod === "paycloud_terminal"
+    ) {
+      setCreatePaymentMethod("pay_later");
+    }
+  }, [createPaymentMethod, paycloudCollectEnabled, paycloudEnabled]);
   const [postCreatePaystackData, setPostCreatePaystackData] = useState<{
     expectedAmount: number;
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+  } | null>(null);
+  const [postCreatePaycloudData, setPostCreatePaycloudData] = useState<{
+    groupId: string;
+    expectedAmount: number;
+    locationId: string | null;
   } | null>(null);
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
 
@@ -155,6 +182,7 @@ export function GroupBookingDialog({
       setCreatePaymentMethod("pay_later");
       setCreateSendNotification(true);
       setPostCreatePaystackData(null);
+      setPostCreatePaycloudData(null);
     }
   }, [open]);
 
@@ -976,6 +1004,17 @@ export function GroupBookingDialog({
           } finally {
             setIsPreparingTerminal(false);
           }
+          return;
+        }
+        if (createPaymentMethod === "paycloud_terminal" && createdId) {
+          toast.success("Group booking created — collect payment on your card machine");
+          onSuccess?.();
+          onOpenChange(false);
+          setPostCreatePaycloudData({
+            groupId: createdId,
+            expectedAmount: pricing.totalAmount,
+            locationId: formData.location_type === "at_home" ? null : formData.location_id ?? null,
+          });
           return;
         } else if (methodToMark && createdId) {
           try {
@@ -1925,7 +1964,29 @@ export function GroupBookingDialog({
                       ...(paystackTerminalEnabled
                         ? [{ value: "paystack_terminal", label: "Paystack Terminal" }]
                         : []),
+                      ...(paycloudEnabled
+                        ? [{ value: "paycloud_terminal", label: "Card machine" }]
+                        : []),
                     ] as const).map((m) => {
+                      const isPaycloudSetupBlocked =
+                        m.value === "paycloud_terminal" &&
+                        paycloudEnabled &&
+                        !paycloudReadinessLoading &&
+                        !paycloudCollectEnabled;
+                      if (isPaycloudSetupBlocked) {
+                        const setupHref =
+                          paycloudBlockers[0]?.href ?? "/provider/settings/sales/card-machines";
+                        const setupLabel = paycloudBlockers[0]?.title ?? PAYCLOUD_SETUP_LABEL;
+                        return (
+                          <Link
+                            key={m.value}
+                            href={setupHref}
+                            className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 hover:bg-amber-100 transition"
+                          >
+                            {setupLabel}
+                          </Link>
+                        );
+                      }
                       const active = createPaymentMethod === m.value;
                       return (
                         <button
@@ -1947,6 +2008,10 @@ export function GroupBookingDialog({
                   ) : createPaymentMethod === "paystack_terminal" ? (
                     <p className="text-xs text-gray-500">
                       After creating the group, a QR code will be shown for the customer to scan. Allocate the payment from the Paystack Payment Inbox.
+                    </p>
+                  ) : createPaymentMethod === "paycloud_terminal" ? (
+                    <p className="text-xs text-gray-500">
+                      After creating the group, collect payment on your card machine for the full session total.
                     </p>
                   ) : createPaymentMethod !== "pay_later" ? (
                     <p className="text-xs text-gray-500">
@@ -2048,6 +2113,8 @@ export function GroupBookingDialog({
                           ? "Yoco terminal"
                           : createPaymentMethod === "paystack_terminal"
                             ? "Paystack Terminal (QR)"
+                            : createPaymentMethod === "paycloud_terminal"
+                              ? "Card machine"
                             : "Payment link"}
                 </span>
                 <button
@@ -2178,6 +2245,24 @@ export function GroupBookingDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {postCreatePaycloudData ? (
+        <PayCloudPaymentDialog
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setPostCreatePaycloudData(null);
+          }}
+          amount={postCreatePaycloudData.expectedAmount}
+          entityType="group_booking"
+          entityId={postCreatePaycloudData.groupId}
+          groupBookingId={postCreatePaycloudData.groupId}
+          bookingLocationId={postCreatePaycloudData.locationId}
+          onSuccess={() => {
+            setPostCreatePaycloudData(null);
+            onSuccess?.();
+          }}
+        />
+      ) : null}
 
       {/* ─── Variant Picker Dialog ────────────────────────────────── */}
       <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>

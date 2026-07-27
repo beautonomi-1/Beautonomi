@@ -77,6 +77,36 @@ describe("provider report utilities", () => {
     expect(table).toHaveBeenCalledWith("product_orders");
   });
 
+  it("includes unattributed rows when unattributedRows is include", async () => {
+    const rows = [
+      { id: "booking-ok", booking_id: "booking-1", product_order_id: null },
+      { id: "payout", booking_id: null, product_order_id: null },
+    ];
+    const table = vi.fn((name: string) => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: name === "provider_locations" ? { id: "location-1" } : null,
+      }),
+      in: vi.fn().mockResolvedValue({
+        data: name === "bookings" ? [{ id: "booking-1" }] : [],
+      }),
+    }));
+
+    const filtered = await filterLedgerRowsForLocation(
+      { from: table } as any,
+      "provider-1",
+      rows,
+      "location-1",
+      { unattributedRows: "include" },
+    );
+
+    expect(filtered.map((row) => row.id)).toEqual(["booking-ok", "payout"]);
+  });
+
   it("attributes delivery product orders to the provider primary salon location for location reports", async () => {
     expect(
       productOrderReportLocationId(

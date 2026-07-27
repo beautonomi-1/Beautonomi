@@ -73,3 +73,27 @@ export function getPaycloudNotifyUrl(request?: Request): string {
   }
   return "/api/provider/paycloud/webhook";
 }
+
+export function validatePaycloudNotifyUrl(
+  url: string,
+): { ok: true; url: string } | { ok: false; code: "NOTIFY_URL_INVALID"; message: string } {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      return {
+        ok: false,
+        code: "NOTIFY_URL_INVALID",
+        message:
+          "PayCloud notify URL must be absolute HTTPS. Set NEXT_PUBLIC_APP_URL to your public site URL.",
+      };
+    }
+    return { ok: true, url: parsed.toString() };
+  } catch {
+    return {
+      ok: false,
+      code: "NOTIFY_URL_INVALID",
+      message:
+        "PayCloud notify URL must be absolute HTTPS. Set NEXT_PUBLIC_APP_URL to your public site URL.",
+    };
+  }
+}

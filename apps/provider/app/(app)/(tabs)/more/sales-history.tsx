@@ -42,6 +42,7 @@ interface SalesHistoryRow {
   tax: number;
   travel_fee: number;
   cancellation_fee: number;
+  discount_contra: number;
   refunds: number;
   payment_status: string | null;
   currency: string;
@@ -89,11 +90,14 @@ function subtypeLabel(sub: string): string {
   return "Standard";
 }
 
-export function SalesHistoryContent({ embedded = false }: { embedded?: boolean } = {}) {
+export function SalesHistoryContent({
+  embedded = false,
+  locationId = null,
+}: { embedded?: boolean; locationId?: string | null } = {}) {
   const router = useRouter();
   const handleBack = useProviderStackBack();
   useResponsive();
-  const { selectedLocationId, provider } = useProvider();
+  const { provider } = useProvider();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<MoneyRangeKey>("month");
@@ -110,7 +114,7 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, dateFilter, selectedLocationId, sourceFilter]);
+  }, [debouncedSearch, dateFilter, locationId, sourceFilter]);
 
   const dateRange = useMemo(() => getDateRange(dateFilter, provider?.timezone), [dateFilter, provider?.timezone]);
   const dateRangeCaption = useMemo(() => {
@@ -123,10 +127,10 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
     if (debouncedSearch) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
     if (dateRange.from) parts.push(`date_from=${dateRange.from}`);
     if (dateRange.to) parts.push(`date_to=${dateRange.to}`);
-    if (selectedLocationId) parts.push(`location_id=${selectedLocationId}`);
+    if (locationId) parts.push(`location_id=${locationId}`);
     if (sourceFilter !== "all") parts.push(`source=${sourceFilter}`);
     return parts.join("&");
-  }, [page, debouncedSearch, dateRange, selectedLocationId, sourceFilter]);
+  }, [page, debouncedSearch, dateRange, locationId, sourceFilter]);
 
   const { data: salesPayload, loading, error: salesError, errorCode, refresh, silentRefresh } =
     useApi<SalesHistoryApiResponse>(`/api/provider/sales-history?${params}`, {
@@ -169,7 +173,7 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
     const body: Record<string, unknown> = {
       source: sourceFilter,
       search: debouncedSearch || undefined,
-      location_id: selectedLocationId || undefined,
+      location_id: locationId || undefined,
     };
     if (dateRange.from) body.date_from = dateRange.from;
     if (dateRange.to) body.date_to = dateRange.to;
@@ -425,6 +429,14 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
                   {formatCurrency(selectedSale.cancellation_fee ?? 0)}
                 </Text>
               </View>
+              {(selectedSale.discount_contra ?? 0) > 0 ? (
+                <View style={twStyle("flex-row justify-between mb-2")}>
+                  <Text style={twStyle("text-sm text-gray-600")}>Discounts (contra)</Text>
+                  <Text style={twStyle("text-sm font-semibold text-purple-800")}>
+                    {formatCurrency(selectedSale.discount_contra)}
+                  </Text>
+                </View>
+              ) : null}
               <View style={twStyle("flex-row justify-between mb-2")}>
                 <Text style={twStyle("text-sm text-gray-600")}>Refunds (ledger)</Text>
                 <Text style={twStyle("text-sm font-semibold text-red-700")}>

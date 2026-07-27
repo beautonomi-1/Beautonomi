@@ -7,6 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { checkExploreEventsRateLimit } from "@/lib/rate-limit/explore-events";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { createHash } from "crypto";
 
 function getAnonHash(request: Request): string {
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
     if (user) {
       actorType = "authed";
       actorKey = user.id;
+      if (event_type === "like") {
+        await requireSocialAccess(user.id, "like_or_save", request);
+      }
     } else {
       actorType = "anon";
       actorKey = getAnonHash(request);
@@ -109,6 +113,7 @@ export async function DELETE(request: NextRequest) {
     if (user) {
       actorType = "authed";
       actorKey = user.id;
+      await requireSocialAccess(user.id, "like_or_save", request);
     } else {
       actorType = "anon";
       actorKey = getAnonHash(request);

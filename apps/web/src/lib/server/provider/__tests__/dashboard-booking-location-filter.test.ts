@@ -3,6 +3,7 @@ import {
   bookingMatchesDashboardLocation,
   dashboardBookingLocationOrFilter,
   dashboardGroupBookingLocationOrFilter,
+  groupMatchesDashboardLocation,
 } from "../dashboard-booking-location-filter";
 
 describe("bookingMatchesDashboardLocation", () => {
@@ -50,6 +51,16 @@ describe("dashboard location OR filters", () => {
     const filter = dashboardGroupBookingLocationOrFilter("loc-1");
     expect(filter).toContain("location_id.eq.loc-1");
     expect(filter).toContain("location_type.eq.at_home");
+    expect(filter).toContain("location_id.is.null");
     expect(filter).not.toContain("booking_source");
+  });
+
+  it("groupMatchesDashboardLocation includes legacy groups with null location_id", () => {
+    expect(
+      groupMatchesDashboardLocation("loc-1", {
+        location_id: null,
+        location_type: "at_salon",
+      }),
+    ).toBe(true);
   });
 });

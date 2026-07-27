@@ -12,7 +12,15 @@ import { RECOGNIZED_REVENUE_TYPES, recognizedRevenueInRange } from "@/lib/report
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  dashboardBookingLocationOrFilter,
+  dashboardGroupBookingLocationOrFilter,
+} from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  applyPendingBookingsScope,
+  applyPendingGroupsScope,
+  PENDING_REVIEW_DB_STATUSES,
+} from "@/lib/server/provider/pending-bookings-scope";
 
 export type BookingsStatsRange = "today" | "week" | "month" | "all";
 
@@ -23,17 +31,40 @@ export type BookingsStatsResult = {
   recognized_revenue: number;
   appointment_count: number;
   pending_count: number;
+  confirmed_count: number;
   in_progress_count: number;
   completed_count: number;
+  cancelled_count: number;
+  no_show_count: number;
   basis_note: string;
 };
 
 const TERMINAL_STATUSES = new Set(["cancelled", "canceled", "no_show"]);
+const GMV_PAGE_SIZE = 1000;
+
+type StatsWindow = {
+  scheduledFromIso?: string;
+  scheduledToIso?: string;
+  ledgerFrom?: Date;
+  ledgerTo?: Date;
+};
+
+type HeadCountResult = Promise<{ count: number | null; error: unknown }>;
+
+type HeadCountBuilder = {
+  eq: (col: string, value: unknown) => HeadCountBuilder;
+  in: (col: string, values: readonly string[]) => HeadCountBuilder;
+  is: (col: string, value: null) => HeadCountBuilder;
+  or: (filter: string) => HeadCountBuilder;
+  gte: (col: string, value: string) => HeadCountBuilder;
+  lte: (col: string, value: string) => HeadCountBuilder;
+  select: (cols: string, opts: { count: "exact"; head: true }) => HeadCountResult;
+};
 
 function resolveStatsWindow(
   range: BookingsStatsRange,
   timezone: string,
-): { scheduledFromIso?: string; scheduledToIso?: string; ledgerFrom?: Date; ledgerTo?: Date } {
+): StatsWindow {
   const tz = resolveTz(timezone);
   const businessNow = nowInTz(tz);
   const todayYmd = formatDateYmd(businessNow, tz);
@@ -62,6 +93,132 @@ function resolveStatsWindow(
   };
 }
 
+async function countExact(query: HeadCountBuilder): Promise<number> {
+  const { count, error } = await query.select("id", { count: "exact", head: true });
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function applyScheduledWindow(query: HeadCountBuilder, window: StatsWindow): HeadCountBuilder {
+  let q = query;
+  if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
+  if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
+  return q;
+}
+
+function applyBookingLocation(query: HeadCountBuilder, locationId?: string | null): HeadCountBuilder {
+  if (!locationId) return query;
+  return query.or(dashboardBookingLocationOrFilter(locationId));
+}
+
+function applyGroupLocation(query: HeadCountBuilder, locationId?: string | null): HeadCountBuilder {
+  if (!locationId) return query;
+  return query.or(dashboardGroupBookingLocationOrFilter(locationId));
+}
+
+function bookingsHeadCount(supabaseAdmin: SupabaseClient): HeadCountBuilder {
+  return supabaseAdmin.from("bookings").select("id", {
+    count: "exact",
+    head: true,
+  }) as unknown as HeadCountBuilder;
+}
+
+function groupsHeadCount(supabaseAdmin: SupabaseClient): HeadCountBuilder {
+  return supabaseAdmin.from("group_bookings").select("id", {
+    count: "exact",
+    head: true,
+  }) as unknown as HeadCountBuilder;
+}
+
+async function countStandaloneBookings(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  statuses: readonly string[],
+  window: StatsWindow,
+  locationId?: string | null,
+): Promise<number> {
+  let q = bookingsHeadCount(supabaseAdmin)
+    .eq("provider_id", providerId)
+    .in("status", [...statuses])
+    .is("group_booking_id", null);
+  q = applyScheduledWindow(q, window);
+  q = applyBookingLocation(q, locationId);
+  return countExact(q);
+}
+
+async function countGroupBookings(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  statuses: readonly string[],
+  window: StatsWindow,
+  locationId?: string | null,
+): Promise<number> {
+  let q = groupsHeadCount(supabaseAdmin)
+    .eq("provider_id", providerId)
+    .in("status", [...statuses]);
+  q = applyScheduledWindow(q, window);
+  q = applyGroupLocation(q, locationId);
+  return countExact(q);
+}
+
+async function sumBookedGmv(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  window: StatsWindow,
+  locationId?: string | null,
+): Promise<number> {
+  let total = 0;
+  let offset = 0;
+
+  while (true) {
+    let q = supabaseAdmin
+      .from("bookings")
+      .select("total_amount, status")
+      .eq("provider_id", providerId)
+      .is("group_booking_id", null)
+      .order("scheduled_at", { ascending: true })
+      .range(offset, offset + GMV_PAGE_SIZE - 1);
+    if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
+    if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
+    if (locationId) q = q.or(dashboardBookingLocationOrFilter(locationId));
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = data ?? [];
+    for (const row of rows) {
+      const status = String((row as { status?: string }).status ?? "").toLowerCase();
+      if (TERMINAL_STATUSES.has(status)) continue;
+      total += Number((row as { total_amount?: number }).total_amount ?? 0);
+    }
+    if (rows.length < GMV_PAGE_SIZE) break;
+    offset += GMV_PAGE_SIZE;
+  }
+
+  offset = 0;
+  while (true) {
+    let q = supabaseAdmin
+      .from("group_bookings")
+      .select("total_price, status")
+      .eq("provider_id", providerId)
+      .order("scheduled_at", { ascending: true })
+      .range(offset, offset + GMV_PAGE_SIZE - 1);
+    if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
+    if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
+    if (locationId) q = q.or(dashboardGroupBookingLocationOrFilter(locationId));
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = data ?? [];
+    for (const row of rows) {
+      const status = String((row as { status?: string }).status ?? "").toLowerCase();
+      if (TERMINAL_STATUSES.has(status)) continue;
+      total += Number((row as { total_price?: number }).total_price ?? 0);
+    }
+    if (rows.length < GMV_PAGE_SIZE) break;
+    offset += GMV_PAGE_SIZE;
+  }
+
+  return total;
+}
+
 export async function computeBookingsStats(
   supabaseAdmin: SupabaseClient,
   providerId: string,
@@ -76,47 +233,59 @@ export async function computeBookingsStats(
   const timezone = resolveTz((providerRow as { timezone?: string | null } | null)?.timezone);
   const window = resolveStatsWindow(range, timezone);
 
-  let bookingsQuery = supabaseAdmin
-    .from("bookings")
-    .select("id, scheduled_at, total_amount, status")
-    .eq("provider_id", providerId);
+  const [
+    pendingStandalone,
+    pendingGroups,
+    confirmedStandalone,
+    confirmedGroupsBooked,
+    inProgressStandalone,
+    inProgressGroups,
+    completedStandalone,
+    completedGroups,
+    cancelledStandalone,
+    cancelledGroups,
+    noShowStandalone,
+  ] = await Promise.all([
+    (async () => {
+      let q = bookingsHeadCount(supabaseAdmin).eq("provider_id", providerId);
+      q = applyPendingBookingsScope(q, locationId);
+      q = applyScheduledWindow(q, window);
+      return countExact(q);
+    })(),
+    (async () => {
+      let q = groupsHeadCount(supabaseAdmin).eq("provider_id", providerId);
+      q = applyPendingGroupsScope(q, locationId);
+      q = applyScheduledWindow(q, window);
+      return countExact(q);
+    })(),
+    countStandaloneBookings(supabaseAdmin, providerId, ["confirmed"], window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, ["confirmed", "booked"], window, locationId),
+    countStandaloneBookings(
+      supabaseAdmin,
+      providerId,
+      ["in_progress", "started", "waiting", "checked_in"],
+      window,
+      locationId,
+    ),
+    countGroupBookings(supabaseAdmin, providerId, ["started"], window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, ["completed"], window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, ["completed"], window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, ["cancelled", "canceled"], window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, ["cancelled"], window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, ["no_show"], window, locationId),
+  ]);
 
-  if (locationId) {
-    bookingsQuery = bookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
-  }
-  if (window.scheduledFromIso) {
-    bookingsQuery = bookingsQuery.gte("scheduled_at", window.scheduledFromIso);
-  }
-  if (window.scheduledToIso) {
-    bookingsQuery = bookingsQuery.lte("scheduled_at", window.scheduledToIso);
-  }
+  const pendingCount = pendingStandalone + pendingGroups;
+  const confirmedCount = confirmedStandalone + confirmedGroupsBooked;
+  const inProgressCount = inProgressStandalone + inProgressGroups;
+  const completedCount = completedStandalone + completedGroups;
+  const cancelledCount = cancelledStandalone + cancelledGroups;
+  const noShowCount = noShowStandalone;
 
-  const { data: bookings, error: bookingsError } = await bookingsQuery;
-  if (bookingsError) throw bookingsError;
+  const bookedGmv = await sumBookedGmv(supabaseAdmin, providerId, window, locationId);
 
-  let bookedGmv = 0;
-  let appointmentCount = 0;
-  let pendingCount = 0;
-  let inProgressCount = 0;
-  let completedCount = 0;
-
-  for (const row of bookings ?? []) {
-    const status = String(row.status ?? "").toLowerCase();
-    if (status === "pending" || status === "pending_payment") pendingCount += 1;
-    if (
-      status === "in_progress" ||
-      status === "started" ||
-      status === "waiting" ||
-      status === "checked_in"
-    ) {
-      inProgressCount += 1;
-    }
-    if (status === "completed") completedCount += 1;
-
-    if (TERMINAL_STATUSES.has(status)) continue;
-    appointmentCount += 1;
-    bookedGmv += Number(row.total_amount ?? 0);
-  }
+  const appointmentCount =
+    pendingCount + confirmedCount + inProgressCount + completedCount;
 
   const ledgerQuery = supabaseAdmin
     .from("finance_transactions")
@@ -155,9 +324,14 @@ export async function computeBookingsStats(
     recognized_revenue: recognizedRevenue,
     appointment_count: appointmentCount,
     pending_count: pendingCount,
+    confirmed_count: confirmedCount,
     in_progress_count: inProgressCount,
     completed_count: completedCount,
+    cancelled_count: cancelledCount,
+    no_show_count: noShowCount,
     basis_note:
-      "Booked GMV sums booking.total_amount for non-cancelled appointments scheduled in the window (provider timezone). Recognized revenue sums ledger settlement in the same window — comparable to dashboard total earned.",
+      "Counts mirror the merged provider bookings list: standalone rows exclude group children; group parents are included. Pending = standalone pending/pending_payment + pending group parents. Booked GMV sums non-cancelled totals scheduled in the window.",
   };
 }
+
+export { PENDING_REVIEW_DB_STATUSES };

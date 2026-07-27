@@ -10,7 +10,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
-import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
 import { FinanceReportError } from "@/components/finance/FinanceReportError";
@@ -19,7 +18,6 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { formatLedgerTransactionType } from "@/lib/financeLabels";
 import { PayoutReconciliationCard } from "@/components/PayoutReconciliationCard";
-import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 import { MoneyRangeChips, moneyRangeCaption, type MoneyRangeKey } from "@/components/finance/MoneyRangeChips";
 import { Colors } from "@/constants/colors";
 
@@ -122,16 +120,15 @@ function periodMetric(value: number | undefined): number {
 }
 
 /** Content-only for use in Finance hub (Overview tab). */
-export function FinanceOverviewContent() {
+export function FinanceOverviewContent({ locationId = null }: { locationId?: string | null } = {}) {
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<MoneyRangeKey>("month");
   const [txLimit, setTxLimit] = useState(50);
   const { screenPadding } = useResponsive();
-  const { selectedLocationId, provider } = useProvider();
   const currency = getTenantDefaultCurrency();
   /** Branch-scoped earnings when a location is selected; `transaction_feed=all` keeps the activity list org-wide (same as Transactions hub). */
   const url = `/api/provider/finance?range=${range}&transaction_feed=all&tx_limit=${txLimit}${
-    selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
+    locationId ? `&location_id=${encodeURIComponent(locationId)}` : ""
   }`;
   const { data, loading, error, errorCode, refresh, silentRefresh } = useApi<FinanceData>(url, {
     staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
@@ -378,7 +375,7 @@ export function FinanceOverviewContent() {
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1 mr-2")}>
             <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
-            {(provider?.locations?.length ?? 0) > 1 && selectedLocationId ? (
+            {locationId ? (
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Recent activity across all locations</Text>
             ) : null}
           </View>

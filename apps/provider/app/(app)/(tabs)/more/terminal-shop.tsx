@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Modal,
   TextInput,
   Alert,
 } from "react-native";
@@ -13,6 +12,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
@@ -827,184 +827,185 @@ export default function TerminalShopScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={!!checkoutProduct} animationType="slide" transparent onRequestClose={() => setCheckoutProduct(null)}>
-        <View style={twStyle("flex-1 justify-end bg-black/40")}>
-          <View style={twStyle("max-h-[85%] rounded-t-3xl bg-white")}>
-            <ScrollView contentContainerStyle={twStyle("p-5 pb-8")}>
-              <Text style={twStyle("text-lg font-semibold text-gray-900")}>Order {checkoutProduct?.name}</Text>
-              <Text style={twStyle("mt-0.5 text-xs capitalize text-gray-500")}>
-                {checkoutProduct?.vendor}
-                {checkoutProduct?.model ? ` · ${checkoutProduct.model}` : ""}
+      <BottomSheet
+        visible={!!checkoutProduct}
+        onClose={() => setCheckoutProduct(null)}
+        title={checkoutProduct ? `Order ${checkoutProduct.name}` : undefined}
+        subtitle={
+          checkoutProduct
+            ? `${checkoutProduct.vendor}${checkoutProduct.model ? ` · ${checkoutProduct.model}` : ""}`
+            : undefined
+        }
+        snapHeight="full"
+        footer={
+          <View>
+            {!checkoutConfirmState.ok && checkoutConfirmState.message ? (
+              <Text style={twStyle("mb-2 text-center text-xs text-amber-700")}>
+                {checkoutConfirmState.message}
               </Text>
-
-              {(checkoutProduct?.checkout_options ?? []).length === 0 ? (
-                <Text style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800")}>
-                  This product isn&apos;t configured for checkout. Contact Beautonomi support.
+            ) : null}
+            <View style={twStyle("flex-row justify-end")}>
+              <TouchableOpacity
+                onPress={() => setCheckoutProduct(null)}
+                style={[twStyle("rounded-xl border border-gray-200 px-4 py-2.5"), { marginRight: 8 }]}
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-sm text-gray-700")}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void submitOrder()}
+                disabled={posting || allocating || paying || !checkoutConfirmState.ok}
+                style={twStyle(
+                  `rounded-xl px-4 py-2.5 ${checkoutConfirmState.ok ? "bg-pink-600" : "bg-gray-300"}`,
+                )}
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-sm font-semibold text-white")}>
+                  {posting || allocating || paying
+                    ? "Working…"
+                    : selectedOption?.requires_payment
+                      ? "Place & pay"
+                      : "Confirm"}
                 </Text>
-              ) : (
-                <>
-                  <Text style={twStyle("mt-4 mb-1 text-sm font-medium text-gray-900")}>
-                    How would you like to get it?
-                  </Text>
-                  {(checkoutProduct?.checkout_options ?? []).map((opt) => {
-                    const selected = commercialModel === opt.commercial_model;
-                    return (
-                      <TouchableOpacity
-                        key={opt.commercial_model}
-                        onPress={() => setCommercialModel(opt.commercial_model)}
-                        style={twStyle(
-                          `mt-2 flex-row items-start rounded-xl border p-3 ${
-                            selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
-                          }`,
-                        )}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                      >
-                        <View
-                          style={twStyle(
-                            `mt-0.5 h-4 w-4 items-center justify-center rounded-full border-2 ${
-                              selected ? "border-pink-600" : "border-gray-300"
-                            }`,
-                          )}
-                        >
-                          {selected ? <View style={twStyle("h-2 w-2 rounded-full bg-pink-600")} /> : null}
-                        </View>
-                        <View style={twStyle("ml-2.5 flex-1")}>
-                          <View style={twStyle("flex-row items-center justify-between")}>
-                            <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
-                            <Text
-                              style={twStyle(
-                                `text-sm font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`,
-                              )}
-                            >
-                              {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "R 0 — in plan"}
-                            </Text>
-                          </View>
-                          {opt.description ? (
-                            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{opt.description}</Text>
-                          ) : null}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </>
-              )}
-
-              {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
-                <View style={twStyle("mt-4")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Delivery address</Text>
-                  <TextInput
-                    placeholder="Address line 1"
-                    placeholderTextColor="#9ca3af"
-                    value={addressLine1}
-                    onChangeText={setAddressLine1}
-                    style={twStyle("mt-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
-                  />
-                  <TextInput
-                    placeholder="City"
-                    placeholderTextColor="#9ca3af"
-                    value={city}
-                    onChangeText={setCity}
-                    style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
-                  />
-                  <TextInput
-                    placeholder="Postal code"
-                    placeholderTextColor="#9ca3af"
-                    value={postalCode}
-                    onChangeText={setPostalCode}
-                    style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
-                  />
-                </View>
-              )}
-
-              {fulfillmentType === "collection" && (
-                <View style={twStyle("mt-4")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Pickup location</Text>
-                  {collectionLocations.length === 0 ? (
-                    <Text style={twStyle("text-sm text-gray-500")}>No pickup locations configured.</Text>
-                  ) : (
-                    collectionLocations.map((loc) => {
-                      const selected = collectionLocationId === loc.id;
-                      return (
-                        <TouchableOpacity
-                          key={loc.id}
-                          onPress={() => setCollectionLocationId(loc.id)}
-                          style={twStyle(
-                            `mt-2 flex-row items-center rounded-xl border p-3 ${
-                              selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
-                            }`,
-                          )}
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected }}
-                        >
-                          <Ionicons
-                            name="location-outline"
-                            size={15}
-                            color={selected ? "#db2777" : "#9ca3af"}
-                          />
-                          <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>{loc.name}</Text>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </View>
-              )}
-
-              {fulfillmentType === "digital_activation" && (
-                <View style={twStyle("mt-4 flex-row items-start rounded-xl bg-gray-50 p-3")}>
-                  <Ionicons name="flash-outline" size={15} color="#db2777" />
-                  <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>
-                    This product activates digitally — nothing gets shipped. Complete brand integration
-                    after confirmation.
-                  </Text>
-                </View>
-              )}
-
-              {selectedOption ? (
-                <View style={twStyle("mt-4 flex-row items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Total today</Text>
-                  <Text style={twStyle("text-sm font-bold text-gray-900")}>
-                    {selectedOption.requires_payment
-                      ? formatMoney(selectedOption.currency, selectedOption.price)
-                      : "R 0 — in your plan"}
-                  </Text>
-                </View>
-              ) : null}
-
-              <View style={twStyle("mt-4 flex-row justify-end")}>
-                <TouchableOpacity
-                  onPress={() => setCheckoutProduct(null)}
-                  style={[twStyle("rounded-xl border border-gray-200 px-4 py-2.5"), { marginRight: 8 }]}
-                  accessibilityRole="button"
-                >
-                  <Text style={twStyle("text-sm text-gray-700")}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => void submitOrder()}
-                  disabled={posting || allocating || paying || !checkoutConfirmState.ok}
-                  style={twStyle(
-                    `rounded-xl px-4 py-2.5 ${checkoutConfirmState.ok ? "bg-pink-600" : "bg-gray-300"}`,
-                  )}
-                  accessibilityRole="button"
-                >
-                  <Text style={twStyle("text-sm font-semibold text-white")}>
-                    {posting || allocating || paying
-                      ? "Working…"
-                      : selectedOption?.requires_payment
-                        ? "Place & pay"
-                        : "Confirm"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              {!checkoutConfirmState.ok && checkoutConfirmState.message ? (
-                <Text style={twStyle("mt-2 text-right text-xs text-amber-700")}>
-                  {checkoutConfirmState.message}
-                </Text>
-              ) : null}
-            </ScrollView>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        }
+      >
+        {(checkoutProduct?.checkout_options ?? []).length === 0 ? (
+          <Text style={twStyle("rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800")}>
+            This product isn&apos;t configured for checkout. Contact Beautonomi support.
+          </Text>
+        ) : (
+          <>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>
+              How would you like to get it?
+            </Text>
+            {(checkoutProduct?.checkout_options ?? []).map((opt) => {
+              const selected = commercialModel === opt.commercial_model;
+              return (
+                <TouchableOpacity
+                  key={opt.commercial_model}
+                  onPress={() => setCommercialModel(opt.commercial_model)}
+                  style={twStyle(
+                    `mt-2 flex-row items-start rounded-xl border p-3 ${
+                      selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
+                    }`,
+                  )}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                >
+                  <View
+                    style={twStyle(
+                      `mt-0.5 h-4 w-4 items-center justify-center rounded-full border-2 ${
+                        selected ? "border-pink-600" : "border-gray-300"
+                      }`,
+                    )}
+                  >
+                    {selected ? <View style={twStyle("h-2 w-2 rounded-full bg-pink-600")} /> : null}
+                  </View>
+                  <View style={twStyle("ml-2.5 flex-1")}>
+                    <View style={twStyle("flex-row items-center justify-between")}>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
+                      <Text
+                        style={twStyle(
+                          `text-sm font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`,
+                        )}
+                      >
+                        {opt.requires_payment ? formatMoney(opt.currency, opt.price) : "R 0 — in plan"}
+                      </Text>
+                    </View>
+                    {opt.description ? (
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{opt.description}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
+
+        {(fulfillmentType === "shipping" || fulfillmentType === "courier") && (
+          <View style={twStyle("mt-4")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Delivery address</Text>
+            <TextInput
+              placeholder="Address line 1"
+              placeholderTextColor="#9ca3af"
+              value={addressLine1}
+              onChangeText={setAddressLine1}
+              style={twStyle("mt-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+            />
+            <TextInput
+              placeholder="City"
+              placeholderTextColor="#9ca3af"
+              value={city}
+              onChangeText={setCity}
+              style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+            />
+            <TextInput
+              placeholder="Postal code"
+              placeholderTextColor="#9ca3af"
+              value={postalCode}
+              onChangeText={setPostalCode}
+              style={twStyle("mt-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+            />
+          </View>
+        )}
+
+        {fulfillmentType === "collection" && (
+          <View style={twStyle("mt-4")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>Pickup location</Text>
+            {collectionLocations.length === 0 ? (
+              <Text style={twStyle("text-sm text-gray-500")}>No pickup locations configured.</Text>
+            ) : (
+              collectionLocations.map((loc) => {
+                const selected = collectionLocationId === loc.id;
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    onPress={() => setCollectionLocationId(loc.id)}
+                    style={twStyle(
+                      `mt-2 flex-row items-center rounded-xl border p-3 ${
+                        selected ? "border-pink-400 bg-pink-50" : "border-gray-200"
+                      }`,
+                    )}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                  >
+                    <Ionicons
+                      name="location-outline"
+                      size={15}
+                      color={selected ? "#db2777" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>{loc.name}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {fulfillmentType === "digital_activation" && (
+          <View style={twStyle("mt-4 flex-row items-start rounded-xl bg-gray-50 p-3")}>
+            <Ionicons name="flash-outline" size={15} color="#db2777" />
+            <Text style={twStyle("ml-2 flex-1 text-xs text-gray-600")}>
+              This product activates digitally — nothing gets shipped. Complete brand integration
+              after confirmation.
+            </Text>
+          </View>
+        )}
+
+        {selectedOption ? (
+          <View style={twStyle("mt-4 flex-row items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5")}>
+            <Text style={twStyle("text-sm text-gray-500")}>Total today</Text>
+            <Text style={twStyle("text-sm font-bold text-gray-900")}>
+              {selectedOption.requires_payment
+                ? formatMoney(selectedOption.currency, selectedOption.price)
+                : "R 0 — in your plan"}
+            </Text>
+          </View>
+        ) : null}
+      </BottomSheet>
     </ScreenContainer>
   );
 }
