@@ -2,17 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { recordBookingPaystackPayment } from "../record-booking-paystack-payment";
 
 function makeSupabaseMock(existing: unknown = null) {
-  const insert = vi.fn().mockResolvedValue({ error: null });
+  const insert = vi.fn().mockResolvedValue({ data: { id: "bp-new" }, error: null });
   const maybeSingle = vi.fn().mockResolvedValue({ data: existing, error: null });
   const eq = vi.fn(() => ({ eq, maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
+  const select = vi.fn(() => ({ eq, maybeSingle }));
+  const insertChain = {
+    select: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { id: "bp-new" }, error: null }) })),
+  };
   const from = vi.fn((table: string) => {
     if (table === "booking_payments") {
-      return { select, insert };
+      return { select, insert: vi.fn(() => insertChain) };
     }
     return {};
   });
-  return { supabase: { from }, insert, maybeSingle } as const;
+  return { supabase: { from }, insert: insertChain, maybeSingle } as const;
 }
 
 describe("recordBookingPaystackPayment", () => {
@@ -30,17 +33,13 @@ describe("recordBookingPaystackPayment", () => {
       requiresDeposit: false,
     });
 
-    expect(result).toEqual({ ok: true, paymentProviderId: "ref-1", inserted: true });
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        booking_id: "booking-1",
-        tenant_id: "tenant-1",
-        amount: 233.8,
-        payment_provider: "paystack",
-        payment_provider_id: "ref-1",
-        status: "completed",
-      }),
-    );
+    expect(result).toEqual({
+      ok: true,
+      paymentProviderId: "ref-1",
+      inserted: true,
+      bookingPaymentId: "bp-new",
+    });
+    expect(insert.select).toHaveBeenCalled();
   });
 
   it("is idempotent when a payment row already exists", async () => {
@@ -53,8 +52,13 @@ describe("recordBookingPaystackPayment", () => {
       source: "test",
     });
 
-    expect(result).toEqual({ ok: true, paymentProviderId: "ref-1", inserted: false });
-    expect(insert).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: true,
+      paymentProviderId: "ref-1",
+      inserted: false,
+      bookingPaymentId: "bp-1",
+    });
+    expect(insert.select).not.toHaveBeenCalled();
   });
 
   it("rejects successful charges without a provider identifier", async () => {

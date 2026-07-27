@@ -6,6 +6,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { fetchBookingCommissionContext } from "./fetch-booking-commission-context";
+import {
+  resolveCommissionBaseForBookingPayment,
+  sumPendingBookingLevelCatchUpNet,
+} from "./resolve-commission-base-for-booking-payment";
 
 export async function recordCollectibleSettlementLedger(
   admin: SupabaseClient,
@@ -24,6 +29,8 @@ export async function recordCollectibleSettlementLedger(
     giftCardAmountApplied: number;
     idempotencyReference: string;
     settlementLabel: string;
+    /** When true, defer tip/tax/travel/platform_fee until full settlement. */
+    isDeposit?: boolean;
   },
 ): Promise<void> {
   const {
@@ -41,6 +48,7 @@ export async function recordCollectibleSettlementLedger(
     giftCardAmountApplied,
     idempotencyReference,
     settlementLabel,
+    isDeposit = false,
   } = input;
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(admin, {
@@ -57,16 +65,39 @@ export async function recordCollectibleSettlementLedger(
   if (existingTx) return;
 
   const amountCollected = Math.max(0, collectibleAmount);
-  const fullCommissionBase =
-    bookingTotal > 0
-      ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
-      : amountCollected;
-  const netRevenueRatio =
-    bookingTotal > 0 ? Math.max(0, fullCommissionBase / bookingTotal) : 1;
-  const commissionBase = Math.max(
-    0,
-    Math.round(amountCollected * netRevenueRatio * 100) / 100,
-  );
+  const totalCollectedForCommission =
+    amountCollected + Math.max(0, walletAmountApplied) + Math.max(0, giftCardAmountApplied);
+
+  const commissionContext = await fetchBookingCommissionContext(admin, bookingId, {
+    chargeAmount: totalCollectedForCommission,
+    excludeReference: internalRef,
+  });
+
+  const postBookingLevelFees =
+    !isDeposit && !commissionContext.bookingLevelItemsAlreadyPosted;
+  const pendingCatchUpNet = postBookingLevelFees
+    ? sumPendingBookingLevelCatchUpNet({
+        tipAmount,
+        travelFee,
+        platformFee: serviceFeeAmount,
+        existingTypes: commissionContext.existingBookingLevelTypes,
+      })
+    : 0;
+  const postedLegsForResidual =
+    commissionContext.postedLegsSum +
+    (commissionContext.bookingLevelItemsAlreadyPosted ? pendingCatchUpNet : 0);
+
+  const commissionBase = resolveCommissionBaseForBookingPayment({
+    paymentAmount: totalCollectedForCommission,
+    bookingTotal,
+    platformFee: serviceFeeAmount,
+    tip: tipAmount,
+    tax: taxAmount,
+    travel: travelFee,
+    postedLegsSum: postedLegsForResidual,
+    cumulativePaid: commissionContext.cumulativePaid,
+    bookingLevelItemsAlreadyPosted: commissionContext.bookingLevelItemsAlreadyPosted,
+  });
 
   const commissionRate = await resolveCommissionPercentageForProvider(admin, {
     tenantId: financeTenantId,
@@ -96,7 +127,7 @@ export async function recordCollectibleSettlementLedger(
     created_at: now,
   });
 
-  await admin.from("finance_transactions").insert([
+  const financeRows: Array<Record<string, unknown>> = [
     {
       booking_id: bookingId,
       provider_id: providerId,
@@ -121,10 +152,70 @@ export async function recordCollectibleSettlementLedger(
       description: `Provider earnings (${settlementLabel}) for booking ${bookingNumber}`,
       created_at: now,
     },
-  ]);
+  ];
+
+  if (postBookingLevelFees) {
+    if (serviceFeeAmount > 0 && !commissionContext.existingBookingLevelTypes.has("platform_fee")) {
+      financeRows.push({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "platform_fee",
+        amount: serviceFeeAmount,
+        fees: 0,
+        commission: 0,
+        net: serviceFeeAmount,
+        description: `Platform fee for booking ${bookingNumber}`,
+        created_at: now,
+      });
+    }
+    if (tipAmount > 0 && !commissionContext.existingBookingLevelTypes.has("tip")) {
+      financeRows.push({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "tip",
+        amount: tipAmount,
+        fees: 0,
+        commission: 0,
+        net: tipAmount,
+        description: `Tip for booking ${bookingNumber}`,
+        created_at: now,
+      });
+    }
+    if (taxAmount > 0 && !commissionContext.existingBookingLevelTypes.has("tax")) {
+      financeRows.push({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "tax",
+        amount: taxAmount,
+        fees: 0,
+        commission: 0,
+        net: 0,
+        description: `Tax for booking ${bookingNumber}`,
+        created_at: now,
+      });
+    }
+    if (travelFee > 0 && !commissionContext.existingBookingLevelTypes.has("travel_fee")) {
+      financeRows.push({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "travel_fee",
+        amount: travelFee,
+        fees: 0,
+        commission: 0,
+        net: travelFee,
+        description: `Travel fee for booking ${bookingNumber}`,
+        created_at: now,
+      });
+    }
+  }
+
+  await admin.from("finance_transactions").insert(financeRows);
 
   if (walletAmountApplied > 0) {
-    const walletRef = `${internalRef}:wallet_payment`;
     const { data: existingWallet } = await admin
       .from("finance_transactions")
       .select("id")

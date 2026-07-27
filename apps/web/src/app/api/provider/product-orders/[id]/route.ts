@@ -10,7 +10,23 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  applyProductOrderCancelRefundSideEffects,
+} from "@/lib/orders/product-order-lifecycle";
+import {
+  dispatchProductOrderStatusNotification,
+  type ProductOrderNotifyStatus,
+} from "@/lib/notifications/notify-product-order-status";
 import { z } from "zod";
+
+const NOTIFY_STATUSES = new Set<ProductOrderNotifyStatus>([
+  "confirmed",
+  "shipped",
+  "ready_for_collection",
+  "delivered",
+  "cancelled",
+  "refunded",
+]);
 
 const updateSchema = z.object({
   status: z
@@ -301,209 +317,52 @@ export async function PATCH(
       }
     }
 
-    // Reverse platform-held revenue on the ledger so provider earnings, payouts,
-    // and refund reporting stay correct (not overstated). Only platform-held
-    // orders (paystack/wallet) created finance rows; provider-collected cash/POS
-    // sales were intentionally excluded from the ledger (see
-    // record-product-order-payment) and the product sales report already drops
-    // refunded orders via payment_status, so they need no reversal. We post a
-    // single `refund` row keyed to the product order — matching the booking
-    // refund trigger's shape — regardless of cash vs wallet, because the
-    // recognised revenue is reversed either way.
-    const shouldReversePlatformLedger =
+    // Reverse platform-held revenue on the ledger and credit wallet when cancelling
+    // or refunding a paid order (shared with admin route).
+    if (
       parsed.status === "refunded" ||
-      (parsed.status === "cancelled" && order.payment_status === "paid");
-    const ledgerRefundAmount =
-      parsed.status === "refunded" ? refundAmount : Number(order.total_amount ?? 0);
-
-    if (shouldReversePlatformLedger) {
-      const admin = getSupabaseAdmin();
-      const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
-        .select("id, tenant_id")
-        .eq("product_order_id", id)
-        .in("transaction_type", ["payment", "provider_earnings", "platform_fee"])
-        .limit(1);
-      const isPlatformHeld = Array.isArray(ledgerRows) && ledgerRows.length > 0;
-      if (isPlatformHeld) {
-        const ledgerTenantId =
-          (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
-        const { data: existingRefund } = await (admin.from("finance_transactions") as any)
-          .select("id")
-          .eq("product_order_id", id)
-          .eq("transaction_type", "refund")
-          .limit(1);
-        const alreadyReversed = Array.isArray(existingRefund) && existingRefund.length > 0;
-        if (!alreadyReversed) {
-        const { data: captureRows } = await (admin.from("finance_transactions") as any)
-          .select("transaction_type, amount, net")
-          .eq("product_order_id", id)
-          .in("transaction_type", ["provider_earnings", "platform_fee"]);
-        const earningsRow = (captureRows ?? []).find(
-          (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
-        ) as { amount?: number; net?: number } | undefined;
-        const feeRow = (captureRows ?? []).find(
-          (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
-        ) as { amount?: number; net?: number } | undefined;
-        const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
-        const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
-        const orderTotal = Number(order.total_amount ?? 0);
-        const refundRatio =
-          orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
-        const refundProviderEarnings =
-          Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
-        const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
-        const refundDescription = `Refund for product order ${order.order_number || id.slice(0, 8)}${
-          parsed.refund_reason
-            ? ` (${parsed.refund_reason})`
-            : parsed.cancellation_reason
-              ? ` (cancelled: ${parsed.cancellation_reason})`
-              : ""
-        }`;
-        const refundRows: Record<string, unknown>[] = [];
-        if (refundProviderEarnings > 0) {
-          refundRows.push({
-            booking_id: null,
-            product_order_id: id,
-            provider_id: providerId,
-            tenant_id: ledgerTenantId,
-            transaction_type: "refund",
-            refund_component: "provider_earnings",
-            amount: refundProviderEarnings,
-            fees: 0,
-            commission: 0,
-            net: -refundProviderEarnings,
-            currency: order.currency || LAST_RESORT_CURRENCY,
-            description: refundDescription,
-            created_at: new Date().toISOString(),
-          });
-        }
-        if (refundPlatformFee > 0) {
-          refundRows.push({
-            booking_id: null,
-            product_order_id: id,
-            provider_id: providerId,
-            tenant_id: ledgerTenantId,
-            transaction_type: "refund",
-            refund_component: "platform_fee",
-            amount: refundPlatformFee,
-            fees: 0,
-            commission: 0,
-            net: -refundPlatformFee,
-            currency: order.currency || LAST_RESORT_CURRENCY,
-            description: refundDescription,
-            created_at: new Date().toISOString(),
-          });
-        }
-        if (refundRows.length === 0 && ledgerRefundAmount > 0) {
-          refundRows.push({
-            booking_id: null,
-            product_order_id: id,
-            provider_id: providerId,
-            tenant_id: ledgerTenantId,
-            transaction_type: "refund",
-            refund_component: "provider_earnings",
-            amount: ledgerRefundAmount,
-            fees: 0,
-            commission: 0,
-            net: -ledgerRefundAmount,
-            currency: order.currency || LAST_RESORT_CURRENCY,
-            description: refundDescription,
-            created_at: new Date().toISOString(),
-          });
-        }
-        if (refundRows.length > 0) {
-          await (admin.from("finance_transactions") as any).insert(refundRows);
-        }
-        }
-      }
-
-      if (
-        parsed.status === "cancelled" &&
-        order.payment_status === "paid" &&
-        order.customer_id &&
-        ledgerRefundAmount > 0
-      ) {
-        await (admin.rpc as any)("wallet_credit_admin", {
-          p_user_id: order.customer_id,
-          p_amount: ledgerRefundAmount,
-          p_currency: order.currency || LAST_RESORT_CURRENCY,
-          p_description: `Refund for cancelled order ${order.order_number || id.slice(0, 8)}`,
-          p_reference_id: id,
-          p_reference_type: "product_order_refund",
-          p_tenant_id: order.tenant_id ?? null,
-          p_idempotency_key: `product_order_cancel_refund:${id}`,
-        });
-        await (supabase.from("product_orders") as any)
-          .update({
-            payment_status: "refunded",
-            refunded_amount: ledgerRefundAmount,
-            refunded_at: new Date().toISOString(),
-          })
-          .eq("id", id);
-      }
+      (parsed.status === "cancelled" && order.payment_status === "paid")
+    ) {
+      await applyProductOrderCancelRefundSideEffects(
+        supabase,
+        getSupabaseAdmin(),
+        order,
+        {
+          newStatus: parsed.status === "refunded" ? "refunded" : "cancelled",
+          refundAmount,
+          cancellationReason: parsed.cancellation_reason,
+          refundReason: parsed.refund_reason,
+        },
+      );
     }
 
     // Dispatch notification to customer based on status change
-    if (parsed.status && updated?.customer?.id) {
-      const notificationMap: Record<string, { type: string; title: string; message: string }> = {
-        confirmed: {
-          type: "product_order_confirmed",
-          title: "Order Confirmed",
-          message: `Your order ${updated.order_number} has been confirmed and is being prepared.`,
-        },
-        shipped: {
-          type: "product_order_shipped",
-          title: "Order Shipped",
-          message: `Your order ${updated.order_number} has been shipped.${parsed.carrier ? ` via ${parsed.carrier}` : ""}${parsed.tracking_number ? ` Tracking: ${parsed.tracking_number}` : ""}`,
-        },
-        ready_for_collection: {
-          type: "product_order_ready_collection",
-          title: "Ready for Collection",
-          message: `Your order ${updated.order_number} is ready for collection.`,
-        },
-        delivered: {
-          type: "product_order_delivered",
-          title: "Order Delivered",
-          message: `Your order ${updated.order_number} has been delivered. Enjoy!`,
-        },
-        cancelled: {
-          type: "product_order_cancelled",
-          title: "Order Cancelled",
-          message: `Your order ${updated.order_number} has been cancelled.${parsed.cancellation_reason ? ` Reason: ${parsed.cancellation_reason}` : ""}`,
-        },
-        refunded: {
-          type: "product_order_refunded",
-          title: refundMethod === "cash" ? "Refund Processed" : "Refund Added to Wallet",
-          message:
-            refundMethod === "cash"
-              ? `Your refund for order ${updated.order_number} has been processed and returned to you in person.`
-              : `Your refund for order ${updated.order_number} has been added to your wallet.`,
-        },
-      };
-
-      // When a cash refund needs customer confirmation we send the dedicated
-      // confirm/dispute notification below instead of the generic "refund
-      // processed" one, so the customer isn't told it's done AND asked to
-      // confirm in the same breath.
+    if (parsed.status && parsed.status !== order.status && updated?.customer?.id) {
       const needsRefundConfirmation =
         parsed.status === "refunded" && refundMethod === "cash" && !!order.customer_id;
 
-      const notif = notificationMap[parsed.status];
-      if (notif && !needsRefundConfirmation) {
-        void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
-          insertNotification({
-            user_id: updated.customer.id,
-            type: notif.type,
-            title: notif.title,
-            message: notif.message,
-            data: {
-              product_order_id: id,
-              order_number: updated.order_number,
-              status: parsed.status,
-            },
-            action_url: "/product-orders",
-          })
-        );
+      if (
+        NOTIFY_STATUSES.has(parsed.status as ProductOrderNotifyStatus) &&
+        !needsRefundConfirmation
+      ) {
+        await dispatchProductOrderStatusNotification({
+          supabase,
+          customerId: updated.customer.id,
+          status: parsed.status as ProductOrderNotifyStatus,
+          orderId: id,
+          orderNumber: String(updated.order_number ?? id.slice(0, 8)),
+          tenantId: order.tenant_id ?? null,
+          providerId,
+          collectionLocationId: (updated as { collection_location_id?: string | null })
+            .collection_location_id,
+          cancellationReason: parsed.cancellation_reason,
+          trackingNumber: parsed.tracking_number ?? (updated as { tracking_number?: string }).tracking_number,
+          carrier: parsed.carrier ?? (updated as { carrier?: string }).carrier,
+          estimatedDelivery:
+            parsed.estimated_delivery_date ??
+            (updated as { estimated_delivery_date?: string }).estimated_delivery_date,
+          refundAmount: parsed.status === "refunded" ? refundAmount : null,
+        });
       }
 
       // §Product-refund-confirmation: send the confirm/dispute request for

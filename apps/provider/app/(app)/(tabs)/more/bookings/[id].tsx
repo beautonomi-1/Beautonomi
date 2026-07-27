@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, parseISO } from "date-fns";
 import * as Location from "expo-location";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
+import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
@@ -38,6 +39,7 @@ import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { APP_URL } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { downloadPdf } from "@/lib/pdf-file";
+import { shareProviderBookingReceipt } from "@/lib/share-receipt";
 import { formatCurrency } from "@/lib/format";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
@@ -324,6 +326,8 @@ type BookingDetail = {
     guest_name?: string | null;
   }[];
   booking_source?: string | null;
+  /** Resolved name of the provider's "where did this client come from" source. */
+  referral_source_name?: string | null;
   /** Points earned for this booking (when completed); from provider_point_transactions */
   provider_points_earned?: number | null;
   custom_offer?: {
@@ -664,6 +668,11 @@ export default function BookingDetailScreen() {
   );
   /** Flip to true immediately on a successful OTP verify so the PIN UI clears before the heavy refresh completes. */
   const [optimisticArrivalVerified, setOptimisticArrivalVerified] = useState(false);
+
+  const markOptimisticStatus = useCallback((dbTarget: string) => {
+    invalidateApiCacheForPath("/api/provider/bookings");
+    setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+  }, []);
 
   const resolvedBooking = useMemo((): BookingDetail | null => {
     if (!data) return null;
@@ -1755,33 +1764,8 @@ export default function BookingDetailScreen() {
 
   async function shareBookingReceiptSummary() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const cur = b.currency ?? getTenantDefaultCurrency();
-    const portalBase = APP_URL?.replace(/\/$/, "") ?? "";
-    const manageUrl = portalBase ? `${portalBase}/provider/bookings` : "";
-    const lines: string[] = [
-      "Beautonomi booking",
-      `Booking #${b.booking_number ?? String(id).slice(0, 8)}`,
-      "",
-      `Provider: ${providerProfile?.business_name ?? "—"}`,
-      `When: ${formatDateTimeSafe(b.scheduled_at)}`,
-      `Status: ${b.status}`,
-      "",
-      ...services.map((svc) => {
-        const title = svc.offering_name ?? (svc as { name?: string }).name ?? "Service";
-        const price = Number((svc as { price?: number }).price ?? 0);
-        return `• ${title} – ${cur} ${price.toFixed(2)}`;
-      }),
-      "",
-      `Total: ${cur} ${Number(totalAmount).toFixed(2)}`,
-    ];
-    if (outstanding > 0) {
-      lines.push(`Outstanding: ${cur} ${outstanding.toFixed(2)}`);
-    }
-    if (manageUrl) {
-      lines.push("", `Portal: ${manageUrl}`);
-    }
     try {
-      await Share.share({ message: lines.join("\n"), title: "Booking receipt" });
+      await shareProviderBookingReceipt(String(id), b.booking_number ?? null);
     } catch (e) {
       Alert.alert("Share", e instanceof Error ? e.message : "Could not share this receipt.");
     }
@@ -2039,7 +2023,7 @@ export default function BookingDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (dbTarget === "in_progress") {
-      setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+      markOptimisticStatus(dbTarget);
       const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
@@ -2079,7 +2063,7 @@ export default function BookingDetailScreen() {
               style: "default",
               onPress: () => {
                 void (async () => {
-                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+                  markOptimisticStatus(dbTarget);
                   const { error: err, errorCode } = await postMutation(
                     `/api/provider/bookings/${id}/complete-service`,
                     {},
@@ -2118,7 +2102,7 @@ export default function BookingDetailScreen() {
               style: "default",
               onPress: () => {
                 void (async () => {
-                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+                  markOptimisticStatus(dbTarget);
                   const { error: err, errorCode } = await postMutation(
                     `/api/provider/bookings/${id}/complete-service`,
                     {},
@@ -2139,7 +2123,7 @@ export default function BookingDetailScreen() {
         return;
       }
 
-      setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+      markOptimisticStatus(dbTarget);
       const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
@@ -2163,7 +2147,7 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
+    markOptimisticStatus(dbTarget);
     const version = (b as BookingDetail & { version?: number }).version;
     const patchStatus = dbTargetToPatchStatusField(dbTarget);
     const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
@@ -3273,6 +3257,16 @@ export default function BookingDetailScreen() {
                   : "Settled"}
               </Text>
             </View>
+            {b.referral_source_name ? (
+              <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+                <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>
+                  Client source
+                </Text>
+                <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")} numberOfLines={1}>
+                  {b.referral_source_name}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
@@ -5330,7 +5324,7 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 disabled={patchLoading}
                 onPress={async () => {
-                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget("cancelled"));
+                  markOptimisticStatus("cancelled");
                   const version = (b as BookingDetail & { version?: number }).version;
                   const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
                     status: "cancelled",
@@ -5419,7 +5413,7 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 disabled={patchLoading}
                 onPress={async () => {
-                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget("no_show"));
+                  markOptimisticStatus("no_show");
                   const version = (b as BookingDetail & { version?: number }).version;
                   const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
                     status: "no_show",

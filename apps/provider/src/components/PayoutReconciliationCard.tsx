@@ -48,7 +48,7 @@ export function PayoutReconciliationCard({ reconciliation, currency, payoutHoldD
         <Row label="Recognized payoutable earnings (net of refunds)" value={reconciliation.recognized_payoutable_earnings} />
         {reconciliation.excluded_provider_collected > 0 ? (
           <Row
-            label="Excluded: cash / Yoco / EFT you collected directly (not held by us)"
+            label="Excluded: cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly (not held by us)"
             value={reconciliation.excluded_provider_collected}
             muted
           />

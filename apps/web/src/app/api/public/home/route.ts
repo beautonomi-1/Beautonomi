@@ -14,7 +14,15 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 import { resolveActiveBadge } from "@/lib/provider/active-badge";
-import { applyPublicProviderVisibility } from "@/lib/providers/public-provider-visibility";
+import {
+  applyPublicProviderVisibility,
+  isProviderPubliclyVisible,
+} from "@/lib/providers/public-provider-visibility";
+import {
+  fetchPublicHomeTopRatedFromMv,
+  fetchPublicHomeHottestFromMv,
+} from "@/lib/public-home/fetch-public-home-top-rated-mv";
+import { withStorageListThumbnail } from "@/lib/supabase/storage-list-thumbnail";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -255,6 +263,45 @@ export async function GET(request: Request) {
       // Fallback: If no providers with 5+ reviews, show providers with any reviews, then verified/featured
       (async () => {
         try {
+        const mvRows = await fetchPublicHomeTopRatedFromMv(supabase, tenantId, 12);
+        if (mvRows.length > 0) {
+          const orderedIds = mvRows.map((r) => r.provider_id);
+          const { data: mvProviders } = await withTimeout(
+            applyCategoryFilter(
+              applyPublicProviderVisibility(
+                // `status`/`deleted_at` must be selected too: isProviderPubliclyVisible
+                // treats a missing status as not-public and would drop every row.
+                providersTable()
+                  .select(`${providerFields}, status, deleted_at`)
+                  .in("id", orderedIds),
+              ),
+            ),
+            5000,
+            "topRated-mv",
+          );
+          const byId = new Map(
+            ((mvProviders ?? []) as Record<string, unknown>[]).map((p) => [String(p.id), p]),
+          );
+          const ordered = orderedIds
+            .map((id) => byId.get(id))
+            .filter((p): p is Record<string, unknown> => Boolean(p))
+            .map((p) => ({
+              ...p,
+              thumbnail_url: withStorageListThumbnail(p.thumbnail_url as string | null),
+            }));
+          if (ordered.length > 0) {
+            // Visibility is evaluated at request time so a provider that was hidden or
+            // suspended since the last view refresh disappears immediately.
+            const filtered = await filterProvidersBySeoSetting(ordered);
+            const visible = filtered.filter((row: Record<string, unknown>) =>
+              isProviderPubliclyVisible(row as never),
+            );
+            if (visible.length > 0) {
+              return { data: visible, error: null };
+            }
+          }
+        }
+
         // First try: providers with 5+ reviews
         const { data: topRatedWithReviews } = await withTimeout(applyCategoryFilter(
           providersTable()
@@ -487,6 +534,13 @@ export async function GET(request: Request) {
       // 5. Hottest Picks (trending - most bookings in last 30 days)
       (async () => {
         try {
+          // Precomputed ranking avoids the 5000-row booking scan on a cache miss.
+          // Only usable unfiltered — a category filter needs live per-category counts.
+          const mvHottestIds =
+            providerIdsForCategory === null
+              ? await fetchPublicHomeHottestFromMv(supabase, tenantId, 12)
+              : [];
+
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -503,9 +557,12 @@ export async function GET(request: Request) {
           } else if (providerIdsForCategory !== null && providerIdsForCategory.length === 0) {
             return { data: [], error: null };
           }
-          const { data: bookingCounts, error: bookingError } = await bookingQuery;
+          const { data: bookingCounts, error: bookingError } =
+            mvHottestIds.length > 0
+              ? { data: null as { provider_id: string }[] | null, error: null }
+              : await bookingQuery;
 
-          if (bookingError || !bookingCounts || bookingCounts.length === 0) {
+          if (mvHottestIds.length === 0 && (bookingError || !bookingCounts || bookingCounts.length === 0)) {
             // Fallback 1: featured providers
             const { data: featuredData } = await applyCategoryFilter(
               providersTable()
@@ -548,7 +605,7 @@ export async function GET(request: Request) {
 
           // Count bookings per provider
           const providerBookingCounts = new Map<string, number>();
-          (bookingCounts as any[]).forEach((booking: any) => {
+          ((bookingCounts ?? []) as any[]).forEach((booking: any) => {
             const providerId = booking.provider_id;
             if (providerId) {
               providerBookingCounts.set(
@@ -559,10 +616,13 @@ export async function GET(request: Request) {
           });
 
           // Get provider IDs sorted by booking count (descending)
-          const sortedProviderIds = Array.from(providerBookingCounts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 12)
-            .map(([providerId]) => providerId);
+          const sortedProviderIds =
+            mvHottestIds.length > 0
+              ? mvHottestIds
+              : Array.from(providerBookingCounts.entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 12)
+                  .map(([providerId]) => providerId);
 
           if (sortedProviderIds.length === 0) {
             // No bookings, fallback 1: featured providers
@@ -606,10 +666,11 @@ export async function GET(request: Request) {
           }
 
           // Fetch provider details for top providers
-          const { data: hottestProvidersRaw, error: hottestError } = await providersTable()
-            .select(providerFields)
-            .eq("status", "active")
-            .in("id", sortedProviderIds);
+          // Visibility is re-checked live so a provider suspended since the last
+          // view refresh cannot resurface from the precomputed ranking.
+          const { data: hottestProvidersRaw, error: hottestError } = await applyPublicProviderVisibility(
+            providersTable().select(providerFields).in("id", sortedProviderIds),
+          );
           
           // Filter by include_in_search_engines
           const hottestProviders = hottestProvidersRaw ? await filterProvidersBySeoSetting(hottestProvidersRaw) : null;

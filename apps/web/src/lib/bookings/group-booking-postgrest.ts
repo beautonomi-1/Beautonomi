@@ -29,7 +29,7 @@ export const PROVIDER_GROUP_DETAIL_SELECT_FALLBACK = `
   booking_participants(
     id, booking_id, participant_name, participant_email, participant_phone,
     is_primary_contact, service_id, service_name, price, duration_minutes, addons,
-    checked_in_at, checked_out_at
+    notes, checked_in_at, checked_out_at
   )
 `;
 
@@ -54,7 +54,7 @@ export const PROVIDER_GROUP_DETAIL_SELECT = `
   booking_participants(
     id, booking_id, participant_name, participant_email, participant_phone,
     is_primary_contact, service_id, service_name, price, duration_minutes, addons,
-    checked_in_at, checked_out_at
+    notes, checked_in_at, checked_out_at
   )
 `;
 

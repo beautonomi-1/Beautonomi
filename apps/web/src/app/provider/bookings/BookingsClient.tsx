@@ -598,6 +598,9 @@ export function BookingsClient({
       recurrence_occurrences: (booking as any).recurrence_occurrences ?? null,
       services: (booking as any).services || [],
       products: (booking as any).products || [],
+      // Carried through so switching this sidebar to edit doesn't save the
+      // client source back as empty.
+      referral_source_id: (booking as any).referral_source_id ?? null,
     } as Appointment;
     openViewMode(apt);
   }, []);

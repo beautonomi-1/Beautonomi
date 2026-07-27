@@ -16,6 +16,8 @@ type StripePaymentIntentLike = {
     reference?: string;
     wallet_amount_applied?: string | number;
     gift_card_amount_applied?: string | number;
+    payment_option?: string;
+    requires_deposit?: string | boolean;
   };
 };
 
@@ -90,6 +92,12 @@ export async function handleStripePaymentIntentSucceeded(
       ? intent.metadata.reference.trim()
       : intent.id ?? "";
 
+  const paymentOption = String(intent.metadata?.payment_option || "full");
+  const requiresDeposit =
+    intent.metadata?.requires_deposit === true ||
+    intent.metadata?.requires_deposit === "true";
+  const isDeposit = requiresDeposit && paymentOption === "deposit";
+
   const ledger = await recordBookingOnlineChargeLedger(supabase, {
     bookingId,
     reference: ledgerReference,
@@ -98,6 +106,8 @@ export async function handleStripePaymentIntentSucceeded(
     feesMajor: 0,
     walletAmountApplied: walletAmount,
     giftCardAmountApplied: giftCardAmount,
+    isDeposit,
+    sourcePaymentId: recorded.bookingPaymentId,
     metadata: {
       stripe_payment_intent_id: intent.id ?? null,
       source: "stripe_webhook",

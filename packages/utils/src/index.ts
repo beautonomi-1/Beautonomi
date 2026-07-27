@@ -294,3 +294,22 @@ export {
   type GrowthKind,
   type GrowthResult,
 } from "./reports/growth-display";
+export {
+  bookingShareModelFromCustomerReceipt,
+  bookingShareModelFromProviderReceipt,
+  formatPaymentMethodLabel,
+  formatPostalAddress,
+  formatReceiptShareText,
+  orderShareModelFromReceipt,
+  saleShareModelFromReceipt,
+  type ReceiptAudience,
+  type ReceiptDepositInfo,
+  type ReceiptFulfillment,
+  type ReceiptKind,
+  type ReceiptLineItem,
+  type ReceiptMoneyLine,
+  type ReceiptParty,
+  type ReceiptPayment,
+  type ReceiptRefund,
+  type ReceiptShareModel,
+} from "./receipts";

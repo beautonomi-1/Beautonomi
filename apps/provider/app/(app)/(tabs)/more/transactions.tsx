@@ -1,10 +1,11 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Redirect, useRouter } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiPost } from "@/hooks/useApi";
+import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -14,8 +15,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { TruncationBanner } from "@/components/finance/TruncationBanner";
+import { MoneyRangeChips, type MoneyRangeKey } from "@/components/finance/MoneyRangeChips";
+import { formatLedgerUiBucket } from "@/lib/financeLabels";
 import { formatCurrency, formatDate, formatTimeAgo } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { useProvider } from "@/providers/ProviderContext";
 
 interface Transaction {
   id: string;
@@ -35,13 +39,6 @@ interface Transaction {
   transaction_type?: string;
 }
 
-const PERIOD_FILTERS = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "3 Months", value: "3months" },
-  { label: "All Time", value: "all" },
-];
 
 const TYPE_FILTERS = [
   { label: "All", value: "all" },
@@ -115,11 +112,13 @@ function paymentMethodLabel(method: string | null): string {
 export function TransactionsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const handleBack = useProviderStackBack();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const [period, setPeriod] = useState("month");
+  const [period, setPeriod] = useState<MoneyRangeKey>("month");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [listLimit, setListLimit] = useState(50);
 
   interface TransactionsApiPayload {
     transactions?: Transaction[];
@@ -132,12 +131,22 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
     };
     truncated_list?: boolean;
     truncated_ledger?: boolean;
+    list_offset?: number;
+    list_total?: number;
   }
 
-  /** Org-wide ledger: omit `location_id` so payouts and non-booking rows still appear when a branch is selected in the app (matches Transactions hub behaviour). */
-  const { data: txnPayload, loading, error: txnError, errorCode, refresh } = useApi<TransactionsApiPayload | Transaction[]>(
-    `/api/provider/transactions?period=${period}&limit=200`
-  );
+  const transactionsPath = `/api/provider/transactions?period=${period}&limit=${listLimit}&offset=0${
+    selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
+  }`;
+
+  /** Branch-scoped when a location is selected (matches Sales / Overview aggregates). */
+  const { data: txnPayload, loading, error: txnError, errorCode, refresh, silentRefresh } = useApi<
+    TransactionsApiPayload | Transaction[]
+  >(transactionsPath, {
+    staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+    revalidateOnFocus: true,
+  });
+  useFocusRevalidate(silentRefresh);
 
   const transactions = useMemo(() => {
     if (!txnPayload) return [];
@@ -154,6 +163,12 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
     if (!txnPayload || Array.isArray(txnPayload)) return false;
     return Boolean(txnPayload.truncated_ledger || txnPayload.truncated_list);
   }, [txnPayload]);
+
+  useEffect(() => {
+    setListLimit(50);
+  }, [period, selectedLocationId]);
+
+  const canLoadMore = showTruncationBanner && listLimit < 200;
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string },
     { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
@@ -201,11 +216,9 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
 
   const totalOut = useMemo(() => {
     if (useServerSummary) return serverSummary!.total_out;
-    const inn = filtered
-      .filter((t) => t.type === "earning" || t.type === "tip")
+    return filtered
+      .filter((t) => t.type === "payout" || t.type === "refund")
       .reduce((s, t) => s + t.amount, 0);
-    const net = filtered.reduce((s, t) => s + signedContributionForSummary(t), 0);
-    return Math.max(0, inn - net);
   }, [filtered, useServerSummary, serverSummary]);
 
   const netAmount = useMemo(() => {
@@ -336,6 +349,17 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
         </View>
       ) : null}
 
+      {canLoadMore ? (
+        <View style={twStyle("mb-3 px-4")}>
+          <TouchableOpacity
+            style={twStyle("items-center rounded-xl border border-gray-200 bg-white py-3")}
+            onPress={() => setListLimit((prev) => Math.min(prev + 50, 200))}
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Load more transactions</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Summary cards */}
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1 rounded-xl border border-green-100 bg-green-50 p-3"), { marginRight: 8 }]}>
@@ -379,9 +403,7 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
         placeholder="Search transactions..."
       />
 
-      <View style={twStyle("mt-2 mb-1")}>
-        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
-      </View>
+      <MoneyRangeChips value={period} onChange={setPeriod} />
       <View style={twStyle("mb-3")}>
         <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
@@ -452,8 +474,8 @@ export function TransactionsContent({ embedded = false }: { embedded?: boolean }
             <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-4")}>
               <View style={twStyle("mb-3 flex-row justify-between")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Type</Text>
-                <Text style={twStyle("text-sm font-medium capitalize text-gray-900")}>
-                  {selectedTxn.type}
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                  {formatLedgerUiBucket(selectedTxn.type)}
                 </Text>
               </View>
               {selectedTxn.transaction_type ? (

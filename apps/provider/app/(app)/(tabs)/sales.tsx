@@ -48,6 +48,8 @@ import {
   paystackTerminalCollectionIntentPayload,
 } from "@/lib/paystack-terminal-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { downloadPdf } from "@/lib/pdf-file";
+import { shareProviderSaleReceipt } from "@/lib/share-receipt";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
@@ -312,6 +314,8 @@ export default function SalesScreen() {
   const [barcodeLookupBusy, setBarcodeLookupBusy] = useState(false);
   const [barcodeLookupError, setBarcodeLookupError] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<{
+    saleId: string;
+    saleNumber?: string | null;
     total: number;
     items: CartItem[];
     client: string;
@@ -424,7 +428,7 @@ export default function SalesScreen() {
   }, [rawClients]);
   const { execute: createSale, loading: creatingSale } = useApiPost<
     object,
-    { id: string }
+    { id: string; ref_number?: string | null }
   >("/api/provider/sales");
 
   const handleRefresh = useCallback(async () => {
@@ -756,9 +760,13 @@ export default function SalesScreen() {
       payment_method: method,
       payment_status: "completed",
     });
-    const { error } = await createSale(payload);
+    const { data, error } = await createSale(payload);
     if (error) {
       Alert.alert("Error", error);
+      return;
+    }
+    if (!data?.id) {
+      Alert.alert("Error", "Sale was saved but the receipt could not be opened.");
       return;
     }
     yocoPendingSaleIdRef.current = null;
@@ -766,6 +774,8 @@ export default function SalesScreen() {
     paycloudPendingSaleIdRef.current = null;
     setPaycloudLinkedSaleId(null);
     setReceiptData({
+      saleId: data.id,
+      saleNumber: data.ref_number ?? null,
       total: grandTotal,
       items: [...cart],
       client: selectedClient?.full_name ?? "Walk-in",
@@ -938,6 +948,8 @@ export default function SalesScreen() {
     yocoPendingSaleIdRef.current = null;
     setYocoLinkedSaleId(null);
     setReceiptData({
+      saleId,
+      saleNumber: null,
       total: grandTotal,
       items: [...cart],
       client: selectedClient?.full_name ?? "Walk-in",
@@ -981,6 +993,8 @@ export default function SalesScreen() {
     setPaycloudLinkedSaleId(null);
     setShowPaycloudPayment(false);
     setReceiptData({
+      saleId,
+      saleNumber: null,
       total: grandTotal,
       items: [...cart],
       client: selectedClient?.full_name ?? "Walk-in",
@@ -1670,7 +1684,40 @@ export default function SalesScreen() {
           </View>
         </View>
 
-        <View style={{ marginTop: 16 }}>
+        <View style={{ marginTop: 16, gap: 10 }}>
+          <ActionButton
+            label={pt("salesScreen.shareReceipt", undefined, "Share receipt")}
+            variant="secondary"
+            onPress={() => {
+              void shareProviderSaleReceipt(
+                receiptData.saleId,
+                receiptData.saleNumber,
+              ).catch((e) =>
+                Alert.alert("Share", e instanceof Error ? e.message : "Could not share receipt."),
+              );
+            }}
+            fullWidth
+          />
+          <ActionButton
+            label={pt("salesScreen.downloadReceipt", undefined, "Download PDF")}
+            variant="secondary"
+            onPress={() => {
+              void downloadPdf({
+                router,
+                pdfPath: `/api/provider/sales/${encodeURIComponent(receiptData.saleId)}/receipt/pdf`,
+                signedUrlPath: `/api/provider/sales/${encodeURIComponent(receiptData.saleId)}/receipt/signed-url`,
+                filename: `sale_${receiptData.saleNumber ?? receiptData.saleId}.pdf`,
+                title: pt("salesScreen.receiptTitle", undefined, "Receipt"),
+                label: "receipt",
+              }).catch((e) =>
+                Alert.alert(
+                  "Receipt",
+                  e instanceof Error ? e.message : "Could not download receipt.",
+                ),
+              );
+            }}
+            fullWidth
+          />
           <ActionButton
             label={pt("salesScreen.done", undefined, "Done")}
             variant="primary"

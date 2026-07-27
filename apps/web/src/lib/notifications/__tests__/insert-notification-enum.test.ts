@@ -117,4 +117,22 @@ describe("insertNotification — enum fallback", () => {
     expect(firstAttempt[1]?.type).toBe("payment_request");
     expect(retry[1]?.type).toBe("payment_received");
   });
+
+  it("maps product_order_cancelled to product_order_update enum value", async () => {
+    const seen: { type: string }[] = [];
+    hoisted.getSupabaseAdminMock.mockReturnValue(
+      mockAdminWithInsert(async (_n, rows) => {
+        seen.push(rows as { type: string });
+        return { error: null };
+      }),
+    );
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    await insertNotification({
+      user_id: "55555555-5555-5555-5555-555555555555",
+      type: "product_order_cancelled",
+      title: "Order Cancelled",
+      message: "Your order was cancelled.",
+    });
+    expect(seen[0]?.type).toBe("product_order_update");
+  });
 });

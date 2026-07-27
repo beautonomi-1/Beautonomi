@@ -206,20 +206,33 @@ export async function PATCH(
       expirationAt: expDate.toISOString(),
     });
 
+    const { data: reqRow } = await supabaseAdmin
+      .from("custom_requests")
+      .select("customer_id, expires_at")
+      .eq("id", offerData.request_id ?? "")
+      .maybeSingle();
+    const requestRow = reqRow as { customer_id?: string; expires_at?: string | null } | null;
+    const customerId = requestRow?.customer_id;
+
     if (offerData.request_id) {
+      // Request expiry cascades onto its offers (cron + accept), so extending the
+      // offer past the request's own expiry has to carry the request with it.
+      const requestExpiresAt = requestRow?.expires_at ? new Date(requestRow.expires_at) : null;
+      const mustExtendRequest =
+        !requestExpiresAt ||
+        Number.isNaN(requestExpiresAt.getTime()) ||
+        requestExpiresAt.getTime() < expDate.getTime();
+
       await supabaseAdmin
         .from("custom_requests")
-        .update({ status: "offered", updated_at: now })
+        .update({
+          status: "offered",
+          updated_at: now,
+          ...(mustExtendRequest ? { expires_at: expDate.toISOString() } : {}),
+        })
         .eq("id", offerData.request_id)
         .in("status", ["pending", "offered"]);
     }
-
-    const { data: reqRow } = await supabaseAdmin
-      .from("custom_requests")
-      .select("customer_id")
-      .eq("id", offerData.request_id ?? "")
-      .maybeSingle();
-    const customerId = (reqRow as { customer_id?: string } | null)?.customer_id;
 
     if (customerId) {
       try {

@@ -614,6 +614,11 @@ function GroupBookingsPageInner() {
                             <div className="flex-1">
                               <div className="font-medium text-sm">{participant.client_name}</div>
                               <div className="text-xs text-gray-500">{participant.service_name}</div>
+                              {participant.notes && (
+                                <div className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">
+                                  Note: {participant.notes}
+                                </div>
+                              )}
                               {participant.price != null && participant.price > 0 && (
                                 <div className="text-xs text-gray-500 mt-1"><Money amount={participant.price} /></div>
                               )}
@@ -1310,6 +1315,9 @@ function GroupBookingDetailPanel({
                       )}
                       {p.client_phone && (
                         <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{p.client_phone}</span>
+                      )}
+                      {p.notes && (
+                        <span className="text-gray-600 whitespace-pre-wrap">Note: {p.notes}</span>
                       )}
                     </div>
                   </div>

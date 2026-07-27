@@ -31,6 +31,7 @@ const bookingLinkSchema = z.object({
   price: z.coerce.number().min(0).optional(),
   duration_minutes: z.coerce.number().int().min(0).optional(),
   addons: z.array(z.unknown()).optional(),
+  notes: z.string().max(2000).optional().nullable(),
   is_primary_contact: z.boolean().optional(),
 });
 
@@ -51,6 +52,7 @@ const inlineParticipantSchema = z
     duration_minutes: z.coerce.number().int().min(0).optional(),
     is_primary_contact: z.boolean().optional(),
     addons: z.array(z.unknown()).optional(),
+    notes: z.string().max(2000).optional().nullable(),
   })
   .refine(
     (d) =>
@@ -168,6 +170,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           price: typeof body.price === "number" ? body.price : 0,
           duration_minutes: body.duration_minutes ?? null,
           addons: Array.isArray(body.addons) ? body.addons : [],
+          notes: body.notes?.trim() || null,
           is_primary_contact: body.is_primary_contact ?? false,
         })
         .select("*")
@@ -273,6 +276,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         price: typeof inline.price === "number" ? inline.price : 0,
         duration_minutes: inline.duration_minutes ?? null,
         addons: Array.isArray(inline.addons) ? inline.addons : [],
+        notes: inline.notes?.trim() || null,
       })
       .select("*")
       .single();

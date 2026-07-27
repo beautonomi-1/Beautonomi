@@ -15,6 +15,7 @@ import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 
 /** Normalize `/api/bookings/.../receipt` JSON (flat `{ receipt }` vs `{ data: { receipt } }`). */
 function unwrapReceiptResponse(body: unknown): Receipt | null {
@@ -291,6 +292,7 @@ export default function ReceiptPage() {
             </Button>
           </Link>
           <div className="flex gap-2">
+            <ShareReceiptButton kind="customer-booking" subjectId={bookingId} label="Share" />
             <Button variant="outline" onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
               Download PDF

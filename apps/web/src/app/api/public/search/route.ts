@@ -21,6 +21,7 @@ import {
   intersectProviderIds,
   resolveSubcategoryId,
 } from "@/lib/search/public-search-filters";
+import { withStorageListThumbnail } from "@/lib/supabase/storage-list-thumbnail";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -587,8 +588,8 @@ export async function GET(request: Request) {
         business_type: provider.business_type,
         rating: provider.rating_average || 0,
         review_count: provider.review_count || 0,
-        thumbnail_url: provider.thumbnail_url,
-        avatar_url: provider.avatar_url ?? null,
+        thumbnail_url: withStorageListThumbnail(provider.thumbnail_url),
+        avatar_url: withStorageListThumbnail(provider.avatar_url ?? null),
         city: location?.city || "",
         country: location?.country || "",
         is_featured: provider.is_featured || false,
@@ -755,8 +756,8 @@ export async function GET(request: Request) {
             business_type: p.business_type || "salon",
             rating: p.rating_average || 0,
             review_count: p.review_count || 0,
-            thumbnail_url: p.thumbnail_url,
-            avatar_url: p.avatar_url ?? null,
+            thumbnail_url: withStorageListThumbnail(p.thumbnail_url),
+            avatar_url: withStorageListThumbnail(p.avatar_url ?? null),
             city: loc?.city ?? "",
             country: loc?.country ?? "",
             is_featured: p.is_featured ?? false,

@@ -36,6 +36,7 @@ import {
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-online-charge-ledger";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import {
   completeWalletGiftSyntheticPayments,
@@ -497,7 +498,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .maybeSingle();
 
   if (alreadySettledPaymentTx) {
-    console.log(`[charge-success] Paystack ref ${reference} already settled — skipping (idempotent retry).`);
+    console.log(`[charge-success] Paystack ref ${reference} already settled — checking ledger (idempotent retry).`);
     const amountInCurrency = convertFromSmallestUnit(amount || 0);
     if (amountInCurrency > 0) {
       const recordedPayment = await recordBookingPaystackPayment(supabase, {
@@ -516,19 +517,30 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         console.error("[charge-success] idempotent booking_payments repair failed:", recordedPayment);
       }
     }
-    await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
-      paymentReference: reference,
-      paymentProvider: "paystack",
-    });
-    try {
-      await tryCreateCustomerRecurringFromPaystackChargeMetadata(
-        supabase,
-        metadata as Record<string, unknown> | undefined,
-      );
-    } catch (recurringErr) {
-      console.error("[recurring] charge.success idempotent recurring hook:", recurringErr);
+    const { data: existingFinanceOnRetry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "payment")
+      .maybeSingle();
+    if (existingFinanceOnRetry) {
+      await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
+        paymentReference: reference,
+        paymentProvider: "paystack",
+      });
+      try {
+        await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+          supabase,
+          metadata as Record<string, unknown> | undefined,
+        );
+      } catch (recurringErr) {
+        console.error("[recurring] charge.success idempotent recurring hook:", recurringErr);
+      }
+      return;
     }
-    return;
+    console.log(
+      `[charge-success] Paystack ref ${reference} in payment_transactions but finance ledger missing — backfilling`,
+    );
   }
 
   // Calculate amounts (Paystack amounts are in smallest currency unit)
@@ -536,7 +548,6 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     amountInCurrency,
     feesInCurrency,
     feeSource: paystackFeeSource,
-    netAmount,
   } = await resolvePaystackChargeFees(supabase, amount, fees);
 
   // Tip/tax/travel and customer-paid platform fees are excluded from commission.
@@ -560,50 +571,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   // not the card portion alone — otherwise provider_earnings is understated.
   const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
   const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
-  const totalCollectedForCommission =
-    amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
-
-  // Commission base must be proportional to the ACTUAL collected amount, not the
-  // full booking total. For deposit payments, metadata.commission_base contains the
-  // full booking's commission base, which would overstate revenue. Instead, compute
-  // the net-revenue ratio from booking totals and apply it to the collected amount.
   const bookingTotal = Number(bookingData.total_amount || 0);
-  const fullCommissionBase = bookingTotal > 0
-    ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
-    : 0;
-  const netRevenueRatio = bookingTotal > 0
-    ? Math.max(0, fullCommissionBase / bookingTotal)
-    : 1;
-  const commissionBase = Math.max(
-    0,
-    Math.round(totalCollectedForCommission * netRevenueRatio * 100) / 100,
-  );
-
-  const resolvedTenantIdForPlatformSettings =
-    bookingData.tenant_id ?? financeTenantId ?? null;
-  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
-    tenantId: resolvedTenantIdForPlatformSettings,
-    providerId: bookingData.provider_id ?? null,
-  });
-
-  const platformCommission =
-    commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
-
-  // Provider earnings for this charge: commission base minus platform take.
-  // Travel and tip are booking-level items recorded separately (not per-charge).
-  const providerEarnings = subtractMoney(commissionBase, platformCommission);
-
   // Deposit-only first charges must not recognize full tip / tax / travel /
   // platform fee — that money may never be collected. Post those booking-level
   // rows only when this charge is a full (or remaining) settlement.
   const stdPaymentOption = String(metadata?.payment_option || "full");
   const stdRequiresDeposit = Boolean(metadata?.requires_deposit);
   const stdIsDeposit = stdRequiresDeposit && stdPaymentOption === "deposit";
-  const shouldPostBookingLevelFees = !stdIsDeposit;
 
   // Ensure booking_payments parity for webhook-first flows.
   // This keeps bookings.total_paid / payment_status aligned even if redirect verify is skipped.
   // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
+  let sourcePaymentId: string | null = null;
   if (amountInCurrency > 0) {
     const recordedPayment = await recordBookingPaystackPayment(supabase, {
       bookingId: metadata.booking_id,
@@ -621,6 +600,8 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     });
     if (recordedPayment.ok === false) {
       console.error("[charge-success] booking_payments insert failed:", recordedPayment);
+    } else {
+      sourcePaymentId = recordedPayment.bookingPaymentId;
     }
   }
 
@@ -768,82 +749,36 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
   const webhookNow = new Date().toISOString();
 
-  // ── Idempotency guard — MUST run before payment_transactions insert ───────
-  // Two scenarios:
-  //
-  //   A. Same Paystack reference fires twice (webhook retry).
-  //      Detected by: payment_transactions already has a row for this reference.
-  //      Action: return immediately — skip everything.
-  //
-  //   B. A SECOND Paystack charge on the same booking (deposit + pay-remaining
-  //      both routed through this handler instead of the pay-remaining handler).
-  //      Detected by: finance_transactions already has a 'payment' row for this
-  //      booking but the Paystack reference is new.
-  //      Action: write payment + provider_earnings ONLY (per-charge amounts).
-  //      Booking-level rows (platform_fee, tax, tip, travel_fee) are recorded once
-  //      from the first charge and must NOT be written again.
-  const { data: existingPaymentTxForRef } = await supabase
-    .from("payment_transactions")
-    .select("id")
-    .eq("provider", "paystack")
-    .eq("reference", reference)
-    .maybeSingle();
-
-  if (existingPaymentTxForRef) {
-    const { data: existingFinanceForRetry } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", metadata.booking_id)
-      .eq("transaction_type", "payment")
-      .maybeSingle();
-    if (existingFinanceForRetry) {
-      console.log(
-        `[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`,
-      );
-      await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
-      return;
-    }
-    console.log(
-      `[charge-success] Paystack ref ${reference} has payment_transactions row but finance ledger missing — backfilling`,
-    );
-  }
-
-  // Scenario B detection: has the ledger for this booking been written before?
-  // Use 'payment' row as the indicator — it is always written for any non-zero charge.
-  const { data: existingFinancePaymentRow } = await supabase
-    .from("finance_transactions")
-    .select("id")
-    .eq("booking_id", metadata.booking_id)
-    .eq("transaction_type", "payment")
-    .maybeSingle();
-  const isSecondCharge = !!existingFinancePaymentRow;
-
-  // Now insert the payment_transactions row for this charge (after idempotency checks).
-  if (!existingPaymentTxForRef) {
-  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
-    booking_id: metadata.booking_id,
+  const ledger = await recordBookingOnlineChargeLedger(supabase, {
+    bookingId: metadata.booking_id,
     reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
     provider: "paystack",
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    feeSource: paystackFeeSource,
+    walletAmountApplied: walletAmountFromMeta,
+    giftCardAmountApplied: giftCardAmountFromMeta,
+    customerEmail: customer?.email ?? null,
+    isDeposit: stdIsDeposit,
+    sourcePaymentId,
+    bookingLevelAmountOverrides: {
+      tip: tipAmount,
+      tax: taxAmount,
+      travel: travelFee,
+      platformFee: serviceFeeAmount,
+    },
+    auditLegStyle: "paystack_standard",
     metadata: {
       paystack_reference: reference,
-      customer_email: customer?.email,
-      customer_code: customer?.customer_code,
-      fee_source: paystackFeeSource,
+      customer_code: customer?.customer_code ?? null,
     },
-    created_at: webhookNow,
   });
-  if (paymentTxInsertError) {
-    if (paymentTxInsertError.code === "23505") {
-      console.log(`[charge-success] Paystack ref ${reference} was settled concurrently — skipping duplicate ledger writes.`);
-      await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
-      return;
-    }
-    throw paymentTxInsertError;
+  if (ledger.ok === false) {
+    throw ledger.error ?? new Error(`Failed to record Paystack finance ledger: ${ledger.reason}`);
   }
+  if (ledger.skipped) {
+    await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
+    return;
   }
 
   const splitWalletOrGift =
@@ -868,275 +803,6 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .eq("booking_id", metadata.booking_id)
     .eq("payment_provider", "paystack")
     .eq("payment_provider_transaction_id", reference);
-
-  if (!isSecondCharge) {
-  await supabase.from("finance_transactions").insert({
-    booking_id: metadata.booking_id,
-    provider_id: bookingData.provider_id || null,
-    tenant_id: financeTenantId,
-    transaction_type: "payment",
-    amount: commissionBase,
-    fees: feesInCurrency,
-    commission: platformCommission,
-    net: platformCommission,
-    description: `Payment for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
-  });
-
-  await supabase.from("finance_transactions").insert({
-    booking_id: metadata.booking_id,
-    provider_id: bookingData.provider_id || null,
-    tenant_id: financeTenantId,
-    transaction_type: "provider_earnings",
-    amount: providerEarnings,
-    fees: 0,
-    commission: 0,
-    net: providerEarnings,
-    description: `Provider earnings for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
-  });
-
-  // Customer-paid Platform Fee entry — only when fully collected (not deposit-only).
-  if (shouldPostBookingLevelFees && serviceFeeAmount > 0) {
-    await supabase.from("finance_transactions").insert({
-      booking_id: metadata.booking_id,
-      provider_id: bookingData.provider_id || null,
-      tenant_id: financeTenantId,
-      transaction_type: "platform_fee",
-      amount: serviceFeeAmount,
-      fees: 0,
-      commission: 0,
-      net: serviceFeeAmount,
-      description: `Platform fee for booking ${bookingData.booking_number}`,
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  if (shouldPostBookingLevelFees) {
-  await supabase.from("finance_transactions").insert([
-    ...(tipAmount > 0
-      ? [{
-          booking_id: metadata.booking_id,
-          provider_id: bookingData.provider_id || null,
-          tenant_id: financeTenantId,
-          transaction_type: "tip",
-          amount: tipAmount,
-          fees: 0,
-          commission: 0,
-          net: tipAmount,
-          description: `Tip for booking ${bookingData.booking_number}`,
-          created_at: webhookNow,
-        }]
-      : []),
-    ...(taxAmount > 0
-      ? [{
-          booking_id: metadata.booking_id,
-          provider_id: bookingData.provider_id || null,
-          tenant_id: financeTenantId,
-          transaction_type: "tax",
-          amount: taxAmount,
-          fees: 0,
-          commission: 0,
-          net: 0,
-          description: `Tax for booking ${bookingData.booking_number}`,
-          created_at: webhookNow,
-        }]
-      : []),
-    ...(travelFee > 0
-      ? [
-          {
-            booking_id: metadata.booking_id,
-            provider_id: bookingData.provider_id || null,
-            tenant_id: financeTenantId,
-            transaction_type: "travel_fee",
-            amount: travelFee,
-            fees: 0,
-            commission: 0,
-            net: travelFee,
-            description: `Travel fee for booking ${bookingData.booking_number}`,
-            created_at: webhookNow,
-          },
-        ]
-      : []),
-  ]);
-  }
-  } else {
-    // Scenario B: second Paystack charge for this booking. Per-charge payment +
-    // earnings always append. Booking-level tip/tax/travel/platform_fee are posted
-    // here when the first charge was a deposit (they were deferred until collected).
-    console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings.`);
-    await supabase.from("finance_transactions").insert([
-      {
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "payment",
-        amount: commissionBase,
-        fees: feesInCurrency,
-        commission: platformCommission,
-        net: platformCommission,
-        description: `Payment (charge 2) for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      },
-      {
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "provider_earnings",
-        amount: subtractMoney(commissionBase, platformCommission),
-        fees: 0,
-        commission: 0,
-        net: subtractMoney(commissionBase, platformCommission),
-        description: `Provider earnings (charge 2) for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      },
-    ]);
-
-    const { data: existingBookingLevelRows } = await supabase
-      .from("finance_transactions")
-      .select("id, transaction_type")
-      .eq("booking_id", metadata.booking_id)
-      .in("transaction_type", ["tip", "tax", "travel_fee", "platform_fee"]);
-    const existingBookingLevelTypes = new Set(
-      ((existingBookingLevelRows ?? []) as Array<{ transaction_type?: string }>).map((r) =>
-        String(r.transaction_type ?? ""),
-      ),
-    );
-    const deferredRows: Array<Record<string, unknown>> = [];
-    if (serviceFeeAmount > 0 && !existingBookingLevelTypes.has("platform_fee")) {
-      deferredRows.push({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "platform_fee",
-        amount: serviceFeeAmount,
-        fees: 0,
-        commission: 0,
-        net: serviceFeeAmount,
-        description: `Platform fee for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      });
-    }
-    if (tipAmount > 0 && !existingBookingLevelTypes.has("tip")) {
-      deferredRows.push({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "tip",
-        amount: tipAmount,
-        fees: 0,
-        commission: 0,
-        net: tipAmount,
-        description: `Tip for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      });
-    }
-    if (taxAmount > 0 && !existingBookingLevelTypes.has("tax")) {
-      deferredRows.push({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "tax",
-        amount: taxAmount,
-        fees: 0,
-        commission: 0,
-        net: 0,
-        description: `Tax for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      });
-    }
-    if (travelFee > 0 && !existingBookingLevelTypes.has("travel_fee")) {
-      deferredRows.push({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "travel_fee",
-        amount: travelFee,
-        fees: 0,
-        commission: 0,
-        net: travelFee,
-        description: `Travel fee for booking ${bookingData.booking_number}`,
-        created_at: webhookNow,
-      });
-    }
-    if (deferredRows.length > 0) {
-      await supabase.from("finance_transactions").insert(deferredRows);
-    }
-  }
-
-  // For split wallet + card payments: record the wallet portion in the ledger.
-  // The card portion is recorded above (payment + provider_earnings rows).
-  // Check idempotency: only insert if no wallet_payment row exists yet for this booking.
-  const walletAmountApplied = Number(metadata.wallet_amount_applied ?? 0);
-  if (walletAmountApplied > 0) {
-    const { data: existingWalletEntry } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", metadata.booking_id)
-      .eq("transaction_type", "wallet_payment")
-      .maybeSingle();
-    if (!existingWalletEntry) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "wallet_payment",
-        amount: walletAmountApplied,
-        fees: 0,
-        commission: 0,
-        net: walletAmountApplied,
-        description: `Wallet contribution for booking ${bookingData.booking_number} (split payment)`,
-        created_at: webhookNow,
-      });
-    }
-  }
-
-  // Gift card portion (split gift card + card payments)
-  const giftCardAmountApplied = Number(metadata.gift_card_amount_applied ?? 0);
-  if (giftCardAmountApplied > 0) {
-    const { data: existingGcEntry } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", metadata.booking_id)
-      .eq("transaction_type", "gift_card_payment")
-      .maybeSingle();
-    if (!existingGcEntry) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "gift_card_payment",
-        amount: giftCardAmountApplied,
-        fees: 0,
-        commission: 0,
-        net: giftCardAmountApplied,
-        description: `Gift card contribution for booking ${bookingData.booking_number} (split payment)`,
-        created_at: webhookNow,
-      });
-    }
-
-    // Keep gift-card liability rollforward balanced across all booking payment paths.
-    const { data: existingGcLiabilityReduction } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", metadata.booking_id)
-      .eq("transaction_type", "gift_card_liability_reduction")
-      .maybeSingle();
-    if (!existingGcLiabilityReduction) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: metadata.booking_id,
-        provider_id: bookingData.provider_id || null,
-        tenant_id: financeTenantId,
-        transaction_type: "gift_card_liability_reduction",
-        amount: giftCardAmountApplied,
-        fees: 0,
-        commission: 0,
-        net: -giftCardAmountApplied,
-        description: `Gift card liability reduction for booking ${bookingData.booking_number} (split payment)`,
-        created_at: webhookNow,
-      });
-    }
-  }
 
   await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
 
@@ -3473,17 +3139,6 @@ async function handleBookingRemainingSuccess(
   const { reference, metadata, amount, fees, customer } = payload;
   const bookingId = metadata.booking_id as string;
 
-  const { data: existingPayment } = await supabase
-    .from("booking_payments")
-    .select("id")
-    .eq("payment_provider", "paystack")
-    .eq("payment_provider_id", reference)
-    .maybeSingle();
-  if (existingPayment) {
-    console.log(`Pay-remaining payment ${reference} already recorded`);
-    return;
-  }
-
   const { data: booking, error: bookingError } = await supabase
     .from("bookings")
     .select("*")
@@ -3509,30 +3164,59 @@ async function handleBookingRemainingSuccess(
   const {
     amountInCurrency,
     feesInCurrency,
+    feeSource: payRemainingFeeSource,
   } = await resolvePaystackChargeFees(supabase, amount, fees);
 
-  const { error: bookingPaymentInsertError } = await supabase
+  const { data: existingBookingPayment } = await supabase
     .from("booking_payments")
-    .insert({
-      booking_id: bookingId,
-      tenant_id: payRemainingFinanceTenantId,
-      amount: amountInCurrency,
-      payment_method: "card",
-      payment_provider: "paystack",
-      payment_provider_id: reference,
-      payment_provider_data: { metadata, customer_email: customer?.email },
-      status: "completed",
-      notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
-    });
-  if (bookingPaymentInsertError) {
-    if (bookingPaymentInsertError.code === "23505") {
-      console.log(
-        `Pay-remaining payment ${reference} already recorded (unique index / concurrent webhook)`,
-      );
-      return;
+    .select("id")
+    .eq("payment_provider", "paystack")
+    .eq("payment_provider_id", reference)
+    .maybeSingle();
+
+  let payRemainingSourcePaymentId: string | null = existingBookingPayment?.id
+    ? String(existingBookingPayment.id)
+    : null;
+
+  if (!existingBookingPayment) {
+    const { data: insertedPayRemainingPayment, error: bookingPaymentInsertError } = await supabase
+      .from("booking_payments")
+      .insert({
+        booking_id: bookingId,
+        tenant_id: payRemainingFinanceTenantId,
+        amount: amountInCurrency,
+        payment_method: "card",
+        payment_provider: "paystack",
+        payment_provider_id: reference,
+        payment_provider_data: { metadata, customer_email: customer?.email },
+        status: "completed",
+        notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
+      })
+      .select("id")
+      .maybeSingle();
+    if (bookingPaymentInsertError) {
+      if (bookingPaymentInsertError.code === "23505") {
+        console.log(
+          `Pay-remaining payment ${reference} already recorded (unique index / concurrent webhook)`,
+        );
+        const { data: racedPayment } = await supabase
+          .from("booking_payments")
+          .select("id")
+          .eq("payment_provider", "paystack")
+          .eq("payment_provider_id", reference)
+          .maybeSingle();
+        payRemainingSourcePaymentId = racedPayment?.id ? String(racedPayment.id) : null;
+      } else {
+        console.error("Pay-remaining: booking_payments insert failed", bookingPaymentInsertError);
+        return;
+      }
+    } else {
+      payRemainingSourcePaymentId = insertedPayRemainingPayment?.id
+        ? String(insertedPayRemainingPayment.id)
+        : null;
     }
-    console.error("Pay-remaining: booking_payments insert failed", bookingPaymentInsertError);
-    return;
+  } else {
+    console.log(`Pay-remaining payment ${reference} already recorded — checking ledger (idempotent retry).`);
   }
 
   const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
@@ -3546,10 +3230,6 @@ async function handleBookingRemainingSuccess(
   }
   await completeWalletGiftSyntheticPayments(supabase, bookingId);
 
-  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
-    tenantId: bookingData.tenant_id ?? payRemainingFinanceTenantId ?? null,
-    providerId,
-  });
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
@@ -3561,136 +3241,45 @@ async function handleBookingRemainingSuccess(
         0),
   );
   const bookingTotal = Number(bookingData.total_amount || 0);
-  const fullCommissionBase =
-    bookingTotal > 0
-      ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
-      : amountInCurrency;
-  const netRevenueRatio =
-    bookingTotal > 0 ? Math.max(0, fullCommissionBase / bookingTotal) : 1;
-  const totalCollectedForCommission =
-    amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
-  const commissionBase = Math.max(
-    0,
-    Math.round(totalCollectedForCommission * netRevenueRatio * 100) / 100,
-  );
-  const platformCommission = commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
-  const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
-    booking_id: bookingId,
+  const ledger = await recordBookingOnlineChargeLedger(supabase, {
+    bookingId,
     reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: amountInCurrency - feesInCurrency,
-    status: "success",
     provider: "paystack",
-    transaction_type: "charge",
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    feeSource: payRemainingFeeSource,
+    walletAmountApplied: walletAmountFromMeta,
+    giftCardAmountApplied: giftCardAmountFromMeta,
+    customerEmail: customer?.email ?? null,
+    sourcePaymentId: payRemainingSourcePaymentId,
+    bookingLevelAmountOverrides: {
+      tip: tipAmount,
+      tax: taxAmount,
+      travel: travelFee,
+      platformFee: serviceFeeAmount,
+    },
+    descriptions: {
+      payment: `Remaining balance for booking ${bookingData.booking_number}`,
+      providerEarnings: `Provider earnings (remaining balance) for booking ${bookingData.booking_number}`,
+    },
+    paymentTransactionType: "charge",
+    auditLegStyle: "paystack_pay_remaining",
     metadata: {
       payment_type: "booking_remaining",
-      customer_email: customer?.email,
+      paystack_reference: reference,
+      customer_code: customer?.customer_code ?? null,
     },
-    created_at: new Date().toISOString(),
   });
-  if (paymentTxInsertError) {
-    if (paymentTxInsertError.code === "23505") {
-      console.log(`Pay-remaining payment ${reference} was settled concurrently`);
-      return;
-    }
-    throw paymentTxInsertError;
+  if (ledger.ok === false) {
+    throw ledger.error ?? new Error(`Failed to record pay-remaining finance ledger: ${ledger.reason}`);
   }
-
-  await supabase.from("finance_transactions").insert({
-    booking_id: bookingId,
-    provider_id: providerId,
-    tenant_id: payRemainingFinanceTenantId,
-    transaction_type: "payment",
-    amount: commissionBase,
-    fees: feesInCurrency,
-    commission: platformCommission,
-    net: platformCommission,
-    description: `Remaining balance for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
-  });
-  await supabase.from("finance_transactions").insert({
-    booking_id: bookingId,
-    provider_id: providerId,
-    tenant_id: payRemainingFinanceTenantId,
-    transaction_type: "provider_earnings",
-    amount: providerEarnings,
-    fees: 0,
-    commission: 0,
-    net: providerEarnings,
-    description: `Provider earnings (remaining balance) for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
-  });
-
-  const payRemainWebhookNow = new Date().toISOString();
-  if (walletAmountFromMeta > 0) {
-    const { data: existingWalletEntry } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", bookingId)
-      .eq("transaction_type", "wallet_payment")
-      .ilike("description", `%${reference}%`)
-      .maybeSingle();
-    if (!existingWalletEntry) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: bookingId,
-        provider_id: providerId,
-        tenant_id: payRemainingFinanceTenantId,
-        transaction_type: "wallet_payment",
-        amount: walletAmountFromMeta,
-        fees: 0,
-        commission: 0,
-        net: walletAmountFromMeta,
-        description: `Wallet (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
-        created_at: payRemainWebhookNow,
-      });
-    }
-  }
-  if (giftCardAmountFromMeta > 0) {
-    const { data: existingGcEntry } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", bookingId)
-      .eq("transaction_type", "gift_card_payment")
-      .ilike("description", `%${reference}%`)
-      .maybeSingle();
-    if (!existingGcEntry) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: bookingId,
-        provider_id: providerId,
-        tenant_id: payRemainingFinanceTenantId,
-        transaction_type: "gift_card_payment",
-        amount: giftCardAmountFromMeta,
-        fees: 0,
-        commission: 0,
-        net: giftCardAmountFromMeta,
-        description: `Gift card (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
-        created_at: payRemainWebhookNow,
-      });
-    }
-    const { data: existingGcLiab } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("booking_id", bookingId)
-      .eq("transaction_type", "gift_card_liability_reduction")
-      .ilike("description", `%${reference}%`)
-      .maybeSingle();
-    if (!existingGcLiab) {
-      await supabase.from("finance_transactions").insert({
-        booking_id: bookingId,
-        provider_id: providerId,
-        tenant_id: payRemainingFinanceTenantId,
-        transaction_type: "gift_card_liability_reduction",
-        amount: giftCardAmountFromMeta,
-        fees: 0,
-        commission: 0,
-        net: -giftCardAmountFromMeta,
-        description: `Gift card liability reduction (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
-        created_at: payRemainWebhookNow,
-      });
-    }
+  if (ledger.skipped) {
+    await syncBookingAfterPaystackSuccess(supabase, bookingId, {
+      paymentReference: reference,
+      paymentProvider: "paystack",
+    });
+    return;
   }
 
   await syncBookingAfterPaystackSuccess(supabase, bookingId, {

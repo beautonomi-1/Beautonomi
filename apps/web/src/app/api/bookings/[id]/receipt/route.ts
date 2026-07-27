@@ -9,8 +9,10 @@ import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token
 type BookingServiceRow = {
   price?: number | null;
   guest_name?: string | null;
+  duration_minutes?: number | null;
+  staff?: { name?: string | null } | null;
   offerings?: { title?: string | null; price?: number | null } | null;
-  offering?: { title?: string | null; price?: number | null } | null;
+  offering?: { title?: string | null; price?: number | null; duration_minutes?: number | null } | null;
   /**
    * B14: immutable tax snapshot captured at booking time
    * (F17 / migration 493). Shape: `{ code, rate, inclusive, jurisdiction, source, resolved_at }`.
@@ -208,6 +210,7 @@ export async function GET(
         booking_services:booking_services(
           id,
           offering_id,
+          staff_id,
           duration_minutes,
           price,
           currency,
@@ -219,7 +222,8 @@ export async function GET(
             title,
             price,
             duration_minutes
-          )
+          ),
+          staff:provider_staff(id, name)
         ).order(scheduled_start_at, { ascending: true }),
         booking_addons:booking_addons(
           id,
@@ -267,7 +271,8 @@ export async function GET(
             description
           )
         ),
-        service_packages:package_id(id, name)
+        service_packages:package_id(id, name),
+        group_bookings!bookings_group_booking_id_fkey(ref_number)
       `)
       .eq("id", bookingId)
       .single();
@@ -461,6 +466,19 @@ export async function GET(
       status: _receiptStatus,
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,
+      location_type: bRaw.location_type || "at_salon",
+      service_address: bRaw.address_line1
+        ? {
+            line1: bRaw.address_line1,
+            line2: bRaw.address_line2 || "",
+            city: bRaw.address_city || "",
+            state: bRaw.address_state || "",
+            postal_code: bRaw.address_postal_code || "",
+          }
+        : null,
+      group_booking_ref:
+        (bookingRaw as { group_bookings?: { ref_number?: string | null } | null })
+          ?.group_bookings?.ref_number ?? null,
       customer: booking.customer,
       provider: providerForReceipt,
       services: booking.booking_services?.map((bs: BookingServiceRow) => {
@@ -472,6 +490,8 @@ export async function GET(
           quantity: 1,
           price: bs.price ?? offeringPrice ?? 0,
           total: bs.price ?? offeringPrice ?? 0,
+          staff: bs.staff?.name ?? null,
+          duration: bs.duration_minutes ?? bs.offering?.duration_minutes ?? null,
           // B14: forward the immutable tax snapshot stamped at booking
           // creation so clients render the real VAT line (rate + inclusive
           // flag) even if the provider's current tax settings have changed.

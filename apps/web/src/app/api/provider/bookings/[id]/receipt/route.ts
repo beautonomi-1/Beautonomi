@@ -197,6 +197,26 @@ export async function GET(
     }
     const customer = b.customers || {};
 
+    let referralSourceName: string | null = null;
+    if (b.referral_source_id) {
+      const { data: referralSource } = await supabaseAdmin
+        .from("referral_sources")
+        .select("name")
+        .eq("id", b.referral_source_id)
+        .maybeSingle();
+      referralSourceName = (referralSource as { name?: string } | null)?.name ?? null;
+    }
+
+    let groupParticipants: Array<{ participant_name?: string | null }> = [];
+    if (b.group_booking_id) {
+      const { data: participants } = await supabaseAdmin
+        .from("booking_participants")
+        .select("participant_name")
+        .eq("group_booking_id", b.group_booking_id)
+        .order("created_at", { ascending: true });
+      groupParticipants = (participants ?? []) as Array<{ participant_name?: string | null }>;
+    }
+
     // Build line items for invoice display (include guest_name for group bookings)
     const serviceItems = (b.booking_services || []).map((bs: any) => ({
       description: bs.guest_name ? `${bs.offerings?.title || "Service"} (${bs.guest_name})` : (bs.offerings?.title || "Service"),
@@ -293,6 +313,7 @@ export async function GET(
 
     const receiptData = {
       invoice_number: b.booking_number || `${receiptPrefix}-${String(receiptNextNumber).padStart(4, "0")}`,
+      status: b.status || null,
       package_id: packageActuallyApplied ? packageId : null,
       package_name: packageActuallyApplied ? (pkgJoined?.name ?? null) : null,
       group_booking_ref: (b as any).group_bookings?.ref_number || null,
@@ -365,6 +386,9 @@ export async function GET(
       additional_charges: additionalCharges,
       transactions: b.booking_payments || [],
       notes: b.special_requests || null,
+      referral_source_name: referralSourceName,
+      booking_source: b.booking_source || null,
+      group_participants: groupParticipants,
       receipt_header: receiptHeader,
       receipt_footer: receiptFooter,
     };

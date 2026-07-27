@@ -117,6 +117,12 @@ const TYPE_FALLBACK: Record<string, string> = {
   custom_request: "system",
   provider_membership_cancelled: "system",
   product_order_placed: "product_order_update",
+  product_order_confirmed: "product_order_update",
+  product_order_shipped: "product_order_update",
+  product_order_ready_collection: "product_order_update",
+  product_order_delivered: "product_order_update",
+  product_order_cancelled: "product_order_update",
+  product_order_refunded: "product_order_update",
   identity_verification_approved: "account_verification",
   identity_verification_rejected: "account_verification",
 };

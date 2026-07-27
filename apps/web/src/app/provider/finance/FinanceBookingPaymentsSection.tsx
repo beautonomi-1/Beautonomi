@@ -12,17 +12,12 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { formatStatusLabel } from "@/lib/locale/status-label";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
+import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { toast } from "sonner";
 
-function formatLocalDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 /** Booking/order payment search — folded from the legacy /provider/payments page. */
-export function FinanceBookingPaymentsSection() {
+export function FinanceBookingPaymentsSection({ timezone }: { timezone?: string | null }) {
   const { format: fmt } = useReportCurrency();
   const [expanded, setExpanded] = useState(false);
 
@@ -53,22 +48,13 @@ export function FinanceBookingPaymentsSection() {
       setIsLoading(true);
       const filters: FilterParams = { search: debouncedSearchQuery || undefined };
       const now = new Date();
-      if (dateRange === "today") {
-        const today = formatLocalDate(now);
-        filters.date_from = today;
-        filters.date_to = today;
-      } else if (dateRange === "week") {
-        const day = now.getDay();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - day);
-        const weekEnd = new Date(now);
-        weekEnd.setDate(now.getDate() + (6 - day));
-        filters.date_from = formatLocalDate(weekStart);
-        filters.date_to = formatLocalDate(weekEnd);
-      } else if (dateRange === "month") {
-        filters.date_from = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
-        filters.date_to = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-      }
+      const rangeKey =
+        dateRange === "today" || dateRange === "week" || dateRange === "month"
+          ? dateRange
+          : "month";
+      const bounds = resolveProviderFinanceRangeBounds(rangeKey, timezone ?? "Africa/Johannesburg", now);
+      filters.date_from = formatDateYmd(bounds.startDate, timezone ?? "Africa/Johannesburg");
+      filters.date_to = formatDateYmd(now, timezone ?? "Africa/Johannesburg");
       const pagination: PaginationParams = { page, limit: 20 };
       const response = await providerApi.listPayments(filters, pagination);
       setPayments(response.data);
@@ -78,7 +64,7 @@ export function FinanceBookingPaymentsSection() {
     } finally {
       setIsLoading(false);
     }
-  }, [expanded, page, dateRange, debouncedSearchQuery]);
+  }, [expanded, page, dateRange, debouncedSearchQuery, timezone]);
 
   useEffect(() => {
     void loadPayments();

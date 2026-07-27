@@ -27,7 +27,7 @@ function signedContributionForSummary(row: ProviderLedgerUiRow): number {
   return 0;
 }
 
-function summarizeTransactions(rows: ProviderLedgerUiRow[]) {
+function summarizeTransactions(rows: ProviderLedgerUiRow[], locationScoped = false) {
   let totalIn = 0;
   let totalOut = 0;
   for (const row of rows) {
@@ -40,8 +40,9 @@ function summarizeTransactions(rows: ProviderLedgerUiRow[]) {
     total_out: totalOut,
     net,
     row_count: rows.length,
-    basis_note:
-      "Server totals for the full selected period (org-wide). List below may show fewer rows due to the limit parameter.",
+    basis_note: locationScoped
+      ? "Server totals for the full selected period (selected branch only). List below may show fewer rows due to the limit parameter."
+      : "Server totals for the full selected period (all branches). List below may show fewer rows due to the limit parameter.",
   };
 }
 
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
     const sp = request.nextUrl.searchParams;
     const period = sp.get("period") || "month";
     const limit = Math.min(parseInt(sp.get("limit") || "50", 10), 200);
+    const listOffset = Math.max(parseInt(sp.get("offset") || "0", 10) || 0, 0);
 
     const locationId = sp.get("location_id") || null;
     const fromDate = providerTransactionsPeriodStart(period, reportContext.timezone);
@@ -103,14 +105,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const summary = summarizeTransactions(allMapped);
-    const transactions = allMapped.slice(0, limit);
+    const summary = summarizeTransactions(allMapped, Boolean(locationId));
+    const transactions = allMapped.slice(listOffset, listOffset + limit);
 
     return successResponse({
       transactions,
       summary,
-      truncated_list: allMapped.length > limit,
+      truncated_list: allMapped.length > listOffset + limit,
       truncated_ledger: truncatedLedger,
+      list_offset: listOffset,
+      list_total: allMapped.length,
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);

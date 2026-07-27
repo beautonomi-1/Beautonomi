@@ -496,6 +496,29 @@ export async function postCustomOfferAccept(
     // ── Zero-Paystack path (wallet + gift fully cover the collectible) ─────
     if (amountToCollect <= 0) {
       const finalizeRef = `co_split_${id}_${Date.now()}`;
+      // finalizeCustomOfferPayment only settles from `payment_pending` (that gate
+      // protects against the cancel-payment refund race), so claim that state
+      // first — mirroring the saved-card path below.
+      const { error: zeroPendingErr } = await adminSupabase
+        .from("custom_offers")
+        .update({
+          status: "payment_pending",
+          payment_reference: finalizeRef,
+          payment_url: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (zeroPendingErr) {
+        for (const rb of reservedRollbacks) await rb();
+        return handleApiError(
+          new Error("Failed to save payment state"),
+          "Unable to process payment.",
+          "DB_ERROR",
+          500
+        );
+      }
+      await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
+
       const finalize = await finalizeCustomOfferPayment(adminSupabase, {
         offerId: id,
         reference: finalizeRef,
@@ -519,6 +542,18 @@ export async function postCustomOfferAccept(
       if (!finalize.ok) {
         // Refund tenders since no paystack call happened and finalize couldn't write.
         for (const rb of reservedRollbacks) await rb();
+        // Tenders are refunded, so reset to `pending` (same semantics as
+        // cancel-payment) rather than `finalize_failed`, which would block retry.
+        await adminSupabase
+          .from("custom_offers")
+          .update({
+            status: "pending",
+            payment_reference: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id)
+          .eq("status", "payment_pending");
+        await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
         return errorResponse(
           "We could not finalize your booking. Your wallet/gift card has been refunded — please try again or contact support.",
           "FINALIZE_FAILED",

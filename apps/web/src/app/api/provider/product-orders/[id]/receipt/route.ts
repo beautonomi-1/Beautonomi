@@ -10,6 +10,7 @@ import {
 import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import { buildOrderReceiptCore } from "@/lib/receipts/build-order-receipt";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -144,7 +145,7 @@ export async function GET(
           id, name, address_line1, city
         ),
         provider:providers (
-          id, business_name, receipt_header, receipt_footer
+          id, business_name, phone, user_id, receipt_header, receipt_footer
         )
       `
       )
@@ -175,60 +176,80 @@ export async function GET(
       : null;
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const subtotal = Number(order.subtotal || 0);
-    const tax = Number(order.tax_amount || 0);
-    const deliveryFee = Number(order.delivery_fee || 0);
-    const discount = Number(order.discount_amount || 0);
-    const platformFee = Number(order.platform_fee || 0);
-    const walletPaid = Number(order.wallet_amount || 0);
-    const totalFromRow =
-      order.total_amount != null && !Number.isNaN(Number(order.total_amount))
-        ? Number(order.total_amount)
-        : subtotal + tax + deliveryFee + platformFee - discount;
+    const core = buildOrderReceiptCore({
+      order: order as unknown as Record<string, unknown>,
+      items: order.items ?? [],
+    });
 
-    const items =
-      order.items?.map((it: OrderItemRow) => {
-        const ov = it.product_variant?.option_values;
-        const variantLabel =
-          ov && typeof ov === "object"
-            ? ` · ${Object.values(ov).join(" / ")}`
-            : "";
-        return {
-          name: `${it.product_name || "Product"}${variantLabel}`,
-          quantity: it.quantity || 1,
-          price: Number(it.unit_price || 0),
-          total:
-            Number(it.total_price || 0) ||
-            Number(it.unit_price || 0) * Number(it.quantity || 1),
-        };
-      }) || [];
+    const prov = order.provider as {
+      business_name?: string | null;
+      phone?: string | null;
+      user_id?: string | null;
+      receipt_header?: string | null;
+      receipt_footer?: string | null;
+    } | null;
+    let providerOwnerEmail: string | null = null;
+    if (prov?.user_id) {
+      const { data: ownerRow } = await admin
+        .from("users")
+        .select("email")
+        .eq("id", prov.user_id)
+        .maybeSingle();
+      providerOwnerEmail = (ownerRow as { email?: string | null } | null)?.email ?? null;
+    }
 
-    const prov = order.provider;
     const receipt = {
       order_number: order.order_number,
       order_date: order.created_at,
       status: order.status,
       fulfillment_type: order.fulfillment_type,
       customer: order.customer,
+      customer_name: core.customer_name,
+      customer_phone: core.customer_phone,
       provider_id: order.provider_id,
       provider: prov
-        ? { business_name: prov.business_name ?? null }
+        ? {
+            business_name: prov.business_name ?? null,
+            phone: prov.phone ?? null,
+            email: providerOwnerEmail,
+          }
         : null,
       receipt_header: prov?.receipt_header ?? null,
       receipt_footer: prov?.receipt_footer ?? null,
       delivery_address: order.fulfillment_type === "delivery" ? order.delivery_address : null,
       collection_location:
         order.fulfillment_type === "collection" ? order.collection_location : null,
-      items,
-      subtotal,
-      tax,
-      delivery_fee: deliveryFee,
-      discount,
-      platform_fee: platformFee,
-      wallet_amount: walletPaid,
-      total: totalFromRow,
+      items: core.items,
+      subtotal: core.subtotal,
+      tax: core.tax,
+      delivery_fee: core.deliveryFee,
+      discount: core.discount,
+      platform_fee: core.platformFee,
+      wallet_amount: core.walletPaid,
+      total: core.totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,
+      payment_method: core.payment_method,
+      payment_reference: core.payment_reference,
+      paid_at: core.paid_at,
+      amount_paid: core.amount_paid,
+      balance_due: core.balance_due,
+      tracking_number: core.tracking_number,
+      carrier: core.carrier,
+      tracking_url: core.tracking_url,
+      estimated_delivery_date: core.estimated_delivery_date,
+      delivery_instructions: core.delivery_instructions,
+      shipped_at: core.shipped_at,
+      delivered_at: core.delivered_at,
+      cancelled_at: core.cancelled_at,
+      cancellation_reason: core.cancellation_reason,
+      order_source: core.order_source,
+      booking_id: core.booking_id,
+      staff_id: core.staff_id,
+      refund_method: core.refund_method,
+      refunded_amount: core.refunded_amount,
+      refunded_at: core.refunded_at,
+      refund_reason: core.refund_reason,
     };
 
     return NextResponse.json({ receipt });

@@ -14,6 +14,7 @@ import {
   PRODUCT_RETURN_WINDOW_DAYS,
 } from "@/lib/ecommerce/product-return-eligibility";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 
 interface ProductOrder {
   id: string;
@@ -284,8 +285,10 @@ export default function OrderDetailPage() {
               {new Date(order.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
             </span>
           </div>
-          <a
-            href={`/api/me/orders/${order.id}/receipt/pdf`}
+          <div className="flex items-center gap-2">
+            <ShareReceiptButton kind="customer-order" subjectId={order.id} label="Share receipt" />
+            <a
+              href={`/api/me/orders/${order.id}/receipt/pdf`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -295,6 +298,7 @@ export default function OrderDetailPage() {
             </svg>
             Download receipt
           </a>
+          </div>
         </div>
         {errorMsg && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">

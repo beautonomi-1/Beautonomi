@@ -38,6 +38,19 @@ vi.mock("@/lib/finance/resolve-commission-percentage", () => ({
   resolveCommissionPercentageForProvider: vi.fn(async () => 10),
 }));
 
+vi.mock("@/lib/bookings/fetch-booking-commission-context", () => ({
+  fetchBookingCommissionContext: vi.fn(async (_admin, _bookingId, input) => ({
+    cumulativePaid: Math.max(0, Number(input?.chargeAmount ?? 0)),
+    postedLegsSum: 0,
+    bookingLevelItemsAlreadyPosted: false,
+    existingBookingLevelTypes: new Set<string>(),
+  })),
+}));
+
+vi.mock("@/lib/bookings/post-booking-audit-ledger-legs", () => ({
+  postBookingAuditLedgerLegsIfMissing: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/regions/config", () => ({
   getTenantRegionConfig: vi.fn(async () => ({ defaultCurrency: "ZAR" })),
 }));

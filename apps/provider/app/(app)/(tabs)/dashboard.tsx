@@ -450,11 +450,24 @@ export default function DashboardScreen() {
     timedOut: metricsTimedOut,
     refresh: refreshMetrics,
   } = useApi<DashboardMetrics>(
-    `/api/provider/dashboard${locQFirst}${locQFirst ? "&" : "?"}include=insights`,
+    `/api/provider/dashboard${locQFirst}`,
     {
       enabled: isFocused,
       timeoutMs: 15000,
       staleTimeMs: 0,
+    },
+  );
+
+  const {
+    data: insightsMetrics,
+    loading: insightsFetchLoading,
+    refresh: refreshInsights,
+  } = useApi<DashboardMetrics>(
+    `/api/provider/dashboard${locQFirst}${locQFirst ? "&" : "?"}include=insights`,
+    {
+      enabled: isFocused && secondaryEnabled && metrics !== null,
+      timeoutMs: 15000,
+      staleTimeMs: 60_000,
     },
   );
 
@@ -484,8 +497,19 @@ export default function DashboardScreen() {
     };
   }, [isFocused, selectedLocationId]);
 
-  const hasBundledInsights = Boolean(metrics?.insights);
-  const hasBundledBookingEligibility = Boolean(metrics?.booking_eligibility);
+  const dashboardView = useMemo(() => {
+    if (!metrics) return null;
+    if (!insightsMetrics) return metrics;
+    return {
+      ...metrics,
+      insights: insightsMetrics.insights ?? metrics.insights,
+      booking_eligibility: insightsMetrics.booking_eligibility ?? metrics.booking_eligibility,
+    };
+  }, [metrics, insightsMetrics]);
+
+  const hasBundledInsights = Boolean(dashboardView?.insights);
+  const hasBundledBookingEligibility = Boolean(dashboardView?.booking_eligibility);
+  const insightsPending = secondaryEnabled && insightsFetchLoading && !hasBundledInsights;
 
   /** Align dashboard date windows with provider business timezone (API expands civil dates in that zone). */
   const { today, weekStart, upcomingEnd } = useMemo(() => {
@@ -570,7 +594,7 @@ export default function DashboardScreen() {
   });
 
   const upcomingBookingsRaw =
-    metrics?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
+    dashboardView?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
   const upcomingBookings = useMemo(() => {
     if (!upcomingBookingsRaw?.length) return upcomingBookingsRaw;
     const nowMs = Date.now();
@@ -581,17 +605,17 @@ export default function DashboardScreen() {
   }, [upcomingBookingsRaw]);
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
-  const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
+  const weeklyRevenue = dashboardView?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
   const topServices =
-    normalizeTopServicesPayload(metrics?.insights?.top_services ?? fallbackTopServices) ?? null;
+    normalizeTopServicesPayload(dashboardView?.insights?.top_services ?? fallbackTopServices) ?? null;
   const recentActivity =
-    metrics?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
-  const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
+    dashboardView?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
+  const bookingEligibility = dashboardView?.booking_eligibility ?? fallbackBookingEligibility ?? null;
   const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
   const activityError = hasBundledInsights ? null : fallbackActivityError;
 
   const refreshRealtimeDashboardData = useCallback(() => {
-    const tasks = [refreshMetrics()];
+    const tasks = [refreshMetrics(), refreshInsights()];
     if (!hasBundledInsights) {
       tasks.push(refreshFallbackUpcoming());
       if (secondaryEnabled) {
@@ -607,6 +631,7 @@ export default function DashboardScreen() {
     void Promise.all(tasks);
   }, [
     refreshMetrics,
+    refreshInsights,
     hasBundledInsights,
     hasBundledBookingEligibility,
     refreshFallbackUpcoming,
@@ -620,7 +645,7 @@ export default function DashboardScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const tasks = [refreshMetrics()];
+      const tasks = [refreshMetrics(), refreshInsights()];
       if (!hasBundledInsights) {
         tasks.push(refreshFallbackUpcoming());
         if (secondaryEnabled) {
@@ -639,6 +664,7 @@ export default function DashboardScreen() {
     }
   }, [
     refreshMetrics,
+    refreshInsights,
     hasBundledInsights,
     hasBundledBookingEligibility,
     refreshFallbackUpcoming,
@@ -739,7 +765,7 @@ export default function DashboardScreen() {
     : undefined;
 
   const upcomingBasisFootnote =
-    metrics?.insights?.basis?.upcoming ??
+    dashboardView?.insights?.basis?.upcoming ??
     "Includes confirmed and in-progress appointments in your business timezone.";
 
   const periodLabel = useMemo(() => {
@@ -806,7 +832,7 @@ export default function DashboardScreen() {
       revenue: 0,
     }));
   }, [weeklyRevenue, provider?.timezone]);
-  const insightsLoading = !secondaryEnabled;
+  const insightsLoading = !secondaryEnabled || insightsPending;
 
   if (metricsLoading && !metrics && !metricsTimedOut) {
     return (
@@ -1756,8 +1782,8 @@ export default function DashboardScreen() {
         }}
       />
       <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12, marginTop: -4 }}>
-        {metrics?.insights?.basis?.activity_window
-          ? `Last 14 days (${metrics.insights.basis.activity_window}) · not filtered by the period above.`
+        {dashboardView?.insights?.basis?.activity_window
+          ? `Last 14 days (${dashboardView.insights.basis.activity_window}) · not filtered by the period above.`
           : "Latest updates across bookings, payments, and reviews — not filtered by the period above."}
       </Text>
       {insightsLoading ? (

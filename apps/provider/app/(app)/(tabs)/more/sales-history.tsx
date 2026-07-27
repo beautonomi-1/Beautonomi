@@ -3,7 +3,8 @@ import { Redirect, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, FlatList, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiPost } from "@/hooks/useApi";
+import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -19,6 +20,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getReportDateRange, formatReportRangeCaption, type ReportDateRangeKey } from "@/lib/reportDateRanges";
+import { MoneyRangeChips, moneyRangeCaption, type MoneyRangeKey } from "@/components/finance/MoneyRangeChips";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
@@ -63,12 +65,6 @@ interface SalesHistoryApiResponse {
   basis?: string;
 }
 
-const DATE_FILTERS = [
-  { label: "All Time", value: "all" },
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-];
 
 const SOURCE_FILTERS: { label: string; value: SalesHistorySource | "all" }[] = [
   { label: "All", value: "all" },
@@ -77,12 +73,8 @@ const SOURCE_FILTERS: { label: string; value: SalesHistorySource | "all" }[] = [
   { label: "POS", value: "pos" },
 ];
 
-function getDateRange(filter: string, timezone?: string | null): { from?: string; to?: string } {
-  if (filter === "all") return {};
-  if (filter === "today" || filter === "week" || filter === "month") {
-    return getReportDateRange(filter as ReportDateRangeKey, { timezone });
-  }
-  return {};
+function getDateRange(filter: MoneyRangeKey, timezone?: string | null): { from?: string; to?: string } {
+  return getReportDateRange(filter as ReportDateRangeKey, { timezone });
 }
 
 function sourceLabel(s: SalesHistorySource): string {
@@ -104,7 +96,7 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
   const { selectedLocationId, provider } = useProvider();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<MoneyRangeKey>("month");
   const [sourceFilter, setSourceFilter] = useState<SalesHistorySource | "all">("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSale, setSelectedSale] = useState<SalesHistoryRow | null>(null);
@@ -136,9 +128,12 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
     return parts.join("&");
   }, [page, debouncedSearch, dateRange, selectedLocationId, sourceFilter]);
 
-  const { data: salesPayload, loading, error: salesError, errorCode, refresh } = useApi<SalesHistoryApiResponse>(
-    `/api/provider/sales-history?${params}`,
-  );
+  const { data: salesPayload, loading, error: salesError, errorCode, refresh, silentRefresh } =
+    useApi<SalesHistoryApiResponse>(`/api/provider/sales-history?${params}`, {
+      staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+      revalidateOnFocus: true,
+    });
+  useFocusRevalidate(silentRefresh);
 
   const sales = useMemo(() => salesPayload?.data ?? [], [salesPayload?.data]);
 
@@ -227,11 +222,11 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
         </View>
       )}
 
-      {salesPayload?.default_range_months ? (
+      {salesPayload?.default_range_months && dateFilter === "all" ? (
         <View style={twStyle("mx-4 mb-2 rounded-lg bg-amber-50 px-3 py-2 border border-amber-100")}>
           <Text style={twStyle("text-xs text-amber-900")}>
-            No date filter: showing last {salesPayload.default_range_months} months of ledger-linked sales (POS uses the
-            same window).
+            All time shows the last {salesPayload.default_range_months} months of ledger-linked sales (server default).
+            Pick a narrower range for faster, exact totals.
           </Text>
         </View>
       ) : null}
@@ -284,16 +279,28 @@ export function SalesHistoryContent({ embedded = false }: { embedded?: boolean }
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search ref or client..." />
 
-      <View style={twStyle("my-2 px-4")}>
-        <FilterChipGroup options={DATE_FILTERS} selected={dateFilter} onSelect={setDateFilter} />
-        <View style={twStyle("mt-2")}>
+      <View style={twStyle("my-2")}>
+        <MoneyRangeChips value={dateFilter} onChange={setDateFilter} />
+        <View style={twStyle("mt-2 px-4")}>
           <FilterChipGroup
             options={SOURCE_FILTERS}
             selected={sourceFilter}
             onSelect={(v) => setSourceFilter(v as SalesHistorySource | "all")}
           />
         </View>
-        {dateRangeCaption ? <Text style={twStyle("mt-2 text-xs text-gray-500")}>{dateRangeCaption}</Text> : null}
+        {dateRangeCaption ? (
+          <Text style={twStyle("mt-2 px-4 text-xs text-gray-500")}>
+            {dateFilter === "all" && salesPayload?.default_range_months
+              ? `Last ${salesPayload.default_range_months} months (default)`
+              : dateRangeCaption}
+          </Text>
+        ) : dateFilter === "all" && salesPayload?.default_range_months ? (
+          <Text style={twStyle("mt-2 px-4 text-xs text-gray-500")}>
+            Last {salesPayload.default_range_months} months (default)
+          </Text>
+        ) : (
+          <Text style={twStyle("mt-2 px-4 text-xs text-gray-500")}>{moneyRangeCaption(dateFilter)}</Text>
+        )}
       </View>
 
       {loading && !sales.length && !salesError ? (

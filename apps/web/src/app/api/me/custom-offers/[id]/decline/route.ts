@@ -73,6 +73,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await patchCustomOfferMessageAttachments(admin, id, { status: "declined" });
 
+    // The parent request stays `offered` while any offer is still live. Once the
+    // last one is declined it must return to the provider's action queue,
+    // otherwise the request looks answered forever and no new offer is prompted.
+    if (offer.request_id) {
+      const { data: liveOffers } = await admin
+        .from("custom_offers")
+        .select("id")
+        .eq("request_id", offer.request_id)
+        // `finalize_failed` counts as live: money was taken and support owns it,
+        // so the request must not invite a fresh offer on top of it.
+        .in("status", [
+          "pending",
+          "changes_requested",
+          "payment_pending",
+          "accepted",
+          "paid",
+          "finalize_failed",
+        ])
+        .limit(1);
+
+      if (!liveOffers || liveOffers.length === 0) {
+        const { error: reqErr } = await admin
+          .from("custom_requests")
+          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .eq("id", offer.request_id)
+          .eq("status", "offered");
+        if (reqErr) {
+          console.warn("[decline] failed to reopen parent request:", reqErr);
+        }
+      }
+    }
+
     const providerId = req.provider_id;
     if (providerId) {
       try {

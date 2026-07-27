@@ -15,11 +15,18 @@ import {
   getProviderReportContext,
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
-import { subDays, subMonths, subYears, startOfMonth, endOfMonth } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
-import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
+import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
-import { recognizedRevenueInRange } from "@/lib/reports/provider-revenue-semantics";
+import {
+  computeProviderRevenueBreakdown,
+  filterRowsByCreatedAtRange,
+} from "@/lib/reports/provider-revenue-semantics";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import {
+  fetchProviderFinanceSummaryRpc,
+  shadowCompareFinanceSummary,
+} from "@/lib/reports/provider-finance-summary-rpc";
 
 
 /**
@@ -78,48 +85,12 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const reportContext = await getProviderReportContext(db, providerId);
     const tz = reportContext.timezone;
-    const zNow = toZonedTime(now, tz);
-    const todayYmd = formatDateYmd(now, tz);
 
-    let startDate: Date;
-    let lastMonthStart: Date;
-    let lastMonthEnd: Date;
-
-    if (range === "all") {
-      startDate = new Date("1970-01-01T00:00:00.000Z");
-      const prevM = subMonths(zNow, 1);
-      const lmStartYmd = formatDateYmd(startOfMonth(prevM), tz);
-      const lmEndYmd = formatDateYmd(endOfMonth(prevM), tz);
-      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
-      lastMonthStart = new Date(lm.fromIso);
-      lastMonthEnd = new Date(lm.toIso);
-    } else if (range === "week") {
-      const curFromYmd = formatDateYmd(subDays(zNow, 7), tz);
-      startDate = new Date(dateRangeBoundsUtc(curFromYmd, todayYmd, tz).fromIso);
-      const prevStartYmd = formatDateYmd(subDays(zNow, 14), tz);
-      const prevEndYmd = formatDateYmd(subDays(zNow, 8), tz);
-      const prev = dateRangeBoundsUtc(prevStartYmd, prevEndYmd, tz);
-      lastMonthStart = new Date(prev.fromIso);
-      lastMonthEnd = new Date(prev.toIso);
-    } else if (range === "year") {
-      const yStartYmd = formatDateYmd(subYears(zNow, 1), tz);
-      startDate = new Date(dateRangeBoundsUtc(yStartYmd, todayYmd, tz).fromIso);
-      const prevPeriodAnchor = subMonths(subYears(zNow, 1), 1);
-      const lmStartYmd = formatDateYmd(startOfMonth(prevPeriodAnchor), tz);
-      const lmEndYmd = formatDateYmd(endOfMonth(prevPeriodAnchor), tz);
-      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
-      lastMonthStart = new Date(lm.fromIso);
-      lastMonthEnd = new Date(lm.toIso);
-    } else {
-      const monthStartYmd = formatDateYmd(startOfMonth(zNow), tz);
-      startDate = new Date(dateRangeBoundsUtc(monthStartYmd, monthStartYmd, tz).fromIso);
-      const prevM = subMonths(zNow, 1);
-      const lmStartYmd = formatDateYmd(startOfMonth(prevM), tz);
-      const lmEndYmd = formatDateYmd(endOfMonth(prevM), tz);
-      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
-      lastMonthStart = new Date(lm.fromIso);
-      lastMonthEnd = new Date(lm.toIso);
-    }
+    const rangeBounds = resolveProviderFinanceRangeBounds(range, tz, now);
+    const startDate = rangeBounds.startDate;
+    const lastMonthStart = rangeBounds.lastPeriodStart;
+    const lastMonthEnd = rangeBounds.lastPeriodEnd;
+    const isAllTimeRange = range === "all";
 
     // Provider earnings are ledger-driven.
     // Provider streams:
@@ -127,7 +98,7 @@ export async function GET(request: NextRequest) {
     // - membership_sale (if provider offers memberships)
     // - gift_card_sale (if provider offers gift cards)
     // - refunds (negative; impacts provider net depending on policy, shown separately)
-    const startIso = range === "all" ? "1970-01-01T00:00:00.000Z" : startDate.toISOString();
+    const startIso = rangeBounds.startIso;
     const nowIso = now.toISOString();
 
     // Build finance transactions query (service role: full ledger for this provider).
@@ -321,37 +292,64 @@ export async function GET(request: NextRequest) {
     const platformFeesDeducted = sumPlatformRetainedFees();
     const platformFeesDeductedThisPeriod = sumPlatformRetainedFees({ start: startDate, end: now });
 
-    // Walk-in additional charges (audit/reporting only; not included in payout balance)
-    const walkInAdditionalChargesTotal = sumNet(["walk_in_additional_charge"]);
-    const walkInAdditionalChargesThisPeriod = sumNet(["walk_in_additional_charge"], { start: startDate, end: now });
+    const ledgerRowsForRevenue = rows.map((r: any) => ({
+      transaction_type: r.transaction_type,
+      amount: r.amount,
+      net: r.net,
+      created_at: r.created_at,
+      refund_component: r.refund_component,
+    }));
+    const allTimeRevenueBreakdown = computeProviderRevenueBreakdown(ledgerRowsForRevenue);
+    const periodRevenueBreakdown = computeProviderRevenueBreakdown(
+      filterRowsByCreatedAtRange(ledgerRowsForRevenue, { start: startDate, end: now }),
+    );
 
-    const tipsTotal = sumNet(["tip"]);
-    const tipsThisPeriod = sumNet(["tip"], { start: startDate, end: now });
-    const cancellationFeesTotal = sumNet(["cancellation_fee"]);
-    const cancellationFeesThisPeriod = sumNet(["cancellation_fee"], { start: startDate, end: now });
+    if (!locationId) {
+      const rpcEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PROVIDER_FINANCE_SUMMARY_RPC);
+      // Shadow-compare costs an extra round trip, so only pay it off-production; in
+      // production the RPC is called solely when the flag has been switched on.
+      const shadowCompare = !rpcEnabled && process.env.NODE_ENV !== "production";
+      if (rpcEnabled || shadowCompare) {
+        const rpcPeriod = await fetchProviderFinanceSummaryRpc(db, providerId, startDate, now);
+        if (rpcPeriod && rpcEnabled) {
+          Object.assign(periodRevenueBreakdown, rpcPeriod);
+        } else if (rpcPeriod) {
+          shadowCompareFinanceSummary(periodRevenueBreakdown, rpcPeriod, {
+            providerId,
+            route: "/api/provider/finance",
+          });
+        }
+      }
+    }
+
+    const lastPeriodRevenueBreakdown = rangeBounds.comparable
+      ? computeProviderRevenueBreakdown(
+          filterRowsByCreatedAtRange(ledgerRowsForRevenue, {
+            start: lastMonthStart,
+            end: lastMonthEnd,
+          }),
+        )
+      : null;
+
+    // Walk-in additional charges (audit/reporting only; not included in payout balance)
+    const walkInAdditionalChargesTotal = allTimeRevenueBreakdown.walkInAdditionalCharges;
+    const walkInAdditionalChargesThisPeriod = periodRevenueBreakdown.walkInAdditionalCharges;
+
+    const tipsTotal = allTimeRevenueBreakdown.tips;
+    const tipsThisPeriod = periodRevenueBreakdown.tips;
+    const cancellationFeesTotal = allTimeRevenueBreakdown.cancellationFees;
+    const cancellationFeesThisPeriod = periodRevenueBreakdown.cancellationFees;
     const additionalChargesTotal = sumNet(["additional_charge", "additional_charge_payment"]);
     const additionalChargesThisPeriod = sumNet(["additional_charge", "additional_charge_payment"], { start: startDate, end: now });
 
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
     /**
-     * Travel fee rows store the gross travel fee in BOTH `amount` and `net` (the
-     * Paystack webhook handler and the create_finance_ledger_from_payment trigger
-     * both write net = travel_fee). Travel is excluded from the commission base, so
-     * it is NOT folded into provider_earnings — it is a standalone payoutable row.
-     * Summing `amount` here is equivalent to `net` for these rows.
+     * Travel fee rows store the gross travel fee in BOTH `amount` and `net`.
+     * Use the canonical revenue breakdown so travel aligns with recognized revenue.
      */
-    const sumTravelFeeAmount = (within?: { start: Date; end: Date }) =>
-      rows
-        .filter((r: any) => r.transaction_type === "travel_fee")
-        .filter((r: any) => {
-          if (!within) return true;
-          const d = new Date(r.created_at);
-          return d >= within.start && d <= within.end;
-        })
-        .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-    const travelFeesTotal = sumTravelFeeAmount();
-    const travelFeesThisPeriod = sumTravelFeeAmount({ start: startDate, end: now });
+    const travelFeesTotal = allTimeRevenueBreakdown.travelFees;
+    const travelFeesThisPeriod = periodRevenueBreakdown.travelFees;
     // Refund rows are split by component; only provider-affecting components reduce
     // the provider's earnings. Platform fee/commission, tax, discount contras and
     // wallet/gift tender legs are excluded (they were never the provider's money).
@@ -384,15 +382,20 @@ export async function GET(request: NextRequest) {
       }, 0);
 
     const thisMonthTotal = providerEarningsThis;
-    const recognizedRevenueTotal = recognizedRevenueInRange(rows);
-    const recognizedRevenueThisPeriod = recognizedRevenueInRange(rows, {
-      start: startDate,
-      end: now,
-    });
+    const recognizedRevenueTotal = allTimeRevenueBreakdown.recognizedRevenue;
+    const recognizedRevenueThisPeriod = periodRevenueBreakdown.recognizedRevenue;
+    const recognizedRevenueLastPeriod = lastPeriodRevenueBreakdown?.recognizedRevenue ?? 0;
     const lastMonthTotal = providerEarningsLast;
 
-    const growthPercentage =
-      lastMonthTotal !== 0 ? ((thisMonthTotal - lastMonthTotal) / Math.abs(lastMonthTotal)) * 100 : (thisMonthTotal > 0 ? 100 : 0);
+    const growthPercentage = !rangeBounds.comparable
+      ? 0
+      : recognizedRevenueLastPeriod !== 0
+        ? ((recognizedRevenueThisPeriod - recognizedRevenueLastPeriod) /
+            Math.abs(recognizedRevenueLastPeriod)) *
+          100
+        : recognizedRevenueThisPeriod > 0
+          ? 100
+          : 0;
 
     // Resolve payout settings tenant-scoped (aligned with payouts POST and dashboard).
     const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
@@ -515,10 +518,12 @@ export async function GET(request: NextRequest) {
          * Sum of `provider_earnings` net only. **Not additive** with `gift_card_sales_this_period` /
          * `membership_sales_this_period` (those are separate liability / deferred-revenue flows — F19).
          */
-        total_earnings: providerEarningsTotal,
+        total_earnings: providerEarningsThis,
         /** Sum of RECOGNIZED_REVENUE_TYPES in the selected date range (matches dashboard total earned). */
         recognized_revenue_total: recognizedRevenueThisPeriod,
-        recognized_revenue_all_time: recognizedRevenueTotal,
+        /** Same as recognized_revenue_total when range=all; null when a bounded range is selected. */
+        recognized_revenue_all_time: isAllTimeRange ? recognizedRevenueTotal : null,
+        recognized_revenue_last_period: recognizedRevenueLastPeriod,
         /** Alias: provider_earnings net for the selected range (not calendar month unless range=month). */
         period_provider_earnings: thisMonthTotal,
         pending_payouts: pendingPayouts,
@@ -547,28 +552,28 @@ export async function GET(request: NextRequest) {
         this_month: thisMonthTotal,
         last_month: lastMonthTotal,
         growth_percentage: Math.round(growthPercentage * 10) / 10,
-        bookings_earnings_total: bookingEarningsTotal,
-        bookings_earnings_this_period: bookingEarningsThisPeriod,
-        product_sales_earnings_total: productSalesEarningsTotal,
-        product_sales_earnings_this_period: productSalesEarningsThisPeriod,
-        membership_earnings_total: membershipEarningsTotal,
-        membership_earnings_this_period: membershipEarningsThisPeriod,
-        platform_fees_deducted: platformFeesDeducted,
+        travel_fees_total: travelFeesThisPeriod,
+        travel_fees_this_period: travelFeesThisPeriod,
+        refunds_total: refundsThisPeriod,
+        refunds_this_period: refundsThisPeriod,
+        walk_in_additional_charges_total: walkInAdditionalChargesThisPeriod,
+        walk_in_additional_charges_this_period: walkInAdditionalChargesThisPeriod,
+        tips_total: tipsThisPeriod,
+        tips_this_period: tipsThisPeriod,
+        cancellation_fees_total: cancellationFeesThisPeriod,
+        cancellation_fees_this_period: cancellationFeesThisPeriod,
+        additional_charges_total: additionalChargesThisPeriod,
+        additional_charges_this_period: additionalChargesThisPeriod,
+        platform_fees_deducted: platformFeesDeductedThisPeriod,
         platform_fees_deducted_this_period: platformFeesDeductedThisPeriod,
+        bookings_earnings_total: bookingEarningsThisPeriod,
+        bookings_earnings_this_period: bookingEarningsThisPeriod,
+        product_sales_earnings_total: productSalesEarningsThisPeriod,
+        product_sales_earnings_this_period: productSalesEarningsThisPeriod,
+        membership_earnings_total: membershipEarningsThisPeriod,
+        membership_earnings_this_period: membershipEarningsThisPeriod,
         gift_card_sales_this_period: giftCardSalesTotal,
         membership_sales_this_period: membershipSalesTotal,
-        travel_fees_total: travelFeesTotal,
-        travel_fees_this_period: travelFeesThisPeriod,
-        refunds_total: refundsTotal,
-        refunds_this_period: refundsThisPeriod,
-        walk_in_additional_charges_total: walkInAdditionalChargesTotal,
-        walk_in_additional_charges_this_period: walkInAdditionalChargesThisPeriod,
-        tips_total: tipsTotal,
-        tips_this_period: tipsThisPeriod,
-        cancellation_fees_total: cancellationFeesTotal,
-        cancellation_fees_this_period: cancellationFeesThisPeriod,
-        additional_charges_total: additionalChargesTotal,
-        additional_charges_this_period: additionalChargesThisPeriod,
         membership_discounts_this_period: discountsThisPeriod.membership_discounts_applied,
         loyalty_discounts_this_period: discountsThisPeriod.loyalty_discounts_applied,
         promo_discounts_this_period: discountsThisPeriod.promo_discounts_applied,
@@ -583,7 +588,8 @@ export async function GET(request: NextRequest) {
         audience: "provider",
         metric_labels: {
           available_balance: "platform-held payoutable balance",
-          total_earnings: "provider earnings (provider_earnings ledger rows only)",
+          total_earnings: "provider earnings (provider_earnings ledger rows only) in selected range",
+          tips_total: "deprecated alias — same as tips_this_period for the selected range",
           recognized_revenue_total:
             "recognized provider revenue in selected range (services, tips, travel, cancellation fees, walk-in add-ons)",
           period_provider_earnings:

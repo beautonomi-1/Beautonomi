@@ -524,14 +524,23 @@ export function CustomOfferSheet({
           ))}
         </View>
 
+        {locationType === "at_salon" && locations.length === 0 && (
+          <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+            <Text style={twStyle("text-sm text-amber-800")}>
+              Add a salon location in Settings before sending an at-salon offer, or switch this
+              offer to a house call.
+            </Text>
+          </View>
+        )}
+
         {locationType === "at_salon" && locations.length > 0 && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue</Text>
             <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {locations.map((loc) => (
                 <TouchableOpacity
                   key={loc.id}
-                  onPress={() => setLocationId(locationId === loc.id ? null : loc.id)}
+                  onPress={() => setLocationId(loc.id)}
                   style={[twStyle(`rounded-xl border px-3 py-2 ${
                     locationId === loc.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
                   }`), { marginRight: 8, marginBottom: 8 }]}

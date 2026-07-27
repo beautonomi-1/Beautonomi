@@ -8,7 +8,12 @@ import { DeviceEventEmitter } from "react-native";
 import type { ApiError } from "@beautonomi/types";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { getRuntimeMarketHost } from "@/config/public-env";
+import {
+  buildApiCacheKey,
+  isNeverCachePath,
+  prefetchApi,
+  MONEY_SURFACE_STALE_TIME_MS,
+} from "@/lib/api-cache-helpers";
 import {
   responseCache,
   inflightRequests,
@@ -17,7 +22,7 @@ import {
 } from "@/lib/api-response-cache";
 import { useAuth } from "@/providers/AuthProvider";
 
-export { clearApiCache };
+export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
 /** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
@@ -42,6 +47,8 @@ interface UseApiOptions {
   timeoutMs?: number;
   /** Keep response in memory for this duration to reduce remount refetch churn. */
   staleTimeMs?: number;
+  /** Silent revalidate every time the screen gains focus (money / ledger surfaces). */
+  revalidateOnFocus?: boolean;
 }
 
 interface UseApiResult<T> {
@@ -58,21 +65,23 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     enabled = true,
     timeoutMs = DEFAULT_LOADING_TIMEOUT_MS,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
+    revalidateOnFocus = false,
   } = options;
   const { session } = useAuth();
-  const cacheScope = session?.user?.id ?? "_anon";
-  const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
+  const cacheKey = buildApiCacheKey(session?.user?.id, path);
+  // Payment / checkout state must never be served from a stale entry, so those
+  // paths read and write nothing. In-flight dedupe still applies (same tick).
+  const cacheable = !isNeverCachePath(path);
 
   const [data, setData] = useState<T | null>(() => {
-    if (!enabled) return null;
+    if (!enabled || !cacheable) return null;
     const c = responseCache.get(cacheKey) as
       | { data: T | null; error: string | null; expiresAt: number }
       | undefined;
     return c && c.expiresAt > Date.now() ? c.data : null;
   });
   const [error, setError] = useState<string | null>(() => {
-    if (!enabled) return null;
+    if (!enabled || !cacheable) return null;
     const c = responseCache.get(cacheKey) as
       | { data: T | null; error: string | null; expiresAt: number }
       | undefined;
@@ -80,6 +89,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   });
   const [loading, setLoading] = useState(() => {
     if (!enabled) return false;
+    if (!cacheable) return true;
     const c = responseCache.get(cacheKey) as
       | { data: T | null; error: string | null; expiresAt: number }
       | undefined;
@@ -99,9 +109,11 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       setTimedOut(false);
 
       const now = Date.now();
-      const cached = responseCache.get(cacheKey) as
-        | { data: T | null; error: string | null; expiresAt: number }
-        | undefined;
+      const cached = cacheable
+        ? (responseCache.get(cacheKey) as
+            | { data: T | null; error: string | null; expiresAt: number }
+            | undefined)
+        : undefined;
       if (!silent && cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
@@ -169,34 +181,38 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
       if (payload.error) {
         setError(payload.error);
-        const existing = responseCache.get(cacheKey);
+        const existing = cacheable ? responseCache.get(cacheKey) : undefined;
         if (!existing?.data) {
-          responseCache.set(cacheKey, {
-            data: null,
-            error: payload.error,
-            expiresAt: Date.now() + staleTimeMs,
-          });
+          if (cacheable) {
+            responseCache.set(cacheKey, {
+              data: null,
+              error: payload.error,
+              expiresAt: Date.now() + staleTimeMs,
+            });
+          }
           setData(null);
         }
       } else {
-        responseCache.set(cacheKey, {
-          data: payload.data,
-          error: null,
-          expiresAt: Date.now() + staleTimeMs,
-        });
+        if (cacheable) {
+          responseCache.set(cacheKey, {
+            data: payload.data,
+            error: null,
+            expiresAt: Date.now() + staleTimeMs,
+          });
+        }
         setData(payload.data);
         setError(null);
       }
       pruneResponseCache(Date.now());
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
-      const existing = responseCache.get(cacheKey);
+      const existing = cacheable ? responseCache.get(cacheKey) : undefined;
       if (existing?.data != null) return;
       setError(getApiErrorMessage(err, "Request failed"));
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
-  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs]);
+  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs, cacheable]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -225,6 +241,16 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [enabled, cacheKey, fetchData]);
 
   useEffect(() => {
+    if (!enabled || !revalidateOnFocus) return;
+    const onScreenFocus = () => {
+      if (!mountedRef.current) return;
+      void fetchData(true);
+    };
+    const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", onScreenFocus);
+    return () => sub.remove();
+  }, [enabled, revalidateOnFocus, fetchData]);
+
+  useEffect(() => {
     if (!loading || !timeoutMs) {
       setTimedOut(false);
       return () => {};
@@ -239,14 +265,16 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [cacheKey, fetchData]);
 
   const mutate = useCallback((newData: T) => {
-    responseCache.set(cacheKey, {
-      data: newData,
-      error: null,
-      expiresAt: Date.now() + staleTimeMs,
-    });
+    if (cacheable) {
+      responseCache.set(cacheKey, {
+        data: newData,
+        error: null,
+        expiresAt: Date.now() + staleTimeMs,
+      });
+    }
     setData(newData);
     setError(null);
-  }, [cacheKey, staleTimeMs]);
+  }, [cacheKey, staleTimeMs, cacheable]);
 
   return { data, loading, error, timedOut, refresh, mutate };
 }

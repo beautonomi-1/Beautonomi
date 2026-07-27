@@ -10,6 +10,12 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { captureApiFailure } from "@/lib/sentry";
 import { getRuntimeMarketHost } from "@/config/public-env";
 import {
+  buildApiCacheKey,
+  isNeverCachePath,
+  prefetchApi,
+  MONEY_SURFACE_STALE_TIME_MS,
+} from "@/lib/api-cache-helpers";
+import {
   responseCache,
   inflightRequests,
   pruneResponseCache,
@@ -20,7 +26,7 @@ import {
 import { emitProviderServicesCatalogChanged } from "@/lib/provider-services-catalog-events";
 import { useAuth } from "@/providers/AuthProvider";
 
-export { clearApiCache };
+export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
 /** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
@@ -53,6 +59,8 @@ interface UseApiOptions {
   timeoutMs?: number;
   /** Keep response in memory for this duration to reduce remount refetch churn. */
   staleTimeMs?: number;
+  /** Silent revalidate every time the screen gains focus (money / ledger surfaces). */
+  revalidateOnFocus?: boolean;
 }
 
 interface UseApiResult<T> {
@@ -64,6 +72,8 @@ interface UseApiResult<T> {
   /** True when loading has exceeded timeoutMs; show "Taking too long? Retry" and call refresh */
   timedOut: boolean;
   refresh: () => Promise<void>;
+  /** Background revalidate that keeps current data on screen (no spinner). */
+  silentRefresh: () => void;
   mutate: (newData: T) => void;
 }
 
@@ -72,9 +82,9 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     enabled = true,
     timeoutMs = DEFAULT_LOADING_TIMEOUT_MS,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
+    revalidateOnFocus = false,
   } = options;
   const { session } = useAuth();
-  const cacheScope = session?.user?.id ?? "_anon";
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +94,10 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const requestIdRef = useRef(0);
 
   const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
+  const cacheKey = buildApiCacheKey(session?.user?.id, path);
+  // Payment / checkout state must never be served from a stale entry, so those
+  // paths read and write nothing. In-flight dedupe still applies (same tick).
+  const cacheable = !isNeverCachePath(path);
 
   // `silent=true` → background refresh: never show loading spinner if we
   // already have data. The WhatsApp/Airbnb pattern — show what we know,
@@ -100,7 +113,9 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       setTimedOut(false);
 
       const now = Date.now();
-      const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      const cached = cacheable
+        ? (responseCache.get(cacheKey) as CacheEntry<T> | undefined)
+        : undefined;
       if (!silent && cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
@@ -188,38 +203,44 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         // Only write the failure result into the response cache when we
         // don't already have a successful entry cached — this lets later
         // reads still hit the good data.
-        const existing = responseCache.get(cacheKey);
+        const existing = cacheable ? responseCache.get(cacheKey) : undefined;
         if (!existing || existing.error || !existing.data) {
-          responseCache.set(cacheKey, {
-            data: null,
-            error: payload.error,
-            errorCode: payload.errorCode,
-            expiresAt: Date.now() + staleTimeMs,
-          });
+          if (cacheable) {
+            responseCache.set(cacheKey, {
+              data: null,
+              error: payload.error,
+              errorCode: payload.errorCode,
+              expiresAt: Date.now() + staleTimeMs,
+            });
+          }
           setData(null);
         }
         // else: keep the previously-successful data & cached entry.
       } else {
-        responseCache.set(cacheKey, {
-          data: payload.data,
-          error: null,
-          errorCode: null,
-          expiresAt: Date.now() + staleTimeMs,
-        });
+        if (cacheable) {
+          responseCache.set(cacheKey, {
+            data: payload.data,
+            error: null,
+            errorCode: null,
+            expiresAt: Date.now() + staleTimeMs,
+          });
+        }
         setData(payload.data);
         setErrorCode(null);
       }
       pruneResponseCache(Date.now());
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
-      const existing = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      const existing = cacheable
+        ? (responseCache.get(cacheKey) as CacheEntry<T> | undefined)
+        : undefined;
       if (silent || existing?.data != null) return;
       setError(getApiErrorMessage(err, "Request failed"));
       setErrorCode(null);
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
-  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs]);
+  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs, cacheable]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -251,6 +272,16 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [enabled, cacheKey, fetchData]);
 
   useEffect(() => {
+    if (!enabled || !revalidateOnFocus) return;
+    const onScreenFocus = () => {
+      if (!mountedRef.current) return;
+      void fetchData(true);
+    };
+    const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", onScreenFocus);
+    return () => sub.remove();
+  }, [enabled, revalidateOnFocus, fetchData]);
+
+  useEffect(() => {
     if (!loading || !timeoutMs) {
       setTimedOut(false);
       return () => {};
@@ -267,16 +298,22 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [cacheKey, fetchData]);
 
   const mutate = useCallback((newData: T) => {
-    responseCache.set(cacheKey, {
-      data: newData,
-      error: null,
-      errorCode: null,
-      expiresAt: Date.now() + staleTimeMs,
-    });
+    if (cacheable) {
+      responseCache.set(cacheKey, {
+        data: newData,
+        error: null,
+        errorCode: null,
+        expiresAt: Date.now() + staleTimeMs,
+      });
+    }
     setData(newData);
-  }, [cacheKey, staleTimeMs]);
+  }, [cacheKey, staleTimeMs, cacheable]);
 
-  return { data, loading, error, errorCode, timedOut, refresh, mutate };
+  const silentRefresh = useCallback(() => {
+    void fetchData(true);
+  }, [fetchData]);
+
+  return { data, loading, error, errorCode, timedOut, refresh, silentRefresh, mutate };
 }
 
 export function useApiPost<TReq extends ApiClientRequestBody, TRes>(path: string) {

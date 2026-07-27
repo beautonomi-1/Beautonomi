@@ -5,6 +5,7 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import { buildOrderReceiptCore } from "@/lib/receipts/build-order-receipt";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -131,7 +132,7 @@ export async function GET(
           product_variant:product_variants (id, option_values)
         ),
         provider:providers (
-          id, business_name, slug, thumbnail_url, receipt_header, receipt_footer
+          id, business_name, slug, thumbnail_url, receipt_header, receipt_footer, phone, email
         ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country
@@ -168,32 +169,10 @@ export async function GET(
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const subtotal = Number(order.subtotal || 0);
-    const tax = Number(order.tax_amount || 0);
-    const deliveryFee = Number(order.delivery_fee || 0);
-    const discount = Number(order.discount_amount || 0);
-    const platformFee = Number(order.platform_fee || 0);
-    const walletPaid = Number(order.wallet_amount || 0);
-    const totalFromRow =
-      order.total_amount != null && !Number.isNaN(Number(order.total_amount))
-        ? Number(order.total_amount)
-        : subtotal + tax + deliveryFee + platformFee - discount;
-
-    const items =
-      order.items?.map((it: OrderItemRow) => {
-        const ov = it.product_variant?.option_values;
-        const variantLabel =
-          ov && typeof ov === "object"
-            ? ` · ${Object.values(ov).join(" / ")}`
-            : "";
-        return {
-          name: `${it.product_name || "Product"}${variantLabel}`,
-          quantity: it.quantity || 1,
-          price: Number(it.unit_price || 0),
-          total:
-            Number(it.total_price || 0) ||
-            Number(it.unit_price || 0) * Number(it.quantity || 1),
-        };
-      }) || [];
+    const core = buildOrderReceiptCore({
+      order: order as unknown as Record<string, unknown>,
+      items: order.items ?? [],
+    });
 
     const headerText = prov?.receipt_header ?? null;
     const footerText = prov?.receipt_footer ?? null;
@@ -204,6 +183,8 @@ export async function GET(
           slug: prov.slug ?? null,
           thumbnail_url: prov.thumbnail_url ?? null,
           logo_url: prov.logo_url ?? prov.thumbnail_url ?? null,
+          phone: (prov as { phone?: string | null }).phone ?? null,
+          email: (prov as { email?: string | null }).email ?? null,
         }
       : null;
 
@@ -219,16 +200,36 @@ export async function GET(
       delivery_address: order.fulfillment_type === "delivery" ? order.delivery_address : null,
       collection_location:
         order.fulfillment_type === "collection" ? order.collection_location : null,
-      items,
-      subtotal,
-      tax,
-      delivery_fee: deliveryFee,
-      discount,
-      platform_fee: platformFee,
-      wallet_amount: walletPaid,
-      total: totalFromRow,
+      items: core.items,
+      subtotal: core.subtotal,
+      tax: core.tax,
+      delivery_fee: core.deliveryFee,
+      discount: core.discount,
+      platform_fee: core.platformFee,
+      wallet_amount: core.walletPaid,
+      total: core.totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,
+      payment_method: core.payment_method,
+      payment_reference: core.payment_reference,
+      paid_at: core.paid_at,
+      amount_paid: core.amount_paid,
+      balance_due: core.balance_due,
+      tracking_number: core.tracking_number,
+      carrier: core.carrier,
+      tracking_url: core.tracking_url,
+      estimated_delivery_date: core.estimated_delivery_date,
+      delivery_instructions: core.delivery_instructions,
+      shipped_at: core.shipped_at,
+      delivered_at: core.delivered_at,
+      cancelled_at: core.cancelled_at,
+      cancellation_reason: core.cancellation_reason,
+      order_source: core.order_source,
+      booking_id: core.booking_id,
+      refund_method: core.refund_method,
+      refunded_amount: core.refunded_amount,
+      refunded_at: core.refunded_at,
+      refund_reason: core.refund_reason,
     };
 
     return NextResponse.json({ receipt });

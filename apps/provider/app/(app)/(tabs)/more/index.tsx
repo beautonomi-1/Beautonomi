@@ -338,7 +338,10 @@ export default function MoreScreen() {
   const showCompletionError = !completionLoading && !!completionError && !completionData;
   const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
   const pendingPayouts = Number(financeSummary?.earnings?.pending_payouts ?? 0);
-  const minimumPayout = Number(financeSummary?.earnings?.minimum_payout_amount ?? 100);
+  const minimumPayout =
+    financeSummary?.earnings?.minimum_payout_amount != null
+      ? Number(financeSummary.earnings.minimum_payout_amount)
+      : null;
   const accounts = Array.isArray(payoutAccounts) ? payoutAccounts : [];
   const primaryPayoutAccount =
     accounts.find((account) => account.is_primary === true) ??
@@ -347,10 +350,10 @@ export default function MoreScreen() {
   const hasPayoutAccount = accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
   const requestPayoutDisabledReason = !canRequestPayouts
-    ? "Requires payment-processing permission"
+    ? "Requires Edit settings permission"
     : !hasPayoutAccount
       ? "Add a bank account first"
-      : availablePayout < minimumPayout
+      : minimumPayout != null && availablePayout < minimumPayout
         ? `Minimum payout is ${formatCurrency(minimumPayout)}`
         : null;
   const nextPayoutDate = payoutSchedule?.next_payout_date
@@ -597,11 +600,13 @@ export default function MoreScreen() {
           </View>
 
           <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <View style={{ borderRadius: 999, backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "#065f46" }}>
-                Min {formatCurrency(minimumPayout)}
-              </Text>
-            </View>
+            {minimumPayout != null ? (
+              <View style={{ borderRadius: 999, backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#065f46" }}>
+                  Min {formatCurrency(minimumPayout)}
+                </Text>
+              </View>
+            ) : null}
             {pendingPayouts > 0 && (
               <View style={{ borderRadius: 999, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400e" }}>

@@ -178,6 +178,9 @@ export const FEATURE_FLAG_KEYS = {
 
   /** Platform user referral program (wallet rewards for inviting friends). */
   REFERRAL_PROGRAM: "referral_program",
+
+  /** Postgres provider_finance_summary RPC for finance aggregates (shadow-compare before enable). */
+  PROVIDER_FINANCE_SUMMARY_RPC: "reports.provider_finance_summary_rpc",
 } as const;
 
 export type PaymentRelatedFeatureKey =

@@ -10,6 +10,7 @@ import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM, RADIUS_CARD } from "@/constants/layout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type Row = {
   id: string;
@@ -99,6 +100,7 @@ export default function CustomerAnnouncementsScreen() {
         </View>
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={rows}
           keyExtractor={(it) => it.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

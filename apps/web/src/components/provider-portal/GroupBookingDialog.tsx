@@ -82,6 +82,8 @@ interface ParticipantData {
   variant_id?: string;
   variant_name?: string;
   addons: ParticipantAddon[];
+  /** Preferences, allergies, add-on instructions for this guest only. */
+  notes: string;
 }
 
 interface ClientSearchResult {
@@ -404,6 +406,7 @@ export function GroupBookingDialog({
         price: apt.price,
         duration_minutes: apt.duration_minutes,
         addons: [],
+        notes: "",
       })));
     } else if (booking) {
       setFormData({
@@ -438,6 +441,7 @@ export function GroupBookingDialog({
         price: p.price,
         duration_minutes: (p as any).duration_minutes || booking.duration_minutes,
         addons: Array.isArray((p as any).addons) ? (p as any).addons : [],
+        notes: p.notes ?? "",
       })));
       const existingProducts = Array.isArray((booking as any).products)
         ? ((booking as any).products as any[]).map((product, index) => {
@@ -503,6 +507,7 @@ export function GroupBookingDialog({
         price: svc?.price || 0,
         duration_minutes: svc?.duration_minutes || formData.duration_minutes,
         addons: [],
+        notes: "",
       }];
     });
   }, [services, formData.service_id, formData.service_name, formData.duration_minutes]);
@@ -863,6 +868,7 @@ export function GroupBookingDialog({
         price: p.price + p.addons.reduce((s, a) => s + a.price, 0),
         duration_minutes: p.duration_minutes + p.addons.reduce((s, a) => s + a.duration, 0),
         addons: p.addons.map(a => ({ id: a.addonId, name: a.name, price: a.price, duration: a.duration })),
+        notes: p.notes?.trim() || undefined,
       }));
 
       const apiPayload: Record<string, unknown> = {
@@ -877,6 +883,10 @@ export function GroupBookingDialog({
         // §Group-booking-audit 2026-05: forward the review-screen toggle so
         // the API can send a confirmation to the primary contact only.
         send_notification: booking ? undefined : createSendNotification,
+        // Only payment_link is actioned server-side (a link per participant
+        // booking); cash / card / yoco are settled via mark_paid below.
+        payment_method:
+          !booking && createPaymentMethod === "payment_link" ? "payment_link" : undefined,
         participants: participantPayload,
         scheduled_date: formData.scheduled_date,
         scheduled_time: formData.scheduled_time,
@@ -920,8 +930,8 @@ export function GroupBookingDialog({
         // §Group-booking-audit 2026-05 (auto mark_paid): when the provider
         // chose cash/manual-card/yoco from the review step, immediately
         // record the payment so the receipt is "paid" right out of the gate.
-        // payment_link is intentionally skipped — it must be sent to each
-        // participant individually after creation.
+        // payment_link is skipped here — the create call above already sent a
+        // link to each participant's own booking.
         // paystack_terminal: show QR sheet instead of calling mark_paid.
         const methodToMark =
           createPaymentMethod === "cash"
@@ -935,6 +945,12 @@ export function GroupBookingDialog({
           (created as { id?: string; data?: { id?: string } } | null)?.id ??
           (created as { data?: { id?: string } } | null)?.data?.id ??
           null;
+        const createWarnings =
+          (created as { _warnings?: string[]; data?: { _warnings?: string[] } } | null)
+            ?._warnings ??
+          (created as { data?: { _warnings?: string[] } } | null)?.data?._warnings ??
+          [];
+        for (const warning of createWarnings) toast.warning(warning);
         if (createPaymentMethod === "paystack_terminal" && createdId) {
           toast.success("Group booking created — preparing Paystack Terminal…");
           onSuccess?.();
@@ -1406,9 +1422,19 @@ export function GroupBookingDialog({
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <p className="text-xs text-gray-500">
-                Search for an existing client or enter details manually. One row per person — service, add-ons and price flow into the group total and accounting.
-              </p>
+              {booking ? (
+                // Saving an existing group only patches the group row, so edits
+                // made to these rows are discarded — don't let the form imply
+                // otherwise.
+                <p className="text-xs text-amber-700">
+                  Saving updates the session details only. To change who is booked, or their
+                  service, price or notes, open the group and edit the participant there.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Search for an existing client or enter details manually. One row per person — service, add-ons and price flow into the group total and accounting.
+                </p>
+              )}
 
               <div className="space-y-2 max-h-[480px] overflow-y-auto pr-0.5">
                 {participants.length === 0 ? (
@@ -1583,6 +1609,20 @@ export function GroupBookingDialog({
                             ))}
                           </div>
                         )}
+
+                        {/* Notes for this guest only — the group note is separate */}
+                        <div>
+                          <Label className="text-[10px] text-gray-400 uppercase tracking-wider">
+                            Participant notes
+                          </Label>
+                          <Input
+                            value={participant.notes}
+                            onChange={e => handleParticipantChange(index, "notes", e.target.value)}
+                            placeholder="Preferences, allergies, add-on instructions…"
+                            maxLength={2000}
+                            className="mt-0.5 h-9 text-sm"
+                          />
+                        </div>
 
                         {/* Bottom row: add extra, duration, price, add-another */}
                         <div className="flex items-center justify-between pt-1 border-t border-gray-200">
@@ -1901,7 +1941,8 @@ export function GroupBookingDialog({
                   </div>
                   {createPaymentMethod === "payment_link" ? (
                     <p className="text-xs text-gray-500">
-                      You will need to send payment links to each participant manually from their booking.
+                      Each participant gets their own payment link as soon as the group is created.
+                      Keep participant notifications on so the links can be delivered.
                     </p>
                   ) : createPaymentMethod === "paystack_terminal" ? (
                     <p className="text-xs text-gray-500">

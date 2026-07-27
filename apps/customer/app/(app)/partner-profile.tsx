@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
   TextInput,
   StyleSheet,
+  InteractionManager,
 } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -1275,27 +1276,30 @@ export default function PartnerProfileScreen() {
   useEffect(() => {
     if (!user?.id || !provider?.slug) return;
     let cancelled = false;
-    api
-      .get<ProviderContactDisclosure>(`/api/providers/${encodeURIComponent(provider.slug)}/contact`)
-      .then((res) => {
-        if (cancelled || res.error || !res.data) return;
-        const contact = res.data;
-        setDisclosureTier(contact.disclosure_tier);
-        setProvider((prev) =>
-          prev
-            ? {
-                ...prev,
-                description: contact.description ?? prev.description,
-                website: contact.website ?? prev.website,
-                locations: contact.locations ?? prev.locations,
-                disclosure_tier: contact.disclosure_tier,
-              }
-            : prev,
-        );
-      })
-      .catch(() => {});
+    const task = InteractionManager.runAfterInteractions(() => {
+      api
+        .get<ProviderContactDisclosure>(`/api/providers/${encodeURIComponent(provider.slug)}/contact`)
+        .then((res) => {
+          if (cancelled || res.error || !res.data) return;
+          const contact = res.data;
+          setDisclosureTier(contact.disclosure_tier);
+          setProvider((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  description: contact.description ?? prev.description,
+                  website: contact.website ?? prev.website,
+                  locations: contact.locations ?? prev.locations,
+                  disclosure_tier: contact.disclosure_tier,
+                }
+              : prev,
+          );
+        })
+        .catch(() => {});
+    });
     return () => {
       cancelled = true;
+      task.cancel();
     };
   }, [user?.id, provider?.slug]);
 
@@ -1387,35 +1391,39 @@ export default function PartnerProfileScreen() {
       return;
     }
     let cancelled = false;
-    api.get<{
-      provider_memberships?: {
-        id: string;
-        provider_id: string;
-        plan_id: string;
-        plan_name: string;
-        expires_at: string | null;
-      }[];
-    }>("/api/me/membership")
-      .then((res) => {
-        if (res.error || cancelled) return;
-        const rows = res.data?.provider_memberships ?? [];
-        const mine = rows.find((r) => r.provider_id === provider.id);
-        setSalonMembership(
-          mine
-            ? {
-                id: mine.id,
-                plan_id: mine.plan_id,
-                plan_name: mine.plan_name,
-                expires_at: mine.expires_at ?? null,
-              }
-            : null,
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setSalonMembership(null);
-      });
+    const task = InteractionManager.runAfterInteractions(() => {
+      api
+        .get<{
+          provider_memberships?: {
+            id: string;
+            provider_id: string;
+            plan_id: string;
+            plan_name: string;
+            expires_at: string | null;
+          }[];
+        }>("/api/me/membership")
+        .then((res) => {
+          if (res.error || cancelled) return;
+          const rows = res.data?.provider_memberships ?? [];
+          const mine = rows.find((r) => r.provider_id === provider.id);
+          setSalonMembership(
+            mine
+              ? {
+                  id: mine.id,
+                  plan_id: mine.plan_id,
+                  plan_name: mine.plan_name,
+                  expires_at: mine.expires_at ?? null,
+                }
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setSalonMembership(null);
+        });
+    });
     return () => {
       cancelled = true;
+      task.cancel();
     };
   }, [user?.id, provider?.id]);
 
@@ -1436,17 +1444,34 @@ export default function PartnerProfileScreen() {
 
   /* ── Wishlist ── */
   useEffect(() => {
-    if (!provider || !user) { setIsSaved(false); return; }
-    api.post<{ is_in_wishlist: boolean }>("/api/me/wishlists/check", { item_type: "provider", item_id: provider.id })
-      .then((r) => {
-        if (r.error) {
-          setIsSaved(false);
-          return;
-        }
-        const d = (r.data ?? {}) as Record<string, unknown>;
-        setIsSaved(Boolean(d.is_in_wishlist ?? (d.data as Record<string, unknown>)?.is_in_wishlist));
-      })
-      .catch(() => setIsSaved(false));
+    if (!provider || !user) {
+      setIsSaved(false);
+      return;
+    }
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      api
+        .post<{ is_in_wishlist: boolean }>("/api/me/wishlists/check", {
+          item_type: "provider",
+          item_id: provider.id,
+        })
+        .then((r) => {
+          if (cancelled) return;
+          if (r.error) {
+            setIsSaved(false);
+            return;
+          }
+          const d = (r.data ?? {}) as Record<string, unknown>;
+          setIsSaved(Boolean(d.is_in_wishlist ?? (d.data as Record<string, unknown>)?.is_in_wishlist));
+        })
+        .catch(() => {
+          if (!cancelled) setIsSaved(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- check wishlist by provider id only
   }, [provider?.id, user?.id]);
 

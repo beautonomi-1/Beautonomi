@@ -189,6 +189,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           price: Number(participant.price) || 0,
           duration_minutes: participant.duration_minutes ?? null,
           addons: Array.isArray(participant.addons) ? participant.addons : [],
+          notes: participant.notes ?? null,
           checked_in: Boolean(participant.checked_in_at),
           checked_in_time: participant.checked_in_at ?? null,
           checked_out: Boolean(participant.checked_out_at),

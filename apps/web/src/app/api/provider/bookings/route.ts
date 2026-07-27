@@ -18,7 +18,6 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { dateRangeBoundsUtc, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
-import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { startOfDay, startOfMonth } from "date-fns";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
@@ -46,9 +45,11 @@ import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/b
 import {
   computeProviderCreateTaxableAmount,
   normalizeProviderCreateDiscounts,
+  resolveProviderBookingDeposit,
   sumExplicitProviderAddonsSubtotal,
 } from "@/lib/bookings/provider-booking-finance";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
@@ -505,6 +506,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         additional_charges: booking.additional_charges || [],
         special_requests: booking.special_requests || null,
         loyalty_points_earned: booking.loyalty_points_earned || 0,
+        // The appointment sidebar opens straight off this list and writes back
+        // whatever it holds — omitting the source here wipes it on the next save.
+        referral_source_id: booking.referral_source_id || null,
         custom_offer: booking.custom_offer || null,
         created_at: booking.created_at,
         updated_at: booking.updated_at,
@@ -1137,6 +1141,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const bookingSource = body.booking_source || "provider";
 
     // Referral source (where did this client come from?) — must belong to this provider
+    const referralWarnings: string[] = [];
     let referralSourceId: string | null = body.referral_source_id ?? null;
     if (referralSourceId) {
       const { data: src } = await supabaseAdmin
@@ -1146,7 +1151,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .eq("provider_id", providerId)
         .eq("is_active", true)
         .maybeSingle();
-      if (!src) referralSourceId = null; // Invalid or wrong provider, ignore
+      if (!src) {
+        // Don't fail the booking over an attribution field (the source may have
+        // been deactivated mid-session), but say so — silently dropping it makes
+        // the provider believe a source was captured when it wasn't.
+        referralSourceId = null;
+        referralWarnings.push(
+          "The selected client source is no longer available, so the booking was saved without it.",
+        );
+      }
     }
 
     // For walk-in bookings, set Platform Fee to 0 (platform doesn't charge direct customers)
@@ -1190,8 +1203,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
           ),
         ]
       : [];
+    // An empty `addons: []` is "no explicit add-on lines", not "add-ons are free":
+    // clients that send both shapes would otherwise zero out add-ons that
+    // `services[].add_on_ids` still books and charges for.
+    const hasExplicitAddonLines = Array.isArray(body.addons) && body.addons.length > 0;
     let serviceAddOnsSubtotal = 0;
-    if (!Array.isArray(body.addons) && addOnIdsFromServices.length > 0) {
+    if (!hasExplicitAddonLines && addOnIdsFromServices.length > 0) {
       const { data: addOnPriceRows, error: addOnPriceError } = await supabaseAdmin
         .from("offerings")
         .select("id, price")
@@ -1207,7 +1224,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         0
       );
     }
-    const addonsSubtotal = Array.isArray(body.addons)
+    const addonsSubtotal = hasExplicitAddonLines
       ? explicitAddonsSubtotal
       : serviceAddOnsSubtotal;
     if (shouldRejectProductOnlyProviderBooking(body as Record<string, unknown>)) {
@@ -1368,6 +1385,24 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const finalTaxAmount = recomputedTaxAmount;
     const finalTotalAmount = recomputedTotalAmount;
 
+    // The client computes its deposit off its own total, which we just
+    // recomputed — re-derive it here so what we mark collected can never
+    // exceed what is owed.
+    const {
+      paymentOption: resolvedPaymentOption,
+      depositRequired: resolvedDepositRequired,
+      depositPercentage: resolvedDepositPercentage,
+      depositAmount: resolvedDepositAmount,
+      warnings: depositWarnings,
+    } = resolveProviderBookingDeposit({
+      paymentOption: body.payment_option,
+      depositRequired: body.deposit_required,
+      depositPercentage: body.deposit_percentage,
+      depositAmount: body.deposit_amount,
+      totalAmount: finalTotalAmount,
+    });
+    const isDepositOption = resolvedPaymentOption === "deposit";
+
     // Pre-validate status mapping before building bookingData so a bad status
     // returns a structured 422 instead of throwing inside an object literal.
     const mappedBookingStatus = mapStatusToDatabase(finalStatus);
@@ -1424,7 +1459,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       currency: body.currency || lastResortCurrency,
       status: mappedBookingStatus,
       payment_status: (() => {
-        if (body.payment_option === "deposit") {
+        if (isDepositOption) {
           // Deposit booking: if an in-person payment was collected now, partially_paid; otherwise pending.
           return body.payment_method === "cash" || body.payment_method === "card"
             ? "partially_paid"
@@ -1437,10 +1472,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       })(),
       special_requests: body.special_requests || null,
       // Deposit metadata
-      deposit_required: body.deposit_required || false,
-      deposit_percentage: body.deposit_percentage || null,
-      deposit_amount: body.deposit_amount || null,
-      payment_option: body.payment_option || "full",
+      deposit_required: resolvedDepositRequired,
+      deposit_percentage: resolvedDepositPercentage,
+      deposit_amount: resolvedDepositAmount,
+      payment_option: resolvedPaymentOption,
       loyalty_points_earned: 0,
       travel_fee: serverTravelFee,
       platform_fee_percentage: platformFeePercentage,
@@ -1744,12 +1779,25 @@ async function handleCreateProviderBooking(request: NextRequest) {
       // Set provider-only fields not handled by the locking RPC. Keep this
       // separate from the reload so an embedded-select/schema issue cannot
       // turn a successfully-created booking into a partial failure.
+      // §Provider-audit 2026-07: `create_booking_with_locking` (718) only
+      // inserts a fixed column list, so anything in bookingData outside it is
+      // silently dropped on the RPC path — patch those columns in here to keep
+      // parity with the direct-insert path (tenant_id is trigger-backfilled).
       const { error: postRpcUpdateErr } = await supabaseAdmin
         .from("bookings")
         .update({
           booking_source: bookingSource,
           referral_source_id: referralSourceId,
           discount_reason: body.discount_reason ?? null,
+          discount_code: bookingData.discount_code,
+          membership_id: bookingData.membership_id,
+          tax_rate: bookingData.tax_rate,
+          platform_fee_percentage: bookingData.platform_fee_percentage,
+          platform_fee_amount: bookingData.platform_fee_amount,
+          platform_fee_paid_by: bookingData.platform_fee_paid_by,
+          // The RPC coalesces this to 'customer', which mislabels walk-ins.
+          service_fee_paid_by: bookingData.service_fee_paid_by,
+          ...(normalizedGroupBookingId ? { group_booking_id: normalizedGroupBookingId } : {}),
           ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
         })
         .eq("id", createdBookingId);
@@ -2141,29 +2189,59 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // 2. The create_finance_ledger_from_payment trigger creates finance_transactions
     // 3. End-of-day reports (which query booking_payments) include this revenue
     // 4. Payout balance calculations (which use finance_transactions) are accurate
+    const paymentRecordingWarnings: string[] = [];
     if (
       (body.payment_method === "cash" || body.payment_method === "card") &&
       finalTotalAmount > 0
     ) {
       const collectedAmount =
-        body.payment_option === "deposit" && body.deposit_amount
-          ? Number(body.deposit_amount)
-          : finalTotalAmount;
+        isDepositOption && resolvedDepositAmount ? resolvedDepositAmount : finalTotalAmount;
       const { error: paymentRowError } = await supabaseAdmin.from("booking_payments").insert({
         booking_id: booking.id,
         amount: collectedAmount,
         payment_method: body.payment_method === "card" ? "card" : "cash",
-        payment_provider: body.payment_method === "card" ? "manual" : "cash",
+        payment_provider: body.payment_method === "card" ? "other" : "cash",
         status: "completed",
-        notes:
-          body.payment_option === "deposit"
-            ? `${body.payment_method === "card" ? "Manual card" : "Cash"} deposit collected at booking creation (${body.deposit_percentage ?? 0}%)`
-            : `${body.payment_method === "card" ? "Manual card" : "Cash"} payment recorded at booking creation`,
+        notes: isDepositOption
+          ? `${body.payment_method === "card" ? "Manual card" : "Cash"} deposit collected at booking creation (${resolvedDepositPercentage ?? 0}%)`
+          : `${body.payment_method === "card" ? "Manual card" : "Cash"} payment recorded at booking creation`,
         created_by: user.id,
         ...(tenantId ? { tenant_id: tenantId } : {}),
+        ...(isDepositOption
+          ? {
+              payment_provider_data: {
+                requires_deposit: true,
+                payment_option: "deposit",
+                deposit_percentage: resolvedDepositPercentage,
+                deposit_amount: resolvedDepositAmount,
+              },
+            }
+          : {}),
       });
       if (paymentRowError) {
-        console.warn("Failed to insert booking_payments row for manual payment:", paymentRowError);
+        console.error(
+          "[provider/bookings create] booking_payments insert failed for collected payment:",
+          paymentRowError,
+        );
+        // The booking was optimistically written as paid / partially_paid on the
+        // assumption this row would land. With no payment row there is no money
+        // and no ledger, so reset the status rather than showing a settled
+        // booking that reports and payouts know nothing about.
+        const { error: revertErr } = await supabaseAdmin
+          .from("bookings")
+          .update({ payment_status: "pending" })
+          .eq("id", booking.id);
+        if (revertErr) {
+          console.error(
+            "[provider/bookings create] could not reset payment_status after failed payment insert:",
+            revertErr,
+          );
+        } else {
+          booking = { ...booking, payment_status: "pending" };
+        }
+        paymentRecordingWarnings.push(
+          "Booking was created but the payment could not be recorded, so it is marked unpaid. Collect the payment again from the booking.",
+        );
       }
     }
 
@@ -2363,82 +2441,22 @@ async function handleCreateProviderBooking(request: NextRequest) {
           "Payment link was not sent because customer notifications are disabled for this booking."
         );
       } else {
-        try {
-          const bookingRef = booking.booking_number || booking.id.slice(0, 8).toUpperCase();
-          const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-          const paymentLink = `${appBase}/bookings/${booking.id}/pay`;
-          const amountDue = computeBookingOutstandingDisplay({
+        const linkResult = await sendBookingPaymentLink(supabaseAdmin, {
+          bookingId: booking.id,
+          bookingRef: booking.booking_number || booking.id.slice(0, 8).toUpperCase(),
+          customerId,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          source: "provider_booking_create",
+          amounts: {
             totalAmount: Number(booking.total_amount ?? finalTotalAmount),
             totalPaid: Number(booking.total_paid ?? 0),
             totalRefunded: Number(booking.total_refunded ?? 0),
             walletAmount: Number(booking.wallet_amount ?? 0),
             giftCardAmount: Number(booking.gift_card_amount ?? 0),
-            unpaidAdditionalCharges: 0,
             paymentStatus: booking.payment_status,
-          });
-          const { format: formatMoney } = await getTenantMoneyFormatter(
-            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId
-          );
-          const { data: customerContact } = await supabaseAdmin
-            .from("users")
-            .select("email, phone")
-            .eq("id", customerId)
-            .maybeSingle();
-          const customerEmail = (customerContact as { email?: string | null } | null)?.email;
-          const customerPhone = (customerContact as { phone?: string | null } | null)?.phone;
-          const { insertNotification } = await import("@/lib/notifications/insert-notification");
-          await insertNotification({
-            user_id: customerId,
-            type: "payment_link_sent",
-            title: "Payment Link Ready",
-            message: `Pay ${formatMoney(amountDue)} for booking ${bookingRef}. Open: ${paymentLink}`,
-            data: {
-              booking_id: booking.id,
-              booking_ref: bookingRef,
-              amount: amountDue,
-              payment_link: paymentLink,
-              source: "provider_booking_create",
-            },
-            action_url: paymentLink,
-          });
-
-          try {
-            const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-            const channels: ("push" | "email" | "sms")[] = ["push"];
-            if (customerEmail) channels.push("email");
-            if (customerPhone) channels.push("sms");
-            await sendTemplateNotification(
-              "payment_pending",
-              [customerId],
-              {
-                amount: formatMoney(amountDue),
-                booking_number: String(bookingRef),
-                payment_method: "Paystack",
-                booking_id: booking.id,
-                payment_link: paymentLink,
-              },
-              channels,
-              // In-app bell row inserted manually above; skip template auto-insert.
-              { appType: "customer", skipInApp: true }
-            );
-          } catch (pushError) {
-            console.warn(
-              "Payment-link notification delivery failed after provider-created booking:",
-              pushError
-            );
-            paymentLinkWarnings.push(
-              "Payment link was created, but push/email/SMS delivery could not be confirmed."
-            );
-          }
-        } catch (paymentLinkError) {
-          console.warn(
-            "Payment link notification failed after provider-created booking:",
-            paymentLinkError
-          );
-          paymentLinkWarnings.push(
-            "Booking was created, but the payment link could not be sent automatically. Send it from booking details."
-          );
-        }
+          },
+        });
+        paymentLinkWarnings.push(...linkResult.warnings);
       }
     }
 
@@ -2447,7 +2465,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
       .catch((e) => console.warn("Subscription usage notification:", e));
 
     const responsePayload: any = transformedBooking;
-    const responseWarnings = [...resourceWarnings, ...paymentLinkWarnings];
+    const responseWarnings = [
+      ...resourceWarnings,
+      ...paymentLinkWarnings,
+      ...paymentRecordingWarnings,
+      ...referralWarnings,
+      ...depositWarnings,
+    ];
     if (responseWarnings.length > 0) {
       responsePayload._warnings = responseWarnings;
     }

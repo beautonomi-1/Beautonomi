@@ -12,6 +12,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 import { reverseProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import { reverseMarketingCreditTopupPayment } from "@/lib/marketing/marketing-credit-topup-payment";
+import { resolveBookingPaymentIdForRefund } from "@/lib/bookings/resolve-booking-refund-payment-id";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -92,14 +93,11 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     // been removed to prevent duplicate ledger rows.
     // Resolve the originating booking_payments row so booking_refunds.payment_id is set.
     // Without it the DB trigger still fires but the ledger entry won't carry source_payment_id.
-    const { data: bookingPayment } = await supabase
-      .from("booking_payments")
-      .select("id")
-      .eq("booking_id", txn.booking_id)
-      .in("status", ["completed", "partially_refunded"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const bookingPaymentId = await resolveBookingPaymentIdForRefund(
+      supabase,
+      txn.booking_id,
+      String(reference),
+    );
 
     // Idempotency: do not insert a duplicate booking_refunds row for the same refund reference.
     const { data: existingBookingRefund } = await supabase
@@ -111,7 +109,7 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     if (!existingBookingRefund) {
       await (supabase.from("booking_refunds") as any).insert({
         booking_id: txn.booking_id,
-        payment_id: (bookingPayment as { id?: string | null } | null)?.id ?? null,
+        payment_id: bookingPaymentId,
         amount: refundAmount,
         reason: `Paystack webhook: ${reference}`,
         refund_method: "original",
