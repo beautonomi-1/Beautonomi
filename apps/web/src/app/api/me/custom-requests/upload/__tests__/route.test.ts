@@ -14,6 +14,7 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetStorageServiceClientOrUser = vi.fn();
 const mockHasSupabaseStorageServiceRole = vi.fn();
+const mockRequireSocialAccess = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -31,6 +32,14 @@ vi.mock("@/lib/supabase/storage-service-client", () => ({
   getStorageServiceClientOrUser: (...args: unknown[]) =>
     mockGetStorageServiceClientOrUser(...args),
   hasSupabaseStorageServiceRole: () => mockHasSupabaseStorageServiceRole(),
+}));
+
+vi.mock("@/lib/safety/require-social-access", () => ({
+  requireSocialAccess: (...args: unknown[]) => mockRequireSocialAccess(...args),
+  SocialAccessDeniedError: class SocialAccessDeniedError extends Error {
+    status = 403;
+    code = "SOCIAL_RESTRICTED";
+  },
 }));
 
 function fakeFile(opts: {
@@ -101,6 +110,7 @@ describe("POST /api/me/custom-requests/upload", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
+    mockRequireSocialAccess.mockResolvedValue(undefined);
     mockGetSupabaseServer.mockResolvedValue({});
     mockHasSupabaseStorageServiceRole.mockReturnValue(false);
   });

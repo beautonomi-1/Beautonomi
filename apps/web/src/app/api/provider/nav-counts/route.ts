@@ -8,6 +8,14 @@ import {
 
 const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "ready_for_collection", "shipped"];
 
+/** Shallow thenable query shape — avoids TS2589 on PostgREST generics. */
+type ScopedHeadCountQuery = {
+  in: (col: string, values: readonly string[]) => ScopedHeadCountQuery;
+  is: (col: string, value: null) => ScopedHeadCountQuery;
+  or: (filter: string) => ScopedHeadCountQuery;
+  then: PromiseLike<{ count: number | null; error: unknown }>["then"];
+};
+
 /**
  * Lightweight alert counters for provider navigation surfaces.
  *
@@ -33,6 +41,8 @@ export async function GET(request: NextRequest) {
     startOfTodayUtc.setUTCHours(0, 0, 0, 0);
     const staleCutoffIso = startOfTodayUtc.toISOString();
 
+    // Cast scoped head-count builders to a shallow shape before applyPending*Scope
+    // to avoid TS2589 (excessively deep PostgREST generics) under CI typecheck.
     const [
       pendingBookings,
       pendingGroupBookings,
@@ -48,7 +58,7 @@ export async function GET(request: NextRequest) {
         let q = supabase
           .from("bookings")
           .select("id", { count: "exact", head: true })
-          .eq("provider_id", providerId);
+          .eq("provider_id", providerId) as unknown as ScopedHeadCountQuery;
         q = applyPendingBookingsScope(q, locationId);
         return q;
       })(),
@@ -57,7 +67,7 @@ export async function GET(request: NextRequest) {
         let q = supabase
           .from("group_bookings")
           .select("id", { count: "exact", head: true })
-          .eq("provider_id", providerId);
+          .eq("provider_id", providerId) as unknown as ScopedHeadCountQuery;
         q = applyPendingGroupsScope(q, locationId);
         return q;
       })(),
@@ -66,7 +76,7 @@ export async function GET(request: NextRequest) {
           .from("bookings")
           .select("id", { count: "exact", head: true })
           .eq("provider_id", providerId)
-          .lt("scheduled_at", staleCutoffIso);
+          .lt("scheduled_at", staleCutoffIso) as unknown as ScopedHeadCountQuery;
         q = applyPendingBookingsScope(q, locationId);
         return q;
       })(),
@@ -75,7 +85,7 @@ export async function GET(request: NextRequest) {
           .from("group_bookings")
           .select("id", { count: "exact", head: true })
           .eq("provider_id", providerId)
-          .lt("scheduled_at", staleCutoffIso);
+          .lt("scheduled_at", staleCutoffIso) as unknown as ScopedHeadCountQuery;
         q = applyPendingGroupsScope(q, locationId);
         return q;
       })(),

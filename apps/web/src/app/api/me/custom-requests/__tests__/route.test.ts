@@ -13,6 +13,7 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockResolveTenantId = vi.fn();
+const mockRequireSocialAccess = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -32,6 +33,14 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenantId(...args),
+}));
+
+vi.mock("@/lib/safety/require-social-access", () => ({
+  requireSocialAccess: (...args: unknown[]) => mockRequireSocialAccess(...args),
+  SocialAccessDeniedError: class SocialAccessDeniedError extends Error {
+    status = 403;
+    code = "SOCIAL_RESTRICTED";
+  },
 }));
 
 interface BuilderConfig {
@@ -235,6 +244,7 @@ describe("POST /api/me/custom-requests", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "customer-1", email: "c@example.com", role: "customer", full_name: "C" },
     });
+    mockRequireSocialAccess.mockResolvedValue(undefined);
     mockResolveTenantId.mockResolvedValue("tenant-1");
     mockGetSupabaseAdmin.mockReturnValue(buildAdminMock());
     // Silence dynamic imports for OneSignal notifications used by the route.
