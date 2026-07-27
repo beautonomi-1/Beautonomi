@@ -299,6 +299,7 @@
 | `/api/admin/notifications/test` | `api/admin/notifications/test/route.ts` | api |
 | `/api/admin/paycloud-operations/merchants` | `api/admin/paycloud-operations/merchants/route.ts` | api |
 | `/api/admin/paycloud-operations/payments` | `api/admin/paycloud-operations/payments/route.ts` | api |
+| `/api/admin/paycloud-operations/payments/[id]` | `api/admin/paycloud-operations/payments/[id]/route.ts` | api |
 | `/api/admin/paycloud-operations/payments/[id]/force-settle` | `api/admin/paycloud-operations/payments/[id]/force-settle/route.ts` | api |
 | `/api/admin/paycloud-operations/reconcile` | `api/admin/paycloud-operations/reconcile/route.ts` | api |
 | `/api/admin/paycloud-operations/terminals` | `api/admin/paycloud-operations/terminals/route.ts` | api |

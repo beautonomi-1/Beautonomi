@@ -234,6 +234,7 @@ path,class,note
 /api/admin/notifications/test,U,"scoped"
 /api/admin/paycloud-operations/merchants,T,"uses resolveAdminApiTenantId"
 /api/admin/paycloud-operations/payments/[id]/force-settle,T,"uses resolveAdminApiTenantId"
+/api/admin/paycloud-operations/payments/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/paycloud-operations/payments,T,"uses resolveAdminApiTenantId"
 /api/admin/paycloud-operations/reconcile,T,"uses resolveAdminApiTenantId"
 /api/admin/paycloud-operations/terminals,T,"uses resolveAdminApiTenantId"

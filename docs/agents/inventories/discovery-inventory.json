@@ -237,6 +237,7 @@
     "api/admin/notifications/test",
     "api/admin/paycloud-operations/merchants",
     "api/admin/paycloud-operations/payments",
+    "api/admin/paycloud-operations/payments/[id]",
     "api/admin/paycloud-operations/payments/[id]/force-settle",
     "api/admin/paycloud-operations/reconcile",
     "api/admin/paycloud-operations/terminals",
