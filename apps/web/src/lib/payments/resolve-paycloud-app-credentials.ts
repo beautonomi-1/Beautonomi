@@ -15,9 +15,13 @@ export type PaycloudAppCredentialsFailureReason =
   | "TEST_MODE_DISABLED"
   | "PLATFORM_CREDENTIALS_MISSING";
 
-export type PaycloudAppCredentialsResult =
-  | { ok: true; credentials: PaycloudAppCredentials; appEnvironment: PaycloudEnvironment }
-  | { ok: false; reason: PaycloudAppCredentialsFailureReason };
+// Flat shape — see paycloud-initiate-guards.ts / paycloud-credentials.ts.
+export interface PaycloudAppCredentialsResult {
+  ok: boolean;
+  credentials?: PaycloudAppCredentials;
+  appEnvironment?: PaycloudEnvironment;
+  reason?: PaycloudAppCredentialsFailureReason;
+}
 
 async function findAppRow(
   supabase: SupabaseClient,

@@ -8,6 +8,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 /**
  * POST /api/provider/bookings/[id]/additional-charges/[chargeId]/mark-paid

@@ -28,9 +28,14 @@ export type PaycloudContextFailureReason =
   | "ENV_MISMATCH"
   | PaycloudAppCredentialsFailureReason;
 
-export type ResolvePaycloudContextResult =
-  | { ok: true; ctx: ResolvedPaycloudContext }
-  | { ok: false; reason: PaycloudContextFailureReason };
+// Flat shape (not a discriminated union) because the web tsconfig runs with
+// `strictNullChecks: false`, under which TS will not narrow a union on a boolean
+// discriminant — callers must be able to read reason/ctx after `if (!result.ok)`.
+export interface ResolvePaycloudContextResult {
+  ok: boolean;
+  ctx?: ResolvedPaycloudContext;
+  reason?: PaycloudContextFailureReason;
+}
 
 /** Map a context resolution failure to an API error code + message. */
 export function paycloudContextFailureToApiError(reason: PaycloudContextFailureReason): {

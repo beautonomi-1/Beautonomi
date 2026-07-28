@@ -34,6 +34,7 @@ import {
 } from "@/lib/bookings/group-booking-postgrest";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
