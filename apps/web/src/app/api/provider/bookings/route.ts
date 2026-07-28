@@ -923,6 +923,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    if (body.payment_method === "card") {
+      const manualCardEnabled = await isFeatureEnabledServer(
+        FEATURE_FLAG_KEYS.PAYMENT_MANUAL_CARD,
+        tenantId,
+      );
+      if (!manualCardEnabled) {
+        body.payment_method = "cash";
+      }
+    }
+
     const { timezone: providerTimezone } = await getProviderReportContext(supabaseAdmin, providerId);
 
     if (Array.isArray(body.services) && body.services.length > 0) {

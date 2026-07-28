@@ -5,7 +5,7 @@ import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpe
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
 import { createPaycloudVoid } from "@/lib/payments/paycloud-client";
-import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
+import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl, paycloudContextFailureToApiError } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
 
@@ -66,10 +66,15 @@ export async function POST(
       }
     }
 
-    const ctx = await resolvePaycloudContextForProvider(supabase, providerId, payment.terminal_id);
-    if (!ctx) {
-      return NextResponse.json({ data: null, error: { message: "This card machine isn't fully set up yet.", code: "TERMINAL_NOT_CONFIGURED" } }, { status: 400 });
+    const resolved = await resolvePaycloudContextForProvider(supabase, providerId, payment.terminal_id);
+    if (!resolved.ok) {
+      const apiErr = paycloudContextFailureToApiError(resolved.reason);
+      return NextResponse.json(
+        { data: null, error: { message: apiErr.message, code: apiErr.code } },
+        { status: 400 },
+      );
     }
+    const ctx = resolved.ctx;
 
     const { data: terminal } = await supabase
       .from("paycloud_terminals")

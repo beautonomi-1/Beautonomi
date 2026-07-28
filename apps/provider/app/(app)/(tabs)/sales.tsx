@@ -51,6 +51,7 @@ import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catal
 import { downloadPdf } from "@/lib/pdf-file";
 import { shareProviderSaleReceipt } from "@/lib/share-receipt";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
+import { manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
 import { BarcodeScannerModal } from "@/features/products/BarcodeScannerModal";
@@ -237,6 +238,7 @@ export default function SalesScreen() {
   const adsFeatureOn = useFeatureFlag("ads.enabled");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const {
     paycloudEnabled,
     collectEnabled: paycloudCollectEnabled,
@@ -273,7 +275,9 @@ export default function SalesScreen() {
             icon: "card-outline" as const,
           }]
         : []),
-      { label: "Card manual", value: "card", icon: "reader-outline" },
+      ...(manualCardEnabled
+        ? [{ label: manualCardCollectOptionLabel(), value: "card" as const, icon: "reader-outline" as const }]
+        : []),
       { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
     ];
     if (paystackTerminalEnabled) {
@@ -285,7 +289,7 @@ export default function SalesScreen() {
       });
     }
     return base;
-  }, [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments]);
+  }, [paystackTerminalEnabled, yocoEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -311,7 +315,10 @@ export default function SalesScreen() {
     if (!paycloudCollectEnabled && paymentMethod === "paycloud") {
       setPaymentMethod("cash");
     }
-  }, [paycloudCollectEnabled, paymentMethod]);
+    if (!manualCardEnabled && paymentMethod === "card") {
+      setPaymentMethod("cash");
+    }
+  }, [paycloudCollectEnabled, manualCardEnabled, paymentMethod]);
 
   const [clientSearch, setClientSearch] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);

@@ -25,6 +25,7 @@ import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
 import { formatPaycloudCollectLabel, inferBookingCollectContext } from "@/lib/paycloud-collect-cta";
+import { manualCardCollectOptionLabel, MANUAL_CARD_METHOD_HELPER } from "@beautonomi/utils";
 import {
   usePaycloudCollectAvailability,
   computePaycloudBookingChargeAmount,
@@ -558,16 +559,15 @@ type MarkPaidPaymentMethod =
 
 function buildMarkPaidPaymentMethods(
   paystackTerminalEnabled: boolean,
-  yocoEnabled: boolean,
+  manualCardEnabled: boolean,
   paycloudEnabled: boolean,
   paycloudCollectEnabled: boolean,
 ) {
   const methods: { label: string; value: MarkPaidPaymentMethod }[] = [
     { label: "Cash", value: "cash" },
-    {
-      label: yocoEnabled ? "Card (Yoco / terminal)" : "Card (terminal)",
-      value: "card",
-    },
+    ...(manualCardEnabled
+      ? [{ label: manualCardCollectOptionLabel(), value: "card" as const }]
+      : []),
     { label: "EFT", value: "bank_transfer" },
     { label: "Other", value: "other" },
   ];
@@ -591,14 +591,28 @@ type ChargePaymentMethod =
   | "other"
   | "paycloud_terminal";
 
-const PAYMENT_METHODS_CHARGE: { label: string; value: ChargePaymentMethod }[] = [
-  { label: "Cash", value: "cash" },
-  { label: "Card", value: "card" },
-  { label: "Mobile", value: "mobile" },
-  { label: "EFT", value: "bank_transfer" },
-  { label: "Other", value: "other" },
-  { label: "Card machine", value: "paycloud_terminal" },
-];
+function buildChargePaymentMethods(
+  manualCardEnabled: boolean,
+  paycloudEnabled: boolean,
+  paycloudCollectEnabled: boolean,
+): { label: string; value: ChargePaymentMethod }[] {
+  const methods: { label: string; value: ChargePaymentMethod }[] = [
+    { label: "Cash", value: "cash" },
+    ...(manualCardEnabled
+      ? [{ label: manualCardCollectOptionLabel(), value: "card" as const }]
+      : []),
+    { label: "Mobile", value: "mobile" },
+    { label: "EFT", value: "bank_transfer" },
+    { label: "Other", value: "other" },
+  ];
+  if (paycloudEnabled && paycloudCollectEnabled) {
+    methods.push({
+      label: formatPaycloudCollectLabel({ context: "booking", amount: 0 }),
+      value: "paycloud_terminal",
+    });
+  }
+  return methods;
+}
 
 const SEND_LINK_OPTIONS = [
   { label: "Email", value: "email" as const },
@@ -957,7 +971,7 @@ export default function BookingDetailScreen() {
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [markPaidMethod, setMarkPaidMethod] = useState<
     "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal" | "paycloud_terminal"
-  >("card");
+  >("cash");
   const [markingPaid, setMarkingPaid] = useState(false);
 
   // Refund
@@ -979,6 +993,7 @@ export default function BookingDetailScreen() {
   const { integration: yocoIntegration } = useYocoIntegration();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const {
     paycloudEnabled,
@@ -991,19 +1006,17 @@ export default function BookingDetailScreen() {
     () =>
       buildMarkPaidPaymentMethods(
         paystackTerminalEnabled,
-        yocoEnabled,
+        manualCardEnabled,
         paycloudEnabled,
         paycloudCollectEnabled,
       ),
-    [paystackTerminalEnabled, yocoEnabled, paycloudEnabled, paycloudCollectEnabled],
+    [paystackTerminalEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
   );
   const chargePaymentMethods = useMemo(
-    () =>
-      PAYMENT_METHODS_CHARGE.filter(
-        (pm) => pm.value !== "paycloud_terminal" || (paycloudEnabled && paycloudCollectEnabled),
-      ),
-    [paycloudEnabled, paycloudCollectEnabled],
+    () => buildChargePaymentMethods(manualCardEnabled, paycloudEnabled, paycloudCollectEnabled),
+    [manualCardEnabled, paycloudEnabled, paycloudCollectEnabled],
   );
+
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
     code: string;
@@ -1190,8 +1203,17 @@ export default function BookingDetailScreen() {
   const [chargeMarkPaidId, setChargeMarkPaidId] = useState<string | null>(null);
   const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<
     "cash" | "card" | "mobile" | "bank_transfer" | "other" | "paycloud_terminal"
-  >("card");
+  >("cash");
   const [markingChargePaid, setMarkingChargePaid] = useState(false);
+
+  useEffect(() => {
+    if (!manualCardEnabled && markPaidMethod === "card") {
+      setMarkPaidMethod("cash");
+    }
+    if (!manualCardEnabled && chargeMarkPaidMethod === "card") {
+      setChargeMarkPaidMethod("cash");
+    }
+  }, [manualCardEnabled, markPaidMethod, chargeMarkPaidMethod]);
 
   // "Send to client" — re-send the pay request for an existing charge so the
   // customer settles it online (instead of the provider marking it paid in person).
@@ -4867,6 +4889,9 @@ export default function BookingDetailScreen() {
               </View>
             ) : null}
           </View>
+          {markPaidMethod === "card" ? (
+            <Text style={twStyle("text-xs text-gray-500 mb-3")}>{MANUAL_CARD_METHOD_HELPER}</Text>
+          ) : null}
           {markPaidMethod === "paycloud_terminal" ? (
             <ActionButton
               label="Charge on card machine"
@@ -5041,6 +5066,9 @@ export default function BookingDetailScreen() {
                     </View>
                   ) : null}
                 </View>
+                {chargeMarkPaidMethod === "card" ? (
+                  <Text style={twStyle("text-xs text-gray-500 mb-3")}>{MANUAL_CARD_METHOD_HELPER}</Text>
+                ) : null}
                 {chargeMarkPaidMethod === "paycloud_terminal" ? (
                   <ActionButton
                     label="Charge on card machine"

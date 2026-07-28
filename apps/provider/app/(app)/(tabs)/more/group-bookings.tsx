@@ -90,7 +90,7 @@ import {
   shouldRejectStaleListPaymentSync,
 } from "@/lib/group-booking-detail-helpers";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
-import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import {
   formatGroupPaymentStatusLabel,
@@ -674,6 +674,7 @@ export default function GroupBookingsScreen() {
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const {
     paycloudEnabled,
@@ -985,6 +986,7 @@ export default function GroupBookingsScreen() {
   // Reset payment method to "pay_later" if the selected method is gated off.
   useEffect(() => {
     if (createPaymentMethod === "yoco_pos" && !yocoEnabled) setCreatePaymentMethod("pay_later");
+    if (createPaymentMethod === "card" && !manualCardEnabled) setCreatePaymentMethod("pay_later");
     if (createPaymentMethod === "paystack_terminal" && !paystackTerminalEnabled) setCreatePaymentMethod("pay_later");
     if (createPaymentMethod === "payment_link" && !paymentLinkEnabled) setCreatePaymentMethod("pay_later");
     if (
@@ -995,6 +997,7 @@ export default function GroupBookingsScreen() {
     }
   }, [
     yocoEnabled,
+    manualCardEnabled,
     paystackTerminalEnabled,
     paymentLinkEnabled,
     paycloudEnabled,
@@ -4012,6 +4015,7 @@ export default function GroupBookingsScreen() {
                 <View style={twStyle("flex-row flex-wrap")}>
                   {(["cash", "card", "yoco", "bank_transfer"] as const)
                     .filter((method) => method !== "yoco" || yocoEnabled)
+                    .filter((method) => method !== "card" || manualCardEnabled)
                     .map((method) => (
                     <TouchableOpacity
                       key={method}
@@ -4027,7 +4031,9 @@ export default function GroupBookingsScreen() {
                           ? "Bank transfer"
                           : method === "yoco"
                             ? "Yoco"
-                            : method[0].toUpperCase() + method.slice(1)}
+                            : method === "card"
+                              ? manualCardCollectOptionLabel()
+                              : method[0].toUpperCase() + method.slice(1)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -5822,7 +5828,9 @@ export default function GroupBookingsScreen() {
                 [
                   { value: "pay_later", label: "Pay later", icon: "time-outline" as const },
                   { value: "cash", label: "Cash", icon: "cash-outline" as const },
-                  { value: "card", label: "Manual card", icon: "card-outline" as const },
+                  ...(manualCardEnabled
+                    ? [{ value: "card" as const, label: manualCardCollectOptionLabel(), icon: "card-outline" as const }]
+                    : []),
                   yocoEnabled
                     ? { value: "yoco_pos", label: "Yoco (recorded)", icon: "phone-portrait-outline" as const }
                     : null,

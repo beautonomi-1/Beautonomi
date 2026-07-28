@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
 import { reconcilePaycloudPayment } from "@/lib/payments/paycloud-reconcile";
@@ -31,7 +32,8 @@ export async function GET(
     }
 
     if (payment.status === "pending" || payment.status === "processing") {
-      await reconcilePaycloudPayment(supabase, payment);
+      const supabaseAdmin = getSupabaseAdmin();
+      await reconcilePaycloudPayment(supabaseAdmin, payment);
     }
 
     const { data: updated } = await supabase

@@ -8,6 +8,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 
 type AdditionalChargeRow = {
   id?: string;
@@ -230,6 +231,12 @@ export async function POST(
       const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
       if (yocoGate) return yocoGate;
     }
+
+    const manualCardGate = await requireManualCardEnabledForProvider(supabase, providerId, {
+      payment_method,
+      payment_provider,
+    });
+    if (manualCardGate) return manualCardGate;
 
     const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
     const effectivePaymentMethod = payment_method === 'mobile' ? 'other' : payment_method;

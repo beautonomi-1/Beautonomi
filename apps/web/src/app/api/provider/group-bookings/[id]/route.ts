@@ -22,7 +22,7 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
-import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
+import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 import { autoInvoiceInlineGroupParticipants } from "@/lib/bookings/create-group-participant-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -805,6 +805,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           400
         );
       }
+
+      const manualCardGate = await requireManualCardEnabledForProvider(supabase, providerId, {
+        payment_method: paymentMethod,
+        payment_provider: body.payment_provider,
+      });
+      if (manualCardGate) return manualCardGate;
 
       const tenantId = await resolveTenantIdWithZaFallback(request);
       const childBookingsSelect =

@@ -44,7 +44,7 @@ import type {
 } from "@/lib/provider-portal/types";
 import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
 import { calculateBookingPricing } from "@/components/appointments/pricing";
-import { effectiveTravelFee } from "@beautonomi/utils";
+import { effectiveTravelFee, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { providerApi } from "@/lib/provider-portal/api";
 import { FetchError, fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -134,6 +134,7 @@ export function GroupBookingDialog({
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const {
     ready: paycloudReady,
     loading: paycloudReadinessLoading,
@@ -162,7 +163,10 @@ export function GroupBookingDialog({
     ) {
       setCreatePaymentMethod("pay_later");
     }
-  }, [createPaymentMethod, paycloudCollectEnabled, paycloudEnabled]);
+    if (!manualCardEnabled && createPaymentMethod === "card") {
+      setCreatePaymentMethod("pay_later");
+    }
+  }, [createPaymentMethod, paycloudCollectEnabled, paycloudEnabled, manualCardEnabled]);
   const [postCreatePaystackData, setPostCreatePaystackData] = useState<{
     expectedAmount: number;
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
@@ -1956,7 +1960,9 @@ export function GroupBookingDialog({
                     {([
                       { value: "pay_later", label: "Pay later" },
                       { value: "cash", label: "Cash" },
-                      { value: "card", label: "Manual card" },
+                      ...(manualCardEnabled
+                        ? [{ value: "card" as const, label: manualCardCollectOptionLabel() }]
+                        : []),
                       { value: "yoco_pos", label: "Yoco terminal" },
                       ...(paymentLinkEnabled
                         ? [{ value: "payment_link", label: "Payment link" }]
@@ -2108,7 +2114,7 @@ export function GroupBookingDialog({
                     : createPaymentMethod === "cash"
                       ? "Cash"
                       : createPaymentMethod === "card"
-                        ? "Manual card"
+                        ? manualCardCollectOptionLabel()
                         : createPaymentMethod === "yoco_pos"
                           ? "Yoco terminal"
                           : createPaymentMethod === "paystack_terminal"

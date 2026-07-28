@@ -1,3 +1,5 @@
+import { formatCardPaymentHistoryLabel } from "@beautonomi/utils";
+
 export type BookingPaymentRow = {
   amount?: number | string | null;
   payment_method?: string | null;
@@ -32,14 +34,17 @@ export function getBookingPaymentChannelLabel(
   if (provider === "paystack") {
     return { label: "Paid online", tone: "online" };
   }
-  if (provider === "paycloud" || provider === "yoco") {
-    return { label: "Card terminal", tone: "terminal" };
+  if (provider === "paycloud" || provider === "yoco" || method === "card") {
+    return {
+      label: formatCardPaymentHistoryLabel({
+        payment_method: method,
+        payment_provider: provider,
+      }),
+      tone: "terminal",
+    };
   }
   if (method === "cash" || provider === "cash") {
     return { label: "Cash (recorded)", tone: "cash" };
-  }
-  if (method === "card") {
-    return { label: "Card", tone: "terminal" };
   }
   if (method === "bank_transfer") {
     return { label: "Bank transfer", tone: "other" };

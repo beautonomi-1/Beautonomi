@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { ActionButton } from "@/components/ui/ActionButton";
 import {
   usePayCloudTerminals,
@@ -195,6 +196,9 @@ export function PayCloudPaymentSheet({
   const handleProcessRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeTerminals = terminals.filter((t) => t.is_active);
+  const chargeableTerminals = activeTerminals.filter((t) => t.merchant != null);
+  const primaryBlocker = settings?.blockers?.[0] ?? null;
+  const isSandboxMachine = selectedTerminal?.merchant?.environment === "sandbox";
   // Platform flag AND provider setting (same as web PayCloudPaymentDialog).
   const qrEnabled =
     qrFlagEnabled && (qrPaymentsEnabled || settings?.qr_payments_enabled === true);
@@ -254,8 +258,8 @@ export function PayCloudPaymentSheet({
   const isMobileBooking = !bookingLocationId;
 
   useEffect(() => {
-    if (!selectedTerminal && activeTerminals.length > 0) {
-      const sortedByRecency = [...activeTerminals].sort((a, b) => {
+    if (!selectedTerminal && chargeableTerminals.length > 0) {
+      const sortedByRecency = [...chargeableTerminals].sort((a, b) => {
         const ta = a.last_used ? Date.parse(a.last_used) : 0;
         const tb = b.last_used ? Date.parse(b.last_used) : 0;
         return tb - ta;
@@ -270,10 +274,13 @@ export function PayCloudPaymentSheet({
       setSelectedTerminal(preferred);
       return;
     }
-    if (selectedTerminal && !activeTerminals.some((t) => t.id === selectedTerminal.id)) {
-      setSelectedTerminal(activeTerminals.length > 0 ? activeTerminals[0] : null);
+    if (
+      selectedTerminal &&
+      !chargeableTerminals.some((t) => t.id === selectedTerminal.id)
+    ) {
+      setSelectedTerminal(chargeableTerminals.length > 0 ? chargeableTerminals[0] : null);
     }
-  }, [selectedTerminal, activeTerminals, bookingLocationId, isMobileBooking]);
+  }, [selectedTerminal, chargeableTerminals, bookingLocationId, isMobileBooking]);
 
   useEffect(() => {
     if (!visible || !selectedTerminal?.in_flight_payment_id) return;
@@ -858,6 +865,21 @@ export function PayCloudPaymentSheet({
         </Text>
       </View>
 
+      {primaryBlocker ? (
+        <View style={twStyle("mb-4")}>
+          <PaycloudCollectSetupAffordance blocker={primaryBlocker} compact />
+        </View>
+      ) : null}
+
+      {isSandboxMachine ? (
+        <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+          <Text style={twStyle("text-xs font-semibold text-amber-900")}>Test machine</Text>
+          <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+            This still marks the booking paid, so void it when you are done testing.
+          </Text>
+        </View>
+      ) : null}
+
       <View style={twStyle(`mb-4 items-center rounded-2xl bg-gray-50 py-6 ${isCompactLayout ? "px-3" : ""}`)}>
         <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
         <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
@@ -1147,9 +1169,12 @@ export function PayCloudPaymentSheet({
           ) : null}
           {activeTerminals.map((terminal, idx) => {
             const isSelected = selectedTerminal?.id === terminal.id;
+            const merchantPending = terminal.merchant == null;
+            const isSandbox = terminal.merchant?.environment === "sandbox";
             // In same-device mode only the linked record can be charged.
             const unusableOnThisDevice =
               isSameDeviceMode && deviceMatchedTerminal?.id !== terminal.id;
+            const notChargeable = merchantPending || unusableOnThisDevice;
             const matchesBookingLocation =
               !!bookingLocationId && terminal.location_id === bookingLocationId;
             const isPortable = terminal.location_id == null;
@@ -1159,19 +1184,21 @@ export function PayCloudPaymentSheet({
             return (
               <TouchableOpacity
                 key={terminal.id}
-                onPress={() => setSelectedTerminal(terminal)}
-                disabled={unusableOnThisDevice}
+                onPress={() => !notChargeable && setSelectedTerminal(terminal)}
+                disabled={notChargeable}
                 style={[
                   twStyle(`flex-row items-center rounded-xl border p-3 ${
                     isSelected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
                   }`),
                   idx > 0 ? { marginTop: 8 } : undefined,
-                  unusableOnThisDevice ? { opacity: 0.45 } : undefined,
+                  notChargeable ? { opacity: 0.45 } : undefined,
                 ]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected, disabled: unusableOnThisDevice }}
+                accessibilityState={{ selected: isSelected, disabled: notChargeable }}
                 accessibilityLabel={
-                  unusableOnThisDevice
+                  merchantPending
+                    ? `${terminal.name} card machine — setup pending`
+                    : unusableOnThisDevice
                     ? `${terminal.name} card machine — not available while paying on this device`
                     : `${terminal.name} card machine`
                 }
@@ -1214,6 +1241,18 @@ export function PayCloudPaymentSheet({
                       <View style={twStyle("ml-2 rounded-full bg-slate-900 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-white")}>
                           This device
+                        </Text>
+                      </View>
+                    ) : null}
+                    {isSandbox ? (
+                      <View style={twStyle("ml-2 rounded-full bg-amber-200 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-semibold text-amber-900")}>TEST</Text>
+                      </View>
+                    ) : null}
+                    {merchantPending ? (
+                      <View style={twStyle("ml-2 rounded-full bg-gray-200 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-semibold text-gray-700")}>
+                          Setup pending
                         </Text>
                       </View>
                     ) : null}

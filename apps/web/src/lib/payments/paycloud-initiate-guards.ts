@@ -73,14 +73,6 @@ export async function validatePaycloudPaymentInitiate(
         status: 400,
       };
     }
-    if (merchant.environment && merchant.environment !== params.environment) {
-      return {
-        ok: false,
-        code: "ENV_MISMATCH",
-        message: "This card machine is set up for a different mode (test vs live).",
-        status: 400,
-      };
-    }
   }
 
   const { data: pendingSameEntity } = await supabase

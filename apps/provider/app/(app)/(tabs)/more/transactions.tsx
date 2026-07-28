@@ -1,10 +1,10 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Redirect, useRouter } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
-import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Share, ScrollView, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -139,7 +139,7 @@ export function TransactionsContent({
 
   const transactionsPath = `/api/provider/transactions?period=${period}&limit=${listLimit}&offset=0${
     locationId ? `&location_id=${encodeURIComponent(locationId)}` : ""
-  }`;
+  }${typeFilter !== "all" ? `&type=${encodeURIComponent(typeFilter)}` : ""}`;
 
   /** Branch-scoped when a location is selected (matches Sales / Overview aggregates). */
   const { data: txnPayload, loading, error: txnError, errorCode, refresh, silentRefresh } = useApi<
@@ -147,6 +147,7 @@ export function TransactionsContent({
   >(transactionsPath, {
     staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
     revalidateOnFocus: true,
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
   });
   useFocusRevalidate(silentRefresh);
 
@@ -173,9 +174,9 @@ export function TransactionsContent({
 
   useEffect(() => {
     setListLimit(50);
-  }, [period, locationId]);
+  }, [period, locationId, typeFilter]);
 
-  const canLoadMore = listTotal > listLimit && listLimit < MAX_LIST_LIMIT;
+  const canLoadMore = listTotal > listLimit && listLimit < MAX_LIST_LIMIT && !search.trim();
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string; location_id?: string },
     { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
@@ -192,9 +193,6 @@ export function TransactionsContent({
 
   const filtered = useMemo(() => {
     let list = transactions ?? [];
-    if (typeFilter !== "all") {
-      list = list.filter((t) => t.type === typeFilter);
-    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((t) => {
@@ -207,12 +205,9 @@ export function TransactionsContent({
       });
     }
     return list;
-  }, [transactions, typeFilter, search]);
+  }, [transactions, search]);
 
-  const useServerSummary =
-    serverSummary &&
-    typeFilter === "all" &&
-    !search.trim();
+  const useServerSummary = Boolean(serverSummary) && !search.trim();
 
   const totalIn = useMemo(() => {
     if (useServerSummary) return serverSummary!.total_in;
@@ -319,12 +314,15 @@ export function TransactionsContent({
     );
   };
 
-  return (
-    <ScreenContainer
-      scrollable={true}
-      refreshing={refreshing}
-      onRefresh={handleRefresh}
-    >
+  const content = (
+      <ScrollView
+        style={embedded ? twStyle("flex-1") : undefined}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+      >
       {!embedded ? (
         <ScreenHeader
           title="Transactions"
@@ -360,7 +358,7 @@ export function TransactionsContent({
         </View>
       ) : null}
 
-      {serverSummary?.basis_note && typeFilter === "all" && !search.trim() ? (
+      {serverSummary?.basis_note && !search.trim() ? (
         <View style={twStyle("mb-3 px-4")}>
           <Text style={twStyle("text-xs leading-5 text-gray-500")}>{serverSummary.basis_note}</Text>
         </View>
@@ -435,7 +433,7 @@ export function TransactionsContent({
 
       {loading && !txnPayload ? (
         <SkeletonList rows={6} />
-      ) : txnError && !txnPayload ? (
+      ) : txnError ? (
         <FinanceReportError error={txnError} errorCode={errorCode} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -594,8 +592,14 @@ export function TransactionsContent({
           </View>
         )}
       </BottomSheet>
-    </ScreenContainer>
+      </ScrollView>
   );
+
+  if (embedded) {
+    return <View style={twStyle("flex-1")}>{content}</View>;
+  }
+
+  return <ScreenContainer scrollable={false}>{content}</ScreenContainer>;
 }
 
 export default function TransactionsScreen() {

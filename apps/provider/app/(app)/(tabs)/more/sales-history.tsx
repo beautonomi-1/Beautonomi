@@ -3,7 +3,7 @@ import { Redirect, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, FlatList, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useApi, useApiPost, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
@@ -116,26 +116,31 @@ export function SalesHistoryContent({
     setPage(1);
   }, [debouncedSearch, dateFilter, locationId, sourceFilter]);
 
-  const dateRange = useMemo(() => getDateRange(dateFilter, provider?.timezone), [dateFilter, provider?.timezone]);
+  const dateRange = useMemo(() => {
+    if (dateFilter === "all") return { from: undefined as string | undefined, to: undefined as string | undefined };
+    return getDateRange(dateFilter, provider?.timezone);
+  }, [dateFilter, provider?.timezone]);
   const dateRangeCaption = useMemo(() => {
+    if (dateFilter === "all") return null;
     if (!dateRange.from || !dateRange.to) return null;
     return formatReportRangeCaption(dateRange.from, dateRange.to);
-  }, [dateRange.from, dateRange.to]);
+  }, [dateFilter, dateRange.from, dateRange.to]);
 
   const params = useMemo(() => {
     const parts: string[] = [`page=${page}`, "limit=25"];
     if (debouncedSearch) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
-    if (dateRange.from) parts.push(`date_from=${dateRange.from}`);
-    if (dateRange.to) parts.push(`date_to=${dateRange.to}`);
+    if (dateFilter !== "all" && dateRange.from) parts.push(`date_from=${dateRange.from}`);
+    if (dateFilter !== "all" && dateRange.to) parts.push(`date_to=${dateRange.to}`);
     if (locationId) parts.push(`location_id=${locationId}`);
     if (sourceFilter !== "all") parts.push(`source=${sourceFilter}`);
     return parts.join("&");
-  }, [page, debouncedSearch, dateRange, locationId, sourceFilter]);
+  }, [page, debouncedSearch, dateFilter, dateRange, locationId, sourceFilter]);
 
   const { data: salesPayload, loading, error: salesError, errorCode, refresh, silentRefresh } =
     useApi<SalesHistoryApiResponse>(`/api/provider/sales-history?${params}`, {
       staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
       revalidateOnFocus: true,
+      timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
     });
   useFocusRevalidate(silentRefresh);
 
@@ -194,8 +199,8 @@ export function SalesHistoryContent({
     }
   }
 
-  return (
-    <ScreenContainer scrollable={false}>
+  const content = (
+      <>
       {!embedded ? (
         <ScreenHeader
           title="Sales history"
@@ -309,7 +314,7 @@ export function SalesHistoryContent({
 
       {loading && !sales.length && !salesError ? (
         <SkeletonList rows={5} />
-      ) : salesError && !salesPayload ? (
+      ) : salesError ? (
         <FinanceReportError error={salesError} errorCode={errorCode} onRetry={refresh} />
       ) : sales.length === 0 ? (
         <EmptyState
@@ -457,8 +462,14 @@ export function SalesHistoryContent({
           </View>
         )}
       </BottomSheet>
-    </ScreenContainer>
+      </>
   );
+
+  if (embedded) {
+    return <View style={twStyle("flex-1")}>{content}</View>;
+  }
+
+  return <ScreenContainer scrollable={false}>{content}</ScreenContainer>;
 }
 
 export default function SalesHistoryScreen() {

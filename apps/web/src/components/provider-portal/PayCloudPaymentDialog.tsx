@@ -2,7 +2,9 @@
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import React, { useState, useEffect } from "react";
+import { humanizePaycloudPaymentError } from "@beautonomi/utils";
 import { paycloudApi, type PaycloudPayment, type PaycloudTerminal } from "@/lib/provider-portal/paycloud-api";
+import { FetchError } from "@/lib/http/fetcher";
 import { selectTerminalForLocation } from "@/lib/payments/select-terminal-for-location";
 import {
   Dialog,
@@ -46,6 +48,12 @@ export interface PayCloudPaymentDialogProps {
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000;
+
+function paycloudToastMessage(error: unknown, fallback: string): string {
+  const code = error instanceof FetchError ? error.code : undefined;
+  const raw = error instanceof Error ? error.message : fallback;
+  return humanizePaycloudPaymentError(code, raw).message;
+}
 
 export function PayCloudPaymentDialog({
   open,
@@ -184,11 +192,13 @@ export function PayCloudPaymentDialog({
       } else if (payment.status === "pending" || payment.status === "processing") {
         toast.error("Payment timed out — check the card machine or try again.");
       } else {
-        toast.error(payment.error_message || "Payment was not completed");
+        toast.error(
+          humanizePaycloudPaymentError(undefined, payment.error_message || "Payment was not completed").message,
+        );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("PayCloud payment failed:", error);
-      toast.error(error?.message || "Could not reach the card machine — check it is online.");
+      toast.error(paycloudToastMessage(error, "Could not reach the card machine — check it is online."));
     } finally {
       setIsProcessing(false);
     }
@@ -202,11 +212,12 @@ export function PayCloudPaymentDialog({
       if (voidRow.status === "processing" || voidRow.status === "successful") {
         toast.success("Void sent to card machine — follow prompts on the device.");
       } else {
-        toast.error(voidRow.error_message || "Could not void on the card machine.");
+        toast.error(
+          humanizePaycloudPaymentError(undefined, voidRow.error_message || "Could not void on the card machine.").message,
+        );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Could not void on the card machine.";
-      toast.error(message);
+      toast.error(paycloudToastMessage(error, "Could not void on the card machine."));
     } finally {
       setVoiding(false);
     }
@@ -217,6 +228,7 @@ export function PayCloudPaymentDialog({
 
   const selectedTerminal = terminals.find((t) => t.id === selectedTerminalId);
   const captureNeedsReview = isPaycloudCaptureUnderReview(paymentResult);
+  const isSandboxMachine = selectedTerminal?.merchant?.environment === "sandbox";
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleCancel())}>
@@ -311,6 +323,18 @@ export function PayCloudPaymentDialog({
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            {isSandboxMachine ? (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertDescription className="text-amber-900">
+                  <div className="mb-1 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                    TEST
+                  </div>
+                  <p className="mt-2 text-xs">
+                    This is a test card machine. Payments still mark the balance paid — void them when you are done testing.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <div>
               <Label htmlFor="terminal">Card machine</Label>
               {terminals.length === 0 ? (

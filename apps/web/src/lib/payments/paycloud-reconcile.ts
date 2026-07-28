@@ -63,14 +63,15 @@ export async function reconcilePaycloudPayment(
     return { payment_id: payment.id, action: "unchanged", reason: "not_pending" };
   }
 
-  const ctx = await resolvePaycloudContextForProvider(
+  const resolved = await resolvePaycloudContextForProvider(
     supabase,
     payment.provider_id,
     payment.terminal_id,
   );
-  if (!ctx) {
-    return { payment_id: payment.id, action: "error", reason: "terminal_not_configured" };
+  if (!resolved.ok) {
+    return { payment_id: payment.id, action: "error", reason: resolved.reason };
   }
+  const ctx = resolved.ctx;
 
   const query = await queryPaycloudOrder(
     ctx.environment,

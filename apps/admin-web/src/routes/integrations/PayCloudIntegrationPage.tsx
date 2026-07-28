@@ -115,6 +115,19 @@ function PaycloudAppEditor({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
+      {env === "sandbox" ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-900">Test mode</p>
+          <p className="mt-1 text-xs text-amber-800">
+            Enable the sandbox app row to let providers use test card machines. Test captures still settle like live
+            (bookings marked paid) — providers must void test payments when finished. Turn off before go-live to block
+            new sandbox charges.
+          </p>
+          <p className="mt-2 text-xs font-medium text-amber-900">
+            Test mode is {app?.is_enabled ? "on" : "off"} for this scope.
+          </p>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700">{env} app</h3>
