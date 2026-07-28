@@ -68,7 +68,7 @@ export function FinanceHubShell({
           <FilterChipGroup options={chipOptions} selected={activeTab} onSelect={onSelectTab} />
         </View>
       </View>
-      <View style={{ flex: 1 }}>{active?.render()}</View>
+      <View style={{ flex: 1, minHeight: 0 }}>{active?.render()}</View>
     </ScreenContainer>
   );
 }

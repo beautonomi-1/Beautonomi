@@ -64,6 +64,9 @@ export const SubscriptionMetricsPage = lazy(() =>
 export const PlansListPage = lazy(() =>
   import("@/routes/finance/PlansListPage").then((m) => ({ default: m.PlansListPage }))
 );
+export const TrialBalancePage = lazy(() =>
+  import("@/routes/finance/TrialBalancePage").then((m) => ({ default: m.TrialBalancePage }))
+);
 export const WalletReconciliationPage = lazy(() =>
   import("@/routes/finance/WalletReconciliationPage").then((m) => ({ default: m.WalletReconciliationPage }))
 );

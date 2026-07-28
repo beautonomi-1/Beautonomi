@@ -283,6 +283,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     collectEnabled: paycloudCollectEnabled,
     inFlight: paycloudInFlight,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const { selectedLocationId } = useProvider();
   const { data: permissionData } = useApi<{
@@ -1367,7 +1368,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             })}
             {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
               <View style={twStyle("mb-2 w-full")}>
-                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
               </View>
             ) : null}
           </View>

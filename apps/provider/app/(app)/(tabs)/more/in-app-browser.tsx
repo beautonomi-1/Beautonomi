@@ -101,6 +101,43 @@ export default function InAppBrowserScreen() {
         });
         return;
       }
+      if (raw?.type === "BEAUTONOMI_TERMINAL_PAYMENT_DONE") {
+        const isCancelled = raw.status === "cancelled";
+        const status: "success" | "pending" | "failed" =
+          raw.status === "pending"
+            ? "pending"
+            : raw.status === "failed" || isCancelled
+              ? "failed"
+              : "success";
+        Haptics.notificationAsync(
+          status === "failed"
+            ? Haptics.NotificationFeedbackType.Error
+            : status === "pending"
+              ? Haptics.NotificationFeedbackType.Warning
+              : Haptics.NotificationFeedbackType.Success,
+        );
+        setPaymentResult({
+          status,
+          title:
+            status === "success"
+              ? "Terminal order paid"
+              : status === "pending"
+                ? "Payment is syncing"
+                : isCancelled
+                  ? "Payment cancelled"
+                  : "Payment not completed",
+          message:
+            raw.message ||
+            (status === "success"
+              ? "Your terminal order payment was confirmed. Return to Terminal shop to track your order."
+              : status === "pending"
+                ? "Paystack received the payment, but confirmation is still syncing. Return to Terminal shop and pull to refresh."
+                : isCancelled
+                  ? "You cancelled the payment. No charge was made."
+                  : "The payment could not be confirmed. Return to Terminal shop and try again."),
+        });
+        return;
+      }
       if (raw?.type === "subscription_success") {
         // Prefer the caller-supplied screen destination (e.g. onboarding's
         // "verify-identity") over the web-echoed return_to.

@@ -18,6 +18,14 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import {
+  REFUND_REASON_PRESETS,
+  computeBookingAvailableRefund,
+  canShowBookingRefund,
+  normalizeRefundReason,
+  isRefundReasonValid,
+  type RefundReasonPreset,
+} from "@/lib/refunds/refundUiHelpers";
 
 type OfferingEmbed = {
   id?: string;
@@ -97,6 +105,8 @@ interface BookingDetail {
   country?: string;
   address_country?: string;
   total_amount: number;
+  total_paid?: number | null;
+  total_refunded?: number | null;
   currency: string;
   subtotal?: number | null;
   travel_fee?: number | null;
@@ -267,7 +277,8 @@ export function BookingDetailPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState(0);
-  const [refundReason, setRefundReason] = useState("");
+  const [refundReasonPreset, setRefundReasonPreset] = useState<RefundReasonPreset | "">("");
+  const [refundReasonOther, setRefundReasonOther] = useState("");
 
   const q = useQuery({
     queryKey: adminQueryKeys.bookings.detail(bookingId),
@@ -303,14 +314,15 @@ export function BookingDetailPage() {
   });
 
   const refundMutation = useMutation({
-    mutationFn: (payload: { amount: number; reason?: string }) =>
+    mutationFn: (payload: { amount: number; reason: string }) =>
       adminApi.postJson(`/api/admin/bookings/${bookingId}/refund`, payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setShowRefund(false);
-      setRefundReason("");
-      adminToast.success("Refund initiated successfully");
+      setRefundReasonPreset("");
+      setRefundReasonOther("");
+      adminToast.success("Refund credited to customer wallet");
     },
     onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
@@ -379,11 +391,21 @@ export function BookingDetailPage() {
     Math.abs(expectedTotalFromColumns - Number(booking.total_amount)) > MONEY_TOL;
   const pkg = firstRel(booking.service_packages ?? undefined);
   const grp = firstRel(booking.group_bookings ?? undefined);
+  const availableRefund = computeBookingAvailableRefund(booking);
+  const showRefundAction = canShowBookingRefund(booking);
+  const resolvedRefundReason = normalizeRefundReason(refundReasonPreset, refundReasonOther);
+  const refundReasonValid = isRefundReasonValid(refundReasonPreset, refundReasonOther);
 
   const startEdit = () => {
     setEditData({ ...booking });
-    setRefundAmount(booking.total_amount || 0);
     setIsEditing(true);
+  };
+
+  const openRefundModal = () => {
+    setRefundAmount(availableRefund);
+    setRefundReasonPreset("");
+    setRefundReasonOther("");
+    setShowRefund(true);
   };
 
   return (
@@ -416,12 +438,16 @@ export function BookingDetailPage() {
                   >
                     Cancel
                   </button>
-                  {booking.payment_transaction ? (
-                    <button type="button" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" onClick={() => setShowRefund(true)}>
-                      Refund
-                    </button>
-                  ) : null}
                 </>
+              ) : null}
+              {showRefundAction ? (
+                <button
+                  type="button"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                  onClick={openRefundModal}
+                >
+                  Refund
+                </button>
               ) : null}
             </>
           ) : (
@@ -1036,33 +1062,96 @@ export function BookingDetailPage() {
             <button
               type="button"
               className="rounded bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-              disabled={refundMutation.isPending}
-              onClick={() => refundMutation.mutate({ amount: refundAmount, reason: refundReason || undefined })}
+              disabled={
+                refundMutation.isPending ||
+                !refundReasonValid ||
+                refundAmount <= 0 ||
+                refundAmount > availableRefund + 0.001
+              }
+              onClick={() =>
+                refundMutation.mutate({ amount: refundAmount, reason: resolvedRefundReason })
+              }
             >
               Process refund
             </button>
           </>
         }
       >
-        <label className="block text-sm">
-          Amount
-          <input
-            type="number"
-            value={refundAmount}
-            onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
-            className="mt-1 w-full rounded border border-gray-300 p-2"
-            min={0}
-            max={booking.total_amount}
-          />
-        </label>
-        <textarea
-          value={refundReason}
-          onChange={(e) => setRefundReason(e.target.value)}
-          placeholder="Reason (optional)"
-          rows={3}
-          className="mt-3 w-full rounded border border-gray-300 p-2 text-sm"
-        />
-        <AdminMutationAlert errors={[refundMutation.error]} />
+        <div className="space-y-4">
+          <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+            <p>
+              <span className="font-medium">Collected:</span> {money(booking.currency, Math.max(Number(booking.total_paid ?? 0), Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0)))}
+            </p>
+            {(booking.total_refunded ?? 0) > 0 ? (
+              <p>
+                <span className="font-medium">Already refunded:</span>{" "}
+                {money(booking.currency, booking.total_refunded ?? 0)}
+              </p>
+            ) : null}
+            <p>
+              <span className="font-medium">Available to refund:</span>{" "}
+              {money(booking.currency, availableRefund)}
+            </p>
+          </div>
+
+          <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+            The customer&apos;s wallet will be credited immediately. This does not refund their card
+            or bank. They can use the balance on their next booking or request a payout from their
+            wallet.
+          </p>
+
+          <label className="block text-sm">
+            Amount
+            <input
+              type="number"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
+              className="mt-1 w-full rounded border border-gray-300 p-2"
+              min={0.01}
+              max={availableRefund}
+              step="0.01"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-gray-700">
+            Reason *
+            <select
+              className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+              value={refundReasonPreset}
+              onChange={(e) => setRefundReasonPreset(e.target.value as RefundReasonPreset | "")}
+            >
+              <option value="">Select a reason…</option>
+              {REFUND_REASON_PRESETS.map((preset) => (
+                <option key={preset} value={preset}>
+                  {preset}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {refundReasonPreset === "Other" || refundReasonPreset === "" ? (
+            <label className="block text-sm font-medium text-gray-700">
+              {refundReasonPreset === "Other" ? "Describe reason *" : "Or enter reason *"}
+              <input
+                type="text"
+                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                value={refundReasonOther}
+                onChange={(e) => setRefundReasonOther(e.target.value)}
+                placeholder="Reason for refund…"
+              />
+            </label>
+          ) : null}
+
+          <p className="text-xs text-gray-500">
+            For transaction-level partial refunds on a specific charge, use{" "}
+            <Link to={adminSpaTo("/admin/refunds")} className="underline">
+              Refunds
+            </Link>
+            .
+          </p>
+
+          <AdminMutationAlert errors={[refundMutation.error]} />
+        </div>
       </AdminModal>
 
       {isEditing ? <AdminMutationAlert errors={[saveMutation.error]} /> : null}

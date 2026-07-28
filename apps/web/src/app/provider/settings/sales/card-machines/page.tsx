@@ -63,12 +63,15 @@ const SETUP_STEPS: Array<{
   code: PaycloudReadinessBlocker["code"];
   label: string;
 }> = [
+  { code: "FLAG_OFF", label: "Card machines enabled for your market" },
   { code: "PLAN_REQUIRED", label: "Plan includes card machines" },
   { code: "NOT_ACCEPTED", label: "Accept in-person card payments" },
   { code: "NO_TERMINALS", label: "Add a card machine" },
   { code: "ALL_SUSPENDED", label: "At least one active machine" },
   { code: "NO_MERCHANT", label: "Merchant setup complete" },
 ];
+
+const KNOWN_SETUP_CODES = new Set(SETUP_STEPS.map((s) => s.code));
 
 type PendingTerminalOrder = {
   id: string;
@@ -221,10 +224,11 @@ export default function CardMachinesPage() {
   const blockers = paycloudSettings?.blockers ?? [];
   const blockerCodes = new Set(blockers.map((b) => b.code));
   const setupProgress = useMemo(() => {
-    const steps = SETUP_STEPS.filter((s) => s.code !== "FLAG_OFF");
-    const done = steps.filter((s) => !blockerCodes.has(s.code)).length;
-    return { done, total: steps.length };
+    const done = SETUP_STEPS.filter((s) => !blockerCodes.has(s.code)).length;
+    return { done, total: SETUP_STEPS.length };
   }, [blockerCodes]);
+
+  const unknownBlockers = blockers.filter((b) => !KNOWN_SETUP_CODES.has(b.code));
 
   const planBlocker = blockers.find((b) => b.code === "PLAN_REQUIRED");
   const needsAttention = useMemo(() => {
@@ -426,9 +430,9 @@ export default function CardMachinesPage() {
   const activeYoco = yocoDevices.filter((d) => d.is_active).length;
   const statusLabel = paycloudSettings?.ready
     ? "Ready"
-    : acceptPaycloud
-      ? "Setup incomplete"
-      : "Not accepting";
+    : !acceptPaycloud
+      ? "Not accepting"
+      : blockers[0]?.title ?? "Setup incomplete";
   const recentPayments = reconcilePayments.slice(0, 10);
   const exceptionPayments = reconcilePayments.filter(
     (p) =>
@@ -609,7 +613,7 @@ export default function CardMachinesPage() {
               subtitle={`${setupProgress.done} of ${setupProgress.total} done`}
             />
             <div className="mt-4 space-y-2">
-              {SETUP_STEPS.filter((s) => s.code !== "FLAG_OFF").map((step) => {
+              {SETUP_STEPS.map((step) => {
                 const done = !blockerCodes.has(step.code);
                 const blocker = blockers.find((b) => b.code === step.code);
                 return (
@@ -624,7 +628,7 @@ export default function CardMachinesPage() {
                         <Circle className="h-4 w-4 text-gray-300" />
                       )}
                       <span className={done ? "text-sm text-gray-700" : "text-sm font-medium text-gray-900"}>
-                        {step.label}
+                        {blocker?.title && !done ? blocker.title : step.label}
                       </span>
                     </div>
                     {!done && blocker?.href ? (
@@ -635,6 +639,22 @@ export default function CardMachinesPage() {
                   </div>
                 );
               })}
+              {unknownBlockers.map((blocker) => (
+                <div
+                  key={blocker.code}
+                  className="flex items-center justify-between rounded-lg border border-amber-200 px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Circle className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm font-medium text-gray-900">{blocker.title}</span>
+                  </div>
+                  {blocker.href ? (
+                    <Button variant="ghost" size="sm" asChild className="h-8 text-xs">
+                      <Link href={blocker.href}>{blocker.actionLabel}</Link>
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
             </div>
             {(paycloudSettings?.warnings ?? []).length > 0 ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">

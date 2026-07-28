@@ -2,7 +2,7 @@
  * Native VAT Reports – bi-monthly VAT reports for SARS submission.
  * Full parity with web: list by period, year picker, mark remitted, export/share.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Alert,
   Share,
   Platform,
+  ScrollView,
+  RefreshControl,
 } from "react-native";
 import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,6 +25,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface VATTransaction {
   id: string;
@@ -70,8 +73,66 @@ function formatDateSafe(
 const currentYear = new Date().getFullYear();
 const YEAR_OPTIONS = [currentYear, currentYear - 1, currentYear - 2];
 
+function VatReportsShell({
+  embedded,
+  screenPadding,
+  scrollable = false,
+  refreshing,
+  onRefresh,
+  centerContent = false,
+  children,
+}: {
+  embedded: boolean;
+  screenPadding: number;
+  scrollable?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  centerContent?: boolean;
+  children: ReactNode;
+}) {
+  if (embedded) {
+    if (scrollable) {
+      return (
+        <ScrollView
+          style={{ flex: 1, minHeight: 0 }}
+          contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} />
+            ) : undefined
+          }
+        >
+          {children}
+        </ScrollView>
+      );
+    }
+    return (
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          paddingHorizontal: screenPadding,
+          ...(centerContent ? { justifyContent: "center" } : {}),
+        }}
+      >
+        {children}
+      </View>
+    );
+  }
+  if (scrollable) {
+    return (
+      <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+        {children}
+      </ScreenContainer>
+    );
+  }
+  return <ScreenContainer scrollable={false}>{children}</ScreenContainer>;
+}
+
 export function VATReportsContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -160,30 +221,30 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
 
   if (loading && !data) {
     return (
-      <ScreenContainer scrollable={false}>
+      <VatReportsShell embedded={embedded} screenPadding={screenPadding} centerContent>
         {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
-      </ScreenContainer>
+      </VatReportsShell>
     );
   }
 
   if (error && !data) {
     return (
-      <ScreenContainer scrollable={false}>
+      <VatReportsShell embedded={embedded} screenPadding={screenPadding} centerContent>
         {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
-      </ScreenContainer>
+      </VatReportsShell>
     );
   }
 
   const payload = data as VATReportsData;
   if (!payload.provider?.is_vat_registered) {
     return (
-      <ScreenContainer>
+      <VatReportsShell embedded={embedded} screenPadding={screenPadding} scrollable>
         {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 px-4 pt-4")}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-6 items-center")}>
@@ -202,14 +263,20 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
             </TouchableOpacity>
           </View>
         </View>
-      </ScreenContainer>
+      </VatReportsShell>
     );
   }
 
   const reports = payload.reports ?? [];
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+    <VatReportsShell
+      embedded={embedded}
+      screenPadding={screenPadding}
+      scrollable
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+    >
       {!embedded ? (
         <ScreenHeader
           title="VAT Reports"
@@ -390,7 +457,7 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
             );
           })
       )}
-    </ScreenContainer>
+    </VatReportsShell>
   );
 }
 

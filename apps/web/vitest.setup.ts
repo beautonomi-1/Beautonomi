@@ -53,9 +53,17 @@ class MockResizeObserver {
   unobserve() {}
   disconnect() {}
 }
-(globalThis as any).IntersectionObserver = MockIntersectionObserver;
-(globalThis as any).ResizeObserver = MockResizeObserver;
+const globalWithObservers = globalThis as typeof globalThis & {
+  IntersectionObserver: typeof MockIntersectionObserver;
+  ResizeObserver: typeof MockResizeObserver;
+};
+globalWithObservers.IntersectionObserver = MockIntersectionObserver;
+globalWithObservers.ResizeObserver = MockResizeObserver;
 if (typeof window !== "undefined") {
-  (window as any).IntersectionObserver = MockIntersectionObserver;
-  (window as any).ResizeObserver = MockResizeObserver;
+  const windowWithObservers = window as typeof window & {
+    IntersectionObserver: typeof MockIntersectionObserver;
+    ResizeObserver: typeof MockResizeObserver;
+  };
+  windowWithObservers.IntersectionObserver = MockIntersectionObserver;
+  windowWithObservers.ResizeObserver = MockResizeObserver;
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface LineItem {
   id: string;
@@ -161,6 +162,7 @@ function createDefaultInvoiceForm(): InvoiceForm {
 
 export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -415,7 +417,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   }
 
   return (
-    <ScreenContainer scrollable={false}>
+    <InvoicesShell embedded={embedded} screenPadding={screenPadding}>
       {!embedded ? (
         <ScreenHeader
           title="Invoices"
@@ -500,6 +502,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       ) : (
         <FlatList
           {...verticalFlatListPerf}
+          style={{ flex: 1 }}
           data={filtered}
           keyExtractor={(i: Invoice) => i.id}
           showsVerticalScrollIndicator={false}
@@ -881,8 +884,34 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
           </TouchableOpacity>
         </ScrollView>
       </BottomSheet>
-    </ScreenContainer>
+    </InvoicesShell>
   );
+}
+
+function InvoicesShell({
+  embedded,
+  screenPadding,
+  children,
+}: {
+  embedded: boolean;
+  screenPadding: number;
+  children: ReactNode;
+}) {
+  if (embedded) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          paddingHorizontal: screenPadding,
+          backgroundColor: "#ffffff",
+        }}
+      >
+        {children}
+      </View>
+    );
+  }
+  return <ScreenContainer scrollable={false}>{children}</ScreenContainer>;
 }
 
 export default function InvoicesScreen() {

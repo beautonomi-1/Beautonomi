@@ -8,7 +8,6 @@ export type OrphanPaymentTxRow = {
   fees?: number;
   net_amount?: number;
   status?: string;
-  provider?: string;
   created_at?: string;
   booking_id?: string | null;
   metadata?: Record<string, unknown>;
@@ -18,6 +17,7 @@ export type OrphanPaymentTxRow = {
   refund_reason?: string | null;
   refunded_at?: string | null;
   refunded_by?: string | null;
+  provider?: string | null;
 };
 
 export type OrphanPaymentTxTenantScope = {
@@ -127,6 +127,7 @@ export async function fetchOrphanRefundPaymentTxsForTenant(
         refunded_by,
         status,
         created_at,
+        provider,
         metadata,
         refunded_by_user:users!payment_transactions_refunded_by_fkey(id, full_name, email)
       `,

@@ -126,8 +126,8 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
   const [txLimit, setTxLimit] = useState(50);
   const { screenPadding } = useResponsive();
   const currency = getTenantDefaultCurrency();
-  /** Branch-scoped earnings when a location is selected; `transaction_feed=all` keeps the activity list org-wide (same as Transactions hub). */
-  const url = `/api/provider/finance?range=${range}&transaction_feed=all&tx_limit=${txLimit}${
+  /** Branch-scoped earnings and activity list when a location is selected (matches Ledger / Sales). */
+  const url = `/api/provider/finance?range=${range}&tx_limit=${txLimit}${
     locationId ? `&location_id=${encodeURIComponent(locationId)}` : ""
   }`;
   const { data, loading, error, errorCode, refresh, silentRefresh } = useApi<FinanceData>(url, {

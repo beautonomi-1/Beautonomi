@@ -31,7 +31,7 @@
 
    Abort if the script reports any discrepancies.
 
-2. Close the period in the admin UI (`/admin/finance/period-close`) OR via
+2. Close the period in the admin UI (`/admin/period-locks`) OR via
    SQL:
 
    ```sql

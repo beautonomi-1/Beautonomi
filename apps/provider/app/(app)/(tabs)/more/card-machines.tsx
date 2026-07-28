@@ -65,6 +65,17 @@ type MerchantApplicationSummary = {
   status: string;
 };
 
+const SETUP_STEPS = [
+  { code: "FLAG_OFF", label: "Card machines enabled for your market" },
+  { code: "PLAN_REQUIRED", label: "Plan includes card machines" },
+  { code: "NOT_ACCEPTED", label: "Accept in-person card payments" },
+  { code: "NO_TERMINALS", label: "Add a card machine" },
+  { code: "ALL_SUSPENDED", label: "At least one active machine" },
+  { code: "NO_MERCHANT", label: "Merchant setup complete" },
+] as const;
+
+const KNOWN_SETUP_CODES = new Set(SETUP_STEPS.map((s) => s.code));
+
 function formatLastUsedShort(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return "recently";
@@ -482,11 +493,14 @@ export default function CardMachinesScreen() {
   const acceptPaycloud = settings?.accept_paycloud === true;
   const inFlight = settings?.terminals?.inFlight ?? 0;
   const needsAttention = inFlight > 0 || reconcileExceptions > 0;
+  const topBlocker = settings?.blockers?.[0];
   const statusLabel = settings?.ready
     ? "Ready"
-    : acceptPaycloud
-      ? "Setup incomplete"
-      : "Not accepting";
+    : !acceptPaycloud
+      ? "Not accepting"
+      : topBlocker?.title ?? "Setup incomplete";
+  const unknownBlockers =
+    settings?.blockers?.filter((b) => !KNOWN_SETUP_CODES.has(b.code as (typeof SETUP_STEPS)[number]["code"])) ?? [];
 
   return (
     <ScreenContainer>
@@ -637,15 +651,7 @@ export default function CardMachinesScreen() {
       {settings?.blockers && settings.blockers.length > 0 ? (
         <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
           <Text style={twStyle("text-sm font-semibold text-amber-950")}>Setup checklist</Text>
-          {(
-            [
-              { code: "PLAN_REQUIRED", label: "Plan includes card machines" },
-              { code: "NOT_ACCEPTED", label: "Accept in-person card payments" },
-              { code: "NO_TERMINALS", label: "Add a card machine" },
-              { code: "ALL_SUSPENDED", label: "At least one active machine" },
-              { code: "NO_MERCHANT", label: "Merchant setup complete" },
-            ] as const
-          ).map((step) => {
+          {SETUP_STEPS.map((step) => {
             const blocker = settings.blockers?.find((b) => b.code === step.code);
             const done = !blocker;
             return (
@@ -655,11 +661,36 @@ export default function CardMachinesScreen() {
                     `flex-1 text-xs ${done ? "text-emerald-800" : "text-amber-900"}`,
                   )}
                 >
-                  {done ? "✓" : "○"} {step.label}
+                  {done ? "✓" : "○"}{" "}
+                  {blocker?.title && !done ? blocker.title : step.label}
                 </Text>
               </View>
             );
           })}
+          {unknownBlockers.map((blocker) => (
+            <View key={blocker.code} style={twStyle("mt-2")}>
+              <Text style={twStyle("text-xs text-amber-900")}>
+                ○ {blocker.title}
+              </Text>
+              {blocker.actionLabel ? (
+                <Text style={twStyle("mt-0.5 text-[11px] text-amber-800")}>
+                  {blocker.actionLabel}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+          {settings.blockers.find((b) => b.code === "FLAG_OFF") ? (
+            <TouchableOpacity
+              style={twStyle("mt-3 self-start rounded-full border border-amber-900 px-3 py-2")}
+              onPress={() => {
+                void Linking.openURL(
+                  "mailto:support@beautonomi.com?subject=Card%20machines%20not%20enabled",
+                );
+              }}
+            >
+              <Text style={twStyle("text-xs font-semibold text-amber-950")}>Contact Beautonomi</Text>
+            </TouchableOpacity>
+          ) : null}
           {settings.blockers.find((b) => b.code === "PLAN_REQUIRED") ? (
             <TouchableOpacity
               style={twStyle("mt-3 self-start rounded-full bg-amber-900 px-3 py-2")}

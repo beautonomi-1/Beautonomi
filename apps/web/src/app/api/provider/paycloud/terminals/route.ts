@@ -9,6 +9,7 @@ import {
   isPaycloudCashbackEnabledForProvider,
 } from "@/lib/payments/paycloud-feature-gate";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { resolveAcceptPaycloud } from "@/lib/payments/paycloud-accept";
 import { z } from "zod";
 
 const createTerminalSchema = z.object({
@@ -81,6 +82,14 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .maybeSingle();
 
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("accept_paycloud")
+      .eq("id", providerId)
+      .maybeSingle();
+
+    const acceptPaycloud = resolveAcceptPaycloud(providerRow, settings);
+
     const [qrFlagOn, cashbackFlagOn] = await Promise.all([
       isPaycloudQrEnabledForProvider(supabase, providerId),
       isPaycloudCashbackEnabledForProvider(supabase, providerId),
@@ -89,7 +98,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: {
         terminals: mapped,
-        accept_paycloud: settings?.accept_paycloud ?? false,
+        accept_paycloud: acceptPaycloud,
         // Effective capability: platform flag AND provider setting.
         qr_payments_enabled: qrFlagOn && (settings?.qr_payments_enabled ?? false),
         cashback_enabled: cashbackFlagOn && (settings?.cashback_enabled ?? false),

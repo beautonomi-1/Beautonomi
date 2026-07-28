@@ -14,8 +14,6 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
-import { getWebProviderBaseUrl } from "@/lib/web-url";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 
 const TRIGGER_TYPES = [
   { label: "Booking completed", value: "booking_completed" },
@@ -43,12 +41,11 @@ const ACTION_TYPES = [
 
 function alertCreateError(message: string, errorCode: string | null, router: Router) {
   if (errorCode === "SUBSCRIPTION_REQUIRED" || errorCode === "LIMIT_REACHED") {
-    const base = getWebProviderBaseUrl().replace(/\/$/, "");
     Alert.alert(errorCode === "LIMIT_REACHED" ? "Automation limit" : "Subscription required", message, [
       { text: "OK", style: "cancel" },
       {
         text: "View plans & billing",
-        onPress: () => pushInAppBrowser(router, `${base}/provider/subscription`, "Subscription"),
+        onPress: () => router.push("/(app)/(tabs)/more/settings/subscription" as never),
       },
     ]);
     return;

@@ -18,6 +18,12 @@ import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { z } from "zod";
+
+const initializePaymentSchema = z.object({
+  in_app: z.boolean().optional(),
+  callback_url: z.string().optional(),
+});
 
 function getServiceClient() {
   return createClient(
@@ -83,6 +89,16 @@ export async function POST(
       return errorResponse("This order has no amount due.", "VALIDATION", 400);
     }
 
+    let body: z.infer<typeof initializePaymentSchema> = {};
+    try {
+      const raw = await request.json();
+      body = initializePaymentSchema.parse(raw ?? {});
+    } catch {
+      body = {};
+    }
+    const inApp = body.in_app === true;
+    const callbackFromClient = body.callback_url?.trim() || null;
+
     const { data: userRow } = await supabaseAdmin
       .from("users")
       .select("email")
@@ -95,7 +111,24 @@ export async function POST(
 
     const reference = generateTransactionReference("terminal_order", orderId);
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    const callbackUrl = `${appUrl}/provider/settings/sales/terminal-shop?payment_success=1&order_id=${orderId}`;
+    // Paystack callback_url must be HTTPS (same contract as subscription/ads).
+    const isHttpsClientCallback =
+      typeof callbackFromClient === "string" && /^https:\/\//i.test(callbackFromClient);
+    const inAppParam = inApp ? "&in_app=1&context=provider_inapp" : "";
+    const terminalReturnBase = `${appUrl}/provider/settings/sales/terminal-payment-return`;
+    const callbackUrl =
+      inApp && isHttpsClientCallback
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=1&order_id=${orderId}&context=provider_inapp`
+        : inApp
+          ? `${terminalReturnBase}?payment_success=1&order_id=${orderId}${inAppParam}`
+          : `${appUrl}/provider/settings/sales/terminal-shop?payment_success=1&order_id=${orderId}`;
+
+    const cancelAction =
+      inApp && isHttpsClientCallback
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1&order_id=${orderId}&context=provider_inapp`
+        : inApp
+          ? `${terminalReturnBase}?payment_cancelled=1&order_id=${orderId}${inAppParam}`
+          : `${appUrl}/provider/settings/sales/terminal-payment-return?payment_cancelled=1&order_id=${orderId}`;
 
     const paystackData = await initializePaystackTransaction({
       email,
@@ -107,6 +140,7 @@ export async function POST(
         terminal_order_id: orderId,
         provider_id: providerId,
         kind: "terminal_order_payment",
+        cancel_action: cancelAction,
       },
       tenantId,
     });

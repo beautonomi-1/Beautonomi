@@ -433,9 +433,9 @@ export function TransactionsContent({
         <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
-      {loading && !transactions ? (
+      {loading && !txnPayload ? (
         <SkeletonList rows={6} />
-      ) : txnError && !transactions ? (
+      ) : txnError && !txnPayload ? (
         <FinanceReportError error={txnError} errorCode={errorCode} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -444,8 +444,12 @@ export function TransactionsContent({
           description={
             search || typeFilter !== "all"
               ? "Try adjusting your search or filters"
-              : "Financial transactions will appear here"
+              : period !== "all"
+                ? "No transactions in this period. Try All time or All branches above."
+                : "Financial transactions will appear here"
           }
+          actionLabel={period !== "all" && !search && typeFilter === "all" ? "Show all time" : undefined}
+          onAction={period !== "all" && !search && typeFilter === "all" ? () => setPeriod("all") : undefined}
         />
       ) : (
         <View>

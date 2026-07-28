@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays } from "date-fns";
 import {
   getProviderNetAfterRefundsDetailed,
   getPreviousPeriodNetAfterRefunds,
 } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
 import { getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
@@ -19,17 +19,8 @@ export async function GET(request: NextRequest) {
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
-    const { user } = permissionCheck;    // Use service role client for all queries to avoid RLS infinite recursion
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = permissionCheck;
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
@@ -74,16 +65,25 @@ export async function GET(request: NextRequest) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
     
-    const { data: bookings, error: bookingsError } = await bookingsQuery
-      .order("scheduled_at", { ascending: false });
+    let exactCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
+    if (locationId) {
+      exactCountQuery = exactCountQuery.eq("location_id", locationId);
+    }
+
+    const [{ data: bookings, error: bookingsError }, { count: exactBookingCount }] =
+      await Promise.all([
+        bookingsQuery.order("scheduled_at", { ascending: false }).limit(MAX_BOOKINGS_FOR_REPORT),
+        exactCountQuery,
+      ]);
 
     if (bookingsError) {
       console.error("Error fetching bookings:", bookingsError);
-      return handleApiError(
-        new Error(`Failed to fetch bookings: ${bookingsError.message}`),
-        "BOOKINGS_FETCH_ERROR",
-        500
-      );
+      return handleApiError(bookingsError, "Failed to fetch bookings for sales summary");
     }
 
     // Get staff information separately to avoid deep nesting issues
@@ -139,7 +139,9 @@ export async function GET(request: NextRequest) {
       retailLedgerRevenue += v;
     });
 
-    const totalBookings = bookings?.length || 0;
+    const sampleBookings = bookings?.length || 0;
+    const totalBookings = exactBookingCount ?? sampleBookings;
+    const bookingsSampleTruncated = totalBookings > sampleBookings;
     const bookingsWithLedgerActivity = [...revenueByBooking.entries()].filter(([, v]) => v > 0).length;
     const retailOrderCount = revenueByProductOrder.size;
     /** Average net ledger amount per appointment that has any recognized ledger activity in range. */
@@ -161,20 +163,19 @@ export async function GET(request: NextRequest) {
     const prevFromDate = subDays(fromDate, periodDays);
     const prevToDate = fromDate;
 
-    let prevBookingsQuery = supabaseAdmin
+    let prevBookingsCountQuery = supabaseAdmin
       .from("bookings")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("provider_id", providerId)
       .gte("scheduled_at", prevFromDate.toISOString())
       .lte("scheduled_at", prevToDate.toISOString());
 
     if (locationId) {
-      prevBookingsQuery = prevBookingsQuery.eq("location_id", locationId);
+      prevBookingsCountQuery = prevBookingsCountQuery.eq("location_id", locationId);
     }
 
-    const { data: prevBookings } = await prevBookingsQuery;
-
-    const prevBookingsCount = prevBookings?.length || 0;
+    const { count: prevBookingsCountRaw } = await prevBookingsCountQuery;
+    const prevBookingsCount = prevBookingsCountRaw ?? 0;
 
     const revenueGrowth =
       prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
@@ -302,6 +303,7 @@ export async function GET(request: NextRequest) {
       retailLedgerRevenue,
       retailOrderCount,
       totalBookings,
+      bookingsSampleTruncated,
       bookingsWithLedgerActivity,
       averageBookingValue,
       revenueGrowth,
@@ -325,7 +327,10 @@ export async function GET(request: NextRequest) {
       recordedTakingsBasisNote:
         "Recorded takings sum what was logged in-app: completed booking_payments (by payment date), wallet amounts on appointments scheduled in range, completed legacy sales and walk-in product orders (by sale/paid date), plus ledger tips and cancellation fees in range. This is cash-register style and can differ from ledger net when cash or terminal payments never settled through the platform.",
       basisNote:
-        "Totals use finance_transactions net amounts (recognized when recorded). Includes provider earnings, travel fees, and tips for appointments; plus retail/product orders settled through the platform. Scheduled appointment counts use service dates (all statuses). Revenue-by-day uses ledger dates; per-day booking counts use appointment dates — they will not always match. Service/staff splits allocate each booking’s ledger net by line-item price share (variants use each line’s offering title). Compare recorded takings for salon-logged cash and terminal amounts.",
+        "Totals use finance_transactions net amounts (recognized when recorded). Includes provider earnings, travel fees, and tips for appointments; plus retail/product orders settled through the platform. Scheduled appointment counts use service dates (all statuses). Revenue-by-day uses ledger dates; per-day booking counts use appointment dates — they will not always match. Service/staff splits allocate each booking’s ledger net by line-item price share (variants use each line’s offering title). Compare recorded takings for salon-logged cash and terminal amounts." +
+        (bookingsSampleTruncated
+          ? ` Service/staff mix is computed from the newest ${MAX_BOOKINGS_FOR_REPORT.toLocaleString()} appointments in range; totalBookings uses the full count.`
+          : ""),
     });
   } catch (error) {
     console.error("Error in sales summary report:", error);

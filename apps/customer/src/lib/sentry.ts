@@ -38,6 +38,16 @@ function getSentryReleaseAndDist(): { release?: string; dist?: string } {
   return { release, ...(dist ? { dist } : {}) };
 }
 
+/** Fabric/Reanimated race during navigation — recoverable, not actionable. */
+function isRetryableMountingLayerNoise(event: Sentry.Event): boolean {
+  const values = event.exception?.values ?? [];
+  return values.some(
+    (ex) =>
+      ex.type === "RetryableMountingLayerException" ||
+      (typeof ex.value === "string" && ex.value.includes("Unable to find viewState for tag")),
+  );
+}
+
 /**
  * Initialize Sentry error reporting.
  * Call once during app startup (root layout).
@@ -59,6 +69,9 @@ export function initSentry() {
     ...(release ? { release } : {}),
     ...(dist ? { dist } : {}),
     beforeSend(event) {
+      if (isRetryableMountingLayerNoise(event)) {
+        return null;
+      }
       if (event.user) {
         delete event.user.ip_address;
       }

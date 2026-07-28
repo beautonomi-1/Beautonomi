@@ -3,22 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
-
-function financeTransactionTypesForFilter(type: string | null): string[] | null {
-  switch (type) {
-    case "payment":
-      return ["payment", "wallet_payment", "gift_card_payment", "charge", "additional_charge_payment"];
-    case "fee":
-      return ["platform_fee", "service_fee"];
-    case "refund":
-      return ["refund"];
-    case "payout":
-      return ["payout"];
-    default:
-      return null;
-  }
-}
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  financeTransactionTypesForAdminFilter,
+} from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/finance/transactions
@@ -58,7 +46,7 @@ export async function GET(request: NextRequest) {
     defaultStart.setUTCHours(0, 0, 0, 0);
     const rangeStart = startDate || defaultStart.toISOString();
     const rangeEnd = endDate || nowISO;
-    const transactionTypes = financeTransactionTypesForFilter(type);
+    const transactionTypes = financeTransactionTypesForAdminFilter(type);
 
     const restrictProviderIds = providerIdFilter ? [providerIdFilter] : undefined;
 

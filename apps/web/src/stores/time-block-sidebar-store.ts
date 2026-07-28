@@ -183,8 +183,12 @@ export function switchBlockToEditMode(): void {
     description: block.description,
     blockType: inferBlockType(block),
     isRepeating: block.is_recurring,
-    repeatDays: block.recurrence_rule?.days_of_week ?? block.recurrence_rule?.days ?? (block as any).recurring_pattern?.days,
-    repeatUntil: block.recurrence_rule?.end_date ?? (block as any).recurring_pattern?.end_date,
+    repeatDays:
+      block.recurrence_rule?.days_of_week ??
+      block.recurrence_rule?.days ??
+      legacyRecurringPattern(block)?.days,
+    repeatUntil:
+      block.recurrence_rule?.end_date ?? legacyRecurringPattern(block)?.end_date,
   };
   
   setState({
@@ -247,6 +251,16 @@ export function updateBlockDraft(updates: Partial<BlockDraft>): void {
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+type LegacyRecurringPattern = {
+  days?: number[];
+  end_date?: string;
+};
+
+function legacyRecurringPattern(block: TimeBlock): LegacyRecurringPattern | undefined {
+  const pattern = (block as TimeBlock & { recurring_pattern?: LegacyRecurringPattern }).recurring_pattern;
+  return pattern ?? undefined;
+}
 
 /**
  * Infer block type from time block data

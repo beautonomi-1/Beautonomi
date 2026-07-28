@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   mergeLedgerRowsByIdPreferProvider,
   normalizeAdminLedgerRange,
+  computeAdminFinancePreviousPeriodRange,
+  financeTransactionTypesForAdminFilter,
   resolveFinanceLedgerRowCustomerId,
   resolveFinanceLedgerRowProviderId,
 } from "./finance-ledger-tenant";
@@ -40,6 +42,51 @@ describe("normalizeAdminLedgerRange", () => {
       start: "2026-04-29T22:00:00.000Z",
       end: "2026-04-30T21:59:59.999Z",
     });
+  });
+});
+
+describe("computeAdminFinancePreviousPeriodRange", () => {
+  it("uses full prior UTC calendar month for default MTD comparison", () => {
+    const now = new Date("2026-07-15T12:00:00.000Z");
+    const out = computeAdminFinancePreviousPeriodRange({
+      startDate: null,
+      endDate: null,
+      now,
+    });
+    expect(out.period).toBe("month");
+    expect(out.previousStart).toBe("2026-06-01T00:00:00.000Z");
+    expect(out.previousEnd).toBe("2026-06-30T23:59:59.999Z");
+  });
+
+  it("shifts custom range backward by the same duration", () => {
+    const out = computeAdminFinancePreviousPeriodRange({
+      startDate: "2026-03-10",
+      endDate: "2026-03-20",
+    });
+    expect(out.period).toBe("custom");
+    const prevStart = new Date(out.previousStart);
+    const prevEnd = new Date(out.previousEnd);
+    expect(prevEnd.getTime()).toBeLessThan(new Date("2026-03-10").getTime());
+    expect(prevEnd.getTime() - prevStart.getTime()).toBe(
+      new Date("2026-03-20").getTime() - new Date("2026-03-10").getTime(),
+    );
+  });
+});
+
+describe("financeTransactionTypesForAdminFilter", () => {
+  it("maps payment filter to tender types", () => {
+    expect(financeTransactionTypesForAdminFilter("payment")).toEqual([
+      "payment",
+      "wallet_payment",
+      "gift_card_payment",
+      "charge",
+      "additional_charge_payment",
+    ]);
+  });
+
+  it("returns null for all/unknown", () => {
+    expect(financeTransactionTypesForAdminFilter(null)).toBeNull();
+    expect(financeTransactionTypesForAdminFilter("all")).toBeNull();
   });
 });
 

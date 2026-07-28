@@ -2,8 +2,8 @@
  * PayCloud integration hooks for the provider app.
  * Calls existing backend API endpoints at /api/provider/paycloud/*.
  */
-import { useState, useEffect, useCallback } from "react";
-import { Alert } from "react-native";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import { Alert, AppState, type AppStateStatus } from "react-native";
 import { api } from "@/lib/api-client";
 import type { PaycloudIntentContract, PaycloudIntentPayload } from "@/lib/paycloud-same-terminal";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -12,22 +12,52 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 const PAYCLOUD_PLATFORM_DISABLED_CODE = "PAYCLOUD_DISABLED_BY_PLATFORM";
 const PAYCLOUD_PLATFORM_FLAG_KEY = "payment_paycloud";
+const PAYCLOUD_SESSION_DISABLE_TTL_MS = 5 * 60 * 1000;
 
-let paycloudPlatformDisabledForSession = false;
+let paycloudPlatformDisabledUntil: number | null = null;
+
+function isPaycloudPlatformSessionDisabled(): boolean {
+  if (paycloudPlatformDisabledUntil == null) return false;
+  if (Date.now() >= paycloudPlatformDisabledUntil) {
+    paycloudPlatformDisabledUntil = null;
+    return false;
+  }
+  return true;
+}
 
 function notePaycloudPlatformDisabled(code: string | undefined): void {
   if (code === PAYCLOUD_PLATFORM_DISABLED_CODE) {
-    paycloudPlatformDisabledForSession = true;
+    paycloudPlatformDisabledUntil = Date.now() + PAYCLOUD_SESSION_DISABLE_TTL_MS;
+    notifySettingsSubscribers();
   }
 }
 
+function clearPaycloudPlatformSessionDisable(): void {
+  if (paycloudPlatformDisabledUntil != null) {
+    paycloudPlatformDisabledUntil = null;
+    notifySettingsSubscribers();
+  }
+}
+
+let appStateSubscriptionAttached = false;
+function ensureAppStatePaycloudRecovery(): void {
+  if (appStateSubscriptionAttached) return;
+  appStateSubscriptionAttached = true;
+  AppState.addEventListener("change", (state: AppStateStatus) => {
+    if (state === "active") {
+      clearPaycloudPlatformSessionDisable();
+    }
+  });
+}
+
 function usePayCloudPlatformAvailability(): { ready: boolean; disabled: boolean } {
+  ensureAppStatePaycloudRecovery();
   const { bundle, isLoading, error } = useConfigBundle();
   const flag = bundle?.flags?.[PAYCLOUD_PLATFORM_FLAG_KEY];
   const flagDisabled = !isLoading && !error && flag != null && flag.enabled !== true;
   return {
     ready: !isLoading,
-    disabled: paycloudPlatformDisabledForSession || flagDisabled,
+    disabled: isPaycloudPlatformSessionDisabled() || flagDisabled,
   };
 }
 
@@ -435,71 +465,158 @@ export function usePayCloudTerminals() {
   };
 }
 
-/* ─── Settings ─── */
+/* ─── Settings (shared module cache) ─── */
 
-export function usePayCloudSettings() {
-  const { ready: platformReady, disabled: platformDisabled } =
-    usePayCloudPlatformAvailability();
-  const [settings, setSettings] = useState<PayCloudSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type SettingsStore = {
+  settings: PayCloudSettings | null;
+  loading: boolean;
+  error: string | null;
+  subscribers: Set<() => void>;
+  loadPromise: Promise<void> | null;
+  platformReady: boolean;
+  platformDisabled: boolean;
+};
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+const settingsStore: SettingsStore = {
+  settings: null,
+  loading: true,
+  error: null,
+  subscribers: new Set(),
+  loadPromise: null,
+  platformReady: false,
+  platformDisabled: false,
+};
+
+/** Cached snapshot so useSyncExternalStore getSnapshot returns a stable reference. */
+let settingsSnapshot: Pick<SettingsStore, "settings" | "loading" | "error"> = {
+  settings: settingsStore.settings,
+  loading: settingsStore.loading,
+  error: settingsStore.error,
+};
+
+function refreshSettingsSnapshot(): void {
+  if (
+    settingsSnapshot.settings === settingsStore.settings &&
+    settingsSnapshot.loading === settingsStore.loading &&
+    settingsSnapshot.error === settingsStore.error
+  ) {
+    return;
+  }
+  settingsSnapshot = {
+    settings: settingsStore.settings,
+    loading: settingsStore.loading,
+    error: settingsStore.error,
+  };
+}
+
+function notifySettingsSubscribers(): void {
+  refreshSettingsSnapshot();
+  settingsStore.subscribers.forEach((fn) => fn());
+}
+
+function subscribeSettings(onStoreChange: () => void): () => void {
+  settingsStore.subscribers.add(onStoreChange);
+  return () => {
+    settingsStore.subscribers.delete(onStoreChange);
+  };
+}
+
+function getSettingsSnapshot(): Pick<SettingsStore, "settings" | "loading" | "error"> {
+  return settingsSnapshot;
+}
+
+function normalizePayCloudSettings(raw: PayCloudSettings | null | undefined): PayCloudSettings | null {
+  if (!raw) return null;
+  return {
+    accept_paycloud: raw.accept_paycloud === true,
+    qr_payments_enabled: raw.qr_payments_enabled === true,
+    cashback_enabled: raw.cashback_enabled === true,
+    active_terminal_count:
+      typeof raw.active_terminal_count === "number" ? raw.active_terminal_count : 0,
+    ready: raw.ready === true,
+    blockers: Array.isArray(raw.blockers) ? raw.blockers : [],
+    warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+    terminals:
+      raw.terminals && typeof raw.terminals === "object"
+        ? (raw.terminals as PayCloudTerminalSummary)
+        : undefined,
+    plan:
+      raw.plan && typeof raw.plan === "object" ? (raw.plan as PayCloudPlanInfo) : undefined,
+    account_environment:
+      raw.account_environment === "sandbox" ||
+      raw.account_environment === "live" ||
+      raw.account_environment === "mixed"
+        ? raw.account_environment
+        : null,
+  };
+}
+
+async function loadPayCloudSettingsShared(): Promise<void> {
+  if (!settingsStore.platformReady) return;
+  if (settingsStore.platformDisabled) {
+    settingsStore.settings = null;
+    settingsStore.error = null;
+    settingsStore.loading = false;
+    notifySettingsSubscribers();
+    return;
+  }
+  if (settingsStore.loadPromise) {
+    await settingsStore.loadPromise;
+    return;
+  }
+
+  settingsStore.loading = true;
+  settingsStore.error = null;
+  notifySettingsSubscribers();
+
+  settingsStore.loadPromise = (async () => {
     try {
       const res = await api.get<PayCloudSettings>("/api/provider/paycloud/settings");
       if (res.error) {
         notePaycloudPlatformDisabled(res.error.code);
-        setError(res.error.message ?? "Failed to load card machine settings");
-        setSettings(null);
+        settingsStore.error = res.error.message ?? "Failed to load card machine settings";
+        settingsStore.settings = null;
         return;
       }
-      const raw = res.data;
-      setSettings({
-        accept_paycloud: raw?.accept_paycloud === true,
-        qr_payments_enabled: raw?.qr_payments_enabled === true,
-        cashback_enabled: raw?.cashback_enabled === true,
-        active_terminal_count:
-          typeof raw?.active_terminal_count === "number"
-            ? raw.active_terminal_count
-            : 0,
-        ready: raw?.ready === true,
-        blockers: Array.isArray(raw?.blockers) ? raw.blockers : [],
-        warnings: Array.isArray(raw?.warnings) ? raw.warnings : [],
-        terminals:
-          raw?.terminals && typeof raw.terminals === "object"
-            ? (raw.terminals as PayCloudTerminalSummary)
-            : undefined,
-        plan:
-          raw?.plan && typeof raw.plan === "object"
-            ? (raw.plan as PayCloudPlanInfo)
-            : undefined,
-        account_environment:
-          raw?.account_environment === "sandbox" ||
-          raw?.account_environment === "live" ||
-          raw?.account_environment === "mixed"
-            ? raw.account_environment
-            : null,
-      });
+      settingsStore.settings = normalizePayCloudSettings(res.data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load card machine settings");
-      setSettings(null);
+      settingsStore.error =
+        e instanceof Error ? e.message : "Failed to load card machine settings";
+      settingsStore.settings = null;
     } finally {
-      setLoading(false);
+      settingsStore.loading = false;
+      settingsStore.loadPromise = null;
+      notifySettingsSubscribers();
     }
-  }, []);
+  })();
+
+  await settingsStore.loadPromise;
+}
+
+export function usePayCloudSettings() {
+  const { ready: platformReady, disabled: platformDisabled } =
+    usePayCloudPlatformAvailability();
 
   useEffect(() => {
-    if (!platformReady) return;
-    if (platformDisabled) {
-      setSettings(null);
-      setError(null);
-      setLoading(false);
-      return;
+    const prevReady = settingsStore.platformReady;
+    const prevDisabled = settingsStore.platformDisabled;
+    settingsStore.platformReady = platformReady;
+    settingsStore.platformDisabled = platformDisabled;
+
+    if (
+      platformReady &&
+      (!prevReady || prevDisabled !== platformDisabled || !settingsStore.settings)
+    ) {
+      void loadPayCloudSettingsShared();
     }
-    void load();
-  }, [platformReady, platformDisabled, load]);
+  }, [platformReady, platformDisabled]);
+
+  const snapshot = useSyncExternalStore(subscribeSettings, getSettingsSnapshot, getSettingsSnapshot);
+
+  const reload = useCallback(async () => {
+    settingsStore.loadPromise = null;
+    await loadPayCloudSettingsShared();
+  }, []);
 
   const updateSettings = useCallback(
     async (
@@ -516,17 +633,24 @@ export function usePayCloudSettings() {
           Alert.alert("Error", res.error.message || "Failed to update settings");
           return false;
         }
-        await load();
+        settingsStore.loadPromise = null;
+        await loadPayCloudSettingsShared();
         return true;
       } catch {
         Alert.alert("Error", "Failed to update settings");
         return false;
       }
     },
-    [load],
+    [],
   );
 
-  return { settings, loading, error, reload: load, updateSettings };
+  return {
+    settings: snapshot.settings,
+    loading: snapshot.loading,
+    error: snapshot.error,
+    reload,
+    updateSettings,
+  };
 }
 
 /* ─── Payment Processing ─── */

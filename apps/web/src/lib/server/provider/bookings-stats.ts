@@ -42,6 +42,23 @@ export type BookingsStatsResult = {
 const TERMINAL_STATUSES = new Set(["cancelled", "canceled", "no_show"]);
 const GMV_PAGE_SIZE = 1000;
 
+/** Valid `booking_status` enum values — do not pass portal aliases like `started` or `canceled`. */
+const BOOKING_STATUS = {
+  confirmed: ["confirmed"] as const,
+  inProgress: ["in_progress", "waiting", "checked_in"] as const,
+  completed: ["completed"] as const,
+  cancelled: ["cancelled"] as const,
+  noShow: ["no_show"] as const,
+} as const;
+
+/** `group_bookings.status` is TEXT with its own CHECK constraint (includes booked/started). */
+const GROUP_BOOKING_STATUS = {
+  confirmed: ["confirmed", "booked"] as const,
+  inProgress: ["started"] as const,
+  completed: ["completed"] as const,
+  cancelled: ["cancelled"] as const,
+} as const;
+
 type StatsWindow = {
   scheduledFromIso?: string;
   scheduledToIso?: string;
@@ -258,21 +275,15 @@ export async function computeBookingsStats(
       q = applyScheduledWindow(q, window);
       return countExact(q);
     })(),
-    countStandaloneBookings(supabaseAdmin, providerId, ["confirmed"], window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, ["confirmed", "booked"], window, locationId),
-    countStandaloneBookings(
-      supabaseAdmin,
-      providerId,
-      ["in_progress", "started", "waiting", "checked_in"],
-      window,
-      locationId,
-    ),
-    countGroupBookings(supabaseAdmin, providerId, ["started"], window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, ["completed"], window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, ["completed"], window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, ["cancelled", "canceled"], window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, ["cancelled"], window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, ["no_show"], window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.confirmed, window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.confirmed, window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.inProgress, window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.inProgress, window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.completed, window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.completed, window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.cancelled, window, locationId),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.cancelled, window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.noShow, window, locationId),
   ]);
 
   const pendingCount = pendingStandalone + pendingGroups;
@@ -334,4 +345,4 @@ export async function computeBookingsStats(
   };
 }
 
-export { PENDING_REVIEW_DB_STATUSES };
+export { PENDING_REVIEW_DB_STATUSES, BOOKING_STATUS, GROUP_BOOKING_STATUS };

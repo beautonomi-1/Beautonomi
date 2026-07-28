@@ -680,6 +680,7 @@ export default function GroupBookingsScreen() {
     collectEnabled: paycloudCollectEnabled,
     inFlight: paycloudInFlight,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
@@ -3824,6 +3825,27 @@ export default function GroupBookingsScreen() {
                           </Text>
                         </TouchableOpacity>
                       ) : null}
+                      {canProcessPayments &&
+                      paycloudEnabled &&
+                      !paycloudCollectEnabled &&
+                      p.booking_id &&
+                      !p.paid &&
+                      p.payment_status !== "paid" &&
+                      (() => {
+                        const due =
+                          Number(p.balance_due ?? 0) > 0
+                            ? Number(p.balance_due ?? 0)
+                            : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                        return due > 0.01;
+                      })() ? (
+                        <View style={twStyle("mt-2")}>
+                          <PaycloudCollectSetupAffordance
+                            blocker={paycloudPrimaryBlocker}
+                            compact
+                            loading={paycloudLoading}
+                          />
+                        </View>
+                      ) : null}
                       {p.booking_id &&
                       participantMaxRefundable({
                         total_paid: p.total_paid,
@@ -4055,7 +4077,7 @@ export default function GroupBookingsScreen() {
                     </TouchableOpacity>
                   ) : paycloudEnabled ? (
                     <View style={twStyle("mb-2 mr-2 w-full")}>
-                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                     </View>
                   ) : null}
                 </View>
@@ -5840,7 +5862,7 @@ export default function GroupBookingsScreen() {
             </View>
             {paycloudEnabled && !paycloudCollectEnabled && canProcessPayments ? (
               <View style={twStyle("mt-2")}>
-                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
               </View>
             ) : null}
             {createPaymentMethod === "payment_link" ? (

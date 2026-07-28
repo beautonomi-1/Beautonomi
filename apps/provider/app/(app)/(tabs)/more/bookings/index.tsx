@@ -63,6 +63,8 @@ import {
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
   buildStatsReconciliationLine,
+  buildBookingsStatsSnapshot,
+  formatBookingsStatsMetric,
   buildStripDateParams,
   buildStripDays,
   filterBookingsForDayKey,
@@ -451,7 +453,12 @@ export default function BookingsListScreen() {
   const statsLocationQ = selectedLocationId
     ? `&location_id=${encodeURIComponent(selectedLocationId)}`
     : "";
-  const { data: bookingsStatsApi } = useApi<BookingsStatsPayload>(
+  const {
+    data: bookingsStatsApi,
+    loading: bookingsStatsLoading,
+    error: bookingsStatsError,
+    refresh: refreshBookingsStats,
+  } = useApi<BookingsStatsPayload>(
     `/api/provider/bookings/stats?range=${statsRange}${statsLocationQ}`,
     { staleTimeMs: 30_000, enabled: viewMode === "overview" },
   );
@@ -1013,32 +1020,13 @@ export default function BookingsListScreen() {
   );
 
   /** Server-backed stats (provider TZ + ledger); independent of paginated list window. */
-  const statsSnapshot = useMemo(() => {
-    if (bookingsStatsApi) {
-      return {
-        count: bookingsStatsApi.appointment_count,
-        bookedGmv: bookingsStatsApi.booked_gmv,
-        recognizedRevenue: bookingsStatsApi.recognized_revenue,
-        pendingCount: bookingsStatsApi.pending_count,
-        confirmedCount: bookingsStatsApi.confirmed_count,
-        inProgressCount: bookingsStatsApi.in_progress_count,
-        completedCount: bookingsStatsApi.completed_count,
-        cancelledCount: bookingsStatsApi.cancelled_count,
-        noShowCount: bookingsStatsApi.no_show_count,
-      };
-    }
-    return {
-      count: 0,
-      bookedGmv: 0,
-      recognizedRevenue: 0,
-      pendingCount: 0,
-      confirmedCount: 0,
-      inProgressCount: 0,
-      completedCount: 0,
-      cancelledCount: 0,
-      noShowCount: 0,
-    };
-  }, [bookingsStatsApi]);
+  const statsSnapshot = useMemo(
+    () => buildBookingsStatsSnapshot(bookingsStatsApi),
+    [bookingsStatsApi],
+  );
+
+  const statsMetricsUnavailable =
+    viewMode === "overview" && !statsSnapshot && (bookingsStatsLoading || Boolean(bookingsStatsError));
 
   const toReviewEmptyWithPendingMetric = useMemo(
     () =>
@@ -1046,22 +1034,21 @@ export default function BookingsListScreen() {
       statusFilter === BOOKINGS_TO_REVIEW_STATUS &&
       !overviewLoadingAny &&
       filtered.length === 0 &&
-      statsSnapshot.pendingCount > 0,
-    [viewMode, statusFilter, overviewLoadingAny, filtered.length, statsSnapshot.pendingCount],
+      (statsSnapshot?.pendingCount ?? 0) > 0,
+    [viewMode, statusFilter, overviewLoadingAny, filtered.length, statsSnapshot?.pendingCount],
   );
 
-  const statsReconciliationLine = useMemo(
-    () =>
-      buildStatsReconciliationLine({
-        pending_count: statsSnapshot.pendingCount,
-        confirmed_count: statsSnapshot.confirmedCount,
-        in_progress_count: statsSnapshot.inProgressCount,
-        completed_count: statsSnapshot.completedCount,
-        cancelled_count: statsSnapshot.cancelledCount,
-        no_show_count: statsSnapshot.noShowCount,
-      }),
-    [statsSnapshot],
-  );
+  const statsReconciliationLine = useMemo(() => {
+    if (!statsSnapshot) return "";
+    return buildStatsReconciliationLine({
+      pending_count: statsSnapshot.pendingCount,
+      confirmed_count: statsSnapshot.confirmedCount,
+      in_progress_count: statsSnapshot.inProgressCount,
+      completed_count: statsSnapshot.completedCount,
+      cancelled_count: statsSnapshot.cancelledCount,
+      no_show_count: statsSnapshot.noShowCount,
+    });
+  }, [statsSnapshot]);
 
   const statsListRangeMismatch =
     viewMode === "overview" && statsRangeToDateRange(statsRange) !== dateRange;
@@ -1556,12 +1543,31 @@ export default function BookingsListScreen() {
                 </View>
               )}
             </View>
+            {bookingsStatsError && !statsSnapshot ? (
+              <TouchableOpacity
+                onPress={() => void refreshBookingsStats()}
+                activeOpacity={0.85}
+                style={twStyle("mb-2 flex-row items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Metrics failed to load. Tap to retry."
+              >
+                <Ionicons name="alert-circle-outline" size={16} color="#b91c1c" />
+                <Text style={twStyle("flex-1 text-xs leading-4 text-red-800")}>
+                  Metrics unavailable — tap to retry
+                </Text>
+                <Ionicons name="refresh-outline" size={14} color="#b91c1c" />
+              </TouchableOpacity>
+            ) : null}
             <View style={twStyle("flex-row gap-2")}>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("appointments")}
                 activeOpacity={0.85}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.count} appointments — view all`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `${statsSnapshot.count} appointments — view all`
+                    : "Appointment count unavailable — view all"
+                }
                 style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
@@ -1570,108 +1576,150 @@ export default function BookingsListScreen() {
                     Appointments
                   </Text>
                 </View>
-                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
+                  {formatBookingsStatsMetric(statsSnapshot?.count)}
+                </Text>
                 <Text style={twStyle("text-[10px] text-gray-500")}>{statsRangeLabel}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("pending")}
                 activeOpacity={0.85}
-                disabled={statsSnapshot.pendingCount === 0}
+                disabled={!statsSnapshot || statsSnapshot.pendingCount === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.pendingCount} pending bookings — filter list`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `${statsSnapshot.pendingCount} pending bookings — filter list`
+                    : "Pending count unavailable"
+                }
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
-                  statsSnapshot.pendingCount > 0
+                  (statsSnapshot?.pendingCount ?? 0) > 0
                     ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" }
                     : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
                 ]}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
-                  <Ionicons name="time-outline" size={12} color={statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280"} />
+                  <Ionicons
+                    name="time-outline"
+                    size={12}
+                    color={(statsSnapshot?.pendingCount ?? 0) > 0 ? "#b45309" : "#6b7280"}
+                  />
                   <Text
                     style={[
                       twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                      { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
+                      { color: (statsSnapshot?.pendingCount ?? 0) > 0 ? "#b45309" : "#6b7280" },
                     ]}
                   >
                     Pending
                   </Text>
                 </View>
-                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
+                  {formatBookingsStatsMetric(statsSnapshot?.pendingCount)}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("confirmed")}
                 activeOpacity={0.85}
-                disabled={statsSnapshot.confirmedCount === 0}
+                disabled={!statsSnapshot || statsSnapshot.confirmedCount === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.confirmedCount} confirmed bookings — filter list`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `${statsSnapshot.confirmedCount} confirmed bookings — filter list`
+                    : "Confirmed count unavailable"
+                }
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
-                  statsSnapshot.confirmedCount > 0
+                  (statsSnapshot?.confirmedCount ?? 0) > 0
                     ? { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" }
                     : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
                 ]}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
-                  <Ionicons name="checkmark-outline" size={12} color={statsSnapshot.confirmedCount > 0 ? "#059669" : "#6b7280"} />
+                  <Ionicons
+                    name="checkmark-outline"
+                    size={12}
+                    color={(statsSnapshot?.confirmedCount ?? 0) > 0 ? "#059669" : "#6b7280"}
+                  />
                   <Text
                     style={[
                       twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                      { color: statsSnapshot.confirmedCount > 0 ? "#059669" : "#6b7280" },
+                      { color: (statsSnapshot?.confirmedCount ?? 0) > 0 ? "#059669" : "#6b7280" },
                     ]}
                   >
                     Confirmed
                   </Text>
                 </View>
-                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.confirmedCount}</Text>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
+                  {formatBookingsStatsMetric(statsSnapshot?.confirmedCount)}
+                </Text>
               </TouchableOpacity>
             </View>
             <View style={twStyle("mt-2 flex-row gap-2")}>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("active")}
                 activeOpacity={0.85}
-                disabled={statsSnapshot.inProgressCount === 0}
+                disabled={!statsSnapshot || statsSnapshot.inProgressCount === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.inProgressCount} active bookings — filter list`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `${statsSnapshot.inProgressCount} active bookings — filter list`
+                    : "Active count unavailable"
+                }
                 style={[
                   twStyle("flex-1 rounded-xl p-2.5 border"),
-                  statsSnapshot.inProgressCount > 0
+                  (statsSnapshot?.inProgressCount ?? 0) > 0
                     ? { backgroundColor: Colors.primarySoft, borderColor: Colors.primaryRing }
                     : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
                 ]}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
-                  <Ionicons name="flash-outline" size={12} color={statsSnapshot.inProgressCount > 0 ? Colors.primary : "#6b7280"} />
+                  <Ionicons
+                    name="flash-outline"
+                    size={12}
+                    color={(statsSnapshot?.inProgressCount ?? 0) > 0 ? Colors.primary : "#6b7280"}
+                  />
                   <Text
                     style={[
                       twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                      { color: statsSnapshot.inProgressCount > 0 ? Colors.primary : "#6b7280" },
+                      { color: (statsSnapshot?.inProgressCount ?? 0) > 0 ? Colors.primary : "#6b7280" },
                     ]}
                   >
                     Active
                   </Text>
                 </View>
-                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
+                  {formatBookingsStatsMetric(statsSnapshot?.inProgressCount)}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("completed")}
                 activeOpacity={0.85}
-                disabled={statsSnapshot.completedCount === 0}
+                disabled={!statsSnapshot || statsSnapshot.completedCount === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`${statsSnapshot.completedCount} completed bookings — filter list`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `${statsSnapshot.completedCount} completed bookings — filter list`
+                    : "Completed count unavailable"
+                }
                 style={twStyle("flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="checkmark-circle-outline" size={12} color="#059669" />
                   <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
                 </View>
-                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
+                  {formatBookingsStatsMetric(statsSnapshot?.completedCount)}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => applyStatsTileFilter("earned")}
                 activeOpacity={0.85}
                 accessibilityRole="button"
-                accessibilityLabel={`Earned ${formatCurrency(statsSnapshot.recognizedRevenue, currency)} — open reports`}
+                accessibilityLabel={
+                  statsSnapshot
+                    ? `Earned ${formatCurrency(statsSnapshot.recognizedRevenue, currency)} — open reports`
+                    : "Earned amount unavailable — open reports"
+                }
                 style={[twStyle("flex-1 rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}
               >
                 <View style={twStyle("flex-row items-center gap-1")}>
@@ -1681,14 +1729,23 @@ export default function BookingsListScreen() {
                   </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
-                  {formatCurrency(statsSnapshot.recognizedRevenue, currency)}
+                  {statsSnapshot
+                    ? formatCurrency(statsSnapshot.recognizedRevenue, currency)
+                    : formatBookingsStatsMetric(null)}
                 </Text>
                 <Text style={twStyle("text-[10px] text-gray-500")} numberOfLines={1}>
-                  Booked {formatCurrency(statsSnapshot.bookedGmv, currency)}
+                  {statsSnapshot
+                    ? `Booked ${formatCurrency(statsSnapshot.bookedGmv, currency)}`
+                    : "Booked —"}
                 </Text>
               </TouchableOpacity>
             </View>
-            <Text style={twStyle("mt-2 text-[11px] leading-4 text-gray-500")}>{statsReconciliationLine}</Text>
+            {statsMetricsUnavailable && bookingsStatsLoading ? (
+              <Text style={twStyle("mt-2 text-[11px] text-gray-500")}>Loading metrics…</Text>
+            ) : null}
+            {statsReconciliationLine ? (
+              <Text style={twStyle("mt-2 text-[11px] leading-4 text-gray-500")}>{statsReconciliationLine}</Text>
+            ) : null}
             {statsListRangeMismatch ? (
               <TouchableOpacity
                 onPress={syncListRangeToStats}
@@ -1776,6 +1833,10 @@ export default function BookingsListScreen() {
       isLive,
       statsRangeLabel,
       statsSnapshot,
+      statsMetricsUnavailable,
+      bookingsStatsLoading,
+      bookingsStatsError,
+      refreshBookingsStats,
       statsReconciliationLine,
       statsListRangeMismatch,
       dateRangeLabel,

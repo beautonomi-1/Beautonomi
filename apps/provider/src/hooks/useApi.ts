@@ -38,6 +38,17 @@ function isTransientFetchErrorCode(code: string | null | undefined): boolean {
   return code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
 }
 
+/**
+ * `CANCELLED` is only ever emitted by our own `abortInFlightRequests()` when the app
+ * backgrounds, and `AuthProvider` guarantees a `beautonomi:app:focus` refetch on resume.
+ * Staying silent there is correct. `TIMEOUT` / `NETWORK_ERROR` have no such guaranteed
+ * recovery, so they must reach the UI when there is no data to fall back on — otherwise
+ * the screen renders an "empty" state that is indistinguishable from "no records".
+ */
+function isDeliberatelyCancelledCode(code: string | null | undefined): boolean {
+  return code === "CANCELLED";
+}
+
 function resumeRefetchJitterMs(cacheKey: string): number {
   let hash = 0;
   for (let i = 0; i < cacheKey.length; i += 1) {
@@ -181,13 +192,18 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       // an error when we can keep showing cached data.
       if (isTransientFetchErrorCode(payload.errorCode)) {
         const existing = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
-        const uiHandled = silent || existing?.data != null;
+        const hasFallbackData = silent || existing?.data != null;
+        const stayingSilent = hasFallbackData || isDeliberatelyCancelledCode(payload.errorCode);
         captureApiFailure(
           new Error(payload.error ?? "Request failed"),
           { area: "useApi", path, code: payload.errorCode },
-          { uiHandled },
+          { uiHandled: stayingSilent },
         );
-        if (uiHandled) return;
+        if (stayingSilent) return;
+        // Foreground timeout / network failure with nothing cached: surface a
+        // retryable error rather than leaving the screen on a false empty state.
+        setError(payload.error);
+        setErrorCode(payload.errorCode);
         return;
       }
 

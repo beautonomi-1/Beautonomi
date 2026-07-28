@@ -250,6 +250,7 @@ export default function WalkInSaleScreen() {
     paycloudEnabled,
     collectEnabled: paycloudCollectEnabled,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const { data: permissionData } = useApi<{
     isOwner?: boolean;
@@ -1426,7 +1427,7 @@ export default function WalkInSaleScreen() {
                   })}
                   {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
                     <View style={{ width: "100%", marginHorizontal: "1%", marginBottom: 8 }}>
-                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                     </View>
                   ) : null}
                 </View>

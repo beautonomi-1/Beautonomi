@@ -40,6 +40,66 @@ export function normalizeAdminLedgerRange(range: FetchFinanceLedgerRange): Fetch
   };
 }
 
+export type AdminFinanceComparisonPeriod = "month" | "custom";
+
+/** Prior-period bounds for admin finance GMV growth (UTC-aligned with MTD default range). */
+export function computeAdminFinancePreviousPeriodRange(params: {
+  startDate: string | null;
+  endDate: string | null;
+  now?: Date;
+}): {
+  period: AdminFinanceComparisonPeriod;
+  previousStart: string;
+  previousEnd: string;
+} {
+  const now = params.now ?? new Date();
+  const { startDate, endDate } = params;
+  const period: AdminFinanceComparisonPeriod = startDate && endDate ? "custom" : "month";
+
+  if (period === "month") {
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    const previousMonthStart = new Date(Date.UTC(year, month - 1, 1));
+    const previousMonthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    return {
+      period,
+      previousStart: previousMonthStart.toISOString(),
+      previousEnd: previousMonthEnd.toISOString(),
+    };
+  }
+
+  if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diff = end.getTime() - start.getTime();
+    const prevEnd = new Date(start.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - diff);
+    return {
+      period,
+      previousStart: prevStart.toISOString(),
+      previousEnd: prevEnd.toISOString(),
+    };
+  }
+
+  return { period, previousStart: "", previousEnd: "" };
+}
+
+/** Maps admin finance UI `type` filter to ledger transaction_type values. */
+export function financeTransactionTypesForAdminFilter(type: string | null): string[] | null {
+  switch (type) {
+    case "payment":
+      return ["payment", "wallet_payment", "gift_card_payment", "charge", "additional_charge_payment"];
+    case "fee":
+      return ["platform_fee", "service_fee"];
+    case "refund":
+      return ["refund"];
+    case "payout":
+      return ["payout"];
+    default:
+      return null;
+  }
+}
+
 export type FetchFinanceLedgerOptions = {
   /** When set (and not `"all"`), filter both ledger queries to this transaction_type. */
   transactionType?: string | null;

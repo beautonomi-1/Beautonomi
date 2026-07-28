@@ -38,14 +38,6 @@ function makeSupabase(terminals: Record<string, unknown>[]) {
           maybeSingle: vi.fn().mockResolvedValue({ data: null }),
         };
       }
-      if (table === "feature_flags") {
-        return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          or: vi.fn().mockReturnThis(),
-          is: vi.fn().mockResolvedValue({ data: [{ enabled: true, tenant_id: null }] }),
-        };
-      }
       throw new Error(`unexpected table ${table}`);
     }),
   } as never;
@@ -53,6 +45,10 @@ function makeSupabase(terminals: Record<string, unknown>[]) {
 
 vi.mock("@/lib/subscriptions/feature-access", () => ({
   checkPaycloudFeatureAccess: vi.fn(async () => ({ enabled: true, maxTerminals: 5 })),
+}));
+
+vi.mock("@/lib/server/feature-flags", () => ({
+  isFeatureEnabledServer: vi.fn(async () => true),
 }));
 
 describe("computePaycloudReadiness", () => {
@@ -69,5 +65,40 @@ describe("computePaycloudReadiness", () => {
     expect(result.terminals.withoutMerchant).toBe(0);
     expect(result.terminals.active).toBeGreaterThan(0);
     expect(result.blockers.some((b) => b.code === "NO_MERCHANT")).toBe(false);
+  });
+
+  it("does not add FLAG_OFF when platform flag is enabled via service role", async () => {
+    const supabase = makeSupabase([
+      {
+        id: "1",
+        status: "active",
+        is_active: true,
+        in_flight_payment_id: null,
+        paycloud_merchant_id: "m1",
+        location_id: "loc",
+        merchant: { environment: "sandbox" },
+      },
+    ]);
+    const result = await computePaycloudReadiness(supabase, "provider-1");
+    expect(result.blockers.some((b) => b.code === "FLAG_OFF")).toBe(false);
+    expect(result.ready).toBe(true);
+  });
+
+  it("adds FLAG_OFF when isFeatureEnabledServer returns false", async () => {
+    const { isFeatureEnabledServer } = await import("@/lib/server/feature-flags");
+    vi.mocked(isFeatureEnabledServer).mockResolvedValueOnce(false);
+    const supabase = makeSupabase([
+      {
+        id: "1",
+        status: "active",
+        is_active: true,
+        in_flight_payment_id: null,
+        paycloud_merchant_id: "m1",
+        location_id: "loc",
+      },
+    ]);
+    const result = await computePaycloudReadiness(supabase, "provider-1");
+    expect(result.blockers.some((b) => b.code === "FLAG_OFF")).toBe(true);
+    expect(result.ready).toBe(false);
   });
 });

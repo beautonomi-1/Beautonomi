@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { resolveAcceptPaycloud } from "@/lib/payments/paycloud-accept";
 
 export type PaycloudReadinessBlockerCode =
   | "FLAG_OFF"
@@ -36,20 +38,6 @@ export interface PaycloudReadiness {
   account_environment?: "sandbox" | "live" | "mixed" | null;
 }
 
-async function isFeatureEnabled(
-  supabase: SupabaseClient,
-  featureKey: string,
-  tenantId: string | null,
-): Promise<boolean> {
-  let q = supabase.from("feature_flags").select("enabled, tenant_id").eq("feature_key", featureKey);
-  q = tenantId ? q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`) : q.is("tenant_id", null);
-  const { data } = await q;
-  const rows = (data ?? []) as Array<{ enabled?: boolean; tenant_id?: string | null }>;
-  const tenantRow = tenantId ? rows.find((r) => r.tenant_id === tenantId) : undefined;
-  const globalRow = rows.find((r) => r.tenant_id == null);
-  return tenantRow != null ? tenantRow.enabled === true : globalRow?.enabled === true;
-}
-
 /**
  * Shared PayCloud collect readiness for provider UI and admin diagnostics.
  */
@@ -82,7 +70,7 @@ export async function computePaycloudReadiness(
   }
 
   const tenantId = (provider as { tenant_id?: string | null }).tenant_id ?? null;
-  const flagOn = await isFeatureEnabled(supabase, FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD, tenantId);
+  const flagOn = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD, tenantId);
   if (!flagOn) {
     blockers.push({
       code: "FLAG_OFF",
@@ -107,10 +95,10 @@ export async function computePaycloudReadiness(
     .eq("provider_id", providerId)
     .maybeSingle();
 
-  const accept =
-    (provider as { accept_paycloud?: boolean }).accept_paycloud ??
-    (settings as { accept_paycloud?: boolean } | null)?.accept_paycloud ??
-    false;
+  const accept = resolveAcceptPaycloud(
+    provider as { accept_paycloud?: boolean | null },
+    settings as { accept_paycloud?: boolean | null } | null,
+  );
   if (!accept) {
     blockers.push({
       code: "NOT_ACCEPTED",

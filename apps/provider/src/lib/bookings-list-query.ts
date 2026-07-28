@@ -21,6 +21,53 @@ export type BookingsStatsTileKey =
   | "completed"
   | "earned";
 
+export type BookingsStatsSnapshot = {
+  count: number;
+  bookedGmv: number;
+  recognizedRevenue: number;
+  pendingCount: number;
+  confirmedCount: number;
+  inProgressCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  noShowCount: number;
+};
+
+export type BookingsStatsApiPayload = {
+  appointment_count: number;
+  booked_gmv: number;
+  recognized_revenue: number;
+  pending_count: number;
+  confirmed_count: number;
+  in_progress_count: number;
+  completed_count: number;
+  cancelled_count: number;
+  no_show_count: number;
+};
+
+/** Map stats API payload to Overview tiles; returns null when stats are unavailable. */
+export function buildBookingsStatsSnapshot(
+  api: BookingsStatsApiPayload | null | undefined,
+): BookingsStatsSnapshot | null {
+  if (!api) return null;
+  return {
+    count: api.appointment_count,
+    bookedGmv: api.booked_gmv,
+    recognizedRevenue: api.recognized_revenue,
+    pendingCount: api.pending_count,
+    confirmedCount: api.confirmed_count,
+    inProgressCount: api.in_progress_count,
+    completedCount: api.completed_count,
+    cancelledCount: api.cancelled_count,
+    noShowCount: api.no_show_count,
+  };
+}
+
+export function formatBookingsStatsMetric(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return String(value);
+}
+
 /** Keep Overview list date chips aligned with the metrics strip range. */
 export function statsRangeToDateRange(range: BookingsStatsRange): BookingsDateRange {
   if (range === "today") return "today";

@@ -107,14 +107,14 @@ export function SubscriptionContent() {
     }
   }, [refresh]);
 
-  if (loading && data === undefined) {
+  if (loading && !data) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
-  if (error && data === undefined) {
+  if (error && !data) {
     return (
       <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
