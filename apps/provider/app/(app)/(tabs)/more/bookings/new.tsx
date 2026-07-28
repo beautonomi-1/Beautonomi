@@ -428,6 +428,7 @@ export default function NewBookingScreen() {
     paycloudEnabled,
     collectEnabled: paycloudCollectEnabled,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const defaultPhoneDial = useDefaultPhoneDial();
   const mapboxCountryIso =
@@ -3502,7 +3503,7 @@ export default function NewBookingScreen() {
               </View>
               {paycloudEnabled && !paycloudCollectEnabled ? (
                 <View style={twStyle("mb-4")}>
-                  <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} />
+                  <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} loading={paycloudLoading} />
                 </View>
               ) : null}
 

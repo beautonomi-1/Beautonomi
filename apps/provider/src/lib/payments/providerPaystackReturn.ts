@@ -16,6 +16,7 @@ const trimSlash = (s: string) => s.replace(/\/$/, "");
 
 export const ADS_PAYMENT_RETURN_PATH = "/provider/settings/ads/payment-return";
 export const SUBSCRIPTION_RETURN_PATH = "/provider/subscription";
+export const TERMINAL_PAYMENT_RETURN_PATH = "/provider/settings/sales/terminal-payment-return";
 
 /** Base HTTPS URL for provider Paystack returns (web origin). */
 export function getProviderPaystackReturnBaseUrl(): string {
@@ -30,6 +31,11 @@ export function getAdsPaystackReturnUrl(): string {
 /** Full HTTPS Paystack return URL for the subscription flow. */
 export function getSubscriptionPaystackReturnUrl(): string {
   return `${getProviderPaystackReturnBaseUrl()}${SUBSCRIPTION_RETURN_PATH}`;
+}
+
+/** Full HTTPS Paystack return URL for terminal hardware orders. */
+export function getTerminalPaystackReturnUrl(): string {
+  return `${getProviderPaystackReturnBaseUrl()}${TERMINAL_PAYMENT_RETURN_PATH}`;
 }
 
 type MatchOpts = { success?: boolean; cancelled?: boolean };
@@ -78,6 +84,22 @@ export function matchesSubscriptionPaystackReturnUrl(url: string, opts: MatchOpt
     (u.host === "settings" && u.pathname.includes("subscription-payment-return"));
   if (!isSubPath) return false;
   if (opts.success && u.searchParams.get("payment_success") !== "true") return false;
+  if (opts.cancelled && u.searchParams.get("payment_cancelled") !== "1") return false;
+  return true;
+}
+
+/**
+ * True if `url` is a provider terminal-order Paystack-return URL.
+ */
+export function matchesTerminalPaystackReturnUrl(url: string, opts: MatchOpts = {}): boolean {
+  const u = tryParseUrl(url);
+  if (!u) return false;
+  const isTerminalPath =
+    u.pathname.includes(TERMINAL_PAYMENT_RETURN_PATH) ||
+    u.pathname.includes("terminal-payment-return") ||
+    (u.host === "settings" && u.pathname.includes("terminal-payment-return"));
+  if (!isTerminalPath) return false;
+  if (opts.success && u.searchParams.get("payment_success") !== "1") return false;
   if (opts.cancelled && u.searchParams.get("payment_cancelled") !== "1") return false;
   return true;
 }
@@ -214,6 +236,102 @@ export async function pollSubscriptionProvisioned(
   }
   if (lastSub) return { state: "pending", subscription: lastSub };
   return { state: "unknown" };
+}
+
+export type TerminalOrderSnapshot = {
+  id: string;
+  invoice_status?: string | null;
+  order_status?: string | null;
+};
+
+export type TerminalOrderProvisionedResult =
+  | { state: "provisioned"; order: TerminalOrderSnapshot }
+  | { state: "pending"; order: TerminalOrderSnapshot | null }
+  | { state: "unknown" };
+
+function isTerminalOrderPaid(order: TerminalOrderSnapshot | null | undefined): boolean {
+  if (!order) return false;
+  return order.invoice_status === "paid";
+}
+
+/**
+ * Poll `/api/provider/terminal-orders/[id]` until `invoice_status` reads `paid`.
+ */
+export async function pollTerminalOrderPaid(
+  orderId: string,
+  opts: PollOptions = {},
+): Promise<TerminalOrderProvisionedResult> {
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 8);
+  const delayMs = Math.max(0, opts.delayMs ?? 1500);
+  let lastOrder: TerminalOrderSnapshot | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await api.get<TerminalOrderSnapshot | { data: TerminalOrderSnapshot }>(
+        `/api/provider/terminal-orders/${encodeURIComponent(orderId)}`,
+      );
+      if (!res.error) {
+        const order: TerminalOrderSnapshot | null =
+          res.data && typeof res.data === "object" && "id" in (res.data as object)
+            ? (res.data as TerminalOrderSnapshot)
+            : ((res.data as { data?: TerminalOrderSnapshot } | null)?.data ?? null);
+        if (order) lastOrder = order;
+        if (isTerminalOrderPaid(order)) {
+          return { state: "provisioned", order: order as TerminalOrderSnapshot };
+        }
+      }
+    } catch {
+      // retry
+    }
+    if (attempt < maxAttempts) await sleep(delayMs);
+  }
+  if (lastOrder) return { state: "pending", order: lastOrder };
+  return { state: "unknown" };
+}
+
+export type TerminalSuccessCopy = { title: string; body: string };
+
+export function terminalOrderSuccessCopy(): TerminalSuccessCopy {
+  return {
+    title: "Payment confirmed",
+    body: "Your terminal order is paid. We'll keep you updated on shipping and activation.",
+  };
+}
+
+export function terminalOrderPendingCopy(): TerminalSuccessCopy {
+  return {
+    title: "Payment received",
+    body: "Your bank may still be finalizing the charge. Pull to refresh your orders in a moment.",
+  };
+}
+
+export function terminalOrderFailedCopy(message?: string | null): TerminalSuccessCopy {
+  return {
+    title: "Payment wasn't completed",
+    body: message?.trim()
+      ? message
+      : "Try again from Your orders, or contact support if you were charged.",
+  };
+}
+
+export type TerminalPaymentReturnDeepLinkParams = {
+  success?: boolean;
+  cancelled?: boolean;
+  orderId?: string | null;
+  reference?: string | null;
+};
+
+/** Native deep link for terminal payment-return cold start. */
+export function getTerminalPaymentReturnDeepLink(
+  params: TerminalPaymentReturnDeepLinkParams = {},
+): string {
+  const q = new URLSearchParams();
+  if (params.success) q.set("payment_success", "1");
+  if (params.cancelled) q.set("payment_cancelled", "1");
+  if (params.orderId) q.set("order_id", params.orderId);
+  if (params.reference) q.set("reference", params.reference);
+  const query = q.toString();
+  return `provider://settings/terminal-payment-return${query ? `?${query}` : ""}`;
 }
 
 // ─── Success copy helpers ──────────────────────────────────────────────────

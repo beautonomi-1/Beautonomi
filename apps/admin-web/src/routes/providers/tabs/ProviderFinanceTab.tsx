@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -288,8 +290,22 @@ export function ProviderFinanceTab({
 
       {/* ── Transaction ledger ───────────────────────────────────── */}
       <AdminPanel>
-        <h2 className="text-base font-semibold text-gray-900">Transactions</h2>
-        <p className="mt-0.5 text-sm text-gray-500">Finance ledger: payments, earnings, fees, refunds, tips, payouts.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Transactions</h2>
+            <p className="mt-0.5 text-sm text-gray-500">Finance ledger: payments, earnings, fees, refunds, tips, payouts.</p>
+          </div>
+          {hasFinanceAccess && providerCanonicalId ? (
+            <Link
+              to={adminSpaTo(
+                `/admin/finance?provider_id=${encodeURIComponent(providerCanonicalId)}`,
+              )}
+              className="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+            >
+              Open in Finance overview →
+            </Link>
+          ) : null}
+        </div>
 
         {txQ.data?.summary ? (
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

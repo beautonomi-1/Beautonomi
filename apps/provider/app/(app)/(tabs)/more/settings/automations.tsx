@@ -22,8 +22,6 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
-import { getWebProviderBaseUrl } from "@/lib/web-url";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
   mapTriggerToCategory,
   formatTriggerLabel,
@@ -147,8 +145,7 @@ export default function AutomationsScreen() {
       (error.toLowerCase().includes("upgrade") || error.toLowerCase().includes("plan")));
 
   function openSubscriptionHelp() {
-    const base = getWebProviderBaseUrl().replace(/\/$/, "");
-    pushInAppBrowser(router, `${base}/provider/subscription`, "Subscription");
+    router.push("/(app)/(tabs)/more/settings/subscription" as never);
   }
 
   async function handleActivateTemplate(raw: AutomationRow) {

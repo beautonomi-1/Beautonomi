@@ -5,6 +5,8 @@ import {
   buildOverviewDateParams,
   buildOverviewDateRangeLabel,
   buildStatsReconciliationLine,
+  buildBookingsStatsSnapshot,
+  formatBookingsStatsMetric,
   buildStripDateParams,
   buildStripDays,
   filterBookingsForDayKey,
@@ -322,5 +324,50 @@ describe("Overview metrics tile mappings", () => {
         no_show_count: 0,
       }),
     ).toBe("2 pending · 1 confirmed · 0 active · 8 completed · excludes 1 cancelled/no-show");
+  });
+});
+
+describe("buildBookingsStatsSnapshot", () => {
+  it("returns null when stats API payload is missing", () => {
+    expect(buildBookingsStatsSnapshot(null)).toBeNull();
+    expect(buildBookingsStatsSnapshot(undefined)).toBeNull();
+  });
+
+  it("maps API snake_case fields to Overview snapshot tiles", () => {
+    expect(
+      buildBookingsStatsSnapshot({
+        appointment_count: 12,
+        booked_gmv: 4500,
+        recognized_revenue: 3200,
+        pending_count: 2,
+        confirmed_count: 3,
+        in_progress_count: 1,
+        completed_count: 6,
+        cancelled_count: 1,
+        no_show_count: 0,
+      }),
+    ).toEqual({
+      count: 12,
+      bookedGmv: 4500,
+      recognizedRevenue: 3200,
+      pendingCount: 2,
+      confirmedCount: 3,
+      inProgressCount: 1,
+      completedCount: 6,
+      cancelledCount: 1,
+      noShowCount: 0,
+    });
+  });
+});
+
+describe("formatBookingsStatsMetric", () => {
+  it("shows an em dash when metrics are unavailable", () => {
+    expect(formatBookingsStatsMetric(null)).toBe("—");
+    expect(formatBookingsStatsMetric(undefined)).toBe("—");
+  });
+
+  it("stringifies numeric metrics", () => {
+    expect(formatBookingsStatsMetric(0)).toBe("0");
+    expect(formatBookingsStatsMetric(14)).toBe("14");
   });
 });

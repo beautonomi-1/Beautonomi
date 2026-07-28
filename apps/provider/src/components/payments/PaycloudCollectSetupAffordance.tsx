@@ -10,10 +10,12 @@ type Props = {
   blocker?: PayCloudReadinessBlocker | null;
   onPress?: () => void;
   compact?: boolean;
+  loading?: boolean;
 };
 
-export function PaycloudCollectSetupAffordance({ blocker, onPress, compact }: Props) {
+export function PaycloudCollectSetupAffordance({ blocker, onPress, compact, loading }: Props) {
   const router = useRouter();
+  if (loading) return null;
   const title = blocker?.title ?? "Finish card machine setup";
 
   const handlePress = () => {

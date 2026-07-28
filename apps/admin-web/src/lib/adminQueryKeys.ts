@@ -170,10 +170,17 @@ export const adminQueryKeys = {
 
   finance: {
     all: () => [...adminQueryKeys.root, "finance"] as const,
-    summary: (range: string) => [...adminQueryKeys.finance.all(), "summary", range] as const,
-    transactions: (filters: { range: string; page: number; type: string; limit: number }) =>
-      [...adminQueryKeys.finance.all(), "transactions", filters] as const,
+    summary: (range: string, providerId?: string) =>
+      [...adminQueryKeys.finance.all(), "summary", range, providerId ?? ""] as const,
+    transactions: (filters: {
+      range: string;
+      page: number;
+      type: string;
+      limit: number;
+      providerId?: string;
+    }) => [...adminQueryKeys.finance.all(), "transactions", filters] as const,
     periodLocks: () => [...adminQueryKeys.finance.all(), "period-locks"] as const,
+    trialBalance: (range: string) => [...adminQueryKeys.finance.all(), "trial-balance", range] as const,
     walletReconciliation: () => [...adminQueryKeys.finance.all(), "wallet-reconciliation"] as const,
   },
 

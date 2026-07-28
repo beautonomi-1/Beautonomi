@@ -60,6 +60,16 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
       ? parseSafe(path)
       : { pathname: path.split("?")[0], search: path.includes("?") ? path.slice(path.indexOf("?")) : "", host: "" };
 
+    // Terminal order payment return
+    // HTTPS: /provider/settings/sales/terminal-payment-return
+    // Deep:  provider://settings/terminal-payment-return
+    if (
+      pathname.includes("terminal-payment-return") ||
+      (host === "settings" && pathname.includes("terminal-payment-return"))
+    ) {
+      return withQuery("/(app)/(tabs)/more/terminal-payment-return", search);
+    }
+
     // Staff join (App Link / universal link)
     if (pathname === "/provider/join" || pathname.startsWith("/provider/join/")) {
       const search = isAbsoluteUrl ? parseSafe(path).search : (path.includes("?") ? path.slice(path.indexOf("?")) : "");

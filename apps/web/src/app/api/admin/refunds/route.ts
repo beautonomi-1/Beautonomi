@@ -4,45 +4,14 @@ import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/s
 import { ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
+import {
+  enrichRefundListRow,
+  countActionableRefundable,
+  type RefundListRow,
+} from "@/lib/admin/refund-list-normalize";
 
 const REFUND_ELIGIBLE_OR =
   "transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success";
-
-/** Merged refund list row (PostgREST shapes vary for embeds). */
-type RefundListRow = {
-  id: string;
-  booking_id?: string | null;
-  transaction_type?: string;
-  amount?: number | string | null;
-  refund_amount?: string | number | null;
-  refund_reference?: string | null;
-  refund_reason?: string | null;
-  refunded_at?: string | null;
-  refunded_by?: string | null;
-  status?: string;
-  created_at?: string;
-  booking?: unknown;
-  refunded_by_user?: unknown;
-};
-
-function unwrapEmbed<T>(v: T | T[] | null | undefined): T | null {
-  if (v == null) return null;
-  if (Array.isArray(v)) return v[0] ?? null;
-  return v;
-}
-
-/** PostgREST sometimes returns FK embeds as one object or an array — normalize for admin UI. */
-function normalizeRefundListRow(row: RefundListRow): RefundListRow {
-  const booking = row.booking;
-  if (!booking || typeof booking !== "object") return row;
-  const b = booking as Record<string, unknown>;
-  const customer = unwrapEmbed(b.customer as { id?: string; full_name?: string | null; email?: string | null } | undefined);
-  const provider = unwrapEmbed(b.provider as { id?: string; business_name?: string | null } | undefined);
-  return {
-    ...row,
-    booking: { ...b, customer, provider },
-  };
-}
 
 /**
  * GET /api/admin/refunds
@@ -51,9 +20,9 @@ function normalizeRefundListRow(row: RefundListRow): RefundListRow {
  * or successful charges (status=success) so admins can process refunds. Merges booking-linked rows
  * for the tenant with non-booking gateway rows attributed via metadata (gift, membership, subscriptions).
  *
- * **Source:** `payment_transactions` (+ booking/customer embeds). **Processing** a refund (POST
- * `/api/admin/refunds/[id]`) credits the customer via `wallet_credit_admin` — cash back to bank is not
- * automatic; wallet is used for future bookings unless support runs a separate payout flow.
+ * **Processing** a refund (POST `/api/admin/refunds/[id]`) credits the customer via
+ * `wallet_credit_admin` — cash back to bank is not automatic; wallet is used for future bookings
+ * unless support runs a separate payout flow.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -86,6 +55,8 @@ export async function GET(request: NextRequest) {
         refunded_by,
         status,
         created_at,
+        provider,
+        metadata,
         booking:bookings!inner(
           id,
           booking_number,
@@ -148,10 +119,11 @@ export async function GET(request: NextRequest) {
       return tb - ta;
     });
 
-    const total = merged.length;
-    const refunds = merged.slice(offset, offset + limit).map(normalizeRefundListRow);
+    const enriched = merged.map(enrichRefundListRow);
+    const total = enriched.length;
+    const refunds = enriched.slice(offset, offset + limit);
 
-    const rowsWithRefundRecorded = merged.filter((r) => {
+    const rowsWithRefundRecorded = enriched.filter((r) => {
       const n = parseFloat(String(r.refund_amount ?? "0"));
       return !Number.isNaN(n) && n > 0;
     });
@@ -160,19 +132,17 @@ export async function GET(request: NextRequest) {
       0,
     );
 
-    const actionableRefundable = merged.filter((r) => r.status === "success").length;
-
     const statistics = {
       total_transactions: total,
-      actionable_refundable: actionableRefundable,
+      actionable_refundable: countActionableRefundable(enriched),
       total_refunded_amount: totalRefundedAmount,
       rows_with_refund_recorded: rowsWithRefundRecorded.length,
       by_status: {
-        success: merged.filter((r) => r.status === "success").length,
-        failed: merged.filter((r) => r.status === "failed").length,
-        pending: merged.filter((r) => r.status === "pending").length,
-        refunded: merged.filter((r) => r.status === "refunded").length,
-        partially_refunded: merged.filter((r) => r.status === "partially_refunded").length,
+        success: enriched.filter((r) => r.status === "success").length,
+        failed: enriched.filter((r) => r.status === "failed").length,
+        pending: enriched.filter((r) => r.status === "pending").length,
+        refunded: enriched.filter((r) => r.status === "refunded").length,
+        partially_refunded: enriched.filter((r) => r.status === "partially_refunded").length,
       },
       average_refund_among_recorded:
         rowsWithRefundRecorded.length > 0

@@ -29,7 +29,20 @@ describe("adminQueryKeys", () => {
   });
 
   it("scopes finance and report keys under admin root", () => {
-    expect(adminQueryKeys.finance.summary("a|b")).toEqual(["admin", "finance", "summary", "a|b"]);
+    expect(adminQueryKeys.finance.summary("a|b")).toEqual(["admin", "finance", "summary", "a|b", ""]);
+    expect(adminQueryKeys.finance.summary("a|b", "prov-1")).toEqual([
+      "admin",
+      "finance",
+      "summary",
+      "a|b",
+      "prov-1",
+    ]);
+    expect(adminQueryKeys.finance.trialBalance("2026-01|2026-01")).toEqual([
+      "admin",
+      "finance",
+      "trial-balance",
+      "2026-01|2026-01",
+    ]);
     expect(adminQueryKeys.reports.detail("revenue", "30d")).toEqual(["admin", "reports", "revenue", "30d"]);
     expect(adminQueryKeys.payouts.list({ page: 2, status: "pending" })).toEqual([
       "admin",

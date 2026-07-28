@@ -242,6 +242,7 @@ export default function SalesScreen() {
     collectEnabled: paycloudCollectEnabled,
     inFlight: paycloudInFlight,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const { isLoading: configLoading } = useConfigBundle();
   const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
@@ -305,6 +306,13 @@ export default function SalesScreen() {
   const [discount, setDiscount] = useState("");
   const [tip, setTip] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+
+  useEffect(() => {
+    if (!paycloudCollectEnabled && paymentMethod === "paycloud") {
+      setPaymentMethod("cash");
+    }
+  }, [paycloudCollectEnabled, paymentMethod]);
+
   const [clientSearch, setClientSearch] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [cartTab, setCartTab] = useState<"services" | "products">("services");
@@ -1573,7 +1581,7 @@ export default function SalesScreen() {
           ))}
           {canProcessPayments && paycloudEnabled && !paycloudCollectEnabled ? (
             <View style={{ width: "100%", marginHorizontal: "1%", marginBottom: 8 }}>
-              <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+              <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
             </View>
           ) : null}
         </View>

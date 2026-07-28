@@ -985,6 +985,7 @@ export default function BookingDetailScreen() {
     collectEnabled: paycloudCollectEnabled,
     inFlight: paycloudInFlight,
     primaryBlocker: paycloudPrimaryBlocker,
+    loading: paycloudLoading,
   } = usePaycloudCollectAvailability();
   const markPaidPaymentMethods = useMemo(
     () =>
@@ -4174,7 +4175,7 @@ export default function BookingDetailScreen() {
                   )}
                   {canMarkPaid && paycloudEnabled && !paycloudCollectEnabled && outstanding > 0 && (
                     <View style={twStyle("w-full")}>
-                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                     </View>
                   )}
                   {canCreateSales && yocoEnabled && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
@@ -4418,7 +4419,7 @@ export default function BookingDetailScreen() {
                         </TouchableOpacity>
                       ) : paycloudEnabled ? (
                         <View style={twStyle("flex-1 min-w-[120px]")}>
-                          <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                          <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                         </View>
                       ) : null}
                     </View>
@@ -4862,7 +4863,7 @@ export default function BookingDetailScreen() {
             ))}
             {paycloudEnabled && !paycloudCollectEnabled ? (
               <View style={twStyle("w-full")}>
-                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
               </View>
             ) : null}
           </View>
@@ -5036,7 +5037,7 @@ export default function BookingDetailScreen() {
                   ))}
                   {paycloudEnabled && !paycloudCollectEnabled ? (
                     <View style={twStyle("w-full")}>
-                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact />
+                      <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                     </View>
                   ) : null}
                 </View>

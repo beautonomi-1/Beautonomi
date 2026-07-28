@@ -25,19 +25,14 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
-import { getWebProviderBaseUrl } from "@/lib/web-url";
-import { pushInAppBrowser } from "@/lib/in-app-web";
-
 function alertApiError(title: string, message: string, errorCode: string | null, router: Router | null) {
   if (errorCode === "SUBSCRIPTION_REQUIRED" && router) {
-    const base = getWebProviderBaseUrl().replace(/\/$/, "");
-    const url = `${base}/provider/subscription`;
     Alert.alert(title, message, [
       { text: "OK", style: "cancel" },
       {
         text: "View plans & billing",
         onPress: () => {
-          pushInAppBrowser(router, url, "Subscription");
+          router.push("/(app)/(tabs)/more/settings/subscription" as never);
         },
       },
     ]);
@@ -439,11 +434,7 @@ export default function RecurringAppointmentsScreen() {
           {isSub && errorCode === "SUBSCRIPTION_REQUIRED" && (
             <TouchableOpacity
               onPress={() =>
-                pushInAppBrowser(
-                  router,
-                  `${getWebProviderBaseUrl().replace(/\/$/, "")}/provider/subscription`,
-                  "Subscription",
-                )
+                router.push("/(app)/(tabs)/more/settings/subscription" as never)
               }
               style={{
                 marginTop: 20,

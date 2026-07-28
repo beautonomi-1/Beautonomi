@@ -4,22 +4,10 @@ import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supab
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
-
-function financeTransactionTypesForFilter(type: string | null): string[] | null {
-  switch (type) {
-    case "payment":
-      return ["payment", "wallet_payment", "gift_card_payment", "charge", "additional_charge_payment"];
-    case "fee":
-      return ["platform_fee", "service_fee"];
-    case "refund":
-      return ["refund"];
-    case "payout":
-      return ["payout"];
-    default:
-      return null;
-  }
-}
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  financeTransactionTypesForAdminFilter,
+} from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/export/finance
@@ -48,13 +36,15 @@ export async function GET(request: NextRequest) {
     const transactionType = searchParams.get("transaction_type");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const providerIdFilter = searchParams.get("provider_id");
     const now = new Date();
     const defaultStart = new Date();
     defaultStart.setUTCDate(1);
     defaultStart.setUTCHours(0, 0, 0, 0);
     const rangeStart = startDate || defaultStart.toISOString();
     const rangeEnd = endDate || now.toISOString();
-    const transactionTypes = financeTransactionTypesForFilter(transactionType);
+    const transactionTypes = financeTransactionTypesForAdminFilter(transactionType);
+    const restrictProviderIds = providerIdFilter ? [providerIdFilter] : undefined;
 
     let transactions: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
     try {
@@ -63,10 +53,11 @@ export async function GET(request: NextRequest) {
         tenantId,
         { start: rangeStart, end: rangeEnd },
         transactionTypes
-          ? { transactionTypes }
+          ? { transactionTypes, restrictProviderIds }
           : {
               transactionType:
                 transactionType && transactionType !== "all" ? transactionType : null,
+              restrictProviderIds,
             }
       );
     } catch (err) {

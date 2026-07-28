@@ -5,7 +5,11 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchFinanceLedgerRowsForTenant, normalizeAdminLedgerRange } from "@/lib/admin/finance-ledger-tenant";
+import {
+  computeAdminFinancePreviousPeriodRange,
+  fetchFinanceLedgerRowsForTenant,
+  normalizeAdminLedgerRange,
+} from "@/lib/admin/finance-ledger-tenant";
 import {
   aggregateFinanceLedgerRows,
   gatewayFeesTotalFromAggregate,
@@ -183,32 +187,11 @@ export async function GET(request: Request) {
           : "ok";
     const highNegativeRefundPressure = providerRefundImpact > Math.max(agg.provider_earnings_net, 0);
 
-    const period = startDate && endDate ? "custom" : "month";
-    let previousStart: string;
-    let previousEnd: string;
-
-    if (period === "month") {
-      const now = new Date();
-      const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-
-      previousStart = previousMonthStart.toISOString();
-      previousEnd = previousMonthEnd.toISOString();
-    } else {
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const diff = end.getTime() - start.getTime();
-        const prevEnd = new Date(start.getTime() - 1);
-        const prevStart = new Date(prevEnd.getTime() - diff);
-
-        previousStart = prevStart.toISOString();
-        previousEnd = prevEnd.toISOString();
-      } else {
-        previousStart = "";
-        previousEnd = "";
-      }
-    }
+    const { previousStart, previousEnd } = computeAdminFinancePreviousPeriodRange({
+      startDate,
+      endDate,
+      now,
+    });
 
     let previousGmv = 0;
     if (previousStart && previousEnd) {
@@ -420,6 +403,7 @@ export async function GET(request: Request) {
                 - agg.payout_transfer_fees,
             },
           },
+        },
         metrics_meta: {
           contract_version: FINANCE_METRIC_CONTRACT_VERSION,
           generated_at: new Date().toISOString(),
@@ -441,7 +425,6 @@ export async function GET(request: Request) {
             taxes_collected: "Pass-through tax collected on behalf of tax authority, not platform revenue.",
             wallet_topups_cash_collected: "Custodial cash inflow recorded as liability until redeemed.",
           },
-        },
         },
 
         gmv_growth: gmvGrowth,

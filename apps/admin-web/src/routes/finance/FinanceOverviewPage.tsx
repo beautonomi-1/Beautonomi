@@ -25,6 +25,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { AdminProviderPicker } from "@/components/AdminProviderPicker";
 
 const TX_LIMIT = 50;
 
@@ -68,6 +69,7 @@ type FinanceSummary = {
   marketing_credit_gateway_fees?: number;
   total_platform_take_net: number;
   provider_earnings: number;
+  provider_net_activity?: number;
   cancellation_fees_retained: number;
   refunds_gross: number;
   gift_card_sales: number;
@@ -139,6 +141,14 @@ type FinanceSummary = {
       negative_provider_payout_balances?: { count?: number; status?: string };
       refund_burden_pressure?: { provider_refund_impact?: number; provider_earnings?: number; status?: string };
       platform_net_health?: { platform_net?: number; status?: string };
+      platform_cash_position?: {
+        collected?: number;
+        provider_payouts?: number;
+        refunds_gross?: number;
+        gateway_fees?: number;
+        payout_transfer_fees?: number;
+        net_platform_cash?: number;
+      };
     };
   };
   metrics_meta?: {
@@ -183,6 +193,11 @@ type TransactionsEnvelope = {
   data: FinanceTransaction[];
   meta?: { page: number; limit: number; total: number; has_more: boolean };
 };
+
+function formatPeriodBound(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return iso.length >= 10 ? iso.slice(0, 10) : iso;
+}
 
 function SummaryMetricCard({
   label,
@@ -241,10 +256,12 @@ export function FinanceOverviewPage() {
   const end = sp.get("end_date") ?? "";
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const txType = sp.get("type") || "all";
-  const rangeKey = `${start}|${end}`;
+  const providerId = sp.get("provider_id") ?? "";
+  const providerName = sp.get("provider_name") ?? "";
+  const rangeKey = `${start}|${end}|${providerId}`;
   const txFilters = useMemo(
-    () => ({ range: rangeKey, page, type: txType, limit: TX_LIMIT }),
-    [rangeKey, page, txType]
+    () => ({ range: rangeKey, page, type: txType, limit: TX_LIMIT, providerId: providerId || undefined }),
+    [rangeKey, page, txType, providerId]
   );
 
   const [exportErr, setExportErr] = useState<string | null>(null);
@@ -271,11 +288,12 @@ export function FinanceOverviewPage() {
   );
 
   const summaryQ = useQuery({
-    queryKey: adminQueryKeys.finance.summary(rangeKey),
+    queryKey: adminQueryKeys.finance.summary(rangeKey, providerId || undefined),
     queryFn: async () => {
       const p = new URLSearchParams();
       if (start) p.set("start_date", start);
       if (end) p.set("end_date", end);
+      if (providerId) p.set("provider_id", providerId);
       const qs = p.toString();
       return adminApi.getJson<FinanceSummary>(`/api/admin/finance/summary${qs ? `?${qs}` : ""}`, {
         timeoutMs: 90_000,
@@ -290,6 +308,7 @@ export function FinanceOverviewPage() {
       const p = new URLSearchParams();
       if (start) p.set("start_date", start);
       if (end) p.set("end_date", end);
+      if (providerId) p.set("provider_id", providerId);
       p.set("page", String(page));
       p.set("limit", String(TX_LIMIT));
       if (txType !== "all") p.set("type", txType);
@@ -419,6 +438,7 @@ export function FinanceOverviewPage() {
       const p = new URLSearchParams();
       if (start) p.set("start_date", start);
       if (end) p.set("end_date", end);
+      if (providerId) p.set("provider_id", providerId);
       if (txType !== "all") p.set("transaction_type", txType);
       const qs = p.toString();
       const blob = await adminApi.downloadBlob(`/api/admin/export/finance${qs ? `?${qs}` : ""}`, {
@@ -466,7 +486,7 @@ export function FinanceOverviewPage() {
 
   const periodLabel =
     summary?.period?.start_date && summary?.period?.end_date
-      ? `${summary.period.defaulted ? "Month to date" : "Custom range"}: ${summary.period.start_date} → ${summary.period.end_date}`
+      ? `${summary.period.defaulted ? "Month to date" : "Custom range"}: ${formatPeriodBound(summary.period.start_date)} → ${formatPeriodBound(summary.period.end_date)}`
       : "Month to date — set dates below for a fixed range";
 
   return (
@@ -474,7 +494,28 @@ export function FinanceOverviewPage() {
       <AdminPageHeader
         title="Finance"
         description="Platform financial metrics and ledger transactions (same APIs as legacy admin)."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/trial-balance")}
+            className="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+          >
+            Trial balance (GL)
+          </Link>
+        }
       />
+      {providerId ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          Showing ledger activity scoped to{" "}
+          <strong>{providerName || providerId.slice(0, 8) + "…"}</strong>.{" "}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => patchParams({ provider_id: null, provider_name: null }, true)}
+          >
+            Clear provider filter
+          </button>
+        </div>
+      ) : null}
       {showWalletDisabledBanner ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <code className="rounded bg-amber-100 px-1">payment_wallet</code> is off — customers cannot pay from wallet
@@ -549,6 +590,23 @@ export function FinanceOverviewPage() {
               <option value="fee">Platform fees</option>
             </select>
           </label>
+          <div className="min-w-[14rem] flex-1 sm:max-w-xs">
+            <AdminProviderPicker
+              label="Provider (optional)"
+              labelClassName="text-sm text-gray-600"
+              value={providerId}
+              selectedLabel={providerName || null}
+              onChange={(id, provider) => {
+                patchParams(
+                  {
+                    provider_id: id || null,
+                    provider_name: provider ? (provider.business_name || provider.name || provider.slug || null) : null,
+                  },
+                  true,
+                );
+              }}
+            />
+          </div>
           <button
             type="button"
             className={adminToolbarButtonClass(false)}
@@ -558,6 +616,8 @@ export function FinanceOverviewPage() {
               next.delete("end_date");
               next.delete("page");
               next.delete("type");
+              next.delete("provider_id");
+              next.delete("provider_name");
               setSp(next, { replace: true });
             }}
           >
@@ -568,6 +628,32 @@ export function FinanceOverviewPage() {
 
       {summary ? (
         <>
+          <AdminPanel>
+            <h2 className="mb-4 text-base font-semibold text-gray-900">Headline metrics</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryMetricCard
+                label="Settled service GMV"
+                value={summary.service_collected_gross}
+                trend={summary.gmv_growth}
+                tooltip="Ledger-backed booking and order payment activity in the selected period."
+              />
+              <SummaryMetricCard
+                label="Settled service (net)"
+                value={summary.service_collected_net}
+                tooltip="GMV after gateway fees on booking-service flows."
+              />
+              <SummaryMetricCard
+                label="Platform commission (net)"
+                value={summary.platform_commission_net ?? summary.platform_take_net}
+              />
+              <SummaryMetricCard
+                label="Provider net activity"
+                value={summary.provider_net_activity ?? summary.provider_earnings}
+                tooltip="Recognized provider revenue minus provider-earnings refund clawback."
+              />
+            </div>
+          </AdminPanel>
+
           <details className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
             <summary className="cursor-pointer font-medium text-gray-900">How these numbers relate</summary>
             <ul className="mt-2 list-inside list-disc space-y-1 text-gray-700">
@@ -924,6 +1010,52 @@ export function FinanceOverviewPage() {
                     Net {formatAdminCurrency(summary.reconciliation.checks.platform_net_health?.platform_net ?? 0)}
                   </p>
                 </div>
+                {summary.reconciliation.checks.platform_cash_position ? (
+                  <div className="rounded-lg border border-gray-200 p-3 sm:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Platform cash position</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Estimated cash the platform should hold: collected inflows minus payouts, refunds, and gateway fees.
+                    </p>
+                    <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-3">
+                      <div>
+                        <span className="text-xs text-gray-500">Collected</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.collected ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Provider payouts</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(Math.abs(summary.reconciliation.checks.platform_cash_position.provider_payouts ?? 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Refunds (gross)</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.refunds_gross ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Gateway fees</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.gateway_fees ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Payout transfer fees</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.payout_transfer_fees ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Net platform cash</span>
+                        <p className="text-base font-semibold tabular-nums text-gray-900">
+                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.net_platform_cash ?? 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </AdminPanel>
           ) : null}

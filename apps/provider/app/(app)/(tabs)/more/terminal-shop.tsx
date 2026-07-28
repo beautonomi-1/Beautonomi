@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -21,6 +22,17 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import { getRuntimeMarketHost } from "@/config/public-env";
 import { downloadTerminalOrderReceipt } from "@/lib/download-terminal-order-receipt";
 import { useProvider } from "@/providers/ProviderContext";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import {
+  getTerminalPaystackReturnUrl,
+  matchesTerminalPaystackReturnUrl,
+  pollTerminalOrderPaid,
+  terminalOrderFailedCopy,
+  terminalOrderPendingCopy,
+  terminalOrderSuccessCopy,
+} from "@/lib/payments/providerPaystackReturn";
 import {
   canConfirmTerminalCheckout,
   resolveTerminalShopOrderCta,
@@ -200,7 +212,20 @@ export default function TerminalShopScreen() {
 
   const { execute: postOrder, loading: posting } = useApiMutation<{ order: TerminalOrder; requires_payment?: boolean }>("post");
   const { execute: postAllocate, loading: allocating } = useApiMutation<{ order: TerminalOrder }>("post");
-  const { execute: postPay, loading: paying } = useApiMutation<{ authorization_url?: string; payment_url?: string }>("post");
+  const { execute: postPay, loading: paying } = useApiMutation<{
+    authorization_url?: string;
+    payment_url?: string;
+    reference?: string;
+  }>("post");
+
+  const terminalReturnUrl = getTerminalPaystackReturnUrl();
+  const paystackCheckout = useInAppPaystackCheckout();
+  const [paymentOutcome, setPaymentOutcome] = useState<{
+    phase: "idle" | "success" | "pending" | "failed";
+    title?: string;
+    body?: string;
+  }>({ phase: "idle" });
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   const [checkoutProduct, setCheckoutProduct] = useState<TerminalProduct | null>(null);
   const [commercialModel, setCommercialModel] = useState("once_off_purchase");
@@ -315,6 +340,81 @@ export default function TerminalShopScreen() {
     return null;
   }
 
+  const openTerminalPaystack = useCallback(
+    async (orderId: string, url: string, reference?: string | null) => {
+      const result = await paystackCheckout.waitForCheckout(url, {
+        title: "Pay for terminal",
+        returnUrl: terminalReturnUrl,
+        matchSuccess: (rawUrl) => matchesTerminalPaystackReturnUrl(rawUrl, { success: true }),
+        matchCancel: (rawUrl) => matchesTerminalPaystackReturnUrl(rawUrl, { cancelled: true }),
+      });
+
+      if (result?.outcome === "cancel") {
+        const failed = terminalOrderFailedCopy("Payment wasn't completed.");
+        setPaymentOutcome({ phase: "failed", ...failed });
+        await refreshAll();
+        return;
+      }
+
+      const isClosed = result?.outcome === "closed";
+      if (result.outcome !== "success" && !isClosed) {
+        await refreshAll();
+        return;
+      }
+
+      setVerifyingPayment(true);
+      try {
+        let payReference = reference?.trim() || null;
+        if (result.outcome === "success" && result.url) {
+          if (matchesTerminalPaystackReturnUrl(result.url, { cancelled: true })) {
+            const failed = terminalOrderFailedCopy("Payment wasn't completed.");
+            setPaymentOutcome({ phase: "failed", ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            await refreshAll();
+            return;
+          }
+          const extracted = extractPaystackReferenceFromUrl(result.url);
+          if (extracted) payReference = extracted;
+        }
+
+        const verifyResult = payReference ? await verifyPaystackWithRetry(payReference) : null;
+        if (verifyResult?.status === "failed") {
+          const failed = terminalOrderFailedCopy(verifyResult.errorMessage ?? null);
+          setPaymentOutcome({ phase: "failed", ...failed });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          await refreshAll();
+          return;
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const provisioned = await pollTerminalOrderPaid(orderId);
+        if (provisioned.state === "provisioned") {
+          setPaymentOutcome({ phase: "success", ...terminalOrderSuccessCopy() });
+        } else {
+          setPaymentOutcome({ phase: "pending", ...terminalOrderPendingCopy() });
+        }
+        await refreshAll();
+      } finally {
+        setVerifyingPayment(false);
+      }
+    },
+    [paystackCheckout, refreshAll, terminalReturnUrl],
+  );
+
+  async function startTerminalPayment(orderId: string) {
+    const payRes = await postPay(`/api/provider/terminal-orders/${orderId}/initialize-payment`, {
+      in_app: true,
+      callback_url: terminalReturnUrl,
+    });
+    if (payRes.error) throw new Error(payRes.error);
+    const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
+    if (!url) {
+      Alert.alert("Payment", "Could not start payment. Try again from Your orders.");
+      return;
+    }
+    await openTerminalPaystack(orderId, url, payRes.data?.reference ?? null);
+  }
+
   async function submitOrder() {
     if (!checkoutProduct) return;
     if (!checkoutConfirmState.ok) {
@@ -369,14 +469,7 @@ export default function TerminalShopScreen() {
       await refreshAll();
 
       if (order?.id && requiresPayment) {
-        const payRes = await postPay(`/api/provider/terminal-orders/${order.id}/initialize-payment`, {});
-        if (payRes.error) throw new Error(payRes.error);
-        const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
-        if (url) {
-          pushInAppBrowser(router, url, "Pay for terminal");
-        } else {
-          Alert.alert("Payment", "Could not start payment. Try again from Your orders.");
-        }
+        await startTerminalPayment(order.id);
       } else {
         Alert.alert("Success", "Terminal order confirmed.");
       }
@@ -392,11 +485,7 @@ export default function TerminalShopScreen() {
 
   async function payExisting(orderId: string) {
     try {
-      const payRes = await postPay(`/api/provider/terminal-orders/${orderId}/initialize-payment`, {});
-      if (payRes.error) throw new Error(payRes.error);
-      const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;
-      if (url) pushInAppBrowser(router, url, "Pay for terminal");
-      else Alert.alert("Payment", "Could not start payment.");
+      await startTerminalPayment(orderId);
     } catch (e) {
       Alert.alert("Payment failed", e instanceof Error ? e.message : "Try again");
     }
@@ -422,6 +511,62 @@ export default function TerminalShopScreen() {
         onBack={handleBack}
       />
       <ScrollView contentContainerStyle={twStyle("px-4 pb-8")}>
+        {verifyingPayment ? (
+          <View style={twStyle("mb-4 flex-row items-center rounded-2xl border border-indigo-200 bg-indigo-50 p-4")}>
+            <ActivityIndicator color="#4338ca" />
+            <Text style={twStyle("ml-3 flex-1 text-sm text-indigo-900")}>
+              Confirming your payment with Paystack…
+            </Text>
+          </View>
+        ) : null}
+        {paymentOutcome.phase !== "idle" ? (
+          <View
+            style={twStyle(
+              `mb-4 rounded-2xl border p-4 ${
+                paymentOutcome.phase === "success"
+                  ? "border-emerald-200 bg-emerald-50"
+                  : paymentOutcome.phase === "pending"
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-red-200 bg-red-50"
+              }`,
+            )}
+          >
+            <Text
+              style={twStyle(
+                `text-sm font-semibold ${
+                  paymentOutcome.phase === "success"
+                    ? "text-emerald-900"
+                    : paymentOutcome.phase === "pending"
+                      ? "text-amber-900"
+                      : "text-red-900"
+                }`,
+              )}
+            >
+              {paymentOutcome.title}
+            </Text>
+            {paymentOutcome.body ? (
+              <Text
+                style={twStyle(
+                  `mt-1 text-xs ${
+                    paymentOutcome.phase === "success"
+                      ? "text-emerald-800"
+                      : paymentOutcome.phase === "pending"
+                        ? "text-amber-800"
+                        : "text-red-800"
+                  }`,
+                )}
+              >
+                {paymentOutcome.body}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => setPaymentOutcome({ phase: "idle" })}
+              style={twStyle("mt-3 self-start")}
+            >
+              <Text style={twStyle("text-xs font-semibold text-gray-700")}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {loading ? (
           <ActivityIndicator style={twStyle("my-8")} />
         ) : (
