@@ -2,6 +2,12 @@
  * Canonical user-facing label for payment_method / payment_provider.
  * Kept in @beautonomi/utils so mobile share text matches PDF receipts.
  */
+import {
+  beautonomiCardMachineLabel,
+  formatCardPaymentHistoryLabel,
+  yocoCardMachineLabel,
+} from "../payments/card-machine-labels";
+
 export function formatPaymentMethodLabel(
   paymentMethod?: string | null,
   paymentProvider?: string | null,
@@ -19,15 +25,10 @@ export function formatPaymentMethodLabel(
   ) {
     return "Paystack Terminal";
   }
-  if (m === "paycloud" || p === "paycloud") return "PayCloud";
-  if (m === "yoco" || p === "yoco") return "Yoco";
+  if (m === "paycloud" || p === "paycloud") return beautonomiCardMachineLabel();
+  if (m === "yoco" || p === "yoco") return yocoCardMachineLabel();
   if (m === "card") {
-    if (p === "yoco") return "Card (Yoco)";
-    if (p === "paystack") return "Card";
-    if (p === "stripe") return "Card";
-    if (p === "flutterwave") return "Card";
-    if (p === "other") return "Card (manual)";
-    return "Card";
+    return formatCardPaymentHistoryLabel({ payment_method: m, payment_provider: p });
   }
   if (m === "saved_card" || m === "new_card") return "Card";
   if (m === "other") return p ? `Other (${p})` : "Other";

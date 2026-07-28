@@ -43,12 +43,12 @@ import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
-import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum } from "@beautonomi/utils";
+import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import {
   ProviderBookingCreatedSuccessSheet,
@@ -317,7 +317,7 @@ const DATE_RANGE_DAYS = 90;
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: "Pay Later", value: "pay_later", icon: "time-outline" },
   { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Manual Card", value: "card", icon: "card-outline" },
+  { label: manualCardCollectOptionLabel(), value: "card", icon: "card-outline" },
   { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
   { label: "Card machine", value: "paycloud_terminal", icon: "card-outline" },
   { label: "Paystack Terminal", value: "paystack_terminal", icon: "qr-code-outline" },
@@ -424,6 +424,7 @@ export default function NewBookingScreen() {
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const paystackTerminalEnabled = bundle?.flags?.payment_paystack_virtual_terminal?.enabled === true;
   const paymentLinkEnabled = bundle?.flags?.payment_link?.enabled === true;
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const {
     paycloudEnabled,
     collectEnabled: paycloudCollectEnabled,
@@ -694,12 +695,16 @@ export default function NewBookingScreen() {
     ) {
       setPaymentMethod("pay_later");
     }
+    if (!manualCardEnabled && paymentMethod === "card") {
+      setPaymentMethod("pay_later");
+    }
   }, [
     yocoEnabled,
     paystackTerminalEnabled,
     paymentLinkEnabled,
     paycloudEnabled,
     paycloudCollectEnabled,
+    manualCardEnabled,
     paymentMethod,
   ]);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -3466,6 +3471,7 @@ export default function NewBookingScreen() {
               <View style={twStyle("mb-4 flex-row flex-wrap justify-between")}>
                 {PAYMENT_METHODS.filter(
                   (pm) =>
+                    (manualCardEnabled || pm.value !== "card") &&
                     (yocoEnabled || pm.value !== "yoco_pos") &&
                     (paycloudEnabled && paycloudCollectEnabled || pm.value !== "paycloud_terminal") &&
                     (paystackTerminalEnabled || pm.value !== "paystack_terminal") &&
@@ -4264,7 +4270,7 @@ function formatNewBookingPaymentLabel(method: string): string {
     case "cash":
       return "Cash";
     case "card":
-      return "Manual Card";
+      return manualCardCollectOptionLabel();
     case "yoco_pos":
       return "Yoco Terminal";
     case "paycloud_terminal":

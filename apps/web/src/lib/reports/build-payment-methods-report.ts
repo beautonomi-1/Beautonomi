@@ -5,6 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { manualCardReportLabel } from "@beautonomi/utils";
 import { normalizeRecordedPaymentMethod } from "@/lib/reports/recorded-takings";
 
 const PT_PAGE = 1000;
@@ -42,7 +43,7 @@ export function humanizePaymentMethodKey(key: string): string {
     yoco: "Yoco",
     paycloud: "Card machine (PayCloud)",
     stripe: "Stripe",
-    card: "Card (terminal)",
+    card: manualCardReportLabel(),
     wallet: "Wallet credit",
     gift_card: "Gift card",
     wallet_and_gift_card: "Wallet & gift card",

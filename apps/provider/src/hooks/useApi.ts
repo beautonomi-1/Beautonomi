@@ -14,6 +14,7 @@ import {
   isNeverCachePath,
   prefetchApi,
   MONEY_SURFACE_STALE_TIME_MS,
+  MONEY_SURFACE_TIMEOUT_MS,
 } from "@/lib/api-cache-helpers";
 import {
   responseCache,
@@ -26,7 +27,7 @@ import {
 import { emitProviderServicesCatalogChanged } from "@/lib/provider-services-catalog-events";
 import { useAuth } from "@/providers/AuthProvider";
 
-export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS };
+export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
 /** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
@@ -260,11 +261,19 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
   useEffect(() => {
     mountedRef.current = true;
+    const cached = cacheable
+      ? (responseCache.get(cacheKey) as CacheEntry<T> | undefined)
+      : undefined;
+    if (!cached?.data) {
+      setData(null);
+      setError(null);
+      setErrorCode(null);
+    }
     void fetchData();
     return () => {
       mountedRef.current = false;
     };
-  }, [fetchData]);
+  }, [fetchData, cacheKey, cacheable]);
 
   // Silent background refresh on app focus or network reconnection.
   // Always refetch on resume (stale-while-revalidate) — keep showing cached data

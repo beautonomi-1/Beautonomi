@@ -18,6 +18,9 @@ export const PREFETCH_STALE_TIME_MS = 45_000;
 /** Money / ledger surfaces revalidate on every screen focus. */
 export const MONEY_SURFACE_STALE_TIME_MS = 30_000;
 
+/** Heavy money APIs (ledger scan, sales history) — longer client timeout than default 15s. */
+export const MONEY_SURFACE_TIMEOUT_MS = 60_000;
+
 interface CacheEntry<T> {
   data: T | null;
   error: string | null;

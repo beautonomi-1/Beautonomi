@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         in_flight_payment_id,
         terminal_asset_id, assigned_at, created_at, updated_at,
         provider_locations:location_id ( name ),
-        merchant:paycloud_merchants ( label, merchant_no, store_no )
+        merchant:paycloud_merchants ( label, merchant_no, store_no, environment )
       `)
       .eq("provider_id", providerId)
       .not("status", "eq", "decommissioned")
@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
             label: t.merchant.label ?? "",
             merchant_no: t.merchant.merchant_no ?? "",
             store_no: t.merchant.store_no ?? "",
+            environment: t.merchant.environment ?? "live",
           }
         : null,
     };

@@ -72,6 +72,7 @@ const SETUP_STEPS = [
   { code: "NO_TERMINALS", label: "Add a card machine" },
   { code: "ALL_SUSPENDED", label: "At least one active machine" },
   { code: "NO_MERCHANT", label: "Merchant setup complete" },
+  { code: "NO_CREDENTIALS", label: "Beautonomi is finishing your card machine account" },
 ] as const;
 
 const KNOWN_SETUP_CODES = new Set(SETUP_STEPS.map((s) => s.code));

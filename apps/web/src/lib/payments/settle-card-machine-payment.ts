@@ -54,7 +54,7 @@ type AdditionalChargeRow = {
 
 const PROVIDER_LABEL: Record<CardMachinePaymentProvider, string> = {
   paycloud: "Beautonomi card machine",
-  yoco: "Yoco card terminal",
+  yoco: "Yoco card machine",
 };
 
 function computeBaseRemaining(booking: {

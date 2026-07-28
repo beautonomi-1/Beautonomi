@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
@@ -51,8 +52,9 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    const supabaseAdmin = getSupabaseAdmin();
     const summary = await reconcilePaycloudPaymentsBatch({
-      supabase,
+      supabase: supabaseAdmin,
       payments: payments ?? [],
     });
 

@@ -7,6 +7,7 @@ export interface PaycloudMerchantInfo {
   label: string;
   merchant_no: string;
   store_no: string;
+  environment?: "sandbox" | "live" | string;
 }
 
 export interface PaycloudTerminal {

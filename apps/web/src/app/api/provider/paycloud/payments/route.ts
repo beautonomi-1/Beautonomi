@@ -11,7 +11,12 @@ import {
   isPaycloudCashbackEnabledForProvider,
 } from "@/lib/payments/paycloud-feature-gate";
 import { createPaycloudOrder } from "@/lib/payments/paycloud-client";
-import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl, validatePaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
+import {
+  resolvePaycloudContextForProvider,
+  paycloudContextFailureToApiError,
+  getPaycloudNotifyUrl,
+  validatePaycloudNotifyUrl,
+} from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { resolvePayScenario } from "@/lib/payments/paycloud-scenarios";
 import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-guards";
@@ -137,10 +142,15 @@ export async function POST(request: NextRequest) {
     }
 
     const currency = parsed.data.currency ?? expected?.currency ?? "ZAR";
-    const ctx = await resolvePaycloudContextForProvider(supabase, providerId, parsed.data.terminal_id);
-    if (!ctx) {
-      return NextResponse.json({ data: null, error: { message: "This card machine isn't fully set up yet.", code: "TERMINAL_NOT_CONFIGURED" } }, { status: 400 });
+    const resolved = await resolvePaycloudContextForProvider(supabase, providerId, parsed.data.terminal_id);
+    if (!resolved.ok) {
+      const apiErr = paycloudContextFailureToApiError(resolved.reason);
+      return NextResponse.json(
+        { data: null, error: { message: apiErr.message, code: apiErr.code } },
+        { status: 400 },
+      );
     }
+    const ctx = resolved.ctx;
 
     const guard = await validatePaycloudPaymentInitiate(supabase, {
       providerId,

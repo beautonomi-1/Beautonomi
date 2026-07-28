@@ -29,7 +29,8 @@ export function formatPaycloudCollectLabel(params: {
     return "Payment in progress — tap to resume";
   }
 
-  const money = formatAmount(params.amount, params.currency ?? "ZAR");
+  const showMoney = Number.isFinite(params.amount) && params.amount > 0.01;
+  const money = showMoney ? formatAmount(params.amount, params.currency ?? "ZAR") : null;
   const depositDue =
     params.depositAmount != null &&
     params.depositAmount > 0.01 &&
@@ -48,16 +49,16 @@ export function formatPaycloudCollectLabel(params: {
       if (depositMoney && fullMoney) {
         return `Card machine · deposit ${depositMoney} of ${fullMoney}`;
       }
-      return `Card machine · ${money}`;
+      return money ? `Card machine · ${money}` : "Card machine";
     case "booking_addons":
-      return `Card machine · add-ons ${money}`;
+      return money ? `Card machine · add-ons ${money}` : "Card machine · add-ons";
     case "additional_charge":
       return "Card machine";
     case "group_booking":
       if (depositMoney && fullMoney) {
         return `Card machine · deposit ${depositMoney} of ${fullMoney}`;
       }
-      return `Card machine · group ${money}`;
+      return money ? `Card machine · group ${money}` : "Card machine";
     case "sale":
     case "product_order":
     default:

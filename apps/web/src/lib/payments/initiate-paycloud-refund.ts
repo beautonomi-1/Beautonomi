@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createPaycloudRefund } from "@/lib/payments/paycloud-client";
-import { resolvePaycloudContextForProvider } from "@/lib/payments/paycloud-credentials";
+import { resolvePaycloudContextForProvider, paycloudContextFailureToApiError } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
 
@@ -96,15 +96,17 @@ export async function initiatePaycloudRefund(params: {
   }
 
   const terminalId = params.terminalId ?? payment.terminal_id;
-  const ctx = await resolvePaycloudContextForProvider(supabase, providerId, terminalId);
-  if (!ctx) {
+  const resolved = await resolvePaycloudContextForProvider(supabase, providerId, terminalId);
+  if (!resolved.ok) {
+    const apiErr = paycloudContextFailureToApiError(resolved.reason);
     return {
       ok: false,
-      code: "TERMINAL_NOT_CONFIGURED",
-      message: "This card machine isn't fully set up yet.",
+      code: apiErr.code,
+      message: apiErr.message,
       status: 400,
     };
   }
+  const ctx = resolved.ctx;
 
   const { data: terminal } = await supabase
     .from("paycloud_terminals")

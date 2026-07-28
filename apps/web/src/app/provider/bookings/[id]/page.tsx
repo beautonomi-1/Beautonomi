@@ -70,6 +70,8 @@ import {
   ARRIVAL_PIN_PROVIDER_SUBTEXT,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
   getBookingPaymentDisplay,
+  manualCardCollectOptionLabel,
+  MANUAL_CARD_METHOD_HELPER,
 } from "@beautonomi/utils";
 import {
   Dialog,
@@ -108,7 +110,7 @@ const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal
 /** Aligned with provider mobile + POST /mark-paid */
 const PAYMENT_METHODS_MAIN_BASE = [
   { label: "Cash", value: "cash" as const },
-  { label: "Card (in-salon / terminal)", value: "card" as const },
+  { label: manualCardCollectOptionLabel(), value: "card" as const, helper: MANUAL_CARD_METHOD_HELPER },
   { label: "EFT", value: "bank_transfer" as const },
   { label: "Other", value: "other" as const },
 ];
@@ -116,7 +118,7 @@ const PAYMENT_METHODS_MAIN_BASE = [
 /** Aligned with POST .../additional-charges/[chargeId]/mark-paid */
 const PAYMENT_METHODS_CHARGE_BASE = [
   { label: "Cash", value: "cash" as const },
-  { label: "Card (in-salon / terminal)", value: "card" as const },
+  { label: manualCardCollectOptionLabel(), value: "card" as const, helper: MANUAL_CARD_METHOD_HELPER },
   { label: "Mobile", value: "mobile" as const },
   { label: "EFT", value: "bank_transfer" as const },
   { label: "Other", value: "other" as const },
@@ -143,6 +145,7 @@ export default function ProviderBookingDetail() {
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const { hasPermission, isOwner } = usePermissions();
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
@@ -1501,7 +1504,8 @@ export default function ProviderBookingDetail() {
     outstanding,
   });
   const markPaidPaymentMethods = useMemo(() => {
-    const methods: { label: string; value: PaymentMethodMain }[] = [...PAYMENT_METHODS_MAIN_BASE];
+    const methods: { label: string; value: PaymentMethodMain; helper?: string }[] =
+      PAYMENT_METHODS_MAIN_BASE.filter((m) => m.value !== "card" || manualCardEnabled);
     if (paystackTerminalReady) {
       methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
     }
@@ -1509,7 +1513,7 @@ export default function ProviderBookingDetail() {
       methods.splice(2, 0, {
         label: formatPaycloudCollectLabel({
           context: paycloudCollectContext,
-          amount: outstanding,
+          amount: 0,
           currency: bookingCurrency,
         }),
         value: "paycloud_terminal",
@@ -1518,7 +1522,7 @@ export default function ProviderBookingDetail() {
     return methods;
   }, [
     bookingCurrency,
-    outstanding,
+    manualCardEnabled,
     paycloudCollectContext,
     paycloudCollectEnabled,
     paycloudEnabled,
@@ -1527,12 +1531,12 @@ export default function ProviderBookingDetail() {
   const chargePaymentMethods = useMemo(
     () =>
       [
-        ...PAYMENT_METHODS_CHARGE_BASE,
+        ...PAYMENT_METHODS_CHARGE_BASE.filter((m) => m.value !== "card" || manualCardEnabled),
         ...(paycloudEnabled && paycloudCollectEnabled
           ? [{ label: "Card machine", value: "paycloud_terminal" as const }]
           : []),
       ],
-    [paycloudCollectEnabled, paycloudEnabled],
+    [manualCardEnabled, paycloudCollectEnabled, paycloudEnabled],
   );
   const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
   const actionModel = useMemo(

@@ -7,6 +7,7 @@ import { Alert, AppState, type AppStateStatus } from "react-native";
 import { api } from "@/lib/api-client";
 import type { PaycloudIntentContract, PaycloudIntentPayload } from "@/lib/paycloud-same-terminal";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { humanizePaycloudPaymentError as humanizePaycloudPaymentErrorShared } from "@beautonomi/utils";
 
 /* ─── Platform availability gate ─── */
 
@@ -67,6 +68,7 @@ export interface PayCloudMerchantInfo {
   label: string;
   merchant_no: string;
   store_no: string;
+  environment?: "sandbox" | "live" | string;
 }
 
 export interface PayCloudTerminal {
@@ -206,49 +208,11 @@ export type PayCloudPaymentCreateResult =
 export function humanizePaycloudPaymentError(code: string | undefined, fallback?: string): {
   title: string;
   message: string;
+  action?: string;
+  owner?: string;
 } {
-  switch (code) {
-    case "SUBSCRIPTION_REQUIRED":
-      return { title: "Plan upgrade needed", message: "Upgrade your plan to use Beautonomi card machines." };
-    case "PAYCLOUD_NOT_ACCEPTED":
-      return { title: "Card payments are off", message: "Enable in-person card payments in Card machines settings." };
-    case "TERMINAL_UNAVAILABLE":
-    case "TERMINAL_NOT_FOUND":
-      return {
-        title: "Card machine unavailable",
-        message:
-          fallback ||
-          "Could not reach the card machine. Check it is powered on, online, and connected to the internet.",
-      };
-    case "TERMINAL_NOT_CONFIGURED":
-      return { title: "Card machine unavailable", message: "This card machine isn't fully set up yet." };
-    case "DEVICE_TERMINAL_MISMATCH":
-      return {
-        title: "Wrong card machine",
-        message: "This device does not match the selected card machine. Choose the machine registered to this device.",
-      };
-    case "DEVICE_SERIAL_REQUIRED":
-      return {
-        title: "Device not linked",
-        message: "Could not identify this device. Link it in Card machines or send to the card machine instead.",
-      };
-    case "AMOUNT_MISMATCH":
-      return { title: "Amount mismatch", message: "Amount does not match the outstanding balance." };
-    case "TERMINAL_IN_FLIGHT":
-    case "ENTITY_IN_FLIGHT":
-      return {
-        title: "Payment already in progress",
-        message: fallback || "A payment is already in progress. You can resume it or cancel it first.",
-      };
-    case "ALREADY_PAID":
-      return { title: "Already paid", message: fallback || "This item is already paid." };
-    case "BOOKING_NOT_COLLECTIBLE":
-      return { title: "Cannot charge", message: fallback || "This booking cannot be charged." };
-    case "ZERO_AMOUNT":
-      return { title: "Nothing to charge", message: "There is no outstanding balance to collect." };
-    default:
-      return { title: "Payment failed", message: fallback || "Card payment could not be started." };
-  }
+  const h = humanizePaycloudPaymentErrorShared(code, fallback);
+  return { title: h.title, message: h.message, action: h.action, owner: h.owner };
 }
 
 /* ─── Terminal Management ─── */
@@ -302,6 +266,10 @@ function normalizeTerminal(raw: unknown): PayCloudTerminal | null {
             label: String((row.merchant as Record<string, unknown>).label ?? ""),
             merchant_no: String((row.merchant as Record<string, unknown>).merchant_no ?? ""),
             store_no: String((row.merchant as Record<string, unknown>).store_no ?? ""),
+            environment:
+              typeof (row.merchant as Record<string, unknown>).environment === "string"
+                ? ((row.merchant as Record<string, unknown>).environment as string)
+                : undefined,
           }
         : null,
   };

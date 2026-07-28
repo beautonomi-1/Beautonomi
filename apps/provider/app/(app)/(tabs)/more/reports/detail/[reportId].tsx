@@ -14,12 +14,13 @@ import { formatInTimeZone } from "date-fns-tz";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { SalesSummaryReportView } from "@/features/reports/SalesSummaryReportView";
@@ -163,7 +164,13 @@ export default function ReportDetailScreen() {
     });
   }, [def, from, to, periodMQY, periodDMWY, eodDate, selectedLocationId]);
 
-  const { data, loading, error, refresh } = useApi<unknown>(path, { enabled: !!def && !!path });
+  const reportTimeoutMs =
+    reportId === "sales-summary" || reportId === "revenue-trends" ? MONEY_SURFACE_TIMEOUT_MS : undefined;
+
+  const { data, loading, error, errorCode, refresh } = useApi<unknown>(path, {
+    enabled: !!def && !!path,
+    timeoutMs: reportTimeoutMs,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -268,7 +275,14 @@ export default function ReportDetailScreen() {
       )}
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color={Colors.primary} />}
-      {error && !data && <ErrorState message={error} onRetry={refresh} />}
+      {error && !data ? (
+        <FinanceReportError
+          error={error}
+          errorCode={errorCode}
+          onRetry={refresh}
+          permissionMessage="Ask your business owner to grant view reports permission for sales and analytics reports."
+        />
+      ) : null}
 
       {data != null && !loading &&
         (reportId === "sales-summary" ? (

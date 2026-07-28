@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason } from "./types";
 import { calculateBookingPricing } from "./pricing";
-import { effectiveTravelFee } from "@beautonomi/utils";
+import { effectiveTravelFee, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -255,6 +255,7 @@ export function AppointmentSidebar({
   const portalProvider = portalProviderRaw as PortalProviderProfile | null;
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const {
     ready: paycloudReady,
     loading: paycloudReadinessLoading,
@@ -374,7 +375,10 @@ export function AppointmentSidebar({
     ) {
       setFormData((prev) => ({ ...prev, paymentMethod: "pay_later" }));
     }
-  }, [formData.paymentMethod, paycloudCollectEnabled, paycloudEnabled]);
+    if (!manualCardEnabled && formData.paymentMethod === "card") {
+      setFormData((prev) => ({ ...prev, paymentMethod: "pay_later" }));
+    }
+  }, [formData.paymentMethod, paycloudCollectEnabled, paycloudEnabled, manualCardEnabled]);
 
   /** Live hints from GET /api/provider/bookings/check-availability */
   const [slotAvailability, setSlotAvailability] = useState<{
@@ -5516,7 +5520,9 @@ export function AppointmentSidebar({
                   {([
                     { value: "pay_later" as const, label: "Pay Later", icon: Clock },
                     { value: "cash" as const, label: "Cash", icon: Receipt },
-                    { value: "card" as const, label: "Manual Card", icon: CreditCard },
+                    ...(manualCardEnabled
+                      ? [{ value: "card" as const, label: manualCardCollectOptionLabel(), icon: CreditCard }]
+                      : []),
                     { value: "yoco_pos" as const, label: "Yoco Terminal", icon: CreditCard },
                     ...(paymentLinkEnabled
                       ? [{ value: "payment_link" as const, label: "Payment Link", icon: Send }]

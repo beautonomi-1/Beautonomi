@@ -75,18 +75,70 @@ export async function GET(request: NextRequest) {
       exactCountQuery = exactCountQuery.eq("location_id", locationId);
     }
 
-    const [{ data: bookings, error: bookingsError }, { count: exactBookingCount }] =
-      await Promise.all([
-        bookingsQuery.order("scheduled_at", { ascending: false }).limit(MAX_BOOKINGS_FOR_REPORT),
-        exactCountQuery,
-      ]);
+    const netOpts = { timezone: reportContext.timezone };
+
+    const periodDays = Math.ceil(
+      (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const prevFromDate = subDays(fromDate, periodDays);
+    const prevToDate = fromDate;
+
+    let prevBookingsCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", prevFromDate.toISOString())
+      .lte("scheduled_at", prevToDate.toISOString());
+
+    if (locationId) {
+      prevBookingsCountQuery = prevBookingsCountQuery.eq("location_id", locationId);
+    }
+
+    const [
+      { data: bookings, error: bookingsError },
+      { count: exactBookingCount },
+      ledgerDetailed,
+      recorded,
+      prevRevenue,
+      { count: prevBookingsCountRaw },
+    ] = await Promise.all([
+      bookingsQuery.order("scheduled_at", { ascending: false }).limit(MAX_BOOKINGS_FOR_REPORT),
+      exactCountQuery,
+      getProviderNetAfterRefundsDetailed(
+        supabaseAdmin,
+        providerId,
+        fromDate,
+        toDate,
+        locationId || undefined,
+        netOpts,
+      ),
+      getRecordedTakingsForRange(supabaseAdmin, {
+        providerId,
+        rangeStartIso: fromDate.toISOString(),
+        rangeEndIso: toDate.toISOString(),
+        locationId: locationId || undefined,
+      }),
+      getPreviousPeriodNetAfterRefunds(
+        supabaseAdmin,
+        providerId,
+        fromDate,
+        toDate,
+        locationId || undefined,
+      ),
+      prevBookingsCountQuery,
+    ]);
 
     if (bookingsError) {
       console.error("Error fetching bookings:", bookingsError);
       return handleApiError(bookingsError, "Failed to fetch bookings for sales summary");
     }
 
-    // Get staff information separately to avoid deep nesting issues
+    const {
+      totalRevenue,
+      revenueByBooking,
+      revenueByProductOrder,
+      revenueByDate,
+    } = ledgerDetailed;
     const staffIds = new Set<string>();
     bookings?.forEach((booking: { booking_services?: Array<{ staff_id?: string }> }) => {
       booking.booking_services?.forEach((service: { staff_id?: string }) => {
@@ -114,22 +166,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const netOpts = { timezone: reportContext.timezone };
-
-    const {
-      totalRevenue,
-      revenueByBooking,
-      revenueByProductOrder,
-      revenueByDate,
-    } = await getProviderNetAfterRefundsDetailed(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId || undefined,
-      netOpts,
-    );
-
     let appointmentLedgerRevenue = 0;
     revenueByBooking.forEach((v) => {
       appointmentLedgerRevenue += v;
@@ -148,33 +184,6 @@ export async function GET(request: NextRequest) {
     const averageBookingValue =
       bookingsWithLedgerActivity > 0 ? appointmentLedgerRevenue / bookingsWithLedgerActivity : 0;
 
-    // Get previous period for comparison
-    const prevRevenue = await getPreviousPeriodNetAfterRefunds(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId || undefined,
-    );
-
-    const periodDays = Math.ceil(
-      (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    const prevFromDate = subDays(fromDate, periodDays);
-    const prevToDate = fromDate;
-
-    let prevBookingsCountQuery = supabaseAdmin
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", prevFromDate.toISOString())
-      .lte("scheduled_at", prevToDate.toISOString());
-
-    if (locationId) {
-      prevBookingsCountQuery = prevBookingsCountQuery.eq("location_id", locationId);
-    }
-
-    const { count: prevBookingsCountRaw } = await prevBookingsCountQuery;
     const prevBookingsCount = prevBookingsCountRaw ?? 0;
 
     const revenueGrowth =
@@ -289,13 +298,6 @@ export async function GET(request: NextRequest) {
         bookings: data.bookingIds.size,
       }))
       .sort((a, b) => b.revenue - a.revenue);
-
-    const recorded = await getRecordedTakingsForRange(supabaseAdmin, {
-      providerId,
-      rangeStartIso: fromDate.toISOString(),
-      rangeEndIso: toDate.toISOString(),
-      locationId: locationId || undefined,
-    });
 
     return successResponse({
       totalRevenue,

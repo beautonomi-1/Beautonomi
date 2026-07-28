@@ -18,6 +18,8 @@ export const FEATURE_FLAG_KEYS = {
   PAYMENT_PAYCLOUD_SAME_TERMINAL: "payment_paycloud_same_terminal",
   /** Master switch for the provider booking payment-link method (send a Paystack checkout link). */
   PAYMENT_LINK: "payment_link",
+  /** Show "Card — already taken" for recording manual card payments (not gateway captures). */
+  PAYMENT_MANUAL_CARD: "payment_manual_card",
   PAYMENT_WALLET: "payment_wallet",
   GIFT_CARDS: "gift_cards",
   /** When disabled (tenant or global row), providers cannot create/send custom offers. */

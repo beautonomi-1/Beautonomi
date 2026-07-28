@@ -168,6 +168,29 @@ describe("Money hub API URLs — bantu provider fixture", () => {
     expect(url).toBe("/api/provider/finance?range=month&tx_limit=50");
   });
 
+  it("GET /api/provider/transactions type filter scopes summary.row_count to list_total", async () => {
+    const { GET } = await import("../transactions/route");
+    const req = new NextRequest(
+      "http://localhost/api/provider/transactions?period=month&limit=50&offset=0&type=earning",
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      data: {
+        transactions: Array<{ type: string }>;
+        summary: { row_count: number };
+        list_total: number;
+      };
+      error: null;
+    };
+
+    expect(body.error).toBeNull();
+    expect(body.data.transactions.length).toBeGreaterThan(0);
+    expect(body.data.transactions.every((t) => t.type === "earning")).toBe(true);
+    expect(body.data.summary.row_count).toBe(body.data.list_total);
+  });
+
   it("GET /api/provider/transactions returns non-empty envelope for bantu ledger fixture", async () => {
     const { GET } = await import("../transactions/route");
     const req = new NextRequest(

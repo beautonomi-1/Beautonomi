@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 
 import {
-  buildProviderSalesHistoryRows,
-  salesHistoryTotals,
+  queryProviderSalesHistory,
   type SalesHistorySource,
 } from "@/lib/reports/provider-sales-history";
 import {
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
 
     const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(sp.get("limit") || "25", 10)));
-    const offset = (page - 1) * limit;
 
     const dateFrom = sp.get("date_from");
     const dateTo = sp.get("date_to");
@@ -47,7 +45,7 @@ export async function GET(request: NextRequest) {
     const search = sp.get("search");
     const source = parseSource(sp.get("source"));
 
-    const { rows: allRows, truncated_ledger } = await buildProviderSalesHistoryRows({
+    const result = await queryProviderSalesHistory({
       db: supabaseAdmin,
       providerId,
       timezone: reportContext.timezone,
@@ -56,21 +54,21 @@ export async function GET(request: NextRequest) {
       locationId: locationId || null,
       searchTerm: search || undefined,
       source,
+      page,
+      limit,
     });
 
-    const totals = salesHistoryTotals(allRows);
-    const pageRows = allRows.slice(offset, offset + limit);
-    const totalPages = Math.max(1, Math.ceil(allRows.length / limit));
+    const totalPages = Math.max(1, Math.ceil(result.total / limit));
 
     return successResponse({
-      data: pageRows,
-      total: allRows.length,
+      data: result.data,
+      total: result.total,
       page,
       limit,
       total_pages: totalPages,
-      totals,
-      truncated_ledger,
-      default_range_months: !dateFrom && !dateTo ? 24 : null,
+      totals: result.totals,
+      truncated_ledger: result.truncated_ledger,
+      default_range_months: result.usesDefaultRange ? 24 : null,
       basis:
         "Rows keyed by finance_transactions.created_at in range. gross_total = bookings.total_amount. " +
         "provider_net = earnings + tips + travel + cancellation + walk-in add-ons − provider refunds. " +
