@@ -525,7 +525,7 @@ export async function proxy(request: NextRequest) {
           return null;
         }
 
-        let role = (userData as { role: string }).role;
+        const role = (userData as { role: string }).role;
 
         // Elevate customer → provider_owner / provider_staff (mirrors /api/me/role)
         if (role === 'customer') {

@@ -36,7 +36,38 @@ let cachedProviderData: {
   timestamp: number;
 } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache - longer for stability
+const BACKGROUND_REFRESH_AGE = 2 * 60 * 1000;
 const STORAGE_KEY = "provider_portal_cache_v2";
+
+function readSavedLocationId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem("provider_selected_location_id");
+  } catch {
+    return null;
+  }
+}
+
+function isProviderCacheFresh(timestamp: number): boolean {
+  return Date.now() - timestamp < CACHE_DURATION;
+}
+
+function providerCacheAge(timestamp: number): number {
+  return Date.now() - timestamp;
+}
+
+function buildStateFromCache(
+  cached: NonNullable<typeof cachedProviderData>,
+  savedLocationId: string | null,
+): Pick<ProviderPortalState, "provider" | "salons" | "selectedLocationId" | "setupCompletion"> {
+  return {
+    provider: cached.provider,
+    salons: cached.salons,
+    selectedLocationId:
+      savedLocationId || cached.provider?.selected_location_id || cached.salons[0]?.id || null,
+    setupCompletion: cached.setupCompletion,
+  };
+}
 
 /** Mirrors active org for `/api/provider/*` (see `ACTIVE_PROVIDER_ID_COOKIE` in api-helpers). */
 const ACTIVE_PROVIDER_ID_COOKIE = "bn_active_provider_id";
@@ -85,20 +116,33 @@ if (typeof window !== 'undefined') {
 }
 
 // Request deduplication
-const pendingRequests = new Map<string, Promise<any>>();
+const pendingRequests = new Map<string, Promise<void>>();
 
 export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [state, setState] = useState<ProviderPortalState>({
-    provider: null,
-    salons: [],
-    selectedLocationId: null,
-    selectedTeamMemberId: null,
-    sidebarCollapsed: false,
-    dateView: "day",
-    setupCompletion: 0,
+  const [state, setState] = useState<ProviderPortalState>(() => {
+    const savedLocationId = readSavedLocationId();
+    if (cachedProviderData && isProviderCacheFresh(cachedProviderData.timestamp)) {
+      return {
+        ...buildStateFromCache(cachedProviderData, savedLocationId),
+        selectedTeamMemberId: null,
+        sidebarCollapsed: false,
+        dateView: "day",
+      };
+    }
+    return {
+      provider: null,
+      salons: [],
+      selectedLocationId: savedLocationId,
+      selectedTeamMemberId: null,
+      sidebarCollapsed: false,
+      dateView: "day",
+      setupCompletion: 0,
+    };
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(
+    () => !(cachedProviderData && isProviderCacheFresh(cachedProviderData.timestamp)),
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const isLoadingRef = useRef(false);
   const loadProviderRef = useRef<(skipCache?: boolean, silent?: boolean) => Promise<void>>(async () => {});
@@ -116,14 +160,11 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     }
     
     // Check cache first (unless explicitly skipping)
-    if (!skipCache && cachedProviderData && Date.now() - cachedProviderData.timestamp < CACHE_DURATION) {
+    if (!skipCache && cachedProviderData && isProviderCacheFresh(cachedProviderData.timestamp)) {
       // Optimistically update UI immediately from cache
       setState((prev) => ({
         ...prev,
-        provider: cachedProviderData!.provider,
-        salons: cachedProviderData!.salons,
-        selectedLocationId: cachedProviderData!.provider?.selected_location_id || cachedProviderData!.salons[0]?.id || null,
-        setupCompletion: cachedProviderData!.setupCompletion,
+        ...buildStateFromCache(cachedProviderData!, readSavedLocationId()),
       }));
       const cachedPid = cachedProviderData!.provider?.id ?? null;
       syncActiveProviderIdCookie(cachedPid);
@@ -131,8 +172,8 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
       setLoadError(null);
       
       // Refresh in background if cache is getting stale (> 2 minutes old)
-      const cacheAge = Date.now() - cachedProviderData.timestamp;
-      if (cacheAge > 2 * 60 * 1000) {
+      const cacheAge = providerCacheAge(cachedProviderData.timestamp);
+      if (cacheAge > BACKGROUND_REFRESH_AGE) {
         // Background refresh without blocking UI
         loadProvider(true, true).catch(() => {
           // Silently fail background refresh
@@ -282,42 +323,14 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   }, [loadError]);
 
   useEffect(() => {
-    // Load selected location from localStorage on mount
-    if (typeof window !== 'undefined') {
-      try {
-        const savedLocationId = localStorage.getItem('provider_selected_location_id');
-        if (savedLocationId) {
-          setState((prev) => ({ ...prev, selectedLocationId: savedLocationId }));
-        }
-      } catch {
-        // Ignore storage errors
-      }
+    if (!cachedProviderData || !isProviderCacheFresh(cachedProviderData.timestamp)) {
+      void loadProviderRef.current();
+      return;
     }
-    
-    // Only load if we don't have cached data or it's stale
-    // This prevents unnecessary reloads when component remounts due to tab visibility
-    if (!cachedProviderData || Date.now() - cachedProviderData.timestamp > CACHE_DURATION) {
-      loadProvider();
-    } else {
-      // Use cached data immediately - don't show loading
-      const cached = cachedProviderData;
-      if (cached) {
-        const savedLocationId = typeof window !== 'undefined' 
-          ? localStorage.getItem('provider_selected_location_id')
-          : null;
-        const locationId = savedLocationId || cached.provider?.selected_location_id || cached.salons[0]?.id || null;
-        
-        setState((prev) => ({
-          ...prev,
-          provider: cached.provider,
-          salons: cached.salons,
-          selectedLocationId: locationId,
-          setupCompletion: cached.setupCompletion,
-        }));
-        syncActiveProviderIdCookie(cached.provider?.id ?? null);
-        setIsLoading(false);
-        setLoadError(null);
-      }
+
+    syncActiveProviderIdCookie(cachedProviderData.provider?.id ?? null);
+    if (providerCacheAge(cachedProviderData.timestamp) > BACKGROUND_REFRESH_AGE) {
+      void loadProviderRef.current(true, true);
     }
   }, []);
 

@@ -8,7 +8,6 @@ export type OrphanPaymentTxRow = {
   fees?: number;
   net_amount?: number;
   status?: string;
-  provider?: string;
   created_at?: string;
   booking_id?: string | null;
   metadata?: Record<string, unknown>;
