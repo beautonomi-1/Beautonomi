@@ -12,7 +12,7 @@ import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
-import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { useUserBlocks, type BlockedUserRow } from "@/hooks/useUserBlocks";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 
 export default function BlockedUsersScreen() {
@@ -63,9 +63,9 @@ export default function BlockedUsersScreen() {
         ) : (
           <FlatList
             data={blockedUsers}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item: BlockedUserRow) => item.id}
             contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => {
+            renderItem={({ item }: { item: BlockedUserRow }) => {
               const displayName = item.full_name || t("customer.blockUser.defaultName");
               const initial = displayName.charAt(0).toUpperCase();
               const busy = busyUserId === item.user_id;

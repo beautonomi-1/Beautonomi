@@ -14,7 +14,7 @@ import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
-import { filterExplorePostsForViewer, filterBlockedExploreAuthors } from "@/lib/safety/filter-explore-posts";
+import { applyExploreViewerContentFilters, type ExplorePostFilterable } from "@/lib/safety/filter-explore-posts";
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -81,18 +81,15 @@ function mapToExplorePost(
   };
 }
 
-function applyViewerContentFilters<T extends { created_by_user_id?: string | null }>(
+function applyViewerContentFilters<T extends ExplorePostFilterable>(
   posts: T[],
   viewerSafety: Awaited<ReturnType<typeof getViewerSafetyContext>>,
 ): T[] {
   const hiddenIds = new Set([...viewerSafety.blockedUserIds, ...viewerSafety.mutedUserIds]);
-  return filterBlockedExploreAuthors(
-    filterExplorePostsForViewer(posts, {
-      hideSocialFeed: viewerSafety.hideSocialFeed,
-      sensitiveFilter: viewerSafety.sensitiveContentFilter,
-    }),
-    hiddenIds,
-  );
+  return applyExploreViewerContentFilters(posts, {
+    hideSocialFeed: viewerSafety.hideSocialFeed,
+    sensitiveFilter: viewerSafety.sensitiveContentFilter,
+  }, hiddenIds);
 }
 
 function calculateTrendingScore(post: {

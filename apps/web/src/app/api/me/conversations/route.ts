@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getPaginationParams, createPaginatedResponse } from "@/lib/supabase/api-helpers";
 import type { Conversation, PaginatedResponse } from "@/types/beautonomi";
 import { getBlockedUserIds } from "@/lib/safety/user-blocks";
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
         unread_count_customer,
         unread_count_provider,
         is_starred_customer,
-        provider:providers(id, slug, business_name, thumbnail_url, avatar_url, phone, email),
+        provider:providers(id, user_id, slug, business_name, thumbnail_url, avatar_url, phone, email),
         booking:bookings(id, booking_number)
       `,
         { count: "exact" }
@@ -60,24 +59,12 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const admin = getSupabaseAdmin();
-    const blockedIds = await getBlockedUserIds(user.id, admin);
-    const providerIds = [...new Set((conversations || []).map((c: { provider_id?: string }) => c.provider_id).filter(Boolean))];
-    let providerOwnerById = new Map<string, string>();
-    if (providerIds.length > 0) {
-      const { data: providers } = await admin
-        .from("providers")
-        .select("id, user_id")
-        .in("id", providerIds as string[]);
-      for (const p of providers ?? []) {
-        const uid = (p as { user_id?: string }).user_id;
-        if (uid) providerOwnerById.set(p.id as string, uid);
-      }
-    }
+    const blockedIds = await getBlockedUserIds(user.id, supabase);
 
-    const filteredConversations = (conversations || []).filter((c: { provider_id?: string }) => {
+    const filteredConversations = (conversations || []).filter((c: any) => {
       if (blockedIds.size === 0) return true;
-      const ownerId = c.provider_id ? providerOwnerById.get(c.provider_id) : null;
+      const provider = Array.isArray(c.provider) ? c.provider[0] : c.provider;
+      const ownerId = provider?.user_id ?? null;
       return !ownerId || !blockedIds.has(ownerId);
     });
 
@@ -103,7 +90,7 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       provider_slug: c.provider?.slug ?? null,
-      provider_owner_user_id: c.provider_id ? providerOwnerById.get(c.provider_id) ?? null : null,
+      provider_owner_user_id: (Array.isArray(c.provider) ? c.provider[0] : c.provider)?.user_id ?? null,
       unread_count_customer: c.unread_count_customer ?? 0,
       is_pinned: Boolean(c.is_starred_customer),
     }));

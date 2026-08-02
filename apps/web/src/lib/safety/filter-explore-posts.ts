@@ -6,6 +6,21 @@ type PostLike = {
   tags?: string[] | null;
 };
 
+export type ExplorePostFilterable = PostLike & {
+  created_by_user_id?: string | null;
+};
+
+export function applyExploreViewerContentFilters<T extends ExplorePostFilterable>(
+  posts: T[],
+  options: { hideSocialFeed: boolean; sensitiveFilter: boolean },
+  hiddenAuthorIds: Set<string>,
+): T[] {
+  return filterBlockedExploreAuthors(
+    filterExplorePostsForViewer(posts, options),
+    hiddenAuthorIds,
+  );
+}
+
 export function postHasSensitiveContent(post: PostLike): boolean {
   if (captionHasSensitiveTerms(post.caption)) return true;
   const tags = post.tags ?? [];

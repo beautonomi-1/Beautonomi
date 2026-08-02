@@ -12,6 +12,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useTranslation } from "@beautonomi/i18n";
+import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 
 interface SetupStatus {
   isComplete: boolean;

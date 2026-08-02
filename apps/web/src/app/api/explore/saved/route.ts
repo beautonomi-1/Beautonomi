@@ -9,10 +9,7 @@ import { requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
-import {
-  filterBlockedExploreAuthors,
-  filterExplorePostsForViewer,
-} from "@/lib/safety/filter-explore-posts";
+import { applyExploreViewerContentFilters } from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 
@@ -112,11 +109,12 @@ export async function GET(request: NextRequest) {
       ...viewerSafety.blockedUserIds,
       ...viewerSafety.mutedUserIds,
     ]);
-    const filteredSlice = filterBlockedExploreAuthors(
-      filterExplorePostsForViewer(slice, {
+    const filteredSlice = applyExploreViewerContentFilters(
+      slice,
+      {
         hideSocialFeed: viewerSafety.hideSocialFeed,
         sensitiveFilter: viewerSafety.sensitiveContentFilter,
-      }),
+      },
       hiddenAuthorIds,
     );
 

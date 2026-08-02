@@ -4,7 +4,9 @@ import { useRouter, useFocusEffect } from "expo-router";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
-import { ScreenFrame } from "@/components/ScreenFrame";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import {
@@ -140,7 +142,7 @@ export default function ContentAndSafetyControlsScreen() {
 
   if (!authUnlocked) {
     return (
-      <ScreenFrame loading={false} error={null}>
+      <ScreenContainer scrollable={false}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
           <View
             style={{
@@ -182,12 +184,20 @@ export default function ContentAndSafetyControlsScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </ScreenFrame>
+      </ScreenContainer>
     );
   }
 
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={refresh} />;
+  }
+
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={refresh}>
+    <ScreenContainer>
       <View>
         <View>
           <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
@@ -243,6 +253,6 @@ export default function ContentAndSafetyControlsScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-    </ScreenFrame>
+    </ScreenContainer>
   );
 }

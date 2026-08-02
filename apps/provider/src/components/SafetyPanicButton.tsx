@@ -26,7 +26,10 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
   >("/api/me/safety/panic");
 
   const sp = useCallback(
-    (key: string) => t(`customer.mobile.screens.safetyPanic.${key}` as never) as string,
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.safetyPanic.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
     [t],
   );
 

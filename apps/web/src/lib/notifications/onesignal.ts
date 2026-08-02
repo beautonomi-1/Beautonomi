@@ -1431,12 +1431,12 @@ export type SendTemplateOptions = OneSignalSendOptions & {
  */
 export async function sendTemplateNotification(
   templateKey: string,
-  userIds: string[],
+  recipientUserIds: string[],
   variables: Record<string, string> = {},
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
-  let userIds = uniqueNonEmptyUserIds(userIds);
+  let userIds = uniqueNonEmptyUserIds(recipientUserIds);
   if (userIds.length === 0) {
     return { success: false, message: "No recipients" };
   }
