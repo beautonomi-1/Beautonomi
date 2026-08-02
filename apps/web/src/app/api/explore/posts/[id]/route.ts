@@ -13,6 +13,7 @@ import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 import { postHasSensitiveContent } from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 const MAX_EXPLORE_MEDIA = 5;
@@ -109,6 +110,13 @@ export async function GET(
     if (viewerSafety.sensitiveContentFilter && postHasSensitiveContent(row)) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
     }
+    const authorId = row.created_by_user_id as string | null | undefined;
+    if (
+      authorId &&
+      (viewerSafety.blockedUserIds.has(authorId) || viewerSafety.mutedUserIds.has(authorId))
+    ) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
 
     const { data: provData } = await supabaseAdmin
       .from("providers")
@@ -171,6 +179,7 @@ export async function PATCH(
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    await requireSocialAccess(user.id, "ugc_create", request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
@@ -353,6 +362,7 @@ export async function DELETE(
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    await requireSocialAccess(user.id, "ugc_create", request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {

@@ -11,6 +11,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { settlePaycloudPayment, type PaycloudEntityType } from "@/lib/payments/settle-paycloud-payment";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
+import { resolvePaycloudCapturedAmount } from "@/lib/payments/paycloud-cloud-amount";
 
 const SETTLEABLE_ENTITY_TYPES = new Set<PaycloudEntityType>([
   "booking",
@@ -72,9 +73,20 @@ export async function POST(
       );
     }
 
-    const captured = Number(payment.amount ?? 0);
+    const captured = resolvePaycloudCapturedAmount(payment);
     if (!Number.isFinite(captured) || captured <= 0) {
       return errorResponse("Payment amount is missing or invalid.", "VALIDATION_ERROR", 400);
+    }
+
+    if (
+      (payment.amount_match_status === "under" || payment.amount_match_status === "mismatch") &&
+      !(payment.metadata as { captured_amount?: number } | null)?.captured_amount
+    ) {
+      return errorResponse(
+        "Cannot force-settle without a recorded terminal capture amount. Reconcile the payment first.",
+        "MISSING_CAPTURED_AMOUNT",
+        409,
+      );
     }
 
     const result = await settlePaycloudPayment(supabase, {
@@ -89,6 +101,7 @@ export async function POST(
       currency: payment.currency,
       tipAmount: Number(payment.tip_amount ?? 0),
       cashbackAmount: Number(payment.cashback_amount ?? 0),
+      expectedBaseAmount: Number(payment.expected_amount ?? payment.amount ?? 0),
     });
 
     if (payment.terminal_id) {

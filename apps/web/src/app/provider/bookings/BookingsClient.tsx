@@ -52,9 +52,17 @@ import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaym
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { AppointmentSidebar } from "@/components/appointments";
-import { openViewMode } from "@/stores/appointment-sidebar-store";
+import { BookingSheetHost, useProviderBookingMobileShell } from "@/components/provider/booking";
+import { BookingsDayHub } from "@/components/provider/booking/hub/BookingsDayHub";
+import type { HubScheduleBooking } from "@/components/provider/booking/hub/BookingScheduleCard";
+import {
+  RealtimeFlashBanner,
+  useBookingsRealtimeFlash,
+  emitBookingRealtimeFlash,
+} from "@/components/provider/booking/hub/RealtimeFlashBanner";
+import { openViewMode, openCreateMode, openGroupViewMode } from "@/stores/appointment-sidebar-store";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
@@ -67,7 +75,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
-type ViewMode = "table" | "cards";
+type ViewMode = "table" | "cards" | "day";
 
 const VIEW_STORAGE_KEY = "provider_bookings_view_mode";
 
@@ -112,6 +120,9 @@ export function BookingsClient({
     isOwner || hasPermission("cancel_appointments") || canEditAppointments;
   const canProcessPayments = isOwner || hasPermission("process_payments");
 
+  const mobileBookingShell = useProviderBookingMobileShell();
+  const { flashMessage, dismissFlash } = useBookingsRealtimeFlash(mobileBookingShell);
+
   // View mode — §Hydration 2026-04: initial state MUST match server render
   // (always "table") to avoid React error #418. We rehydrate from
   // localStorage after mount so user preferences still persist.
@@ -119,9 +130,12 @@ export function BookingsClient({
   useEffect(() => {
     try {
       const stored = localStorage.getItem(VIEW_STORAGE_KEY) as ViewMode | null;
-      if (stored === "table" || stored === "cards") setViewMode(stored);
+      if (stored === "table" || stored === "cards" || stored === "day") setViewMode(stored);
+      else if (mobileBookingShell && window.matchMedia("(max-width: 767px)").matches) {
+        setViewMode("day");
+      }
     } catch {}
-  }, []);
+  }, [mobileBookingShell]);
   const handleViewChange = useCallback((v: ViewMode) => {
     setViewMode(v);
     try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch {}
@@ -184,7 +198,7 @@ export function BookingsClient({
   const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
   const [paycloudBooking, setPaycloudBooking] = useState<ProviderBookingListItem | null>(null);
 
-  // Sidebar data (team members, services, locations for AppointmentSidebar)
+  // Team members, services, locations for BookingSheetHost
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [locations, setLocations] = useState<Salon[]>([]);
@@ -308,6 +322,10 @@ export function BookingsClient({
   }, []);
   const supabaseClient = getSupabaseClient();
   useSupabaseRealtime(supabaseClient, provider?.id, "booking_updated", refreshBackground);
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_created", () => {
+    if (mobileBookingShell) emitBookingRealtimeFlash();
+    refreshBackground();
+  });
 
   // Fallback polling (30s) when the tab is visible so data still freshens
   // even if a websocket connection is blocked (some mobile networks / CSPs).
@@ -427,27 +445,53 @@ export function BookingsClient({
     return action;
   };
 
+  const [pendingActionIds, setPendingActionIds] = useState<Set<string>>(() => new Set());
+
+  const runWithPendingAction = async (bookingId: string, action: () => Promise<void>) => {
+    setPendingActionIds((prev) => {
+      const next = new Set(prev);
+      next.add(bookingId);
+      return next;
+    });
+    try {
+      await action();
+    } finally {
+      setPendingActionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(bookingId);
+        return next;
+      });
+    }
+  };
+
   const runPrimaryBookingAction = (booking: ProviderBookingListItem, action: ProviderBookingAction) => {
     if (!actionAllowedByPermission(action)) {
       toast.error("You do not have permission for this action");
       return;
     }
-    if (action.id === "start_journey") {
-      return handleStatusChange(booking.id, "start_journey", booking.version);
-    }
-    if (action.id === "mark_arrived") {
-      return handleStatusChange(booking.id, "mark_arrived", booking.version);
-    }
-    if (action.id === "start_service") {
-      return handleStatusChange(booking.id, "started", booking.version);
-    }
-    if (action.id === "complete_service") {
-      return handleStatusChange(booking.id, "completed", booking.version);
-    }
-    if (action.id === "check_in") {
-      return handleStatusChange(booking.id, "checked_in", booking.version);
-    }
-    return handleStatusChange(booking.id, action.dbTarget, booking.version);
+    void runWithPendingAction(booking.id, async () => {
+      if (action.id === "start_journey") {
+        await handleStatusChange(booking.id, "start_journey", booking.version);
+        return;
+      }
+      if (action.id === "mark_arrived") {
+        await handleStatusChange(booking.id, "mark_arrived", booking.version);
+        return;
+      }
+      if (action.id === "start_service") {
+        await handleStatusChange(booking.id, "started", booking.version);
+        return;
+      }
+      if (action.id === "complete_service") {
+        await handleStatusChange(booking.id, "completed", booking.version);
+        return;
+      }
+      if (action.id === "check_in") {
+        await handleStatusChange(booking.id, "checked_in", booking.version);
+        return;
+      }
+      await handleStatusChange(booking.id, action.dbTarget, booking.version);
+    });
   };
 
   // ─── Search & filter ───────────────────────────────────────────────────────
@@ -480,6 +524,56 @@ export function BookingsClient({
     }
     return g;
   }, [filteredBookings]);
+
+  const hubBookings = useMemo((): HubScheduleBooking[] => {
+    return filteredBookings.map((b) => ({
+      id: b.id,
+      booking_number: b.booking_number,
+      status: b.status,
+      scheduled_at: b.scheduled_at,
+      created_at: b.created_at,
+      customer_name: b.customer_name,
+      total_amount: b.total_amount,
+      payment_status: b.payment_status,
+      services: (b.services as HubScheduleBooking["services"]) ?? [],
+    }));
+  }, [filteredBookings]);
+
+  const waitingRoomCount = useMemo(
+    () =>
+      bookings.filter((b) => {
+        const s = (b.status || "").toLowerCase();
+        return s === "waiting" || s === "checked_in";
+      }).length,
+    [bookings],
+  );
+
+  const [stalePendingCount, setStalePendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!mobileBookingShell) return;
+    let cancelled = false;
+    const loadNavCounts = async () => {
+      try {
+        const params = new URLSearchParams();
+        const loc = locationFilter !== "all" ? locationFilter : selectedLocationId;
+        if (loc) params.set("location_id", loc);
+        const qs = params.toString();
+        const res = await fetcher.get<{ data?: { stale_pending_bookings?: number } }>(
+          `/api/provider/nav-counts${qs ? `?${qs}` : ""}`,
+        );
+        if (!cancelled) {
+          setStalePendingCount(Number(res?.data?.stale_pending_bookings ?? 0));
+        }
+      } catch {
+        if (!cancelled) setStalePendingCount(0);
+      }
+    };
+    void loadNavCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [mobileBookingShell, locationFilter, selectedLocationId, bookings.length]);
 
   // Metrics time period — independent of the bookings list `dateRange` so
   // providers can view a filtered list below while still pivoting the
@@ -556,7 +650,23 @@ export function BookingsClient({
   }, [page]);
 
   // ─── Sidebar helpers ───────────────────────────────────────────────────────
+  const resolveGroupBookingId = useCallback((booking: ProviderBookingListItem): string => {
+    const groupId = (booking as { group_booking_id?: string }).group_booking_id;
+    if (typeof groupId === "string" && groupId.length > 0) return groupId;
+    if (typeof booking.id === "string" && booking.id.startsWith("group:")) {
+      return booking.id.slice("group:".length);
+    }
+    return "";
+  }, []);
+
   const handleBookingClick = useCallback((booking: ProviderBookingListItem) => {
+    if (mobileBookingShell && (booking as { is_group_booking?: boolean }).is_group_booking) {
+      const rawId = resolveGroupBookingId(booking);
+      if (rawId) {
+        openGroupViewMode(rawId);
+        return;
+      }
+    }
     const firstService = (booking.services as any)?.[0] || {};
     const apt: Appointment = {
       id: booking.id,
@@ -604,9 +714,16 @@ export function BookingsClient({
       referral_source_id: (booking as any).referral_source_id ?? null,
     } as Appointment;
     openViewMode(apt);
-  }, []);
+  }, [mobileBookingShell, resolveGroupBookingId]);
 
   const openBookingDetails = useCallback((booking: ProviderBookingListItem) => {
+    if (mobileBookingShell && (booking as { is_group_booking?: boolean }).is_group_booking) {
+      const rawId = resolveGroupBookingId(booking);
+      if (rawId) {
+        openGroupViewMode(rawId);
+        return;
+      }
+    }
     const groupId = (booking as any).group_booking_id;
     if ((booking as any).is_group_booking) {
       const rawId =
@@ -623,7 +740,7 @@ export function BookingsClient({
       return;
     }
     router.push(`/provider/bookings/${booking.id}`);
-  }, [router]);
+  }, [mobileBookingShell, resolveGroupBookingId, router]);
 
   const handleAppointmentUpdated = useCallback((_updated: Appointment) => {
     clearFetcherCache();
@@ -1072,7 +1189,14 @@ export function BookingsClient({
           />
           {canCreateAppointments && (
             <Button
-              onClick={() => window.dispatchEvent(new CustomEvent("open-appointment-sidebar"))}
+              onClick={() => {
+                const today = new Date().toISOString().split("T")[0];
+                openCreateMode({
+                  staffId: "",
+                  date: today,
+                  startTime: new Date().toTimeString().slice(0, 5),
+                });
+              }}
               className="provider-btn-brand px-5"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -1146,6 +1270,17 @@ export function BookingsClient({
         <div className="mb-4 flex items-center justify-between">
           <SyncIndicator isSyncing={isRefreshing} lastSynced={lastSynced} size="sm" />
           <div className="flex items-center border rounded-lg overflow-hidden">
+            {mobileBookingShell ? (
+              <button
+                onClick={() => handleViewChange("day")}
+                className={`p-2 ${viewMode === "day" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+                title="Day view"
+                aria-label="Day view"
+                aria-pressed={viewMode === "day"}
+              >
+                <Calendar className="w-4 h-4" />
+              </button>
+            ) : null}
             <button
               onClick={() => handleViewChange("table")}
               className={`p-2 ${viewMode === "table" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
@@ -1176,6 +1311,42 @@ export function BookingsClient({
           />
         )}
 
+        {mobileBookingShell ? (
+          <RealtimeFlashBanner message={flashMessage} onDismiss={dismissFlash} />
+        ) : null}
+
+        {viewMode === "day" && mobileBookingShell ? (
+          <BookingsDayHub
+            className="-mx-4"
+            bookings={hubBookings}
+            statsRange={
+              statsRange === "today" || statsRange === "week" || statsRange === "month"
+                ? statsRange
+                : "all"
+            }
+            locationId={selectedLocationId ?? undefined}
+            stats={{
+              ...statsSnapshot,
+              waitingRoomCount,
+            }}
+            onOpenBooking={(booking) => {
+              const full = bookings.find((b) => b.id === booking.id);
+              if (full) handleBookingClick(full);
+            }}
+            getPrimaryAction={(booking) => {
+              const full = bookings.find((b) => b.id === booking.id);
+              return full ? primaryBookingAction(full) : null;
+            }}
+            onPrimaryAction={(booking, action) => {
+              const full = bookings.find((b) => b.id === booking.id);
+              if (full) runPrimaryBookingAction(full, action);
+            }}
+            onBookingsRefresh={() => loadBookings(true)}
+            stalePendingCount={stalePendingCount}
+            pendingActionIds={pendingActionIds}
+          />
+        ) : (
+          <>
         {/* Bulk Actions */}
         <BulkBookingActions
           selectedIds={selectedBookings}
@@ -1302,6 +1473,8 @@ export function BookingsClient({
             </TabsContent>
           </Tabs>
         )}
+          </>
+        )}
 
         {/* Rating dialog after completion */}
         {pendingRatingBooking && (
@@ -1330,6 +1503,9 @@ export function BookingsClient({
             entityId={paycloudBooking.id}
             bookingId={paycloudBooking.id}
             bookingLocationId={(paycloudBooking as { location_id?: string | null }).location_id ?? null}
+            tipIncludedInAmount={paycloudTipIncludedInChargeAmount(
+              Number((paycloudBooking as { tip_amount?: number }).tip_amount ?? 0),
+            )}
             onSuccess={() => {
               loadBookings();
               setPaycloudDialogOpen(false);
@@ -1350,7 +1526,7 @@ export function BookingsClient({
         )}
 
         {/* Appointment sidebar for full detail view */}
-        <AppointmentSidebar
+        <BookingSheetHost
           teamMembers={teamMembers}
           services={services}
           locations={locations}

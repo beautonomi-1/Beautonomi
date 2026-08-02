@@ -10,6 +10,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import type { ExploreComment } from "@/types/explore";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { getBlockedUserIds, getMutedUserIds, assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
+import { filterBlockedCommentAuthors } from "@/lib/safety/filter-explore-posts";
 
 /** Returns true if the post is publicly visible (published + not hidden). */
 function isPostPublic(post: { status: string; is_hidden: boolean }) {
@@ -41,7 +43,7 @@ export async function GET(
 
     const { data: post, error: postError } = await supabaseAdmin
       .from("explore_posts")
-      .select("id, provider_id, status, is_hidden")
+      .select("id, provider_id, status, is_hidden, created_by_user_id")
       .eq("id", postId)
       .single();
 
@@ -50,13 +52,25 @@ export async function GET(
     }
 
     let canAccess = isPostPublic(post);
+    const supabase = await getSupabaseServer(request);
+    const { data: { user: viewer } } = await supabase.auth.getUser();
     if (!canAccess) {
-      const supabase = await getSupabaseServer(request);
-      const { data: { user } } = await supabase.auth.getUser();
-      canAccess = !!(user && (await userCanAccessPostAsProvider(user.id, post.provider_id)));
+      canAccess = !!(viewer && (await userCanAccessPostAsProvider(viewer.id, post.provider_id)));
     }
     if (!canAccess) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+
+    if (viewer) {
+      const [blockedIds, mutedIds] = await Promise.all([
+        getBlockedUserIds(viewer.id, supabaseAdmin),
+        getMutedUserIds(viewer.id, supabaseAdmin),
+      ]);
+      const authorId = (post as { created_by_user_id?: string | null }).created_by_user_id;
+      const hiddenIds = new Set([...blockedIds, ...mutedIds]);
+      if (authorId && hiddenIds.has(authorId)) {
+        return errorResponse("Post not found", "NOT_FOUND", 404);
+      }
     }
 
     const { data: rows, error } = await supabaseAdmin
@@ -74,6 +88,7 @@ export async function GET(
       `
       )
       .eq("post_id", postId)
+      .eq("is_hidden", false)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
@@ -105,10 +120,20 @@ export async function GET(
       };
     });
 
-    const next_offset = comments.length === limit ? offset + limit : undefined;
+    let visibleComments = comments;
+    if (viewer) {
+      const [blockedIds, mutedIds] = await Promise.all([
+        getBlockedUserIds(viewer.id, supabaseAdmin),
+        getMutedUserIds(viewer.id, supabaseAdmin),
+      ]);
+      const hiddenAuthorIds = new Set([...blockedIds, ...mutedIds]);
+      visibleComments = filterBlockedCommentAuthors(comments, hiddenAuthorIds);
+    }
+
+    const next_offset = visibleComments.length === limit ? offset + limit : undefined;
 
     return successResponse({
-      data: comments,
+      data: visibleComments,
       next_offset: next_offset ?? undefined,
       has_more: !!next_offset,
     });
@@ -153,7 +178,7 @@ export async function POST(
 
     const { data: post, error: postError } = await supabaseAdmin
       .from("explore_posts")
-      .select("id, provider_id, status, is_hidden")
+      .select("id, provider_id, status, is_hidden, created_by_user_id")
       .eq("id", postId)
       .single();
 
@@ -165,6 +190,11 @@ export async function POST(
       isPostPublic(post) || (await userCanAccessPostAsProvider(user.id, post.provider_id));
     if (!canComment) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+
+    const authorId = (post as { created_by_user_id?: string | null }).created_by_user_id;
+    if (authorId) {
+      await assertNotBlocked(user.id, authorId, supabaseAdmin);
     }
 
     const { data: row, error } = await supabaseAdmin
@@ -214,6 +244,13 @@ export async function POST(
 
     return successResponse(comment, 201);
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return errorResponse(
+        error instanceof Error ? error.message : "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     return handleApiError(error, "Failed to create comment");
   }
 }

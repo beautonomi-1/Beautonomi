@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, getPaginationParams, createPaginatedResponse } from "@/lib/supabase/api-helpers";
 import type { Conversation, PaginatedResponse } from "@/types/beautonomi";
+import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 
 /**
  * GET /api/me/conversations
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
         unread_count_customer,
         unread_count_provider,
         is_starred_customer,
-        provider:providers(id, slug, business_name, thumbnail_url, avatar_url, phone, email),
+        provider:providers(id, user_id, slug, business_name, thumbnail_url, avatar_url, phone, email),
         booking:bookings(id, booking_number)
       `,
         { count: "exact" }
@@ -58,7 +59,16 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const mapped = (conversations || []).map((c: any) => ({
+    const blockedIds = await getBlockedUserIds(user.id, supabase);
+
+    const filteredConversations = (conversations || []).filter((c: any) => {
+      if (blockedIds.size === 0) return true;
+      const provider = Array.isArray(c.provider) ? c.provider[0] : c.provider;
+      const ownerId = provider?.user_id ?? null;
+      return !ownerId || !blockedIds.has(ownerId);
+    });
+
+    const mapped = filteredConversations.map((c: any) => ({
       id: c.id,
       booking_id: c.booking_id || null,
       provider_id: c.provider_id || null,
@@ -80,6 +90,7 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       provider_slug: c.provider?.slug ?? null,
+      provider_owner_user_id: (Array.isArray(c.provider) ? c.provider[0] : c.provider)?.user_id ?? null,
       unread_count_customer: c.unread_count_customer ?? 0,
       is_pinned: Boolean(c.is_starred_customer),
     }));
@@ -88,9 +99,12 @@ export async function GET(request: NextRequest) {
       return successResponse(mapped);
     }
 
+    const filteredFromPage = (conversations || []).length - filteredConversations.length;
+    const adjustedTotal = Math.max(0, (count ?? mapped.length) - filteredFromPage);
+
     const result: PaginatedResponse<Conversation> = createPaginatedResponse(
       mapped as any,
-      count ?? mapped.length,
+      adjustedTotal,
       page,
       limit
     );

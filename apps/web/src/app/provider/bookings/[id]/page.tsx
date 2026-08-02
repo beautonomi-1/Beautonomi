@@ -89,7 +89,7 @@ import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialo
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { inferBookingCollectContext, formatPaycloudCollectLabel } from "@/lib/payments/paycloud-collect-cta";
-import { computePaycloudBookingChargeAmount } from "@/lib/payments/paycloud-booking-charge";
+import { computePaycloudBookingChargeAmount, paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { YocoPayment } from "@/lib/provider-portal/types";
@@ -3481,6 +3481,11 @@ export default function ProviderBookingDetail() {
           entityId={paycloudEntityId}
           bookingId={bookingId}
           bookingLocationId={(booking as { location_id?: string | null } | null)?.location_id ?? null}
+          tipIncludedInAmount={
+            paycloudEntityType === "booking" && booking
+              ? paycloudTipIncludedInChargeAmount(booking.tip_amount)
+              : false
+          }
           onSuccess={async () => {
             toast.success(
               paycloudEntityType === "additional_charge"

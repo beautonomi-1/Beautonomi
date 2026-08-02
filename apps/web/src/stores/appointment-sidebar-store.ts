@@ -7,13 +7,41 @@
  * @module stores/appointment-sidebar-store
  */
 
-import type { Appointment } from "@/lib/provider-portal/types";
+import type { Appointment, GroupBooking } from "@/lib/provider-portal/types";
+import type { ProviderBookingCreatedSuccessInput } from "@beautonomi/provider-booking";
+import { normalizeGroupBookingId } from "@/lib/provider-booking/group-booking-utils";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-export type SidebarMode = "closed" | "create" | "view" | "edit";
+export type SidebarMode = "closed" | "create" | "view" | "edit" | "group" | "success";
+
+/** Primary mobile-shell view within create mode */
+export type BookingCreateStep = "form" | "review";
+
+/** Nested sub-sheets opened from view/edit (reschedule, refund, etc.) */
+export type BookingSubSheet =
+  | "none"
+  | "reschedule"
+  | "refund"
+  | "product_picker"
+  | "express_qr"
+  | "audit"
+  | "resources";
+
+export type CollectIntent = "yoco" | "paycloud" | "paystack";
+
+export type BookingSheetView =
+  | "closed"
+  | "create_form"
+  | "create_review"
+  | "view"
+  | "edit"
+  | "group"
+  | "success";
+
+export type GroupSheetMode = "create" | "view" | "edit";
 
 export interface DraftSlot {
   staffId: string;
@@ -39,8 +67,22 @@ export interface AppointmentSidebarState {
   draftSlot: DraftSlot | null;
   isLoading: boolean;
   isSaving: boolean;
-  // Notification toggle state
   sendNotification: boolean;
+  /** Mobile shell view — derived from mode + create step */
+  bookingSheetView: BookingSheetView;
+  createStep: BookingCreateStep;
+  subSheet: BookingSubSheet;
+  groupSheetOpen: boolean;
+  groupSheetMode: GroupSheetMode;
+  selectedGroupBookingId: string | null;
+  selectedGroupBooking: GroupBooking | null;
+  productOrderSheetOpen: boolean;
+  selectedProductOrderId: string | null;
+  walkInSaleSheetOpen: boolean;
+  successAppointmentId: string | null;
+  successPayload: ProviderBookingCreatedSuccessInput | null;
+  /** Auto-open terminal collect dialog when view sheet opens (from success sheet, etc.) */
+  pendingCollectIntent: CollectIntent | null;
 }
 
 // ============================================================================
@@ -55,6 +97,19 @@ const initialState: AppointmentSidebarState = {
   isLoading: false,
   isSaving: false,
   sendNotification: true,
+  bookingSheetView: "closed",
+  createStep: "form",
+  subSheet: "none",
+  groupSheetOpen: false,
+  groupSheetMode: "create",
+  selectedGroupBookingId: null,
+  selectedGroupBooking: null,
+  productOrderSheetOpen: false,
+  selectedProductOrderId: null,
+  walkInSaleSheetOpen: false,
+  successAppointmentId: null,
+  successPayload: null,
+  pendingCollectIntent: null,
 };
 
 // ============================================================================
@@ -93,6 +148,62 @@ export function openCreateMode(draftSlot: DraftSlot): void {
     draftSlot,
     isLoading: false,
     sendNotification: true,
+    createStep: "form",
+    subSheet: "none",
+    groupSheetOpen: false,
+    groupSheetMode: "create",
+    selectedGroupBookingId: null,
+    selectedGroupBooking: null,
+    productOrderSheetOpen: false,
+    selectedProductOrderId: null,
+    walkInSaleSheetOpen: false,
+    successAppointmentId: null,
+    bookingSheetView: "create_form",
+    pendingCollectIntent: null,
+  });
+}
+
+/**
+ * Open sidebar in VIEW mode and auto-open a terminal collect dialog.
+ */
+export function openViewModeWithCollect(
+  appointment: Appointment,
+  collect: CollectIntent,
+): void {
+  setState({
+    mode: "view",
+    selectedAppointmentId: appointment.id,
+    selectedAppointment: appointment,
+    draftSlot: null,
+    isLoading: false,
+    sendNotification: true,
+    createStep: "form",
+    subSheet: "none",
+    groupSheetOpen: false,
+    successAppointmentId: null,
+    successPayload: null,
+    bookingSheetView: "view",
+    pendingCollectIntent: collect,
+  });
+}
+
+export function clearPendingCollectIntent(): void {
+  if (state.pendingCollectIntent) {
+    setState({ pendingCollectIntent: null });
+  }
+}
+
+export function openRefundSheet(): void {
+  setState({ subSheet: "refund" });
+}
+
+export function switchToViewModeWithRefund(): void {
+  if (state.mode !== "edit" && state.mode !== "view") return;
+  setState({
+    mode: "view",
+    sendNotification: true,
+    subSheet: "refund",
+    bookingSheetView: "view",
   });
 }
 
@@ -107,6 +218,12 @@ export function openViewMode(appointment: Appointment): void {
     draftSlot: null,
     isLoading: false,
     sendNotification: true,
+    createStep: "form",
+    subSheet: "none",
+    groupSheetOpen: false,
+    successAppointmentId: null,
+    bookingSheetView: "view",
+    pendingCollectIntent: null,
   });
 }
 
@@ -117,6 +234,8 @@ export function switchToEditMode(): void {
   if (state.mode !== "view" || !state.selectedAppointment) return;
   setState({
     mode: "edit",
+    subSheet: "none",
+    bookingSheetView: "edit",
   });
 }
 
@@ -128,6 +247,8 @@ export function switchToViewMode(): void {
   setState({
     mode: "view",
     sendNotification: true,
+    subSheet: "none",
+    bookingSheetView: "view",
   });
 }
 
@@ -178,6 +299,115 @@ export function updateDraftSlot(updates: Partial<DraftSlot>): void {
   });
 }
 
+export function setCreateStep(step: BookingCreateStep): void {
+  if (state.mode !== "create") return;
+  setState({
+    createStep: step,
+    bookingSheetView: step === "review" ? "create_review" : "create_form",
+  });
+}
+
+export function openSubSheet(subSheet: BookingSubSheet): void {
+  setState({ subSheet });
+}
+
+export function closeSubSheet(): void {
+  setState({ subSheet: "none" });
+}
+
+export function openGroupSheet(): void {
+  setState({
+    mode: "group",
+    groupSheetOpen: true,
+    groupSheetMode: "create",
+    selectedGroupBookingId: null,
+    selectedGroupBooking: null,
+    bookingSheetView: "group",
+    productOrderSheetOpen: false,
+    selectedProductOrderId: null,
+    walkInSaleSheetOpen: false,
+  });
+}
+
+export function openGroupViewMode(groupId: string): void {
+  setState({
+    mode: "group",
+    groupSheetOpen: true,
+    groupSheetMode: "view",
+    selectedGroupBookingId: normalizeGroupBookingId(groupId),
+    selectedGroupBooking: null,
+    bookingSheetView: "group",
+    selectedAppointmentId: null,
+    selectedAppointment: null,
+    draftSlot: null,
+    productOrderSheetOpen: false,
+    selectedProductOrderId: null,
+    walkInSaleSheetOpen: false,
+    pendingCollectIntent: null,
+  });
+}
+
+export function openGroupEditMode(booking: GroupBooking): void {
+  setState({
+    mode: "group",
+    groupSheetOpen: true,
+    groupSheetMode: "edit",
+    selectedGroupBookingId: normalizeGroupBookingId(booking.id),
+    selectedGroupBooking: booking,
+    bookingSheetView: "group",
+  });
+}
+
+export function closeGroupSheet(): void {
+  setState({
+    mode: "closed",
+    groupSheetOpen: false,
+    groupSheetMode: "create",
+    selectedGroupBookingId: null,
+    selectedGroupBooking: null,
+    bookingSheetView: "closed",
+  });
+}
+
+export function openProductOrderView(orderId: string): void {
+  setState({
+    productOrderSheetOpen: true,
+    selectedProductOrderId: orderId,
+  });
+}
+
+export function closeProductOrderSheet(): void {
+  setState({
+    productOrderSheetOpen: false,
+    selectedProductOrderId: null,
+  });
+}
+
+export function openWalkInSaleSheet(): void {
+  setState({
+    walkInSaleSheetOpen: true,
+  });
+}
+
+export function closeWalkInSaleSheet(): void {
+  setState({
+    walkInSaleSheetOpen: false,
+  });
+}
+
+export function openSuccessMode(
+  appointmentId: string,
+  payload?: ProviderBookingCreatedSuccessInput | null,
+): void {
+  setState({
+    mode: "success",
+    successAppointmentId: appointmentId,
+    successPayload: payload ?? null,
+    bookingSheetView: "success",
+    draftSlot: null,
+  });
+}
+
 // ============================================================================
 // REACT HOOK
 // ============================================================================
@@ -207,8 +437,28 @@ export function useAppointmentSidebar() {
     setSaving,
     setSendNotification,
     updateDraftSlot,
+    setCreateStep,
+    openSubSheet,
+    closeSubSheet,
+    openGroupSheet,
+    openGroupViewMode,
+    openGroupEditMode,
+    closeGroupSheet,
+    openProductOrderView,
+    closeProductOrderSheet,
+    openWalkInSaleSheet,
+    closeWalkInSaleSheet,
+    openSuccessMode,
+    openViewModeWithCollect,
+    clearPendingCollectIntent,
+    openRefundSheet,
+    switchToViewModeWithRefund,
     // Computed
-    isOpen: currentState.mode !== "closed",
+    isOpen:
+      currentState.mode !== "closed" ||
+      currentState.groupSheetOpen ||
+      currentState.productOrderSheetOpen ||
+      currentState.walkInSaleSheetOpen,
   };
 }
 

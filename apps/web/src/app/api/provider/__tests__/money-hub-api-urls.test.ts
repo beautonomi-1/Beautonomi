@@ -141,9 +141,15 @@ describe("Money hub API URLs — bantu provider fixture", () => {
   });
 
   it("default Ledger URL period=month includes July 2026 rows in Etc/GMT-2", () => {
-    const monthStart = providerTransactionsPeriodStart("month", BANTU_TIMEZONE);
-    const oldestBantuRow = new Date("2026-07-02T18:23:15.460Z");
-    expect(monthStart.getTime()).toBeLessThanOrEqual(oldestBantuRow.getTime());
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-28T12:00:00.000Z"));
+    try {
+      const monthStart = providerTransactionsPeriodStart("month", BANTU_TIMEZONE);
+      const oldestBantuRow = new Date("2026-07-02T18:23:15.460Z");
+      expect(monthStart.getTime()).toBeLessThanOrEqual(oldestBantuRow.getTime());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("default Sales URL date_from/date_to matches mobile MoneyRangeChips month", () => {

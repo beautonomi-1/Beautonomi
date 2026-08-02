@@ -42,6 +42,31 @@ export async function POST(request: NextRequest) {
         ? (body.metadata as Record<string, unknown>)
         : {};
 
+    const { data: profile } = await supabase
+      .from("users")
+      .select(
+        "emergency_contact_name, emergency_contact_phone, emergency_contact_relationship",
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const emergencyContact =
+      profile &&
+      (profile.emergency_contact_name ||
+        profile.emergency_contact_phone ||
+        profile.emergency_contact_relationship)
+        ? {
+            name: profile.emergency_contact_name ?? null,
+            phone: profile.emergency_contact_phone ?? null,
+            relationship: profile.emergency_contact_relationship ?? null,
+          }
+        : null;
+
+    const eventMetadata = {
+      ...requestMetadata,
+      ...(emergencyContact ? { emergency_contact: emergencyContact } : {}),
+    };
+
     const { data: event, error: insertError } = await supabase
       .from("safety_events")
       .insert({
@@ -49,7 +74,7 @@ export async function POST(request: NextRequest) {
         booking_id: bookingId,
         event_type: "panic",
         status: "created",
-        metadata: requestMetadata,
+        metadata: eventMetadata,
       })
       .select("id, event_type, status, created_at")
       .single();
@@ -102,18 +127,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (tenantId) {
-      slackNotifySafetyPanic({
-        tenantId,
-        eventId: event.id,
-        userId: user.id,
-        bookingId,
-        source: typeof requestMetadata.source === "string" ? requestMetadata.source : null,
-        auraDispatched,
-      });
+        slackNotifySafetyPanic({
+          tenantId,
+          eventId: event.id,
+          userId: user.id,
+          bookingId,
+          source: typeof requestMetadata.source === "string" ? requestMetadata.source : null,
+          auraDispatched,
+          emergencyContact,
+        });
     }
 
     return successResponse({
       id: event.id,
+      event_id: event.id,
       event_type: event.event_type,
       status: event.status,
       created_at: event.created_at,

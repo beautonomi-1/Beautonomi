@@ -8,11 +8,19 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { applyContentModerationTakedown } from "@/lib/safety/moderation-actions";
+import { slackNotifyContentReportTakedown } from "@/lib/integrations/slack/ops-triggers";
 
 /**
  * PATCH /api/admin/content-reports/[id]
  * Resolve or dismiss a content report (superadmin).
- * Body: { status: 'resolved' | 'dismissed', resolution_notes?: string }
+ * Body: {
+ *   status: 'resolved' | 'dismissed',
+ *   resolution_notes?: string,
+ *   apply_takedown?: boolean,
+ *   takedown_action?: 'hide' | 'delete',
+ *   admin_action_taken?: string
+ * }
  */
 export async function PATCH(
   request: NextRequest,
@@ -28,6 +36,13 @@ export async function PATCH(
     const resolutionNotes =
       typeof body.resolution_notes === "string"
         ? body.resolution_notes.trim()
+        : null;
+    const applyTakedown = body.apply_takedown === true;
+    const takedownAction =
+      body.takedown_action === "delete" ? "delete" : "hide";
+    const adminActionTaken =
+      typeof body.admin_action_taken === "string"
+        ? body.admin_action_taken.trim()
         : null;
 
     if (!status || !["resolved", "dismissed"].includes(status)) {
@@ -62,6 +77,29 @@ export async function PATCH(
       );
     }
 
+    let takedownApplied = false;
+    if (applyTakedown && status === "resolved") {
+      const result = await applyContentModerationTakedown(supabase, {
+        targetType: existing.target_type as Parameters<
+          typeof applyContentModerationTakedown
+        >[1]["targetType"],
+        targetId: existing.target_id as string,
+        adminUserId: user.id,
+        action: takedownAction,
+        notes: resolutionNotes,
+      });
+      takedownApplied = result.applied;
+      if (takedownApplied && tenantId) {
+        slackNotifyContentReportTakedown({
+          tenantId,
+          reportId: id,
+          targetType: String(existing.target_type),
+          targetId: String(existing.target_id),
+          action: result.action ?? takedownAction,
+        });
+      }
+    }
+
     const { data: updated, error } = await supabase
       .from("content_reports")
       .update({
@@ -69,9 +107,11 @@ export async function PATCH(
         resolution_notes: resolutionNotes ?? null,
         resolved_by: user.id,
         resolved_at: new Date().toISOString(),
+        admin_action_taken: adminActionTaken,
+        takedown_applied: takedownApplied,
       })
       .eq("id", id)
-      .select("id, status, resolution_notes, resolved_at, target_type, target_id")
+      .select("id, status, resolution_notes, resolved_at, target_type, target_id, admin_action_taken, takedown_applied")
       .single();
 
     if (error) return handleApiError(error, "Failed to update content report");
@@ -90,10 +130,18 @@ export async function PATCH(
         status,
         target_type: (existing as { target_type?: string }).target_type,
         target_id: (existing as { target_id?: string }).target_id,
+        takedown_applied: takedownApplied,
       },
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
     });
+
+    if (applyTakedown && status === "resolved" && !takedownApplied) {
+      return successResponse({
+        ...updated,
+        takedown_warning: "Report resolved but content could not be hidden for this target type.",
+      });
+    }
 
     return successResponse(updated);
   } catch (error) {

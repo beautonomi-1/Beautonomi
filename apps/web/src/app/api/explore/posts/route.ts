@@ -13,7 +13,8 @@ import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
-import { filterExplorePostsForViewer } from "@/lib/safety/filter-explore-posts";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { applyExploreViewerContentFilters, type ExplorePostFilterable } from "@/lib/safety/filter-explore-posts";
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -78,6 +79,17 @@ function mapToExplorePost(
     offering_id: row.offering_id ?? null,
     offering: offering ?? null,
   };
+}
+
+function applyViewerContentFilters<T extends ExplorePostFilterable>(
+  posts: T[],
+  viewerSafety: Awaited<ReturnType<typeof getViewerSafetyContext>>,
+): T[] {
+  const hiddenIds = new Set([...viewerSafety.blockedUserIds, ...viewerSafety.mutedUserIds]);
+  return applyExploreViewerContentFilters(posts, {
+    hideSocialFeed: viewerSafety.hideSocialFeed,
+    sensitiveFilter: viewerSafety.sensitiveContentFilter,
+  }, hiddenIds);
 }
 
 function calculateTrendingScore(post: {
@@ -438,10 +450,7 @@ export async function GET(request: NextRequest) {
       }
 
       return successResponse({
-        data: filterExplorePostsForViewer(dataSearch, {
-          hideSocialFeed: false,
-          sensitiveFilter: viewerSafety.sensitiveContentFilter,
-        }),
+        data: applyViewerContentFilters(dataSearch, viewerSafety),
         next_cursor: nextCursorSearch,
         has_more: hasMoreSearch,
       });
@@ -595,7 +604,7 @@ export async function GET(request: NextRequest) {
       }
 
       return successResponse({
-        data: dataNearby,
+        data: applyViewerContentFilters(dataNearby, viewerSafety),
         next_cursor: nextCursorNearby,
         has_more: hasMoreNearby,
       });
@@ -786,10 +795,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response: ExplorePostsCursorResponse = {
-      data: filterExplorePostsForViewer(data, {
-        hideSocialFeed: false,
-        sensitiveFilter: viewerSafety.sensitiveContentFilter,
-      }),
+      data: applyViewerContentFilters(data, viewerSafety),
       next_cursor: nextCursor,
       has_more: hasMore,
     };
@@ -810,6 +816,7 @@ export async function POST(request: NextRequest) {
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    await requireSocialAccess(user.id, "ugc_create", request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {

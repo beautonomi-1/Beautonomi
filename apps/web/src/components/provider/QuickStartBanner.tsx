@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Sparkles, X, ArrowRight, CheckCircle2 } from "lucide-react";
-import { fetcher, FetchTimeoutError } from "@/lib/http/fetcher";
+import { fetcher, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 
@@ -66,7 +66,7 @@ export function QuickStartBanner() {
       setIsLoading(true);
       const response = await fetcher.get<{ data: SetupStatus }>(
         "/api/provider/setup-status",
-        { timeoutMs: 10000 } // Increase timeout to 10 seconds
+        { timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
       );
       setSetupStatus(response.data);
       // Cache the response

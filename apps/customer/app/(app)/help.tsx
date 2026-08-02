@@ -4,13 +4,28 @@ import { pushWebLearningCenter, pushWebPrivacyPolicy, pushWebTermsOfService, pus
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function HelpScreen() {
   useScreenTracking("Help");
   const router = useRouter();
+  const { t } = useTranslation();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <TouchableOpacity
+        style={styles.safetyCard}
+        onPress={() => router.push("/(app)/safety" as never)}
+        accessibilityLabel={t("customer.mobile.screens.safetyHub.title")}
+        accessibilityRole="button"
+      >
+        <Ionicons name="shield-checkmark-outline" size={24} color="#B91C1C" style={styles.quickLinkIcon} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.safetyCardTitle}>{t("customer.mobile.screens.safetyHub.title")}</Text>
+          <Text style={styles.safetyCardBody}>{t("customer.mobile.screens.safetyHub.helpCardBody")}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+      </TouchableOpacity>
       <View style={styles.quickLinks}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
@@ -99,6 +114,20 @@ export default function HelpScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   content: { paddingBottom: 24 },
+  safetyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  safetyCardTitle: { fontWeight: "600", color: "#991B1B", fontSize: 16 },
+  safetyCardBody: { fontSize: 13, color: "#7F1D1D", marginTop: 4 },
   quickLinks: {
     flexDirection: "row",
     paddingHorizontal: 16,

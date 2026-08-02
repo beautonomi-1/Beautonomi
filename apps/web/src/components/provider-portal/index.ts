@@ -11,7 +11,7 @@ export { CalendarLinkDialog } from "./CalendarLinkDialog";
 
 // Appointment Components
 export { AppointmentDialog } from "./AppointmentDialog";
-// Legacy components - kept as stubs for Turbopack module resolution (replaced by AppointmentSidebar)
+// Legacy components - kept as stubs for Turbopack module resolution (replaced by BookingSheetHost)
 // These return null and are never actually used, but Turbopack requires them to exist
 export { default as AppointmentDetailsModal } from "./AppointmentDetailsModal";
 export { default as AppointmentDialogMobile } from "./AppointmentDialogMobile";

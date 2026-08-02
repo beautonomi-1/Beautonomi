@@ -21,6 +21,8 @@ import Link from "next/link";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useProviderBookingMobileShell } from "@/components/provider/booking/hooks/useProviderBookingMobileShell";
+import { openProductOrderView } from "@/stores/appointment-sidebar-store";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -119,6 +121,7 @@ export default function ProviderProductOrdersPage() {
   const { selectedLocationId } = useProviderPortal();
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
+  const mobileBookingShell = useProviderBookingMobileShell();
   const searchParams = useSearchParams();
   const focusOrderId = searchParams.get("order")?.trim() ?? "";
   const highlightRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +210,11 @@ export default function ProviderProductOrdersPage() {
       cancelled = true;
     };
   }, [focusOrderId]);
+
+  useEffect(() => {
+    if (!mobileBookingShell || !focusOrderId) return;
+    openProductOrderView(focusOrderId);
+  }, [mobileBookingShell, focusOrderId]);
 
   const displayOrders = useMemo(() => {
     if (!prefetchedFocusOrder) return orders;
@@ -429,8 +437,21 @@ export default function ProviderProductOrdersPage() {
                   key={o.id}
                   ref={isFocus ? highlightRef : undefined}
                   id={isFocus ? "provider-order-focus" : undefined}
+                  data-product-order-row={o.id}
+                  role={mobileBookingShell ? "button" : undefined}
+                  tabIndex={mobileBookingShell ? 0 : undefined}
+                  onClick={() => {
+                    if (mobileBookingShell) openProductOrderView(o.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (mobileBookingShell && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      openProductOrderView(o.id);
+                    }
+                  }}
                   className={cn(
                     "p-4 sm:p-5 hover:bg-gray-50 transition-colors rounded-xl",
+                    mobileBookingShell && "cursor-pointer",
                     isFocus && "ring-2 ring-pink-500 ring-offset-2 bg-pink-50/30",
                   )}
                 >
@@ -542,7 +563,7 @@ export default function ProviderProductOrdersPage() {
                             >
                               {formatPaycloudCollectLabel({
                                 context: "product_order",
-                                amount: providerEarnings,
+                                amount: totalAmount,
                                 inFlight: paycloudInFlight,
                               })}
                             </button>

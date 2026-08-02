@@ -39,6 +39,11 @@ export function slackNotifySafetyPanic(params: {
   bookingId?: string | null;
   source?: string | null;
   auraDispatched?: boolean;
+  emergencyContact?: {
+    name?: string | null;
+    phone?: string | null;
+    relationship?: string | null;
+  } | null;
 }) {
   void tryNotifySlackEvent({
     tenantId: params.tenantId,
@@ -52,6 +57,9 @@ export function slackNotifySafetyPanic(params: {
       `User ${params.userId.slice(0, 8)}…`,
       params.bookingId ? `Booking ${params.bookingId.slice(0, 8)}…` : "No booking attached",
       params.source ? `Source: ${params.source}` : "",
+      params.emergencyContact?.name
+        ? `Emergency contact: ${params.emergencyContact.name}${params.emergencyContact.phone ? ` (${params.emergencyContact.phone})` : ""}`
+        : "Emergency contact: not on file",
       params.auraDispatched ? "Aura: dispatched" : "Aura: not dispatched — manual follow-up required",
       "Action: triage in Admin → Trust & Safety → Safety logs",
     ],
@@ -101,6 +109,53 @@ export function slackNotifyUserReportCreated(params: {
     title: "New user report",
     detailLines: [`Type: ${params.reportType}`, "Action: review in Admin → User reports"],
     actionUrl: "/user-reports",
+  });
+}
+
+/** UGC content report submitted (`content_reports`). */
+export function slackNotifyContentReportCreated(params: {
+  tenantId: string;
+  reportId: string;
+  targetType: string;
+  reason: string;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.SAFETY_CONTENT_REPORT,
+    dedupeKey: `content_report:${params.reportId}:created`,
+    entityType: "content_report",
+    entityId: params.reportId,
+    title: "New content report",
+    detailLines: [
+      `Target: ${params.targetType}`,
+      `Reason: ${params.reason}`,
+      "Action: review in Admin → Content reports",
+    ],
+    actionUrl: "/content-reports",
+  });
+}
+
+export function slackNotifyContentReportTakedown(params: {
+  tenantId: string;
+  reportId: string;
+  targetType: string;
+  targetId: string;
+  action: string;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.SAFETY_CONTENT_TAKEDOWN,
+    dedupeKey: `content_report:${params.reportId}:takedown`,
+    entityType: "content_report",
+    entityId: params.reportId,
+    title: "Content report takedown applied",
+    detailLines: [
+      `Target: ${params.targetType} ${params.targetId.slice(0, 8)}…`,
+      `Action: ${params.action}`,
+    ],
+    actionUrl: "/content-reports",
   });
 }
 

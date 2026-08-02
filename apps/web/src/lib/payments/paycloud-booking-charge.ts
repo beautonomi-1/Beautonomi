@@ -29,3 +29,8 @@ export function computePaycloudBookingChargeAmount(params: {
 
   return { chargeAmount, depositAmount, fullOutstanding };
 }
+
+/** When a booking/group already has checkout tip, terminal collect must not add tip again. */
+export function paycloudTipIncludedInChargeAmount(tipAmount: number | null | undefined): boolean {
+  return Number(tipAmount ?? 0) > 0.01;
+}

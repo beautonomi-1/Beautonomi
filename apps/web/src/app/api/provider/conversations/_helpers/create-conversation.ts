@@ -3,7 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { z } from "zod";
+import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 
 const createSchema = z.object({
   customer_id: z.string().uuid("Invalid customer ID"),
@@ -21,6 +23,7 @@ export async function createConversation(request: NextRequest): Promise<Response
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    await requireSocialAccess(user.id, "direct_message", request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -107,6 +110,8 @@ export async function createConversation(request: NextRequest): Promise<Response
       );
     }
 
+    await assertNotBlocked(user.id, customer_id, admin);
+
     // One thread per provider–customer: reuse any existing row so the app
     // does not open duplicate DMs (e.g. one row scoped to a booking and
     // another with booking_id null from the client list / messaging entry).
@@ -147,6 +152,14 @@ export async function createConversation(request: NextRequest): Promise<Response
 
     return successResponse({ id: newConv.id, created: true });
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return handleApiError(
+        error instanceof Error ? error : new Error("You cannot interact with this user."),
+        "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     if (error instanceof z.ZodError) {
       return handleApiError(
         error,

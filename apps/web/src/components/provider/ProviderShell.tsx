@@ -13,6 +13,7 @@ import { ProviderBottomNav } from "./ProviderBottomNav";
 import { OnDemandIncomingOverlay } from "@/components/provider-portal/OnDemandIncomingOverlay";
 import { ProviderBookingAlertListener } from "@/components/provider-portal/ProviderBookingAlertListener";
 import { TerminalPaymentAlertListener } from "@/components/provider/TerminalPaymentAlertListener";
+import { ProviderBookingOverlayHost } from "@/components/provider/booking/ProviderBookingOverlayHost";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
 import { cn } from "@/lib/utils";
 
@@ -121,6 +122,7 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
       <OnDemandIncomingOverlay />
       <ProviderBookingAlertListener />
       <TerminalPaymentAlertListener />
+      <ProviderBookingOverlayHost />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import type { ExplorePost, ExploreComment } from "@/types/api";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
 import {
   copyExplorePostLink,
@@ -52,6 +53,7 @@ export default function ExplorePostScreen() {
   const { t } = useTranslation();
   const socialInteractions = useSocialCapability("comment");
   const canInteract = socialInteractions.allowed;
+  const { confirmBlockUser } = useUserBlocks();
 
   const [post, setPost] = useState<ExplorePost | null>(null);
   const [comments, setComments] = useState<ExploreComment[]>([]);
@@ -316,9 +318,21 @@ export default function ExplorePostScreen() {
         onPress: () => openContentReport("explore_post", post.id, t("customer.contentReport.reportPost")),
       });
     }
+    if (user && post?.provider_id) {
+      actions.push({
+        text: t("customer.blockUser.confirmAction"),
+        style: "destructive",
+        onPress: () =>
+          confirmBlockUser({
+            providerId: post.provider_id,
+            displayName: post.provider?.business_name,
+            onBlocked: () => router.back(),
+          }),
+      });
+    }
     actions.push({ text: t("common.cancel"), style: "cancel" });
     Alert.alert(t("customer.explorePost.moreOptions"), undefined, actions);
-  }, [handleShare, openContentReport, post?.id, postUrl, t, user]);
+  }, [handleShare, openContentReport, post?.id, post?.provider_id, post?.provider?.business_name, postUrl, t, user, confirmBlockUser, router]);
 
   const goToProvider = useCallback(() => {
     if (post?.provider?.slug) {

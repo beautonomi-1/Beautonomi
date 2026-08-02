@@ -8,7 +8,7 @@ import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, DollarSign, Layers, Wallet, Percent } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
@@ -62,7 +62,8 @@ export default function PayoutsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
-    from: subDays(new Date(), 90),
+    // Default 30 days — this ledger aggregation is heavy over 90-day windows.
+    from: subDays(new Date(), 30),
     to: new Date(),
   });
   const [data, setData] = useState<PayoutsData | null>(null);
@@ -83,7 +84,8 @@ export default function PayoutsReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: PayoutsData }>(
-        `/api/provider/reports/payments/payouts?${params.toString()}`
+        `/api/provider/reports/payments/payouts?${params.toString()}`,
+        { timeoutMs: Math.max(DEFAULT_FETCH_TIMEOUT_MS, 120_000) },
       );
       setData(response.data);
     } catch (err) {
@@ -96,7 +98,7 @@ export default function PayoutsReport() {
 
   const handleReset = () => {
     setDateRange({
-      from: subDays(new Date(), 90),
+      from: subDays(new Date(), 30),
       to: new Date(),
     });
   };

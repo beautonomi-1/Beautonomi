@@ -187,11 +187,12 @@ describe("settlePaycloudPayment", () => {
       providerId: "provider-1",
       entityType: "booking",
       entityId: "booking-1",
-      amount: 100,
+      amount: 115,
       paycloudOrderId: "pc-order-tip",
       merchantOrderNo: "BNTIP",
       processedBy: "user-1",
       tipAmount: 15,
+      expectedBaseAmount: 100,
     });
 
     expect(result.settled).toBe(true);
@@ -211,6 +212,52 @@ describe("settlePaycloudPayment", () => {
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({ tip_amount: 15, total_amount: 115 }),
     );
+  });
+
+  it("allocates deposit base separately when capture includes terminal tip", async () => {
+    const bookingPayments = chain({ data: null });
+    const bookings = chain({
+      data: {
+        id: "booking-1",
+        booking_number: "B1",
+        payment_status: "pending",
+        tenant_id: "tenant-1",
+        status: "confirmed",
+        total_amount: 1000,
+        total_paid: 0,
+        total_refunded: 0,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        tip_amount: 0,
+        additional_charges: [],
+      },
+    });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "booking_payments") return bookingPayments;
+        if (table === "bookings") return bookings;
+        return chain({ data: null });
+      }),
+    } as never;
+
+    const result = await settlePaycloudPayment(supabase, {
+      paymentId: "pay-deposit-tip",
+      providerId: "provider-1",
+      entityType: "booking",
+      entityId: "booking-1",
+      amount: 315,
+      paycloudOrderId: "pc-order-deposit",
+      merchantOrderNo: "BNDEP",
+      tipAmount: 15,
+      expectedBaseAmount: 300,
+    });
+
+    expect(result.settled).toBe(true);
+    const insertMock = bookingPayments.insert as ReturnType<typeof vi.fn>;
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({ amount: 300 });
+    expect(bookings.update as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
   it("skips the tip when the base charge is not fully covered", async () => {
@@ -295,6 +342,7 @@ describe("settlePaycloudPayment", () => {
       merchantOrderNo: "BNCB",
       tipAmount: 0,
       cashbackAmount: 20,
+      expectedBaseAmount: 100,
     });
 
     expect(result.settled).toBe(true);

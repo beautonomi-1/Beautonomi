@@ -260,8 +260,21 @@ export async function apiFetch<T>(
       !Array.isArray(parsed) &&
       "data" in parsed
     ) {
+      const envelope = parsed as { data: T; error?: unknown };
+      if (envelope.error != null && (envelope.data === null || envelope.data === undefined)) {
+        const fromJson = extractErrorFromPayload(parsed, "Request failed");
+        return {
+          data: null,
+          error: {
+            message: fromJson.message,
+            code: fromJson.code,
+            details: fromJson.details,
+            status: response.status,
+          },
+        };
+      }
       return {
-        data: (parsed as { data: T }).data ?? null,
+        data: envelope.data ?? null,
         error: null,
       };
     }

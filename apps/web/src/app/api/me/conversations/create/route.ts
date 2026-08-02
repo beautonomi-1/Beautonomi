@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 
 const createSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -32,10 +33,15 @@ export async function POST(request: NextRequest) {
 
     const admin = getSupabaseAdmin();
 
-    const { data: prov, error: provErr } = await admin.from("providers").select("id").eq("id", provider_id).maybeSingle();
+    const { data: prov, error: provErr } = await admin.from("providers").select("id, user_id").eq("id", provider_id).maybeSingle();
     if (provErr) throw provErr;
     if (!prov) {
       return notFoundResponse("Provider not found");
+    }
+
+    const providerOwnerId = (prov as { user_id?: string | null }).user_id;
+    if (providerOwnerId) {
+      await assertNotBlocked(user.id, providerOwnerId, admin);
     }
 
     if (booking_id && user.role !== "superadmin") {
@@ -92,6 +98,13 @@ export async function POST(request: NextRequest) {
 
     return successResponse({ id: newConv.id, created: true });
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return errorResponse(
+        error instanceof Error ? error.message : "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     if (error instanceof z.ZodError) {
       return errorResponse(
         error.issues.map((e) => e.message).join(", "),

@@ -1,22 +1,15 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
-import type { GroupBooking, GroupBookingParticipant, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
+import type { GroupBooking, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,44 +21,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Search, Users, Calendar, Edit, Trash2, CheckCircle, Plus, Sparkles,
-  MapPin, Clock, DollarSign, User, Phone, Mail, FileText, Play,
-  CheckSquare, XCircle, Info, Building2, Home, QrCode, ExternalLink, Copy,
-  CreditCard,
+  Search, Users, Calendar, Edit, Trash2, CheckCircle, Plus, Sparkles, Info,
 } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Money } from "@/components/provider-portal/Money";
-import { GroupBookingDialog } from "@/components/provider-portal/GroupBookingDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
+import { openGroupViewMode, openGroupSheet, openGroupEditMode } from "@/stores/appointment-sidebar-store";
 import { toast } from "sonner";
-import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePermissions } from "@/hooks/usePermissions";
-
-type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "yoco";
-
-type PaystackTerminalData = {
-  bookingId: string;
-  expectedAmount: number;
-  terminal: {
-    qr_url?: string | null;
-    payment_link?: string | null;
-    terminal_url?: string | null;
-    name?: string | null;
-  };
-};
 
 function GroupBookingsPageInner() {
   const searchParams = useSearchParams();
@@ -74,7 +40,6 @@ function GroupBookingsPageInner() {
   const canEditGroups = isOwner || hasPermission("edit_appointments");
   const canCancelGroups =
     isOwner || hasPermission("cancel_appointments") || hasPermission("edit_appointments");
-  const canProcessPayments = isOwner || hasPermission("process_payments");
   const [hasMounted, setHasMounted] = useState(false);
   const [groupBookings, setGroupBookings] = useState<GroupBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,21 +48,9 @@ function GroupBookingsPageInner() {
   const [dateRange, setDateRange] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<GroupBooking | null>(null);
-
-  // Detail sheet
-  const [detailBooking, setDetailBooking] = useState<GroupBooking | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [isStatusChanging, setIsStatusChanging] = useState(false);
-  const [recordPaymentConfirm, setRecordPaymentConfirm] = useState<{
-    bookingId: string;
-    method: RecordPaymentMethod;
-    amount: number;
-  } | null>(null);
-  const [paystackTerminalData, setPaystackTerminalData] = useState<PaystackTerminalData | null>(null);
-  const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
+  const [groupCancelConfirm, setGroupCancelConfirm] = useState<{ id: string; status: string } | null>(
+    null,
+  );
 
   const loadGroupBookings = useCallback(async () => {
     try {
@@ -147,11 +100,12 @@ function GroupBookingsPageInner() {
     id.startsWith("group:") ? id.slice("group:".length) : id;
 
   const handleSearch = () => { setPage(1); loadGroupBookings(); };
-  const handleCreate = () => { setSelectedBooking(null); setIsDialogOpen(true); };
+  const handleCreate = () => {
+    openGroupSheet();
+  };
 
   const handleEdit = (booking: GroupBooking) => {
-    setSelectedBooking(booking);
-    setIsDialogOpen(true);
+    openGroupEditMode(booking);
   };
 
   const handleDelete = async (id: string, currentStatus: string) => {
@@ -159,47 +113,21 @@ function GroupBookingsPageInner() {
       toast.info("This group booking is already cancelled.");
       return;
     }
-    if (!confirm("Cancel this group booking and any linked participant bookings?")) return;
+    setGroupCancelConfirm({ id, status: currentStatus });
+  };
+
+  const confirmGroupCancel = async () => {
+    if (!groupCancelConfirm) return;
+    const { id } = groupCancelConfirm;
     try {
       await providerApi.deleteGroupBooking(id);
       toast.success("Group booking cancelled");
-      // Update detail sheet if open
-      if (detailBooking?.id === id) {
-        setDetailBooking(prev => prev ? { ...prev, status: "cancelled" } : null);
-      }
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to cancel group booking:", error);
       toast.error("Failed to cancel group booking");
-    }
-  };
-
-  const handleStatusChange = async (bookingId: string, newStatus: string) => {
-    const normalizedBookingId = normalizeGroupBookingId(bookingId);
-    setIsStatusChanging(true);
-    try {
-      if (newStatus === "started") {
-        await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=start_service`);
-      } else if (newStatus === "completed") {
-        await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=complete_service`);
-      } else {
-        await fetcher.patch(`/api/provider/group-bookings/${normalizedBookingId}`, { status: newStatus });
-      }
-      toast.success(`Group booking marked as ${newStatus}`);
-      // Optimistically update detail sheet
-      if (detailBooking?.id === normalizedBookingId) {
-        setDetailBooking(prev => prev ? { ...prev, status: newStatus as GroupBooking["status"] } : null);
-      }
-      await loadGroupBookings();
-      if (isDetailOpen) {
-        const refreshed = await providerApi.getGroupBooking(normalizedBookingId);
-        setDetailBooking(refreshed);
-      }
-    } catch (error) {
-      console.error("Failed to update status:", error);
-      toast.error("Failed to update booking status");
     } finally {
-      setIsStatusChanging(false);
+      setGroupCancelConfirm(null);
     }
   };
 
@@ -208,15 +136,6 @@ function GroupBookingsPageInner() {
     try {
       await providerApi.checkInGroupParticipant(normalizedBookingId, participantId);
       toast.success("Participant checked in");
-      // Optimistically update
-      if (detailBooking?.id === normalizedBookingId && detailBooking.participants) {
-        setDetailBooking(prev => prev ? {
-          ...prev,
-          participants: prev.participants?.map(p =>
-            p.id === participantId ? { ...p, checked_in: true } : p
-          ),
-        } : null);
-      }
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to check in participant:", error);
@@ -229,14 +148,6 @@ function GroupBookingsPageInner() {
     try {
       await providerApi.checkOutGroupParticipant(normalizedBookingId, participantId);
       toast.success("Participant checked out");
-      if (detailBooking?.id === normalizedBookingId && detailBooking.participants) {
-        setDetailBooking(prev => prev ? {
-          ...prev,
-          participants: prev.participants?.map(p =>
-            p.id === participantId ? { ...p, checked_out: true } : p
-          ),
-        } : null);
-      }
       loadGroupBookings();
     } catch (error) {
       console.error("Failed to check out participant:", error);
@@ -244,61 +155,10 @@ function GroupBookingsPageInner() {
     }
   };
 
-  const handleRecordPayment = async (bookingId: string, paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco") => {
-    const normalizedBookingId = normalizeGroupBookingId(bookingId);
-    try {
-      await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=mark_paid`, {
-        payment_method: paymentMethod,
-      });
-      toast.success("Payment recorded for linked participant bookings");
-      await loadGroupBookings();
-      if (isDetailOpen) {
-        const refreshed = await providerApi.getGroupBooking(normalizedBookingId);
-        setDetailBooking(refreshed);
-      }
-    } catch (error) {
-      console.error("Failed to record group payment:", error);
-      const msg =
-        error instanceof Error ? error.message : "Failed to record payment";
-      toast.error(msg);
-    }
-  };
-
-  const handleRequestPaystackTerminal = async (bookingId: string, expectedAmount: number) => {
-    const normalizedBookingId = normalizeGroupBookingId(bookingId);
-    setIsPreparingTerminal(true);
-    try {
-      // fetcher.post returns raw JSON: { data: { terminal, ... }, error: null }
-      const response = await fetcher.post("/api/provider/paystack/terminal-payments", {
-        entity_type: "group_booking",
-        entity_id: normalizedBookingId,
-        expected_amount: expectedAmount,
-      }) as { data?: { terminal?: PaystackTerminalData["terminal"] }; error?: string | null };
-      const terminal = response?.data?.terminal;
-      if (!terminal) throw new Error("No active Paystack Terminal found. Please set one up in Settings → Sales → Paystack Terminal.");
-      setPaystackTerminalData({ bookingId: normalizedBookingId, expectedAmount, terminal });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Could not prepare Paystack Terminal";
-      toast.error(msg);
-    } finally {
-      setIsPreparingTerminal(false);
-    }
-  };
 
   const openDetail = async (booking: GroupBooking) => {
     const normalizedBookingId = normalizeGroupBookingId(booking.id);
-    setDetailBooking({ ...booking, id: normalizedBookingId });
-    setIsDetailOpen(true);
-    setIsDetailLoading(true);
-    try {
-      const fresh = await providerApi.getGroupBooking(normalizedBookingId);
-      setDetailBooking(fresh);
-    } catch (error) {
-      console.error("Failed to load group booking detail:", error);
-      toast.error("Failed to load latest group booking details");
-    } finally {
-      setIsDetailLoading(false);
-    }
+    openGroupViewMode(normalizedBookingId);
   };
 
   const openedFromQueryRef = React.useRef(false);
@@ -309,38 +169,6 @@ function GroupBookingsPageInner() {
     openedFromQueryRef.current = true;
     void openDetail({ id: normalizeGroupBookingId(openId) } as GroupBooking);
   }, [hasMounted, searchParams]);
-
-  const openParticipantBookingForRefund = (bookingId?: string | null) => {
-    const id = bookingId?.trim();
-    if (!id) {
-      toast.error("This participant does not have a linked booking yet");
-      return;
-    }
-    if (typeof window !== "undefined") {
-      window.location.assign(`/provider/bookings/${encodeURIComponent(id)}`);
-    }
-  };
-
-  const handleDownloadReceipt = async (bookingId: string, refNumber?: string) => {
-    const normalizedBookingId = normalizeGroupBookingId(bookingId);
-    try {
-      const response = await fetch(`/api/provider/group-bookings/${encodeURIComponent(normalizedBookingId)}/receipt/pdf`);
-      if (!response.ok) throw new Error("Failed to generate group receipt");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `group-receipt-${refNumber || normalizedBookingId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast.success("Group receipt downloaded");
-    } catch (error) {
-      console.error("Failed to download group receipt:", error);
-      toast.error("Failed to download group receipt");
-    }
-  };
 
   type GroupBookingStatus = GroupBooking["status"] | "confirmed" | "pending";
   const getStatusColor = (status: GroupBookingStatus) => {
@@ -368,7 +196,7 @@ function GroupBookingsPageInner() {
         timeStr: new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit" }).format(d),
       };
     }
-    return { dateStr: booking.scheduled_date || "—", timeStr: booking.scheduled_time || "" };
+    return { dateStr: booking.scheduled_date || "â€”", timeStr: booking.scheduled_time || "" };
   };
 
   const isFinal = (status: string) => status === "cancelled" || status === "completed";
@@ -501,7 +329,12 @@ function GroupBookingsPageInner() {
                     const cancelled = booking.status === "cancelled";
                     const completed = booking.status === "completed";
                     return (
-                      <TableRow key={booking.id} className={cn(cancelled && "opacity-60")}>
+                      <TableRow
+                        key={booking.id}
+                        className={cn(cancelled && "opacity-60", "cursor-pointer")}
+                        data-group-booking-row={booking.id}
+                        onClick={() => void openDetail(booking)}
+                      >
                         <TableCell className="font-medium">{booking.ref_number}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm">
@@ -509,8 +342,8 @@ function GroupBookingsPageInner() {
                             <span>{dateStr} {timeStr}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{booking.service_name ?? "—"}</TableCell>
-                        <TableCell>{booking.team_member_name ?? "—"}</TableCell>
+                        <TableCell>{booking.service_name ?? "â€”"}</TableCell>
+                        <TableCell>{booking.team_member_name ?? "â€”"}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Users className="w-3 h-3" />
@@ -518,7 +351,7 @@ function GroupBookingsPageInner() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "—"}
+                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "â€”"}
                         </TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(booking.status)}>{booking.status}</Badge>
@@ -584,11 +417,11 @@ function GroupBookingsPageInner() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Service:</span>
-                        <span className="font-medium">{booking.service_name ?? "—"}</span>
+                        <span className="font-medium">{booking.service_name ?? "â€”"}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Team Member:</span>
-                        <span className="font-medium">{booking.team_member_name ?? "—"}</span>
+                        <span className="font-medium">{booking.team_member_name ?? "â€”"}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Participants:</span>
@@ -600,7 +433,7 @@ function GroupBookingsPageInner() {
                       <div className="flex justify-between">
                         <span className="text-gray-600">Total:</span>
                         <span className="font-semibold text-base">
-                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "—"}
+                          {booking.total_price != null ? <Money amount={booking.total_price} /> : "â€”"}
                         </span>
                       </div>
                     </div>
@@ -683,731 +516,32 @@ function GroupBookingsPageInner() {
         </>
       )}
 
-      <GroupBookingDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        booking={selectedBooking}
-        onSuccess={loadGroupBookings}
-      />
-
-      {/* Comprehensive Detail Sheet */}
-      <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
-          {isDetailLoading && (
-            <div className="py-6 text-sm text-gray-500">Loading latest group booking details...</div>
-          )}
-          {detailBooking && <GroupBookingDetailPanel
-            booking={detailBooking}
-            canEdit={canEditGroups}
-            canCancel={canCancelGroups}
-            canProcessPayments={canProcessPayments}
-            onStatusChange={handleStatusChange}
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            onRequestRecordPayment={(bookingId, method, amount) =>
-              setRecordPaymentConfirm({ bookingId, method, amount })
-            }
-            onRequestPaystackTerminal={handleRequestPaystackTerminal}
-            isPreparingTerminal={isPreparingTerminal}
-            onOpenParticipantBooking={openParticipantBookingForRefund}
-            onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
-            onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
-            onDownloadReceipt={() => handleDownloadReceipt(detailBooking.id, detailBooking.ref_number)}
-            onPaycloudSuccess={async () => {
-              await loadGroupBookings();
-              try {
-                const refreshed = await providerApi.getGroupBooking(detailBooking.id);
-                setDetailBooking(refreshed);
-              } catch (error) {
-                console.error("Failed to refresh group booking after PayCloud payment:", error);
-              }
-            }}
-            isStatusChanging={isStatusChanging}
-          />}
-        </SheetContent>
-      </Sheet>
-
       <AlertDialog
-        open={!!recordPaymentConfirm}
+        open={!!groupCancelConfirm}
         onOpenChange={(open) => {
-          if (!open) setRecordPaymentConfirm(null);
+          if (!open) setGroupCancelConfirm(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Record group payment?</AlertDialogTitle>
+            <AlertDialogTitle>Cancel group booking?</AlertDialogTitle>
             <AlertDialogDescription>
-              {recordPaymentConfirm ? (
-                <>
-                  Mark linked participant bookings as paid via{" "}
-                  <span className="font-semibold text-gray-900">
-                    {recordPaymentConfirm.method.replace("_", " ")}
-                  </span>
-                  {recordPaymentConfirm.amount > 0 ? (
-                    <>
-                      {" "}
-                      for approximately{" "}
-                      <Money amount={recordPaymentConfirm.amount} className="inline font-semibold" />{" "}
-                      outstanding.
-                    </>
-                  ) : (
-                    " (no outstanding balance detected on linked bookings)."
-                  )}
-                </>
-              ) : null}
+              This cancels the group booking and any linked participant bookings. This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Keep booking</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (!recordPaymentConfirm) return;
-                const { bookingId, method } = recordPaymentConfirm;
-                setRecordPaymentConfirm(null);
-                void handleRecordPayment(bookingId, method);
-              }}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => void confirmGroupCancel()}
             >
-              Confirm payment
+              Cancel group booking
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Paystack Terminal QR Dialog */}
-      <Dialog open={!!paystackTerminalData} onOpenChange={(open) => { if (!open) setPaystackTerminalData(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="w-5 h-5 text-green-600" />
-              Paystack Terminal Collection
-            </DialogTitle>
-            <DialogDescription>
-              Show the QR code to the customer or share the payment link. Once payment is received, allocate it from the Payment Inbox.
-            </DialogDescription>
-          </DialogHeader>
-          {paystackTerminalData && (
-            <div className="space-y-4 pt-2">
-              {paystackTerminalData.expectedAmount > 0 && (
-                <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
-                  <p className="text-xs text-green-700 mb-1">Amount due</p>
-                  <p className="text-2xl font-bold text-green-800">
-                    <Money amount={paystackTerminalData.expectedAmount} />
-                  </p>
-                </div>
-              )}
-              {paystackTerminalData.terminal.qr_url ? (
-                <div className="flex justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={paystackTerminalData.terminal.qr_url}
-                    alt="Paystack Terminal QR Code"
-                    className="w-48 h-48 rounded-xl border border-gray-200"
-                  />
-                </div>
-              ) : null}
-              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-                <p className="font-medium mb-1">Instructions</p>
-                <p className="text-xs text-gray-600">
-                  Ask the customer to scan the QR code or open the payment link. Once Paystack confirms payment, it will appear in the <strong>Payment Inbox</strong> for you to allocate to the participant bookings.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                {(paystackTerminalData.terminal.payment_link || paystackTerminalData.terminal.terminal_url) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => {
-                      const link = paystackTerminalData.terminal.payment_link || paystackTerminalData.terminal.terminal_url || "";
-                      navigator.clipboard.writeText(link).then(() => toast.success("Payment link copied")).catch(() => {});
-                    }}
-                  >
-                    <Copy className="w-4 h-4" />
-                    Copy payment link
-                  </Button>
-                )}
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="gap-2 bg-green-600 hover:bg-green-700"
-                  onClick={() => {
-                    window.location.assign("/provider/settings/sales/paystack-terminal");
-                  }}
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Go to Payment Inbox
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
-  );
-}
-
-function computeGroupOutstandingBalance(
-  participants: GroupBookingParticipant[],
-  booking: GroupBooking
-): number {
-  if (participants.length === 0) {
-    return Math.max(0, Number(booking.total_price) || 0);
-  }
-  return participants.reduce((sum, p) => {
-    const balanceDue = (p as { balance_due?: number }).balance_due;
-    if (typeof balanceDue === "number" && Number.isFinite(balanceDue)) {
-      return sum + Math.max(0, balanceDue);
-    }
-    const price = Number(p.price) || 0;
-    const paid = Number((p as { total_paid?: number }).total_paid) || 0;
-    return sum + Math.max(0, price - paid);
-  }, 0);
-}
-
-// ─── Comprehensive detail panel ────────────────────────────────────────────
-interface DetailPanelProps {
-  booking: GroupBooking;
-  onStatusChange: (id: string, status: string) => void;
-  canEdit: boolean;
-  canCancel: boolean;
-  canProcessPayments: boolean;
-  onCheckIn: (bookingId: string, participantId: string) => void;
-  onCheckOut: (bookingId: string, participantId: string) => void;
-  onRequestRecordPayment: (
-    bookingId: string,
-    paymentMethod: RecordPaymentMethod,
-    outstandingAmount: number,
-  ) => void;
-  onRequestPaystackTerminal: (bookingId: string, expectedAmount: number) => void;
-  isPreparingTerminal: boolean;
-  onOpenParticipantBooking: (bookingId?: string | null) => void;
-  onEdit: () => void;
-  onCancel: () => void;
-  onDownloadReceipt: () => void;
-  onPaycloudSuccess: () => void;
-  isStatusChanging: boolean;
-}
-
-function GroupBookingDetailPanel({
-  booking,
-  canEdit,
-  canCancel,
-  canProcessPayments,
-  onStatusChange,
-  onCheckIn,
-  onCheckOut,
-  onRequestRecordPayment,
-  onRequestPaystackTerminal,
-  isPreparingTerminal,
-  onOpenParticipantBooking,
-  onEdit,
-  onCancel,
-  onDownloadReceipt,
-  onPaycloudSuccess,
-  isStatusChanging,
-}: DetailPanelProps) {
-  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-  const [paycloudOpen, setPaycloudOpen] = useState(false);
-  const participants: GroupBookingParticipant[] = booking.participants ?? [];
-  const outstandingBalance = computeGroupOutstandingBalance(participants, booking);
-  const cancelled = booking.status === "cancelled";
-  const completed = booking.status === "completed";
-  const isFinal = cancelled || completed;
-  const started = booking.status === "started";
-  const canStart = booking.status === "booked" || booking.status === "confirmed";
-
-  const formatDt = (iso?: string | null) => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short" }).format(d);
-  };
-
-  const statusActions: Array<{ label: string; value: string; icon: React.ReactNode; className?: string }> = [
-    ...(canStart ? [{ label: "Mark Started", value: "started", icon: <Play className="w-4 h-4" />, className: "bg-yellow-50 border-yellow-300 text-yellow-800 hover:bg-yellow-100" }] : []),
-    ...(started ? [{ label: "Mark Completed", value: "completed", icon: <CheckSquare className="w-4 h-4" />, className: "bg-green-50 border-green-300 text-green-800 hover:bg-green-100" }] : []),
-  ];
-
-  const checkedIn = participants.filter(p => p.checked_in).length;
-  const checkedOut = participants.filter(p => p.checked_out).length;
-  const participantRevenue = participants.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
-  const paidParticipants = participants.filter((p) => (p as any).payment_status === "paid").length;
-  const participantTips = participants.reduce(
-    (sum, p) => sum + (Number((p as any).tip_amount) || 0),
-    0,
-  );
-  const participantCollected = participants.reduce(
-    (sum, p) =>
-      sum +
-      Math.max(
-        0,
-        (Number((p as any).total_paid) || 0) - (Number((p as any).total_refunded) || 0),
-      ),
-    0,
-  );
-  const groupProducts = Array.isArray((booking as any).products) ? ((booking as any).products as any[]) : [];
-  const groupProductTotal = groupProducts.reduce(
-    (sum: number, product: any) =>
-      sum +
-      (Number(product?.total_price ?? product?.totalPrice) ||
-        (Number(product?.unit_price ?? product?.unitPrice ?? 0) * Number(product?.quantity ?? 1))),
-    0,
-  );
-
-  return (
-    <>
-    <div className="space-y-6 pb-8">
-      <SheetHeader>
-        <SheetTitle className="flex items-center gap-3">
-          <span>Group Booking</span>
-          <span className="text-sm font-mono text-gray-500">{booking.ref_number}</span>
-        </SheetTitle>
-      </SheetHeader>
-
-      {/* Status + quick actions */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className={cn(
-          "text-sm px-3 py-1",
-          booking.status === "booked" && "bg-blue-100 text-blue-800",
-          booking.status === "started" && "bg-yellow-100 text-yellow-800",
-          booking.status === "completed" && "bg-green-100 text-green-800",
-          booking.status === "cancelled" && "bg-gray-100 text-gray-500",
-        )}>
-          {booking.status}
-        </Badge>
-        {canEdit && statusActions.map(a => (
-          <Button key={a.value} variant="outline" size="sm" disabled={isStatusChanging}
-            onClick={() => onStatusChange(booking.id, a.value)}
-            className={cn("gap-1.5", a.className)}>
-            {a.icon}{a.label}
-          </Button>
-        ))}
-        <Button variant="outline" size="sm" onClick={onDownloadReceipt} className="gap-1.5">
-          <FileText className="w-4 h-4" />Group receipt
-        </Button>
-        {canEdit && !isFinal && (
-          <Button variant="outline" size="sm" onClick={onEdit} className="gap-1.5">
-            <Edit className="w-4 h-4" />Edit
-          </Button>
-        )}
-        {canCancel && !cancelled && (
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={completed}
-            className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
-            <XCircle className="w-4 h-4" />Cancel booking
-          </Button>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Session info */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Session Details</h3>
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          {booking.scheduled_at && (
-            <div className="flex items-start gap-2">
-              <Calendar className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />
-              <div>
-                <dt className="text-gray-500 text-xs">Date &amp; Time</dt>
-                <dd className="font-medium">{formatDt(booking.scheduled_at)}</dd>
-              </div>
-            </div>
-          )}
-          {booking.service_name && (
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />
-              <div>
-                <dt className="text-gray-500 text-xs">Service</dt>
-                <dd className="font-medium">{booking.service_name}</dd>
-              </div>
-            </div>
-          )}
-          {booking.team_member_name && (
-            <div className="flex items-start gap-2">
-              <User className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />
-              <div>
-                <dt className="text-gray-500 text-xs">Team Member</dt>
-                <dd className="font-medium">{booking.team_member_name}</dd>
-              </div>
-            </div>
-          )}
-          {(booking as any).duration_minutes && (
-            <div className="flex items-start gap-2">
-              <Clock className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />
-              <div>
-                <dt className="text-gray-500 text-xs">Duration</dt>
-                <dd className="font-medium">{(booking as any).duration_minutes} min</dd>
-              </div>
-            </div>
-          )}
-        </dl>
-      </section>
-
-      <Separator />
-
-      {/* Location */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Location</h3>
-        <div className="flex items-start gap-2 text-sm">
-          {(booking as any).location_type === "at_home"
-            ? <Home className="w-4 h-4 mt-0.5 text-violet-500 flex-shrink-0" />
-            : <Building2 className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />}
-          <div>
-            <p className="font-medium capitalize">{((booking as any).location_type || "at_salon").replace("_", " ")}</p>
-            {(booking as any).address_line1 && (
-              <p className="text-gray-600">
-                {(booking as any).address_line1}
-                {(booking as any).address_city ? `, ${(booking as any).address_city}` : ""}
-                {(booking as any).address_state ? `, ${(booking as any).address_state}` : ""}
-              </p>
-            )}
-            {(booking as any).travel_fee > 0 && (
-              <p className="text-xs text-violet-700 mt-1 font-medium flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
-                Travel fee: <Money amount={(booking as any).travel_fee} />
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Financial summary
-        *
-        * §Group-booking-audit 2026-05: when no participants are linked yet
-        * the only money on the row is the at-home travel fee. Labelling that
-        * R 100 line "Total" made it look like a real receipt the customer
-        * owed; the receipt PDF was correspondingly showing "Balance due R
-        * 100,00" in red. Mirror the PDF treatment here — show "Session
-        * estimate" + a soft note instead of "Total" — so the operator sees
-        * exactly what the receipt will print.
-        */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Financials</h3>
-        <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Participants paid</span>
-            <span className="font-medium">
-              {paidParticipants}/{participants.length}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Participant services</span>
-            <span className="font-medium"><Money amount={participantRevenue} /></span>
-          </div>
-          {groupProductTotal > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Products</span>
-              <span className="font-medium"><Money amount={groupProductTotal} /></span>
-            </div>
-          )}
-          {participantTips > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tips</span>
-              <span className="font-medium"><Money amount={participantTips} /></span>
-            </div>
-          )}
-          {participantCollected > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Collected (net of refunds)</span>
-              <span className="font-medium"><Money amount={participantCollected} /></span>
-            </div>
-          )}
-          {(booking as any).travel_fee > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Travel fee</span>
-              <span className="font-medium"><Money amount={(booking as any).travel_fee} /></span>
-            </div>
-          )}
-          <Separator className="my-1" />
-          <div className="flex justify-between font-semibold">
-            <span>{participants.length === 0 ? "Session estimate" : "Total"}</span>
-            <span className="text-lg"><Money amount={booking.total_price ?? 0} /></span>
-          </div>
-          {participants.length === 0 && (
-            <p className="text-xs text-gray-500 pt-1">
-              No participant bookings are linked yet. Add participants so the
-              receipt reflects each service price instead of the session
-              estimate.
-            </p>
-          )}
-        </div>
-        {canProcessPayments && !isFinal && participants.length > 0 && (() => {
-          const hasLinkedBookings = participants.some(p => p.booking_id);
-          if (!hasLinkedBookings) {
-            return (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <p className="font-medium mb-1">Payment recording unavailable</p>
-                <p className="text-xs text-amber-700">
-                  No individual booking records are linked to this session's participants.
-                  Payment is recorded against individual participant bookings — open the
-                  session, add each participant via "Add participant", and create their
-                  booking before marking the group as paid.
-                </p>
-              </div>
-            );
-          }
-          return (
-            <div className="rounded-xl border border-gray-200 p-3">
-              <p className="text-xs text-gray-500 mb-2">
-                Record payment method for remaining linked participant invoices
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    onRequestRecordPayment(
-                      booking.id,
-                      "cash",
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                >
-                  <DollarSign className="w-4 h-4 mr-1" />
-                  Cash
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    onRequestRecordPayment(
-                      booking.id,
-                      "card",
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                >
-                  Card
-                </Button>
-                <PaycloudCollectButton
-                  amount={computeGroupOutstandingBalance(participants, booking)}
-                  currency={booking.currency ?? "ZAR"}
-                  context="group_booking"
-                  onClick={() => setPaycloudOpen(true)}
-                  className="gap-1.5"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    onRequestRecordPayment(
-                      booking.id,
-                      "yoco",
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                >
-                  Yoco
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    onRequestRecordPayment(
-                      booking.id,
-                      "bank_transfer",
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                >
-                  Bank transfer
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    onRequestRecordPayment(
-                      booking.id,
-                      "other",
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                >
-                  Other
-                </Button>
-              </div>
-              {paystackTerminalEnabled && (
-              <div className="mt-3 pt-3 border-t">
-                <p className="text-xs text-gray-500 mb-2">Collect via Paystack Virtual Terminal (QR / link)</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isPreparingTerminal}
-                  onClick={() =>
-                    onRequestPaystackTerminal(
-                      booking.id,
-                      computeGroupOutstandingBalance(participants, booking),
-                    )
-                  }
-                  className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5"
-                >
-                  <QrCode className="w-4 h-4" />
-                  {isPreparingTerminal ? "Preparing…" : "Paystack Terminal"}
-                </Button>
-              </div>
-              )}
-            </div>
-          );
-        })()}
-        {groupProducts.length > 0 && (
-          <div className="rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500 mb-2">Products in this group booking</p>
-            <div className="space-y-2">
-              {groupProducts.map((product: any, index: number) => {
-                const quantity = Number(product?.quantity ?? 1) || 1;
-                const unitPrice = Number(product?.unit_price ?? product?.unitPrice ?? 0) || 0;
-                const totalPrice =
-                  Number(product?.total_price ?? product?.totalPrice ?? 0) || unitPrice * quantity;
-                const name = String(product?.product_name ?? product?.productName ?? `Product ${index + 1}`);
-                return (
-                  <div key={`${name}-${index}`} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700">
-                      {name} x{quantity}
-                    </span>
-                    <span className="font-medium">
-                      <Money amount={totalPrice} />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <Separator />
-
-      {/* Participants */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-            Participants ({participants.length})
-          </h3>
-          <div className="flex gap-2 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              <CheckCircle className="w-3 h-3 text-green-500" />{checkedIn} in
-            </span>
-            <span className="flex items-center gap-1">
-              <CheckCircle className="w-3 h-3 text-blue-500" />{checkedOut} out
-            </span>
-          </div>
-        </div>
-
-        {participants.length === 0 ? (
-          <p className="text-sm text-gray-500">No participants added yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {participants.map((p, idx) => (
-              <div key={p.id} className="border border-gray-100 rounded-xl p-3 space-y-2 bg-white">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 font-mono w-5">{idx + 1}.</span>
-                      <div>
-                        <p className="font-medium text-sm truncate">{p.client_name || "Guest"}</p>
-                        <p className="text-xs text-gray-500">{p.service_name || "—"}</p>
-                      </div>
-                    </div>
-                    <div className="ml-7 mt-1 flex flex-col gap-0.5 text-xs text-gray-500">
-                      {p.client_email && (
-                        <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{p.client_email}</span>
-                      )}
-                      {p.client_phone && (
-                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{p.client_phone}</span>
-                      )}
-                      {p.notes && (
-                        <span className="text-gray-600 whitespace-pre-wrap">Note: {p.notes}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {p.price != null && p.price > 0 && (
-                      <p className="text-sm font-semibold"><Money amount={p.price} /></p>
-                    )}
-                    <div className="mt-1">
-                      {p.checked_out
-                        ? <span className="text-xs text-green-600 font-medium">✓ Checked out</span>
-                        : p.checked_in
-                        ? <span className="text-xs text-amber-600 font-medium">✓ Checked in</span>
-                        : <span className="text-xs text-gray-400">Not arrived</span>}
-                    </div>
-                    {(p as any).payment_status && (
-                      <div className="mt-1 text-xs text-gray-500 capitalize">
-                        Payment: {String((p as any).payment_status).replace(/_/g, " ")}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {canEdit && !isFinal && (
-                  <div className="flex gap-2 ml-7">
-                    {!p.checked_in ? (
-                      <Button variant="outline" size="sm" onClick={() => onCheckIn(booking.id, p.id)} className="h-8 text-xs">
-                        <CheckCircle className="w-3 h-3 mr-1" />Check In
-                      </Button>
-                    ) : !p.checked_out ? (
-                      <Button variant="outline" size="sm" onClick={() => onCheckOut(booking.id, p.id)} className="h-8 text-xs bg-green-50 border-green-200">
-                        <CheckCircle className="w-3 h-3 mr-1" />Check Out
-                      </Button>
-                    ) : null}
-                  </div>
-                )}
-                {canProcessPayments && p.booking_id ? (
-                  <div className="ml-7">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onOpenParticipantBooking(p.booking_id)}
-                      className="h-8 text-xs bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                    >
-                      Open booking to refund
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Notes */}
-      {(booking as any).notes && (
-        <>
-          <Separator />
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Notes</h3>
-            <div className="flex items-start gap-2 text-sm">
-              <FileText className="w-4 h-4 mt-0.5 text-gray-400 flex-shrink-0" />
-              <p className="text-gray-700 whitespace-pre-wrap">{(booking as any).notes}</p>
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* Timestamps */}
-      <Separator />
-      <section className="space-y-1 text-xs text-gray-400">
-        {(booking as any).created_at && <p>Created: {formatDt((booking as any).created_at)}</p>}
-        {(booking as any).updated_at && <p>Last updated: {formatDt((booking as any).updated_at)}</p>}
-      </section>
-    </div>
-    {paycloudOpen ? (
-      <PayCloudPaymentDialog
-        open={paycloudOpen}
-        onOpenChange={setPaycloudOpen}
-        amount={outstandingBalance}
-        entityType="group_booking"
-        entityId={booking.id}
-        groupBookingId={booking.id}
-        bookingLocationId={booking.location_id ?? null}
-        onSuccess={() => {
-          setPaycloudOpen(false);
-          onPaycloudSuccess();
-        }}
-      />
-    ) : null}
-    </>
   );
 }
 

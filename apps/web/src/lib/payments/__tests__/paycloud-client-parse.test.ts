@@ -3,6 +3,7 @@ import { parsePaycloudResponse } from "../paycloud-client";
 
 describe("parsePaycloudResponse", () => {
   it("reads trans_status and amounts from nested data (orderquery envelope)", () => {
+    // PayCloud Cloud API: order_amount/paid_amount are major units (e.g. "200" = R200.00).
     const raw = {
       code: "0",
       msg: "success",

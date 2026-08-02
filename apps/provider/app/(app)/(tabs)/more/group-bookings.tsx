@@ -6253,6 +6253,7 @@ export default function GroupBookingsScreen() {
           bookingLocationId={
             paycloudCollectTarget.locationId ?? selectedGroup?.location_id ?? null
           }
+          tipIncludedInAmount={Number(selectedGroup?.tip_amount ?? 0) > 0.01}
           onPaymentSuccess={async () => {
             setShowPaycloudPayment(false);
             setPaycloudCollectTarget(null);

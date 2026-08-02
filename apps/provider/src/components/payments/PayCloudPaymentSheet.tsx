@@ -194,6 +194,7 @@ export function PayCloudPaymentSheet({
   const keepAwakeActiveRef = useRef(false);
   // Lets the failure alert re-run a charge without a circular useCallback dependency.
   const handleProcessRef = useRef<(() => Promise<void>) | null>(null);
+  const handleResumeInFlightRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeTerminals = terminals.filter((t) => t.is_active);
   const chargeableTerminals = activeTerminals.filter((t) => t.merchant != null);
@@ -369,6 +370,78 @@ export function PayCloudPaymentSheet({
     handleSettledSuccess,
   ]);
 
+  // Cloud mode: poll while the charge sheet is open (createPayment returns after push).
+  useEffect(() => {
+    if (!visible || isSameDeviceMode || sameTerminalStep !== "idle") return;
+    const paymentId = inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id;
+    if (!paymentId || successResult || reviewResult) return;
+
+    let cancelled = false;
+    const deadline = Date.now() + SAME_TERMINAL_POLL_TIMEOUT_MS;
+
+    void (async () => {
+      await setKeepAwake(true);
+      while (!cancelled && Date.now() < deadline) {
+        const polled = await pollPayment(paymentId);
+        if (
+          polled?.status === "successful" ||
+          polled?.status === "failed" ||
+          polled?.status === "closed" ||
+          polled?.status === "cancelled"
+        ) {
+          await setKeepAwake(false);
+          if (cancelled) return;
+          if (polled.status === "successful") {
+            handleSettledSuccess(polled);
+          } else {
+            setInFlightPaymentId(null);
+            Alert.alert(
+              "Payment failed",
+              polled.error_message || "The card payment didn't go through. Please try again.",
+            );
+          }
+          return;
+        }
+        await new Promise((r) => setTimeout(r, SAME_TERMINAL_POLL_INTERVAL_MS));
+      }
+      await setKeepAwake(false);
+      if (!cancelled) {
+        Alert.alert(
+          "Still waiting on card machine",
+          "The payment did not finish in time. Tap Resume to keep checking, or cancel the charge and try again.",
+          [
+            { text: "Keep waiting", style: "cancel" },
+            { text: "Resume", onPress: () => void handleResumeInFlightRef.current?.() },
+            {
+              text: "Cancel charge",
+              style: "destructive",
+              onPress: () => {
+                if (paymentId) void closePayment(paymentId);
+                setInFlightPaymentId(null);
+              },
+            },
+          ],
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    visible,
+    isSameDeviceMode,
+    sameTerminalStep,
+    inFlightPaymentId,
+    selectedTerminal?.in_flight_payment_id,
+    successResult,
+    reviewResult,
+    pollPayment,
+    handleSettledSuccess,
+    setKeepAwake,
+    closePayment,
+  ]);
+
   const handleResumeInFlight = useCallback(async () => {
     const paymentId = inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id;
     if (!paymentId) return;
@@ -408,6 +481,8 @@ export function PayCloudPaymentSheet({
     handleSettledSuccess,
     deviceInfo,
   ]);
+
+  handleResumeInFlightRef.current = handleResumeInFlight;
 
   const parsedTip = (() => {
     const trimmed = tipAmount.trim();
@@ -1087,6 +1162,42 @@ export function PayCloudPaymentSheet({
                 <Text style={twStyle("text-xs font-semibold text-white")}>
                   {resumingInFlight ? "Checking…" : "Resume payment"}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const paymentId =
+                    inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id ?? null;
+                  if (!paymentId) return;
+                  Alert.alert(
+                    "Cancel charge?",
+                    "This tries to cancel the open charge on the card machine.",
+                    [
+                      { text: "Keep open", style: "cancel" },
+                      {
+                        text: "Cancel charge",
+                        style: "destructive",
+                        onPress: () => {
+                          void (async () => {
+                            try {
+                              await closePayment(paymentId);
+                              setInFlightPaymentId(null);
+                            } catch {
+                              Alert.alert(
+                                "Could not cancel",
+                                "Check the card machine — the charge may still be open.",
+                              );
+                            }
+                          })();
+                        },
+                      },
+                    ],
+                  );
+                }}
+                style={twStyle("mt-2 self-start rounded-lg border border-indigo-300 px-3 py-2")}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel the payment in progress on the card machine"
+              >
+                <Text style={twStyle("text-xs font-semibold text-indigo-900")}>Cancel charge</Text>
               </TouchableOpacity>
             </View>
           ) : null}

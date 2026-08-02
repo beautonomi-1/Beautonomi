@@ -770,6 +770,11 @@ export default function ProfileScreen() {
         </Text>
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
           <MenuItem
+            icon="shield-checkmark-outline"
+            label={t("customer.mobile.screens.safetyHub.title")}
+            onPress={() => router.push("/(app)/safety" as never)}
+          />
+          <MenuItem
             icon="help-circle-outline"
             label="Help centre"
             onPress={() => router.push("/(app)/help")}

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FinanceBookingPaymentsSection } from "./FinanceBookingPaymentsSection";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DollarSign, TrendingUp, Calendar, Download, ArrowUpRight, FileText, Building2, CheckCircle2, Loader2, Plus } from "lucide-react";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { fetcher, FetchError, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -146,10 +147,13 @@ interface NextPayoutDateData {
 }
 
 export default function ProviderFinance() {
+  const searchParams = useSearchParams();
   const { selectedLocationId, provider: portalProvider } = useProviderPortal();
   const { hasPermission } = usePermissions();
   const { currencyCode, format: fmt } = useReportCurrency();
   const canRequestPayout = hasPermission("edit_settings");
+  const payoutsSectionRef = useRef<HTMLDivElement | null>(null);
+  const deepLinkHandledRef = useRef(false);
 
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -213,15 +217,31 @@ export default function ProviderFinance() {
     }
   }, [showPayoutDialog, showInlineBankForm, bankForm.country]);
 
+  // Honor More hub / mobile deep-links: ?tab=payouts scrolls to payout history
+  // (and focuses the request flow once data is ready).
+  useEffect(() => {
+    const tab = (searchParams.get("tab") || "").toLowerCase();
+    if (tab !== "payouts" || isLoading || deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+    const el = payoutsSectionRef.current;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [searchParams, isLoading]);
+
   const loadFinanceData = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const url = selectedLocationId
-        ? `/api/provider/finance?range=${dateRange}&location_id=${selectedLocationId}&transaction_feed=all`
-        : `/api/provider/finance?range=${dateRange}`;
-      
+      const params = new URLSearchParams({
+        range: dateRange,
+        transaction_feed: "all",
+        tx_limit: "200",
+      });
+      if (selectedLocationId) params.set("location_id", selectedLocationId);
+      const url = `/api/provider/finance?${params.toString()}`;
+
       const response = await fetcher.get<{
         data: { earnings: EarningsData; transactions: Transaction[] } | null;
       }>(url, { staleTimeMs: 0 });
@@ -256,7 +276,10 @@ export default function ProviderFinance() {
 
   const loadPayoutAccounts = async () => {
     try {
-      const response = await fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts");
+      const response = await fetcher.get<{ data: PayoutAccount[] }>(
+        "/api/provider/payout-accounts",
+        { timeoutMs: Math.max(DEFAULT_FETCH_TIMEOUT_MS, 45_000) },
+      );
       const accts = response.data || [];
       setPayoutAccounts(accts);
       if (accts.length > 0 && !selectedBankId) {
@@ -798,11 +821,25 @@ export default function ProviderFinance() {
             )}
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
-              Export
+              Export ledger
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.href = "/provider/finance/vat-reports"}
+            <Button variant="outline" asChild>
+              <Link href="/provider/settings/payout-accounts" className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                Bank accounts
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/provider/payouts/statements" className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Statements
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = "/provider/finance/vat-reports";
+              }}
               className="flex items-center gap-2"
             >
               <FileText className="w-4 h-4" />
@@ -1118,29 +1155,127 @@ export default function ProviderFinance() {
 
         <FinanceBookingPaymentsSection timezone={portalProvider?.timezone} />
 
-        {/* Payouts */}
-        {payouts.length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Payout History</h2>
+        {/* Bank accounts + payout history (always visible for discovery / deep-links) */}
+        <div
+          id="payouts"
+          ref={payoutsSectionRef}
+          className="bg-white border rounded-lg p-6 mb-8 scroll-mt-24"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xl font-semibold">Payouts &amp; bank accounts</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Withdraw available balance to your verified payout accounts. Download statements for accounting.
+              </p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/provider/settings/payout-accounts">Manage bank accounts</Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/provider/payouts/statements">Payout statements</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 mb-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+              Linked bank accounts
+            </p>
+            {payoutAccounts.length === 0 ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <p className="text-sm text-gray-600 flex-1">
+                  No payout bank account yet. Add one before you can request a withdrawal.
+                </p>
+                <Button size="sm" asChild>
+                  <Link href="/provider/settings/payout-accounts">Add bank account</Link>
+                </Button>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {payoutAccounts.map((account) => (
+                  <li
+                    key={account.id}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-white border px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {account.bank_name || "Bank account"}
+                        {account.is_primary ? (
+                          <span className="ml-2 text-[10px] font-semibold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                            Primary
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {account.account_name}
+                        {account.account_number_last4
+                          ? ` · •••• ${account.account_number_last4}`
+                          : ""}
+                        {!account.active ? " · Inactive" : ""}
+                      </p>
+                    </div>
+                    <Building2 className="h-4 w-4 text-gray-300 shrink-0" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Payout history</h3>
+            <span className="text-xs text-gray-500">
+              {payouts.length} {payouts.length === 1 ? "request" : "requests"}
+            </span>
+          </div>
+
+          {payouts.length === 0 ? (
+            <EmptyState
+              title="No payouts yet"
+              description="When you request a withdrawal, each transfer appears here with status and dates."
+              action={
+                canRequestPayout
+                  ? {
+                      label: payoutAccounts.length === 0 ? "Set up bank account" : "Request payout",
+                      onClick: () => {
+                        if (payoutAccounts.length === 0) {
+                          window.location.href = "/provider/settings/payout-accounts";
+                          return;
+                        }
+                        setShowPayoutDialog(true);
+                        setShowInlineBankForm(false);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          ) : (
             <div className="space-y-4">
               {payouts.map((payout) => (
-                <div key={payout.id} className="flex items-center justify-between py-4 border-b last:border-0">
+                <div
+                  key={payout.id}
+                  className="flex items-center justify-between py-4 border-b last:border-0"
+                >
                   <div className="flex-1">
-                    <p className="font-medium">
-                      Payout Request - {fmt(payout.amount)}
-                    </p>
+                    <p className="font-medium">Payout request — {fmt(payout.amount)}</p>
                     <p className="text-sm text-gray-600">
-                      Requested: {new Date(payout.requested_at).toLocaleDateString(undefined, {
+                      Requested:{" "}
+                      {new Date(payout.requested_at).toLocaleDateString(undefined, {
                         year: "numeric",
                         month: "long",
                         day: "numeric",
                       })}
+                      {payout.processed_at
+                        ? ` · Processed: ${new Date(payout.processed_at).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })}`
+                        : ""}
                     </p>
-                    {payout.notes && (
+                    {payout.notes ? (
                       <p className="text-sm text-gray-500 mt-1">{payout.notes}</p>
-                    )}
+                    ) : null}
                     {payout.status === "failed" && payout.rejected_at && payout.failure_reason ? (
                       <p className="text-sm text-red-600 mt-1">Reason: {payout.failure_reason}</p>
                     ) : null}
@@ -1150,12 +1285,12 @@ export default function ProviderFinance() {
                       payout.status === "completed"
                         ? "bg-green-100 text-green-800"
                         : payout.status === "pending" || payout.status === "processing"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : payout.status === "failed" && payout.rejected_at
-                        ? "bg-orange-100 text-orange-800"
-                        : payout.status === "failed"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-gray-100 text-gray-800"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : payout.status === "failed" && payout.rejected_at
+                            ? "bg-orange-100 text-orange-800"
+                            : payout.status === "failed"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
                     }`}
                   >
                     {formatPayoutDisplayStatus(payout)}
@@ -1163,8 +1298,8 @@ export default function ProviderFinance() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Transactions */}
         <div className="provider-card provider-card-padding">

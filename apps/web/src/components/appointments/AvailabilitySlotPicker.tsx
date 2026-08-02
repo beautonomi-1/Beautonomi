@@ -65,6 +65,8 @@ interface AvailabilitySlotPickerProps {
   onDateChange: (date: string) => void;
   onTimeChange: (time: string) => void;
   mode?: "salon" | "mobile";
+  /** Exclude an existing booking from conflict checks (reschedule). */
+  excludeBookingId?: string;
 }
 
 const PERIOD_CONFIG = {
@@ -83,6 +85,7 @@ export function AvailabilitySlotPicker({
   onDateChange,
   onTimeChange,
   mode = "salon",
+  excludeBookingId,
 }: AvailabilitySlotPickerProps) {
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -124,6 +127,7 @@ export function AvailabilitySlotPicker({
       });
       if (providerId) params.set("providerId", providerId);
       if (locationId) params.set("locationId", locationId);
+      if (excludeBookingId) params.set("exclude_booking_id", excludeBookingId);
 
       const res = await fetcher.get<{ data: { date: string; slots: TimeSlot[] } }>(
         `/api/availability?${params.toString()}`,
@@ -136,7 +140,7 @@ export function AvailabilitySlotPicker({
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, staffId, locationId, providerId, duration, mode]);
+  }, [selectedDate, staffId, locationId, providerId, duration, mode, excludeBookingId]);
 
   useEffect(() => {
     fetchSlots();

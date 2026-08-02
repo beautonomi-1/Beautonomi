@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
+import { ExpressLinkQr } from "@/components/provider/booking/commerce/ExpressLinkQr";
 import type { ExpressBookingLink, ServiceItem } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -25,12 +26,23 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
 export default function ExpressBookingLinksPage() {
   const [links, setLinks] = useState<ExpressBookingLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deleteLinkId, setDeleteLinkId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<ExpressBookingLink | null>(null);
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
 
@@ -66,17 +78,22 @@ export default function ExpressBookingLinksPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this booking link?")) return;
+  const handleDelete = (id: string) => {
+    setDeleteLinkId(id);
+  };
 
+  const confirmDelete = async () => {
+    if (!deleteLinkId) return;
     try {
-      await providerApi.deleteExpressBookingLink(id);
-      setLinks((current) => current.filter((link) => link.id !== id));
+      await providerApi.deleteExpressBookingLink(deleteLinkId);
+      setLinks((current) => current.filter((link) => link.id !== deleteLinkId));
       toast.success("Link deleted");
       void loadLinks();
     } catch (error) {
       console.error("Failed to delete link:", error);
       toast.error("Failed to delete link");
+    } finally {
+      setDeleteLinkId(null);
     }
   };
 
@@ -410,6 +427,26 @@ export default function ExpressBookingLinksPage() {
           void loadLinks();
         }}
       />
+
+      <AlertDialog open={deleteLinkId != null} onOpenChange={(open) => !open && setDeleteLinkId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete booking link?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This link will stop working immediately. Clients will no longer be able to book through it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void confirmDelete()}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -838,6 +875,19 @@ function ExpressBookingLinkDialog({
               <li>Track usage to see how many clients use each link</li>
             </ul>
           </div>
+
+          {link?.full_url ? (
+            <ExpressLinkQr url={link.full_url} label="Scan to open express booking link" />
+          ) : formData.short_code && typeof window !== "undefined" ? (
+            <ExpressLinkQr
+              url={`${window.location.origin}/book/l/${formData.short_code
+                .toLowerCase()
+                .replace(/[^a-z0-9-]/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .replace(/-{2,}/g, "-")}`}
+              label="Preview QR for this short code"
+            />
+          ) : null}
 
           <DialogFooter>
             <Button

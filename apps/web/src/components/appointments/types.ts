@@ -18,6 +18,8 @@ export interface AppointmentService {
   serviceName: string;
   duration: number;
   price: number;
+  /** Per-service staff (mobile parity). Falls back to form-level staff when unset. */
+  staffId?: string;
   customization?: string;
   addons?: Array<{
     id: string;

@@ -537,6 +537,41 @@ async function runSafetyAlerts(
       actionUrl: "/user-reports",
     });
   }
+
+  type ContentReport = {
+    id: string;
+    target_type?: string | null;
+    reason?: string | null;
+    created_at?: string | null;
+  };
+  const overdueCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: overdueContentReports } = await supabase
+    .from("content_reports")
+    .select("id, target_type, reason, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("status", "pending")
+    .lt("created_at", overdueCutoff)
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  for (const report of (overdueContentReports ?? []) as ContentReport[]) {
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.SAFETY_CONTENT_REPORT_SLA,
+      dedupeKey: `content-report-sla:${report.id}`,
+      entityType: "content_report",
+      entityId: report.id,
+      title: "Content report overdue (>24h)",
+      detailLines: [
+        `Target: ${report.target_type || "unknown"}`,
+        `Reason: ${report.reason || "unknown"}`,
+        `Age: ${ageLabel(report.created_at, now)}`,
+        "Action: review in Admin → Content reports",
+      ],
+      actionUrl: "/content-reports",
+    });
+  }
 }
 
 async function runVerificationAlerts(

@@ -43,6 +43,7 @@ type FlagRowDb = {
   feature_key: string;
   enabled: boolean;
   tenant_id: string | null;
+  metadata?: Record<string, unknown> | null;
   rollout_percent?: number | null;
   platforms_allowed?: string[] | null;
   roles_allowed?: string[] | null;
@@ -200,6 +201,40 @@ export async function isFeatureEnabledServer(
   } catch (error) {
     console.error(`Error checking feature flag ${featureKey}:`, error);
     return false;
+  }
+}
+
+/**
+ * Returns metadata for a feature flag (tenant override wins over global).
+ */
+export async function getFeatureFlagMetadata(
+  featureKey: string,
+  tenantId?: string | null,
+): Promise<Record<string, unknown>> {
+  try {
+    const supabase = getSupabaseAdmin();
+    let q = supabase
+      .from("feature_flags")
+      .select("feature_key, tenant_id, metadata")
+      .eq("feature_key", featureKey);
+
+    if (tenantId) {
+      q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    } else {
+      q = q.is("tenant_id", null);
+    }
+
+    const { data, error } = await q;
+    if (error || !data?.length) return {};
+
+    const rows = data as Array<{ tenant_id: string | null; metadata?: Record<string, unknown> | null }>;
+    const tenantRow = tenantId ? rows.find((r) => r.tenant_id === tenantId) : null;
+    const globalRow = rows.find((r) => r.tenant_id == null);
+    const meta = tenantRow?.metadata ?? globalRow?.metadata;
+    return meta && typeof meta === "object" ? meta : {};
+  } catch (error) {
+    console.error(`Error reading feature flag metadata ${featureKey}:`, error);
+    return {};
   }
 }
 

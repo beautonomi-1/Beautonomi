@@ -72,8 +72,36 @@ export function getHttpErrorStatus(err: unknown): number | undefined {
 /** Api client sets `code` on synthetic errors (NETWORK_ERROR, TIMEOUT, CANCELLED, etc.). */
 export function getApiErrorCode(err: unknown): string | undefined {
   if (err == null || typeof err !== "object") return undefined;
-  const c = (err as { code?: unknown }).code;
-  return typeof c === "string" && c.trim() ? c.trim() : undefined;
+  const o = err as { code?: unknown; error?: { code?: unknown } };
+  const direct = o.code;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const nested = o.error?.code;
+  return typeof nested === "string" && nested.trim() ? nested.trim() : undefined;
+}
+
+/** User-facing copy when social features are restricted by age or safety settings. */
+export function getSocialRestrictedMessage(
+  error: unknown,
+  t?: (key: string) => string,
+): string | null {
+  const code = getApiErrorCode(error);
+  if (code === "SOCIAL_RESTRICTED") {
+    return t?.("customer.safety.socialRestricted.body")
+      ?? "This action isn't available with your current age or safety settings. You can review options in Content & safety controls.";
+  }
+  if (code === "SAFETY_SETTING_LOCKED") {
+    return t?.("customer.safety.socialRestricted.lockedBody")
+      ?? "This setting is managed for your age group and can't be changed here.";
+  }
+  return null;
+}
+
+export function getApiErrorMessageWithSafety(
+  error: unknown,
+  fallback: string = "Something went wrong. Please try again.",
+  t?: (key: string) => string,
+): string {
+  return getSocialRestrictedMessage(error, t) ?? getApiErrorMessage(error, fallback);
 }
 
 /**

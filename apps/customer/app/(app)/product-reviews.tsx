@@ -26,6 +26,7 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Stack, useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -34,6 +35,9 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
+import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 
 type SortKey = "newest" | "highest" | "lowest" | "helpful";
 
@@ -84,6 +88,8 @@ function formatDateSafe(value: string | null | undefined): string {
 
 export default function ProductReviewsScreen() {
   const { contentPadding } = useResponsive();
+  const { user } = useAuth();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const productId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -96,6 +102,25 @@ export default function ProductReviewsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportReviewId, setReportReviewId] = useState<string | null>(null);
+
+  const openReportReview = useCallback(
+    (reviewId: string) => {
+      if (!user) {
+        Alert.alert(
+          t("customer.contentReport.signInTitle"),
+          t("customer.contentReport.signInBody"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("auth.login"), onPress: () => router.push("/(auth)/login") },
+          ],
+        );
+        return;
+      }
+      setReportReviewId(reviewId);
+    },
+    [t, user],
+  );
 
   const fetchTokenRef = useRef(0);
 
@@ -247,6 +272,14 @@ export default function ProductReviewsScreen() {
                 </Text>
               </View>
             ) : null}
+            <TouchableOpacity
+              onPress={() => openReportReview(item.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel={t("customer.contentReport.reportProductReview")}
+              accessibilityRole="button"
+            >
+              <Ionicons name="flag-outline" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
           </View>
           {item.title ? (
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 2 }}>
@@ -278,7 +311,7 @@ export default function ProductReviewsScreen() {
         </View>
       );
     },
-    []
+    [openReportReview, t],
   );
 
   const ListHeader = useMemo(
@@ -464,6 +497,15 @@ export default function ProductReviewsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
         }
       />
+      {reportReviewId ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportReviewId(null)}
+          targetType="product_review"
+          targetId={reportReviewId}
+          title={t("customer.contentReport.reportProductReview")}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

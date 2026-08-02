@@ -42,7 +42,7 @@ import EmptyState from "@/components/ui/empty-state";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { format } from "date-fns";
-import { AppointmentSidebar } from "@/components/appointments";
+import { BookingSheetHost } from "@/components/provider/booking";
 import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
 
 export function FrontDesk() {
@@ -275,7 +275,7 @@ export function FrontDesk() {
           </div>
         )}
 
-        <AppointmentSidebar
+        <BookingSheetHost
           teamMembers={staff as any}
           services={services as any}
           locations={locationsList as any}

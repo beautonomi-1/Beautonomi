@@ -6,6 +6,7 @@ import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud
 import { isPaycloudRefundRow, completePaycloudRefund } from "@/lib/payments/paycloud-refund";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
+import { parsePaycloudCloudCapturedAmount, mergePaycloudCapturedMetadata } from "@/lib/payments/paycloud-cloud-amount";
 import { resolvePaycloudGatewayPublicKey } from "@/lib/payments/resolve-paycloud-app-credentials";
 import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
@@ -97,9 +98,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (payment && isSuccess && signatureValid) {
-      const captured = Number(
-        payload.paid_amount ?? payload.order_amount ?? payment.amount,
-      );
+      const captured =
+        payload.paid_amount != null || payload.order_amount != null
+          ? parsePaycloudCloudCapturedAmount(
+              payment.currency,
+              (payload.paid_amount ?? payload.order_amount) as string | number,
+            )
+          : Number(payment.amount);
       const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured, {
         tipAmount: Number(payment.tip_amount ?? 0),
         cashbackAmount: Number(payment.cashback_amount ?? 0),
@@ -112,6 +117,10 @@ export async function POST(request: NextRequest) {
           trans_status: transStatus,
           amount_match_status: matchStatus,
           paycloud_order_id: payload.order_id ?? payment.paycloud_order_id,
+          metadata: mergePaycloudCapturedMetadata(
+            payment.metadata as Record<string, unknown> | null | undefined,
+            captured,
+          ),
           updated_at: new Date().toISOString(),
         })
         .eq("id", payment.id);
@@ -135,19 +144,20 @@ export async function POST(request: NextRequest) {
           .update({ processed: true })
           .eq("merchant_order_no", merchantOrderNo);
       } else if (matchStatus === "exact" || matchStatus === "over") {
-        const settleResult = await settlePaycloudPayment(supabase, {
-          paymentId: payment.id,
-          providerId: payment.provider_id,
-          entityType: payment.entity_type,
-          entityId: payment.entity_id,
-          amount: captured,
-          paycloudOrderId: payload.order_id ?? payment.merchant_order_no,
-          merchantOrderNo: payment.merchant_order_no,
-          processedBy: payment.processed_by,
-          currency: payment.currency,
-          tipAmount: Number(payment.tip_amount ?? 0),
-          cashbackAmount: Number(payment.cashback_amount ?? 0),
-        });
+      const settleResult = await settlePaycloudPayment(supabase, {
+        paymentId: payment.id,
+        providerId: payment.provider_id,
+        entityType: payment.entity_type,
+        entityId: payment.entity_id,
+        amount: captured,
+        paycloudOrderId: payload.order_id ?? payment.merchant_order_no,
+        merchantOrderNo: payment.merchant_order_no,
+        processedBy: payment.processed_by,
+        currency: payment.currency,
+        tipAmount: Number(payment.tip_amount ?? 0),
+        cashbackAmount: Number(payment.cashback_amount ?? 0),
+        expectedBaseAmount: Number(payment.expected_amount ?? payment.amount ?? 0),
+      });
 
         await handlePaycloudPostSettle(supabase, payment, settleResult, captured);
 

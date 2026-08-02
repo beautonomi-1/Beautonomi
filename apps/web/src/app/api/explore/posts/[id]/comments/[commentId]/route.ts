@@ -7,6 +7,7 @@ import {
   requireAuthInApi,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 /**
  * DELETE /api/explore/posts/[id]/comments/[commentId]
@@ -19,6 +20,7 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "comment", request);
     const { id: postId, commentId } = await params;
 
     const supabaseAdmin = await getSupabaseAdmin();

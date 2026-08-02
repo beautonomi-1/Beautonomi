@@ -746,6 +746,8 @@
       "savedAddressesDesc": "Ikhaya, umsebenzi namanye amakheli",
       "privacySharingTitle": "Ubumfihlo nokwabelana",
       "privacySharingDesc": "Izintandokazi zedatha, ukubonakala nokususa i-akhawunti",
+      "contentSafetyTitle": "Izilawuli zokuqukethwe nokuphepha",
+      "contentSafetyDesc": "Okuphakelayo komphakathi, imilayezo nezilungiselelo zobudala",
       "bookingsMenuTitle": "Ukubhukha",
       "bookingsMenuDesc": "Okuzayo, okwedlule nokukhanseliwe",
       "recurringBookingsTitle": "Ukubhukha okuphindaphindiwe",
@@ -813,6 +815,53 @@
       "loadFailed": "Ayikwazanga ukulayisha ibhodi",
       "notFound": "Iqoqo alitholakalanga",
       "goBack": "Buyela emuva"
+    },
+    "contentReport": {
+      "modalTitle": "Bika okuqukethwe",
+      "modalLead": "Khetha isizathu bese ungeza imininingwane engakhethekile yethimba lethu.",
+      "submitCta": "Thumela umbiko",
+      "detailsPlaceholder": "Imininingwane eyengeziwe (okukhethayo)",
+      "selectReasonTitle": "Khetha isizathu",
+      "selectReasonBody": "Sicela ukhethe ukuthi kungani ubika le okuqukethwe.",
+      "submitError": "Ayikwazanga ukuthumela umbiko.",
+      "submittedTitle": "Umbiko uthunyelwe",
+      "submittedBody": "Siyabonga. Ithimba lethu lizohlolela phakathi kwamahora angu-24-48.",
+      "reportPost": "Bika okuthunyelwe",
+      "reportComment": "Bika amazwana",
+      "reportMessage": "Bika umlayezo",
+      "reportReview": "Bika isibuyekezo",
+      "reportProductReview": "Bika isibuyekezo somkhiqizo",
+      "signInTitle": "Ngena ukuze ubike",
+      "signInBody": "Dala i-akhawunti noma ungene ukuze ubike okuqukethwe.",
+      "reason": {
+        "inappropriate": "Okuqukethwe okungafanele",
+        "misleading": "Ulwazi oludangisayo",
+        "harassment": "Ukuhlukunyezwa noma ukuhlukumeza",
+        "spam": "Ugaxeki noma ukuqhoshwa",
+        "safety": "Ukukhathazeka ngokuphepha",
+        "other": "Okunye"
+      }
+    },
+    "blockUser": {
+      "confirmTitle": "Vimba lo msebenzisi?",
+      "confirmBody": "{{name}} ngeke akwazi ukukuthumela imilayezo futhi okuqukethwe kwakhe kuzofihlwa.",
+      "confirmAction": "Vimba",
+      "defaultName": "lo msebenzisi",
+      "errorBody": "Ayikwazanga ukuvimba lo msebenzisi. Zama futhi.",
+      "unblockErrorBody": "Ayikwazanga ukuvula. Zama futhi.",
+      "reason": {
+        "harassment": "Ukuhlukunyezwa",
+        "spam": "Ugaxeki",
+        "other": "Okunye"
+      }
+    },
+    "safety": {
+      "socialRestricted": {
+        "title": "Isenzo asitholakali",
+        "body": "Lesi senzo asitholakali ngezilungiselelo zakho zobudala noma zokuphepha. Buka Izilawuli zokuqukethwe nokuphepha noma Isikhungo sokuphepha.",
+        "lockedBody": "Lesi silungiselelo silawulwa eqenjini lakho lobudala futhi asikwazi ukushintshwa lapha.",
+        "openControls": "Vula izilawuli zokuphepha"
+      }
     },
     "explorePost": {
       "bookThisLook": "Bhuka lokhu okubukekayo",
@@ -1818,14 +1867,54 @@
           "a11ySubmitVerification": "Submit for verification"
         },
         "safetyPanic": {
-          "requestHelpTitle": "Request help",
-          "requestHelpBody": "This will notify our safety team. If you are in immediate danger, please call emergency services (e.g. 112 or 911) first.",
-          "requestHelpCta": "Request help",
-          "errorSendFailed": "Unable to send request. Please call emergency services if in danger.",
-          "doneTitle": "Done",
-          "doneBody": "Help has been requested. Our team will reach out shortly.",
-          "buttonLabel": "Safety / Get help",
-          "a11y": "Safety - get help"
+          "requestHelpTitle": "Cela usizo",
+          "requestHelpBody": "Lokhu kuzokwazisa ithimba lethu lezokuphepha. Uma usengozini, shayela izinsiza zezimo eziphuthumayo (isib. 112) kuqala.",
+          "requestHelpCta": "Cela usizo",
+          "errorSendFailed": "Ayikwazanga ukuthumela isicelo. Shayela izinsiza zezimo eziphuthumayo uma usengozini.",
+          "doneTitle": "Usizo luceliwe",
+          "doneBody": "Usizo luceliwe. Ithimba lethu lizoxhumana maduze.",
+          "doneBodyWithEvent": "Isibalo sesithenjwa {{eventId}}… — ithimba lethu lizolandela. Gcina lesi sithenjwa uma uxhumana nokusekela.",
+          "openSafetyHub": "Isikhungo sokuphepha",
+          "buttonLabel": "Ukuphepha / Thola usizo",
+          "a11y": "Ukuphepha - thola usizo"
+        },
+        "safetyHub": {
+          "title": "Ukuphepha nokwethembeka",
+          "helpCardBody": "Isiqondiso sezimo eziphuthumayo, ukubika, nokulawula kwakho",
+          "emergencyNoticeTitle": "Esimweni esiphuthumayo",
+          "emergencyNoticeBody": "I-Beautonomi ayiyona insiza yezimo eziphuthumayo. Shayela u-112 (iNingizimu Afrika) noma inombolo yakho yezimo eziphuthumayo.",
+          "emergencyCallTitle": "Shayela izinsiza zezimo eziphuthumayo?",
+          "emergencyCallBody": "Lokhu kuzovula ifoni yakho ukushayela u-112.",
+          "emergencyCallAction": "Shayela u-112",
+          "getHelpTitle": "Thola usizo manje",
+          "contactTrustSafety": "Xhumana nokwethembeka nokuphepha",
+          "contactTrustSafetyHint": "Ivula itikithi lokusekela lethimba lezokuphepha",
+          "reportUser": "Bika ukuhlukunyezwa noma umsebenzisi",
+          "reportUserHint": "Chaza okwenzekile — siphendula phakathi kwamahora angu-24–48",
+          "yourProfileTitle": "Iphrofayili yakho yokuphepha",
+          "emergencyContact": "Oxhumana naye esimweni esiphuthumayo",
+          "emergencyContactHint": "Engeza oxhumana naye esimweni esiphuthumayo",
+          "signInHint": "Ngena ukuze ulawule iphrofayili yakho yokuphepha",
+          "ageBandLabel": "Ukufaneleka kweminyaka",
+          "ageBand": {
+            "under_13": "Ngaphansi kweminyaka engu-13 — izici zomphakathi zikhinyiselwe",
+            "13_17": "13–17 — izilungiselelo zokuphepha zabantu abaselutfuleni",
+            "18_plus": "18+ — ukufinyelela okugcwele",
+            "unknown": "Qedela usuku lwakho lokuzalwa kuphrofayili"
+          },
+          "controlsTitle": "Izilawuli zakho",
+          "resourcesTitle": "Imithombo",
+          "learningCentre": "Isikhungo sokufunda",
+          "privacy": "Inqubomgomo yobumfihlo"
+        },
+        "blockedUsers": {
+          "title": "Abasebenzisi abavinjiwe",
+          "empty": "Awukaze uvimbe muntu.",
+          "settingsDesc": "Buka futhi uvule abantu obavimbele",
+          "unblockTitle": "Vula umsebenzisi?",
+          "unblockBody": "{{name}} uzokwazi ukukuthumela imilayezo futhi.",
+          "unblockAction": "Vula",
+          "safetyHubLink": "Isikhungo sokuphepha nokwethembeka"
         },
         "profileDetails": {
           "loadFailed": "Failed to load",

@@ -4,9 +4,12 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,6 +112,11 @@ interface GroupBookingDialogProps {
   defaultTeamMemberId?: string;
   existingAppointments?: Appointment[];
   providerId?: string;
+  /**
+   * `sheet` — native BookingBottomSheet chrome (mobile shell create/edit).
+   * `dialog` — legacy centered dialog (desktop / non-shell pages).
+   */
+  presentation?: "dialog" | "sheet";
 }
 
 function nextQuarterHour(): string {
@@ -128,6 +136,7 @@ export function GroupBookingDialog({
   defaultTeamMemberId,
   existingAppointments = [],
   providerId: externalProviderId,
+  presentation = "dialog",
 }: GroupBookingDialogProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProvider } = useProviderPortal();
@@ -1088,34 +1097,34 @@ export function GroupBookingDialog({
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        hideClose
-        suppressFallbackTitle
-        className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border flex flex-col"
-        onPointerDownOutside={(e) => {
-          // Prevent dialog dismissal when clicking the Mapbox suggestion dropdown (portal).
-          const target = e.target as HTMLElement | null;
-          if (target?.closest('[data-address-autocomplete-listbox="true"]') || target?.closest('[data-address-autocomplete-option="true"]')) {
-            e.preventDefault();
-          }
-        }}
-        onInteractOutside={(e) => {
-          const target = e.target as HTMLElement | null;
-          if (target?.closest('[data-address-autocomplete-listbox="true"]')) {
-            e.preventDefault();
-          }
-        }}
-      >
+  const isSheet = presentation === "sheet";
+  const preventAddressDismiss = {
+    onPointerDownOutside: (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest('[data-address-autocomplete-listbox="true"]') ||
+        target?.closest('[data-address-autocomplete-option="true"]')
+      ) {
+        e.preventDefault();
+      }
+    },
+    onInteractOutside: (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-address-autocomplete-listbox="true"]')) {
+        e.preventDefault();
+      }
+    },
+  };
+
+  const chromeInner = (
+    <>
         <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-purple-500 to-violet-600 flex-shrink-0" />
+
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b bg-white flex-shrink-0">
           <div className="min-w-0 flex-1">
-            <DialogHeader className="space-y-0">
-              <DialogTitle className="text-lg font-semibold text-gray-900 truncate">{title}</DialogTitle>
-            </DialogHeader>
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {participants.length > 0
                 ? `${participants.length} participant${participants.length !== 1 ? "s" : ""} · ${totalDuration} min · ${formatMoney(pricing.totalAmount)}`
@@ -2170,7 +2179,39 @@ export function GroupBookingDialog({
                     : "Review & create"}
           </Button>
         </div>
-      </DialogContent>
+
+    </>
+  );
+
+  return (
+    <>
+      {isSheet ? (
+        <Sheet open={open} onOpenChange={onOpenChange}>
+          <SheetContent
+            side="bottom"
+            className="p-0 gap-0 border-0 max-w-2xl mx-auto w-full h-[min(92vh,900px)] overflow-hidden rounded-t-3xl box-border flex flex-col"
+            data-testid="group-booking-create-edit-sheet"
+            {...preventAddressDismiss}
+          >
+            <SheetTitle className="sr-only">{title}</SheetTitle>
+            <div className="flex justify-center pt-2 pb-1 shrink-0">
+              <div className="h-1 w-10 rounded-full bg-gray-300" aria-hidden />
+            </div>
+            {chromeInner}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent
+            hideClose
+            suppressFallbackTitle
+            className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border flex flex-col"
+            {...preventAddressDismiss}
+          >
+            {chromeInner}
+          </DialogContent>
+        </Dialog>
+      )}
 
       <LocationMapPickerDialog
         open={mapPickerOpen}
@@ -2352,6 +2393,6 @@ export function GroupBookingDialog({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
         </AlertDialogContent>
       </AlertDialog>
-    </Dialog>
+    </>
   );
 }

@@ -68,6 +68,7 @@ export function formatPaycloudCollectLabel(params: {
       return money ? `Card machine · group ${money}` : "Card machine";
     case "sale":
     case "product_order":
+      return money ? `Card machine · ${money}` : "Card machine";
     default:
       return "Card machine";
   }

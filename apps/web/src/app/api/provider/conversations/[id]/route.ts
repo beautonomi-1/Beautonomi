@@ -5,6 +5,7 @@ import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import { enrichMessagesWithReplyTo, mapMessageWithReplyFields } from "@/lib/messaging/message-replies";
+import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 
 // All conversation data reads use the admin client so provider_staff are not
 // blocked by RLS policies that scope reads to the authenticated JWT's user_id.
@@ -47,6 +48,8 @@ export async function GET(
       return notFoundResponse("Conversation not found");
     }
 
+    await assertNotBlocked(user.id, conversation.customer_id as string, supabaseAdmin);
+
     const { data: customer } = await supabaseAdmin
       .from("users")
       .select("id, full_name, email, phone, avatar_url, identity_verified")
@@ -72,6 +75,7 @@ export async function GET(
       .from("messages")
       .select("id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at, reply_to_message_id")
       .eq("conversation_id", conversationId)
+      .eq("is_hidden", false)
       .order("created_at", { ascending: true });
 
     if (msgError) throw msgError;
@@ -121,6 +125,14 @@ export async function GET(
       messages: transformedMessages,
     });
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return handleApiError(
+        error instanceof Error ? error : new Error("You cannot interact with this user."),
+        "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     return handleApiError(error, "Failed to fetch conversation");
   }
 }

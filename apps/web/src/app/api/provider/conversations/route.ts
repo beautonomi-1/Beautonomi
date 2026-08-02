@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { createConversation } from "./_helpers/create-conversation";
+import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 
 /**
  * POST /api/provider/conversations
@@ -107,6 +108,14 @@ export async function GET(request: NextRequest) {
           return conv.last_message_preview && conv.last_message_preview.trim() !== "";
         });
       }
+    }
+
+    const blockedIds = await getBlockedUserIds(user.id, getSupabaseAdmin());
+    if (blockedIds.size > 0) {
+      conversationsWithMessages = conversationsWithMessages.filter(
+        (conv: { customer_id?: string }) =>
+          !conv.customer_id || !blockedIds.has(conv.customer_id),
+      );
     }
 
     // Fetch customer data separately using admin client to bypass RLS

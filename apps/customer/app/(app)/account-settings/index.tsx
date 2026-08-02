@@ -47,6 +47,7 @@ function buildAccountSettingsGroups(t: TFunction): SettingsGroup[] {
         { id: "addresses", title: t("customer.accountSettings.savedAddressesTitle"), desc: t("customer.accountSettings.savedAddressesDesc"), route: "addresses", icon: "location-outline" },
         { id: "privacy-and-sharing", title: t("customer.accountSettings.privacySharingTitle"), desc: t("customer.accountSettings.privacySharingDesc"), route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
         { id: "content-and-safety-controls", title: t("customer.accountSettings.contentSafetyTitle"), desc: t("customer.accountSettings.contentSafetyDesc"), route: "content-and-safety-controls", icon: "eye-off-outline" },
+        { id: "blocked-users", title: t("customer.mobile.screens.blockedUsers.title"), desc: t("customer.mobile.screens.blockedUsers.settingsDesc"), route: "blocked-users", icon: "ban-outline" },
       ],
     },
     {

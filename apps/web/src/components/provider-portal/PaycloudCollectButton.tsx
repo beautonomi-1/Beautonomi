@@ -25,6 +25,8 @@ export interface PaycloudCollectButtonProps {
   size?: ButtonSize;
   showIcon?: boolean;
   inFlight?: boolean;
+  depositAmount?: number | null;
+  fullOutstanding?: number | null;
 }
 
 export function PaycloudCollectButton({
@@ -37,6 +39,8 @@ export function PaycloudCollectButton({
   size = "sm",
   showIcon = true,
   inFlight,
+  depositAmount,
+  fullOutstanding,
 }: PaycloudCollectButtonProps) {
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready, loading, blockers, terminals } = usePaycloudCollectReady();
@@ -58,6 +62,8 @@ export function PaycloudCollectButton({
     amount,
     currency,
     inFlight: hasInFlight,
+    depositAmount,
+    fullOutstanding,
   });
 
   if (!ready && !hasInFlight) {

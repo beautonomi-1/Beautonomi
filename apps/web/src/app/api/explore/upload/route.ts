@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { hasPermission } from "@/lib/auth/permissions";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 /**
  * §Provider-audit 2026-05: previously only "image/jpeg|jpg|png|webp" was
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    await requireSocialAccess(user.id, "ugc_create", request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
