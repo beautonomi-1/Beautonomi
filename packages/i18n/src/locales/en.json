@@ -878,6 +878,8 @@
       "reportPost": "Report post",
       "reportComment": "Report comment",
       "reportMessage": "Report message",
+      "reportReview": "Report review",
+      "reportProductReview": "Report product review",
       "signInTitle": "Sign in to report",
       "signInBody": "Create an account or sign in to report content to our safety team.",
       "reason": {
@@ -887,6 +889,27 @@
         "spam": "Spam or scam",
         "safety": "Safety concern",
         "other": "Other"
+      }
+    },
+    "blockUser": {
+      "confirmTitle": "Block this user?",
+      "confirmBody": "{{name}} won't be able to message you and their content will be hidden from your feed.",
+      "confirmAction": "Block",
+      "defaultName": "this user",
+      "errorBody": "Could not block this user. Please try again.",
+      "unblockErrorBody": "Could not unblock this user. Please try again.",
+      "reason": {
+        "harassment": "Harassment",
+        "spam": "Spam",
+        "other": "Other"
+      }
+    },
+    "safety": {
+      "socialRestricted": {
+        "title": "Action not available",
+        "body": "This action isn't available with your current age or safety settings. Review options in Content & safety controls or the Safety hub.",
+        "lockedBody": "This setting is managed for your age group and can't be changed here.",
+        "openControls": "Open safety controls"
       }
     },
     "explorePost": {
@@ -1963,10 +1986,50 @@
           "requestHelpBody": "This will notify our safety team. If you are in immediate danger, please call emergency services (e.g. 112 or 911) first.",
           "requestHelpCta": "Request help",
           "errorSendFailed": "Unable to send request. Please call emergency services if in danger.",
-          "doneTitle": "Done",
+          "doneTitle": "Help requested",
           "doneBody": "Help has been requested. Our team will reach out shortly.",
+          "doneBodyWithEvent": "Reference {{eventId}}… — our team will follow up. Keep this reference if you contact support.",
+          "openSafetyHub": "Safety hub",
           "buttonLabel": "Safety / Get help",
           "a11y": "Safety - get help"
+        },
+        "safetyHub": {
+          "title": "Safety & trust",
+          "helpCardBody": "Emergency guidance, reporting, and your safety controls",
+          "emergencyNoticeTitle": "In an emergency",
+          "emergencyNoticeBody": "Beautonomi is not an emergency service. In immediate danger, call 112 (South Africa) or your local emergency number first.",
+          "emergencyCallTitle": "Call emergency services?",
+          "emergencyCallBody": "This will open your phone dialler to call 112.",
+          "emergencyCallAction": "Call 112",
+          "getHelpTitle": "Get help now",
+          "contactTrustSafety": "Contact trust & safety",
+          "contactTrustSafetyHint": "Opens a support ticket for our safety team",
+          "reportUser": "Report harassment or a user",
+          "reportUserHint": "Describe what happened — we respond within 24–48 hours",
+          "yourProfileTitle": "Your safety profile",
+          "emergencyContact": "Emergency contact",
+          "emergencyContactHint": "Add or update your emergency contact in personal info",
+          "signInHint": "Sign in to manage your safety profile",
+          "ageBandLabel": "Age suitability",
+          "ageBand": {
+            "under_13": "Under 13 — social features restricted",
+            "13_17": "13–17 — teen safety defaults apply",
+            "18_plus": "18+ — full access",
+            "unknown": "Complete your date of birth in profile"
+          },
+          "controlsTitle": "Your controls",
+          "resourcesTitle": "Resources",
+          "learningCentre": "Learning Centre",
+          "privacy": "Privacy policy"
+        },
+        "blockedUsers": {
+          "title": "Blocked users",
+          "empty": "You haven't blocked anyone yet.",
+          "settingsDesc": "See and unblock people you've blocked",
+          "unblockTitle": "Unblock user?",
+          "unblockBody": "{{name}} will be able to message you again and their content may appear in your feed.",
+          "unblockAction": "Unblock",
+          "safetyHubLink": "Safety & trust hub"
         },
         "profileDetails": {
           "loadFailed": "Failed to load",
@@ -2366,6 +2429,7 @@
           "signInTitle": "Sign in required",
           "signInToMessageBody": "Please sign in to message this provider.",
           "signInToReportBody": "Please sign in to report a provider.",
+          "safetyActionsTitle": "Safety options",
           "signInToMembershipBody": "Please sign in to join a membership.",
           "reportModalTitle": "Report provider",
           "reportModalLead": "Select a reason and provide details so our team can review.",

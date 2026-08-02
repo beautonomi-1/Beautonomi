@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Provider, Salon } from "@/lib/provider-portal/types";
 import { fetcher, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
+import {
+  PROVIDER_SETUP_STATUS_CHANGED,
+} from "@/lib/provider-portal/setup-status-utils";
 
 interface ProviderPortalState {
   provider: Provider | null;
@@ -14,6 +17,8 @@ interface ProviderPortalState {
   sidebarCollapsed: boolean;
   dateView: "day" | "week" | "3-days";
   setupCompletion: number;
+  /** False until `/api/provider/setup-status` succeeds (avoids showing a stuck 0%). */
+  setupStatusKnown: boolean;
 }
 
 interface ProviderPortalContextType extends ProviderPortalState {
@@ -22,6 +27,7 @@ interface ProviderPortalContextType extends ProviderPortalState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   setDateView: (view: "day" | "week" | "3-days") => void;
   refreshProvider: () => Promise<void>;
+  refreshSetupCompletion: () => Promise<void>;
   isLoading: boolean;
   loadError: string | null;
 }
@@ -32,7 +38,8 @@ const ProviderPortalContext = createContext<ProviderPortalContextType | undefine
 let cachedProviderData: {
   provider: Provider | null;
   salons: Salon[];
-  setupCompletion: number;
+  setupCompletion?: number;
+  setupStatusKnown?: boolean;
   timestamp: number;
 } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache - longer for stability
@@ -59,13 +66,14 @@ function providerCacheAge(timestamp: number): number {
 function buildStateFromCache(
   cached: NonNullable<typeof cachedProviderData>,
   savedLocationId: string | null,
-): Pick<ProviderPortalState, "provider" | "salons" | "selectedLocationId" | "setupCompletion"> {
+): Pick<ProviderPortalState, "provider" | "salons" | "selectedLocationId" | "setupCompletion" | "setupStatusKnown"> {
   return {
     provider: cached.provider,
     salons: cached.salons,
     selectedLocationId:
       savedLocationId || cached.provider?.selected_location_id || cached.salons[0]?.id || null,
-    setupCompletion: cached.setupCompletion,
+    setupCompletion: cached.setupCompletion ?? 0,
+    setupStatusKnown: cached.setupStatusKnown === true,
   };
 }
 
@@ -93,6 +101,7 @@ if (typeof window !== 'undefined') {
         provider?: { id?: string } | null;
         salons?: Salon[];
         setupCompletion?: number;
+        setupStatusKnown?: boolean;
         timestamp?: number;
       };
       if (parsed.timestamp && Date.now() - parsed.timestamp < CACHE_DURATION) {
@@ -138,6 +147,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
       sidebarCollapsed: false,
       dateView: "day",
       setupCompletion: 0,
+      setupStatusKnown: false,
     };
   });
   const [isLoading, setIsLoading] = useState(
@@ -146,6 +156,52 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const isLoadingRef = useRef(false);
   const loadProviderRef = useRef<(skipCache?: boolean, silent?: boolean) => Promise<void>>(async () => {});
+  const fetchSetupCompletionRef = useRef<() => Promise<void>>(async () => {});
+
+  const fetchSetupCompletion = async () => {
+    try {
+      const setupStatus = await fetcher.get<{ data: { completionPercentage: number } }>(
+        "/api/provider/setup-status",
+        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS },
+      );
+      if (typeof setupStatus?.data?.completionPercentage !== "number") return;
+
+      const setupCompletion = setupStatus.data.completionPercentage;
+      setState((prev) => ({
+        ...prev,
+        setupCompletion,
+        setupStatusKnown: true,
+      }));
+
+      if (cachedProviderData) {
+        cachedProviderData = {
+          ...cachedProviderData,
+          setupCompletion,
+          setupStatusKnown: true,
+          timestamp: cachedProviderData.timestamp,
+        };
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cachedProviderData));
+          } catch {
+            // ignore
+          }
+        }
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("shouldRefreshSetupStatus");
+      }
+    } catch {
+      // Keep cached value when available; otherwise leave badge hidden (setupStatusKnown false).
+      if (cachedProviderData?.setupStatusKnown === true) {
+        setState((prev) => ({
+          ...prev,
+          setupCompletion: cachedProviderData!.setupCompletion ?? prev.setupCompletion,
+          setupStatusKnown: true,
+        }));
+      }
+    }
+  };
 
   const loadProvider = async (skipCache = false, silent = false) => {
     // Prevent concurrent loads - use request deduplication
@@ -212,6 +268,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
             salons,
             selectedLocationId: null,
             setupCompletion: 0,
+            setupStatusKnown: false,
           }));
           setLoadError(null);
           router.replace("/provider/get-started");
@@ -236,35 +293,15 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           ...newState,
         }));
 
-        // Resolve setup completion from live setup-status first, then fallback to profile/cached values.
-        let setupCompletion =
-          typeof provider?.setup_completion === "number" ? provider.setup_completion : 0;
+        // Setup completion is fetched independently so a slow profile bootstrap
+        // does not leave the topbar stuck at 0%.
+        void fetchSetupCompletionRef.current();
 
-        try {
-          const setupStatus = await fetcher.get<{ data: { completionPercentage: number } }>(
-            "/api/provider/setup-status",
-            { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
-          );
-          if (typeof setupStatus?.data?.completionPercentage === "number") {
-            setupCompletion = setupStatus.data.completionPercentage;
-          } else if (cachedProviderData?.setupCompletion !== undefined) {
-            setupCompletion = cachedProviderData.setupCompletion;
-          }
-        } catch {
-          if (cachedProviderData?.setupCompletion !== undefined) {
-            setupCompletion = cachedProviderData.setupCompletion;
-          }
-        }
-        setState((prev) => ({
-          ...prev,
-          setupCompletion,
-        }));
-        
-        // Persist initial cache immediately so live refresh can always overwrite it.
         const cacheData = {
           provider,
           salons,
-          setupCompletion,
+          setupCompletion: cachedProviderData?.setupCompletion,
+          setupStatusKnown: cachedProviderData?.setupStatusKnown,
           timestamp: Date.now(),
         };
         cachedProviderData = cacheData;
@@ -297,7 +334,38 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadProviderRef.current = loadProvider;
+    fetchSetupCompletionRef.current = fetchSetupCompletion;
   });
+
+  useEffect(() => {
+    void fetchSetupCompletionRef.current();
+
+    const refreshIfNeeded = () => {
+      if (typeof window === "undefined") return;
+      if (sessionStorage.getItem("shouldRefreshSetupStatus") === "true") {
+        void fetchSetupCompletionRef.current();
+      }
+    };
+
+    const onSetupChanged = () => {
+      void fetchSetupCompletionRef.current();
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfNeeded();
+      }
+    };
+
+    window.addEventListener(PROVIDER_SETUP_STATUS_CHANGED, onSetupChanged);
+    window.addEventListener("focus", refreshIfNeeded);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(PROVIDER_SETUP_STATUS_CHANGED, onSetupChanged);
+      window.removeEventListener("focus", refreshIfNeeded);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   // After dev-server restart / ECONNRESET, profile load can fail once; retry when tab is visible or network is back.
   useEffect(() => {
@@ -399,6 +467,10 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     await loadProvider(true, false);
   };
 
+  const refreshSetupCompletion = async () => {
+    await fetchSetupCompletion();
+  };
+
   return (
     <ProviderPortalContext.Provider
       value={{
@@ -408,6 +480,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
         setSidebarCollapsed,
         setDateView,
         refreshProvider,
+        refreshSetupCompletion,
         isLoading,
         loadError,
       }}

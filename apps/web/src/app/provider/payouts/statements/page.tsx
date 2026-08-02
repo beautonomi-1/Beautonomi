@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Download } from "lucide-react";
 import Link from "next/link";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 
 interface StatementData {
@@ -77,7 +77,8 @@ export default function ProviderPayoutStatements() {
       setLoading(true);
       setError(null);
       const res = await fetcher.get<{ data: StatementData }>(
-        `/api/provider/payouts/statements?from=${from}&to=${to}`
+        `/api/provider/payouts/statements?from=${from}&to=${to}`,
+        { timeoutMs: Math.max(DEFAULT_FETCH_TIMEOUT_MS, 90_000) },
       );
       setData(res.data ?? null);
     } catch (err) {
@@ -99,9 +100,9 @@ export default function ProviderPayoutStatements() {
           title="Payout statements"
           subtitle="Download earnings and payout summary for accounting or tax"
           breadcrumbs={[
-            { label: "Provider", href: "/provider" },
-            { label: "Payout center", href: "/provider/payouts" },
-            { label: "Statements", href: "/provider/payouts/statements" },
+            { label: "More", href: "/provider/more" },
+            { label: "Finance", href: "/provider/finance?tab=payouts" },
+            { label: "Statements" },
           ]}
         />
 
@@ -203,8 +204,8 @@ export default function ProviderPayoutStatements() {
         )}
 
         <p className="text-sm text-gray-500">
-          <Link href="/provider/payouts" className="text-primary-600 hover:underline">
-            ← Back to Payout center
+          <Link href="/provider/finance?tab=payouts" className="text-primary-600 hover:underline">
+            ← Back to Finance payouts
           </Link>
         </p>
       </div>

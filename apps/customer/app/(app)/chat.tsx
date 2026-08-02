@@ -21,9 +21,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { CustomOfferCard } from "@beautonomi/ui/native";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getApiErrorMessageWithSafety } from "@/lib/api-error";
 import { useTranslation, i18n } from "@beautonomi/i18n";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 
 interface MessageReplyTo {
@@ -191,6 +192,7 @@ type ConversationSummary = {
    * `apps/customer/app/(app)/(tabs)/chats.tsx`), so reuse that shape.
    */
   provider?: { business_name?: string | null; thumbnail_url?: string | null } | null;
+  provider_owner_user_id?: string | null;
   is_pinned?: boolean;
 };
 
@@ -291,6 +293,9 @@ export default function ChatScreen() {
   const { t } = useTranslation();
   const directMessaging = useSocialCapability("direct_message");
   const canSendMessages = directMessaging.allowed;
+  const { confirmBlockUser, isBlocked } = useUserBlocks();
+  const blockTargetUserId = conversationMeta?.provider_owner_user_id ?? null;
+  const providerBlocked = isBlocked(blockTargetUserId);
 
   const openMessageActions = useCallback(
     (msg: Message) => {
@@ -892,7 +897,7 @@ export default function ChatScreen() {
         if (replyTarget) setReplyingTo(replyTarget);
         Alert.alert(
           t("customer.chatScreen.sendFailedTitle"),
-          getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
+          getApiErrorMessageWithSafety(res.error, t("customer.chatScreen.sendFailedBody"), t),
         );
       }
     } catch {
@@ -1201,7 +1206,7 @@ export default function ChatScreen() {
     if (res.error) {
       Alert.alert(
         t("customer.chatScreen.sendFailedTitle"),
-        getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
+        getApiErrorMessageWithSafety(res.error, t("customer.chatScreen.sendFailedBody"), t),
       );
       return;
     }
@@ -1209,14 +1214,40 @@ export default function ChatScreen() {
   }, [id, isChatPinned, t]);
 
   const openChatHeaderMenu = useCallback(() => {
-    Alert.alert(t("customer.chatScreen.conversationActionsTitle"), undefined, [
+    const actions: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
       {
         text: isChatPinned ? t("customer.chatScreen.unpinConversation") : t("customer.chatScreen.pinConversation"),
         onPress: () => void toggleChatPin(),
       },
-      { text: t("common.cancel"), style: "cancel" },
-    ]);
-  }, [isChatPinned, toggleChatPin, t]);
+    ];
+    if (blockTargetUserId && !providerBlocked) {
+      actions.push({
+        text: t("customer.blockUser.confirmAction"),
+        style: "destructive",
+        onPress: () =>
+          confirmBlockUser({
+            userId: blockTargetUserId,
+            displayName: chatTitle,
+            onBlocked: () => router.back(),
+          }),
+      });
+    }
+    actions.push({
+      text: t("customer.mobile.screens.safetyHub.title"),
+      onPress: () => router.push("/(app)/safety"),
+    });
+    actions.push({ text: t("common.cancel"), style: "cancel" });
+    Alert.alert(t("customer.chatScreen.conversationActionsTitle"), undefined, actions);
+  }, [
+    isChatPinned,
+    toggleChatPin,
+    t,
+    blockTargetUserId,
+    providerBlocked,
+    confirmBlockUser,
+    chatTitle,
+    router,
+  ]);
 
   const chatHeaderRight = useCallback(
     () => (

@@ -29,3 +29,21 @@ export function mapExplorePostsWithSafety<T extends ExplorePost>(
 ): T[] {
   return filterExplorePostsForViewer(posts, options);
 }
+
+export function filterBlockedExploreAuthors<T extends { created_by_user_id?: string | null }>(
+  posts: T[],
+  blockedUserIds: Set<string>,
+): T[] {
+  if (blockedUserIds.size === 0) return posts;
+  return posts.filter(
+    (p) => !p.created_by_user_id || !blockedUserIds.has(p.created_by_user_id),
+  );
+}
+
+export function filterBlockedCommentAuthors<T extends { user_id?: string | null }>(
+  comments: T[],
+  blockedUserIds: Set<string>,
+): T[] {
+  if (blockedUserIds.size === 0) return comments;
+  return comments.filter((c) => !c.user_id || !blockedUserIds.has(c.user_id));
+}

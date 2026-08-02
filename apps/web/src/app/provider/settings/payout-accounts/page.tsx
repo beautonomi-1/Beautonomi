@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -14,10 +15,12 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  ArrowUpRight,
+  FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import EmptyState from "@/components/ui/empty-state";
-import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { fetcher, FetchError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 import { toast } from "sonner";
@@ -106,7 +109,11 @@ export default function PayoutAccountsPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: BankAccount[] }>("/api/provider/payout-accounts");
+      const response = await fetcher.get<{ data: BankAccount[] }>(
+        "/api/provider/payout-accounts",
+        // Dev cold-compile can exceed the default timeout; keep retries usable.
+        { timeoutMs: Math.max(DEFAULT_FETCH_TIMEOUT_MS, 45_000) },
+      );
       setAccounts(response.data || []);
     } catch (err) {
       const errorMessage =
@@ -340,9 +347,8 @@ export default function PayoutAccountsPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
+    { label: "More", href: "/provider/more" },
+    { label: "Payment setup", href: "/provider/payment-setup" },
     { label: "Payout Accounts" },
   ];
 
@@ -364,6 +370,25 @@ export default function PayoutAccountsPage() {
       subtitle="Add and manage bank accounts where you'll receive payouts"
       breadcrumbs={breadcrumbs}
     >
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/provider/finance?tab=payouts" className="inline-flex items-center gap-1.5">
+            <ArrowUpRight className="h-3.5 w-3.5" />
+            Payout history &amp; request
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/provider/payouts/statements" className="inline-flex items-center gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Payout statements
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/provider/reports/payments/payouts" className="inline-flex items-center gap-1.5">
+            Ledger earnings report
+          </Link>
+        </Button>
+      </div>
       <SectionCard title="Bank Accounts" className="w-full">
         {error && !accounts.length ? (
           <EmptyState

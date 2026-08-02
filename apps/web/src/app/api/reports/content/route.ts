@@ -7,6 +7,10 @@ import {
   requireAuthInApi,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { slackNotifyContentReportCreated } from "@/lib/integrations/slack/ops-triggers";
+import { maybeAutoHideReportedContent } from "@/lib/safety/moderation-actions";
+import { isFeatureEnabledServer, getFeatureFlagMetadata } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 const TARGET_TYPES = [
   "explore_post",
@@ -95,6 +99,41 @@ export async function POST(request: NextRequest) {
     if (error) return handleApiError(error, "Failed to create content report");
     if (!row) {
       return errorResponse("Failed to create content report", "INTERNAL_ERROR", 500);
+    }
+
+    if (tenantId) {
+      slackNotifyContentReportCreated({
+        tenantId,
+        reportId: row.id,
+        targetType: String(row.target_type),
+        reason: String(row.reason),
+      });
+    }
+
+    const autoHideEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.SAFETY_AUTO_HIDE_REPORT_THRESHOLD,
+      tenantId,
+    );
+    if (autoHideEnabled) {
+      const meta = await getFeatureFlagMetadata(
+        FEATURE_FLAG_KEYS.SAFETY_AUTO_HIDE_REPORT_THRESHOLD,
+        tenantId,
+      );
+      const threshold =
+        typeof meta.threshold === "number" && Number.isFinite(meta.threshold)
+          ? Math.max(1, Math.floor(meta.threshold))
+          : 3;
+      const windowHours =
+        typeof meta.window_hours === "number" && Number.isFinite(meta.window_hours)
+          ? Math.max(1, Math.floor(meta.window_hours))
+          : 24;
+      await maybeAutoHideReportedContent(supabase, {
+        targetType: targetType,
+        targetId,
+        threshold,
+        windowHours,
+        systemUserId: null,
+      }).catch((e) => console.warn("[content-report] auto-hide failed:", e));
     }
 
     return successResponse(row, 201);

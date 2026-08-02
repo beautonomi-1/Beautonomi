@@ -1,11 +1,16 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { humanizePaycloudPaymentError } from "@beautonomi/utils";
 import { paycloudApi, type PaycloudPayment, type PaycloudTerminal } from "@/lib/provider-portal/paycloud-api";
 import { FetchError } from "@/lib/http/fetcher";
 import { selectTerminalForLocation } from "@/lib/payments/select-terminal-for-location";
+import {
+  pollPaycloudPaymentUntilSettled,
+  PAYCLOUD_POLL_INTERVAL_MS,
+  isPaycloudPaymentTerminal,
+} from "@/lib/payments/paycloud-poll-payment";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +27,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { CreditCard, Loader2, CheckCircle2, XCircle, QrCode, AlertTriangle } from "lucide-react";
 import { isPaycloudCaptureUnderReview } from "@/lib/payments/paycloud-capture-review";
+import {
+  canUsePaycloudSameTerminalOnWeb,
+  getPaycloudSameTerminalBridge,
+} from "@/lib/payments/paycloud-same-terminal-bridge";
 import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -38,21 +47,40 @@ export interface PayCloudPaymentDialogProps {
   saleId?: string;
   groupBookingId?: string;
   bookingLocationId?: string | null;
-  /**
-   * Set when `amount` already includes a tip captured upstream (e.g. the checkout
-   * tip selector). Hides this dialog's tip input so staff cannot tip twice.
-   */
+  /** Resume an in-flight payment instead of creating a new charge. */
+  resumePaymentId?: string | null;
+  /** When true, amount already includes checkout tip — hide terminal tip field. */
   tipIncludedInAmount?: boolean;
+  /** When false (default), charge amount is fixed to `amount` — entity collect flows. */
+  amountEditable?: boolean;
   onSuccess?: (payment: PaycloudPayment) => void;
 }
-
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 2 * 60 * 1000;
 
 function paycloudToastMessage(error: unknown, fallback: string): string {
   const code = error instanceof FetchError ? error.code : undefined;
   const raw = error instanceof Error ? error.message : fallback;
   return humanizePaycloudPaymentError(code, raw).message;
+}
+
+function paymentRowId(payment: PaycloudPayment): string {
+  return payment.payment_id ?? payment.id;
+}
+
+function extractPaycloudInFlightPaymentId(
+  error: unknown,
+  terminals: PaycloudTerminal[],
+  selectedTerminalId: string,
+): string | null {
+  if (error instanceof FetchError) {
+    const details = error.details as { payment_id?: string } | null | undefined;
+    if (typeof details?.payment_id === "string" && details.payment_id.trim()) {
+      return details.payment_id.trim();
+    }
+    if (error.code === "TERMINAL_IN_FLIGHT" || error.code === "ENTITY_IN_FLIGHT") {
+      return terminals.find((t) => t.id === selectedTerminalId)?.in_flight_payment_id ?? null;
+    }
+  }
+  return null;
 }
 
 export function PayCloudPaymentDialog({
@@ -65,7 +93,9 @@ export function PayCloudPaymentDialog({
   saleId,
   groupBookingId,
   bookingLocationId,
+  resumePaymentId,
   tipIncludedInAmount = false,
+  amountEditable = false,
   onSuccess,
 }: PayCloudPaymentDialogProps) {
   const { bundle } = useConfigBundle();
@@ -73,6 +103,7 @@ export function PayCloudPaymentDialog({
   const paycloudEnabled = bundle?.flags?.payment_paycloud?.enabled === true;
   const qrFlagEnabled = bundle?.flags?.payment_paycloud_qr?.enabled === true;
   const cashbackFlagEnabled = bundle?.flags?.payment_paycloud_cashback?.enabled === true;
+  const sameTerminalFlagEnabled = bundle?.flags?.payment_paycloud_same_terminal?.enabled === true;
   const { ready: paycloudReady, loading: readinessLoading, blockers } = usePaycloudCollectReady();
 
   const [terminals, setTerminals] = useState<PaycloudTerminal[]>([]);
@@ -85,24 +116,68 @@ export function PayCloudPaymentDialog({
   const [cashbackEnabled, setCashbackEnabled] = useState(false);
   const [locationWarning, setLocationWarning] = useState<string | undefined>();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
   const [paymentResult, setPaymentResult] = useState<PaycloudPayment | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
+  const [sameTerminalAvailable, setSameTerminalAvailable] = useState(false);
+  const [payOnThisDevice, setPayOnThisDevice] = useState(false);
+  const pollAbortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (open && paycloudEnabled) {
-      setSelectedTerminalId("");
-      setCustomAmount(amount.toString());
-      setTipAmount("");
-      setCashbackAmount("");
-      setPayMethod("card");
-      setPaymentResult(null);
+  const applySettledPayment = useCallback(
+    (payment: PaycloudPayment) => {
+      setPaymentResult(payment);
       setActivePaymentId(null);
-      void loadTerminals();
-    }
-  }, [open, amount, paycloudEnabled]);
+      setIsPolling(false);
 
-  const loadTerminals = async () => {
+      if (isPaycloudCaptureUnderReview(payment)) {
+        toast.warning("Card machine took a different amount — flagged for review.");
+        return;
+      }
+      if (payment.status === "successful") {
+        toast.success("Payment received on card machine");
+        onSuccess?.(payment);
+      } else if (payment.status === "pending" || payment.status === "processing") {
+        toast.error("Payment timed out — check the card machine or tap Resume.");
+      } else {
+        toast.error(
+          humanizePaycloudPaymentError(undefined, payment.error_message || "Payment was not completed").message,
+        );
+      }
+    },
+    [onSuccess],
+  );
+
+  const startPolling = useCallback(
+    (paymentId: string) => {
+      pollAbortRef.current?.abort();
+      const controller = new AbortController();
+      pollAbortRef.current = controller;
+      setActivePaymentId(paymentId);
+      setIsPolling(true);
+
+      void (async () => {
+        try {
+          const settled = await pollPaycloudPaymentUntilSettled(paymentId, {
+            signal: controller.signal,
+          });
+          if (!controller.signal.aborted) {
+            applySettledPayment(settled);
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          const code = err instanceof Error && err.message === "POLL_TIMEOUT" ? "POLL_TIMEOUT" : undefined;
+          if (code === "POLL_TIMEOUT") {
+            toast.error("Still waiting on the card machine — tap Resume when the customer has paid.");
+          }
+          setIsPolling(false);
+        }
+      })();
+    },
+    [applySettledPayment],
+  );
+
+  const loadTerminals = useCallback(async () => {
     try {
       const data = await paycloudApi.listTerminals();
       const active = data.terminals.filter((t) => t.is_active);
@@ -112,20 +187,174 @@ export function PayCloudPaymentDialog({
 
       const { terminal, warning } = selectTerminalForLocation(active, bookingLocationId);
       setLocationWarning(warning);
-      if (terminal) setSelectedTerminalId(terminal.id);
+      if (terminal) {
+        setSelectedTerminalId(terminal.id);
+        if (terminal.in_flight_payment_id && !resumePaymentId) {
+          setActivePaymentId(terminal.in_flight_payment_id);
+        }
+      }
     } catch (error) {
       console.error("Failed to load card machines:", error);
       toast.error("Failed to load card machines");
     }
+  }, [bookingLocationId, cashbackFlagEnabled, qrFlagEnabled, resumePaymentId]);
+
+  useEffect(() => {
+    if (!open || !paycloudEnabled) return;
+    setSelectedTerminalId("");
+    setCustomAmount(amount.toString());
+    setTipAmount("");
+    setCashbackAmount("");
+    setPayMethod("card");
+    setPaymentResult(null);
+    setActivePaymentId(resumePaymentId ?? null);
+    setPayOnThisDevice(false);
+    void loadTerminals();
+    void canUsePaycloudSameTerminalOnWeb().then((ok) =>
+      setSameTerminalAvailable(ok && sameTerminalFlagEnabled),
+    );
+  }, [open, amount, paycloudEnabled, resumePaymentId, loadTerminals, sameTerminalFlagEnabled]);
+
+  /** Browser equivalent of mobile AppState recovery after returning from WiseCashier / another tab. */
+  useEffect(() => {
+    if (!open) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const paymentId =
+        activePaymentId ??
+        terminals.find((t) => t.id === selectedTerminalId)?.in_flight_payment_id ??
+        null;
+      if (!paymentId || paymentResult || isPolling) return;
+      void (async () => {
+        try {
+          await paycloudApi.confirmPayment(paymentId);
+        } catch {
+          /* confirm is best-effort; polling is source of truth */
+        }
+        startPolling(paymentId);
+      })();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [
+    open,
+    activePaymentId,
+    selectedTerminalId,
+    terminals,
+    paymentResult,
+    isPolling,
+    startPolling,
+  ]);
+
+  useEffect(() => {
+    if (!open || !resumePaymentId || paymentResult) return;
+    startPolling(resumePaymentId);
+  }, [open, resumePaymentId, paymentResult, startPolling]);
+
+  useEffect(() => {
+    if (payMethod !== "card" && payOnThisDevice) {
+      setPayOnThisDevice(false);
+    }
+  }, [payMethod, payOnThisDevice]);
+
+  useEffect(() => {
+    return () => {
+      pollAbortRef.current?.abort();
+    };
+  }, []);
+
+  const resolveInFlightPaymentId = useCallback(
+    (overridePaymentId?: string | null) =>
+      overridePaymentId ??
+      activePaymentId ??
+      terminals.find((t) => t.id === selectedTerminalId)?.in_flight_payment_id ??
+      null,
+    [activePaymentId, selectedTerminalId, terminals],
+  );
+
+  const offerCloudFallback = useCallback((message: string) => {
+    const tryCloud = window.confirm(
+      `${message}\n\nSend this charge to the card machine instead (cloud mode)?`,
+    );
+    if (tryCloud) {
+      setPayOnThisDevice(false);
+      return true;
+    }
+    return false;
+  }, []);
+
+  const handleResumeInFlight = async (overridePaymentId?: string | null) => {
+    const paymentId = resolveInFlightPaymentId(overridePaymentId);
+    if (!paymentId) {
+      toast.error("No in-flight payment to resume");
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await paycloudApi.confirmPayment(paymentId);
+    } catch {
+      /* confirm is best-effort for cloud; polling is source of truth */
+    } finally {
+      setIsProcessing(false);
+    }
+    startPolling(paymentId);
   };
 
-  const handleCancel = async () => {
-    if (activePaymentId) {
-      try {
-        await paycloudApi.closePayment(activePaymentId);
-      } catch {
-        /* best effort */
+  const handleCancelCharge = async () => {
+    const paymentId = resolveInFlightPaymentId();
+    if (!paymentId) return;
+    try {
+      await paycloudApi.closePayment(paymentId);
+      toast.success("Charge cancelled on card machine");
+    } catch {
+      toast.error("Could not cancel charge — check card machine settings");
+    }
+    setActivePaymentId(null);
+    setIsPolling(false);
+    pollAbortRef.current?.abort();
+  };
+
+  const pushCloudCharge = async (chargeAmount: number): Promise<boolean> => {
+    const created = await paycloudApi.createPayment({
+      terminal_id: selectedTerminalId,
+      entity_type: entityType,
+      entity_id: entityId,
+      amount: chargeAmount,
+      tip_amount: tipAmount ? parseFloat(tipAmount) : undefined,
+      cashback_amount: cashbackAmount ? parseFloat(cashbackAmount) : undefined,
+      pay_method: payMethod,
+      currency: tenantCurrency,
+      booking_id: bookingId,
+      sale_id: saleId,
+      group_booking_id: groupBookingId,
+      channel: "cloud",
+    });
+
+    const paymentId = paymentRowId(created);
+    if (created.reused) {
+      toast.info("Resuming payment already in progress on this card machine");
+    }
+
+    if (isPaycloudPaymentTerminal(created.status)) {
+      applySettledPayment(created);
+      return true;
+    }
+
+    startPolling(paymentId);
+    return true;
+  };
+
+  const handleRequestClose = async () => {
+    const captureNeedsReview = paymentResult ? isPaycloudCaptureUnderReview(paymentResult) : false;
+    if (activePaymentId && !paymentResult && !captureNeedsReview) {
+      const keepOpen = window.confirm(
+        "A charge may still be open on the card machine.\n\nOK = keep it open (you can resume later)\nCancel = try to cancel the charge",
+      );
+      if (keepOpen) {
+        onOpenChange(false);
+        return;
       }
+      await handleCancelCharge();
     }
     onOpenChange(false);
   };
@@ -135,15 +364,26 @@ export function PayCloudPaymentDialog({
       toast.error("Please select a card machine");
       return;
     }
-    const chargeAmount = parseFloat(customAmount);
+    const chargeAmount = amountEditable ? parseFloat(customAmount) : amount;
     if (isNaN(chargeAmount) || chargeAmount <= 0) {
       toast.error("Please enter a valid amount");
       return;
     }
 
+    setIsProcessing(true);
+    setPaymentResult(null);
+    pollAbortRef.current?.abort();
+    setIsPolling(false);
+
     try {
-      setIsProcessing(true);
-      setPaymentResult(null);
+      const useSameTerminal =
+        payOnThisDevice && sameTerminalAvailable && payMethod === "card";
+      const channel: "cloud" | "same_terminal" = useSameTerminal ? "same_terminal" : "cloud";
+      const bridge = channel === "same_terminal" ? getPaycloudSameTerminalBridge() : null;
+      const deviceSerial =
+        channel === "same_terminal" && bridge?.getDeviceSerial
+          ? await bridge.getDeviceSerial().catch(() => null)
+          : null;
 
       const created = await paycloudApi.createPayment({
         terminal_id: selectedTerminalId,
@@ -157,48 +397,101 @@ export function PayCloudPaymentDialog({
         booking_id: bookingId,
         sale_id: saleId,
         group_booking_id: groupBookingId,
+        channel,
+        device_serial: deviceSerial || undefined,
       });
 
-      const paymentId = created.payment_id ?? created.id;
-      setActivePaymentId(paymentId);
+      const paymentId = paymentRowId(created);
+      if (created.reused) {
+        toast.info("Resuming payment already in progress on this card machine");
+      }
 
-      let payment = created;
-      if (payment.status === "pending" || payment.status === "processing") {
-        const deadline = Date.now() + POLL_TIMEOUT_MS;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-          try {
-            const updated = await paycloudApi.getPayment(paymentId);
-            payment = updated;
-            if (updated.status === "successful" || updated.status === "failed" || updated.status === "cancelled") {
-              break;
+      if (isPaycloudPaymentTerminal(created.status)) {
+        applySettledPayment(created);
+        return;
+      }
+
+      if (channel === "same_terminal" && created.intent_payload && bridge) {
+        setActivePaymentId(paymentId);
+        toast.message("Opening card machine on this device…");
+        try {
+          const intentResult = await bridge.startSale(created.intent_payload as Record<string, unknown>);
+          const approved =
+            intentResult?.result === "00" ||
+            (intentResult?.success === true && intentResult?.result == null);
+          if (approved) {
+            try {
+              await paycloudApi.confirmPayment(paymentId, {
+                intent_result: {
+                  result: intentResult?.result,
+                  resultMsg: intentResult?.message ?? intentResult?.resultMsg,
+                  transData: intentResult?.transData as string | Record<string, unknown> | undefined,
+                },
+              });
+            } catch {
+              /* poll is source of truth */
             }
-          } catch {
-            /* continue polling */
+          } else {
+            if (paymentId) {
+              try {
+                await paycloudApi.closePayment(paymentId);
+              } catch {
+                /* best-effort — terminal may already have closed */
+              }
+            }
+            setActivePaymentId(null);
+            const declineMessage =
+              intentResult?.message ??
+              (typeof intentResult?.resultMsg === "string" ? intentResult.resultMsg : undefined) ??
+              "Payment not completed on this device.";
+            if (offerCloudFallback(declineMessage)) {
+              await pushCloudCharge(chargeAmount);
+            } else {
+              toast.error(declineMessage);
+            }
+            return;
           }
+        } catch (intentErr) {
+          if (paymentId) {
+            try {
+              await paycloudApi.closePayment(paymentId);
+            } catch {
+              /* best-effort */
+            }
+          }
+          setActivePaymentId(null);
+          const intentMessage =
+            intentErr instanceof Error
+              ? intentErr.message
+              : "Could not open WiseCashier on this device.";
+          if (offerCloudFallback(`${intentMessage}\n\nTry Send to card machine instead.`)) {
+            await pushCloudCharge(chargeAmount);
+          } else {
+            toast.error(intentMessage);
+          }
+          return;
         }
+        startPolling(paymentId);
+        return;
       }
 
-      setPaymentResult(payment);
-      setActivePaymentId(null);
-
-      if (isPaycloudCaptureUnderReview(payment)) {
-        // Real money on the machine that did NOT settle to this entity. Firing
-        // onSuccess would mark the balance cleared and hide the discrepancy.
-        toast.warning("Card machine took a different amount — flagged for review.");
-      } else if (payment.status === "successful") {
-        toast.success("Payment received on card machine");
-        onSuccess?.(payment);
-      } else if (payment.status === "pending" || payment.status === "processing") {
-        toast.error("Payment timed out — check the card machine or try again.");
-      } else {
-        toast.error(
-          humanizePaycloudPaymentError(undefined, payment.error_message || "Payment was not completed").message,
-        );
-      }
+      startPolling(paymentId);
     } catch (error: unknown) {
       console.error("PayCloud payment failed:", error);
-      toast.error(paycloudToastMessage(error, "Could not reach the card machine — check it is online."));
+      const code = error instanceof FetchError ? error.code : undefined;
+      if (code === "TERMINAL_IN_FLIGHT" || code === "ENTITY_IN_FLIGHT" || code === "POLL_TIMEOUT") {
+        const resumeId =
+          extractPaycloudInFlightPaymentId(error, terminals, selectedTerminalId) ?? activePaymentId;
+        const resume = window.confirm(
+          `${paycloudToastMessage(error, "Payment in progress")}\n\nResume waiting on the card machine?`,
+        );
+        if (resume && resumeId) {
+          setActivePaymentId(resumeId);
+          void handleResumeInFlight(resumeId);
+        }
+      } else {
+        toast.error(paycloudToastMessage(error, "Could not reach the card machine — check it is online."));
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -223,16 +516,18 @@ export function PayCloudPaymentDialog({
     }
   };
 
-
   if (!paycloudEnabled) return null;
 
   const selectedTerminal = terminals.find((t) => t.id === selectedTerminalId);
+  const terminalInFlightId = selectedTerminal?.in_flight_payment_id ?? null;
+  const showInFlightBanner = Boolean(activePaymentId || terminalInFlightId) && !paymentResult;
   const captureNeedsReview = isPaycloudCaptureUnderReview(paymentResult);
   const isSandboxMachine = selectedTerminal?.merchant?.environment === "sandbox";
+  const waitingOnTerminal = isProcessing || isPolling;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleCancel())}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : void handleRequestClose())}>
+      <DialogContent className="sm:max-w-md" data-testid="paycloud-payment-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
@@ -260,9 +555,8 @@ export function PayCloudPaymentDialog({
                     ) : null}
                   </div>
                   <p className="mt-2 text-xs">
-                    The card machine took a different amount than the balance due, so it
-                    was not applied to this charge automatically. It has been flagged for
-                    review — the balance still shows as owing until it is resolved.
+                    The card machine took a different amount than the balance due, so it was not applied
+                    automatically. Resolve in card machine settings before marking the balance paid.
                   </p>
                   <Link
                     href="/provider/settings/sales/card-machines"
@@ -318,11 +612,68 @@ export function PayCloudPaymentDialog({
               ))}
             </ul>
             <Button variant="outline" className="w-full" asChild>
-              <Link href="/provider/settings/sales/card-machines">Open card machines settings</Link>
+              <Link href="/provider/settings/sales/card-machines">Open card machine settings</Link>
             </Button>
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            {showInFlightBanner ? (
+              <Alert className="border-blue-200 bg-blue-50" data-testid="paycloud-in-flight-banner">
+                <AlertDescription className="text-blue-900 text-sm">
+                  <p className="font-semibold">Payment in progress on card machine</p>
+                  <p className="mt-1 text-xs">
+                    A charge is still open. Resume when the customer has paid, or cancel if they did not.
+                    Returning to this tab also auto-checks status.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void handleResumeInFlight()}
+                      disabled={waitingOnTerminal}
+                      data-testid="paycloud-resume"
+                    >
+                      {waitingOnTerminal ? (
+                        <>
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          Waiting…
+                        </>
+                      ) : (
+                        "Resume payment"
+                      )}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => void handleCancelCharge()}>
+                      Cancel charge
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {sameTerminalAvailable && payMethod === "card" ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Pay on this device</p>
+                  <p className="text-xs text-gray-500">
+                    Opens WiseCashier on this terminal (same as mobile app)
+                  </p>
+                </div>
+                <Switch
+                  checked={payOnThisDevice}
+                  onCheckedChange={setPayOnThisDevice}
+                  data-testid="paycloud-same-terminal-toggle"
+                />
+              </div>
+            ) : sameTerminalAvailable && payMethod === "qr" ? (
+              <p className="text-xs text-gray-500 rounded-md border bg-gray-50 px-3 py-2">
+                QR payments are sent to the card machine in cloud mode.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 rounded-md border bg-gray-50 px-3 py-2">
+                Send to card machine uses cloud ECR. Same-device WiseCashier is available in the
+                Beautonomi Provider app on Android POS terminals.
+              </p>
+            )}
+
             {isSandboxMachine ? (
               <Alert className="border-amber-200 bg-amber-50">
                 <AlertDescription className="text-amber-900">
@@ -330,11 +681,12 @@ export function PayCloudPaymentDialog({
                     TEST
                   </div>
                   <p className="mt-2 text-xs">
-                    This is a test card machine. Payments still mark the balance paid — void them when you are done testing.
+                    Test card machine — void charges when finished testing.
                   </p>
                 </AlertDescription>
               </Alert>
             ) : null}
+
             <div>
               <Label htmlFor="terminal">Card machine</Label>
               {terminals.length === 0 ? (
@@ -351,6 +703,7 @@ export function PayCloudPaymentDialog({
                       <SelectItem key={t.id} value={t.id}>
                         {t.display_name}
                         {t.location_name ? ` (${t.location_name})` : " (Portable)"}
+                        {t.in_flight_payment_id ? " · in progress" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -359,10 +712,7 @@ export function PayCloudPaymentDialog({
               {locationWarning ? (
                 <p className="mt-1 text-xs text-amber-700">
                   {locationWarning}{" "}
-                  <Link
-                    href="/provider/settings/sales/card-machines"
-                    className="font-medium underline underline-offset-2"
-                  >
+                  <Link href="/provider/settings/sales/card-machines" className="font-medium underline underline-offset-2">
                     Card machine settings
                   </Link>
                 </p>
@@ -371,20 +721,30 @@ export function PayCloudPaymentDialog({
 
             <div>
               <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
-                className="mt-1"
-              />
+              {amountEditable ? (
+                <Input
+                  id="amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(e.target.value)}
+                  className="mt-1"
+                  data-testid="paycloud-charge-amount"
+                />
+              ) : (
+                <p
+                  className="mt-1 rounded-md border bg-gray-50 px-3 py-2.5 text-lg font-semibold tabular-nums text-gray-900"
+                  data-testid="paycloud-charge-amount"
+                >
+                  <Money amount={amount} currency={tenantCurrency} />
+                </p>
+              )}
             </div>
 
             {tipIncludedInAmount ? (
               <p className="rounded-md border bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                Any tip entered at checkout is already included in this amount.
+                Tip from checkout is already included in this amount.
               </p>
             ) : (
               <div>
@@ -433,17 +793,28 @@ export function PayCloudPaymentDialog({
                 <AlertDescription className="text-sm">Last error: {selectedTerminal.last_error}</AlertDescription>
               </Alert>
             ) : null}
+
+            {waitingOnTerminal && !showInFlightBanner ? (
+              <p className="text-xs text-gray-500 flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Waiting on card machine (polls every {PAYCLOUD_POLL_INTERVAL_MS / 1000}s)…
+              </p>
+            ) : null}
           </div>
         )}
 
         <DialogFooter>
           {!paymentResult ? (
             <>
-              <Button variant="outline" onClick={handleCancel} disabled={isProcessing}>
-                Cancel
+              <Button variant="outline" onClick={() => void handleRequestClose()} disabled={isProcessing && !isPolling}>
+                {activePaymentId ? "Close" : "Cancel"}
               </Button>
-              <Button onClick={handleProcessPayment} disabled={isProcessing || !selectedTerminalId || !paycloudReady}>
-                {isProcessing ? (
+              <Button
+                onClick={handleProcessPayment}
+                disabled={waitingOnTerminal || !selectedTerminalId || !paycloudReady || Boolean(activePaymentId)}
+                data-testid="paycloud-charge-button"
+              >
+                {waitingOnTerminal ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Waiting on card machine…
@@ -455,12 +826,9 @@ export function PayCloudPaymentDialog({
             </>
           ) : (
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              {paymentResult.status === "successful" && paymentResult.merchant_order_no ? (
-                <Button
-                  variant="outline"
-                  onClick={() => void handleVoidOnTerminal()}
-                  disabled={voiding}
-                >
+              {(paymentResult.status === "successful" || captureNeedsReview) &&
+              paymentResult.merchant_order_no ? (
+                <Button variant="outline" onClick={() => void handleVoidOnTerminal()} disabled={voiding}>
                   {voiding ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

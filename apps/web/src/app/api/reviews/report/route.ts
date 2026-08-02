@@ -1,69 +1,116 @@
-import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
-import { z } from 'zod';
+import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  requireRoleInApi,
+  successResponse,
+  errorResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { slackNotifyContentReportCreated } from "@/lib/integrations/slack/ops-triggers";
+import { maybeAutoHideReportedContent } from "@/lib/safety/moderation-actions";
+import { isFeatureEnabledServer, getFeatureFlagMetadata } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
-const reportReviewSchema = z.object({
-  review_id: z.string().uuid('Invalid review ID'),
-  reason: z.string().min(1, 'Reason is required'),
-});
+const LEGACY_REVIEW_REASON_MAP: Record<string, string> = {
+  inappropriate: "inappropriate",
+  misleading: "misleading",
+  harassment: "harassment",
+  spam: "spam",
+  fake: "misleading",
+  other: "other",
+};
 
 /**
  * POST /api/reviews/report
- * 
- * Report a review
+ * Legacy endpoint — delegates to unified content_reports (target_type: review).
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin']);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const body = await request.json();
 
-    const { review_id, reason } = reportReviewSchema.parse(body);
+    const reviewId = typeof body.review_id === "string" ? body.review_id.trim() : "";
+    const rawReason = typeof body.reason === "string" ? body.reason.trim().toLowerCase() : "";
+    if (!reviewId) {
+      return errorResponse("review_id is required", "VALIDATION_ERROR", 400);
+    }
+    if (!rawReason) {
+      return errorResponse("reason is required", "VALIDATION_ERROR", 400);
+    }
 
-    // Verify review exists
+    const supabase = getSupabaseAdmin();
     const { data: review } = await supabase
-      .from('reviews')
-      .select('id')
-      .eq('id', review_id)
-      .single();
-
+      .from("reviews")
+      .select("id")
+      .eq("id", reviewId)
+      .maybeSingle();
     if (!review) {
-      return handleApiError(
-        new Error('Review not found'),
-        'Review not found',
-        'NOT_FOUND',
-        404
-      );
+      return errorResponse("Review not found", "NOT_FOUND", 404);
     }
 
-    // Create report
-    const { data: report, error } = await supabase
-      .from('review_reports')
+    const reason = LEGACY_REVIEW_REASON_MAP[rawReason] ?? "other";
+
+    const { data: row, error } = await supabase
+      .from("content_reports")
       .insert({
-        review_id,
-        reported_by: user.id,
+        reporter_id: user.id,
+        target_type: "review",
+        target_id: reviewId,
         reason,
-        status: 'pending',
-        created_at: new Date().toISOString(),
+        details: `Legacy review report: ${rawReason}`,
+        tenant_id: tenantId,
+        status: "pending",
       })
-      .select()
+      .select("id, target_type, target_id, reason, status, created_at")
       .single();
 
-    if (error) {
-      throw error;
+    if (error) return handleApiError(error, "Failed to report review");
+    if (!row) {
+      return errorResponse("Failed to report review", "INTERNAL_ERROR", 500);
     }
 
-    return successResponse(report);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return handleApiError(
-        new Error(error.issues.map(e => e.message).join(', ')),
-        'Validation failed',
-        'VALIDATION_ERROR',
-        400
-      );
+    if (tenantId) {
+      slackNotifyContentReportCreated({
+        tenantId,
+        reportId: row.id,
+        targetType: String(row.target_type),
+        reason: String(row.reason),
+      });
     }
-    return handleApiError(error, 'Failed to report review');
+
+    const autoHideEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.SAFETY_AUTO_HIDE_REPORT_THRESHOLD,
+      tenantId,
+    );
+    if (autoHideEnabled) {
+      const meta = await getFeatureFlagMetadata(
+        FEATURE_FLAG_KEYS.SAFETY_AUTO_HIDE_REPORT_THRESHOLD,
+        tenantId,
+      );
+      const threshold =
+        typeof meta.threshold === "number" && Number.isFinite(meta.threshold)
+          ? Math.max(1, Math.floor(meta.threshold))
+          : 3;
+      const windowHours =
+        typeof meta.window_hours === "number" && Number.isFinite(meta.window_hours)
+          ? Math.max(1, Math.floor(meta.window_hours))
+          : 24;
+      await maybeAutoHideReportedContent(supabase, {
+        targetType: "review",
+        targetId: reviewId,
+        threshold,
+        windowHours,
+        systemUserId: null,
+      }).catch((e) => console.warn("[review-report] auto-hide failed:", e));
+    }
+
+    return successResponse(row, 201);
+  } catch (error) {
+    return handleApiError(error, "Failed to report review");
   }
 }

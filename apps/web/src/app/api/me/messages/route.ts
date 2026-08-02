@@ -3,6 +3,11 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import {
+  assertNotBlocked,
+  getConversationPeerUserId,
+  UserBlockedError,
+} from "@/lib/safety/user-blocks";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import {
   enrichMessagesWithReplyTo,
@@ -71,6 +76,18 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Math.max(parseInt(limitParam || "50", 10), 1), 100);
 
     const { conv, role } = await verifyConversationAccess(supabase, conversationId, user.id);
+
+    const adminForBlock = getSupabaseAdmin();
+    const peerUserId = await getConversationPeerUserId(
+      conv,
+      user.id,
+      role,
+      adminForBlock,
+    );
+    if (peerUserId) {
+      await assertNotBlocked(user.id, peerUserId, adminForBlock);
+    }
+
     const providerBusinessName =
       typeof (conv as { provider?: { business_name?: unknown } | null }).provider?.business_name === "string"
         ? ((conv as { provider: { business_name: string } }).provider.business_name.trim() || null)
@@ -83,6 +100,7 @@ export async function GET(request: NextRequest) {
          sender:users!messages_sender_id_fkey(id, full_name, avatar_url)`
       )
       .eq("conversation_id", conversationId)
+      .eq("is_hidden", false)
       .order("created_at", { ascending: false })
       .limit(limit + 1);
 
@@ -138,6 +156,9 @@ export async function GET(request: NextRequest) {
       has_more: hasMore,
     });
   } catch (error: any) {
+    if (error instanceof UserBlockedError || error?.code === "USER_BLOCKED") {
+      return errorResponse(error.message || "You cannot interact with this user.", "USER_BLOCKED", 403);
+    }
     if (error?.status === 404) return errorResponse("Conversation not found", "NOT_FOUND", 404);
     if (error?.status === 403) return errorResponse("Not authorized", "FORBIDDEN", 403);
     return handleApiError(error, "Failed to fetch messages");
@@ -170,9 +191,7 @@ export async function POST(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
-    if (user.role === "customer") {
-      await requireSocialAccess(user.id, "direct_message", request);
-    }
+    await requireSocialAccess(user.id, "direct_message", request);
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
@@ -185,6 +204,17 @@ export async function POST(request: NextRequest) {
 
     const { conv, role } = await verifyConversationAccess(supabase, conversation_id, user.id);
     const isCustomer = role === "customer";
+
+    const adminForBlock = getSupabaseAdmin();
+    const peerUserId = await getConversationPeerUserId(
+      conv,
+      user.id,
+      isCustomer ? "customer" : "provider",
+      adminForBlock,
+    );
+    if (peerUserId) {
+      await assertNotBlocked(user.id, peerUserId, adminForBlock);
+    }
 
     let replyToId: string | null = null;
     if (reply_to_message_id != null && String(reply_to_message_id).trim()) {
@@ -234,6 +264,9 @@ export async function POST(request: NextRequest) {
       created_at: msg.created_at,
     });
   } catch (error: any) {
+    if (error instanceof UserBlockedError || error?.code === "USER_BLOCKED") {
+      return errorResponse(error.message || "You cannot interact with this user.", "USER_BLOCKED", 403);
+    }
     if (error?.status === 404) return errorResponse("Conversation not found", "NOT_FOUND", 404);
     if (error?.status === 403) return errorResponse("Not authorized", "FORBIDDEN", 403);
     return handleApiError(error, "Failed to send message");
@@ -296,6 +329,10 @@ async function sendMessageNotification(
   recipientUserIds = recipientUserIds.filter((id) => id && id !== user.id);
   if (recipientUserIds.length === 0) return;
 
+  const { filterBlockedNotificationRecipients } = await import("@/lib/safety/user-blocks");
+  recipientUserIds = await filterBlockedNotificationRecipients(user.id, recipientUserIds, admin);
+  if (recipientUserIds.length === 0) return;
+
   let providerBusinessNameForCustomer = "";
   if (!isCustomer) {
     const { data: prov } = await admin
@@ -337,7 +374,7 @@ async function sendMessageNotification(
         // The in-app bell row is inserted below with the canonical new_message
         // type + conversation deep link; skip the template auto-insert so a
         // single message doesn't create two bell entries.
-        { appType, skipInApp: true, tenantId }
+        { appType, skipInApp: true, tenantId, senderUserId: user.id }
       );
     } else {
       await sendToUsers(
@@ -361,7 +398,7 @@ async function sendMessageNotification(
             : `/account-settings/messages?conversation=${conv.id}`,
         },
         ["push"],
-        { appType, tenantId }
+        { appType, tenantId, senderUserId: user.id }
       );
     }
   } catch (notifError) {

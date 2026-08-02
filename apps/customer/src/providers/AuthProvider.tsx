@@ -147,6 +147,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(newSession);
     setUser(newSession?.user ?? null);
     currentUserIdRef.current = newSession?.user?.id ?? null;
+    if (newSession?.user) {
+      void import("@/lib/age-assurance/device-age-range").then(({ syncDeviceAgeSignalIfAvailable }) => {
+        syncDeviceAgeSignalIfAvailable();
+      });
+    }
   }, []);
 
   const refreshSession = useCallback(async () => {

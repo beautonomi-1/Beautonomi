@@ -8,6 +8,7 @@ import {
   requireRoleInApi,
 } from "@/lib/supabase/api-helpers";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
+import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 import {
   attachSalonMembership,
   buildSalonMembershipMap,
@@ -64,7 +65,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get unique customer IDs
-    const customerIds = [...new Set(conversations.map((c: any) => c.customer_id).filter(Boolean))];
+    const blockedIds = await getBlockedUserIds(user.id, supabaseAdmin);
+    const customerIds = [...new Set(conversations.map((c: any) => c.customer_id).filter(Boolean))]
+      .filter((id: string) => !blockedIds.has(id));
     
     if (customerIds.length === 0) {
       return successResponse([]);

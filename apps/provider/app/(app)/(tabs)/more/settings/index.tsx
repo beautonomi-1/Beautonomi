@@ -11,7 +11,7 @@ import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface SetupStatus {
   isComplete: boolean;
@@ -21,13 +21,15 @@ interface SetupStatus {
 
 interface SettingItem {
   icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  subtitle: string;
+  label?: string;
+  subtitle?: string;
+  labelKey?: string;
+  subtitleKey?: string;
   route: string;
   color: string;
 }
 
-const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
+const SETTINGS_SECTIONS: { title: string; titleKey?: string; items: SettingItem[] }[] = [
   {
     title: "Business",
     items: [
@@ -106,6 +108,33 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
     ],
   },
   {
+    title: "Trust & Safety",
+    titleKey: "customer.mobile.screens.safetyHub.title",
+    items: [
+      {
+        icon: "shield-checkmark-outline",
+        labelKey: "customer.mobile.screens.safetyHub.title",
+        subtitleKey: "customer.mobile.screens.safetyHub.helpCardBody",
+        route: "/(app)/(tabs)/more/safety",
+        color: "#dc2626",
+      },
+      {
+        icon: "options-outline",
+        labelKey: "customer.accountSettings.contentSafetyTitle",
+        subtitleKey: "customer.accountSettings.contentSafetyDesc",
+        route: "/(app)/(tabs)/more/settings/content-and-safety-controls",
+        color: "#6366f1",
+      },
+      {
+        icon: "ban-outline",
+        labelKey: "customer.mobile.screens.blockedUsers.title",
+        subtitleKey: "customer.mobile.screens.blockedUsers.settingsDesc",
+        route: "/(app)/(tabs)/more/settings/blocked-users",
+        color: "#64748b",
+      },
+    ],
+  },
+  {
     title: "Tips",
     items: [
       { icon: "cash-outline", label: "Tip Distribution", subtitle: "Solo keeps tips; salons can share with staff", route: "/(app)/(tabs)/more/settings/tip-distribution", color: "#f59e0b" },
@@ -167,6 +196,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { screenPadding } = useResponsive();
   const { themeMode, setThemeMode } = useTheme();
   const { data: setupStatus, refresh: refreshSetupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
@@ -229,12 +259,12 @@ export default function SettingsScreen() {
           return (
           <View key={section.title} style={twStyle("mb-4")}>
             <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-              {section.title}
+              {section.titleKey ? t(section.titleKey) : section.title}
             </Text>
             <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
               {items.map((item, idx) => (
                 <TouchableOpacity
-                  key={item.route || item.label}
+                  key={item.route || item.label || item.labelKey}
                   style={twStyle(`min-h-[56px] flex-row items-center px-4 py-3.5 ${
                     idx < items.length - 1 ? "border-b border-gray-50" : ""
                   }`)}
@@ -244,8 +274,12 @@ export default function SettingsScreen() {
                     <Ionicons name={item.icon} size={18} color={item.color} />
                   </View>
                   <View style={twStyle("ml-3 flex-1")}>
-                    <Text style={twStyle("text-base font-medium text-gray-900")}>{item.label}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{item.subtitle}</Text>
+                    <Text style={twStyle("text-base font-medium text-gray-900")}>
+                      {item.labelKey ? t(item.labelKey) : item.label}
+                    </Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>
+                      {item.subtitleKey ? t(item.subtitleKey) : item.subtitle}
+                    </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
                 </TouchableOpacity>

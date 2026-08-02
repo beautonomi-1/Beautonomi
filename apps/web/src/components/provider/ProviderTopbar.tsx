@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 
 export function ProviderTopbar() {
   const pathname = usePathname();
-  const { provider, salons, selectedLocationId, setSelectedLocation, setupCompletion } = useProviderPortal();
+  const { provider, salons, selectedLocationId, setSelectedLocation, setupCompletion, setupStatusKnown } = useProviderPortal();
   // Use AuthProvider directly — it already holds avatar_url/full_name and handles
   // its own caching/refresh.  No separate /api/me/profile poll needed.
   const { user, signOut, refreshUser } = useAuth();
@@ -84,6 +84,7 @@ export function ProviderTopbar() {
       ["/provider/recurring-appointments", "Recurring"],
       ["/provider/express-booking", "Booking links"],
       ["/provider/front-desk", "Front desk"],
+      ["/provider/more", "More"],
       ["/provider/gamification", "Rewards"],
     ];
     for (const [prefix, title] of segments) {
@@ -144,7 +145,7 @@ export function ProviderTopbar() {
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 flex-shrink-0 min-w-0 overflow-x-hidden box-border">
           {/* Setup Progress - Desktop */}
-          {setupCompletion < 100 && (
+          {setupStatusKnown && setupCompletion < 100 && (
             <Link href="/provider/get-started" className="hidden sm:block flex-shrink-0 ml-1">
                 <Badge
                   variant="outline"
@@ -170,7 +171,7 @@ export function ProviderTopbar() {
           )}
 
           {/* Setup Progress - Mobile (Circular) */}
-          {setupCompletion < 100 && (
+          {setupStatusKnown && setupCompletion < 100 && (
             <Link href="/provider/get-started" className="sm:hidden flex-shrink-0">
               <div className="relative w-10 h-10 flex items-center justify-center">
                 {/* Circular progress background */}

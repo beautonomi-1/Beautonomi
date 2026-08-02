@@ -19,6 +19,8 @@ export interface SettlePaycloudPaymentInput {
   currency?: string;
   tipAmount?: number | null;
   cashbackAmount?: number | null;
+  /** Base charge sent to terminal (provider_paycloud_payments.expected_amount). */
+  expectedBaseAmount?: number | null;
 }
 
 /**
@@ -42,6 +44,7 @@ export async function settlePaycloudPayment(
     currency: input.currency,
     tipAmount: input.tipAmount,
     cashbackAmount: input.cashbackAmount,
+    expectedBaseAmount: input.expectedBaseAmount,
   });
 }
 

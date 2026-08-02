@@ -625,6 +625,8 @@ export function usePayCloudSettings() {
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000;
+/** Create-order may wait on PayCloud gateway + DB; default 30s client timeout is too short. */
+const CREATE_PAYMENT_REQUEST_TIMEOUT_MS = 90_000;
 
 function normalizePaymentStatus(raw: string | undefined | null): PayCloudPaymentStatus {
   const s = (raw ?? "").toLowerCase();
@@ -676,7 +678,9 @@ function toPaymentResult(row: Record<string, unknown>): PayCloudPaymentResult {
     channel:
       row.channel === "same_terminal" || row.channel === "cloud"
         ? row.channel
-        : undefined,
+        : row.initiation_channel === "same_terminal" || row.initiation_channel === "cloud"
+          ? row.initiation_channel
+          : undefined,
     intent_payload:
       row.intent_payload && typeof row.intent_payload === "object"
         ? (row.intent_payload as PaycloudIntentPayload)
@@ -787,13 +791,17 @@ export function usePayCloudPayment() {
         const res = await api.post<Record<string, unknown>>(
           "/api/provider/paycloud/payments",
           request as unknown as Record<string, unknown>,
+          { timeout: CREATE_PAYMENT_REQUEST_TIMEOUT_MS },
         );
         if (res.error) {
           const code = res.error.code;
+          const errorDetails = (res.error as { details?: { payment_id?: string } }).details;
           const existingPaymentId =
             typeof (res.data as { payment_id?: string } | null)?.payment_id === "string"
               ? (res.data as { payment_id: string }).payment_id
-              : undefined;
+              : typeof errorDetails?.payment_id === "string"
+                ? errorDetails.payment_id
+                : undefined;
           const humanized = humanizePaycloudPaymentError(code, res.error.message);
           if (code !== "TERMINAL_IN_FLIGHT" && code !== "ENTITY_IN_FLIGHT") {
             Alert.alert(humanized.title, humanized.message);
@@ -823,6 +831,15 @@ export function usePayCloudPayment() {
           return { ok: true, payment: data, reused };
         }
 
+        // Cloud mode: order was pushed to the terminal — PayCloudPaymentSheet polls
+        // while the charge dialog stays open (avoids blocking this call for 2 minutes).
+        if (
+          data.channel === "cloud" &&
+          (data.status === "pending" || data.status === "processing")
+        ) {
+          return { ok: true, payment: data, reused };
+        }
+
         const deadline = Date.now() + POLL_TIMEOUT_MS;
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
@@ -844,9 +861,13 @@ export function usePayCloudPayment() {
           message: "The card machine did not respond in time. You can resume or cancel the payment.",
           existingPaymentId: paymentId,
         };
-      } catch {
-        Alert.alert("Payment failed", "Could not process the card payment");
-        return { ok: false, message: "Could not process the card payment" };
+      } catch (e) {
+        const msg =
+          e instanceof Error && e.message.trim()
+            ? e.message
+            : "Could not process the card payment";
+        Alert.alert("Payment failed", msg);
+        return { ok: false, message: msg, code: "NETWORK_ERROR" };
       } finally {
         setProcessing(false);
       }

@@ -12,6 +12,7 @@ import {
   PAYCLOUD_TRANS_TYPE,
   PAYCLOUD_METHODS,
 } from "@/lib/payments/paycloud";
+import { formatPaycloudCloudOrderAmount } from "@/lib/payments/paycloud-cloud-amount";
 
 export interface PaycloudAppCredentials {
   app_id: string;
@@ -137,6 +138,9 @@ export function buildPaycloudEntryUrl(
   return `${base}/${entryPath}`;
 }
 
+/** Fail fast when PayCloud gateway is down — avoids hanging provider API requests. */
+const PAYCLOUD_FETCH_TIMEOUT_MS = 25_000;
+
 async function executePaycloudRequest(
   environment: PaycloudEnvironment,
   creds: PaycloudAppCredentials,
@@ -150,24 +154,49 @@ async function executePaycloudRequest(
   );
   const body = buildSignedBody(method, businessParams, creds);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PAYCLOUD_FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
+    return {
+      success: false,
+      raw: {},
+      response_code: aborted ? "TIMEOUT" : "NETWORK",
+      error_message: aborted
+        ? "Card machine service timed out — check the gateway URL and network, then try again."
+        : "Could not reach the card machine service — check network and API base URL.",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
+  const responseText = await res.text();
   let raw: Record<string, unknown>;
   try {
-    raw = (await res.json()) as Record<string, unknown>;
+    raw = JSON.parse(responseText) as Record<string, unknown>;
   } catch {
+    const snippet = responseText.slice(0, 120);
     return {
       success: false,
       raw: {},
       response_code: String(res.status),
-      error_message: `Card machine service error (${res.status})`,
+      error_message:
+        res.status === 503
+          ? "PayCloud gateway unavailable (503). Sandbox may be down — try again later."
+          : snippet
+            ? `Card machine service error (${res.status}): ${snippet}`
+            : `Card machine service error (${res.status})`,
     };
   }
 
@@ -205,14 +234,27 @@ export async function createPaycloudOrder(
   creds: PaycloudAppCredentials,
   params: CreateOrderParams,
 ): Promise<PaycloudApiResponse> {
+  return executePaycloudRequest(
+    environment,
+    creds,
+    getPaycloudEntryPath("order"),
+    PAYCLOUD_METHODS.CREATE_ORDER,
+    buildCreatePaycloudOrderBusinessParams(params),
+  );
+}
+
+/** Build Cloud Mode create-order business params (exported for unit tests). */
+export function buildCreatePaycloudOrderBusinessParams(
+  params: CreateOrderParams,
+): Record<string, BizValue | undefined | null> {
+  const currency = params.price_currency;
   const business: Record<string, BizValue | undefined | null> = {
     merchant_no: params.merchant_no,
     store_no: params.store_no,
     terminal_sn: params.terminal_sn,
     message_receiving_application: "WISECASHIER",
     merchant_order_no: params.merchant_order_no,
-    order_amount: params.order_amount,
-    tip_amount: params.tip_amount ?? 0,
+    order_amount: formatPaycloudCloudOrderAmount(currency, params.order_amount),
     price_currency: params.price_currency,
     pay_scenario: params.pay_scenario,
     trans_type: params.trans_type ?? PAYCLOUD_TRANS_TYPE.SALE,
@@ -225,19 +267,16 @@ export async function createPaycloudOrder(
     on_screen_tip: params.on_screen_tip ?? false,
   };
   if (params.pay_method_id) business.pay_method_id = params.pay_method_id;
+  const tipAmount = params.tip_amount ?? 0;
+  if (tipAmount > 0) {
+    business.tip_amount = formatPaycloudCloudOrderAmount(currency, tipAmount);
+  }
   if (params.cashback_amount && params.cashback_amount > 0) {
-    business.cashback_amount = params.cashback_amount;
+    business.cashback_amount = formatPaycloudCloudOrderAmount(currency, params.cashback_amount);
     business.trans_type = PAYCLOUD_TRANS_TYPE.SALE_WITH_CASHBACK;
   }
   if (params.attach) business.attach = params.attach;
-
-  return executePaycloudRequest(
-    environment,
-    creds,
-    getPaycloudEntryPath("order"),
-    PAYCLOUD_METHODS.CREATE_ORDER,
-    business,
-  );
+  return business;
 }
 
 export async function queryPaycloudOrder(
@@ -306,7 +345,7 @@ export async function createPaycloudVoid(
     message_receiving_application: "WISECASHIER",
     merchant_order_no: params.merchant_order_no,
     orig_merchant_order_no: params.orig_merchant_order_no,
-    order_amount: params.order_amount,
+    order_amount: formatPaycloudCloudOrderAmount(params.price_currency, params.order_amount),
     price_currency: params.price_currency,
     pay_scenario: "SWIPE_CARD",
     trans_type: PAYCLOUD_TRANS_TYPE.VOID,
@@ -352,7 +391,7 @@ export async function createPaycloudRefund(
     message_receiving_application: "WISECASHIER",
     merchant_order_no: params.merchant_order_no,
     orig_merchant_order_no: params.orig_merchant_order_no,
-    order_amount: params.order_amount,
+    order_amount: formatPaycloudCloudOrderAmount(params.price_currency, params.order_amount),
     price_currency: params.price_currency,
     pay_scenario: "SWIPE_CARD",
     trans_type: PAYCLOUD_TRANS_TYPE.REFUND,

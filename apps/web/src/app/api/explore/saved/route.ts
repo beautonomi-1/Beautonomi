@@ -7,6 +7,12 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
+import {
+  filterBlockedExploreAuthors,
+  filterExplorePostsForViewer,
+} from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 
@@ -18,6 +24,10 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
     const supabaseAdmin = await getSupabaseAdmin();
+    const viewerSafety = await getViewerSafetyContext(user.id, request);
+    if (viewerSafety.hideSocialFeed) {
+      return successResponse({ data: [], next_cursor: undefined, has_more: false });
+    }
 
     const { searchParams } = new URL(request.url);
     const cursorEncoded = searchParams.get("cursor");
@@ -98,7 +108,19 @@ export async function GET(request: NextRequest) {
       postToCollectionIds.set(link.post_id, arr);
     }
 
-    const data: (ExplorePost & { collection_ids?: string[] })[] = slice.map((r: any) => ({
+    const hiddenAuthorIds = new Set([
+      ...viewerSafety.blockedUserIds,
+      ...viewerSafety.mutedUserIds,
+    ]);
+    const filteredSlice = filterBlockedExploreAuthors(
+      filterExplorePostsForViewer(slice, {
+        hideSocialFeed: viewerSafety.hideSocialFeed,
+        sensitiveFilter: viewerSafety.sensitiveContentFilter,
+      }),
+      hiddenAuthorIds,
+    );
+
+    const data: (ExplorePost & { collection_ids?: string[] })[] = filteredSlice.map((r: any) => ({
       id: r.id,
       provider_id: r.provider_id,
       provider: r.provider_business_name
@@ -154,6 +176,16 @@ export async function POST(request: NextRequest) {
       return errorResponse("post_id is required", "VALIDATION_ERROR", 400);
     }
 
+    const { data: postRow } = await supabaseAdmin
+      .from("explore_posts")
+      .select("created_by_user_id")
+      .eq("id", post_id)
+      .maybeSingle();
+    const authorId = (postRow as { created_by_user_id?: string | null } | null)?.created_by_user_id;
+    if (authorId) {
+      await assertNotBlocked(user.id, authorId, supabaseAdmin);
+    }
+
     const { error } = await supabaseAdmin.from("explore_saved").insert({
       user_id: user.id,
       post_id,
@@ -168,6 +200,13 @@ export async function POST(request: NextRequest) {
 
     return successResponse({ success: true }, 201);
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return errorResponse(
+        error instanceof Error ? error.message : "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     return handleApiError(error, "Failed to save post");
   }
 }

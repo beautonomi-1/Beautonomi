@@ -7,6 +7,8 @@ export interface PaycloudTerminalRow {
   is_active: boolean;
   status?: string;
   source?: string;
+  /** Set when a charge is in progress on this terminal (same-session resume). */
+  in_flight_payment_id?: string | null;
 }
 
 /**

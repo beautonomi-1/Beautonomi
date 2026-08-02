@@ -42,6 +42,8 @@ const TARGET_TYPES = [
   "product_review",
 ] as const;
 
+type ResolveMode = "resolve" | "resolve_hide" | "dismiss";
+
 export function ContentReportsListPage() {
   useAdminDocumentTitle("Content Reports");
   const qc = useQueryClient();
@@ -55,8 +57,9 @@ export function ContentReportsListPage() {
   );
 
   const [actionId, setActionId] = useState<string | null>(null);
-  const [actionType, setActionType] = useState<"resolve" | "dismiss" | null>(null);
+  const [actionMode, setActionMode] = useState<ResolveMode | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
+  const [adminActionTaken, setAdminActionTaken] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const q = useQuery({
@@ -78,22 +81,49 @@ export function ContentReportsListPage() {
       id,
       newStatus,
       notes,
+      applyTakedown,
+      actionTaken,
     }: {
       id: string;
       newStatus: string;
       notes: string;
+      applyTakedown?: boolean;
+      actionTaken?: string;
     }) => {
       return adminApi.patchJson(`/api/admin/content-reports/${id}`, {
         status: newStatus,
         resolution_notes: notes.trim() || undefined,
+        apply_takedown: applyTakedown === true,
+        takedown_action: "hide",
+        admin_action_taken: actionTaken?.trim() || undefined,
       });
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: (data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
       setActionId(null);
-      setActionType(null);
+      setActionMode(null);
       setResolutionNotes("");
-      adminToast.success(vars.newStatus === "resolved" ? "Report resolved" : "Report dismissed");
+      setAdminActionTaken("");
+      if (vars.newStatus === "resolved") {
+        const takedownApplied = Boolean(
+          (data as { takedown_applied?: boolean } | undefined)?.takedown_applied,
+        );
+        const takedownWarning = Boolean(
+          (data as { takedown_warning?: boolean | string } | undefined)?.takedown_warning,
+        );
+        if (vars.applyTakedown && takedownWarning) {
+          adminToast.error("Report resolved but content could not be hidden for this target type.");
+        } else if (vars.applyTakedown && takedownApplied) {
+          adminToast.success("Report resolved and content hidden");
+        } else if (vars.applyTakedown && !takedownApplied) {
+          adminToast.success("Report resolved (takedown not applied)");
+        } else {
+          adminToast.success("Report resolved");
+        }
+      } else {
+        adminToast.success("Report dismissed");
+      }
     },
     onError: (e: Error) => adminToast.error(`Failed to update report: ${e.message}`),
   });
@@ -173,7 +203,7 @@ export function ContentReportsListPage() {
               <AdminTh>Reason</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Reporter</AdminTh>
-              <AdminTh>Details</AdminTh>
+              <AdminTh>Preview</AdminTh>
               <AdminTh>Date</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
@@ -183,6 +213,7 @@ export function ContentReportsListPage() {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
               const rep = row.reporter as { full_name?: string; email?: string } | null;
+              const preview = row.target_preview as { snippet?: string } | null;
               const isPending = String(row.status ?? "") === "pending";
               const isExpanded = expandedId === id;
               const statusStr = String(row.status ?? "pending");
@@ -198,6 +229,9 @@ export function ContentReportsListPage() {
                       <span className="font-medium">{String(row.target_type ?? "")}</span>
                       <br />
                       <span className="font-mono text-gray-500">{String(row.target_id ?? "").slice(0, 8)}…</span>
+                      {row.takedown_applied ? (
+                        <span className="mt-1 block text-[10px] font-medium text-red-600">Takedown applied</span>
+                      ) : null}
                     </AdminTd>
                     <AdminTd>{String(row.reason ?? "")}</AdminTd>
                     <AdminTd>
@@ -206,24 +240,40 @@ export function ContentReportsListPage() {
                       </span>
                     </AdminTd>
                     <AdminTd className="text-xs">{String(rep?.full_name ?? rep?.email ?? "")}</AdminTd>
-                    <AdminTd className="max-w-xs truncate text-xs">{String(row.details ?? "—")}</AdminTd>
+                    <AdminTd className="max-w-xs truncate text-xs text-gray-600">
+                      {preview?.snippet ?? String(row.details ?? "—")}
+                    </AdminTd>
                     <AdminTd className="whitespace-nowrap text-xs text-gray-500">
                       {row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : ""}
                     </AdminTd>
                     <AdminTd>
                       {isPending && (
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
                           <button
                             type="button"
                             className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700"
                             onClick={(e) => {
                               e.stopPropagation();
                               setActionId(id);
-                              setActionType("resolve");
+                              setActionMode("resolve");
                               setResolutionNotes("");
+                              setAdminActionTaken("");
                             }}
                           >
                             Resolve
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionId(id);
+                              setActionMode("resolve_hide");
+                              setResolutionNotes("");
+                              setAdminActionTaken("");
+                            }}
+                          >
+                            Resolve + hide
                           </button>
                           <button
                             type="button"
@@ -231,8 +281,9 @@ export function ContentReportsListPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setActionId(id);
-                              setActionType("dismiss");
+                              setActionMode("dismiss");
                               setResolutionNotes("");
+                              setAdminActionTaken("");
                             }}
                           >
                             Dismiss
@@ -250,14 +301,26 @@ export function ContentReportsListPage() {
                             <p className="font-mono text-xs text-gray-600">{String(row.target_id ?? "")}</p>
                             {Boolean(row.details) ? (
                               <div className="mt-3">
-                                <p className="mb-1 font-medium text-gray-700">Details</p>
+                                <p className="mb-1 font-medium text-gray-700">Reporter details</p>
                                 <p className="text-gray-600">{String(row.details)}</p>
+                              </div>
+                            ) : null}
+                            {preview?.snippet ? (
+                              <div className="mt-3">
+                                <p className="mb-1 font-medium text-gray-700">Content preview</p>
+                                <p className="rounded bg-white p-2 text-xs text-gray-700">{preview.snippet}</p>
                               </div>
                             ) : null}
                           </div>
                           <div>
-                            {Boolean(row.resolution_notes) ? (
+                            {Boolean(row.admin_action_taken) ? (
                               <div>
+                                <p className="mb-1 font-medium text-gray-700">Admin action taken</p>
+                                <p className="text-xs text-gray-600">{String(row.admin_action_taken)}</p>
+                              </div>
+                            ) : null}
+                            {Boolean(row.resolution_notes) ? (
+                              <div className="mt-3">
                                 <p className="mb-1 font-medium text-gray-700">Resolution notes</p>
                                 <p className="text-xs text-gray-600">{String(row.resolution_notes)}</p>
                               </div>
@@ -279,31 +342,48 @@ export function ContentReportsListPage() {
         </AdminDataTable>
       )}
 
-      {actionId && actionType && (
+      {actionId && actionMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h3 className="mb-1 text-lg font-semibold text-gray-900">
-              {actionType === "resolve" ? "Resolve Report" : "Dismiss Report"}
+              {actionMode === "dismiss"
+                ? "Dismiss Report"
+                : actionMode === "resolve_hide"
+                  ? "Resolve + Hide Content"
+                  : "Resolve Report"}
             </h3>
             <p className="mb-4 text-sm text-gray-500">
-              {actionType === "resolve"
-                ? "Mark this content report as resolved."
-                : "Dismiss this content report."}
+              {actionMode === "dismiss"
+                ? "Dismiss this content report without taking action on the content."
+                : actionMode === "resolve_hide"
+                  ? "Resolve this report and hide the reported content from public view."
+                  : "Mark this content report as resolved without hiding content."}
             </p>
             <label className="mb-1 block text-sm font-medium text-gray-700">Resolution notes (optional)</label>
             <textarea
               className="min-h-[80px] w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              placeholder={actionType === "resolve" ? "Describe the action taken..." : "Reason for dismissal..."}
+              placeholder="Describe the action taken..."
               value={resolutionNotes}
               onChange={(e) => setResolutionNotes(e.target.value)}
             />
+            {actionMode !== "dismiss" ? (
+              <>
+                <label className="mb-1 mt-3 block text-sm font-medium text-gray-700">Admin action taken</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="e.g. Content hidden, user warned"
+                  value={adminActionTaken}
+                  onChange={(e) => setAdminActionTaken(e.target.value)}
+                />
+              </>
+            ) : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
                 onClick={() => {
                   setActionId(null);
-                  setActionType(null);
+                  setActionMode(null);
                 }}
               >
                 Cancel
@@ -311,18 +391,24 @@ export function ContentReportsListPage() {
               <button
                 type="button"
                 className={`rounded-lg px-4 py-2 text-sm text-white ${
-                  actionType === "resolve" ? "bg-green-600 hover:bg-green-700" : "bg-gray-600 hover:bg-gray-700"
+                  actionMode === "dismiss"
+                    ? "bg-gray-600 hover:bg-gray-700"
+                    : actionMode === "resolve_hide"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-green-600 hover:bg-green-700"
                 } disabled:opacity-50`}
                 disabled={updateReport.isPending}
                 onClick={() => {
                   updateReport.mutate({
                     id: actionId,
-                    newStatus: actionType === "resolve" ? "resolved" : "dismissed",
+                    newStatus: actionMode === "dismiss" ? "dismissed" : "resolved",
                     notes: resolutionNotes,
+                    applyTakedown: actionMode === "resolve_hide",
+                    actionTaken: adminActionTaken,
                   });
                 }}
               >
-                {updateReport.isPending ? "Saving..." : actionType === "resolve" ? "Resolve" : "Dismiss"}
+                {updateReport.isPending ? "Saving..." : "Confirm"}
               </button>
             </div>
           </div>

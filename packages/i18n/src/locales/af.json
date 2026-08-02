@@ -746,6 +746,8 @@
       "savedAddressesDesc": "Tuis, werk en ander adresse",
       "privacySharingTitle": "Privaatheid en deel",
       "privacySharingDesc": "Datavoorkeure, sigbaarheid en skrap rekening",
+      "contentSafetyTitle": "Inhoud- en veiligheidskontroles",
+      "contentSafetyDesc": "Sosiale stroom, boodskappe en ouderdomstoepaslike instellings",
       "bookingsMenuTitle": "Besprekings",
       "bookingsMenuDesc": "Komende, verlede en gekanselleer",
       "recurringBookingsTitle": "Herhalende besprekings",
@@ -813,6 +815,53 @@
       "loadFailed": "Kon nie versameling laai nie",
       "notFound": "Versameling nie gevind nie",
       "goBack": "Gaan terug"
+    },
+    "contentReport": {
+      "modalTitle": "Rapporteer inhoud",
+      "modalLead": "Kies 'n rede en voeg opsionele besonderhede by vir ons span.",
+      "submitCta": "Dien rapport in",
+      "detailsPlaceholder": "Bykomende besonderhede (opsioneel)",
+      "selectReasonTitle": "Kies 'n rede",
+      "selectReasonBody": "Kies asseblief waarom jy hierdie inhoud rapporteer.",
+      "submitError": "Kon nie rapport indien nie.",
+      "submittedTitle": "Rapport ingedien",
+      "submittedBody": "Dankie. Ons span sal binne 24-48 uur hersien.",
+      "reportPost": "Rapporteer plasing",
+      "reportComment": "Rapporteer kommentaar",
+      "reportMessage": "Rapporteer boodskap",
+      "reportReview": "Rapporteer resensie",
+      "reportProductReview": "Rapporteer produkresensie",
+      "signInTitle": "Teken in om te rapporteer",
+      "signInBody": "Skep 'n rekening of teken in om inhoud te rapporteer.",
+      "reason": {
+        "inappropriate": "Onvanpaste inhoud",
+        "misleading": "Misleidende inligting",
+        "harassment": "Teistering of misbruik",
+        "spam": "Strooipos of bedrog",
+        "safety": "Veiligheidskwessie",
+        "other": "Ander"
+      }
+    },
+    "blockUser": {
+      "confirmTitle": "Blokkeer hierdie gebruiker?",
+      "confirmBody": "{{name}} sal nie vir jou boodskappe kan stuur nie en hul inhoud sal versteek word.",
+      "confirmAction": "Blokkeer",
+      "defaultName": "hierdie gebruiker",
+      "errorBody": "Kon nie hierdie gebruiker blokkeer nie. Probeer weer.",
+      "unblockErrorBody": "Kon nie deblokkeer nie. Probeer weer.",
+      "reason": {
+        "harassment": "Teistering",
+        "spam": "Strooipos",
+        "other": "Ander"
+      }
+    },
+    "safety": {
+      "socialRestricted": {
+        "title": "Aksie nie beskikbaar nie",
+        "body": "Hierdie aksie is nie beskikbaar met jou huidige ouderdom- of veiligheidsinstellings nie. Kyk Inhoud- en veiligheidskontroles of die Veiligheidsentrum.",
+        "lockedBody": "Hierdie instelling word vir jou ouderdomsgroep bestuur en kan nie hier verander word nie.",
+        "openControls": "Maak veiligheidskontroles oop"
+      }
     },
     "explorePost": {
       "bookThisLook": "Bespreek hierdie kyk",
@@ -1818,14 +1867,54 @@
           "a11ySubmitVerification": "Submit for verification"
         },
         "safetyPanic": {
-          "requestHelpTitle": "Request help",
-          "requestHelpBody": "This will notify our safety team. If you are in immediate danger, please call emergency services (e.g. 112 or 911) first.",
-          "requestHelpCta": "Request help",
-          "errorSendFailed": "Unable to send request. Please call emergency services if in danger.",
-          "doneTitle": "Done",
-          "doneBody": "Help has been requested. Our team will reach out shortly.",
-          "buttonLabel": "Safety / Get help",
-          "a11y": "Safety - get help"
+          "requestHelpTitle": "Versoek hulp",
+          "requestHelpBody": "Dit stel ons veiligheidspan in kennis. As jy in onmiddellike gevaar is, skakel eers nooddienste (bv. 112).",
+          "requestHelpCta": "Versoek hulp",
+          "errorSendFailed": "Kon nie versoek stuur nie. Skakel nooddienste as jy in gevaar is.",
+          "doneTitle": "Hulp aangevra",
+          "doneBody": "Hulp is aangevra. Ons span sal binnekort opvolg.",
+          "doneBodyWithEvent": "Verwysing {{eventId}}… — ons span sal opvolg. Bewaar hierdie verwysing vir ondersteuning.",
+          "openSafetyHub": "Veiligheidsentrum",
+          "buttonLabel": "Veiligheid / Kry hulp",
+          "a11y": "Veiligheid - kry hulp"
+        },
+        "safetyHub": {
+          "title": "Veiligheid & vertroue",
+          "helpCardBody": "Noodriglyne, rapportering en jou veiligheidskontroles",
+          "emergencyNoticeTitle": "In 'n noodgeval",
+          "emergencyNoticeBody": "Beautonomi is nie 'n nooddienst nie. Skakel 112 (Suid-Afrika) of jou plaaslike noodnommer.",
+          "emergencyCallTitle": "Skakel nooddienste?",
+          "emergencyCallBody": "Dit open jou foon om 112 te skakel.",
+          "emergencyCallAction": "Skakel 112",
+          "getHelpTitle": "Kry hulp nou",
+          "contactTrustSafety": "Kontak vertroue & veiligheid",
+          "contactTrustSafetyHint": "Open 'n ondersteuningskaartjie vir ons veiligheidspan",
+          "reportUser": "Rapporteer teistering of 'n gebruiker",
+          "reportUserHint": "Beskryf wat gebeur het — ons reageer binne 24–48 uur",
+          "yourProfileTitle": "Jou veiligheidsprofiel",
+          "emergencyContact": "Noodkontak",
+          "emergencyContactHint": "Voeg jou noodkontak by in persoonlike info",
+          "signInHint": "Teken in om jou veiligheidsprofiel te bestuur",
+          "ageBandLabel": "Ouderdomsgeskiktheid",
+          "ageBand": {
+            "under_13": "Onder 13 — sosiale funksies beperk",
+            "13_17": "13–17 — tiener-veiligheidsinstellings",
+            "18_plus": "18+ — volle toegang",
+            "unknown": "Voltooi jou geboortedatum in profiel"
+          },
+          "controlsTitle": "Jou kontroles",
+          "resourcesTitle": "Hulpbronne",
+          "learningCentre": "Leersentrum",
+          "privacy": "Privaatheidsbeleid"
+        },
+        "blockedUsers": {
+          "title": "Geblokkeerde gebruikers",
+          "empty": "Jy het nog niemand geblokkeer nie.",
+          "settingsDesc": "Sien en deblokkeer mense wat jy geblokkeer het",
+          "unblockTitle": "Deblokkeer gebruiker?",
+          "unblockBody": "{{name}} sal weer vir jou kan boodskappe stuur.",
+          "unblockAction": "Deblokkeer",
+          "safetyHubLink": "Veiligheid & vertroue"
         },
         "profileDetails": {
           "loadFailed": "Failed to load",

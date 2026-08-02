@@ -5098,6 +5098,7 @@ export default function BookingDetailScreen() {
         entityId={paycloudEntityId}
         bookingId={id}
         bookingLocationId={b.location_id ?? null}
+        tipIncludedInAmount={Number(b.tip_amount ?? 0) > 0.01}
         onPaymentSuccess={() => {
           setShowPaycloudPayment(false);
           void refreshBookingDetail();

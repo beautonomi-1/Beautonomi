@@ -188,12 +188,17 @@ export const FEATURE_FLAG_KEYS = {
 
   /** Forced safety defaults for 13-17 and unknown bands. Metadata JSON booleans. */
   SAFETY_RESTRICTED_MODE_DEFAULTS: "safety.restricted_mode_defaults",
+  /** Auto-hide UGC when report count exceeds threshold within 24h */
+  SAFETY_AUTO_HIDE_REPORT_THRESHOLD: "safety.auto_hide_report_threshold",
 
   /** Platform user referral program (wallet rewards for inviting friends). */
   REFERRAL_PROGRAM: "referral_program",
 
   /** Postgres provider_finance_summary RPC for finance aggregates (shadow-compare before enable). */
   PROVIDER_FINANCE_SUMMARY_RPC: "reports.provider_finance_summary_rpc",
+
+  /** Mobile-first bottom-sheet booking shell on provider web (strangler migration). Default off. */
+  PROVIDER_BOOKING_MOBILE_SHELL: "provider_booking_mobile_shell",
 } as const;
 
 export type PaymentRelatedFeatureKey =

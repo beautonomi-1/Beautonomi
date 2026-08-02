@@ -12,6 +12,8 @@ import {
 } from "@/lib/messaging/message-replies";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { z } from "zod";
+import { assertNotBlocked, getBlockedUserIds, UserBlockedError } from "@/lib/safety/user-blocks";
+import { requireSocialAccess } from "@/lib/safety/require-social-access";
 
 /**
  * GET /api/provider/conversations/[id]/messages
@@ -36,7 +38,7 @@ export async function GET(
 
     const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
-      .select("id, provider_id")
+      .select("id, provider_id, customer_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -44,6 +46,8 @@ export async function GET(
     if (convError || !conversation) {
       return notFoundResponse("Conversation not found");
     }
+
+    await assertNotBlocked(user.id, conversation.customer_id as string, supabaseAdmin);
 
     const { data: messages, error } = await supabaseAdmin
       .from("messages")
@@ -60,6 +64,7 @@ export async function GET(
         reply_to_message_id
       `)
       .eq("conversation_id", id)
+      .eq("is_hidden", false)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -144,6 +149,9 @@ export async function GET(
 
     return successResponse(transformed);
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return errorResponse("You cannot interact with this user.", "USER_BLOCKED", 403);
+    }
     return handleApiError(error, "Failed to fetch messages");
   }
 }
@@ -176,6 +184,7 @@ export async function POST(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    await requireSocialAccess(user.id, "direct_message", request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -184,13 +193,17 @@ export async function POST(
 
     const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
-      .select("id, provider_id")
+      .select("id, provider_id, customer_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (convError || !conversation) {
       return notFoundResponse("Conversation not found");
+    }
+
+    if (conversation.customer_id) {
+      await assertNotBlocked(user.id, conversation.customer_id as string, supabaseAdmin);
     }
 
     // Check subscription message limit (but allow messaging even without subscription)
@@ -268,65 +281,67 @@ export async function POST(
           .single();
 
       if (convData && convData.customer_id) {
-        const customerId = convData.customer_id;
-        const messagePreview = validated.content 
-          ? (validated.content.length > 50 ? validated.content.slice(0, 50) + "..." : validated.content)
-          : (validated.attachments && validated.attachments.length > 0 ? "Sent an attachment" : "New message");
-
-        // Send OneSignal push notification (try template first, fallback to hardcoded)
-        const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import(
-          "@/lib/notifications/onesignal"
+        const customerId = convData.customer_id as string;
+        const { filterBlockedNotificationRecipients } = await import("@/lib/safety/user-blocks");
+        const notifyIds = await filterBlockedNotificationRecipients(
+          user.id,
+          [customerId],
+          supabaseAdmin,
         );
-        
-        // Try to use notification template
-        const template = await getNotificationTemplate("customer_new_message");
+        if (notifyIds.length > 0) {
+          const notifyCustomerId = notifyIds[0]!;
+          const messagePreview = validated.content
+            ? (validated.content.length > 50 ? validated.content.slice(0, 50) + "..." : validated.content)
+            : (validated.attachments && validated.attachments.length > 0 ? "Sent an attachment" : "New message");
 
-        if (template && template.enabled) {
-          // Get provider name for template
-          const { data: providerData } = await supabaseAdmin
-            .from("providers")
-            .select("business_name")
-            .eq("id", providerId)
-            .single();
-          
-          // Use template with variables
-          await sendTemplateNotification(
-            "customer_new_message",
-            [customerId],
-            {
-              type: "new_message",
-              provider_name: providerData?.business_name || "Your provider",
-              message_preview: messagePreview,
-              conversation_id: id,
-            },
-            template.channels || ["push"],
-            // In-app bell row inserted below with the canonical new_message type;
-            // skip the template auto-insert to avoid a duplicate bell entry.
-            { appType: "customer", skipInApp: true }
+          const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import(
+            "@/lib/notifications/onesignal"
           );
-        } else {
-          // Fallback: send push with message preview so customer always gets notified (like customer→provider)
-          await sendToUser(
-            customerId,
-            {
-              title: "New Message from Provider",
-              message: messagePreview,
-              data: { type: "new_message", conversation_id: id, message_id: message.id, url: `/account-settings/messages?conversation=${id}`, deep_link: `/account-settings/messages?conversation=${id}` },
-              url: `/account-settings/messages?conversation=${id}`,
-            },
-            ["push"],
-            { appType: "customer" }
-          );
+
+          const template = await getNotificationTemplate("customer_new_message");
+
+          if (template && template.enabled) {
+            const { data: providerData } = await supabaseAdmin
+              .from("providers")
+              .select("business_name")
+              .eq("id", providerId)
+              .single();
+
+            await sendTemplateNotification(
+              "customer_new_message",
+              [notifyCustomerId],
+              {
+                type: "new_message",
+                provider_name: providerData?.business_name || "Your provider",
+                message_preview: messagePreview,
+                conversation_id: id,
+              },
+              template.channels || ["push"],
+              { appType: "customer", skipInApp: true, senderUserId: user.id },
+            );
+          } else {
+            await sendToUser(
+              notifyCustomerId,
+              {
+                title: "New Message from Provider",
+                message: messagePreview,
+                data: { type: "new_message", conversation_id: id, message_id: message.id, url: `/account-settings/messages?conversation=${id}`, deep_link: `/account-settings/messages?conversation=${id}` },
+                url: `/account-settings/messages?conversation=${id}`,
+              },
+              ["push"],
+              { appType: "customer", senderUserId: user.id },
+            );
+          }
+
+          await insertNotification({
+            user_id: notifyCustomerId,
+            type: "new_message",
+            title: "New Message from Provider",
+            message: messagePreview,
+            data: { conversation_id: id, message_id: message.id },
+            action_url: `/account-settings/messages?conversation=${id}`,
+          });
         }
-
-        await insertNotification({
-          user_id: customerId,
-          type: "new_message",
-          title: "New Message from Provider",
-          message: messagePreview,
-          data: { conversation_id: id, message_id: message.id },
-          action_url: `/account-settings/messages?conversation=${id}`,
-        });
       }
     } catch (notifError) {
       // Don't fail message send if notification fails
@@ -350,6 +365,13 @@ export async function POST(
       created_at: message.created_at,
     });
   } catch (error) {
+    if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
+      return errorResponse(
+        error instanceof Error ? error.message : "You cannot interact with this user.",
+        "USER_BLOCKED",
+        403,
+      );
+    }
     if (error instanceof z.ZodError) {
       return handleApiError(error, "Invalid request data", 400);
     }

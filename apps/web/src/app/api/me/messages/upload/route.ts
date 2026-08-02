@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import {
+  assertNotBlocked,
+  getConversationPeerUserId,
+  UserBlockedError,
+} from "@/lib/safety/user-blocks";
 import {
   MESSAGE_ATTACHMENTS_BUCKET,
   messageAttachmentRetentionDays,
@@ -21,9 +27,7 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    if (user.role === "customer") {
-      await requireSocialAccess(user.id, "direct_message", request);
-    }
+    await requireSocialAccess(user.id, "direct_message", request);
     const supabase = await getSupabaseServer(request);
 
     const formData = await request.formData();
@@ -67,6 +71,20 @@ export async function POST(request: NextRequest) {
 
     if (!isCustomer && !isProvider) {
       return errorResponse("Not authorized to upload files to this conversation", "FORBIDDEN", 403);
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const actorRole = isCustomer ? "customer" : "provider";
+    const peerUserId = await getConversationPeerUserId(conv, user.id, actorRole, supabaseAdmin);
+    if (peerUserId) {
+      try {
+        await assertNotBlocked(user.id, peerUserId, supabaseAdmin);
+      } catch (e) {
+        if (e instanceof UserBlockedError || (e as { code?: string }).code === "USER_BLOCKED") {
+          return errorResponse("You cannot message this user", "USER_BLOCKED", 403);
+        }
+        throw e;
+      }
     }
 
     if (files.length > 10) {

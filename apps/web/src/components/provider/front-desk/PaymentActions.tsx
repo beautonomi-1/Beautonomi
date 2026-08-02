@@ -19,13 +19,14 @@ import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaym
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { fetcher } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
+import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import Link from "next/link";
 import {
   formatPaycloudCollectLabel,
   inferBookingCollectContext,
   PAYCLOUD_SETUP_LABEL,
 } from "@/lib/payments/paycloud-collect-cta";
-import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
-import Link from "next/link";
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -40,6 +41,8 @@ interface PaymentActionsProps {
   onComplete: () => void;
   /** Salon location for at-salon bookings; null for house-call / portable path */
   bookingLocationId?: string | null;
+  /** Checkout tip already included in collect amount — hide terminal tip field. */
+  tipAmount?: number | null;
   /** "footer" = large interactive tiles for Concierge Panel */
   variant?: "default" | "footer";
 }
@@ -56,6 +59,7 @@ export function PaymentActions({
   currency,
   onComplete,
   bookingLocationId = null,
+  tipAmount = null,
   variant = "default",
 }: PaymentActionsProps) {
   const remaining = computeBookingOutstandingDisplay({
@@ -142,6 +146,7 @@ export function PaymentActions({
       entityId={bookingId}
       bookingId={bookingId}
       bookingLocationId={bookingLocationId}
+      tipIncludedInAmount={paycloudTipIncludedInChargeAmount(tipAmount)}
       onSuccess={() => {
         setPaycloudOpen(false);
         onComplete();

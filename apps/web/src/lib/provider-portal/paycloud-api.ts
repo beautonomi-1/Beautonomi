@@ -25,6 +25,7 @@ export interface PaycloudTerminal {
   total_amount: number;
   last_used: string | null;
   last_error: string | null;
+  in_flight_payment_id?: string | null;
   created_at: string;
   merchant?: PaycloudMerchantInfo | null;
 }
@@ -110,10 +111,13 @@ export interface PaycloudPayment {
   cashback_amount?: number;
   pay_scenario?: string;
   error_message?: string;
+  reused?: boolean;
   /** Captured-vs-expected comparison. "under"/"mismatch" captures are NOT
    *  auto-settled and must be resolved via reconciliation/superadmin. */
   amount_match_status?: "exact" | "over" | "under" | "mismatch" | "pending" | null;
   expected_amount?: number;
+  channel?: "cloud" | "same_terminal";
+  intent_payload?: Record<string, unknown> | null;
 }
 
 export class PaycloudApi {
@@ -184,6 +188,8 @@ export class PaycloudApi {
     booking_id?: string | null;
     sale_id?: string | null;
     group_booking_id?: string | null;
+    channel?: "cloud" | "same_terminal";
+    device_serial?: string;
   }): Promise<PaycloudPayment> {
     const response = await fetcher.post<{ data: PaycloudPayment }>(
       "/api/provider/paycloud/payments",
@@ -205,6 +211,30 @@ export class PaycloudApi {
       {},
     );
     return response.data;
+  }
+
+  async confirmPayment(
+    id: string,
+    body?: {
+      intent_result?: {
+        result?: string;
+        resultMsg?: string;
+        transData?: string | Record<string, unknown>;
+      };
+      device_model?: string;
+      device_manufacturer?: string;
+      serial_source?: "build_serial" | "wiseasy_property" | "android_id";
+    },
+  ): Promise<PaycloudPayment> {
+    const response = await fetcher.post<{ data?: { payment?: PaycloudPayment } & PaycloudPayment }>(
+      `/api/provider/paycloud/payments/${id}/confirm`,
+      body ?? {},
+    );
+    const data = response.data;
+    if (data && typeof data === "object" && "payment" in data && data.payment) {
+      return data.payment;
+    }
+    return data as PaycloudPayment;
   }
 
   async voidPayment(id: string): Promise<PaycloudPayment> {

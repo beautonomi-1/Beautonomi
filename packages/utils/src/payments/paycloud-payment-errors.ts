@@ -87,15 +87,27 @@ export function humanizePaycloudPaymentError(
       };
     case "TERMINAL_UNAVAILABLE":
     case "TERMINAL_NOT_FOUND":
-    case "TERMINAL_MISSING":
+    case "TERMINAL_MISSING": {
+      const detail = fallback?.trim() ?? "";
+      const gatewayDown =
+        /\b503\b|no healthy upstream|service error \(503\)|gateway unavailable|timed out/i.test(
+          detail,
+        );
+      const terminalOffline =
+        /\boffline\b|not online|terminal.*unavailable|reject_trade/i.test(detail);
       return {
-        title: "Card machine unavailable",
-        message:
-          fallback ||
-          "Could not reach the card machine. Check it is powered on, online, and connected to the internet.",
+        title: gatewayDown ? "PayCloud gateway unavailable" : "Card machine unavailable",
+        message: gatewayDown
+          ? "PayCloud's payment gateway is not responding (often HTTP 503 on sandbox). Try again later and run Test sandbox credentials in Admin → PayCloud. Charges cannot reach your terminal until the gateway is up."
+          : terminalOffline
+            ? detail ||
+              "The card machine looks offline. Open WiseCashier, enable ECR Hub → Cloud mode, and confirm the device is online, then try again."
+            : detail ||
+              "Could not reach the card machine. Check it is powered on, online, in Cloud mode, and that its serial is registered in Card machines.",
         action: "open_card_machines",
-        owner: "provider",
+        owner: gatewayDown ? "beautonomi" : "provider",
       };
+    }
     case "TERMINAL_INACTIVE":
       return {
         title: "Card machine inactive",

@@ -3340,7 +3340,7 @@ export class ProviderApiClient implements ProviderApi {
           .filter((item: any) => item?.type === "service" && item?.service_id)
           .map((item: any) => ({
             offering_id: item.service_id,
-            staff_id: data.team_member_id || undefined,
+            staff_id: item.staff_id || data.team_member_id || undefined,
           }))
       : [];
     const baseMeta =

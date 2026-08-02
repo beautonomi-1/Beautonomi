@@ -4,6 +4,7 @@ import { createPaycloudRefund } from "@/lib/payments/paycloud-client";
 import { resolvePaycloudContextForProvider, paycloudContextFailureToApiError } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
+import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 
 export type InitiatePaycloudRefundResult =
   | { ok: true; refundPayment: Record<string, unknown>; reused?: boolean }
@@ -22,7 +23,8 @@ export async function initiatePaycloudRefund(params: {
   notifyUrl: string;
   terminalId?: string | null;
 }): Promise<InitiatePaycloudRefundResult> {
-  const { supabase, providerId, paymentId, amount: requestedAmount, processedBy, notifyUrl } = params;
+  const { supabase, providerId, paymentId, amount: rawRequestedAmount, processedBy, notifyUrl } = params;
+  const requestedAmount = normalizePaycloudMajorAmount(rawRequestedAmount);
 
   const { data: payment } = await supabase
     .from("provider_paycloud_payments")

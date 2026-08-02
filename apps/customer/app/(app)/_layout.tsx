@@ -310,6 +310,7 @@ export default function AppLayout() {
         <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: stackTitle("link") }} />
         <Stack.Screen name="pdf-preview" options={{ headerShown: false, title: "PDF" }} />
         <Stack.Screen name="onboarding/index" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
+        <Stack.Screen name="safety" options={{ headerShown: false }} />
       </Stack>
       </View>
     </RoleGate>

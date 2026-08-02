@@ -57,6 +57,18 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   getNotificationTemplate: (...args: unknown[]) => mockGetNotificationTemplate(...args),
 }));
 
+vi.mock("@/lib/safety/require-social-access", () => ({
+  requireSocialAccess: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/lib/safety/user-blocks", () => ({
+  assertNotBlocked: vi.fn(async () => undefined),
+  filterBlockedNotificationRecipients: vi.fn(async (_sender: string, ids: string[]) => ids),
+  UserBlockedError: class UserBlockedError extends Error {
+    code = "USER_BLOCKED";
+  },
+}));
+
 function createQuery(result: unknown) {
   const query: Record<string, unknown> = {};
   query.select = vi.fn(() => query);

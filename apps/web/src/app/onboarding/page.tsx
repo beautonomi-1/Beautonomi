@@ -941,6 +941,11 @@ function CustomerOnboardingWizard() {
     if (currentStep === 1) {
       if (!preferredName.trim()) return "Please enter a name to continue.";
     }
+    if (currentStep === 3) {
+      if (!buildDobString(dobYear, dobMonth, dobDay)) {
+        return "Please enter your date of birth to continue.";
+      }
+    }
     if (currentStep === 4) {
       if (!alreadyHasAddress && !address) return "Please search for and select your address.";
     }
@@ -949,7 +954,7 @@ function CustomerOnboardingWizard() {
       if (!phoneVerified && phoneE164) return "Please verify your phone number to continue.";
     }
     return null;
-  }, [currentStep, preferredName, phoneVerified, phoneE164, address, alreadyHasAddress]);
+  }, [currentStep, preferredName, dobYear, dobMonth, dobDay, phoneVerified, phoneE164, address, alreadyHasAddress]);
 
   /* ── Per-step API calls ── */
 

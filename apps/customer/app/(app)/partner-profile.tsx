@@ -26,6 +26,8 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
@@ -912,7 +914,7 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
 }
 
 /* ─── Review Card ─── */
-function ReviewCard({ review }: { review: Review }) {
+function ReviewCard({ review, onReport }: { review: Review; onReport?: () => void }) {
   const date = new Date(review.created_at);
   const timeAgo = getRelativeTime(date);
   const name = getReviewerDisplayName(review);
@@ -934,10 +936,22 @@ function ReviewCard({ review }: { review: Review }) {
             <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{timeAgo}</Text>
           </View>
         </View>
-        <View style={{ backgroundColor: "#FEF3C7", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 12, fontWeight: "700", color: "#B45309" }}>{review.rating.toFixed(1)}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {onReport ? (
+            <TouchableOpacity
+              onPress={onReport}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Report review"
+              accessibilityRole="button"
+            >
+              <Ionicons name="flag-outline" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          ) : null}
+          <View style={{ backgroundColor: "#FEF3C7", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, fontWeight: "700", color: "#B45309" }}>{review.rating.toFixed(1)}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -1125,6 +1139,7 @@ export default function PartnerProfileScreen() {
       tab?: string;
     }>();
   const { user } = useAuth();
+  const { confirmBlockUser } = useUserBlocks();
   const { width: screenWidth } = useWindowDimensions();
   const { contentPadding } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -1150,6 +1165,7 @@ export default function PartnerProfileScreen() {
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reviewReportId, setReviewReportId] = useState<string | null>(null);
 
   // Service detail modal
   const [detailService, setDetailService] = useState<ProviderService | null>(null);
@@ -2052,12 +2068,30 @@ export default function PartnerProfileScreen() {
               <View style={{ marginRight: 8 }}><FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} /></View>
               <View style={{ marginRight: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
               <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
-              <FloatingIcon name="flag-outline" onPress={() => {
+              <FloatingIcon name="ellipsis-horizontal" onPress={() => {
                 if (!user) {
                   Alert.alert(pp("signInTitle"), pp("signInToReportBody"));
                   return;
                 }
-                setReportModalVisible(true);
+                Alert.alert(pp("safetyActionsTitle"), undefined, [
+                  {
+                    text: pp("reportModalTitle"),
+                    style: "destructive",
+                    onPress: () => setReportModalVisible(true),
+                  },
+                  {
+                    text: t("customer.blockUser.confirmAction"),
+                    style: "destructive",
+                    onPress: () =>
+                      provider &&
+                      confirmBlockUser({
+                        providerId: provider.id,
+                        displayName: provider.business_name,
+                        onBlocked: () => router.back(),
+                      }),
+                  },
+                  { text: t("common.cancel"), style: "cancel" },
+                ]);
               }} />
             </View>
 
@@ -2731,7 +2765,17 @@ export default function PartnerProfileScreen() {
                     </View>
                   ) : reviews.length > 0 ? (
                     <>
-                      {reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
+                      {reviews.map((r) => (
+                        <ReviewCard
+                          key={r.id}
+                          review={r}
+                          onReport={
+                            user
+                              ? () => setReviewReportId(r.id)
+                              : undefined
+                          }
+                        />
+                      ))}
                       <TouchableOpacity
                         onPress={() => {
                           const s = typeof slug === "string" ? slug : provider.slug;
@@ -3173,6 +3217,15 @@ export default function PartnerProfileScreen() {
           )}
         </TouchableOpacity>
       </BottomSheet>
+      {reviewReportId ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReviewReportId(null)}
+          targetType="review"
+          targetId={reviewReportId}
+          title={t("customer.contentReport.reportReview")}
+        />
+      ) : null}
       {membershipPaystackCheckout.modal}
     </>
   );

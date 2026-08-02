@@ -467,6 +467,8 @@ export type OneSignalSendOptions = {
   tenantId?: string | null;
   /** When true, do not enqueue a durable retry row on push failure (queue worker sets this). */
   skipMustDeliverRetryEnqueue?: boolean;
+  /** When set, recipients blocked by or blocking this user are excluded from push fan-out. */
+  senderUserId?: string;
 };
 
 /**
@@ -1085,6 +1087,20 @@ export async function sendToUser(
   // customer session — always use admin for user_devices reads so subscription targeting works.
   const supabase = options?.supabaseClient ?? getSupabaseAdmin();
 
+  if (options?.senderUserId) {
+    const { filterBlockedNotificationRecipients } = await import(
+      "@/lib/safety/user-blocks"
+    );
+    const allowed = await filterBlockedNotificationRecipients(
+      options.senderUserId,
+      [userId],
+      supabase,
+    );
+    if (allowed.length === 0) {
+      return { success: false, message: "No recipients after block filter" };
+    }
+  }
+
   let query = supabase
     .from("user_devices")
     .select("onesignal_player_id")
@@ -1193,12 +1209,26 @@ export async function sendToUsers(
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  const targetUserIds = uniqueNonEmptyUserIds(userIds);
+  let targetUserIds = uniqueNonEmptyUserIds(userIds);
   if (targetUserIds.length === 0) {
     return { success: false, message: "No recipients" };
   }
   const normalizedChannels = parseNotificationChannels(channels);
   const supabase = options?.supabaseClient ?? getSupabaseAdmin();
+
+  if (options?.senderUserId) {
+    const { filterBlockedNotificationRecipients } = await import(
+      "@/lib/safety/user-blocks"
+    );
+    targetUserIds = await filterBlockedNotificationRecipients(
+      options.senderUserId,
+      targetUserIds,
+      supabase,
+    );
+    if (targetUserIds.length === 0) {
+      return { success: false, message: "No recipients after block filter" };
+    }
+  }
 
   let query = supabase
     .from("user_devices")
@@ -1406,12 +1436,27 @@ export async function sendTemplateNotification(
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
-  userIds = uniqueNonEmptyUserIds(userIds);
+  let userIds = uniqueNonEmptyUserIds(userIds);
   if (userIds.length === 0) {
     return { success: false, message: "No recipients" };
   }
-  const requestedFilter = parseNotificationChannels(channels);
   const templateClient = options?.supabaseClient ?? getSupabaseAdmin();
+
+  if (options?.senderUserId) {
+    const { filterBlockedNotificationRecipients } = await import(
+      "@/lib/safety/user-blocks"
+    );
+    userIds = await filterBlockedNotificationRecipients(
+      options.senderUserId,
+      userIds,
+      templateClient,
+    );
+    if (userIds.length === 0) {
+      return { success: false, message: "No recipients after block filter" };
+    }
+  }
+
+  const requestedFilter = parseNotificationChannels(channels);
   const resolvedTenantId =
     options?.tenantId ??
     (typeof variables.tenant_id === "string" && variables.tenant_id.trim()

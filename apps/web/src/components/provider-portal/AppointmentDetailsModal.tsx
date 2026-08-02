@@ -13,7 +13,7 @@ interface AppointmentDetailsModalProps {
 }
 
 function AppointmentDetailsModal(_props: AppointmentDetailsModalProps) {
-  // This component has been replaced by AppointmentSidebar
+  // This component has been replaced by BookingSheetHost (mobile booking shell)
   // Kept as stub for Turbopack module resolution
   return <></>;
 }

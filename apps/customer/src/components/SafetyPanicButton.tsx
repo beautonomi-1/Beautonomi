@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -15,6 +16,7 @@ interface SafetyPanicButtonProps {
  */
 export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const { bundle } = useConfigBundle();
   const safetyConfig = useModuleConfig("safety") as { enabled?: boolean } | undefined;
   const panicEnabled = useFeatureFlag("safety.panic.enabled");
@@ -38,7 +40,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
         onPress: async () => {
           setLoading(true);
           try {
-            const res = await api.post<{ data: { id: string } }>("/api/me/safety/panic", {
+            const res = await api.post<{ id?: string; event_id?: string }>("/api/me/safety/panic", {
               booking_id: bookingId ?? undefined,
               metadata: { source: "customer_app" },
               ...(bundle?.meta?.env && { environment: bundle.meta.env }),
@@ -46,7 +48,11 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
             if (res.error) {
               Alert.alert(errTitle, sp("errorSendFailed"));
             } else {
-              Alert.alert(sp("doneTitle"), sp("doneBody"));
+              const eventId = res.data?.event_id ?? res.data?.id;
+              Alert.alert(sp("doneTitle"), sp("doneBodyWithEvent", { eventId: eventId?.slice(0, 8) ?? "—" }), [
+                { text: sp("openSafetyHub"), onPress: () => router.push("/(app)/safety") },
+                { text: t("common.ok") },
+              ]);
             }
           } catch {
             Alert.alert(errTitle, sp("errorSendFailed"));

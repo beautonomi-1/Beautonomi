@@ -28,11 +28,19 @@ export function bandFromDeviceLowerBound(lowerBound: number | null | undefined):
   return "18_plus";
 }
 
+export function bandFromDeviceUpperBound(upperBound: number | null | undefined): AgeBand {
+  if (upperBound == null || !Number.isFinite(upperBound)) return "unknown";
+  if (upperBound < 13) return "under_13";
+  if (upperBound < 18) return "13_17";
+  return "18_plus";
+}
+
 type UserAgeRow = {
   date_of_birth: string | null;
   legal_date_of_birth: string | null;
   under_age_flag: boolean | null;
   device_age_lower_bound: number | null;
+  device_age_upper_bound: number | null;
 };
 
 /**
@@ -45,7 +53,7 @@ export async function resolveAgeBand(
 ): Promise<ResolvedAgeBand> {
   const { data, error } = await supabase
     .from("users")
-    .select("date_of_birth, legal_date_of_birth, under_age_flag, device_age_lower_bound")
+    .select("date_of_birth, legal_date_of_birth, under_age_flag, device_age_lower_bound, device_age_upper_bound")
     .eq("id", userId)
     .maybeSingle();
 
@@ -73,6 +81,13 @@ export async function resolveAgeBand(
   if (row.device_age_lower_bound != null) {
     return {
       band: bandFromDeviceLowerBound(row.device_age_lower_bound),
+      source: "device_signal",
+    };
+  }
+
+  if (row.device_age_upper_bound != null) {
+    return {
+      band: bandFromDeviceUpperBound(row.device_age_upper_bound),
       source: "device_signal",
     };
   }

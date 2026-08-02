@@ -8,6 +8,7 @@ import { createPaycloudVoid } from "@/lib/payments/paycloud-client";
 import { resolvePaycloudContextForProvider, getPaycloudNotifyUrl, paycloudContextFailureToApiError } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
+import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 
 export async function POST(
   request: NextRequest,
@@ -85,10 +86,11 @@ export async function POST(
     const { data: provider } = await supabase.from("providers").select("tenant_id").eq("id", providerId).single();
     const voidMerchantOrderNo = buildMerchantOrderNo("BV");
     const notifyUrl = getPaycloudNotifyUrl(request);
-    const voidAmount =
+    const voidAmount = normalizePaycloudMajorAmount(
       Number(payment.amount) +
-      Math.max(0, Number(payment.tip_amount ?? 0)) +
-      Math.max(0, Number(payment.cashback_amount ?? 0));
+        Math.max(0, Number(payment.tip_amount ?? 0)) +
+        Math.max(0, Number(payment.cashback_amount ?? 0)),
+    );
 
     const { data: voidPaymentRow, error: insertError } = await supabase
       .from("provider_paycloud_payments")

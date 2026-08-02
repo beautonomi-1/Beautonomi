@@ -54,6 +54,10 @@ This document records every App Store Connect age-rating question, the answer we
 | Policy / feature flags | `apps/web/src/lib/age-assurance/age-policy.ts` |
 | Effective + locked settings | `apps/web/src/lib/age-assurance/safety-settings.ts` |
 | Social write guard | `apps/web/src/lib/safety/require-social-access.ts` |
+| Block / mute | `apps/web/src/lib/safety/user-blocks.ts`, migration 836 |
+| Content moderation | `apps/web/src/lib/safety/moderation-actions.ts` |
+| Safety Hub (mobile) | `apps/customer/app/(app)/safety/`, `apps/provider/app/(app)/(tabs)/more/safety/` |
+| Trust & Safety runbook | `docs/TRUST_SAFETY_RUNBOOK.md` |
 | Safety settings API | `apps/web/src/app/api/me/safety-settings/route.ts` |
 | Feature flags (seed) | `supabase/migrations/828_age_assurance_and_safety_settings.sql` |
 | Public policy page | `apps/web/src/app/age-suitability/` |

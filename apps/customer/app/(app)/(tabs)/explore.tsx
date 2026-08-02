@@ -30,6 +30,9 @@ import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
+import * as Clipboard from "expo-clipboard";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { APP_URL } from "@/config/public-env";
 import {
@@ -79,6 +82,7 @@ const PinCard = React.memo(function PinCard({
   onLike,
   onSave,
   onShare,
+  onMore,
 }: {
   post: ExplorePost;
   onPress: () => void;
@@ -86,6 +90,7 @@ const PinCard = React.memo(function PinCard({
   onLike: (post: ExplorePost) => void;
   onSave: (post: ExplorePost) => void;
   onShare: (post: ExplorePost) => void;
+  onMore?: (post: ExplorePost) => void;
 }) {
   const { t } = useTranslation();
   const img = post.media_urls?.[0] || "https://placehold.co/400x500/f5f5f5/999?text=Beauty";
@@ -298,7 +303,30 @@ const PinCard = React.memo(function PinCard({
           </View>
         </Pressable>
 
-        {/* Share + save — outside Pressable so taps don't navigate */}
+        {/* Share + save + more — outside Pressable so taps don't navigate */}
+        {onMore ? (
+          <TouchableOpacity
+            onPress={() => { haptic.light(); onMore(post); }}
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: "rgba(0,0,0,0.35)",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 10,
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+            accessibilityLabel={t("customer.explorePost.moreOptions")}
+            accessibilityRole="button"
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={() => { haptic.light(); onShare(post); }}
           style={{
@@ -563,9 +591,15 @@ export default function ExploreScreen() {
   const { t } = useTranslation();
   const tx = useCallback((key: string) => t(`customer.mobile.tabs.explore.${key}`), [t]);
   const { user } = useAuth();
+  const { confirmBlockUser } = useUserBlocks();
   const { settings: safetySettings } = useSafetySettings();
   const socialInteractions = useSocialCapability("like_or_save");
   const hideSocialFeed = Boolean(user && safetySettings.hide_social_feed);
+  const [reportTarget, setReportTarget] = useState<{
+    type: ContentReportTargetType;
+    id: string;
+    title?: string;
+  } | null>(null);
   const { width, columns, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
@@ -591,6 +625,7 @@ export default function ExploreScreen() {
     applyFilters,
     setPostSaved,
     setPostLiked,
+    removePost,
   } = useExploreFeed();
 
   useEffect(() => {
@@ -729,6 +764,66 @@ export default function ExploreScreen() {
     [handleShare, t],
   );
 
+  const openContentReport = useCallback(
+    (type: ContentReportTargetType, targetId: string, title?: string) => {
+      if (!user) {
+        Alert.alert(
+          t("customer.contentReport.signInTitle"),
+          t("customer.contentReport.signInBody"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("auth.login"), onPress: () => router.push("/(auth)/login") },
+          ],
+        );
+        return;
+      }
+      setReportTarget({ type, id: targetId, title });
+    },
+    [t, user],
+  );
+
+  const showPostActions = useCallback(
+    (post: ExplorePost) => {
+      const postUrl = `${APP_URL}/explore/${post.id}`;
+      const actions: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
+        {
+          text: t("common.share"),
+          onPress: () => openShareSheet(post),
+        },
+        {
+          text: t("customer.explorePost.copyLink"),
+          onPress: async () => {
+            await Clipboard.setStringAsync(postUrl);
+            haptic.light();
+            Alert.alert(t("customer.explorePost.linkCopied"));
+          },
+        },
+      ];
+      if (user && post.id) {
+        actions.push({
+          text: t("customer.contentReport.reportPost"),
+          style: "destructive",
+          onPress: () => openContentReport("explore_post", post.id, t("customer.contentReport.reportPost")),
+        });
+      }
+      if (user && post.provider_id) {
+        actions.push({
+          text: t("customer.blockUser.confirmAction"),
+          style: "destructive",
+          onPress: () =>
+            confirmBlockUser({
+              providerId: post.provider_id,
+              displayName: post.provider?.business_name,
+              onBlocked: () => removePost(post.id),
+            }),
+        });
+      }
+      actions.push({ text: t("common.cancel"), style: "cancel" });
+      Alert.alert(t("customer.explorePost.moreOptions"), undefined, actions);
+    },
+    [confirmBlockUser, openContentReport, openShareSheet, removePost, t, user],
+  );
+
   const onPostPress = useCallback((post: ExplorePost) => {
     router.push({ pathname: "/(app)/explore-post", params: { id: post.id } });
   }, []);
@@ -824,9 +919,10 @@ export default function ExploreScreen() {
         onLike={handleLike}
         onSave={handleSave}
         onShare={openShareSheet}
+        onMore={user ? showPostActions : undefined}
       />
     ),
-    [cardWidth, onPostPress, handleLike, handleSave, openShareSheet],
+    [cardWidth, onPostPress, handleLike, handleSave, openShareSheet, showPostActions, user],
   );
 
   const keyExtractor = useCallback((item: ExplorePost) => item.id, []);
@@ -977,6 +1073,15 @@ export default function ExploreScreen() {
           </View>
         </>
       )}
+      {reportTarget ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportTarget(null)}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          title={reportTarget.title}
+        />
+      ) : null}
     </View>
   );
 }

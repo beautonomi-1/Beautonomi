@@ -40,8 +40,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { PreferencesPanel, MangomintStatusLegend } from "@/components/calendar";
-import { openViewMode, openCreateMode } from "@/stores/appointment-sidebar-store";
-import { AppointmentSidebar } from "@/components/appointments";
+import { openViewMode, openCreateMode, openGroupSheet, openGroupViewMode } from "@/stores/appointment-sidebar-store";
+import { BookingSheetHost } from "@/components/provider/booking";
 import { WaitingRoomButton, WaitingRoomPanel } from "@/components/waitingRoom";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -90,14 +90,6 @@ const CalendarMobileWithDnd = dynamic(
       </div>
     ),
   }
-);
-
-const GroupBookingDialog = dynamic(
-  () =>
-    import("@/components/provider-portal/GroupBookingDialog").then(
-      (m) => m.GroupBookingDialog
-    ),
-  { ssr: false }
 );
 
 const PrintScheduleDialog = dynamic(
@@ -621,7 +613,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const loadDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastForegroundRefreshRef = useRef(0);
   const [_isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [isGroupBookingDialogOpen, setIsGroupBookingDialogOpen] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [printDialogStaffId, setPrintDialogStaffId] = useState<string | null>(null);
@@ -640,6 +631,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [selectedAppointmentsForGroup, setSelectedAppointmentsForGroup] = useState<Appointment[]>([]);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
+  const openGroupBookingFlow = useCallback(() => {
+    const now = new Date();
+    const h = now.getHours();
+    const m = Math.ceil(now.getMinutes() / 15) * 15;
+    setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+    if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
+    openGroupSheet();
+  }, [selectedTeamMember]);
 
   // Self-heal invalid date state so format()/date-fns calls never throw.
   useEffect(() => {
@@ -1259,6 +1258,23 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   };
 
   const handleAppointmentClick = useCallback(async (appointment: Appointment) => {
+    const raw = appointment as unknown as Record<string, unknown>;
+    const isGroup =
+      Boolean(raw.is_group_booking) ||
+      (typeof appointment.id === "string" && appointment.id.startsWith("group:"));
+    if (isGroup) {
+      const groupId =
+        typeof raw.group_booking_id === "string" && raw.group_booking_id.length > 0
+          ? raw.group_booking_id
+          : appointment.id.startsWith("group:")
+            ? appointment.id.slice("group:".length)
+            : appointment.booking_id?.startsWith("group:")
+              ? appointment.booking_id.slice("group:".length)
+              : appointment.id;
+      openGroupViewMode(groupId);
+      return;
+    }
+
     const bookingId = appointment.booking_id
       ? appointment.booking_id
       : appointment.id.includes("-svc-")
@@ -1982,14 +1998,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  const now = new Date();
-                  const h = now.getHours();
-                  const m = Math.ceil(now.getMinutes() / 15) * 15;
-                  setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
-                  if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
-                  setIsGroupBookingDialogOpen(true);
-                }}
+                onClick={openGroupBookingFlow}
                 className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-white/10 hidden md:flex"
                 title="Group Booking"
                 aria-label="Create group booking"
@@ -2434,12 +2443,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   className="w-full justify-start gap-2"
                   onClick={() => {
                     setIsFilterSheetOpen(false);
-                    const now = new Date();
-                    const h = now.getHours();
-                    const m = Math.ceil(now.getMinutes() / 15) * 15;
-                    setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
-                    if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
-                    setIsGroupBookingDialogOpen(true);
+                    openGroupBookingFlow();
                   }}
                 >
                   <Users className="w-4 h-4" />
@@ -2494,7 +2498,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       </Sheet>
 
       {/* Appointment sidebar modal for view/create/edit */}
-      <AppointmentSidebar
+      <BookingSheetHost
         teamMembers={teamMembers}
         services={services}
         locations={salons}
@@ -2503,22 +2507,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         onAppointmentDeleted={forceRefresh}
         onRefresh={forceRefresh}
       />
-
-      {/* Group Booking Dialog */}
-      {isGroupBookingDialogOpen && (
-        <GroupBookingDialog
-          open
-          onOpenChange={setIsGroupBookingDialogOpen}
-          defaultDate={selectedDateSafe}
-          defaultTime={defaultTimeSlot}
-          defaultTeamMemberId={defaultTeamMemberId}
-          existingAppointments={selectedAppointmentsForGroup}
-          onSuccess={() => {
-            setSelectedAppointmentsForGroup([]);
-            loadData();
-          }}
-        />
-      )}
 
       {/* Print Schedule Dialog */}
       {isPrintDialogOpen && (

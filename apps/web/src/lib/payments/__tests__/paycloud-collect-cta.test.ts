@@ -50,6 +50,16 @@ describe("paycloud collect CTA labels", () => {
     expect(label).toContain("deposit");
   });
 
+  it("formats product order with amount", () => {
+    const label = formatPaycloudCollectLabel({
+      context: "product_order",
+      amount: 199.5,
+      currency: "ZAR",
+    });
+    expect(label).toContain("Card machine ·");
+    expect(label).toContain("199");
+  });
+
   it("infers add-ons-only booking context", () => {
     expect(
       inferBookingCollectContext({

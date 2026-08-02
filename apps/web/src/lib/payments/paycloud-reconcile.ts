@@ -6,6 +6,7 @@ import { isPaycloudVoidRow, completePaycloudVoid } from "@/lib/payments/paycloud
 import { isPaycloudRefundRow, completePaycloudRefund } from "@/lib/payments/paycloud-refund";
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
+import { parsePaycloudCloudCapturedAmount, mergePaycloudCapturedMetadata } from "@/lib/payments/paycloud-cloud-amount";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
 
 export type PaycloudReconcilePaymentRow = {
@@ -101,9 +102,13 @@ export async function reconcilePaycloudPayment(
 
   if (transStatus === PAYCLOUD_TRANS_STATUS.COMPLETED) {
     const rawResult = query.raw as Record<string, unknown>;
-    const captured = Number(
-      rawResult?.paid_amount ?? rawResult?.order_amount ?? payment.amount,
-    );
+    const captured =
+      rawResult?.paid_amount != null || rawResult?.order_amount != null
+        ? parsePaycloudCloudCapturedAmount(
+            payment.currency,
+            (rawResult?.paid_amount ?? rawResult?.order_amount) as string | number,
+          )
+        : Number(payment.amount);
     const matchStatus = computeAmountMatchStatus(Number(payment.expected_amount), captured, {
       tipAmount: Number(payment.tip_amount ?? 0),
       cashbackAmount: Number(payment.cashback_amount ?? 0),
@@ -118,6 +123,10 @@ export async function reconcilePaycloudPayment(
         paycloud_order_id:
           ((query.raw as Record<string, unknown>)?.order_id as string | undefined) ??
           payment.paycloud_order_id,
+        metadata: mergePaycloudCapturedMetadata(
+          payment.metadata as Record<string, unknown> | null | undefined,
+          captured,
+        ),
         updated_at: new Date().toISOString(),
       })
       .eq("id", payment.id);
@@ -157,6 +166,7 @@ export async function reconcilePaycloudPayment(
         currency: payment.currency,
         tipAmount: Number(payment.tip_amount ?? 0),
         cashbackAmount: Number(payment.cashback_amount ?? 0),
+        expectedBaseAmount: Number(payment.expected_amount ?? payment.amount ?? 0),
       });
       await handlePaycloudPostSettle(supabase, payment, settleResult, captured);
       didSettle = settleResult.settled;

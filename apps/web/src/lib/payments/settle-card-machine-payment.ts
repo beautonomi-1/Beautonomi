@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -29,6 +30,8 @@ export interface SettleCardMachinePaymentInput {
   tipAmount?: number | null;
   /** PayCloud cashback (cash-out). Not used for Yoco. Does not bump booking totals. */
   cashbackAmount?: number | null;
+  /** PayCloud expected base charge (excludes tip/cashback) for capture allocation. */
+  expectedBaseAmount?: number | null;
 }
 
 export interface ReverseCardMachineSettlementInput {
@@ -73,6 +76,50 @@ function computeBaseRemaining(booking: {
   const walletGiftCoverage = walletAmount + giftCardAmount;
   const coverage = Math.max(effectivePaid, walletGiftCoverage);
   return Math.max(0, bookingTotal - coverage);
+}
+
+/**
+ * Split PayCloud captured total into base vs tip/cashback for booking ledger rows.
+ * PayCloud may report paid_amount as base-only or base+extras; never double-count tips.
+ */
+export function allocateBaseFromCapture(params: {
+  captured: number;
+  baseRemaining: number;
+  tip: number;
+  cashback: number;
+  /** Initiated base charge (excludes tip/cashback) from provider_paycloud_payments.expected_amount. */
+  expectedBase?: number | null;
+}): number {
+  const captured = Math.max(0, Number(params.captured) || 0);
+  const baseRemaining = Math.max(0, Number(params.baseRemaining) || 0);
+  const tip = Math.max(0, Number(params.tip) || 0);
+  const cashback = Math.max(0, Number(params.cashback) || 0);
+  const extras = tip + cashback;
+  const expectedBase =
+    params.expectedBase != null && params.expectedBase > 0.01
+      ? normalizePaycloudMajorAmount(params.expectedBase)
+      : null;
+
+  if (extras <= 0.01) {
+    return Math.min(captured, baseRemaining);
+  }
+
+  if (
+    expectedBase != null &&
+    Math.abs(captured - (expectedBase + extras)) < 0.02
+  ) {
+    return Math.min(baseRemaining, expectedBase);
+  }
+
+  if (Math.abs(captured - (baseRemaining + extras)) < 0.02) {
+    return Math.min(baseRemaining, Math.max(0, captured - extras));
+  }
+
+  if (captured > baseRemaining + 0.01) {
+    return Math.min(baseRemaining, Math.max(0, captured - extras));
+  }
+
+  return Math.min(captured, baseRemaining);
 }
 
 function unpaidChargeRows(booking: { additional_charges?: AdditionalChargeRow[] | null }): AdditionalChargeRow[] {
@@ -328,9 +375,20 @@ async function settleBookingPayment(
     return { settled: true, reason: "already_paid", bookingId };
   }
 
+  const tip = Math.max(0, Number(input.tipAmount ?? 0));
+  const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
+
   let basePaymentInserted = false;
+  let basePaymentAmount = 0;
   if (baseRemaining > 0) {
-    const paymentAmount = Math.min(input.amount, baseRemaining);
+    const paymentAmount = allocateBaseFromCapture({
+      captured: input.amount,
+      baseRemaining,
+      tip,
+      cashback,
+      expectedBase: input.expectedBaseAmount,
+    });
+    basePaymentAmount = paymentAmount;
     const { error } = await supabase.from("booking_payments").insert({
       booking_id: bookingId,
       tenant_id: booking.tenant_id,
@@ -360,7 +418,7 @@ async function settleBookingPayment(
 
   const baseFullySettled =
     baseRemaining <= 0 ||
-    (basePaymentInserted && Math.min(input.amount, baseRemaining) >= baseRemaining - 0.01);
+    (basePaymentInserted && basePaymentAmount >= baseRemaining - 0.01);
 
   if (baseFullySettled && chargeRows.length > 0) {
     await settleUnpaidAdditionalCharges(
@@ -747,13 +805,13 @@ async function reverseProductOrderCardMachinePayment(
   const admin = getSupabaseAdmin();
   const { data: order } = await admin
     .from("product_orders")
-    .select("id, payment_status, payment_reference, provider_id")
+    .select("id, payment_status, payment_reference, provider_id, total_amount, wallet_amount, status")
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
     .maybeSingle();
 
   if (!order) return { reversed: false, reason: "order_not_found" };
-  if (order.payment_status !== "paid") {
+  if (order.payment_status !== "paid" && order.payment_status !== "partially_refunded") {
     return { reversed: true, reason: "already_unpaid" };
   }
 
@@ -764,13 +822,33 @@ async function reverseProductOrderCardMachinePayment(
     return { reversed: false, reason: "reference_mismatch" };
   }
 
+  const { data: paymentTx } = await admin
+    .from("payment_transactions")
+    .select("amount, status")
+    .eq("provider", input.paymentProvider)
+    .eq("reference", input.origProviderPaymentId)
+    .maybeSingle();
+
+  const collectibleTotal = Math.max(
+    0,
+    Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0),
+  );
+  const paidAmount = Math.max(0, Number(paymentTx?.amount ?? collectibleTotal));
+  const refundAmount =
+    input.refundAmount != null && input.refundAmount > 0 ? Number(input.refundAmount) : paidAmount;
+  const isFullRefund = refundAmount + 0.01 >= paidAmount;
+
+  const orderUpdate: Record<string, unknown> = {
+    payment_status: isFullRefund ? "refunded" : "partially_refunded",
+    updated_at: new Date().toISOString(),
+  };
+  if (isFullRefund) {
+    orderUpdate.status = "refunded";
+  }
+
   const { error: orderErr } = await admin
     .from("product_orders")
-    .update({
-      payment_status: "refunded",
-      status: "refunded",
-      updated_at: new Date().toISOString(),
-    })
+    .update(orderUpdate)
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId);
 
@@ -778,7 +856,10 @@ async function reverseProductOrderCardMachinePayment(
 
   await admin
     .from("payment_transactions")
-    .update({ status: "refunded", updated_at: new Date().toISOString() })
+    .update({
+      status: isFullRefund ? "refunded" : "partially_refunded",
+      updated_at: new Date().toISOString(),
+    })
     .eq("provider", input.paymentProvider)
     .eq("reference", input.origProviderPaymentId);
 

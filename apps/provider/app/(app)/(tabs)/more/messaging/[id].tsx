@@ -19,6 +19,9 @@ import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { setActiveMessagingConversationId } from "@/lib/active-messaging-context";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { useTranslation } from "@beautonomi/i18n";
+import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 import { CustomOfferCard } from "@beautonomi/ui/native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -141,6 +144,8 @@ interface ConversationDetail {
 
 export default function ChatScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const { confirmBlockUser } = useUserBlocks();
   const { screenPadding } = useResponsive();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -204,6 +209,25 @@ export default function ChatScreen() {
   const [realtimeMessages, setRealtimeMessages] = useState<Message[]>([]);
   const [optimisticMessage, setOptimisticMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reportMessageId, setReportMessageId] = useState<string | null>(null);
+
+  const openMessageActions = useCallback(
+    (msg: Message) => {
+      Alert.alert(t("customer.chatScreen.messageActionsTitle"), undefined, [
+        {
+          text: t("customer.chatScreen.replyToMessage"),
+          onPress: () => setReplyingTo(msg),
+        },
+        {
+          text: t("customer.contentReport.reportMessage"),
+          style: "destructive",
+          onPress: () => setReportMessageId(msg.id),
+        },
+        { text: t("common.cancel"), style: "cancel" },
+      ]);
+    },
+    [t],
+  );
   const fromConv = conversation?.messages ?? [];
   const convIds = new Set(fromConv.map((m) => m.id));
   const fromRealtime = realtimeMessages.filter((m) => !convIds.has(m.id));
@@ -761,8 +785,10 @@ export default function ChatScreen() {
     if (customerPhone) options.push("Copy phone");
     if (customerEmail) options.push("Copy email");
     options.push(conversation?.is_pinned ? "Unpin chat" : "Pin chat");
+    if (customerId) options.push("Block client");
     options.push("Delete conversation");
     options.push("Cancel");
+    const blockIndex = customerId ? options.length - 4 : -1;
     const pinIndex = options.length - 3;
     const deleteIndex = options.length - 2;
     const cancelIndex = options.length - 1;
@@ -790,6 +816,14 @@ export default function ChatScreen() {
       }
       if (idx === pinIndex) {
         void togglePin();
+        return;
+      }
+      if (blockIndex >= 0 && idx === blockIndex && customerId) {
+        confirmBlockUser({
+          userId: customerId,
+          displayName: conversation?.customer_name,
+          onBlocked: () => router.back(),
+        });
         return;
       }
       let i = 0;
@@ -821,11 +855,23 @@ export default function ChatScreen() {
             text: conversation?.is_pinned ? "Unpin chat" : "Pin chat",
             onPress: () => void togglePin(),
           },
+          ...(customerId
+            ? [{
+                text: t("customer.blockUser.confirmAction"),
+                style: "destructive" as const,
+                onPress: () =>
+                  confirmBlockUser({
+                    userId: customerId,
+                    displayName: conversation?.customer_name,
+                    onBlocked: () => router.back(),
+                  }),
+              }]
+            : []),
           { text: "Delete conversation", style: "destructive", onPress: runDelete },
         ].filter(Boolean) as { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[]
       );
     }
-  }, [conversationId, customerId, customerPhone, customerEmail, conversation?.is_pinned, deleteConv, router, togglePin]);
+  }, [conversationId, customerId, customerPhone, customerEmail, conversation?.is_pinned, conversation?.customer_name, deleteConv, router, togglePin, confirmBlockUser, t]);
 
   // No conversation id (invalid or list opened without id)
   if (!conversationId) {
@@ -1072,7 +1118,7 @@ export default function ChatScreen() {
 
                 return (
                   <Pressable
-                    onLongPress={() => setReplyingTo(msg)}
+                    onLongPress={() => openMessageActions(msg)}
                     delayLongPress={280}
                     style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}
                     accessibilityLabel="Reply to message"
@@ -1563,6 +1609,15 @@ export default function ChatScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {reportMessageId ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportMessageId(null)}
+          targetType="message"
+          targetId={reportMessageId}
+          title={t("customer.contentReport.reportMessage")}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

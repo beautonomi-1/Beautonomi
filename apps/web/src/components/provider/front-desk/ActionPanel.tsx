@@ -251,6 +251,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   paymentStatus={(booking as any).payment_status}
                   currency={booking.currency || tenantCurrency}
                   bookingLocationId={(booking as any).location_id ?? null}
+                  tipAmount={Number((booking as any).tip_amount ?? 0)}
                   onComplete={onActionComplete}
                   variant="footer"
                 />

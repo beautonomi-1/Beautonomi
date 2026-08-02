@@ -13,20 +13,22 @@ Facts aligned with [PayCloud Developer docs](https://developers.paycloud.africa/
 
 Auth: RSA2 `SHA256WithRSA` ([API Security](https://developers.paycloud.africa/docs/public/APISecurity/)). Request body is **flat JSON** (not Alipay `biz_content`). Timestamp = 13-digit Unix ms. Envelope `version` = `1.0`; create order also sends `api_version=2.0`.
 
-Sandbox gateway root (official Test Integration doc): `https://addpay-open.wangtest.cn`  
+Sandbox gateway root (PayCloud UAT): `https://open-uat.paycloud.africa`  
+Legacy wangtest host: `https://addpay-open.wangtest.cn`  
 Live default: `https://api.paycloud.africa`  
 Override via `PAYCLOUD_API_BASE_SANDBOX` / `PAYCLOUD_API_BASE_LIVE` or `tenant_paycloud_apps.api_base_url`.
 
-### Official sandbox test parameters ([Test integration](https://developers.paycloud.africa/docs/public/PayCloudTestIntegration))
+### UAT / sandbox parameters (Beautonomi non-live)
 
 | Field | Value |
 |-------|-------|
-| API endpoint | `https://addpay-open.wangtest.cn/api/entry` |
-| `app_id` | `wz715fc0d10ee9d156` |
-| `merchant_no` | `302100085224` |
-| `store_no` | `4021000637` |
+| API endpoint | `https://open-uat.paycloud.africa/api/entry` |
+| `app_id` | `wz56242bd3c170b130` |
+| `merchant_no` | `322600014105` |
+| `store_no` | `4226000567` |
+| `terminal_sn` | `WPHK002434000635` (Bantu UAT device) |
 
-Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox environment). Use **Use PayCloud test credentials** on the Sandbox quick start panel to prefill the form, then save. Use PayCloud's published RSA key pair from the test integration doc. **Never** copy test keys into production tenants.
+Enter these in **Admin → Integrations → PayCloud Card Machines** (sandbox environment). Use **Use PayCloud test credentials** on the Sandbox quick start panel to prefill the form, then paste the **Gateway Public Key** from PayCloud UAT Key Management and save. Register the **App Public Key** (derived from the app private key) in PayCloud UAT before testing charges. **Never** copy UAT keys into production tenants.
 
 ### Credential test and HTTP 503
 
@@ -47,9 +49,11 @@ PayCloud cannot call a relative webhook URL. Before creating a charge, Beautonom
 On **Admin → Integrations → PayCloud Card Machines**:
 
 1. **Use PayCloud test credentials** — prefills the sandbox app form (review, then save).
-2. **Create test merchant** — prefills merchant `302100085224` / store `4021000637` for sandbox.
+2. **Create test merchant** — prefills merchant `322600014105` / store `4226000567` for sandbox.
 3. **Test sandbox credentials** — truthful pass/fail against the gateway.
 4. Assign a terminal in **PayCloud Operations**, confirm the readiness checklist is green.
+
+**One-shot DB seed (bantu UAT):** apply migration `835_paycloud_uat_bantu_test_seed.sql` — wires UAT app credentials, merchant `322600014105` / store `4226000567`, terminal `WPHK002434000635`, and enables `accept_paycloud` for provider `buntulink@gmail.com`.
 
 Plan entitlements (`paycloud_integration`, `terminal_bundle`) are enabled on active subscription plans via migration `827_paycloud_enable_entitlements.sql`, which also turns on the global `payment_paycloud` flag. Tenant-level override rows are left untouched, so check those if a single market still sees `FLAG_OFF`.
 
@@ -62,6 +66,7 @@ Provider-side visibility needs migration `826_paycloud_provider_rls.sql`: `paycl
 - `pay_scenario=SWIPE_CARD` (card) or `BSCANQR_PAY` (+ `pay_method_id`; SA default `ScanToPay` per [POS reference](https://developers.paycloud.africa/docs/addpay/PosIntegratesrReference/))
 - `trans_type=1` (sale) or `11` (sale + cashback)
 - `order_amount`, `price_currency`, `merchant_order_no`, `notify_url`
+- **Amount format:** major currency units as a **two-decimal string** for ZAR (e.g. `"50.00"` for R50 — *not* cents). PayCloud docs: one ZAR = one rand, example `34.50`. Same-terminal Intent `amt` still uses 12-digit cents separately.
 - Optional: `tip_amount`, `cashback_amount`, `expires=300`, `reject_trade_when_terminal_offline=true`
 
 ### `trans_status`

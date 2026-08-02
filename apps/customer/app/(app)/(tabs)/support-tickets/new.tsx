@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, StyleSheet } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -10,6 +10,7 @@ import { Colors } from "@/constants/colors";
 import {
   SUPPORT_TICKET_DEFAULT_CATEGORY,
   SUPPORT_TICKET_PRIORITIES,
+  supportTicketPresetFromCategory,
 } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -30,6 +31,7 @@ export default function NewSupportTicketScreen() {
   const { t } = useTranslation();
   const sn = useCallback((key: string) => t(`customer.mobile.screens.supportTicketsNew.${key}`), [t]);
   const router = useRouter();
+  const params = useLocalSearchParams<{ category?: string; booking_id?: string }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
@@ -37,6 +39,20 @@ export default function NewSupportTicketScreen() {
   const [supportContextLabel, setSupportContextLabel] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const preset = typeof params.category === "string" ? params.category.trim() : "";
+    if (preset) {
+      setCategory(preset);
+      const derived = supportTicketPresetFromCategory(preset);
+      if (derived.priority) setPriority(derived.priority);
+      if (derived.subject) setSubject(derived.subject);
+    }
+    if (typeof params.booking_id === "string" && params.booking_id.trim()) {
+      setSupportContextType("booking");
+      setSupportContextLabel(params.booking_id.trim());
+    }
+  }, [params.category, params.booking_id]);
 
   const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
 

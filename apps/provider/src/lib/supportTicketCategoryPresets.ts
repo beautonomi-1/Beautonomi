@@ -122,3 +122,18 @@ export const SUPPORT_TICKET_PRIORITIES = [
   { value: "high", label: "High" },
   { value: "urgent", label: "Urgent" },
 ] as const;
+
+export type SupportTicketPriority = (typeof SUPPORT_TICKET_PRIORITIES)[number]["value"];
+
+export function supportTicketPresetFromCategory(category: string): {
+  priority?: SupportTicketPriority;
+  subject?: string;
+} {
+  if (category === "safety_emergency") {
+    return { priority: "urgent", subject: "Urgent safety concern" };
+  }
+  if (category === "safety_report_user") {
+    return { priority: "high", subject: "Report a user or harassment" };
+  }
+  return {};
+}

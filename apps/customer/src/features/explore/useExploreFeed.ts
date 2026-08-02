@@ -158,6 +158,10 @@ export function useExploreFeed() {
     );
   }, []);
 
+  const removePost = useCallback((postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
   const initialLoad = useCallback(() => {
     load({});
   }, [load]);
@@ -179,5 +183,6 @@ export function useExploreFeed() {
     applyFilters,
     setPostSaved,
     setPostLiked,
+    removePost,
   };
 }

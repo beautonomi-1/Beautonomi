@@ -181,6 +181,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const { user } = await requireAuthInApi(request);
+    await requireSocialAccess(user.id, "like_or_save", request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { error } = await supabaseAdmin

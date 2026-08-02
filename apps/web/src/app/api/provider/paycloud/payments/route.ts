@@ -20,6 +20,8 @@ import {
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { resolvePayScenario } from "@/lib/payments/paycloud-scenarios";
 import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-guards";
+import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
+import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { validatePaycloudPaymentInitiate } from "@/lib/payments/paycloud-initiate-guards";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
 import {
@@ -100,8 +102,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const cashbackAmount = parsed.data.cashback_amount ?? 0;
-    if (cashbackAmount > 0) {
+    const normalizedCashbackAmount = normalizePaycloudMajorAmount(parsed.data.cashback_amount ?? 0);
+    if (normalizedCashbackAmount > 0) {
       const cashbackFlagOn = await isPaycloudCashbackEnabledForProvider(supabase, providerId);
       if (!cashbackFlagOn || paycloudSettings?.cashback_enabled !== true) {
         return NextResponse.json(
@@ -118,10 +120,40 @@ export async function POST(request: NextRequest) {
     }
 
     const expected = await computeExpectedAmountForEntity(supabase, providerId, parsed.data.entity_type, parsed.data.entity_id);
-    const chargeAmount = parsed.data.amount ?? expected?.amount;
+    const defaultChargeAmount =
+      expected?.depositAmount != null && expected.depositAmount > 0.01
+        ? expected.depositAmount
+        : expected?.amount;
+    const rawChargeAmount = parsed.data.amount ?? defaultChargeAmount;
+    const chargeAmount =
+      rawChargeAmount != null ? normalizePaycloudMajorAmount(rawChargeAmount) : undefined;
     if (!chargeAmount || chargeAmount <= 0) {
       return NextResponse.json({ data: null, error: { message: "Nothing to charge.", code: "ZERO_AMOUNT" } }, { status: 400 });
     }
+    const tipAmount =
+      parsed.data.tip_amount != null ? normalizePaycloudMajorAmount(parsed.data.tip_amount) : 0;
+
+    if (tipAmount > 0.01 && parsed.data.entity_type === "booking") {
+      const { data: bookingTipRow } = await supabase
+        .from("bookings")
+        .select("tip_amount")
+        .eq("id", parsed.data.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (paycloudTipIncludedInChargeAmount(Number(bookingTipRow?.tip_amount ?? 0))) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "This booking already includes a checkout tip — do not add terminal tip again.",
+              code: "TIP_ALREADY_INCLUDED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     if (expected && parsed.data.amount != null) {
       const acceptableAmounts = [expected.amount];
       if (expected.depositAmount != null && expected.depositAmount > 0.01) {
@@ -167,7 +199,7 @@ export async function POST(request: NextRequest) {
       ) {
         const { data: existing } = await supabase
           .from("provider_paycloud_payments")
-          .select("id, merchant_order_no, status, amount, currency")
+          .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("id", guard.existingPaymentId)
           .eq("provider_id", providerId)
           .maybeSingle();
@@ -179,6 +211,7 @@ export async function POST(request: NextRequest) {
               status: existing.status,
               amount: Number(existing.amount),
               currency: existing.currency,
+              channel: existing.initiation_channel === "same_terminal" ? "same_terminal" : "cloud",
               reused: true,
             },
             error: null,
@@ -311,8 +344,8 @@ export async function POST(request: NextRequest) {
         terminal_id: parsed.data.terminal_id,
         merchant_order_no: merchantOrderNo,
         amount: chargeAmount,
-        tip_amount: parsed.data.tip_amount ?? 0,
-        cashback_amount: parsed.data.cashback_amount ?? 0,
+        tip_amount: tipAmount,
+        cashback_amount: normalizedCashbackAmount,
         expected_amount: chargeAmount,
         currency,
         entity_type: parsed.data.entity_type,
@@ -324,7 +357,7 @@ export async function POST(request: NextRequest) {
         additional_charge_id: parsed.data.entity_type === "additional_charge" ? parsed.data.entity_id : null,
         pay_scenario: scenario.pay_scenario,
         pay_method_id: scenario.pay_method_id ?? null,
-        trans_type: parsed.data.cashback_amount ? 11 : 1,
+        trans_type: normalizedCashbackAmount > 0 ? 11 : 1,
         processed_by: permissionCheck.user.id,
         environment: ctx.environment,
         status: "pending",
@@ -353,12 +386,44 @@ export async function POST(request: NextRequest) {
         .from("provider_paycloud_payments")
         .update({ status: "closed", updated_at: new Date().toISOString() })
         .eq("id", paymentRow.id);
+
+      const { data: terminalNow } = await admin
+        .from("paycloud_terminals")
+        .select("in_flight_payment_id")
+        .eq("id", parsed.data.terminal_id)
+        .maybeSingle();
+
+      const inFlightId = terminalNow?.in_flight_payment_id;
+      if (inFlightId) {
+        const { data: existing } = await supabase
+          .from("provider_paycloud_payments")
+          .select("id, merchant_order_no, status, amount, currency, initiation_channel")
+          .eq("id", inFlightId)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (existing && (existing.status === "pending" || existing.status === "processing")) {
+          return NextResponse.json({
+            data: {
+              payment_id: existing.id,
+              merchant_order_no: existing.merchant_order_no,
+              status: existing.status,
+              amount: Number(existing.amount),
+              currency: existing.currency,
+              channel: existing.initiation_channel === "same_terminal" ? "same_terminal" : "cloud",
+              reused: true,
+            },
+            error: null,
+          });
+        }
+      }
+
       return NextResponse.json(
         {
           data: null,
           error: {
             message: "This card machine already has a payment in progress. Wait or cancel it first.",
             code: "TERMINAL_IN_FLIGHT",
+            details: inFlightId ? { payment_id: inFlightId } : undefined,
           },
         },
         { status: 409 },
@@ -376,8 +441,8 @@ export async function POST(request: NextRequest) {
         chargeAmount,
         payScenario: scenario.pay_scenario,
         payMethodId: scenario.pay_method_id,
-        tipAmount: parsed.data.tip_amount,
-        cashbackAmount: parsed.data.cashback_amount,
+        tipAmount: tipAmount > 0 ? tipAmount : undefined,
+        cashbackAmount: normalizedCashbackAmount > 0 ? normalizedCashbackAmount : undefined,
         appId: ctx.credentials.app_id,
         notifyUrl,
         intentContract,
@@ -403,8 +468,8 @@ export async function POST(request: NextRequest) {
       terminal_sn: terminal.terminal_sn,
       merchant_order_no: merchantOrderNo,
       order_amount: chargeAmount,
-      tip_amount: parsed.data.tip_amount,
-      cashback_amount: parsed.data.cashback_amount,
+      tip_amount: tipAmount > 0 ? tipAmount : undefined,
+      cashback_amount: normalizedCashbackAmount > 0 ? normalizedCashbackAmount : undefined,
       price_currency: currency,
       pay_scenario: scenario.pay_scenario,
       pay_method_id: scenario.pay_method_id,
@@ -433,7 +498,7 @@ export async function POST(request: NextRequest) {
       if (orderResult.response_code === "113") {
         const { data: existing } = await supabase
           .from("provider_paycloud_payments")
-          .select("id, merchant_order_no, status, amount, currency")
+          .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("provider_id", providerId)
           .eq("entity_type", parsed.data.entity_type)
           .eq("entity_id", parsed.data.entity_id)
@@ -467,6 +532,7 @@ export async function POST(request: NextRequest) {
               status: existing.status,
               amount: Number(existing.amount),
               currency: existing.currency,
+              channel: existing.initiation_channel === "same_terminal" ? "same_terminal" : "cloud",
               reused: true,
               response_code: "113",
             },
@@ -493,6 +559,7 @@ export async function POST(request: NextRequest) {
         status,
         amount: chargeAmount,
         currency,
+        channel: "cloud",
       },
       error: null,
     });
