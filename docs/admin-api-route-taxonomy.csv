@@ -186,6 +186,8 @@ path,class,note
 /api/admin/integrations/paystack,T,"review: likely tenant-scoped ops"
 /api/admin/integrations/resend,T,"review: likely tenant-scoped ops"
 /api/admin/integrations/resend/test,T,"uses resolveAdminApiTenantId"
+/api/admin/integrations/shipping,G,"platform courier credentials (superadmin)"
+/api/admin/integrations/shipping/probe,G,"platform courier credentials (superadmin)"
 /api/admin/integrations/slack/channels,T,"review: likely tenant-scoped ops"
 /api/admin/integrations/slack/logs,T,"uses resolveAdminApiTenantId"
 /api/admin/integrations/slack/oauth/callback,T,"review: likely tenant-scoped ops"
