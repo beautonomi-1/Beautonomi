@@ -16,6 +16,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -57,6 +58,11 @@ export async function POST(request: NextRequest) {
         "TENANT_MISMATCH",
         403,
       );
+    }
+
+    const appleBilling = await getAppleBillingPaystackBlock(supabase, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
     }
 
     const body = await request.json();

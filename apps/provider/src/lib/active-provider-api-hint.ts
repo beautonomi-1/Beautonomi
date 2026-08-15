@@ -4,6 +4,10 @@
  * Persisted per-user via AsyncStorage in ProviderContext (sign-out clears storage).
  */
 
+import { DeviceEventEmitter } from "react-native";
+
+export const ACTIVE_PROVIDER_CHANGED_EVENT = "bn:active-provider-changed";
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -18,13 +22,37 @@ const ACTIVE_PROVIDER_ID_HEADER = "x-provider-id";
 
 let memoryHint: string | null = null;
 
+export async function persistActiveProviderOrgHint(
+  userId: string | null | undefined,
+  providerId: string | null,
+): Promise<void> {
+  setActiveProviderApiHint(providerId);
+  try {
+    const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+    if (!userId || !providerId || !looksLikeActiveProviderUuid(providerId)) {
+      await AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(
+      ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY,
+      JSON.stringify({ userId, providerId }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 export function setActiveProviderApiHint(providerId: string | null): void {
+  const prev = memoryHint;
   if (!providerId?.trim()) {
     memoryHint = null;
-    return;
+  } else {
+    const t = providerId.trim();
+    memoryHint = looksLikeActiveProviderUuid(t) ? t : null;
   }
-  const t = providerId.trim();
-  memoryHint = looksLikeActiveProviderUuid(t) ? t : null;
+  if (prev !== memoryHint) {
+    DeviceEventEmitter.emit(ACTIVE_PROVIDER_CHANGED_EVENT, { providerId: memoryHint });
+  }
 }
 
 export function getActiveProviderApiHint(): string | null {

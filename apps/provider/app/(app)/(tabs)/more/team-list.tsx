@@ -17,6 +17,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -89,7 +90,7 @@ const EMPTY_FORM = {
   phone: "",
   role: "provider_staff",
   commission_rate: "",
-  invite_email: false,
+  invite_email: true,
   location_ids: [] as string[],
   service_ids: [] as string[],
 };
@@ -159,9 +160,14 @@ export default function TeamListScreen() {
     if (teamAccessLoading) return;
     addIntentDone.current = true;
     if (isFreelancer || !canManageTeam) return;
-    setForm({ ...EMPTY_FORM, location_ids: selectedLocationId ? [selectedLocationId] : [] });
+    setForm({
+      ...EMPTY_FORM,
+      location_ids: selectedLocationId
+        ? [selectedLocationId]
+        : (locations ?? []).map((l) => l.id),
+    });
     setAddSheetOpen(true);
-  }, [params.add, teamAccessLoading, isFreelancer, canManageTeam, selectedLocationId]);
+  }, [params.add, teamAccessLoading, isFreelancer, canManageTeam, selectedLocationId, locations]);
 
   // --- Filtering ---
   const filtered = useMemo(() => {
@@ -216,7 +222,12 @@ export default function TeamListScreen() {
       Alert.alert("Permission", "Only owners or managers with “Manage team” can add staff.");
       return;
     }
-    setForm({ ...EMPTY_FORM, location_ids: selectedLocationId ? [selectedLocationId] : [] });
+    setForm({
+      ...EMPTY_FORM,
+      location_ids: selectedLocationId
+        ? [selectedLocationId]
+        : (locations ?? []).map((l) => l.id),
+    });
     setAddSheetOpen(true);
   }
 
@@ -501,6 +512,10 @@ export default function TeamListScreen() {
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
+                      if (shouldUseAppleIap()) {
+                        router.push("/(app)/(tabs)/more/settings/subscription" as never);
+                        return;
+                      }
                       const base = getWebProviderBaseUrl().replace(/\/$/, "");
                       pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, "Upgrade");
                     }}
@@ -599,11 +614,13 @@ export default function TeamListScreen() {
             filtered.length === 0 ? (
               <EmptyState
                 icon="people-outline"
-                title="No team members"
+                title={selectedLocationId && !search && filter === "all" ? "No staff at this location" : "No team members"}
                 description={
                   search || filter !== "all"
                     ? "No results match your search or filter"
-                    : "Add team members to manage your staff"
+                    : selectedLocationId
+                      ? "No one is assigned to this branch yet. Assign existing team members or add someone new."
+                      : "Add team members to manage your staff"
                 }
               />
             ) : null

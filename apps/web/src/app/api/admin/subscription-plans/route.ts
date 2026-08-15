@@ -47,6 +47,8 @@ const updatePlanSchema = createPlanSchema.partial().extend({
   update_existing_subscriptions: z.boolean().optional(),
   paystack_plan_code_monthly: z.string().nullable().optional(),
   paystack_plan_code_yearly: z.string().nullable().optional(),
+  apple_product_id_monthly: z.string().nullable().optional(),
+  apple_product_id_yearly: z.string().nullable().optional(),
 });
 
 function applyScopeFilter(query: any, scopeTenantId: string | null) {

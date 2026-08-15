@@ -10,13 +10,13 @@ This doc describes how signup and login via **Google** and **Sign in with Apple*
 |--------|--------|--------|
 | Web `/login` | ✅ | ✅ |
 | Web login modal, inline signup, booking gate (`BeautonomiGateModal`) | ✅ | ✅ |
-| Customer app login | ✅ | ✅ (iOS + Android + Expo web; in-app browser OAuth) |
+| Customer app login | ✅ | ✅ (iOS: native Sign in with Apple; Android / Expo web: in-app browser OAuth) |
 | Customer app signup | ✅ | ✅ (same) |
 | Provider app login | ✅ | ✅ (same) |
 
 **Web implementation:** `signInWithOAuth(provider, redirectUrl?)` in `apps/web/src/lib/supabase/auth.ts`. Google-only `queryParams` (`access_type`, `prompt`) are **not** sent for Apple. Apple requests `scopes: 'name email'` so Supabase can populate metadata where Apple provides it.
 
-**Native implementation:** `signInWithOAuth(provider)` in `apps/customer/src/providers/AuthProvider.tsx` and `apps/provider/src/providers/AuthProvider.tsx` — Supabase `signInWithOAuth` + `skipBrowserRedirect: true` + `WebBrowser.openAuthSessionAsync(..., { preferEphemeralSession: true })`; Apple uses `scopes: 'name email'`; provider is `'google'` or `'apple'`.
+**Native implementation:** `signInWithOAuth(provider)` in `apps/customer/src/providers/AuthProvider.tsx` and `apps/provider/src/providers/AuthProvider.tsx`. **Apple on iOS** uses native `expo-apple-authentication` + `supabase.auth.signInWithIdToken` (`tryNativeAppleSignIn`). Google, and Apple on Android/web, use Supabase `signInWithOAuth` + `skipBrowserRedirect: true` + `WebBrowser.openAuthSessionAsync(..., { preferEphemeralSession: true })`.
 
 ---
 
@@ -32,6 +32,7 @@ This doc describes how signup and login via **Google** and **Sign in with Apple*
 - Supabase → Authentication → Providers → **Apple**: Services ID, secret (JWT from `.p8` key), Key ID, Team ID, etc. Follow [Supabase: Login with Apple](https://supabase.com/docs/guides/auth/social-login/auth-apple).
 - Apple Developer → Services ID → **Return URLs**: same Supabase callback `https://<project-ref>.supabase.co/auth/v1/callback`.
 - App ID → enable **Sign in with Apple** for native bundle IDs; add bundle IDs (and Expo Go `host.exp.Exponent` if needed) to Supabase Apple **Client IDs** list per Supabase docs.
+- Expo injects `com.apple.developer.applesignin: ["Default"]` at EAS compile time from `ios.entitlements` **and** the `expo-apple-authentication` config plugin (`usesAppleSignIn: true` alone does not write the entitlement in SDK 54). After adding it, regenerate the iOS provisioning profile so it includes Sign in with Apple.
 
 ### Redirect allowlist (Supabase)
 
@@ -50,8 +51,8 @@ After OAuth, Supabase fills **auth.users** `user_metadata` (name, email, `avatar
 | Item | Web | Customer app |
 |------|-----|--------------|
 | Google OAuth | ✅ | ✅ |
-| Apple OAuth | ✅ | ✅ (all native targets + Expo web) |
-| Callback / tokens | `/auth/callback` + PKCE on web | In-app browser → `setSession` / `exchangeCodeForSession` |
+| Apple OAuth | ✅ | ✅ iOS native ID token; Android + Expo web browser OAuth |
+| Callback / tokens | `/auth/callback` + PKCE on web | iOS Apple: `signInWithIdToken`. Else in-app browser → `setSession` / `exchangeCodeForSession` |
 
 ---
 

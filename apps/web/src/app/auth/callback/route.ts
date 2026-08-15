@@ -125,9 +125,13 @@ export async function GET(request: NextRequest) {
       await trySyncAuthMetadata(verifyData.user.id, verifyData.user);
     }
     if (type === "recovery") {
-      return NextResponse.redirect(
-        new URL("/account-settings/login-and-security/reset-password", requestUrl.origin)
+      const resetUrl = new URL(
+        "/account-settings/login-and-security/reset-password",
+        requestUrl.origin,
       );
+      const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
+      if (next) resetUrl.searchParams.set("next", next);
+      return NextResponse.redirect(resetUrl);
     }
     const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin) || "/";
     return NextResponse.redirect(new URL(next, requestUrl.origin));

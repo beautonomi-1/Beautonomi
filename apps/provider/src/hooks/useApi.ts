@@ -8,7 +8,6 @@ import type { ApiClientRequestBody } from "@beautonomi/api";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { captureApiFailure } from "@/lib/sentry";
-import { getRuntimeMarketHost } from "@/config/public-env";
 import {
   buildApiCacheKey,
   isNeverCachePath,
@@ -26,6 +25,10 @@ import {
 } from "@/lib/api-response-cache";
 import { emitProviderServicesCatalogChanged } from "@/lib/provider-services-catalog-events";
 import { useAuth } from "@/providers/AuthProvider";
+import {
+  ACTIVE_PROVIDER_CHANGED_EVENT,
+  getActiveProviderApiHint,
+} from "@/lib/active-provider-api-hint";
 
 export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS };
 
@@ -104,9 +107,27 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
+  /**
+   * A 403 means the session lacks the role this path requires, which no amount
+   * of resuming or reconnecting can change — role-gated endpoints were otherwise
+   * re-requested on every foreground and network recovery for as long as the
+   * user lacked the role. Explicit `refresh()` still retries, and a new cache
+   * key (sign-in / account switch) clears it.
+   */
+  const forbiddenRef = useRef(false);
+  const [orgHint, setOrgHint] = useState<string | null>(() => getActiveProviderApiHint());
 
-  const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  const cacheKey = buildApiCacheKey(session?.user?.id, path);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      ACTIVE_PROVIDER_CHANGED_EVENT,
+      (payload?: { providerId?: string | null }) => {
+        setOrgHint(payload?.providerId ?? getActiveProviderApiHint());
+      },
+    );
+    return () => sub.remove();
+  }, []);
+
+  const cacheKey = buildApiCacheKey(session?.user?.id, path, orgHint);
   // Payment / checkout state must never be served from a stale entry, so those
   // paths read and write nothing. In-flight dedupe still applies (same tick).
   const cacheable = !isNeverCachePath(path);
@@ -208,6 +229,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         return;
       }
 
+      forbiddenRef.current = payload.errorCode === "FORBIDDEN";
+
       // §Provider-launch (audit 2026-04): preserve last-known-good data on
       // refresh failure.  Screens like the calendar otherwise clear on any
       // blip (pull-to-refresh, backgrounded, flaky network) and show a
@@ -261,6 +284,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
   useEffect(() => {
     mountedRef.current = true;
+    forbiddenRef.current = false;
     const cached = cacheable
       ? (responseCache.get(cacheKey) as CacheEntry<T> | undefined)
       : undefined;
@@ -281,7 +305,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   useEffect(() => {
     if (!enabled) return;
     const onFocusOrRecover = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || forbiddenRef.current) return;
       const jitterMs = resumeRefetchJitterMs(cacheKey);
       setTimeout(() => {
         if (!mountedRef.current) return;
@@ -299,7 +323,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   useEffect(() => {
     if (!enabled || !revalidateOnFocus) return;
     const onScreenFocus = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || forbiddenRef.current) return;
       void fetchData(true);
     };
     const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", onScreenFocus);
@@ -318,6 +342,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [loading, timeoutMs]);
 
   const refresh = useCallback(async () => {
+    forbiddenRef.current = false;
     responseCache.delete(cacheKey);
     await fetchData();
   }, [cacheKey, fetchData]);

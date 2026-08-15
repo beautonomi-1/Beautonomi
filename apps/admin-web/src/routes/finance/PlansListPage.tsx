@@ -59,6 +59,8 @@ type PlanRow = Record<string, unknown> & {
   description?: string | null;
   paystack_plan_code_monthly?: string | null;
   paystack_plan_code_yearly?: string | null;
+  apple_product_id_monthly?: string | null;
+  apple_product_id_yearly?: string | null;
   max_locations?: number;
   max_bookings_per_month?: number | null;
   max_staff_members?: number | null;
@@ -146,6 +148,8 @@ export function PlansListPage() {
   const [eUpdateSubs, setEUpdateSubs] = useState(false);
   const [ePaystackMonthly, setEPaystackMonthly] = useState("");
   const [ePaystackYearly, setEPaystackYearly] = useState("");
+  const [eAppleMonthly, setEAppleMonthly] = useState("");
+  const [eAppleYearly, setEAppleYearly] = useState("");
   /** Entitlements / gating — stored on subscription_plans.features */
   const [eFeatures, setEFeatures] = useState<PlanFeaturesMap>(() => getFreePlanFeatures());
   /** Public /pricing marketing card (pricing_plans + pricing_plan_features) */
@@ -285,6 +289,8 @@ export function PlansListPage() {
         features: featuresObj,
         ...(ePaystackMonthly.trim() ? { paystack_plan_code_monthly: ePaystackMonthly.trim() } : {}),
         ...(ePaystackYearly.trim() ? { paystack_plan_code_yearly: ePaystackYearly.trim() } : {}),
+        ...(eAppleMonthly.trim() ? { apple_product_id_monthly: eAppleMonthly.trim() } : {}),
+        ...(eAppleYearly.trim() ? { apple_product_id_yearly: eAppleYearly.trim() } : {}),
         ...(eUpdateSubs ? { update_existing_subscriptions: true } : {}),
       });
 
@@ -387,6 +393,8 @@ export function PlansListPage() {
     setEMaxStaff(row.max_staff_members != null ? String(row.max_staff_members) : "");
     setEPaystackMonthly(String(row.paystack_plan_code_monthly ?? ""));
     setEPaystackYearly(String(row.paystack_plan_code_yearly ?? ""));
+    setEAppleMonthly(String(row.apple_product_id_monthly ?? ""));
+    setEAppleYearly(String(row.apple_product_id_yearly ?? ""));
     setEFeatures(featuresFromRow(row));
     const pp = row.pricing_plan;
     setEShowPricing(!!pp?.id);
@@ -756,6 +764,24 @@ export function PlansListPage() {
                 value={ePaystackYearly}
                 onChange={(e) => setEPaystackYearly(e.target.value)}
                 placeholder="PLN_xxxxxxxx"
+              />
+            </label>
+            <label className="text-sm">
+              Apple product ID (monthly)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                value={eAppleMonthly}
+                onChange={(e) => setEAppleMonthly(e.target.value)}
+                placeholder="com.beautonomi.partner.sub.growth.monthly"
+              />
+            </label>
+            <label className="text-sm">
+              Apple product ID (yearly)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                value={eAppleYearly}
+                onChange={(e) => setEAppleYearly(e.target.value)}
+                placeholder="com.beautonomi.partner.sub.growth.yearly"
               />
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
@@ -1225,6 +1251,7 @@ export function PlansListPage() {
               <AdminTh>Provider catalog</AdminTh>
               <AdminTh>Public /pricing</AdminTh>
               <AdminTh>Paystack</AdminTh>
+              <AdminTh>Apple IAP</AdminTh>
               <AdminTh> </AdminTh>
             </tr>
           </AdminTableHead>
@@ -1252,6 +1279,9 @@ export function PlansListPage() {
                   </AdminTd>
                   <AdminTd className="max-w-[8rem] truncate text-xs font-mono">
                     {r.paystack_plan_code_monthly || r.paystack_plan_code_yearly ? "codes set" : "—"}
+                  </AdminTd>
+                  <AdminTd className="max-w-[8rem] truncate text-xs font-mono">
+                    {r.apple_product_id_monthly || r.apple_product_id_yearly ? "ids set" : "—"}
                   </AdminTd>
                   <AdminTd>
                     <div className="flex gap-3">

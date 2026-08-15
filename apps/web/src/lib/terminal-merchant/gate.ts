@@ -191,7 +191,7 @@ export async function ungateOrdersAfterApproval(
 ): Promise<number> {
   const { data: orders } = await supabase
     .from("terminal_orders")
-    .select("id, terminal_products(requires_integration_setup)")
+    .select("id, invoice_status, terminal_products(requires_integration_setup)")
     .eq("merchant_application_id", applicationId)
     .eq("integration_setup_status", "awaiting_merchant_onboarding");
 
@@ -207,6 +207,22 @@ export async function ungateOrdersAfterApproval(
         integration_setup_status: needsSetup ? "pending" : "not_required",
       })
       .eq("id", (row as { id: string }).id);
+
+    // Merchant now exists. Re-run finalize so a serial already on the asset can
+    // register the PayCloud terminal; previously approval only cleared the gate.
+    if ((row as { invoice_status?: string }).invoice_status === "paid") {
+      try {
+        const { finalizeTerminalOrderAfterPayment } = await import(
+          "@/lib/terminal/finalize-terminal-order-after-payment"
+        );
+        await finalizeTerminalOrderAfterPayment({
+          supabase,
+          terminalOrderId: (row as { id: string }).id,
+        });
+      } catch (err) {
+        console.error("[terminal-merchant] finalize after approval failed:", err);
+      }
+    }
   }
 
   return orders.length;

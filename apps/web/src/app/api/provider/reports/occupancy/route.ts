@@ -11,6 +11,7 @@ import {
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { dateRangeBoundsUtc, getDayInTz } from "@/lib/dates/provider-tz";
 import { eachReportDateKey, getProviderReportContext, reportDateKey } from "@/lib/reports/provider-report-utils";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
 const MAX_DAYS = 31;
 
@@ -123,16 +124,11 @@ export async function GET(request: NextRequest) {
     type StaffRow = { id: string; users?: { full_name?: string } | Array<{ full_name?: string }> };
     let staffRows = (staffList ?? []) as StaffRow[];
     let staffIds = staffRows.map((s) => s.id);
-    if (locationId && staffIds.length > 0) {
-      const { data: assignments, error: assignmentError } = await supabaseAdmin
-        .from("provider_staff_locations")
-        .select("staff_id")
-        .eq("location_id", locationId)
-        .in("staff_id", staffIds);
-      if (assignmentError) throw assignmentError;
-      const assignedStaffIds = new Set((assignments ?? []).map((a: { staff_id: string }) => a.staff_id));
-      if (assignedStaffIds.size > 0) {
-        staffRows = staffRows.filter((s) => assignedStaffIds.has(s.id));
+    if (locationId) {
+      const scope = await resolveStaffLocationScope(supabaseAdmin, providerId, locationId);
+      if (scope.staffIds !== null) {
+        const assigned = new Set(scope.staffIds);
+        staffRows = staffRows.filter((s) => assigned.has(s.id));
         staffIds = staffRows.map((s) => s.id);
       }
     }
@@ -149,7 +145,7 @@ export async function GET(request: NextRequest) {
       `Available minutes = sum of working intervals from staff_schedules for each staff member’s weekday (multiple rows for the same day are added together). Days fully covered by staff_time_off count as 0 available.`,
       `Booked minutes = sum of booking_services.duration_minutes per staff per local calendar day, for bookings in statuses: ${INCLUDED_BOOKING_STATUSES.join(", ")}.`,
       locationId
-        ? `Only bookings at the selected location are included; staff list is restricted to members assigned to that location when assignments exist.`
+        ? `Only bookings at the selected location are included; staff list is restricted to members assigned to that location.`
         : `All provider locations are included for bookings and active staff.`,
       `Occupancy % is booked ÷ available for that row. Values above 100% mean booked service time exceeds scheduled availability (stacked services, long appointments, or schedule gaps). "—" means no scheduled availability that day for that row but bookings exist, so the ratio is not defined.`,
     ].join(" ");

@@ -135,6 +135,27 @@ export const PayCloudIntegrationPage = lazy(() =>
 export const PayCloudOperationsPage = lazy(() =>
   import("@/routes/integrations/PayCloudOperationsPage").then((m) => ({ default: m.PayCloudOperationsPage }))
 );
+export const AppleIntegrationPage = lazy(() =>
+  import("@/routes/integrations/AppleIntegrationPage").then((m) => ({ default: m.AppleIntegrationPage }))
+);
+export const ShippingIntegrationPage = lazy(() =>
+  import("@/routes/integrations/ShippingIntegrationPage").then((m) => ({ default: m.ShippingIntegrationPage }))
+);
+export const AppleSetupSheetPage = lazy(() =>
+  import("@/routes/monetization/AppleSetupSheetPage").then((m) => ({ default: m.AppleSetupSheetPage }))
+);
+export const AppleProductsPage = lazy(() =>
+  import("@/routes/monetization/AppleProductsPage").then((m) => ({ default: m.AppleProductsPage }))
+);
+export const AppleTransactionsPage = lazy(() =>
+  import("@/routes/monetization/AppleTransactionsPage").then((m) => ({ default: m.AppleTransactionsPage }))
+);
+export const AppleNotificationsPage = lazy(() =>
+  import("@/routes/monetization/AppleNotificationsPage").then((m) => ({ default: m.AppleNotificationsPage }))
+);
+export const AppleSettlementsPage = lazy(() =>
+  import("@/routes/monetization/AppleSettlementsPage").then((m) => ({ default: m.AppleSettlementsPage }))
+);
 export const ResendIntegrationPage = lazy(() =>
   import("@/routes/integrations/ResendIntegrationPage").then((m) => ({ default: m.ResendIntegrationPage }))
 );

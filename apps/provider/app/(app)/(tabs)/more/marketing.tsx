@@ -23,6 +23,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import { useMarketingCredits } from "@/lib/marketing/useMarketingCredits";
 import { MarketingCreditsCard } from "@/components/marketing/MarketingCreditsCard";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
 import {
   AudienceSelector,
   type RecipientType,
@@ -411,11 +412,17 @@ export function MarketingCampaignsContent() {
       if (!est.sufficient) {
         Alert.alert(
           "Not enough marketing credit",
-          `This ${channelLabel} campaign to ${recipients} recipient${plural} costs about ${formatZar(est.estimated_cost_zar)}, but your balance is ${formatZar(est.current_balance_zar)}.`,
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Top up", onPress: () => { setTopUpOpen(true); } },
-          ],
+          `This ${channelLabel} campaign to ${recipients} recipient${plural} costs about ${formatZar(est.estimated_cost_zar)}, but your balance is ${formatZar(est.current_balance_zar)}.${
+            shouldUseAppleIap()
+              ? " Marketing credit top-ups are not available on iOS."
+              : ""
+          }`,
+          shouldUseAppleIap()
+            ? [{ text: "OK", style: "cancel" }]
+            : [
+                { text: "Cancel", style: "cancel" },
+                { text: "Top up", onPress: () => { setTopUpOpen(true); } },
+              ],
         );
         return;
       }
@@ -469,7 +476,7 @@ export function MarketingCampaignsContent() {
           ledger={credits.ledger}
           loading={credits.loading}
           creditsApply={credits.creditsApply}
-          onTopUp={() => setTopUpOpen(true)}
+          onTopUp={shouldUseAppleIap() ? undefined : () => setTopUpOpen(true)}
         />
         <View style={twStyle("mb-3 flex-row items-center justify-end")}>
           <TouchableOpacity

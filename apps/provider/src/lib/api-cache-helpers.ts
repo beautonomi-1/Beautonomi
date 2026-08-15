@@ -28,10 +28,15 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-export function buildApiCacheKey(userId: string | undefined, path: string): string {
+export function buildApiCacheKey(
+  userId: string | undefined,
+  path: string,
+  providerId?: string | null,
+): string {
   const scope = userId ?? "_anon";
   const host = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  return `${scope}::${host}::${path}`;
+  const org = providerId?.trim() || "_org";
+  return `${scope}::${host}::${org}::${path}`;
 }
 
 /** Paths that must never be prefetched (payment / checkout state). */
@@ -68,11 +73,11 @@ export function isNeverCachePath(path: string): boolean {
  */
 export async function prefetchApi(
   path: string,
-  options?: { userId?: string; timeoutMs?: number },
+  options?: { userId?: string; timeoutMs?: number; providerId?: string | null },
 ): Promise<void> {
   if (!path?.trim() || isPrefetchBlockedPath(path)) return;
 
-  const cacheKey = buildApiCacheKey(options?.userId, path);
+  const cacheKey = buildApiCacheKey(options?.userId, path, options?.providerId);
   const now = Date.now();
   const existing = responseCache.get(cacheKey) as CacheEntry<unknown> | undefined;
   if (existing && existing.expiresAt > now && existing.data != null) {

@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.82",
+  version: "1.0.83",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -116,6 +116,8 @@ const BASE_EXPO_CONFIG = {
     ],
     "expo-notifications",
     "expo-router",
+    "expo-iap",
+    "expo-apple-authentication",
     "expo-font",
     [
       "expo-tracking-transparency",
@@ -186,7 +188,8 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "274",
+    usesAppleSignIn: true,
+    buildNumber: "275",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -215,6 +218,9 @@ const BASE_EXPO_CONFIG = {
       "com.apple.security.application-groups": [
         "group.com.beautonomi.partner.onesignal",
       ],
+      // EAS credential sync reads this object. The expo-apple-authentication
+      // plugin also writes the same key during prebuild/compile.
+      "com.apple.developer.applesignin": ["Default"],
     },
     associatedDomains: [
       "applinks:beautonomi.com",
@@ -234,7 +240,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 275,
+    versionCode: 276,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -275,7 +281,7 @@ module.exports = () => {
   const iosStoreId =
     envFromFile.EXPO_PUBLIC_IOS_APP_STORE_ID ??
     process.env.EXPO_PUBLIC_IOS_APP_STORE_ID ??
-    "";
+    "6748387936";
   const extra = {
     ...BASE_EXPO_CONFIG.extra,
     EXPO_PUBLIC_SUPABASE_URL:

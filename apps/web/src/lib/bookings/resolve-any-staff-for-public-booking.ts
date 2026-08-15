@@ -14,6 +14,10 @@ import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { formatInTimeZone } from "date-fns-tz";
+import {
+  applyLocationScopeToStaffIds,
+  resolveStaffLocationScope,
+} from "@/lib/provider/staff-location-scope";
 
 type BookingServiceLine = {
   offering_id: string;
@@ -91,7 +95,11 @@ export async function pickFirstStaffForNullStaffLines(args: {
     .eq("is_active", true)
     .order("id", { ascending: true });
 
-  const activeIds = (staffRows ?? []).map((r: { id: string }) => r.id);
+  let activeIds = (staffRows ?? []).map((r: { id: string }) => r.id);
+  if (locationId) {
+    const scope = await resolveStaffLocationScope(supabaseAdmin, providerId, locationId);
+    activeIds = applyLocationScopeToStaffIds(activeIds, scope);
+  }
   if (activeIds.length === 0) {
     return { ok: false, reason: "no_team_members" };
   }

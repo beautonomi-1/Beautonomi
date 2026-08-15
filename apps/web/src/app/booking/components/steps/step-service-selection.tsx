@@ -151,6 +151,12 @@ export default function StepServiceSelection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerSlug, bookingState.mode]);
 
+  useEffect(() => {
+    if (!providerSlug || !hasLoadedRef.current) return;
+    void loadStaff();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingState.selectedLocationId]);
+
   // Ensure all selected services have staff assigned (auto-assign if missing)
   // Also re-assign staff when mode changes (e.g., mobile requires mobile-ready staff)
   useEffect(() => {
@@ -390,8 +396,11 @@ export default function StepServiceSelection({
 
   const loadStaff = async () => {
     try {
+      const locId =
+        bookingState.mode !== "mobile" ? bookingState.selectedLocationId : undefined;
+      const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
       const response = await fetcher.get<{ data: Staff[] }>(
-        `/api/public/providers/${providerSlug}/staff`
+        `/api/public/providers/${providerSlug}/staff${qs}`
       );
       setStaff(response.data || []);
     } catch (error) {

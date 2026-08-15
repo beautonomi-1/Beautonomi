@@ -5,6 +5,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Generate a secure random token for portal access
@@ -58,11 +59,11 @@ export async function createPortalToken(
  * Returns booking_id if valid, null if invalid
  */
 export async function validatePortalToken(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   token: string
 ): Promise<{ bookingId: string | null; isValid: boolean; reason?: string }> {
-  // Use RPC function for validation
-  const { data, error } = await supabase.rpc('validate_portal_token', {
+  // Token validation bypasses portal_tokens RLS; use service role server-side only.
+  const { data, error } = await getSupabaseAdmin().rpc('validate_portal_token', {
     p_token: token,
   });
 
@@ -87,10 +88,10 @@ export async function validatePortalToken(
  * Mark a portal token as used
  */
 export async function usePortalToken(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   token: string
 ): Promise<string | null> {
-  const { data, error } = await supabase.rpc('use_portal_token', {
+  const { data, error } = await getSupabaseAdmin().rpc('use_portal_token', {
     p_token: token,
   });
 

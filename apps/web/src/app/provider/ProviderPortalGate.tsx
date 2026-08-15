@@ -143,7 +143,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
             return;
           }
           clearGateCache();
-          router.replace(error.status === 401 ? "/auth" : "/");
+          router.replace(error.status === 401 ? "/login" : "/");
           return;
         }
 
@@ -211,7 +211,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
                 } catch {
                   /* fall through to redirect */
                 }
-                router.replace("/auth");
+                router.replace("/login");
               }}
               className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
             >

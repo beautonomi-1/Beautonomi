@@ -61,7 +61,7 @@ export function OnDemandIncomingListener() {
 
   // Fallback poll in case Realtime misses an event or is unavailable
   useEffect(() => {
-    if (!onDemandConfig.enabled || !onDemandAcceptEnabled) return;
+    if (!onDemandConfig.enabled || !onDemandAcceptEnabled || !provider?.id) return;
 
     const poll = async () => {
       try {
@@ -82,7 +82,7 @@ export function OnDemandIncomingListener() {
     const interval = setInterval(poll, 12000);
     poll();
     return () => clearInterval(interval);
-  }, [onDemandConfig.enabled, onDemandAcceptEnabled, router]);
+  }, [onDemandConfig.enabled, onDemandAcceptEnabled, provider?.id, router]);
 
   return null;
 }

@@ -5,6 +5,10 @@
  * 1. cancelled_at IS NOT NULL + status='active' + expires_at passed → status='expired' (cancel-at-period-end)
  * 2. auto_renew=false + status='active' + expires_at passed + not cancelled → status='expired'
  * 3. status='past_due' + past 3-day grace period + expires_at passed → status='expired'
+ *    Apple-billed past_due is excluded from that 3-day cut: Apple retries for up
+ *    to 16 days and publishes the deadline as apple_grace_period_expires_at.
+ *    Those rows expire only after that StoreKit window ends (ASN EXPIRED and
+ *    reconcile remain the source of truth if grace was never set).
  *
  * Runs daily via Vercel cron (02:00 UTC).
  */
@@ -86,15 +90,17 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Expire past_due subscriptions that have exceeded the grace period.
-    // A subscription enters past_due when a renewal payment fails. We allow a 3-day
-    // grace window (from updated_at, which is set when status changes to past_due)
-    // before revoking access.
+    // A subscription enters past_due when a renewal payment fails. Paystack
+    // gets a 3-day grace window (from updated_at, which is set when status
+    // changes to past_due). Apple billing retry is up to 16 days — applying
+    // this 3-day cut would revoke paid features while Apple is still retrying.
     const graceCutoff = new Date(Date.now() - PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: pastDueExpired, error: pastDueError } = await supabase
       .from("provider_subscriptions")
       .update(expirePatch())
       .eq("status", "past_due")
+      .neq("billing_provider", "apple")
       .lt("updated_at", graceCutoff)
       .lt("expires_at", now)
       .select("id, provider_id");
@@ -103,9 +109,26 @@ export async function GET(request: NextRequest) {
       console.error("Error expiring past-due subscriptions:", pastDueError);
     }
 
-    const pastDueCount = pastDueExpired?.length ?? 0;
+    const { data: applePastDueExpired, error: applePastDueError } = await supabase
+      .from("provider_subscriptions")
+      .update(expirePatch())
+      .eq("status", "past_due")
+      .eq("billing_provider", "apple")
+      .not("apple_grace_period_expires_at", "is", null)
+      .lt("apple_grace_period_expires_at", now)
+      .lt("expires_at", now)
+      .select("id, provider_id");
+
+    if (applePastDueError) {
+      console.error("Error expiring Apple past-due subscriptions past grace period:", applePastDueError);
+    }
+
+    const pastDueCount = (pastDueExpired?.length ?? 0) + (applePastDueExpired?.length ?? 0);
     if (pastDueCount > 0) {
-      console.log(`Expired ${pastDueCount} past-due subscriptions past grace period:`, pastDueExpired?.map((s) => s.id));
+      console.log(
+        `Expired ${pastDueCount} past-due subscriptions past grace period:`,
+        [...(pastDueExpired ?? []), ...(applePastDueExpired ?? [])].map((s) => s.id),
+      );
     }
 
     // Notify affected providers about their expired subscriptions
@@ -113,6 +136,7 @@ export async function GET(request: NextRequest) {
       ...(expired ?? []).map((s) => ({ ...s, reason: "cancelled_at_period_end" as const })),
       ...(naturalExpired ?? []).map((s) => ({ ...s, reason: "expired" as const })),
       ...(pastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),
+      ...(applePastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),
     ];
 
     let notified = 0;

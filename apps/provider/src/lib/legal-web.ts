@@ -32,6 +32,10 @@ export function pushWebPrivacyPolicy(router: Router): void {
   pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy policy");
 }
 
+export function pushWebTermsOfService(router: Router): void {
+  pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Use");
+}
+
 export function pushWebAgeSuitability(router: Router): void {
   pushInAppBrowser(router, webAgeSuitabilityUrl(), "Age suitability");
 }

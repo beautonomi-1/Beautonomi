@@ -6,6 +6,9 @@ const mockAlert = jest.fn();
 
 jest.mock("react-native", () => ({
   Alert: { alert: (...args: unknown[]) => mockAlert(...args) },
+  // These cases assert the Paystack checkout path. `shouldUseAppleIap()` reads
+  // Platform.OS, and iOS diverts to the App Store flow instead.
+  Platform: { OS: "android", select: (specifics: Record<string, unknown>) => specifics.android },
 }));
 
 jest.mock("@/lib/api-client", () => ({
@@ -236,9 +239,25 @@ describe("probeProviderProfileExists", () => {
     api.get.mockReset();
   });
 
-  it("returns true when profile id is present", async () => {
-    api.get.mockResolvedValueOnce({ data: { id: "provider-1" }, error: null });
+  it("returns true only when the user owns a business", async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        memberships: [
+          { relationship: "staff" },
+          { relationship: "owner" },
+        ],
+      },
+      error: null,
+    });
     await expect(probeProviderProfileExists()).resolves.toBe(true);
+  });
+
+  it("returns false for staff-only memberships so they can start their own business", async () => {
+    api.get.mockResolvedValueOnce({
+      data: { memberships: [{ relationship: "staff" }] },
+      error: null,
+    });
+    await expect(probeProviderProfileExists()).resolves.toBe(false);
   });
 });
 

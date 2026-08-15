@@ -48,7 +48,9 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
           Select Professional
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Choose your preferred specialist or fastest availability
+          {staff.length === 0
+            ? "No named specialist is listed for this location yet. Continue with anyone available."
+            : "Choose your preferred specialist or fastest availability"}
         </p>
       </div>
 

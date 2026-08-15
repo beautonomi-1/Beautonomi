@@ -11,6 +11,8 @@ import type { CancellationPolicy } from "./cancellation-policy";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { logger } from "@/lib/utils/logger";
+import { sumCompletedStoreCreditRefunds } from "@/lib/admin/booking-refund-context";
+import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-transaction-refund";
 
 export interface RefundResult {
   success: boolean;
@@ -284,6 +286,31 @@ async function processBookingRefundInner(
         refundId: (refundRecord as { id: string }).id,
       });
       return { success: false, error: "Failed to finalize refund record" };
+    }
+
+    try {
+      const { data: allRefunds } = await supabaseAdmin
+        .from("booking_refunds")
+        .select("amount, refund_method, status")
+        .eq("booking_id", bookingId);
+      const cumulative = sumCompletedStoreCreditRefunds(
+        (allRefunds ?? []) as Array<{
+          amount?: number | string | null;
+          refund_method?: string | null;
+          status?: string | null;
+        }>,
+      );
+      await syncPaymentTransactionRefundState({
+        supabase: supabaseAdmin,
+        bookingId,
+        cumulativeRefundAmount: cumulative,
+        reason: `Cancellation refund (${lateLabel}) — ${policy.late_cancellation_type}`,
+      });
+    } catch (syncErr) {
+      logger.warn("processBookingRefund.payment_transaction_sync_failed", {
+        bookingId,
+        error: syncErr instanceof Error ? syncErr.message : String(syncErr),
+      });
     }
 
     // Record booking event for audit trail

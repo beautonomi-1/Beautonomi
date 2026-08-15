@@ -30,26 +30,23 @@ export {
 let isInitialized = false;
 let currentConfig: AmplitudeConfig | null = null;
 let engagementEnabled = false;
-let engagementPluginAdded = false;
 let lastBootedEngagementUserId: string | null = null;
 let lastPortal: "client" | "provider" | null = null;
 /** Ignores stale in-flight init when auth/bootstrap races (anonymous → signed-in). */
 let initGeneration = 0;
+/**
+ * Process-lifetime flag: `amplitude.reset()` clears identity but leaves the native
+ * plugin registry intact, so the Engagement plugin can only ever be added once per
+ * JS runtime. Re-adding it makes Amplitude log "Plugin with name
+ * AmplitudeEngagementPlugin already exists, skipping registration" — deliberately
+ * never cleared by the reset helpers below.
+ */
+let engagementPluginAddedForProcess = false;
 
 /** Full module reset — call from AnalyticsProvider cleanup on sign-out / remount. */
 export function resetAnalyticsModule(): void {
   initGeneration += 1;
-  try {
-    amplitude.reset();
-  } catch {
-    /* ignore */
-  }
-  isInitialized = false;
-  currentConfig = null;
-  engagementEnabled = false;
-  engagementPluginAdded = false;
-  lastBootedEngagementUserId = null;
-  lastPortal = null;
+  clearAnalyticsModuleState();
 }
 
 function clearAnalyticsModuleState(): void {
@@ -61,7 +58,6 @@ function clearAnalyticsModuleState(): void {
   isInitialized = false;
   currentConfig = null;
   engagementEnabled = false;
-  engagementPluginAdded = false;
   lastBootedEngagementUserId = null;
   lastPortal = null;
 }
@@ -133,10 +129,10 @@ export async function initAnalytics(
       return null;
     }
 
-    if (engagementEnabled && !engagementPluginAdded) {
+    if (engagementEnabled && !engagementPluginAddedForProcess) {
       try {
         amplitudeAdd(getPlugin());
-        engagementPluginAdded = true;
+        engagementPluginAddedForProcess = true;
       } catch (pluginErr) {
         const msg = pluginErr instanceof Error ? pluginErr.message : String(pluginErr);
         if (!/already initialized/i.test(msg)) {

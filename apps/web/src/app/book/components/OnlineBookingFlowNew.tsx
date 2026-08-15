@@ -1051,6 +1051,39 @@ export default function OnlineBookingFlowNew({
       .catch(() => setCancellationPolicy(null));
   }, [provider.id, bookingData.venueType, step]);
 
+  useEffect(() => {
+    if (!provider.slug) return;
+    const locId =
+      bookingData.venueType === "at_salon" ? bookingData.selectedLocation?.id : undefined;
+    const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
+    let cancelled = false;
+    fetcher
+      .get<{ data: StaffOption[] }>(`/api/public/providers/${provider.slug}/staff${qs}`)
+      .then((staffRes) => {
+        if (cancelled) return;
+        const staffList = (staffRes as { data?: StaffOption[] })?.data ?? staffRes ?? [];
+        const staffArray = Array.isArray(staffList) ? staffList : [];
+        setStaff(staffArray);
+        setBookingData((prev) => {
+          const current = prev.selectedStaff;
+          if (!current || current.id === "any" || String(current.id).startsWith("provider-")) {
+            return prev;
+          }
+          if (staffArray.some((s) => s.id === current.id)) return prev;
+          return {
+            ...prev,
+            selectedStaff: { id: "any", name: "Any Professional", role: "Fastest availability" },
+          };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setStaff([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.slug, bookingData.venueType, bookingData.selectedLocation?.id]);
+
   // Fetch addons for every selected service and merge (dedupe by id) so multi-service bookings show all applicable addons
   const serviceIdsForAddons = bookingData.selectedServices
     .map((s) => s.offering_id ?? (s as any).id)
@@ -1545,7 +1578,9 @@ export default function OnlineBookingFlowNew({
             sessionStorage.removeItem("beautonomi_booking_group");
           }
         } catch {}
-        if (authBeforeSlots && !user) {
+        if (user) {
+          router.push(`/book/continue?hold_id=${id}`);
+        } else if (authBeforeSlots) {
           setPreAuthGateOpen(true);
         } else {
           setGateOpen(true);
@@ -1878,7 +1913,20 @@ export default function OnlineBookingFlowNew({
         }}
         redirectUrl={
           preAuthGateOpen
-            ? `${typeof window !== "undefined" ? window.location.origin : ""}/booking?slug=${encodeURIComponent(provider.slug)}&auth_return=calendar`
+            ? (() => {
+                const origin = typeof window !== "undefined" ? window.location.origin : "";
+                if (embed) {
+                  const q = new URLSearchParams({ embed: "1", auth_return: "calendar" });
+                  if (bookingData.venueType) q.set("location_type", bookingData.venueType);
+                  if (bookingData.selectedLocation?.id) q.set("location", bookingData.selectedLocation.id);
+                  if (bookingData.selectedStaff?.id === "any") q.set("anyone", "true");
+                  else if (bookingData.selectedStaff?.id) q.set("staff", bookingData.selectedStaff.id);
+                  const firstService = bookingData.selectedServices[0]?.offering_id;
+                  if (firstService) q.set("service", firstService);
+                  return `${origin}/book/${encodeURIComponent(provider.slug)}?${q.toString()}`;
+                }
+                return `${origin}/booking?slug=${encodeURIComponent(provider.slug)}&auth_return=calendar`;
+              })()
             : undefined
         }
       />

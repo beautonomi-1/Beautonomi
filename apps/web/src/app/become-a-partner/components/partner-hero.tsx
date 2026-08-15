@@ -73,7 +73,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
     if (isLoading) return;
 
     if (user) {
-      if (role === "provider_owner" || role === "provider_staff") {
+      if (role === "provider_owner") {
         router.push("/provider/dashboard");
       } else {
         router.push("/provider/onboarding");

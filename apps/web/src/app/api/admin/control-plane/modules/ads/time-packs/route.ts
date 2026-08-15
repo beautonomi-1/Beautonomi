@@ -37,6 +37,7 @@ export async function PATCH(request: NextRequest) {
       if (p.is_active != null) update.is_active = Boolean(p.is_active);
       if (p.display_order != null) update.display_order = Number(p.display_order);
       if (p.label != null) update.label = String(p.label);
+      if (p.apple_product_id !== undefined) update.apple_product_id = p.apple_product_id || null;
       if (Object.keys(update).length > 0) {
         const { error: updateErr } = await supabase.from("ads_time_packs").update(update).eq("id", p.id);
         if (updateErr) console.error(`Failed to update time pack ${p.id}:`, updateErr);

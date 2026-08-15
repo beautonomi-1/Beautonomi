@@ -63,6 +63,7 @@ export default function LoginScreen() {
     suspended?: string;
     deletion_scheduled?: string;
     joinToken?: string;
+    email?: string;
   }>();
   const postLoginPath = useMemo(() => {
     const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
@@ -97,7 +98,9 @@ export default function LoginScreen() {
     ...(formNarrow ? { alignItems: "center" as const } : {}),
   };
 
-  const [mode, setMode] = useState<LoginMode>("phone");
+  const joinEmailPrefill =
+    typeof params.email === "string" ? params.email.trim() : "";
+  const [mode, setMode] = useState<LoginMode>(joinEmailPrefill ? "email" : "phone");
   const statusMessage =
     params.suspended === "1"
       ? "Your account has been suspended. Contact support if you believe this is an error."
@@ -113,7 +116,7 @@ export default function LoginScreen() {
   const [token, setToken] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [pendingPhone, setPendingPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(joinEmailPrefill);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [isSignup, setIsSignup] = useState(false);
@@ -163,8 +166,13 @@ export default function LoginScreen() {
   }, [signupOtpResendCooldown]);
 
   const goToSignup = useCallback(() => {
-    router.push("/(auth)/signup" as never);
-  }, [router]);
+    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
+    const qs = new URLSearchParams();
+    if (token) qs.set("joinToken", token);
+    if (joinEmailPrefill) qs.set("email", joinEmailPrefill);
+    const href = qs.toString() ? `/(auth)/signup?${qs.toString()}` : "/(auth)/signup";
+    router.push(href as never);
+  }, [router, params.joinToken, joinEmailPrefill]);
 
   const fullPhone = `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;

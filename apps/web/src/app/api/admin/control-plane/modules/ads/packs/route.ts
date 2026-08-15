@@ -36,6 +36,7 @@ export async function PATCH(request: NextRequest) {
       if (p.price_zar != null) update.price_zar = Number(p.price_zar);
       if (p.is_active != null) update.is_active = Boolean(p.is_active);
       if (p.display_order != null) update.display_order = Number(p.display_order);
+      if (p.apple_product_id !== undefined) update.apple_product_id = p.apple_product_id || null;
       if (Object.keys(update).length > 0) {
         const { error: updateErr } = await supabase.from("ads_impression_packs").update(update).eq("id", p.id);
         if (updateErr) console.error(`Failed to update pack ${p.id}:`, updateErr);

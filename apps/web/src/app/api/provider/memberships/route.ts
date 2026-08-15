@@ -18,7 +18,7 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "customer", "superadmin"],
+      ["provider_owner", "provider_staff", "provider_onboarding", "customer", "superadmin"],
       request,
     );
     const admin = getSupabaseAdmin();

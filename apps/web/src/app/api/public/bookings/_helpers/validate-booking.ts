@@ -673,6 +673,26 @@ export async function validateBooking(
           );
         }
       }
+      if (draft.location_type === "at_salon" && draft.location_id) {
+        const { isStaffInLocationScope, resolveStaffLocationScope } = await import(
+          "@/lib/provider/staff-location-scope"
+        );
+        const scope = await resolveStaffLocationScope(
+          supabaseAdmin,
+          draft.provider_id,
+          draft.location_id,
+        );
+        for (const id of uniqueStaff) {
+          if (!isStaffInLocationScope(id, scope)) {
+            return handleApiError(
+              new Error("Staff not available at location"),
+              "Selected staff is not available at this location.",
+              "STAFF_LOCATION_MISMATCH",
+              400
+            );
+          }
+        }
+      }
     }
     const offeringIdsForStaff = [...new Set(draft.services.map((s) => s.offering_id))];
     const { data: oStaffRows } = await supabaseAdmin

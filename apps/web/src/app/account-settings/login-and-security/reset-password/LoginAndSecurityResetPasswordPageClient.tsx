@@ -59,7 +59,12 @@ export default function ResetPasswordPage() {
           return;
         }
         tryReady();
-        window.history.replaceState({}, "", window.location.pathname);
+        const nextKeep = searchParams.get("next");
+        const clean =
+          nextKeep && nextKeep.startsWith("/") && !nextKeep.startsWith("//")
+            ? `${window.location.pathname}?next=${encodeURIComponent(nextKeep)}`
+            : window.location.pathname;
+        window.history.replaceState({}, "", clean);
       }
     })();
 
@@ -118,7 +123,10 @@ export default function ResetPasswordPage() {
       await fetcher.post("/api/me/password/changed", {}).catch(() => {});
       setSuccess(true);
       toast.success("Password updated successfully");
-      setTimeout(() => router.push("/"), 3000);
+      const nextRaw = searchParams.get("next");
+      const nextPath =
+        nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/";
+      setTimeout(() => router.push(nextPath), 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update password");
     } finally {
@@ -139,8 +147,7 @@ export default function ResetPasswordPage() {
             Password Updated
           </h2>
           <p className="text-sm text-gray-500">
-            Your password has been reset successfully. Redirecting you to the
-            home page…
+            Your password has been reset successfully. Redirecting you…
           </p>
         </div>
       </div>

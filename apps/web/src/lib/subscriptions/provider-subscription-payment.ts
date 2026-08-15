@@ -184,6 +184,8 @@ export async function recordProviderSubscriptionPayment(params: {
   kind: string;
   description?: string;
   tenantIdHint?: string | null;
+  paymentProvider?: "paystack" | "apple";
+  paymentMetadata?: Record<string, unknown>;
 }): Promise<RecordProviderSubscriptionPaymentResult> {
   const {
     supabase,
@@ -199,15 +201,19 @@ export async function recordProviderSubscriptionPayment(params: {
     kind,
     description = "Provider subscription payment",
     tenantIdHint = null,
+    paymentProvider = "paystack",
+    paymentMetadata = {},
   } = params;
 
   let resolvedFeesMajor = feesMajor;
-  const resolvedFees = await resolvePaystackFeeMajor(supabase, {
-    feesSmallestOrMajor: feesMajor,
-    amountMajor,
-    alreadyMajor: true,
-  });
-  resolvedFeesMajor = resolvedFees.feesMajor;
+  if (paymentProvider === "paystack") {
+    const resolvedFees = await resolvePaystackFeeMajor(supabase, {
+      feesSmallestOrMajor: feesMajor,
+      amountMajor,
+      alreadyMajor: true,
+    });
+    resolvedFeesMajor = resolvedFees.feesMajor;
+  }
   const netAmount = amountMajor - resolvedFeesMajor;
 
   if (!reference || !providerId) {
@@ -224,7 +230,7 @@ export async function recordProviderSubscriptionPayment(params: {
   const { data: existingTx } = await supabase
     .from("payment_transactions")
     .select("id, status")
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", reference)
     .maybeSingle();
   if (existingTx) {
@@ -258,7 +264,7 @@ export async function recordProviderSubscriptionPayment(params: {
     fees: resolvedFeesMajor,
     net_amount: netAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: paymentTransactionType,
     metadata: {
       kind,
@@ -267,6 +273,8 @@ export async function recordProviderSubscriptionPayment(params: {
       plan_id: planId,
       subscription_code: subscriptionCode,
       invoice_code: invoiceCode,
+      payment_provider: paymentProvider,
+      ...paymentMetadata,
     },
     created_at: nowIso,
   });
@@ -305,7 +313,9 @@ export async function recordProviderSubscriptionPayment(params: {
         plan_id: planId,
         subscription_code: subscriptionCode,
         invoice_code: invoiceCode,
-        fee_source: resolvedFees.feeSource,
+        fee_source: paymentProvider === "paystack" ? "paystack" : "apple_commission",
+        payment_provider: paymentProvider,
+        ...paymentMetadata,
       },
       created_at: nowIso,
     })
@@ -318,7 +328,8 @@ export async function recordProviderSubscriptionPayment(params: {
   // authorization, and recurring renewal all flow through here exactly once).
   // Best-effort: a notification failure must never fail payment recognition.
   if (financeTransactionId) {
-    await sendSubscriptionReceiptEmailSafe({
+    if (paymentProvider !== "apple") {
+      await sendSubscriptionReceiptEmailSafe({
       supabase,
       providerId,
       planId,
@@ -329,6 +340,7 @@ export async function recordProviderSubscriptionPayment(params: {
       paidAtIso: nowIso,
       isRenewal: kind === "subscription_renewal",
     });
+    }
   }
 
   return { recorded: true, alreadyRecorded: false, netAmount, reference, financeTransactionId };

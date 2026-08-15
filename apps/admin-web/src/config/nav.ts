@@ -65,6 +65,7 @@ import {
   BookOpen,
   Lock,
   ListFilter,
+  Truck,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -207,6 +208,11 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard, section: ADMIN_SECTION_FINANCE, superadminOnly: true, subheader: "Subscriptions & Plans" },
       { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
       { title: "Plans & Pricing", href: "/admin/plans", icon: CreditCard, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
+      { title: "Apple IAP Setup Sheet", href: "/admin/monetization/apple/setup-sheet", icon: Smartphone, section: ADMIN_SECTION_FINANCE, superadminOnly: true, subheader: "Apple IAP" },
+      { title: "Apple IAP Products", href: "/admin/monetization/apple/products", icon: Smartphone, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
+      { title: "Apple IAP Transactions", href: "/admin/monetization/apple/transactions", icon: Smartphone, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
+      { title: "Apple IAP Notifications", href: "/admin/monetization/apple/notifications", icon: Smartphone, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
+      { title: "Apple IAP Settlements", href: "/admin/monetization/apple/settlements", icon: Smartphone, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
       { title: "Billing", href: "/admin/billing", icon: CreditCard, section: ADMIN_SECTION_FINANCE, superadminOnly: true },
     ],
   },
@@ -283,6 +289,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Yoco Web POS", href: "/admin/integrations/yoco", icon: Smartphone, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true, subheader: "Advanced" },
       { title: "PayCloud Card Machines", href: "/admin/integrations/paycloud", icon: Terminal, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "PayCloud Operations", href: "/admin/integrations/paycloud-operations", icon: Terminal, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Apple App Store Connect", href: "/admin/integrations/apple", icon: Smartphone, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
+      { title: "Courier shipping", href: "/admin/integrations/shipping", icon: Truck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Integrations Hub", href: "/admin/control-plane/integrations", icon: Plug, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Didit (Identity / KYC)", href: "/admin/control-plane/integrations/didit", icon: ShieldCheck, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
       { title: "Gemini credentials", href: "/admin/control-plane/integrations/gemini", icon: Sparkles, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },

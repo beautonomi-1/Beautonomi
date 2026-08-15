@@ -52,6 +52,16 @@ function Probe() {
   );
 }
 
+const PROFILE_FIXTURE = {
+  id: "prov-1",
+  business_name: "Test Salon",
+  business_type: "salon",
+  email: "a@test.com",
+  phone: "+10000000000",
+  avatar_url: null,
+  locations: [],
+};
+
 function renderProvider() {
   return render(
     <ProviderProvider>
@@ -187,6 +197,100 @@ describe("ProviderProvider first-run profile loading", () => {
     await waitFor(() => expect(captureApiFailure).toHaveBeenCalled());
     expect(screen.getByTestId("provider").props.children).toBe("prov-1");
     expect(screen.getByTestId("error").props.children).toBe("none");
+  });
+
+  it("stops re-requesting the provider profile while the rejected role is unchanged", async () => {
+    let profileCalls = 0;
+    let roleCalls = 0;
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === "/api/provider/profile") {
+        profileCalls += 1;
+        return Promise.resolve({
+          error: { message: "Insufficient permissions", status: 403, code: "FORBIDDEN" },
+        });
+      }
+      if (path === "/api/me/role") {
+        roleCalls += 1;
+        return Promise.resolve({ data: { role: "customer" } });
+      }
+      return Promise.resolve({ data: null });
+    });
+
+    const screen = renderProvider();
+    await waitFor(() => expect(screen.getByTestId("role").props.children).toBe("customer"));
+    expect(profileCalls).toBe(1);
+
+    fireEvent.press(screen.getByTestId("refresh"));
+
+    // Role is still re-checked, but the endpoint that can only 403 is not.
+    await waitFor(() => expect(roleCalls).toBeGreaterThan(1));
+    expect(profileCalls).toBe(1);
+  });
+
+  it("re-requests the profile as soon as onboarding upgrades the role", async () => {
+    let currentRole = "customer";
+    let profileCalls = 0;
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === "/api/provider/profile") {
+        profileCalls += 1;
+        if (currentRole === "customer") {
+          return Promise.resolve({
+            error: { message: "Insufficient permissions", status: 403, code: "FORBIDDEN" },
+          });
+        }
+        return Promise.resolve({ data: { ...PROFILE_FIXTURE, id: "prov-upgraded" } });
+      }
+      if (path === "/api/me/role") {
+        return Promise.resolve({ data: { role: currentRole } });
+      }
+      return Promise.resolve({ data: null });
+    });
+
+    const screen = renderProvider();
+    await waitFor(() => expect(screen.getByTestId("role").props.children).toBe("customer"));
+    expect(profileCalls).toBe(1);
+
+    currentRole = "provider_owner";
+    fireEvent.press(screen.getByTestId("refresh"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider").props.children).toBe("prov-upgraded"),
+    );
+    expect(profileCalls).toBe(2);
+  });
+
+  it("keeps retrying the profile after a transient failure so a provider is never stranded", async () => {
+    let profileCalls = 0;
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === "/api/provider/profile") {
+        profileCalls += 1;
+        if (profileCalls === 1) {
+          return Promise.resolve({
+            error: { message: "Request timed out.", code: "TIMEOUT" },
+          });
+        }
+        return Promise.resolve({ data: { ...PROFILE_FIXTURE, id: "prov-recovered" } });
+      }
+      if (path === "/api/me/role") {
+        // A provider row can exist under this role, so a transient failure must
+        // never be mistaken for "this role has no profile to load".
+        return Promise.resolve({ data: { role: "provider_onboarding" } });
+      }
+      return Promise.resolve({ data: null });
+    });
+
+    const screen = renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("role").props.children).toBe("provider_onboarding"),
+    );
+    expect(profileCalls).toBe(1);
+
+    fireEvent.press(screen.getByTestId("refresh"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider").props.children).toBe("prov-recovered"),
+    );
+    expect(profileCalls).toBe(2);
   });
 
   it("broadcasts PROVIDER_ROLE_CHANGED_EVENT so root-level consumers (push registration) can react", async () => {

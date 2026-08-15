@@ -166,6 +166,8 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "integrations/yoco": { label: "Yoco Web POS", parentHref: null },
   "integrations/paycloud": { label: "PayCloud Card Machines", parentHref: null },
   "integrations/paycloud-operations": { label: "PayCloud Operations", parentHref: "/admin/integrations/paycloud" },
+  "integrations/apple": { label: "Apple App Store Connect", parentHref: null },
+  "integrations/shipping": { label: "Courier shipping", parentHref: null },
   "control-plane/integrations": { label: "Integrations Hub", parentHref: "/admin/control-plane/overview" },
   "control-plane/integrations/didit": { label: "Didit (KYC)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/gemini": { label: "Gemini Credentials", parentHref: "/admin/control-plane/integrations" },

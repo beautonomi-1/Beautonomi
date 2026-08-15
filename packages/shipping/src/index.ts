@@ -45,6 +45,8 @@ export interface RateQuote {
   amount: number;
   currency: string;
   etaDays: number;
+  /** Courier-specific fields needed to book the quoted service (not shown to buyers). */
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreateShipmentRequest extends RateQuoteRequest {
@@ -75,19 +77,36 @@ export interface ShippingProvider {
 
 export class ShippingProviderNotConfiguredError extends Error {
   constructor(public readonly providerId: ShippingProviderId) {
-    super(`Shipping provider "${providerId}" is not configured (missing env vars).`);
+    super(`Shipping provider "${providerId}" is not configured (missing credentials).`);
   }
 }
 
-import { createAramexProvider } from "./providers/aramex";
+import { createAramexProvider, type AramexCredentials } from "./providers/aramex";
 import { createCourierGuyProvider } from "./providers/courier-guy";
 import { createBobGoProvider } from "./providers/bob-go";
 
-export function getShippingProvider(id: ShippingProviderId): ShippingProvider {
+export type BearerCourierCredentials = {
+  apiKey: string;
+  baseUrl?: string;
+};
+
+export type ShippingRuntimeCredentials = {
+  "courier-guy"?: BearerCourierCredentials;
+  "bob-go"?: BearerCourierCredentials;
+  aramex?: AramexCredentials;
+};
+
+export function getShippingProvider(
+  id: ShippingProviderId,
+  credentials?: ShippingRuntimeCredentials,
+): ShippingProvider {
   switch (id) {
-    case "aramex": return createAramexProvider();
-    case "courier-guy": return createCourierGuyProvider();
-    case "bob-go": return createBobGoProvider();
+    case "aramex":
+      return createAramexProvider(credentials?.aramex);
+    case "courier-guy":
+      return createCourierGuyProvider(credentials?.["courier-guy"]);
+    case "bob-go":
+      return createBobGoProvider(credentials?.["bob-go"]);
     default: {
       const _exhaustive: never = id;
       throw new Error(`Unknown shipping provider: ${String(_exhaustive)}`);

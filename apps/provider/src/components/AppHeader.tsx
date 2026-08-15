@@ -7,6 +7,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import * as Haptics from "expo-haptics";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { LocationSwitcher } from "@/components/ui/LocationSwitcher";
+import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
 import { ProviderNotificationsDropdown } from "@/components/ProviderNotificationsDropdown";
 import { useProvider } from "@/providers/ProviderContext";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
@@ -92,17 +93,20 @@ export function AppHeader() {
         }}
       >
         {/* Logo */}
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/(tabs)/dashboard" as never);
-          }}
-          hitSlop={hitSlop}
-          accessibilityLabel="Beautonomi logo, go to dashboard"
-          accessibilityRole="button"
-        >
-          <BeautonomiLogo size={28} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1, minWidth: 0, gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/dashboard" as never);
+            }}
+            hitSlop={hitSlop}
+            accessibilityLabel="Beautonomi logo, go to dashboard"
+            accessibilityRole="button"
+          >
+            <BeautonomiLogo size={28} />
+          </TouchableOpacity>
+          <ProviderOrgSwitcher variant="header" />
+        </View>
 
         {/* Right: search, notification, quick action, location */}
         <View style={{ flexDirection: "row", alignItems: "center" }}>

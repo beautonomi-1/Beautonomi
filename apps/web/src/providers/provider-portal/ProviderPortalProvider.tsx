@@ -46,13 +46,43 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache - longer for stability
 const BACKGROUND_REFRESH_AGE = 2 * 60 * 1000;
 const STORAGE_KEY = "provider_portal_cache_v2";
 
-function readSavedLocationId(): string | null {
+const LOCATION_STORAGE_PREFIX = "provider_selected_location_id";
+
+function locationStorageKey(providerId?: string | null): string {
+  return providerId ? `${LOCATION_STORAGE_PREFIX}:${providerId}` : LOCATION_STORAGE_PREFIX;
+}
+
+function readSavedLocationId(providerId?: string | null): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return localStorage.getItem("provider_selected_location_id");
+    if (providerId) {
+      const scoped = localStorage.getItem(locationStorageKey(providerId));
+      if (scoped) return scoped;
+    }
+    return localStorage.getItem(LOCATION_STORAGE_PREFIX);
   } catch {
     return null;
   }
+}
+
+function writeSavedLocationId(locationId: string, providerId?: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(locationStorageKey(providerId), locationId);
+  } catch {
+    // ignore
+  }
+}
+
+function pickValidLocationId(
+  saved: string | null,
+  salons: Salon[],
+  fallback?: string | null,
+): string | null {
+  const ids = new Set(salons.map((s) => s.id));
+  if (saved && ids.has(saved)) return saved;
+  if (fallback && ids.has(fallback)) return fallback;
+  return salons[0]?.id ?? null;
 }
 
 function isProviderCacheFresh(timestamp: number): boolean {
@@ -70,8 +100,11 @@ function buildStateFromCache(
   return {
     provider: cached.provider,
     salons: cached.salons,
-    selectedLocationId:
-      savedLocationId || cached.provider?.selected_location_id || cached.salons[0]?.id || null,
+    selectedLocationId: pickValidLocationId(
+      savedLocationId,
+      cached.salons,
+      cached.provider?.selected_location_id ?? null,
+    ),
     setupCompletion: cached.setupCompletion ?? 0,
     setupStatusKnown: cached.setupStatusKnown === true,
   };
@@ -80,6 +113,20 @@ function buildStateFromCache(
 /** Mirrors active org for `/api/provider/*` (see `ACTIVE_PROVIDER_ID_COOKIE` in api-helpers). */
 const ACTIVE_PROVIDER_ID_COOKIE = "bn_active_provider_id";
 const ACTIVE_PROVIDER_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function readActiveProviderIdCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)bn_active_provider_id=([^;]+)/);
+  if (!match?.[1]) return null;
+  try {
+    const id = decodeURIComponent(match[1]).trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function syncActiveProviderIdCookie(providerId: string | null): void {
   if (typeof document === "undefined") return;
@@ -106,9 +153,17 @@ if (typeof window !== 'undefined') {
       };
       if (parsed.timestamp && Date.now() - parsed.timestamp < CACHE_DURATION) {
         const p = parsed.provider;
-        if (p && typeof p === "object" && p.id) {
+        const cookieId = readActiveProviderIdCookie();
+        if (p && typeof p === "object" && p.id && cookieId && cookieId !== p.id) {
+          // Org switch already wrote the cookie; drop the stale salon cache.
+          try {
+            sessionStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // ignore
+          }
+        } else if (p && typeof p === "object" && p.id) {
           cachedProviderData = parsed as NonNullable<typeof cachedProviderData>;
-          syncActiveProviderIdCookie(p.id);
+          if (!cookieId) syncActiveProviderIdCookie(p.id);
         } else {
           try {
             sessionStorage.removeItem(STORAGE_KEY);
@@ -130,7 +185,7 @@ const pendingRequests = new Map<string, Promise<void>>();
 export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [state, setState] = useState<ProviderPortalState>(() => {
-    const savedLocationId = readSavedLocationId();
+    const savedLocationId = readSavedLocationId(cachedProviderData?.provider?.id);
     if (cachedProviderData && isProviderCacheFresh(cachedProviderData.timestamp)) {
       return {
         ...buildStateFromCache(cachedProviderData, savedLocationId),
@@ -216,14 +271,20 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     }
     
     // Check cache first (unless explicitly skipping)
-    if (!skipCache && cachedProviderData && isProviderCacheFresh(cachedProviderData.timestamp)) {
+    const cookieId = readActiveProviderIdCookie();
+    const cachedPid = cachedProviderData?.provider?.id ?? null;
+    if (
+      !skipCache &&
+      cachedProviderData &&
+      isProviderCacheFresh(cachedProviderData.timestamp) &&
+      (!cookieId || !cachedPid || cookieId === cachedPid)
+    ) {
       // Optimistically update UI immediately from cache
       setState((prev) => ({
         ...prev,
-        ...buildStateFromCache(cachedProviderData!, readSavedLocationId()),
+        ...buildStateFromCache(cachedProviderData!, readSavedLocationId(cachedProviderData!.provider?.id)),
       }));
-      const cachedPid = cachedProviderData!.provider?.id ?? null;
-      syncActiveProviderIdCookie(cachedPid);
+      if (!cookieId && cachedPid) syncActiveProviderIdCookie(cachedPid);
       setIsLoading(false);
       setLoadError(null);
       
@@ -275,11 +336,12 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Load saved location from localStorage, or use provider's selected_location_id, or first salon
-        const savedLocationId = typeof window !== 'undefined'
-          ? localStorage.getItem('provider_selected_location_id')
-          : null;
-        const locationId = savedLocationId || provider?.selected_location_id || salons[0]?.id || null;
+        const savedLocationId = readSavedLocationId(provider.id);
+        const locationId = pickValidLocationId(
+          savedLocationId,
+          salons,
+          provider.selected_location_id ?? null,
+        );
         
         // Update UI immediately with provider and salons (optimistic update)
         const newState = {
@@ -405,15 +467,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   const setSelectedLocation = async (locationId: string) => {
     // Optimistic update - update UI immediately
     setState((prev) => ({ ...prev, selectedLocationId: locationId }));
-    
-    // Persist to localStorage immediately
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('provider_selected_location_id', locationId);
-      } catch {
-        // Ignore storage errors
-      }
-    }
+    writeSavedLocationId(locationId, state.provider?.id ?? cachedProviderData?.provider?.id);
     
     try {
       await providerApi.selectLocation(locationId);
@@ -431,10 +485,11 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to select location:", error);
       // Revert on error - check localStorage first, then fallback
-      const savedLocationId = typeof window !== 'undefined'
-        ? localStorage.getItem('provider_selected_location_id')
-        : null;
-      const fallbackLocationId = savedLocationId || cachedProviderData?.provider?.selected_location_id || cachedProviderData?.salons[0]?.id || null;
+      const fallbackLocationId = pickValidLocationId(
+        readSavedLocationId(cachedProviderData?.provider?.id),
+        cachedProviderData?.salons ?? [],
+        cachedProviderData?.provider?.selected_location_id ?? null,
+      );
       setState((prev) => ({ 
         ...prev, 
         selectedLocationId: fallbackLocationId

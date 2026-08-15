@@ -30,6 +30,7 @@ import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboa
 import { BiometricSetupPrompt } from "@/components/BiometricSetupPrompt";
 import { BiometricSetupBootstrap } from "@/components/BiometricSetupBootstrap";
 import { SetupCompleteCelebration } from "@/components/setup/SetupCompleteCelebration";
+import { AppleIapSyncListener } from "@/components/AppleIapSyncListener";
 import {
   authFlowBreadcrumb,
   isSentryEnabled,
@@ -91,6 +92,7 @@ export default function AppLayout() {
         <NativePermissionsOnboarding />
         <BiometricSetupBootstrap />
         <BiometricSetupPrompt />
+        <AppleIapSyncListener />
         <OnDemandIncomingListener />
         <BookingAlertListener />
         <OrderAlertListener />

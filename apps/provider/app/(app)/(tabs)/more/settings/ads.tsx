@@ -46,6 +46,12 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
+import {
+  createAdsCampaignWithApplePayment,
+  retryAdsCampaignWithApplePayment,
+} from "@/lib/iap/ads-apple-payment";
+import { useAppleIapProducts } from "@/lib/iap/useAppleIapProducts";
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
@@ -200,6 +206,7 @@ type ImpressionPack = {
   impressions: number;
   price_zar: number;
   display_order?: number;
+  apple_product_id?: string | null;
 };
 
 type TimePack = {
@@ -208,6 +215,7 @@ type TimePack = {
   label: string;
   price_zar: number;
   display_order?: number;
+  apple_product_id?: string | null;
 };
 
 type GlobalCategory = { id: string; name: string; slug: string };
@@ -496,7 +504,27 @@ export default function AdsSettingsScreen() {
     bid_cpc: "",
     global_category_ids: [] as string[],
   });
-  const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
+  const cpcBudgetAvailable =
+    (availableModels.length === 0 || availableModels.includes("cpc_budget")) && !shouldUseAppleIap();
+  const applePackProductIds = useMemo(
+    () =>
+      [...packs, ...timePacks]
+        .map((p) => p.apple_product_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    [packs, timePacks],
+  );
+  const { byId: applePackPrices } = useAppleIapProducts(applePackProductIds);
+
+  const packDisplayPrice = useCallback(
+    (pack: { price_zar: number; apple_product_id?: string | null }) => {
+      if (shouldUseAppleIap() && pack.apple_product_id) {
+        const applePrice = applePackPrices.get(pack.apple_product_id)?.displayPrice;
+        if (applePrice) return applePrice;
+      }
+      return formatMoney(Number(pack.price_zar), tenantCurrency);
+    },
+    [applePackPrices, tenantCurrency],
+  );
 
   const loadAll = useCallback(async () => {
     if (!enabled) {
@@ -876,15 +904,40 @@ export default function AdsSettingsScreen() {
         ],
         lineItems: [
           { label: "Impression pack", value: formatCompactNumber(pack.impressions) },
-          { label: "Total due", value: formatMoney(pack.price_zar, tenantCurrency) },
+          { label: "Total due", value: packDisplayPrice(pack) },
         ],
-        total: formatMoney(pack.price_zar, tenantCurrency),
-        confirmLabel: `Pay ${formatMoney(pack.price_zar, tenantCurrency)}`,
+        total: packDisplayPrice(pack),
+        confirmLabel: shouldUseAppleIap() ? `Purchase ${packDisplayPrice(pack)}` : `Pay ${packDisplayPrice(pack)}`,
       });
       if (!confirmed) return;
 
       setCreatingPackId(pack.id);
       try {
+        const targeting =
+          createForm.global_category_ids.length > 0
+            ? { global_category_ids: createForm.global_category_ids }
+            : undefined;
+
+        if (shouldUseAppleIap()) {
+          setProcessing(true);
+          setProcessingMessage("Processing App Store purchase…");
+          const appleResult = await createAdsCampaignWithApplePayment({
+            impression_pack_id: pack.id,
+            targeting,
+          });
+          setProcessing(false);
+          if (!appleResult.ok) {
+            if (!appleResult.cancelled) {
+              Alert.alert("Error", appleResult.error);
+            }
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          loadAll();
+          Alert.alert("Done", "Impression pack purchased and campaign created.");
+          return;
+        }
+
         const res = await api.post<
           Campaign | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null }
         >(
@@ -892,10 +945,7 @@ export default function AdsSettingsScreen() {
           {
             ...ADS_NATIVE_PAYMENT,
             impression_pack_id: pack.id,
-            targeting:
-              createForm.global_category_ids.length > 0
-                ? { global_category_ids: createForm.global_category_ids }
-                : undefined,
+            targeting,
           }
         );
         if (res.error) {
@@ -1014,6 +1064,23 @@ export default function AdsSettingsScreen() {
 
       setUpdating(campaign.id);
       try {
+        if (shouldUseAppleIap()) {
+          setProcessing(true);
+          setProcessingMessage("Processing App Store purchase…");
+          const appleResult = await retryAdsCampaignWithApplePayment(campaign.id);
+          setProcessing(false);
+          if (!appleResult.ok) {
+            if (!appleResult.cancelled) {
+              Alert.alert("Error", appleResult.error);
+            }
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Success", "Purchase completed. Your campaign will start shortly.");
+          await loadAll();
+          return;
+        }
+
         const res = await api.post<{
           payment_url?: string | null;
           order_id?: string;
@@ -1043,12 +1110,19 @@ export default function AdsSettingsScreen() {
           productLabel: campaignModelLabel(campaign),
         });
       } catch (e: unknown) {
-        Alert.alert("Error", getApiErrorMessage(e, "Couldn't reopen Paystack"));
+        Alert.alert(
+          "Error",
+          getApiErrorMessage(
+            e,
+            shouldUseAppleIap() ? "Couldn't restart App Store payment" : "Couldn't reopen Paystack",
+          ),
+        );
       } finally {
+        setProcessing(false);
         setUpdating(null);
       }
     },
-    [openAdsPaystack, requestAdsCheckout, tenantCurrency],
+    [loadAll, openAdsPaystack, requestAdsCheckout, tenantCurrency],
   );
 
   /**
@@ -1420,10 +1494,10 @@ export default function AdsSettingsScreen() {
                         ],
                         lineItems: [
                           { label: "Boost duration", value: daysLabel },
-                          { label: "Total due", value: formatMoney(tp.price_zar, tenantCurrency) },
+                          { label: "Total due", value: packDisplayPrice(tp) },
                         ],
-                        total: formatMoney(tp.price_zar, tenantCurrency),
-                        confirmLabel: `Pay ${formatMoney(tp.price_zar, tenantCurrency)}`,
+                        total: packDisplayPrice(tp),
+                        confirmLabel: shouldUseAppleIap() ? `Purchase ${packDisplayPrice(tp)}` : `Pay ${packDisplayPrice(tp)}`,
                       });
                       if (!confirmed) return;
 
@@ -1433,6 +1507,26 @@ export default function AdsSettingsScreen() {
                         const targeting = createForm.global_category_ids.length > 0
                           ? { global_category_ids: createForm.global_category_ids }
                           : {};
+
+                        if (shouldUseAppleIap()) {
+                          setProcessing(true);
+                          setProcessingMessage("Processing App Store purchase…");
+                          const appleResult = await createAdsCampaignWithApplePayment({
+                            time_pack_id: tp.id,
+                            targeting,
+                          });
+                          setProcessing(false);
+                          if (!appleResult.ok) {
+                            if (!appleResult.cancelled) {
+                              Alert.alert("Error", appleResult.error);
+                            }
+                            return;
+                          }
+                          Alert.alert("Success", "Time boost purchased and campaign created.");
+                          loadAll();
+                          return;
+                        }
+
                         const res = await api.post<
                           Campaign | { campaign?: Campaign; requires_payment?: boolean; payment_url?: string | null }
                         >("/api/provider/ads/campaigns", {
@@ -1504,7 +1598,7 @@ export default function AdsSettingsScreen() {
                         </View>
                         <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
                           <Text style={twStyle("text-lg font-bold text-gray-900")}>
-                            {formatMoney(Number(tp.price_zar), tenantCurrency)}
+                            {packDisplayPrice(tp)}
                           </Text>
                           {creatingPackId === tp.id ? (
                             <ActivityIndicator size="small" color="#047857" style={{ marginTop: 10 }} />
@@ -1586,7 +1680,7 @@ export default function AdsSettingsScreen() {
                         </View>
                         <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
                           <Text style={twStyle("text-lg font-bold text-gray-900")}>
-                            {formatMoney(Number(pack.price_zar), tenantCurrency)}
+                            {packDisplayPrice(pack)}
                           </Text>
                           {creatingPackId === pack.id ? (
                             <ActivityIndicator size="small" color="#5b21b6" style={{ marginTop: 10 }} />

@@ -4,6 +4,7 @@ import {
   successResponse,
   errorResponse,
   handleApiError,
+  ACTIVE_PROVIDER_ID_COOKIE,
 } from "@/lib/supabase/api-helpers";
 import { acceptStaffInvite } from "@/lib/provider/staff-invite";
 import { z } from "zod";
@@ -34,12 +35,19 @@ export async function POST(request: NextRequest) {
         userEmail: user.email,
       });
 
-      return successResponse({
+      const response = successResponse({
         staff_id: result.staff_id,
         provider_id: result.provider_id,
         already_accepted: result.already_accepted,
-        role: "provider_staff",
+        role: result.role,
       });
+      response.cookies.set(ACTIVE_PROVIDER_ID_COOKIE, result.provider_id, {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 365,
+      });
+      return response;
     } catch (err) {
       const code = err instanceof Error ? err.message : "ACCEPT_FAILED";
       if (code === "INVITE_NOT_FOUND") {

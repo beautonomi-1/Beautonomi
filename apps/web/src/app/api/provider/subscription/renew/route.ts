@@ -16,6 +16,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { addMonths, addYears } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 
 /**
  * POST /api/provider/subscription/renew
@@ -32,6 +33,10 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+    const appleBilling = await getAppleBillingPaystackBlock(supabase, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
     }
     const { data: providerTenantRow } = await supabase
       .from("providers")

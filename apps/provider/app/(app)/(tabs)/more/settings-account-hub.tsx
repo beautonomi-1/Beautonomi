@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -30,6 +31,7 @@ type SettingsItem = {
   /** Native screen route (all settings are native). */
   mobileRoute?: string;
   isUpgrade?: boolean;
+  staffOnly?: boolean;
   /** Special action instead of navigation (e.g. signOut, globalSignOut) */
   action?: "signOut" | "globalSignOut" | "rateStore" | "openPrivacy" | "openTerms";
   /** Style as destructive (e.g. deactivate) */
@@ -150,6 +152,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Account",
     description: "Account and notifications",
     items: [
+      { title: "Start my own business", description: "Open a freelancer or salon profile while keeping this team job", href: "/provider/onboarding", mobileRoute: "/(app)/onboarding/wizard", staffOnly: true },
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
       // §provider-setup-seamless-ux 2026-05: dedicated entry-point for the
       // freelancer Personal Profile screen (the bio that gates the
@@ -180,6 +183,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
 export default function SettingsAccountHubScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
+  const { role } = useProvider();
   const [expandedId, setExpandedId] = useState<string | null>("account");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -357,6 +361,7 @@ export default function SettingsAccountHubScreen() {
             : category.items;
           const items = rawItems.filter((item) => {
             const routeKey = item.mobileRoute ?? item.href;
+            if (item.staffOnly && role !== "provider_staff") return false;
             return (
               (paystackTerminalEnabled || !routeKey.includes("paystack-terminal")) &&
               (yocoEnabled || !routeKey.includes("yoco")) &&

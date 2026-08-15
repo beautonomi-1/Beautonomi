@@ -45,6 +45,11 @@ export default function ProviderShippingConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [quoteCity, setQuoteCity] = useState("");
+  const [quotePostal, setQuotePostal] = useState("");
+  const [quoteLine1, setQuoteLine1] = useState("");
+  const [quoting, setQuoting] = useState(false);
+  const [quoteResult, setQuoteResult] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -218,7 +223,11 @@ export default function ProviderShippingConfigPage() {
             <div>
               <Label>Courier Booking</Label>
               <p className="text-xs text-gray-400 mb-1">
-                Optional. Leave manual unless a courier integration has been configured.
+                Optional. Customer checkout still uses your delivery fees above. If a courier is
+                selected and platform shipping is enabled (Admin → Integrations → Courier
+                shipping, with live courier keys), Beautonomi books that courier after
+                payment using live rates (Courier Guy/ShipLogic, Bob Go, or Aramex). Leave manual
+                unless Beautonomi has configured courier credentials.
               </p>
               <select
                 value={config.shipping_provider_preference ?? ""}
@@ -235,6 +244,85 @@ export default function ProviderShippingConfigPage() {
                 <option value="courier-guy">Courier Guy</option>
                 <option value="bob-go">Bob Go</option>
               </select>
+              {config.shipping_provider_preference ? (
+                <div className="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">
+                    Probe live courier rates for a destination. This is the courier’s booking
+                    cost, not the delivery fee charged to the customer.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Input
+                      placeholder="Street"
+                      value={quoteLine1}
+                      onChange={(e) => setQuoteLine1(e.target.value)}
+                    />
+                    <Input
+                      placeholder="City"
+                      value={quoteCity}
+                      onChange={(e) => setQuoteCity(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Postal code"
+                      value={quotePostal}
+                      onChange={(e) => setQuotePostal(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={quoting}
+                    onClick={async () => {
+                      setQuoting(true);
+                      setQuoteResult(null);
+                      try {
+                        const res = await fetcher.post<{
+                          data?: {
+                            ok?: boolean;
+                            quotes?: { service: string; amount: number; currency: string }[];
+                            skipped?: string;
+                            error?: string;
+                          };
+                        }>("/api/provider/shipping-quotes", {
+                          destination: {
+                            line1: quoteLine1,
+                            city: quoteCity,
+                            postalCode: quotePostal,
+                            country: "ZA",
+                          },
+                        });
+                        const payload = res?.data;
+                        if (payload?.skipped) {
+                          setQuoteResult(
+                            payload.skipped === "shipping_globally_disabled"
+                              ? "Live courier booking is off until a superadmin enables it under Integrations → Courier shipping."
+                              : payload.skipped === "no_shipping_preference"
+                                ? "Save a courier above first."
+                                : `Courier not configured (${payload.skipped}).`,
+                          );
+                        } else if (payload?.error) {
+                          setQuoteResult(payload.error);
+                        } else if (payload?.quotes?.length) {
+                          setQuoteResult(
+                            payload.quotes
+                              .map((q) => `${q.service}: ${q.currency} ${q.amount.toFixed(2)}`)
+                              .join(" · "),
+                          );
+                        } else {
+                          setQuoteResult("Courier returned no rates for this route.");
+                        }
+                      } catch (err) {
+                        setQuoteResult(
+                          err instanceof Error ? err.message : "Could not load courier rates.",
+                        );
+                      }
+                      setQuoting(false);
+                    }}
+                    className="text-xs font-medium text-pink-600 disabled:opacity-50"
+                  >
+                    {quoting ? "Checking rates…" : "Check live courier rates"}
+                  </button>
+                  {quoteResult ? <p className="text-xs text-gray-600">{quoteResult}</p> : null}
+                </div>
+              ) : null}
             </div>
             <div>
               <Label>Delivery Notes</Label>

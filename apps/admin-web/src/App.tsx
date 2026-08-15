@@ -174,6 +174,13 @@ export default function App() {
           <Route path="integrations/yoco" element={<P.YocoIntegrationPage />} />
           <Route path="integrations/paycloud" element={<P.PayCloudIntegrationPage />} />
           <Route path="integrations/paycloud-operations" element={<P.PayCloudOperationsPage />} />
+          <Route path="integrations/apple" element={<P.AppleIntegrationPage />} />
+          <Route path="integrations/shipping" element={<P.ShippingIntegrationPage />} />
+          <Route path="monetization/apple/setup-sheet" element={<P.AppleSetupSheetPage />} />
+          <Route path="monetization/apple/products" element={<P.AppleProductsPage />} />
+          <Route path="monetization/apple/transactions" element={<P.AppleTransactionsPage />} />
+          <Route path="monetization/apple/notifications" element={<P.AppleNotificationsPage />} />
+          <Route path="monetization/apple/settlements" element={<P.AppleSettlementsPage />} />
           <Route path="integrations/resend" element={<P.ResendIntegrationPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />

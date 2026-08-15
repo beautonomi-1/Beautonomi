@@ -7,6 +7,8 @@
 
 import { getSupabaseServer } from './server';
 import type { UserRole } from '@/types/beautonomi';
+import { resolveEffectiveProviderRole } from '@/lib/auth/effective-provider-role';
+import type { UsersRoleFromDb } from '@/lib/auth/role';
 
 /**
  * Get current session (server-side)
@@ -70,7 +72,9 @@ export async function getUserRole(userId: string): Promise<UserRole | null> {
     return null;
   }
 
-  return data.role as UserRole;
+  const rawRole = data.role as UsersRoleFromDb;
+  const effective = await resolveEffectiveProviderRole(userId, rawRole, { persist: true });
+  return effective as UserRole;
 }
 
 /**

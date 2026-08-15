@@ -22,8 +22,10 @@ export default function CTASection() {
   const handleTryItNow = () => {
     if (isLoading) return;
     if (user) {
-      if (role === "provider_owner" || role === "provider_staff") {
+      if (role === "provider_owner") {
         router.push("/provider/dashboard");
+      } else if (role === "provider_staff") {
+        router.push("/provider/onboarding");
       } else {
         router.push("/provider/onboarding");
       }

@@ -11,8 +11,8 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
 | **Privacy Policy** link | ✅ | Settings → Account → Privacy Policy (opens web). Signup: “Privacy Policy” link. Login: Privacy Policy for phone OTP. |
 | **Terms of Service** link | ✅ | Settings → Account → Terms of Service (opens web). Signup: “Terms of Service” link. |
 | **Account deactivation** | ✅ | Settings → Account → Deactivate account (in-app screen, password + optional reason, calls `POST /api/me/deactivate`). Destructive styling. See [Account deactivation and deletion](../account-deactivation-and-deletion.md) for super admin and platform behaviour. |
-| **Account deletion** | ✅ | Settings → Account → Delete account (opens web `/account-settings/privacy-and-sharing` where user can request permanent deletion). Destructive styling. |
-| **Sign in with Apple** | ✅ | Offered on **login** (iOS, Android, Expo web) alongside Google + email/phone (Supabase OAuth + in-app browser). Enable the capability on the **iOS** App ID; configure Apple in Supabase (Services ID, key, redirect allowlist). |
+| **Account deletion** | ✅ | Settings → Account → Delete account (in-app `POST /api/me/delete-account`). Destructive styling. |
+| **Sign in with Apple** | ✅ | Native Sign in with Apple on iOS (`expo-apple-authentication` + `signInWithIdToken`). `ios.usesAppleSignIn: true`, plugin `expo-apple-authentication`, and `ios.entitlements["com.apple.developer.applesignin"] = ["Default"]` so EAS injects the entitlement at compile time and credential sync sees it. Enable the capability on the **iOS** App ID; configure Apple in Supabase (Services ID, key, redirect allowlist, **and** native bundle ID / audience). |
 | **Email verification** | ✅ | Banner when unverified, resend, auth callback for confirmation links. |
 
 ---
@@ -32,7 +32,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
   Offered on iOS login with Google; ensure the capability is enabled on the App ID and Apple provider is configured in Supabase (Services ID, key, return URL to `https://<project>.supabase.co/auth/v1/callback`).
 
 - **Account deletion**  
-  Apple expects users to be able to find account deletion. The provider app exposes “Delete account” in Settings → Account (opens web flow). Optionally mention in App Review notes: “Account deletion: Settings → Account → Delete account (opens web).”
+  Apple expects users to be able to find account deletion. Path: **More → Settings → Delete account** (in-app, `POST /api/me/delete-account`). Mention in App Review notes.
 
 ---
 
@@ -48,7 +48,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
   If the app is restricted (e.g. providers only), provide test credentials or instructions in the “App access” section.
 
 - **Account deletion**  
-  Google requires that users can request account/data deletion. The app offers “Delete account” in Settings → Account (web flow). You can add a note in “App content” if asked.
+  Google requires in-app account/data deletion. Path: **More → Settings → Delete account**. Add the same URL/path in Play Console → App content → Account deletion.
 
 ---
 
@@ -81,7 +81,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
 
 ## Summary
 
-- **In-app:** Privacy & Terms links (signup + settings), Deactivate account (in-app), Delete account (web), Sign in with Apple + Google OAuth, email verification – all in place.
+- **In-app:** Privacy & Terms links (signup + settings), Deactivate account, Delete account (`POST /api/me/delete-account`), native Sign in with Apple on iOS + Google OAuth, email verification – all in place.
 - **Apple:** Set Privacy Policy (and optionally Terms) URL in App Store Connect; fill App Privacy; note account deletion path for App Review if needed.
 - **Google:** Set Privacy Policy in Play Console; complete Data safety; provide test access if required.
 - **Expo/EAS:** Use app versioning and EAS metadata as needed; store URLs are configured in each store’s console.

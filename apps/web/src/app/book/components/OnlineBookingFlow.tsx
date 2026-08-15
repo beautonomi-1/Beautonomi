@@ -261,6 +261,34 @@ export default function OnlineBookingFlow({
   }, [provider.slug, queryParams.service, queryParams.staff, queryParams.anyone, queryParams.location, user?.id]);
 
   useEffect(() => {
+    if (!provider.slug) return;
+    const locId = locationType === "at_salon" ? selectedLocation?.id : undefined;
+    const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
+    let cancelled = false;
+    fetcher
+      .get<{ data: { staff?: Staff[] } | Staff[] }>(`/api/public/providers/${provider.slug}/staff${qs}`)
+      .then((staffRes) => {
+        if (cancelled) return;
+        const staffList = (staffRes.data as { staff?: Staff[] })?.staff ?? staffRes.data ?? [];
+        const staffArray = Array.isArray(staffList) ? staffList : [];
+        setStaff(staffArray);
+        setSelectedStaff((current) => {
+          if (!current || current.id === "any" || String(current.id).startsWith("provider-")) {
+            return current;
+          }
+          if (staffArray.some((s) => s.id === current.id)) return current;
+          return { id: "any", name: "Anyone available", role: "" };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setStaff([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.slug, locationType, selectedLocation?.id]);
+
+  useEffect(() => {
     if (queryParams.auth_return === "slots" && queryParams.date && user && selectedService && selectedStaff) {
       const d = new Date(queryParams.date);
       if (!isNaN(d.getTime())) {
@@ -421,7 +449,11 @@ export default function OnlineBookingFlow({
           if (expTrim) sessionStorage.setItem("beautonomi_hold_expires_at", expTrim);
           else sessionStorage.removeItem("beautonomi_hold_expires_at");
         } catch {}
-        setGateOpen(true);
+        if (user) {
+          router.push(`/book/continue?hold_id=${id}`);
+        } else {
+          setGateOpen(true);
+        }
       } else {
         toast.error("Failed to secure slot");
       }

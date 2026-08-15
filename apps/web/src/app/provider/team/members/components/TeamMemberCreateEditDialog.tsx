@@ -18,11 +18,12 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { Camera, Mail, Phone, Shield, Clock, DollarSign, Bell, Send } from "lucide-react";
+import { Camera, Mail, Phone, Shield, Clock, DollarSign, Bell, Send, MapPin } from "lucide-react";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { useReferenceData } from "@/hooks/useReferenceData";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 interface TeamMemberCreateEditDialogProps {
   open: boolean;
@@ -38,9 +39,11 @@ export function TeamMemberCreateEditDialog({
   onSave,
 }: TeamMemberCreateEditDialogProps) {
   const { getOptions } = useReferenceData(["team_role", "commission_type", "working_day"]);
+  const { salons, selectedLocationId } = useProviderPortal();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [locationIds, setLocationIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     // Basic Information
@@ -155,6 +158,24 @@ export function TeamMemberCreateEditDialog({
         };
         loadSettings();
         setAvatarPreview(member.avatar_url || null);
+        void (async () => {
+          try {
+            const { fetcher } = await import("@/lib/http/fetcher");
+            const locRes = await fetcher.get<{
+              data?: Array<{ location_id?: string; id?: string }> | { locations?: Array<{ location_id?: string; id?: string }> };
+            }>(`/api/provider/staff/${member.id}/locations`);
+            const payload = locRes.data;
+            const rows = Array.isArray(payload) ? payload : payload?.locations ?? [];
+            const ids = rows
+              .map((r) => r.location_id ?? r.id)
+              .filter((id): id is string => typeof id === "string");
+            setLocationIds(
+              ids.length > 0 ? ids : selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id),
+            );
+          } catch {
+            setLocationIds(selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id));
+          }
+        })();
       } else {
         setFormData({
           name: "",
@@ -183,6 +204,7 @@ export function TeamMemberCreateEditDialog({
           is_active: true,
         });
         setAvatarPreview(null);
+        setLocationIds(selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id));
       }
       setActiveTab("basic");
     }
@@ -231,6 +253,7 @@ export function TeamMemberCreateEditDialog({
     setIsLoading(true);
 
     try {
+      let createdStaffId: string | undefined;
       if (member) {
         const updateData = {
           name: formData.name,
@@ -280,7 +303,11 @@ export function TeamMemberCreateEditDialog({
         toast.success("Team member updated successfully");
       } else {
         // Create staff member first
-        const createdMember = await providerApi.createTeamMember(formData);
+        const createdMember = await providerApi.createTeamMember({
+          ...formData,
+          location_ids: locationIds,
+        });
+        createdStaffId = createdMember.id;
         toast.success("Team member created successfully");
         
         // Save settings after creation
@@ -359,6 +386,20 @@ export function TeamMemberCreateEditDialog({
           }
         }
       }
+      const staffId = member?.id ?? createdStaffId;
+      if (staffId && locationIds.length > 0) {
+        try {
+          const { fetcher } = await import("@/lib/http/fetcher");
+          await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
+            location_ids: locationIds,
+            primary_location_id: locationIds[0],
+          });
+        } catch (locErr) {
+          console.error("Failed to save staff locations:", locErr);
+          toast.warning("Staff saved but location assignments may not have been updated");
+        }
+      }
+
       onSave?.(!!member);
       onOpenChange(false);
     } catch (error: any) {
@@ -582,6 +623,44 @@ export function TeamMemberCreateEditDialog({
                     </p>
                   </div>
                 </div>
+
+                {salons.length > 0 ? (
+                  <div className="mt-6 space-y-3">
+                    <Label className="text-sm sm:text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      Assign locations
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      This person only appears on the calendar and booking roster for the branches you select.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {salons.map((salon) => {
+                        const checked = locationIds.includes(salon.id);
+                        return (
+                          <label
+                            key={salon.id}
+                            className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 min-h-[44px] cursor-pointer hover:bg-gray-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setLocationIds((prev) =>
+                                  checked ? prev.filter((id) => id !== salon.id) : [...prev, salon.id],
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary"
+                            />
+                            <span className="text-sm text-gray-900">
+                              {salon.name}
+                              {salon.city ? ` · ${salon.city}` : ""}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
 
                 {!member ? (
                   <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">

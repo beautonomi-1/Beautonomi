@@ -65,11 +65,11 @@ export async function POST(
       environment: ENVIRONMENT,
     });
     if (!budget.allowed) {
-      return successResponse({
-        disabled: true,
-        reason: budget.reason,
-        fallback_mode: budget.fallback_mode ?? "off",
-      });
+      return errorResponse(
+        budget.reason ?? "AI is temporarily unavailable",
+        "AI_BUDGET",
+        403,
+      );
     }
 
     const admin = getSupabaseAdmin();

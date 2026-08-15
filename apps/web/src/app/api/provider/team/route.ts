@@ -8,6 +8,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
 /**
  * GET /api/provider/team
@@ -33,34 +34,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
 
-    // If location_id provided, get staff assigned to that location first
-    let staffIds: string[] | null = null;
-    if (locationId) {
-      const { data: assignments, error: assignmentError } = await supabase
-        .from("provider_staff_locations")
-        .select("staff_id")
-        .eq("location_id", locationId);
-
-      if (assignmentError) {
-        throw assignmentError;
-      }
-
-      staffIds = assignments?.map((a) => a.staff_id) || [];
-
-      if (staffIds.length === 0) {
-        // Legacy fallback: if location belongs to this provider but has no mapping rows yet,
-        // return all provider staff rather than empty list.
-        const { data: locationRow } = await supabase
-          .from("provider_locations")
-          .select("id")
-          .eq("id", locationId)
-          .eq("provider_id", providerId)
-          .maybeSingle();
-        if (!locationRow) {
-          return successResponse([]);
-        }
-        staffIds = null;
-      }
+    const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
+    const staffIds = scope.staffIds;
+    if (locationId && staffIds !== null && staffIds.length === 0) {
+      return successResponse([]);
     }
 
     let query = supabase
@@ -84,7 +61,7 @@ export async function GET(request: NextRequest) {
       )
       .eq("provider_id", providerId);
 
-    if (locationId && staffIds && staffIds.length > 0) {
+    if (staffIds && staffIds.length > 0) {
       query = query.in("id", staffIds);
     }
 

@@ -1364,6 +1364,38 @@ export default function BookScreen() {
     }
   }, [salonLocations, selectedLocation]);
 
+  useEffect(() => {
+    if (!slug) return;
+    const locId = locationType === "at_salon" ? selectedLocation?.id : undefined;
+    const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
+    let cancelled = false;
+    api
+      .get<StaffMember[] | { data: StaffMember[] }>(
+        `/api/public/providers/${encodeURIComponent(slug)}/staff${qs}`,
+      )
+      .then((staffRes) => {
+        if (cancelled || staffRes.error) return;
+        const staffRaw = staffRes.data;
+        const staffList: StaffMember[] = Array.isArray(staffRaw)
+          ? staffRaw
+          : (staffRaw as { data: StaffMember[] })?.data || [];
+        setStaff(staffList);
+        setSelectedStaff((current) => {
+          if (!current || current.id === ANY_STAFF_BOOKING_ID || String(current.id).startsWith("provider-")) {
+            return current;
+          }
+          if (staffList.some((s) => s.id === current.id)) return current;
+          return anyStaffMember;
+        });
+      })
+      .catch(() => {
+        /* keep last staff list */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, locationType, selectedLocation?.id, anyStaffMember]);
+
   const bookingStartedProviderId = provider?.id;
   const bookingStartedBusinessName = provider?.business_name ?? "";
   useEffect(() => {

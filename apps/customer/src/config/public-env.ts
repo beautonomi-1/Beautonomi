@@ -135,8 +135,8 @@ export function getBackendUrl(): string {
 /** OneSignal App ID – optional; push notifications disabled if unset */
 export const ONE_SIGNAL_APP_ID = getEnv("EXPO_PUBLIC_ONESIGNAL_APP_ID");
 
-/** iOS App Store ID (e.g. 1234567890) – optional; used for force-update / "Update" store link. Set when app is published. */
-export const IOS_APP_STORE_ID = getEnv("EXPO_PUBLIC_IOS_APP_STORE_ID") || "0000000000";
+/** iOS App Store ID — production listing `id6748387058` (EAS `EXPO_PUBLIC_IOS_APP_STORE_ID`). */
+export const IOS_APP_STORE_ID = getEnv("EXPO_PUBLIC_IOS_APP_STORE_ID") || "6748387058";
 
 /** Android applicationId for Play Store deep links (default matches `app.config.js`). */
 export const ANDROID_PLAY_STORE_PACKAGE =

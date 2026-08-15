@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSubscriptionManageLink } from "@/lib/payments/paystack-complete";
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 
 /**
  * GET /api/provider/subscription/manage-link
@@ -18,6 +19,11 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const appleBilling = await getAppleBillingPaystackBlock(supabase, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
     }
 
     // Get current subscription

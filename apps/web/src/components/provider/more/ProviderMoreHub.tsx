@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/collapsible";
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { ProviderOrgSwitcher } from "@/components/provider/ProviderOrgSwitcher";
+import { StartOwnBusinessCard } from "@/components/provider/StartOwnBusinessCard";
 import {
   MORE_MENU_SECTIONS,
   MORE_QUICK_ACTIONS,
@@ -413,6 +414,7 @@ export function ProviderMoreHub() {
       </div>
 
       <ProviderOrgSwitcher variant="light" className="mb-4" />
+      <StartOwnBusinessCard />
 
       {canEditSettings ? (
         <div className="mb-4 rounded-2xl border border-green-200 bg-emerald-50 p-4">

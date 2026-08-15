@@ -30,13 +30,16 @@ tags = ["jwt", "supabase"]
 
 # Allow-list for migration placeholders. Placeholder keys end in `_placeholder` and are
 # intentionally committed as examples in docs; they must never match a real Paystack key format.
+# The Apple JWS fixture is a throwaway test CA (scripts/generate-apple-jws-test-chain.mjs)
+# that authenticates nothing; gitleaks flags the PEM armor of the leaf key.
 [allowlist]
-description = "Documentation / example placeholders"
+description = "Documentation / example placeholders / throwaway test fixtures"
 paths = [
   '''docs/audits/.*\.md''',
   '''docs/PLAYBOOKS/.*\.md''',
   '''.*\.example''',
   '''CHANGELOG\.md''',
+  '''apps/web/src/lib/iap/apple/__tests__/fixtures/test-chain\.ts''',
 ]
 regexes = [
   '''sk_test_placeholder[a-z0-9]*''',

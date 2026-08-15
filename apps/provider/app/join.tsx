@@ -13,6 +13,8 @@ import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { clearPortalCache } from "@/lib/portal-cache";
+import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 import { useResponsive } from "@/hooks/useResponsive";
 
 type ValidateResponse = {
@@ -72,11 +74,19 @@ export default function StaffJoinScreen() {
     };
   }, [token]);
 
+  const goToAppHome = useCallback(() => {
+    clearPortalCache();
+    router.replace("/" as never);
+  }, [router]);
+
   const acceptInvite = useCallback(async () => {
     if (!token || !user) return;
     setAccepting(true);
     setAcceptError(null);
-    const res = await api.post<{ data?: { role?: string } }>("/api/provider/staff/join/accept", {
+    const res = await api.post<{
+      data?: { role?: string; provider_id?: string };
+      provider_id?: string;
+    }>("/api/provider/staff/join/accept", {
       token,
     });
     setAccepting(false);
@@ -84,8 +94,12 @@ export default function StaffJoinScreen() {
       setAcceptError(res.error.message ?? "Could not accept invite");
       return;
     }
-    router.replace("/" as never);
-  }, [token, user, router]);
+    const providerId = res.data?.provider_id ?? (res as { provider_id?: string }).provider_id;
+    if (providerId) {
+      await persistActiveProviderOrgHint(user.id, providerId);
+    }
+    goToAppHome();
+  }, [token, user, goToAppHome]);
 
   useEffect(() => {
     if (authLoading || !user || !token || !preview?.valid) return;
@@ -141,8 +155,10 @@ export default function StaffJoinScreen() {
             ) : !user ? (
               <>
                 <Text style={{ fontSize: 14, color: "#4b5563", marginBottom: 16 }}>
-                  Sign in with the email that received this invite to continue.
-                  {preview?.email_hint ? ` (${preview.email_hint})` : ""}
+                  Sign in with the email that received this invite
+                  {preview?.email_hint ? ` (${preview.email_hint})` : ""}. Use the set-password
+                  link from your invitation email, or sign in with email OTP — you do not need an
+                  existing password.
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -151,9 +167,12 @@ export default function StaffJoinScreen() {
                     borderRadius: 12,
                     alignItems: "center",
                   }}
-                  onPress={() =>
-                    router.push(`/(auth)/login?joinToken=${encodeURIComponent(token)}` as never)
-                  }
+                  onPress={() => {
+                    const email = preview?.email_hint?.trim();
+                    const qs = new URLSearchParams({ joinToken: token });
+                    if (email) qs.set("email", email);
+                    router.push(`/(auth)/login?${qs.toString()}` as never);
+                  }}
                 >
                   <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Sign in to continue</Text>
                 </TouchableOpacity>
@@ -171,7 +190,7 @@ export default function StaffJoinScreen() {
                   borderRadius: 12,
                   alignItems: "center",
                 }}
-                onPress={() => router.replace("/" as never)}
+                onPress={goToAppHome}
               >
                 <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Open app</Text>
               </TouchableOpacity>

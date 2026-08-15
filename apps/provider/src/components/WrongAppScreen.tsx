@@ -22,11 +22,14 @@ type WrongAppScreenProps = {
  *   3. Fall back to the web customer portal as the last resort.
  */
 const CUSTOMER_SCHEME = "customer://";
-const CUSTOMER_STORE_URL =
-  process.env.EXPO_PUBLIC_CUSTOMER_STORE_URL ??
-  (Platform.OS === "ios"
-    ? "https://apps.apple.com/app/beautonomi/id0000000000"
-    : "https://play.google.com/store/apps/details?id=com.beautonomi");
+const PLAY_CUSTOMER_STORE_URL = "https://play.google.com/store/apps/details?id=com.beautonomi";
+
+function customerStoreUrl(): string | null {
+  const explicit = process.env.EXPO_PUBLIC_CUSTOMER_STORE_URL?.trim();
+  if (explicit) return explicit;
+  if (Platform.OS === "android") return PLAY_CUSTOMER_STORE_URL;
+  return null;
+}
 
 function copyForPortal(portal: string): {
   heading: string;
@@ -75,13 +78,18 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
   }, [action]);
 
   const openCustomer = () => {
+    const storeUrl = customerStoreUrl();
     if (canOpenCustomer) {
       Linking.openURL(CUSTOMER_SCHEME).catch(() => {
-        Linking.openURL(CUSTOMER_STORE_URL).catch(() => {});
+        if (storeUrl) Linking.openURL(storeUrl).catch(() => {});
       });
       return;
     }
-    Linking.openURL(CUSTOMER_STORE_URL).catch(() => {});
+    if (storeUrl) {
+      Linking.openURL(storeUrl).catch(() => {});
+      return;
+    }
+    openWebCustomer();
   };
 
   const openWebCustomer = () => {
@@ -131,9 +139,13 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
           <Pressable
             onPress={openCustomer}
             accessibilityRole="button"
-            accessibilityLabel={
-              canOpenCustomer ? "Open Customer app" : "Install Customer app"
-            }
+              accessibilityLabel={
+                canOpenCustomer
+                  ? "Open Customer app"
+                  : customerStoreUrl()
+                    ? "Install Customer app"
+                    : "Continue on web"
+              }
             style={{
               marginBottom: 10,
               minWidth: 240,
@@ -145,7 +157,11 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
             }}
           >
             <Text style={{ color: Colors.white, fontWeight: "600" }}>
-              {canOpenCustomer ? "Open Customer app" : "Install Customer app"}
+              {canOpenCustomer
+                ? "Open Customer app"
+                : customerStoreUrl()
+                  ? "Install Customer app"
+                  : "Continue on web"}
             </Text>
           </Pressable>
           {APP_URL ? (

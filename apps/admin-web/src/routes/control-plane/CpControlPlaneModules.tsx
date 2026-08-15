@@ -784,7 +784,14 @@ export function CpModuleAiPage() {
   );
 }
 
-type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
+type Pack = {
+  id: string;
+  impressions: number;
+  price_zar: number;
+  display_order: number;
+  is_active: boolean;
+  apple_product_id?: string | null;
+};
 
 type TimePack = {
   id: string;
@@ -793,6 +800,7 @@ type TimePack = {
   price_zar: number;
   display_order: number;
   is_active: boolean;
+  apple_product_id?: string | null;
 };
 
 const AD_MODEL_IDS = ["cpc_budget", "impression_pack", "time_based"] as const;
@@ -1060,7 +1068,12 @@ export function CpModuleAdsPage() {
     setMsg(null);
     try {
       const updated = await adminApi.patchJson<Pack[]>("/api/admin/control-plane/modules/ads/packs", {
-        packs: packs.map((p) => ({ id: p.id, price_zar: p.price_zar, is_active: p.is_active })),
+        packs: packs.map((p) => ({
+          id: p.id,
+          price_zar: p.price_zar,
+          is_active: p.is_active,
+          apple_product_id: p.apple_product_id ?? null,
+        })),
       });
       setPacks(Array.isArray(updated) ? updated : packs);
       setMsg("Packs updated.");
@@ -1081,6 +1094,7 @@ export function CpModuleAdsPage() {
           price_zar: p.price_zar,
           is_active: p.is_active,
           label: p.label,
+          apple_product_id: p.apple_product_id ?? null,
         })),
       });
       setTimePacks(Array.isArray(updated) ? updated : timePacks);
@@ -1506,6 +1520,21 @@ export function CpModuleAdsPage() {
                         />
                         Active
                       </label>
+                      <label className="flex min-w-[14rem] flex-1 flex-col text-xs font-medium text-gray-600">
+                        Apple product ID
+                        <input
+                          className="mt-0.5 rounded border border-gray-200 px-2 py-1 font-mono text-xs font-normal text-gray-900"
+                          value={pack.apple_product_id ?? ""}
+                          placeholder="com.beautonomi.partner.ads.impressions.100"
+                          onChange={(e) =>
+                            setPacks((prev) =>
+                              prev.map((p) =>
+                                p.id === pack.id ? { ...p, apple_product_id: e.target.value || null } : p
+                              )
+                            )
+                          }
+                        />
+                      </label>
                     </li>
                   ))}
                 </ul>
@@ -1579,6 +1608,21 @@ export function CpModuleAdsPage() {
                           }
                         />
                         Active
+                      </label>
+                      <label className="flex min-w-[14rem] flex-1 flex-col text-xs font-medium text-gray-600">
+                        Apple product ID
+                        <input
+                          className="mt-0.5 rounded border border-gray-200 px-2 py-1 font-mono text-xs font-normal text-gray-900"
+                          value={tp.apple_product_id ?? ""}
+                          placeholder="com.beautonomi.partner.ads.time.7d"
+                          onChange={(e) =>
+                            setTimePacks((prev) =>
+                              prev.map((p) =>
+                                p.id === tp.id ? { ...p, apple_product_id: e.target.value || null } : p
+                              )
+                            )
+                          }
+                        />
                       </label>
                     </li>
                   ))}

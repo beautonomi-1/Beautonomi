@@ -431,6 +431,21 @@ export async function POST(request: NextRequest) {
         const { dbStaffId: holdStaffIdForDb, syntheticToken: syntheticStaffPublicId } =
           normalizePublicStaffIdForDatabase(rawStaffKey ?? undefined);
 
+        if (location_type === "at_salon" && location_id && holdStaffIdForDb) {
+          const { isStaffInLocationScope, resolveStaffLocationScope } = await import(
+            "@/lib/provider/staff-location-scope"
+          );
+          const scope = await resolveStaffLocationScope(supabase, provider_id, location_id);
+          if (!isStaffInLocationScope(holdStaffIdForDb, scope)) {
+            return handleApiError(
+              new Error("Staff not available at location"),
+              "Selected staff is not available at this location.",
+              "STAFF_LOCATION_MISMATCH",
+              400
+            );
+          }
+        }
+
         await expireStaleOverlappingHoldsForScope({
           supabase,
           providerId: provider_id,

@@ -3,6 +3,8 @@ import {
   buildStaffJoinUrl,
   substituteTemplateVars,
   isStaffInviteTokenValid,
+  persistJoinedProviderRole,
+  staffInviteEmailAllowed,
 } from "../staff-invite";
 
 describe("staff-invite helpers", () => {
@@ -61,6 +63,57 @@ describe("staff-invite helpers", () => {
         is_active: false,
         invite_accepted_at: null,
         invite_token_expires_at: new Date(Date.now() + 86400000).toISOString(),
+      }),
+    ).toBe(false);
+  });
+
+  it("default invite HTML fallback prefers set_password_url CTA", () => {
+    const joinUrl = "https://app.example.com/provider/join?token=abc";
+    const setPasswordUrl = "https://auth.example.com/recover";
+    const html = substituteTemplateVars(
+      `<p><a href="{{set_password_url}}">Set password</a></p><p><a href="{{join_url}}">Join</a></p>`,
+      { set_password_url: setPasswordUrl, join_url: joinUrl },
+    );
+    expect(html).toContain(setPasswordUrl);
+    expect(html).toContain(joinUrl);
+  });
+
+  it("re-exports persistJoinedProviderRole from effective-provider-role", () => {
+    expect(typeof persistJoinedProviderRole).toBe("function");
+  });
+
+  it("staffInviteEmailAllowed lets an already-linked user accept without auth email", () => {
+    expect(
+      staffInviteEmailAllowed({
+        inviteEmail: "sam@salon.com",
+        authEmail: null,
+        profileEmail: null,
+        staffUserId: "user-1",
+        acceptingUserId: "user-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("staffInviteEmailAllowed matches profile email when auth session has none", () => {
+    expect(
+      staffInviteEmailAllowed({
+        inviteEmail: "sam@salon.com",
+        authEmail: "",
+        profileEmail: "Sam@Salon.com",
+        staffUserId: null,
+        acceptingUserId: "user-2",
+      }),
+    ).toBe(true);
+  });
+
+  it("staffInviteEmailAllowed rejects a different signed-in email", () => {
+    expect(
+      staffInviteEmailAllowed({
+        inviteEmail: "sam@salon.com",
+        authEmail: "other@example.com",
+        profileEmail: null,
+        staffUserId: null,
+        acceptingUserId: "user-2",
       }),
     ).toBe(false);
   });
