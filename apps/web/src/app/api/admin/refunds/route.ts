@@ -5,10 +5,16 @@ import { ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
 import {
-  enrichRefundListRow,
+  enrichRefundListRows,
   countActionableRefundable,
+  attachBookingRefundsToRows,
   type RefundListRow,
+  type EnrichedRefundListRow,
 } from "@/lib/admin/refund-list-normalize";
+import {
+  extractBookingIdsFromRefundRows,
+  fetchBookingRefundsForBookingIds,
+} from "@/lib/admin/fetch-booking-refunds";
 
 const REFUND_ELIGIBLE_OR =
   "transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success";
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
-    const status = searchParams.get("status"); // all, success, failed, pending, refunded, partially_refunded
+    const status = searchParams.get("status"); // all, needs_action, success, failed, pending, refunded, partially_refunded
     const transactionType = searchParams.get("transaction_type"); // refund
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "50", 10);
@@ -61,7 +67,10 @@ export async function GET(request: NextRequest) {
           id,
           booking_number,
           status,
+          payment_status,
           total_amount,
+          total_paid,
+          total_refunded,
           customer_id,
           provider_id,
           tenant_id,
@@ -75,7 +84,7 @@ export async function GET(request: NextRequest) {
       .eq("booking.tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
-    if (status && status !== "all") {
+    if (status && status !== "all" && status !== "needs_action") {
       bookingQuery = bookingQuery.eq("status", status);
     }
     if (transactionType) {
@@ -89,7 +98,7 @@ export async function GET(request: NextRequest) {
       fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
         startDate,
         endDate,
-        status,
+        status: status === "needs_action" ? null : status,
         transactionType,
       }),
     ]);
@@ -119,30 +128,41 @@ export async function GET(request: NextRequest) {
       return tb - ta;
     });
 
-    const enriched = merged.map(enrichRefundListRow);
+    const bookingIds = extractBookingIdsFromRefundRows(merged);
+    const refundsByBookingId = await fetchBookingRefundsForBookingIds(supabase, bookingIds);
+    const withBookingRefunds = attachBookingRefundsToRows(merged, refundsByBookingId);
+
+    let enriched: EnrichedRefundListRow[] = enrichRefundListRows(withBookingRefunds);
+
+    const allEnriched = enriched;
+    if (status === "needs_action") {
+      enriched = enriched.filter((r) => r.is_processable);
+    }
+
     const total = enriched.length;
     const refunds = enriched.slice(offset, offset + limit);
 
-    const rowsWithRefundRecorded = enriched.filter((r) => {
-      const n = parseFloat(String(r.refund_amount ?? "0"));
+    const rowsWithRefundRecorded = allEnriched.filter((r) => {
+      const n = parseFloat(String(r.effective_refunded_total ?? r.refund_amount ?? "0"));
       return !Number.isNaN(n) && n > 0;
     });
     const totalRefundedAmount = rowsWithRefundRecorded.reduce(
-      (sum, t) => sum + (parseFloat(String(t.refund_amount || "0")) || 0),
+      (sum, t) => sum + (parseFloat(String(t.effective_refunded_total || t.refund_amount || "0")) || 0),
       0,
     );
 
     const statistics = {
-      total_transactions: total,
-      actionable_refundable: countActionableRefundable(enriched),
+      total_transactions: allEnriched.length,
+      actionable_refundable: countActionableRefundable(allEnriched),
       total_refunded_amount: totalRefundedAmount,
       rows_with_refund_recorded: rowsWithRefundRecorded.length,
       by_status: {
-        success: enriched.filter((r) => r.status === "success").length,
-        failed: enriched.filter((r) => r.status === "failed").length,
-        pending: enriched.filter((r) => r.status === "pending").length,
-        refunded: enriched.filter((r) => r.status === "refunded").length,
-        partially_refunded: enriched.filter((r) => r.status === "partially_refunded").length,
+        needs_action: countActionableRefundable(allEnriched),
+        success: allEnriched.filter((r) => r.status === "success").length,
+        failed: allEnriched.filter((r) => r.status === "failed").length,
+        pending: allEnriched.filter((r) => r.status === "pending").length,
+        refunded: allEnriched.filter((r) => r.status === "refunded").length,
+        partially_refunded: allEnriched.filter((r) => r.status === "partially_refunded").length,
       },
       average_refund_among_recorded:
         rowsWithRefundRecorded.length > 0

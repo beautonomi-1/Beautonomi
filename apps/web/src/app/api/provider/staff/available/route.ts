@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { dateRangeBoundsUtc, getDayInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
 /**
  * GET /api/provider/staff/available
@@ -41,6 +42,11 @@ export async function GET(request: NextRequest) {
     const serviceId = searchParams.get('serviceId');
     const locationId = searchParams.get('locationId');
 
+    const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
+    if (locationId && scope.staffIds !== null && scope.staffIds.length === 0) {
+      return successResponse({ data: [] });
+    }
+
     // Base query: get all active staff
     let query = supabase
       .from("provider_staff")
@@ -54,9 +60,8 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
-    // Filter by location if provided (using junction table)
-    if (locationId) {
-      query = query.eq("provider_staff_locations.location_id", locationId);
+    if (scope.staffIds && scope.staffIds.length > 0) {
+      query = query.in("id", scope.staffIds);
     }
 
     const { data: staff, error } = await query;

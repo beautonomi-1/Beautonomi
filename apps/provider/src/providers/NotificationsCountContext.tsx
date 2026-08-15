@@ -15,6 +15,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useProvider } from "@/providers/ProviderContext";
+import { isProviderApiRole } from "@/lib/provider-api-readiness";
 
 interface NotificationsCountResponse {
   notifications: unknown[];
@@ -55,18 +56,23 @@ const REALTIME_REFETCH_DEBOUNCE_MS = 120;
 
 export function NotificationsCountProvider({ children }: { children: ReactNode }) {
   const { session, user } = useAuth();
-  const { provider } = useProvider();
+  const { provider, role } = useProvider();
+  // Both endpoints are role-gated and 403 for the entire onboarding wizard, so
+  // gating on the session alone made every onboarding user poll them forever.
+  // A loaded provider profile also proves authorization, which covers the
+  // `provider_onboarding` role that the server accepts for provider routes.
+  const countsEnabled = !!session && (isProviderApiRole(role) || !!provider?.id);
   const { data, refresh } = useApi<NotificationsCountResponse>(
     "/api/provider/notifications?counts_only=1",
     {
-      enabled: !!session,
+      enabled: countsEnabled,
       staleTimeMs: 0,
     },
   );
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
     "/api/provider/nav-counts",
     {
-      enabled: !!session,
+      enabled: countsEnabled,
       staleTimeMs: 15_000,
     },
   );
@@ -136,8 +142,13 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   refreshRef.current = refresh;
   const refreshNavRef = useRef(refreshNavCounts);
   refreshNavRef.current = refreshNavCounts;
+  // Read inside listeners/timers so they never re-subscribe just because
+  // readiness flipped, and never fire a request that can only 403.
+  const countsEnabledRef = useRef(countsEnabled);
+  countsEnabledRef.current = countsEnabled;
 
   const refreshAll = useCallback(async () => {
+    if (!countsEnabledRef.current) return;
     await Promise.all([refreshRef.current(), refreshNavRef.current()]);
   }, []);
 
@@ -148,6 +159,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
     const sub = DeviceEventEmitter.addListener(NOTIFICATION_BADGE_REFRESH_EVENT, () => {
+      if (!countsEnabledRef.current) return;
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(() => {
         debounce = undefined;
@@ -163,6 +175,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
     const sub = DeviceEventEmitter.addListener(CHAT_BADGE_REFRESH_EVENT, () => {
+      if (!countsEnabledRef.current) return;
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(() => {
         debounce = undefined;
@@ -211,12 +224,12 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   // Safety net when Supabase realtime disconnects.
   useEffect(() => {
-    if (!session) return;
+    if (!countsEnabled) return;
     const interval = setInterval(() => {
       void refreshAll();
     }, 60_000);
     return () => clearInterval(interval);
-  }, [session, refreshAll]);
+  }, [countsEnabled, refreshAll]);
 
   useEffect(() => {
     if (!user?.id) return;

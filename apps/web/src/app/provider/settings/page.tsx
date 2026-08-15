@@ -9,8 +9,16 @@ import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useAuth } from "@/providers/AuthProvider";
 
-type SettingsItem = { title: string; description: string; href: string; isUpgrade?: boolean; featureFlag?: string };
+type SettingsItem = {
+  title: string;
+  description: string;
+  href: string;
+  isUpgrade?: boolean;
+  featureFlag?: string;
+  staffOnly?: boolean;
+};
 
 const settingsCategories: { id: string; title: string; description: string; items: SettingsItem[] }[] = [
   {
@@ -110,6 +118,7 @@ const settingsCategories: { id: string; title: string; description: string; item
     title: "Marketing Integrations",
     description: "Connect third-party services to run effective marketing campaigns",
     items: [
+      { title: "AI studio", description: "Profile and caption suggestions from your plan", href: "/provider/settings/ai" },
       { title: "Paid ads (boosted listings)", description: "Create campaigns, set budget and targeting, track impressions and sales", href: "/provider/settings/ads" },
       { title: "Email Integration", description: "Connect SendGrid or Mailchimp for email marketing campaigns", href: "/provider/settings/integrations/email" },
       { title: "Twilio Integration", description: "Connect Twilio for SMS and WhatsApp marketing campaigns", href: "/provider/settings/integrations/twilio" },
@@ -128,11 +137,13 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Privacy & Sharing", description: "Control what you share, cookies, marketing consent, and targeted advertising", href: "/provider/account/privacy-and-sharing" },
       { title: "Data Rights & Export", description: "Request a copy of your data or delete your account (GDPR/POPIA)", href: "/provider/account/data-rights" },
       { title: "Preferences", description: "Language, region, currency, and accessibility preferences", href: "/provider/account/preferences" },
+      { title: "Start my own business", description: "Open a freelancer or salon profile while keeping team jobs", href: "/provider/onboarding", staffOnly: true },
     ],
   },
 ];
 
 export default function ProviderSettings() {
+  const { role } = useAuth();
   const [businessType, setBusinessType] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -290,6 +301,9 @@ export default function ProviderSettings() {
                     // Only show upgrade option for freelancers
                     if (item.isUpgrade) {
                       return businessType === "freelancer";
+                    }
+                    if (item.staffOnly) {
+                      return role === "provider_staff";
                     }
                     return true;
                   })

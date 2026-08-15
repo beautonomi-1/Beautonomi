@@ -91,8 +91,10 @@ export async function recordAdsBudgetOrderPayment(params: {
   feesMajor: number;
   providerIdHint?: string | null;
   campaignIdHint?: string | null;
+  paymentProvider?: "paystack" | "apple";
 }): Promise<RecordAdsBudgetOrderPaymentResult> {
-  const { supabase, orderId, reference, amountMajor, feesMajor } = params;
+  const { supabase, orderId, reference, amountMajor, feesMajor, paymentProvider = "paystack" } =
+    params;
   if (!orderId) {
     console.error("[ads_budget_order] recordAdsBudgetOrderPayment: missing orderId");
     return { finalized: false, alreadyPaid: false, campaignId: null };
@@ -193,13 +195,14 @@ export async function recordAdsBudgetOrderPayment(params: {
     fees: feesMajor,
     net_amount: netAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "charge",
     metadata: {
       kind: "ads_budget_order",
       ads_budget_order_id: orderId,
       provider_id: providerId,
       campaign_id: campaignId,
+      payment_provider: paymentProvider,
     },
     created_at: nowIso,
   });
@@ -223,6 +226,7 @@ export async function recordAdsBudgetOrderPayment(params: {
       kind: "ads_budget_order",
       ads_budget_order_id: orderId,
       campaign_id: campaignId,
+      payment_provider: paymentProvider,
     },
     created_at: nowIso,
   });

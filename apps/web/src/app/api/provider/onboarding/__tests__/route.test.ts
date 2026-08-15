@@ -36,6 +36,10 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: (...args: unknown[]) => mockCreateClient(...args),
 }));
 
+vi.mock("@/lib/auth/effective-provider-role", () => ({
+  persistJoinedProviderRole: vi.fn().mockResolvedValue(undefined),
+}));
+
 /** Required by onboardingSchema since provider card images became mandatory. */
 const onboardingProfileImages = {
   thumbnail_url: "https://example.com/thumbnail.jpg",
@@ -402,6 +406,10 @@ describe("POST /api/provider/onboarding", () => {
 
     expect(providersInsertPayloads[0]?.tenant_id).toBe("tenant-uk");
     expect(zoneSelectionInsertPayloads[0]?.[0]?.currency).toBe("GBP");
+    expect(mockRequireRoleInApi).toHaveBeenCalledWith(
+      expect.arrayContaining(["provider_staff", "provider_onboarding", "provider_owner"]),
+      expect.anything(),
+    );
   }, 120_000);
 
   it("maps onboarding global categories to provider categories and persists addons", async () => {

@@ -20,6 +20,11 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  isStaffInLocationScope,
+  listActiveStaffIdsForLocation,
+  resolveStaffLocationScope,
+} from "@/lib/provider/staff-location-scope";
 
 /**
  * GET /api/availability
@@ -114,15 +119,23 @@ export async function GET(request: NextRequest) {
     // Load active staff rows when doing an any-staff union. Mirrors the same
     // query as the public slug endpoint so both routes converge.
     let activeStaffRows: Array<{ id: string }> = [];
+    const adminForScope = getSupabaseAdmin();
     if (wantsAnyStaff && providerIdForEngine) {
-      const { data: staffRows } = await supabase
-        .from("provider_staff")
-        .select("id")
-        .eq("provider_id", providerIdForEngine)
-        .eq("is_active", true);
-      activeStaffRows = (staffRows || []).map((r: { id: string }) => ({
-        id: r.id,
-      }));
+      const scopedIds = await listActiveStaffIdsForLocation(
+        adminForScope,
+        providerIdForEngine,
+        locationId,
+      );
+      activeStaffRows = scopedIds.map((id) => ({ id }));
+    } else if (!wantsAnyStaff && providerIdForEngine && locationId && staffIdTrim) {
+      const scope = await resolveStaffLocationScope(
+        adminForScope,
+        providerIdForEngine,
+        locationId,
+      );
+      if (!isStaffInLocationScope(staffIdTrim, scope)) {
+        return successResponse({ date, slots: [] });
+      }
     }
 
     if (!providerIdForEngine) {

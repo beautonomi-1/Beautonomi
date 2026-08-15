@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.82",
+  "version": "1.0.83",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -45,6 +45,7 @@
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.104.1",
     "expo": "~54.0.35",
+    "expo-apple-authentication": "~8.0.8",
     "expo-auth-session": "^7.0.11",
     "expo-av": "~16.0.8",
     "expo-build-properties": "~1.0.10",

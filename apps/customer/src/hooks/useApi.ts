@@ -98,6 +98,14 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
+  /**
+   * A 403 means the session lacks the role this path requires, which no amount
+   * of resuming or reconnecting can change — role-gated endpoints were otherwise
+   * re-requested on every foreground and network recovery for as long as the
+   * user lacked the role. Explicit `refresh()` still retries, and a new cache
+   * key (sign-in / account switch) clears it.
+   */
+  const forbiddenRef = useRef(false);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!enabled) {
@@ -179,6 +187,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         return;
       }
 
+      forbiddenRef.current = payload.errorCode === "FORBIDDEN";
+
       if (payload.error) {
         setError(payload.error);
         const existing = cacheable ? responseCache.get(cacheKey) : undefined;
@@ -216,6 +226,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
   useEffect(() => {
     mountedRef.current = true;
+    forbiddenRef.current = false;
     void fetchData();
     return () => {
       mountedRef.current = false;
@@ -225,7 +236,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   useEffect(() => {
     if (!enabled) return;
     const onFocusOrRecover = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || forbiddenRef.current) return;
       const jitterMs = resumeRefetchJitterMs(cacheKey);
       setTimeout(() => {
         if (!mountedRef.current) return;
@@ -243,7 +254,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   useEffect(() => {
     if (!enabled || !revalidateOnFocus) return;
     const onScreenFocus = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || forbiddenRef.current) return;
       void fetchData(true);
     };
     const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", onScreenFocus);
@@ -260,6 +271,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [loading, timeoutMs]);
 
   const refresh = useCallback(async () => {
+    forbiddenRef.current = false;
     responseCache.delete(cacheKey);
     await fetchData();
   }, [cacheKey, fetchData]);

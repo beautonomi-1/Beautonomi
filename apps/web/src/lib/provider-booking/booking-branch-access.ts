@@ -1,10 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  decideUnassignedStaffBranchAccess,
+  loadProviderLocationAssignmentUsage,
+} from "@/lib/provider/staff-location-scope";
 
 /**
  * Enforce branch scoping for provider_staff on a single booking.
  * Owners, superadmins, and staff with role owner/manager (in provider_staff) see all branches.
- * Other staff must have the booking's location_id in provider_staff_locations, or have no
- * location rows (legacy / implicit all), or the booking must have no location_id.
+ * Other staff must have the booking's location_id in provider_staff_locations.
+ * No location rows is allowed only for single-location or pre-junction tenants.
+ * Bookings with no location_id remain visible.
  */
 export async function assertProviderUserCanAccessBookingBranch(
   admin: SupabaseClient,
@@ -61,16 +66,11 @@ export async function assertProviderUserCanAccessBookingBranch(
   const ids =
     assignedLocations?.map((r: { location_id: string }) => r.location_id).filter(Boolean) ?? [];
 
-  if (ids.length === 0) {
-    return { allowed: true as const };
-  }
-
-  if (ids.includes(bookingLocationId)) {
-    return { allowed: true as const };
-  }
-
-  return {
-    allowed: false as const,
-    message: "This booking belongs to a location you are not assigned to.",
-  };
+  const usage = await loadProviderLocationAssignmentUsage(admin, providerId);
+  return decideUnassignedStaffBranchAccess({
+    assignedLocationIds: ids,
+    bookingLocationId,
+    activeLocationCount: usage.activeLocationCount,
+    providerJunctionCount: usage.providerJunctionCount,
+  });
 }

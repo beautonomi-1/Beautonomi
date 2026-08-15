@@ -114,7 +114,7 @@ export async function GET(
     const { data: comments, error: cErr } = await supabaseAdmin
       .from("explore_comments")
       .select(
-        "id, post_id, user_id, body, mentioned_user_ids, created_at, users(id, email, full_name)"
+        "id, post_id, user_id, body, mentioned_user_ids, created_at, users:user_id(id, email, full_name)"
       )
       .eq("post_id", id)
       .order("created_at", { ascending: false });

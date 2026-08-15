@@ -23,6 +23,7 @@ import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePayCloudSettings } from "@/hooks/usePayCloud";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
+import { StartOwnBusinessCard } from "@/components/StartOwnBusinessCard";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -559,6 +560,7 @@ export default function MoreScreen() {
         </TouchableOpacity>
 
         <ProviderOrgSwitcher />
+        <StartOwnBusinessCard />
 
         {/* Payouts - web payout center parity: balance, request action, and bank setup above the fold */}
         {(canEditSettings) ? (

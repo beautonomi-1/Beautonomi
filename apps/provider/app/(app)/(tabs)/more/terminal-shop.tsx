@@ -909,7 +909,9 @@ export default function TerminalShopScreen() {
                         </Text>
                         <Text style={twStyle("text-xs text-gray-500")}>
                           {formatTerminalAssetOwnership(a.ownership_model)}
-                          {a.serial_number ? ` · ${a.serial_number}` : ""}
+                          {a.serial_number
+                            ? ` · ${a.serial_number}`
+                            : " · Serial not assigned yet — card payments stay unavailable until Beautonomi registers this machine"}
                         </Text>
                       </View>
                     </View>

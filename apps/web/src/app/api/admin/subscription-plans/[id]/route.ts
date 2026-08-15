@@ -120,6 +120,8 @@ export async function PATCH(
       "features",
       "price_monthly",
       "price_yearly",
+      "apple_product_id_monthly",
+      "apple_product_id_yearly",
     ];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {

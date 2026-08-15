@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
 /**
  * GET /api/public/providers/[slug]/staff
@@ -38,6 +39,8 @@ export async function GET(
       );
     }
 
+    const locationId = new URL(request.url).searchParams.get("location_id")?.trim() || null;
+
     // Fetch active staff members (provider_staff has no specialties column; use [] in response)
     const { data: staff, error: staffError } = await supabase
       .from("provider_staff")
@@ -73,9 +76,17 @@ export async function GET(
       mobileReady: true,
     }));
 
+    if (locationId && staffMembers.length > 0) {
+      const scope = await resolveStaffLocationScope(supabase, provider.id, locationId);
+      if (scope.staffIds !== null) {
+        const allowed = new Set(scope.staffIds);
+        staffMembers = staffMembers.filter((m) => allowed.has(m.id));
+      }
+    }
+
     // When provider has no staff rows (e.g. solo/freelancer), return one synthetic option
     // so the step shows a selectable specialist; availability treats provider-* as "any"
-    if (staffMembers.length === 0 && provider?.id && provider?.business_name) {
+    if ((staff || []).length === 0 && provider?.id && provider?.business_name) {
       staffMembers = [
         {
           id: `provider-${provider.id}`,

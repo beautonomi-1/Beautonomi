@@ -12,6 +12,14 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { issueAdminWalletRefund } from "@/lib/finance/issue-admin-wallet-refund";
+import {
+  backfillPaymentTransactionFromBookingRefunds,
+  loadBookingRefundCoverage,
+} from "@/lib/admin/booking-refund-coverage";
+import {
+  allocateBookingWalletAcrossCharges,
+  computeEffectiveRemainingRefundable,
+} from "@/lib/admin/booking-refund-context";
 import { z } from "zod";
 
 const processRefundSchema = z.object({
@@ -137,13 +145,56 @@ export async function POST(
       0,
       parseFloat(String(transaction.refund_amount || "0")),
     );
-    const remainingRefundable = Math.round((txnAmount - alreadyRefunded) * 100) / 100;
-    if (remainingRefundable <= 0) {
-      return errorResponse("Transaction already fully refunded", "INVALID_STATUS", 400);
-    }
-    if (refund_amount > remainingRefundable + 0.001) {
+
+    const coverage = await loadBookingRefundCoverage(supabase, transaction.booking_id);
+
+    const { data: bookingCharges } = await supabase
+      .from("payment_transactions")
+      .select("id, transaction_type, amount, refund_amount, created_at")
+      .eq("booking_id", transaction.booking_id)
+      .in("status", ["success", "partially_refunded", "refunded"])
+      .in("transaction_type", ["charge", "additional_charge"]);
+
+    const allocations = allocateBookingWalletAcrossCharges(
+      (bookingCharges ?? []) as Array<{
+        id: string;
+        transaction_type?: string | null;
+        amount?: unknown;
+        refund_amount?: unknown;
+        created_at?: string | null;
+      }>,
+      coverage.effectiveRefundedTotal,
+    );
+    const txnAllocation = allocations.get(id);
+    const walletAppliedToTxn = txnAllocation?.walletApplied ?? 0;
+
+    const effectiveRemaining =
+      txnAllocation?.remainingRefundable ??
+      computeEffectiveRemainingRefundable({
+        chargeAmount: txnAmount,
+        txnRefundedTotal: alreadyRefunded,
+        walletCreditedTotal: walletAppliedToTxn,
+      });
+
+    if (effectiveRemaining <= 0) {
+      await backfillPaymentTransactionFromBookingRefunds({
+        supabase,
+        bookingId: transaction.booking_id,
+        transactionId: id,
+        txnAmount,
+        txnRefundedAmount: alreadyRefunded,
+        coverage,
+      });
       return errorResponse(
-        "Refund amount cannot exceed remaining refundable amount",
+        "This charge was already refunded to the customer wallet (e.g. via cancellation or provider refund). The payment record has been updated.",
+        "ALREADY_REFUNDED",
+        409,
+      );
+    }
+
+    if (refund_amount > effectiveRemaining + 0.001) {
+      return errorResponse(
+        `Refund amount cannot exceed remaining refundable amount (${effectiveRemaining.toFixed(2)})`,
         "INVALID_AMOUNT",
         400,
       );

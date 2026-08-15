@@ -12,6 +12,7 @@ import { AppState, DeviceEventEmitter, Platform, type AppStateStatus } from "rea
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import type { Session, User } from "@supabase/supabase-js";
+import { tryNativeAppleSignIn } from "@/lib/auth/try-native-apple-sign-in";
 import { supabase } from "@/lib/supabase/client";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention-sync";
 import { abortInFlightRequests } from "@beautonomi/api";
@@ -316,6 +317,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithOAuth = useCallback(
     async (provider: OAuthProvider): Promise<{ error: Error | null }> => {
       try {
+        if (provider === "apple") {
+          const native = await tryNativeAppleSignIn(supabase);
+          if (native.handled) return { error: native.error };
+        }
         const redirectTo = getRedirectUrl();
         const oauthOptions: {
           redirectTo: string;

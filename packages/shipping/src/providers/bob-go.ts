@@ -7,42 +7,57 @@ import type {
   TrackingUpdate,
 } from "../index";
 import { ShippingProviderNotConfiguredError } from "../index";
+import {
+  createShiplogicStyleShipment,
+  quoteShiplogicStyleRates,
+  trackShiplogicStyle,
+  type ShiplogicStyleConfig,
+} from "./shiplogic-style";
 
 /**
- * Bob Go provider (formerly uAfrica).
+ * Bob Go v2 (Bearer token).
  *
- * Env: BOB_GO_API_KEY, BOB_GO_BASE_URL (defaults to api.bobgo.co.za).
+ * Production: https://api.bobgo.co.za/v2
+ * Sandbox: https://api.sandbox.bobgo.co.za/v2
+ *
+ * Env: BOB_GO_API_KEY, optional BOB_GO_BASE_URL.
+ * Callers may pass live keys from platform_secrets instead of env.
  */
-export function createBobGoProvider(): ShippingProvider {
-  const baseUrl = process.env.BOB_GO_BASE_URL ?? "https://api.bobgo.co.za";
-
-  function assertConfigured() {
-    if (!process.env.BOB_GO_API_KEY) {
-      throw new ShippingProviderNotConfiguredError("bob-go");
-    }
+export function createBobGoProvider(credentials?: {
+  apiKey?: string;
+  baseUrl?: string;
+}): ShippingProvider {
+  function config(): ShiplogicStyleConfig {
+    const apiKey = credentials?.apiKey?.trim() || process.env.BOB_GO_API_KEY?.trim();
+    if (!apiKey) throw new ShippingProviderNotConfiguredError("bob-go");
+    const baseUrl = (
+      credentials?.baseUrl?.trim() ||
+      process.env.BOB_GO_BASE_URL ||
+      "https://api.bobgo.co.za/v2"
+    ).replace(/\/+$/, "");
+    return {
+      providerId: "bob-go",
+      baseUrl,
+      apiKey,
+      countryName: (iso) => iso,
+      ratesPath: "/rates",
+      shipmentsPath: "/shipments",
+      trackingUrl: (trackingNumber) =>
+        `${baseUrl}/tracking?tracking_reference=${encodeURIComponent(trackingNumber)}`,
+      requireProviderSlug: true,
+    };
   }
 
-  async function quoteRates(_req: RateQuoteRequest): Promise<RateQuote[]> {
-    assertConfigured();
-    // TODO: POST to `${baseUrl}/rates` with x-api-key.
-    return [];
+  async function quoteRates(req: RateQuoteRequest): Promise<RateQuote[]> {
+    return quoteShiplogicStyleRates(config(), req);
   }
 
   async function createShipment(req: CreateShipmentRequest): Promise<Shipment> {
-    assertConfigured();
-    throw new Error(`Bob Go createShipment not yet implemented (order ${req.orderRef})`);
+    return createShiplogicStyleShipment(config(), req);
   }
 
   async function track(trackingNumber: string): Promise<TrackingUpdate[]> {
-    assertConfigured();
-    // TODO: GET `${baseUrl}/tracking/${trackingNumber}`.
-    return [
-      {
-        status: "pending",
-        message: `Tracking ${trackingNumber} — stub response.`,
-        occurredAt: new Date().toISOString(),
-      },
-    ];
+    return trackShiplogicStyle(config(), trackingNumber);
   }
 
   return {

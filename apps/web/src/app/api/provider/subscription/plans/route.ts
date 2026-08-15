@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
           limits,
           is_popular: p.is_popular || false,
           is_free: false,
+          apple_product_id: p.apple_product_id_monthly ?? null,
         });
       }
       if (p.price_yearly != null) {
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
           limits,
           is_popular: p.is_popular || false,
           is_free: false,
+          apple_product_id: p.apple_product_id_yearly ?? null,
         });
       }
 

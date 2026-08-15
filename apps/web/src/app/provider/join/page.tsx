@@ -114,7 +114,7 @@ function ProviderStaffJoinPage() {
     void handleAccept();
   }, [authLoading, user, token, preview, handleAccept]);
 
-  const loginHref = `/auth?next=${encodeURIComponent(`/provider/join?token=${token}`)}`;
+  const loginHref = `/login?next=${encodeURIComponent(`/provider/join?token=${token}`)}`;
   const businessName = preview?.business_name || "your team";
 
   return (
@@ -150,8 +150,9 @@ function ProviderStaffJoinPage() {
                   <span className="font-medium">{preview.email_hint}</span>
                 ) : (
                   "the email that received this invite"
-                )}{" "}
-                to continue.
+                )}
+                . Use the set-password link from your invitation email, or sign in with email OTP —
+                you do not need an existing password.
               </p>
               <Button asChild className="w-full">
                 <Link href={loginHref}>Continue to sign in</Link>
@@ -160,7 +161,13 @@ function ProviderStaffJoinPage() {
           ) : accepting ? (
             <p className="text-sm text-gray-500">Setting up your access…</p>
           ) : preview?.already_accepted ? (
-            <Button className="w-full" onClick={() => router.replace("/provider/dashboard")}>
+            <Button
+              className="w-full"
+              onClick={() => {
+                clearProviderGateCache();
+                router.replace("/provider/dashboard");
+              }}
+            >
               Go to dashboard
             </Button>
           ) : (

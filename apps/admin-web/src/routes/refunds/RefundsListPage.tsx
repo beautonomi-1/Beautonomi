@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -30,10 +31,11 @@ import {
   REFUND_REASON_PRESETS,
   parseRefundAmount,
   remainingRefundable,
-  isProcessableRefundRow,
   orphanPaymentLabel,
   normalizeRefundReason,
   isRefundReasonValid,
+  deriveRefundRowState,
+  creditedViaLabel,
   type RefundReasonPreset,
 } from "@/lib/refunds/refundUiHelpers";
 
@@ -55,9 +57,23 @@ type RefundsPayload = {
   statistics?: RefundStatistics;
 };
 
+type BookingRefundEmbed = {
+  id?: string;
+  amount?: number | string | null;
+  reason?: string;
+  refund_method?: string | null;
+  status?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+};
+
 type BookingEmbed = {
   id?: string;
   booking_number?: string;
+  status?: string;
+  payment_status?: string | null;
+  total_paid?: number | null;
+  total_refunded?: number | null;
   provider?: { business_name?: string | null } | null;
   customer?: { full_name?: string | null; email?: string | null } | null;
 };
@@ -96,6 +112,13 @@ const STATUS_BADGE: Record<string, string> = {
   failed: "bg-red-100 text-red-800",
 };
 
+function formatRefundedAmount(row: Record<string, unknown>): string {
+  const effective = parseRefundAmount(row.effective_refunded_total);
+  if (effective > 0) return formatAdminCurrency(effective);
+  const txn = parseRefundAmount(row.refund_amount);
+  return txn > 0 ? formatAdminCurrency(txn) : "—";
+}
+
 function closeProcessModal(setters: {
   setProcessId: (v: string | null) => void;
   setProcessRow: (v: Record<string, unknown> | null) => void;
@@ -125,7 +148,7 @@ export function RefundsListPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
-  const status = sp.get("status") || "all";
+  const status = sp.get("status") || "needs_action";
   const filters = useMemo(() => ({ page, status }), [page, status]);
 
   const [processId, setProcessId] = useState<string | null>(null);
@@ -198,12 +221,22 @@ export function RefundsListPage() {
       }
     },
     onError: (e: Error) => {
+      const alreadyRefunded =
+        e instanceof AdminApiError && e.code === "ALREADY_REFUNDED";
       const msg = e.message.includes("PERIOD_LOCKED")
         ? "Refund blocked — financial period is locked."
         : e.message.includes("INVALID_AMOUNT")
           ? "Refund amount exceeds the remaining refundable balance."
-          : `Refund failed: ${e.message}`;
-      adminToast.error(msg);
+          : alreadyRefunded
+            ? "This charge was already refunded to the customer wallet. The list has been refreshed."
+            : `Refund failed: ${e.message}`;
+      if (alreadyRefunded) {
+        adminToast.warning(msg);
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.refunds(filters) });
+        closeProcessModal(modalSetters);
+      } else {
+        adminToast.error(msg);
+      }
     },
   });
 
@@ -270,6 +303,7 @@ export function RefundsListPage() {
   }
 
   const tabs = [
+    "needs_action",
     "all",
     "success",
     "pending",
@@ -277,6 +311,16 @@ export function RefundsListPage() {
     "refunded",
     "partially_refunded",
   ] as const;
+
+const TAB_LABELS: Record<string, string> = {
+  needs_action: "Needs action",
+  all: "All",
+  success: "Paid (capture ok)",
+  pending: "Pending",
+  failed: "Failed",
+  refunded: "Fully refunded",
+  partially_refunded: "Partially refunded",
+};
 
   const byStatus = stats?.by_status ?? {};
   const totalListed = stats?.total_transactions ?? stats?.total ?? 0;
@@ -297,23 +341,27 @@ export function RefundsListPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Refunds"
-        description="Process booking payment refunds for this market. Refunds credit the customer wallet immediately — card and bank reversals are not performed here."
+        description="Booking payment charges that may need a wallet refund. Credit wallet is a manual action — nothing is refunded until you confirm. Card and bank reversals do not happen here."
       />
 
       <AdminPanel>
-        <h3 className="text-sm font-semibold text-gray-900">How actions work</h3>
+        <h3 className="text-sm font-semibold text-gray-900">How this page works</h3>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
           <li>
-            <strong>Process</strong> — credits the customer wallet automatically, updates the
-            payment transaction status, and sends a push notification.
+            <strong>Credit wallet</strong> — adds the refund to the customer&apos;s Beautonomi
+            wallet immediately, updates the payment record, and sends a push notification.
           </li>
           <li>
-            <strong>Partial refund</strong> — allowed until the remaining balance on a charge
-            reaches zero (including after a prior partial refund).
+            <strong>Not refunded</strong> rows still have the full charge available — the reason is
+            recorded when you issue the refund.
           </li>
           <li>
-            <strong>Non-booking payments</strong> (gift cards, memberships, subscriptions) cannot
-            be refunded here — use{" "}
+            <strong>Credited elsewhere</strong> means the wallet was already topped up (e.g.
+            cancellation or provider refund) even if this payment row was out of date.
+          </li>
+          <li>
+            <strong>Non-booking payments</strong> (gift cards, memberships, subscriptions, ads) must
+            be handled on their own screens — use{" "}
             <Link to={adminSpaTo("/admin/gift-cards")} className="underline">
               Gift Cards
             </Link>
@@ -335,13 +383,13 @@ export function RefundsListPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AdminPanel className="!p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Refundable payments
+                Needs wallet credit
               </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
                 {actionableRefundable}
               </p>
               <p className="mt-1 text-[11px] text-gray-500">
-                Booking charges with remaining balance
+                Booking charges with remaining refundable balance
               </p>
             </AdminPanel>
             <AdminPanel className="!p-4">
@@ -407,7 +455,7 @@ export function RefundsListPage() {
               className={adminTabButtonClass(status === t)}
               onClick={() => setStatus(t)}
             >
-              {t}
+              {TAB_LABELS[t] ?? t.replace(/_/g, " ")}
             </button>
           ))}
         </div>
@@ -419,13 +467,24 @@ export function RefundsListPage() {
       </AdminPanel>
 
       {rows.length === 0 ? (
-        <EmptyState title="No refund rows" />
+        <EmptyState
+          title={
+            status === "needs_action"
+              ? "No charges need a wallet refund"
+              : "No payment rows match this filter"
+          }
+          description={
+            status === "needs_action"
+              ? "Successful booking charges either already have wallet credits or are not refundable from this page."
+              : undefined
+          }
+        />
       ) : (
         <AdminDataTable>
           <AdminTableHead>
             <tr>
               <AdminTh>Type</AdminTh>
-              <AdminTh>Status</AdminTh>
+              <AdminTh>Refund state</AdminTh>
               <AdminTh>Payment</AdminTh>
               <AdminTh>Refunded</AdminTh>
               <AdminTh>Remaining</AdminTh>
@@ -433,7 +492,7 @@ export function RefundsListPage() {
               <AdminTh>Reason</AdminTh>
               <AdminTh>Booking / source</AdminTh>
               <AdminTh>Customer</AdminTh>
-              <AdminTh>Date</AdminTh>
+              <AdminTh>Payment date</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
@@ -444,18 +503,37 @@ export function RefundsListPage() {
               const booking = row.booking as BookingEmbed | null | undefined;
               const customer = unwrapBookingCustomer(row.booking);
               const statusStr = String(row.status ?? "pending");
-              const badgeClass = STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
-              const remaining = parseRefundAmount(
-                row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
-              );
-              const processable = isProcessableRefundRow({
+              const derived = deriveRefundRowState({
                 status: statusStr,
                 booking: row.booking,
                 is_processable: row.is_processable as boolean | undefined,
+                refund_state: row.refund_state as
+                  | "not_refunded"
+                  | "partially_refunded"
+                  | "fully_refunded"
+                  | "credited_elsewhere"
+                  | "not_applicable"
+                  | undefined,
+                effective_reason: row.effective_reason as string | null | undefined,
+                refund_reason: row.refund_reason as string | null | undefined,
+                credited_via: row.credited_via as
+                  | "admin_refunds_page"
+                  | "cancellation"
+                  | "provider"
+                  | "dispute"
+                  | null
+                  | undefined,
+                effective_refunded_total: row.effective_refunded_total as number | undefined,
+                refunded_at: row.refunded_at as string | null | undefined,
+                wallet_credited_at: row.wallet_credited_at as string | null | undefined,
               });
+              const remaining = parseRefundAmount(
+                row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
+              );
               const orphan = !booking ? orphanPaymentLabel(row.metadata) : null;
               const isExpanded = expandedId === id;
               const refundedBy = unwrapRefundedByUser(row.refunded_by_user);
+              const bookingRefunds = (row.booking_refunds as BookingRefundEmbed[] | undefined) ?? [];
 
               return (
                 <Fragment key={id}>
@@ -468,29 +546,36 @@ export function RefundsListPage() {
                     </AdminTd>
                     <AdminTd>
                       <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${derived.badgeClass}`}
+                        title={
+                          derived.creditedVia
+                            ? `Credited via ${creditedViaLabel(derived.creditedVia) ?? derived.creditedVia}`
+                            : undefined
+                        }
                       >
-                        {statusStr}
+                        {derived.label}
                       </span>
                     </AdminTd>
                     <AdminTd className="tabular-nums">
                       {formatAdminCurrency(parseRefundAmount(row.amount))}
                     </AdminTd>
-                    <AdminTd className="tabular-nums">
-                      {parseRefundAmount(row.refund_amount) > 0
-                        ? formatAdminCurrency(parseRefundAmount(row.refund_amount))
-                        : "—"}
-                    </AdminTd>
+                    <AdminTd className="tabular-nums">{formatRefundedAmount(row)}</AdminTd>
                     <AdminTd className="tabular-nums">
                       {remaining > 0 ? formatAdminCurrency(remaining) : "—"}
                     </AdminTd>
                     <AdminTd className="text-xs text-gray-600">
-                      {parseRefundAmount(row.refund_amount) > 0 || processable
-                        ? "Wallet (auto)"
-                        : "—"}
+                      {derived.payoutLabel ?? "—"}
                     </AdminTd>
-                    <AdminTd className="max-w-[140px] truncate text-xs text-gray-600">
-                      {row.refund_reason ? String(row.refund_reason) : "—"}
+                    <AdminTd
+                      className="max-w-[140px] truncate text-xs text-gray-600"
+                      title={
+                        derived.reason ??
+                        (derived.canProcess
+                          ? "Reason is recorded when you credit the wallet"
+                          : undefined)
+                      }
+                    >
+                      {derived.reason ?? "—"}
                     </AdminTd>
                     <AdminTd className="text-xs">
                       {booking?.id && booking.booking_number ? (
@@ -526,7 +611,7 @@ export function RefundsListPage() {
                         : ""}
                     </AdminTd>
                     <AdminTd>
-                      {processable ? (
+                      {derived.canProcess ? (
                         <button
                           type="button"
                           className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
@@ -535,7 +620,7 @@ export function RefundsListPage() {
                             openProcessRefund(row);
                           }}
                         >
-                          Process
+                          {derived.actionLabel ?? "Credit wallet"}
                         </button>
                       ) : !booking && statusStr === "success" ? (
                         <span
@@ -559,6 +644,22 @@ export function RefundsListPage() {
                             <p className="text-xs text-gray-500">
                               Transaction ID: <span className="font-mono">{id}</span>
                             </p>
+                            <p className="text-xs text-gray-500">
+                              Payment capture:{" "}
+                              <span
+                                className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600"}`}
+                              >
+                                {statusStr}
+                              </span>
+                            </p>
+                            {booking?.status ? (
+                              <p className="text-xs text-gray-500">
+                                Booking status: {String(booking.status)}
+                                {booking.payment_status
+                                  ? ` · payment ${String(booking.payment_status)}`
+                                  : ""}
+                              </p>
+                            ) : null}
                             {row.provider ? (
                               <p className="text-xs text-gray-500">
                                 Original gateway: {String(row.provider)}
@@ -575,17 +676,23 @@ export function RefundsListPage() {
                                 <span className="font-mono">{String(row.refund_reference)}</span>
                               </p>
                             ) : null}
-                            {row.refund_reason ? (
+                            {derived.reason ? (
                               <p className="text-xs text-gray-600">
                                 <span className="font-medium text-gray-700">Reason:</span>{" "}
-                                {String(row.refund_reason)}
+                                {derived.reason}
+                              </p>
+                            ) : null}
+                            {derived.creditedVia ? (
+                              <p className="text-xs text-gray-500">
+                                Credited via: {creditedViaLabel(derived.creditedVia)}
                               </p>
                             ) : null}
                           </div>
                           <div className="space-y-1">
                             {row.refunded_at ? (
                               <p className="text-xs text-gray-500">
-                                Processed: {new Date(String(row.refunded_at)).toLocaleString()}
+                                Payment record updated:{" "}
+                                {new Date(String(row.refunded_at)).toLocaleString()}
                               </p>
                             ) : null}
                             {refundedBy ? (
@@ -593,9 +700,34 @@ export function RefundsListPage() {
                                 Processed by: {refundedBy.full_name || refundedBy.email || "—"}
                               </p>
                             ) : null}
-                            <p className="text-xs text-gray-500">
-                              Payout method: wallet (automatic store credit)
-                            </p>
+                            {derived.canProcess ? (
+                              <p className="text-xs text-gray-500">
+                                On credit: customer wallet (not original card)
+                              </p>
+                            ) : derived.payoutLabel ? (
+                              <p className="text-xs text-gray-500">{derived.payoutLabel}</p>
+                            ) : null}
+                            {parseRefundAmount(row.wallet_credited_total) >
+                              parseRefundAmount(row.txn_refunded_total) + 0.001 ? (
+                              <p className="text-xs text-amber-700">
+                                Wallet credits on the booking exceed what this payment row shows.
+                                The totals above use the higher amount.
+                              </p>
+                            ) : null}
+                            {bookingRefunds.length > 0 ? (
+                              <div className="mt-2 space-y-1">
+                                <p className="text-xs font-medium text-gray-700">Wallet refund history</p>
+                                {bookingRefunds.slice(0, 3).map((br) => (
+                                  <p key={String(br.id)} className="text-xs text-gray-500">
+                                    {formatAdminCurrency(parseRefundAmount(br.amount))} ·{" "}
+                                    {br.reason ?? "—"}
+                                    {br.created_at
+                                      ? ` · ${new Date(String(br.created_at)).toLocaleDateString()}`
+                                      : ""}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </td>
@@ -613,7 +745,7 @@ export function RefundsListPage() {
         onClose={() => {
           if (!processRefund.isPending) closeProcessModal(modalSetters);
         }}
-        title={providerWarning ? "Refund processed" : "Process refund"}
+        title={providerWarning ? "Refund processed" : "Credit customer wallet"}
         description={
           providerWarning
             ? "The customer wallet was credited. Review the provider balance warning below."
@@ -658,7 +790,7 @@ export function RefundsListPage() {
                   });
                 }}
               >
-                {processRefund.isPending ? "Processing…" : "Process refund"}
+                {processRefund.isPending ? "Crediting…" : "Credit wallet"}
               </button>
             </>
           )

@@ -16,8 +16,13 @@ import { useAuth } from "./AuthProvider";
 import { getApiErrorCode, getApiErrorMessage, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { captureApiFailure, addBreadcrumb } from "@/lib/sentry";
 import { emitProviderRoleChanged } from "@/lib/provider-role-events";
+import { isProviderApiRole, setProviderApiReady } from "@/lib/provider-api-readiness";
 
 const LOCATION_STORAGE_KEY = "provider_selected_location_id";
+
+function locationStorageKey(providerId?: string | null): string {
+  return providerId ? `${LOCATION_STORAGE_KEY}:${providerId}` : LOCATION_STORAGE_KEY;
+}
 /** Persisted when user chooses org-wide view (no branch filter). */
 const LOCATION_ALL_SENTINEL = "__all__";
 
@@ -132,13 +137,15 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   const fetchIdRef = useRef(0);
   /** Latest selected branch so fetchProfile can resolve location without a stale closure. */
   const selectedLocationIdRef = useRef<string | null>(null);
+  const providerRef = useRef<ProviderProfile | null>(null);
 
   const setSelectedLocationId = useCallback((id: string | null) => {
     setSelectedLocationIdState(id);
+    const key = locationStorageKey(providerRef.current?.id);
     if (id) {
-      AsyncStorage.setItem(LOCATION_STORAGE_KEY, id).catch(() => {});
+      AsyncStorage.setItem(key, id).catch(() => {});
     } else {
-      AsyncStorage.setItem(LOCATION_STORAGE_KEY, LOCATION_ALL_SENTINEL).catch(() => {});
+      AsyncStorage.setItem(key, LOCATION_ALL_SENTINEL).catch(() => {});
     }
   }, []);
 
@@ -167,8 +174,15 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
 
   const lastProfileFetchRef = useRef(0);
   const roleRef = useRef<string | null>(null);
-  const providerRef = useRef<ProviderProfile | null>(null);
   const profileLoadErrorRef = useRef<string | null>(null);
+  /**
+   * The role for which `/api/provider/profile` actually answered 403. Only a
+   * role-gate rejection is safe to stop re-requesting, because it cannot change
+   * until the role does. A 404 (role accepted, provider row not created yet) must
+   * still be retried — the row can appear with no role change to invalidate on —
+   * and a transient failure must never strand a provider who does have a profile.
+   */
+  const profileForbiddenForRoleRef = useRef<string | null>(null);
 
   useEffect(() => {
     providerRef.current = provider;
@@ -180,6 +194,12 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     // live above this provider in the tree and therefore can't use useProvider().
     emitProviderRoleChanged(role);
   }, [role]);
+
+  // A loaded provider profile also proves authorization, which covers the
+  // `provider_onboarding` role that the server accepts for provider routes.
+  useEffect(() => {
+    setProviderApiReady(isProviderApiRole(role) || provider !== null);
+  }, [role, provider]);
 
   useEffect(() => {
     profileLoadErrorRef.current = profileLoadError;
@@ -226,8 +246,19 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         setActiveProviderApiHint(null);
       }
 
-      const [profileRes, roleResFirst, storedId] = await Promise.all([
-        api.get<ProviderProfile>("/api/provider/profile"),
+      // `/api/provider/profile` already answered 403 for this exact role, which
+      // is the normal state for the whole onboarding wizard. Re-asking on every
+      // foreground resume only buys another 403, so re-check role first and ask
+      // for the profile again only once the role has moved on.
+      const profileForbiddenForCurrentRole =
+        providerRef.current === null &&
+        roleRef.current !== null &&
+        profileForbiddenForRoleRef.current === roleRef.current;
+
+      const [profileResInitial, roleResFirst, storedId] = await Promise.all([
+        profileForbiddenForCurrentRole
+          ? Promise.resolve(null)
+          : api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
         AsyncStorage.getItem(LOCATION_STORAGE_KEY),
       ]);
@@ -253,8 +284,29 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         if (fetchIdRef.current !== myId) return;
       }
 
-      const profileSkipped = !!profileRes.error && isRecoverableFetchError(profileRes.error);
       const roleSkipped = !!roleRes.error && isRecoverableFetchError(roleRes.error);
+
+      let profileRes = profileResInitial;
+      if (profileRes === null) {
+        const nextRole = roleSkipped ? roleRef.current : roleFromResponse(roleRes);
+        if (nextRole !== profileForbiddenForRoleRef.current) {
+          // Role moved on, so the profile may load now.
+          profileForbiddenForRoleRef.current = null;
+          profileRes = await api.get<ProviderProfile>("/api/provider/profile");
+          if (fetchIdRef.current !== myId) return;
+        }
+      }
+      if (profileRes === null) {
+        // Still the same role the profile was rejected for — nothing to load.
+        setProvider(null);
+        setProfileLoadError(null);
+        setActiveProviderApiHint(null);
+        AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
+        if (!roleSkipped) applyRoleFromResponse(roleRes);
+        return;
+      }
+
+      const profileSkipped = !!profileRes.error && isRecoverableFetchError(profileRes.error);
       const hasCachedBootstrap = !!(providerRef.current || roleRef.current);
 
       if (profileSkipped && profileRes.error) {
@@ -295,6 +347,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         // First-run users may still be customer/provider_onboarding while the
         // setup wizard creates the provider row. Keep them in onboarding instead
         // of surfacing the provider-profile 403 as a scary banner.
+        profileForbiddenForRoleRef.current = roleForLogic;
         setProvider(null);
         setProfileLoadError(null);
         setActiveProviderApiHint(null);
@@ -321,8 +374,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         setProvider(null);
         if (!roleSkipped) applyRoleFromResponse(roleRes);
       } else if (profileRes.data) {
+        profileForbiddenForRoleRef.current = null;
         setProfileLoadError(null);
         setProvider(profileRes.data);
+        providerRef.current = profileRes.data;
         if (userId) {
           const pid = profileRes.data.id;
           setActiveProviderApiHint(pid);
@@ -335,12 +390,14 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         const validIds = locations.map((l) => l.id);
         const validSet = new Set(validIds);
         const prev = selectedLocationIdRef.current;
+        const orgStored = await AsyncStorage.getItem(locationStorageKey(profileRes.data.id));
+        const preferredStored = orgStored ?? storedId;
 
         let nextLocationId: string | null = null;
-        if (storedId === LOCATION_ALL_SENTINEL) {
+        if (preferredStored === LOCATION_ALL_SENTINEL) {
           nextLocationId = null;
-        } else if (storedId && validSet.has(storedId)) {
-          nextLocationId = storedId;
+        } else if (preferredStored && validSet.has(preferredStored)) {
+          nextLocationId = preferredStored;
         } else if (prev && validSet.has(prev)) {
           nextLocationId = prev;
         } else if (validIds.length > 0) {
@@ -386,6 +443,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   }, [applyRoleFromResponse, userId, setSelectedLocationId]);
 
   useEffect(() => {
+    profileForbiddenForRoleRef.current = null;
     if (!userId) {
       setProvider(null);
       setRole(null);

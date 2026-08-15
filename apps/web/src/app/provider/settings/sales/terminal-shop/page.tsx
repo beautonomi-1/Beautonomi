@@ -949,7 +949,13 @@ export default function TerminalShopPage() {
                               {" · Serial "}
                               <span className="font-mono">{a.serial_number}</span>
                             </>
-                          ) : null}
+                          ) : (
+                            <>
+                              {" · "}
+                              Serial not assigned yet — card payments stay unavailable until
+                              Beautonomi registers this machine
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>

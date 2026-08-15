@@ -1,10 +1,18 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +44,11 @@ export async function POST(request: NextRequest) {
       tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
       provider_id: providerId,
     });
+
+    const appleBilling = await getAppleBillingPaystackBlock(supabaseAdmin, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
+    }
 
     const body = await request.json();
     const rawPlanId = body.plan_id;

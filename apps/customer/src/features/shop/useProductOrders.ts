@@ -29,6 +29,12 @@ export interface ProductOrder {
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
+  tracking_live?: boolean;
+  tracking_events?: {
+    status: string;
+    message: string;
+    occurredAt: string;
+  }[];
   delivery_instructions?: string | null;
   estimated_delivery_date: string | null;
   created_at: string;
@@ -116,8 +122,18 @@ export function useProductOrders() {
 
   const fetchOrderDetail = useCallback(async (orderId: string) => {
     const res = await api.get<{ order: ProductOrder }>(`/api/me/orders/${orderId}`);
-      if (res.error) return { data: null, error: getApiErrorMessage(res.error, "Failed to load order") };
-    return { data: res.data?.order ?? null, error: null };
+    if (res.error) return { data: null, error: getApiErrorMessage(res.error, "Failed to load order") };
+    const order = res.data?.order ?? null;
+    if (!order) return { data: null, error: null };
+    const tracking = await api.get<{
+      live?: boolean;
+      events?: ProductOrder["tracking_events"];
+    }>(`/api/me/orders/${orderId}/tracking`);
+    if (!tracking.error && tracking.data) {
+      order.tracking_live = tracking.data.live === true;
+      order.tracking_events = tracking.data.events ?? [];
+    }
+    return { data: order, error: null };
   }, []);
 
   const createOrder = useCallback(

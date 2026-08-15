@@ -10,7 +10,34 @@ import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 import { z } from "zod";
+
+type PublicUserRow = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
+
+async function findPublicUserByEmailAdmin(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  email: string,
+): Promise<PublicUserRow | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const { data } = await admin
+    .from("users")
+    .select("id, full_name, email, phone")
+    .ilike("email", normalized)
+    .maybeSingle();
+  return (data as PublicUserRow | null) ?? null;
+}
+
+function isAuthUserAlreadyRegistered(err: { message?: string } | null | undefined): boolean {
+  const msg = (err?.message ?? "").toLowerCase();
+  return msg.includes("already") && (msg.includes("registered") || msg.includes("exists"));
+}
 
 interface StaffMember {
   id: string;
@@ -87,63 +114,33 @@ export async function GET(request: NextRequest) {
 
     const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
     
-    // If location_id is provided, first get staff IDs assigned to that location
-    let staffIds: string[] | null = null;
-    if (locationId) {
-      const { data: assignments, error: assignmentError } = await supabase
-        .from("provider_staff_locations")
-        .select("staff_id")
-        .eq("location_id", locationId);
-      
-      if (assignmentError) {
-        throw assignmentError;
-      }
-      
-      staffIds = assignments?.map(a => a.staff_id) || [];
-      
-      // For freelancers: if no assignment found, check if location belongs to provider
-      // This is a fallback for edge cases where assignment might be missing
-      if (isFreelancer && staffIds.length === 0) {
-        const { data: locationData } = await supabase
-          .from("provider_locations")
+    const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
+    let staffIds = scope.staffIds;
+
+    if (isFreelancer && staffIds !== null && staffIds.length === 0 && locationId) {
+      const { data: locationData } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+
+      if (locationData) {
+        const { data: freelancerStaff } = await supabase
+          .from("provider_staff")
           .select("id")
-          .eq("id", locationId)
           .eq("provider_id", providerId)
-          .maybeSingle();
-        
-        // If location belongs to freelancer, get their staff ID
-        if (locationData) {
-          const { data: freelancerStaff } = await supabase
-            .from("provider_staff")
-            .select("id")
-            .eq("provider_id", providerId)
-            .eq("role", "owner")
-            .limit(1);
-          
-          if (freelancerStaff && freelancerStaff.length > 0) {
-            staffIds = [freelancerStaff[0].id];
-          }
+          .eq("role", "owner")
+          .limit(1);
+
+        if (freelancerStaff && freelancerStaff.length > 0) {
+          staffIds = [freelancerStaff[0].id];
         }
       }
+    }
 
-      // Legacy data: provider_staff_locations was added after many tenants onboarded.
-      // If this location belongs to the provider but no junction rows exist yet, return
-      // all staff for the provider (same behaviour the calendar UI previously simulated
-      // by calling the API again without location_id).
-      if (!staffIds || staffIds.length === 0) {
-        const { data: locationRow } = await supabase
-          .from("provider_locations")
-          .select("id")
-          .eq("id", locationId)
-          .eq("provider_id", providerId)
-          .maybeSingle();
-
-        if (locationRow) {
-          staffIds = null;
-        } else {
-          return successResponse([]);
-        }
-      }
+    if (locationId && staffIds !== null && staffIds.length === 0) {
+      return successResponse([]);
     }
     
     // Build staff query with optional location filter
@@ -168,8 +165,7 @@ export async function GET(request: NextRequest) {
       )
       .eq("provider_id", providerId);
     
-    // If location_id is provided, filter by staff IDs
-    if (locationId && staffIds && staffIds.length > 0) {
+    if (staffIds && staffIds.length > 0) {
       staffQuery = staffQuery.in("id", staffIds);
     }
     
@@ -312,8 +308,8 @@ const addStaffSchema = z.object({
   name: z.string().optional(),
   phone: z.string().optional().nullable(),
   mobileReady: z.boolean().optional().default(false),
-  /** Assign staff to these locations (optional). If provided, must be valid provider location IDs. */
-  location_ids: z.array(z.string().uuid()).optional().default([]),
+  /** Assign staff to these locations. Omitted = all active locations so they appear on branch calendars. */
+  location_ids: z.array(z.string().uuid()).optional(),
   /** Assign staff to these services (optional). */
   service_ids: z.array(z.string().uuid()).optional().default([]),
   /** Commission rate 0–100 (optional). */
@@ -375,7 +371,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const { email, role, name, phone, mobileReady, location_ids, service_ids, commission_rate, invite_email } = validationResult.data;
+    const {
+      role,
+      name,
+      phone,
+      mobileReady,
+      location_ids,
+      service_ids,
+      commission_rate,
+      invite_email,
+    } = validationResult.data;
+    const email = validationResult.data.email.trim().toLowerCase();
 
     // Map API role format to database role format
     // API uses: provider_staff, provider_manager, provider_owner
@@ -384,12 +390,9 @@ export async function POST(request: Request) {
                  : role === "provider_manager" ? "manager" 
                  : "employee";
 
-    // Find user by email or create if doesn't exist
-    let { data: foundUser, error: _findUserError } = await supabase
-      .from("users")
-      .select("id, full_name, email, phone")
-      .eq("email", email)
-      .maybeSingle();
+    // Find user by email (case-insensitive, admin bypasses RLS) or create if doesn't exist
+    const supabaseAdmin = getSupabaseAdmin();
+    let foundUser = await findPublicUserByEmailAdmin(supabaseAdmin, email);
 
     if (!foundUser) {
       // User doesn't exist - we need to create an auth user first
@@ -404,13 +407,6 @@ export async function POST(request: Request) {
             500
           );
         }
-
-        const supabaseAdmin = getSupabaseAdmin();
-
-        const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
-        if (!providerId) return notFoundResponse("Provider not found");
-
 
         // Create auth user with a temporary password (user will need to reset)
         const tempPassword = `Temp${Math.random().toString(36).slice(-12)}!`;
@@ -428,15 +424,23 @@ export async function POST(request: Request) {
         });
 
         if (authError || !authUser?.user) {
-          console.error("Failed to create auth user:", authError);
-          return errorResponse(
-            `Failed to create user account: ${authError?.message || "Unknown error"}. The user may need to sign up first.`,
-            "USER_CREATION_ERROR",
-            500,
-            authError
-          );
-        }
-
+          if (isAuthUserAlreadyRegistered(authError)) {
+            for (let i = 0; i < 5; i++) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              foundUser = await findPublicUserByEmailAdmin(supabaseAdmin, email);
+              if (foundUser) break;
+            }
+          }
+          if (!foundUser) {
+            console.error("Failed to create auth user:", authError);
+            return errorResponse(
+              `Failed to create user account: ${authError?.message || "Unknown error"}. The user may need to sign up first.`,
+              "USER_CREATION_ERROR",
+              500,
+              authError
+            );
+          }
+        } else {
         console.log("Auth user created, waiting for trigger...", authUser.user.id);
 
         // Wait a moment for the trigger to create the user record
@@ -522,6 +526,7 @@ export async function POST(request: Request) {
 
         console.log("User profile found:", createdUser.id);
         foundUser = createdUser;
+        }
       } catch (error: unknown) {
         console.error("Error creating user:", error);
         const message = error instanceof Error ? error.message : "Unknown error";
@@ -556,7 +561,7 @@ export async function POST(request: Request) {
         provider_id: providerId,
         user_id: foundUser.id,
         name: staffName,
-        email: foundUser.email,
+        email: email,
         phone: staffPhone,
         role: dbRole,
         permissions: defaultPermissions,
@@ -585,15 +590,24 @@ export async function POST(request: Request) {
     console.log("Staff member created successfully:", newStaff.id);
     const staffId = newStaff.id;
 
-    // Assign locations if provided
-    if (location_ids && location_ids.length > 0) {
+    let effectiveLocationIds = location_ids ?? [];
+    if (effectiveLocationIds.length === 0) {
+      const { data: allLocs } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("is_active", true);
+      effectiveLocationIds = (allLocs ?? []).map((l: { id: string }) => l.id);
+    }
+
+    if (effectiveLocationIds.length > 0) {
       const { data: locs } = await supabase
         .from("provider_locations")
         .select("id")
         .eq("provider_id", providerId)
-        .in("id", location_ids);
+        .in("id", effectiveLocationIds);
       if (locs && locs.length > 0) {
-        const assignments = location_ids
+        const assignments = effectiveLocationIds
           .filter((id) => locs.some((l: { id: string }) => l.id === id))
           .map((locId, i) => ({
             staff_id: staffId,
@@ -673,7 +687,7 @@ export async function POST(request: Request) {
       is_active: newStaff.is_active ?? true,
       mobileReady: (newStaff as { mobile_ready?: boolean }).mobile_ready ?? false,
       commission_rate: commission_rate != null ? Number(commission_rate) : null,
-      locations: location_ids.map((locId, i) => ({
+      locations: effectiveLocationIds.map((locId, i) => ({
         location_id: locId,
         location_name: null,
         location_city: null,

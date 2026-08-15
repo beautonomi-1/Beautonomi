@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 import { z } from "zod";
 
 const createTimeBlockSchema = z.object({
@@ -74,20 +75,8 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // When location_id is provided, restrict to staff assigned to that location
-    let staffIdsAtLocation: string[] | null = null;
-    if (locationId) {
-      const { data: assignments, error: assignmentError } = await supabase
-        .from("provider_staff_locations")
-        .select("staff_id")
-        .eq("location_id", locationId);
-      if (assignmentError) throw assignmentError;
-      staffIdsAtLocation = assignments?.map((a) => a.staff_id) ?? [];
-      // No rows in provider_staff_locations for this salon: do not hide all blocks — show provider-wide + unassigned.
-      if (staffIdsAtLocation.length === 0) {
-        staffIdsAtLocation = null;
-      }
-    }
+    const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
+    const staffIdsAtLocation = scope.staffIds;
 
     const selectColumns = `
         id,
@@ -109,10 +98,13 @@ export async function GET(request: NextRequest) {
       if (staffId) {
         return q.eq("staff_id", staffId);
       }
-      if (staffIdsAtLocation && staffIdsAtLocation.length > 0) {
-        return q.or(`staff_id.is.null,staff_id.in.(${staffIdsAtLocation.join(",")})`);
+      if (staffIdsAtLocation === null) {
+        return q;
       }
-      return q;
+      if (staffIdsAtLocation.length === 0) {
+        return q.is("staff_id", null);
+      }
+      return q.or(`staff_id.is.null,staff_id.in.(${staffIdsAtLocation.join(",")})`);
     };
 
     let timeBlocks: any[] = [];

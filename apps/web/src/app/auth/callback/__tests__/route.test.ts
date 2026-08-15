@@ -70,6 +70,28 @@ describe("GET /auth/callback", () => {
     });
   }, 30_000);
 
+  it("forwards a safe next path onto reset-password for staff join recovery", async () => {
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: {
+        verifyOtp: mockVerifyOtp,
+      },
+    });
+
+    const { GET } = await import("../route");
+    const req = new NextRequest(
+      "https://app.example.com/auth/callback?token_hash=abc123&type=recovery&next=%2Fprovider%2Fjoin%3Ftoken%3Dabc",
+    );
+    const res = await GET(req);
+
+    expect(res.status).toBe(307);
+    const location = res.headers.get("location") ?? "";
+    expect(location.startsWith("https://app.example.com/account-settings/login-and-security/reset-password")).toBe(
+      true,
+    );
+    expect(location).toContain("next=%2Fprovider%2Fjoin%3Ftoken%3Dabc");
+  }, 30_000);
+
   it("redirects to login with error when token_hash and type=recovery but verifyOtp fails", async () => {
     const mockVerifyOtp = vi.fn().mockResolvedValue({
       error: { message: "Invalid or expired link" },

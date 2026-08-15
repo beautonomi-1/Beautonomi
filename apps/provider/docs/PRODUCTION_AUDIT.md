@@ -65,7 +65,7 @@
 - **ErrorBoundary:** Wraps root in `_layout.tsx`; componentDidCatch → captureError (Sentry) + fallback UI “Something went wrong” + “Tap to retry”.
 - **Sentry:** init in root (DSN from extra/process.env); `enabled: !__DEV__`; environment dev/production; beforeSend strips user.ip_address; root layout wrapped with Sentry.wrap().
 - **OfflineBar:** Shown when offline (NetInfo).
-- **ForceUpdateGate:** useForceUpdate checks `/api/public/app-version`; force or optional update alerts with store links (iOS placeholder id: `id0000000000` – replace for production).
+- **ForceUpdateGate:** useForceUpdate checks `/api/public/app-version`; force or optional update alerts with store links via `openAppStoreUpdate` (iOS listing `id6748387936`, Play `com.beautonomi.partner`).
 
 ---
 
@@ -90,7 +90,7 @@
 ## 7. Recommendations
 
 1. **iOS push (production):** Verify production builds use production APNs (aps-environment: production) via EAS credentials.
-2. **Store URLs:** useForceUpdate.ts uses placeholder iOS app id `id0000000000`. Replace with real App Store ID when published (e.g. from ascAppId or store listing).
+2. **Store URLs:** iOS listing defaults to `id6748387936` (`IOS_APP_STORE_ID` / EAS). Confirm EAS `EXPO_PUBLIC_IOS_APP_STORE_ID` matches App Store Connect.
 3. **E2E / smoke:** Add a minimal smoke test (e.g. open app, login redirect or dashboard loads) if not already in CI.
 4. **Changelog / release notes:** Keep a short CHANGELOG or release notes for store submissions.
 
@@ -103,9 +103,8 @@
 - [ ] Run `pnpm typecheck` and `pnpm lint` in apps/provider.
 - [ ] Build: `eas build --profile production --platform ios` (and android); test install.
 - [ ] Confirm OneSignal and Sentry in production mode for production builds.
-- [ ] Verify OAuth (Google/Apple) redirect and callback in production.
-- [ ] Verify forgot-password flow (redirectTo uses APP_URL/auth/callback).
-- [ ] Replace placeholder iOS app ID in useForceUpdate if needed.
+- [ ] Verify OAuth (Google/Apple) redirect and callback in production. iOS Sign in with Apple needs the App ID capability, regenerated provisioning profile (`com.apple.developer.applesignin`), and a new EAS iOS build.
+- [ ] Confirm iOS listing ID `6748387936` is set in EAS (`EXPO_PUBLIC_IOS_APP_STORE_ID`).
 
 ---
 

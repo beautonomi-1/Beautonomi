@@ -10,6 +10,7 @@ import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
 import { getCachedPortal, getPersistedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
+import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -828,7 +829,7 @@ export default function Index() {
             Couldn&apos;t load your salon membership
           </Text>
           <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
-            Your account is signed in, but we couldn&apos;t attach a business profile. Try again, or ask the owner to resend your staff invite.
+            Your account is signed in, but we couldn&apos;t attach a business profile. Retry, start your own business, or ask the owner to resend your invite.
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -840,6 +841,24 @@ export default function Index() {
             <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => {
+              clearPortalCache();
+              void persistActiveProviderOrgHint(session?.user?.id, null);
+              setNeedsOnboarding(true);
+              setHasProfile(false);
+            }}
+            style={{
+              borderWidth: 1,
+              borderColor: Colors.primary,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Start my own business</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => signOut().catch(() => undefined)}
             style={{ paddingHorizontal: 24, paddingVertical: 12 }}
           >
@@ -848,7 +867,7 @@ export default function Index() {
         </View>
       );
     }
-    return <Redirect href={"/(app)/onboarding" as never} />;
+    return <Redirect href={"/(app)/onboarding/wizard" as never} />;
   }
 
   // §Release-audit 2026-04: parity with web `getDefaultRouteForPortal`. Even

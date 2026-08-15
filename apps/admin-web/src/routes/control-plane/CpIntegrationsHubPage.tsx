@@ -13,6 +13,7 @@ import {
   Smartphone,
   CreditCard,
   Rocket,
+  Truck,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -21,6 +22,12 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { CpBack } from "./cpShared";
 
 const cards: { title: string; description: string; to: string; icon: typeof BarChart3 }[] = [
+  {
+    title: "Courier shipping",
+    description: "Live Courier Guy / Bob Go / Aramex keys and booking gate",
+    to: adminSpaTo("/admin/integrations/shipping"),
+    icon: Truck,
+  },
   {
     title: "Amplitude",
     description: "Product analytics API configuration",

@@ -303,7 +303,73 @@ function usePushRegistration() {
   const registeredRef = useRef(false);
   const lastRegisteredPlayerIdRef = useRef<string | null>(null);
   const oneSignalInitKeyRef = useRef<string | null>(null);
+  /**
+   * A rejected registration cannot be fixed by retrying with the same session,
+   * so the 3s/10s/30s retry ladder below stops after one. Cleared on user change
+   * and on every foreground, which is where the session can actually change.
+   */
+  const authRejectedRef = useRef(false);
   const [appId, setAppId] = useState<string | null>(null);
+  const userId = user?.id ?? null;
+
+  /**
+   * The only path to POST /api/me/devices. Every registration trigger (initial
+   * subscription, the post-onboarding retry ladder, and the foreground
+   * re-register) funnels through here so a single rejection latches them all off
+   * instead of each one re-deciding what to do about a 401/403.
+   */
+  const registerDevice = useCallback(
+    async (playerId: string, source: string): Promise<void> => {
+      if (!userId) return;
+      const normalizedPlayerId = playerId.trim();
+      if (!normalizedPlayerId) return;
+      if (registeredRef.current && lastRegisteredPlayerIdRef.current === normalizedPlayerId) return;
+      if (authRejectedRef.current) return;
+      try {
+        const platform = Platform.OS === "ios" ? "ios" : "android";
+        const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
+          player_id: normalizedPlayerId,
+          platform,
+          app_type: "customer",
+        });
+        const status = (res.error as { status?: number } | undefined)?.status;
+        if (status === 401 || status === 403) {
+          // The api client already refreshed the token and retried once before
+          // surfacing this, so retrying again with the same session cannot help.
+          authRejectedRef.current = true;
+          addBreadcrumb("Device register deferred (not authorized)", "push_notifications", {
+            code: res.error?.code,
+            source,
+            status,
+          });
+          return;
+        }
+        if (!res.error) {
+          registeredRef.current = true;
+          lastRegisteredPlayerIdRef.current = normalizedPlayerId;
+          void setRegisteredPlayerId(userId, normalizedPlayerId);
+        } else if (isTransientApiFailure(res.error)) {
+          // The POST often gets torn down on resume after the app was suspended
+          // mid-flight (iOS freezes the request, the 30s timeout fires overdue →
+          // TIMEOUT/CANCELLED). The foreground re-register effect retries, so
+          // keep a breadcrumb instead of spamming Sentry with a false error.
+          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
+            code: res.error.code,
+            source,
+          });
+        } else {
+          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+            scope: "push_notifications:device_register",
+            code: res.error.code,
+            source,
+          });
+        }
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register", source });
+      }
+    },
+    [userId],
+  );
 
   // §Customer-audit 2026-04: reset registration guard whenever the
   // authenticated user id changes, not just on sign-out. Previously if
@@ -321,6 +387,7 @@ function usePushRegistration() {
       registeredRef.current = false;
       lastRegisteredPlayerIdRef.current = null;
       oneSignalInitKeyRef.current = null;
+      authRejectedRef.current = false;
       lastUserIdRef.current = nextUserId;
     }
   }, [user?.id]);
@@ -353,42 +420,6 @@ function usePushRegistration() {
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
     if (gate.phase === "loading") return;
-
-    const registerWithBackend = async (playerId: string, source: string) => {
-      const normalizedPlayerId = playerId.trim();
-      if (!normalizedPlayerId) return;
-      if (registeredRef.current && lastRegisteredPlayerIdRef.current === normalizedPlayerId) return;
-      try {
-        const platform = Platform.OS === "ios" ? "ios" : "android";
-        const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
-          player_id: normalizedPlayerId,
-          platform,
-          app_type: "customer",
-        });
-        if (!res.error) {
-          registeredRef.current = true;
-          lastRegisteredPlayerIdRef.current = normalizedPlayerId;
-          void setRegisteredPlayerId(user.id, normalizedPlayerId);
-        } else if (isTransientApiFailure(res.error)) {
-          // The POST often gets torn down on resume after the app was suspended
-          // mid-flight (iOS freezes the request, the 30s timeout fires overdue →
-          // TIMEOUT/CANCELLED). The foreground re-register effect retries, so
-          // keep a breadcrumb instead of spamming Sentry with a false error.
-          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
-            code: res.error.code,
-            source,
-          });
-        } else {
-          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
-            scope: "push_notifications:device_register",
-            code: res.error.code,
-            source,
-          });
-        }
-      } catch (err) {
-        captureError(err, { scope: "push_notifications:device_register", source });
-      }
-    };
 
     let unsubscribe: (() => void) | undefined;
 
@@ -475,7 +506,7 @@ function usePushRegistration() {
             evt?.subscription?.token?.trim() ||
             "";
           if (!nextId) return;
-          await registerWithBackend(nextId, "subscription_change");
+          await registerDevice(nextId, "subscription_change");
           // The subscription now exists — re-assert external-id binding so
           // alias-targeted pushes reach this exact identity (not just broadcasts).
           if (user) await ensureOneSignalExternalId(user.id);
@@ -492,13 +523,13 @@ function usePushRegistration() {
 
         const subId = await getOneSignalSubscriptionId();
         if (subId) {
-          await registerWithBackend(subId, "initial_subscription");
+          await registerDevice(subId, "initial_subscription");
         } else {
           SUBSCRIPTION_RETRY_DELAYS_MS.forEach((delay) => {
             const timeoutId = setTimeout(async () => {
             try {
               const id = await getOneSignalSubscriptionId();
-                if (id) await registerWithBackend(id, `retry_${delay}`);
+                if (id) await registerDevice(id, `retry_${delay}`);
             } catch {
               // ignore
             }
@@ -521,7 +552,7 @@ function usePushRegistration() {
     return () => {
       unsubscribe?.();
     };
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 
   // After first-run onboarding completes, register device if the user just granted push in the sheet.
   useEffect(() => {
@@ -532,34 +563,11 @@ function usePushRegistration() {
     let timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     const tryRegister = async () => {
-      if (cancelled || registeredRef.current) return;
+      if (cancelled || registeredRef.current || authRejectedRef.current) return;
       try {
         const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
-        const platform = Platform.OS === "ios" ? "ios" : "android";
-        const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
-          player_id: id,
-          platform,
-          app_type: "customer",
-        });
-        if (!res.error) {
-          registeredRef.current = true;
-          lastRegisteredPlayerIdRef.current = id.trim();
-          // Persist so the foreground re-register effect sees this id as
-          // already-registered and doesn't re-POST /api/me/devices on next focus.
-          void setRegisteredPlayerId(user.id, id.trim());
-        } else if (isTransientApiFailure(res.error)) {
-          // Backgrounded mutation torn down on resume — the foreground
-          // re-register effect retries; don't surface a false error.
-          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
-            code: res.error.code,
-          });
-        } else {
-          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
-            scope: "push_notifications:device_register",
-            code: res.error.code,
-          });
-        }
+        await registerDevice(id, "post_onboarding_gate");
       } catch (err) {
         captureError(err, { scope: "push_notifications:device_register" });
       }
@@ -572,7 +580,7 @@ function usePushRegistration() {
       cancelled = true;
       timeoutIds.forEach(clearTimeout);
     };
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 
   // §Push-reliability: re-check the subscription on every foreground. The OS can
   // rotate the OneSignal subscription id while the app is backgrounded, and an
@@ -589,6 +597,9 @@ function usePushRegistration() {
       if (state !== "active") return;
       void (async () => {
         try {
+          // A foreground is where the session may have changed, so give a
+          // previously-rejected registration one fresh attempt.
+          authRejectedRef.current = false;
           await ensureOneSignalInitialized(appId, uid);
           // Heal a mis-bound external id on foreground (covers the case where the
           // initial login raced ahead of subscription creation).
@@ -602,24 +613,14 @@ function usePushRegistration() {
             registeredRef.current = true;
             return;
           }
-          const platform = Platform.OS === "ios" ? "ios" : "android";
-          const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
-            player_id: id,
-            platform,
-            app_type: "customer",
-          });
-          if (!res.error) {
-            registeredRef.current = true;
-            lastRegisteredPlayerIdRef.current = id;
-            void setRegisteredPlayerId(uid, id);
-          }
+          await registerDevice(id, "foreground_reregister");
         } catch (err) {
           captureError(err, { scope: "push_notifications:foreground_reregister" });
         }
       })();
     });
     return () => sub.remove();
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 }
 
 /**

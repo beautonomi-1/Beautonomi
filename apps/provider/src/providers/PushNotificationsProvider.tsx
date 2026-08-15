@@ -6,7 +6,7 @@
  * Handles notification tap deep links via expo-router.
  * Notification templates are configured from the superadmin portal.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, DeviceEventEmitter, Platform, Vibration } from "react-native";
 import { router } from "expo-router";
 import type {
@@ -233,15 +233,89 @@ function usePushRegistration() {
   // stalls the app on the splash screen). Instead we mirror the role via the
   // `PROVIDER_ROLE_CHANGED_EVENT` broadcast emitted by `ProviderContext`.
   const [role, setRole] = useState<string | null>(null);
+  const roleRef = useRef<string | null>(null);
   const registeredRef = useRef(false);
   const lastRegisteredPlayerIdRef = useRef<string | null>(null);
   const oneSignalInitKeyRef = useRef<string | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
-  const roleRetryPendingRef = useRef(false);
-  const registerWithBackendRef = useRef<
-    ((playerId: string, source: string) => Promise<void>) | null
-  >(null);
+  /**
+   * The role that `/api/provider/devices` rejected, wrapped so that "rejected
+   * while the role was still unknown" (`{ role: null }`) stays distinct from
+   * "never rejected" (`null`).
+   *
+   * Keyed on the rejected role rather than on a list of accepted roles: the route
+   * also accepts `provider_onboarding`, so gating retries on
+   * `isProviderApiRole()` would leave a signup that first failed as `customer`
+   * unable to register for the whole onboarding and pending-approval phase.
+   * Any role change is enough to justify one more attempt.
+   */
+  const registerRejectedForRoleRef = useRef<{ role: string | null } | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
+  const userId = user?.id ?? null;
+
+  /**
+   * The only path to POST /api/provider/devices. That route is role-gated, so it
+   * can reject for part of the onboarding wizard — every retry timer below
+   * funnels through here so a single rejection latches them all off until the
+   * role changes. Previously each timer POSTed directly and kept retrying a
+   * request that could not succeed.
+   */
+  const registerDevice = useCallback(
+    async (playerId: string, source: string): Promise<void> => {
+      if (!userId) return;
+      const normalizedPlayerId = playerId.trim();
+      if (!normalizedPlayerId) return;
+      if (registeredRef.current && lastRegisteredPlayerIdRef.current === normalizedPlayerId) return;
+      const rejected = registerRejectedForRoleRef.current;
+      if (rejected && rejected.role === roleRef.current) return;
+      try {
+        const platform = Platform.OS === "ios" ? "ios" : "android";
+        const res = await api.post<{ registered?: boolean }>("/api/provider/devices", {
+          player_id: normalizedPlayerId,
+          platform,
+        });
+        if (!res.error) {
+          registeredRef.current = true;
+          lastRegisteredPlayerIdRef.current = normalizedPlayerId;
+          void setRegisteredPlayerId(userId, normalizedPlayerId);
+          return;
+        }
+        const status = (res.error as { status?: number }).status;
+        if (status === 401 || status === 403) {
+          // During fresh provider signup the user stays `customer` until
+          // onboarding upgrades the role. Defer rather than retry.
+          const alreadyDeferred = registerRejectedForRoleRef.current !== null;
+          registerRejectedForRoleRef.current = { role: roleRef.current };
+          if (!alreadyDeferred) {
+            addBreadcrumb("Device register deferred (role not ready)", "push_notifications", {
+              code: res.error.code,
+              role: roleRef.current,
+              source,
+              status,
+            });
+          }
+          return;
+        }
+        const code = res.error.code;
+        const transient = isTransientApiFailure(res.error) && code !== "DEVICE_REGISTRATION_FAILED";
+        if (transient) {
+          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
+            code,
+          });
+        } else {
+          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+            scope: "push_notifications:device_register",
+            code,
+            source,
+            status,
+          });
+        }
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register", source });
+      }
+    },
+    [userId],
+  );
 
   // Mirror the provider role broadcast by `ProviderContext`. ProviderContext is
   // mounted below this provider, so role updates always arrive after this
@@ -250,21 +324,23 @@ function usePushRegistration() {
     const sub = DeviceEventEmitter.addListener(
       PROVIDER_ROLE_CHANGED_EVENT,
       (payload: ProviderRoleChangedPayload) => {
-        setRole(payload?.role ?? null);
+        const next = payload?.role ?? null;
+        roleRef.current = next;
+        setRole(next);
       },
     );
     return () => sub.remove();
   }, []);
 
   useEffect(() => {
-    const userId = user?.id ?? null;
     if (lastUserIdRef.current !== userId) {
       registeredRef.current = false;
       lastRegisteredPlayerIdRef.current = null;
       oneSignalInitKeyRef.current = null;
+      registerRejectedForRoleRef.current = null;
       lastUserIdRef.current = userId;
     }
-  }, [user?.id]);
+  }, [userId]);
 
   // Resolve OneSignal app id (superadmin config with env fallback).
   useEffect(() => {
@@ -296,61 +372,6 @@ function usePushRegistration() {
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
     if (gate.phase === "loading") return;
-
-    const registerWithBackend = async (playerId: string, source: string) => {
-      const normalizedPlayerId = playerId.trim();
-      if (!normalizedPlayerId) return;
-      if (registeredRef.current && lastRegisteredPlayerIdRef.current === normalizedPlayerId) return;
-      try {
-        const platform = Platform.OS === "ios" ? "ios" : "android";
-        const res = await api.post<{ registered?: boolean }>(
-          "/api/provider/devices",
-          {
-            player_id: normalizedPlayerId,
-            platform,
-          },
-        );
-        if (res.error) {
-          const status = (res.error as { status?: number }).status;
-          if (status === 401 || status === 403) {
-            // During fresh provider signup the user can still be `customer` until
-            // onboarding completes/upgrades role. Skip noisy hard errors here.
-            roleRetryPendingRef.current = true;
-            addBreadcrumb(
-              "Device register skipped (role not ready)",
-              "push_notifications",
-              { code: res.error.code, source, status },
-            );
-            return;
-          }
-          const code = res.error.code;
-          const transient =
-            isTransientApiFailure(res.error) &&
-            code !== "DEVICE_REGISTRATION_FAILED";
-          if (transient) {
-            addBreadcrumb(
-              "Device register skipped (transient network)",
-              "push_notifications",
-              { code },
-            );
-          } else {
-            captureError(new Error(`Device registration rejected: ${res.error.message}`), {
-              scope: "push_notifications:device_register",
-              code,
-              source,
-              status,
-            });
-          }
-        } else {
-          registeredRef.current = true;
-          lastRegisteredPlayerIdRef.current = normalizedPlayerId;
-          void setRegisteredPlayerId(user.id, normalizedPlayerId);
-        }
-      } catch (err) {
-        captureError(err, { scope: "push_notifications:device_register", source });
-      }
-    };
-    registerWithBackendRef.current = registerWithBackend;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -451,7 +472,7 @@ function usePushRegistration() {
             evt?.subscription?.token?.trim() ||
             "";
           if (!nextId) return;
-          await registerWithBackend(nextId, "subscription_change");
+          await registerDevice(nextId, "subscription_change");
           // The subscription now exists — re-assert external-id binding so
           // alias-targeted pushes reach this exact identity (not just broadcasts).
           if (user) await ensureOneSignalExternalId(user.id);
@@ -466,13 +487,13 @@ function usePushRegistration() {
 
         const subId = await getOneSignalSubscriptionId();
         if (subId) {
-          await registerWithBackend(subId, "initial_subscription");
+          await registerDevice(subId, "initial_subscription");
         } else {
           SUBSCRIPTION_RETRY_DELAYS_MS.forEach((delay) => {
             const timeoutId = setTimeout(async () => {
             try {
               const retryId = await getOneSignalSubscriptionId();
-                if (retryId) await registerWithBackend(retryId, `retry_${delay}`);
+                if (retryId) await registerDevice(retryId, `retry_${delay}`);
             } catch {
               // ignore
             }
@@ -495,7 +516,7 @@ function usePushRegistration() {
     return () => {
       unsubscribe?.();
     };
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
@@ -510,21 +531,7 @@ function usePushRegistration() {
         await import("react-native-onesignal");
         const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
-        const platform = Platform.OS === "ios" ? "ios" : "android";
-        const res = await api.post<{ registered?: boolean }>(
-          "/api/provider/devices",
-          {
-            player_id: id,
-            platform,
-          },
-        );
-        if (!res.error) {
-          registeredRef.current = true;
-          lastRegisteredPlayerIdRef.current = id.trim();
-          // Persist so the foreground re-register effect treats this id as
-          // already-registered and doesn't re-POST /api/provider/devices.
-          void setRegisteredPlayerId(user.id, id.trim());
-        }
+        await registerDevice(id, "post_onboarding_gate");
       } catch (err) {
         captureError(err, { scope: "push_notifications:device_register_retry" });
       }
@@ -537,7 +544,7 @@ function usePushRegistration() {
       cancelled = true;
       timeoutIds.forEach(clearTimeout);
     };
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 
   // §Push-reliability: re-check the subscription on every foreground. The OS can
   // rotate the OneSignal subscription id while the app is backgrounded, and an
@@ -567,42 +574,34 @@ function usePushRegistration() {
             registeredRef.current = true;
             return;
           }
-          const platform = Platform.OS === "ios" ? "ios" : "android";
-          const res = await api.post<{ registered?: boolean }>("/api/provider/devices", {
-            player_id: id,
-            platform,
-          });
-          if (!res.error) {
-            registeredRef.current = true;
-            lastRegisteredPlayerIdRef.current = id;
-            void setRegisteredPlayerId(uid, id);
-          }
+          await registerDevice(id, "foreground_reregister");
         } catch (err) {
           captureError(err, { scope: "push_notifications:foreground_reregister" });
         }
       })();
     });
     return () => sub.remove();
-  }, [appId, user, gate]);
+  }, [appId, user, gate, registerDevice]);
 
-  // Retry device registration once the user's role upgrades after signup.
+  // Registration was rejected for the previous role — re-arm it now that the
+  // role has changed, since the new one may well be accepted.
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
-    if (!roleRetryPendingRef.current) return;
-    if (role !== "provider_owner" && role !== "provider_staff" && role !== "superadmin") return;
-    roleRetryPendingRef.current = false;
+    const rejected = registerRejectedForRoleRef.current;
+    if (!rejected || rejected.role === role) return;
+    registerRejectedForRoleRef.current = null;
     void (async () => {
       try {
         await ensureOneSignalInitialized(appId, user.id);
         const id = await getOneSignalSubscriptionId();
-        if (id && registerWithBackendRef.current) {
-          await registerWithBackendRef.current(id, "role_upgrade_retry");
+        if (id) {
+          await registerDevice(id, "role_upgrade_retry");
         }
       } catch {
         // Non-fatal; foreground re-register will retry.
       }
     })();
-  }, [appId, user, role]);
+  }, [appId, user, role, registerDevice]);
 }
 
 /**

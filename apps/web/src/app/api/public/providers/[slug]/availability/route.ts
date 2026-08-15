@@ -14,6 +14,11 @@ import {
   isDateBeyondMaxAdvance,
   loadEffectiveOnlineBookingWindows,
 } from "@/lib/provider-booking/public-online-booking-windows";
+import {
+  isStaffInLocationScope,
+  listActiveStaffIdsForLocation,
+  resolveStaffLocationScope,
+} from "@/lib/provider/staff-location-scope";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -170,15 +175,16 @@ export async function GET(
 
     let staffList: Array<{ id: string }> = [];
     if (anyoneMode) {
-      const { data: allStaff, error: staffListError } = await supabase
-        .from("provider_staff")
-        .select("id")
-        .eq("provider_id", provider.id)
-        .eq("is_active", true);
-      if (!staffListError && allStaff) {
-        staffList = allStaff
-          .map((s) => ({ id: s.id }))
-          .sort((a, b) => a.id.localeCompare(b.id));
+      const scopedIds = await listActiveStaffIdsForLocation(
+        supabase,
+        provider.id,
+        locationId,
+      );
+      staffList = scopedIds.map((id) => ({ id })).sort((a, b) => a.id.localeCompare(b.id));
+    } else if (staffId && locationId) {
+      const scope = await resolveStaffLocationScope(supabase, provider.id, locationId);
+      if (!isStaffInLocationScope(staffId, scope)) {
+        return NextResponse.json({ data: { slots: [] }, error: null });
       }
     }
 

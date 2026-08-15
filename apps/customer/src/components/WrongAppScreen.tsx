@@ -24,11 +24,15 @@ const APP_URL = process.env.EXPO_PUBLIC_APP_URL ?? "";
  * (set per-market in EAS) so the same binary works for ZA, NG, etc.
  */
 const PROVIDER_SCHEME = "provider://";
-const PROVIDER_STORE_URL =
-  process.env.EXPO_PUBLIC_PROVIDER_STORE_URL ??
-  (Platform.OS === "ios"
-    ? "https://apps.apple.com/app/beautonomi-partner/id0000000000"
-    : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
+const PLAY_PROVIDER_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.beautonomi.partner";
+
+function providerStoreUrl(): string | null {
+  const explicit = process.env.EXPO_PUBLIC_PROVIDER_STORE_URL?.trim();
+  if (explicit) return explicit;
+  if (Platform.OS === "android") return PLAY_PROVIDER_STORE_URL;
+  return null;
+}
 
 function copyForPortal(portal: string): { heading: string; body: string; action: "open_provider" | "open_admin" | "other" } {
   if (portal === "admin") {
@@ -79,13 +83,18 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
   }, [action]);
 
   const openProvider = () => {
+    const storeUrl = providerStoreUrl();
     if (canOpenProvider) {
       Linking.openURL(PROVIDER_SCHEME).catch(() => {
-        Linking.openURL(PROVIDER_STORE_URL).catch(() => {});
+        if (storeUrl) Linking.openURL(storeUrl).catch(() => {});
       });
       return;
     }
-    Linking.openURL(PROVIDER_STORE_URL).catch(() => {});
+    if (storeUrl) {
+      Linking.openURL(storeUrl).catch(() => {});
+      return;
+    }
+    openWebCustomer();
   };
 
   const openWebCustomer = () => {
@@ -136,7 +145,11 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
             onPress={openProvider}
             accessibilityRole="button"
             accessibilityLabel={
-              canOpenProvider ? "Open Partner app" : "Install Partner app"
+              canOpenProvider
+                ? "Open Partner app"
+                : providerStoreUrl()
+                  ? "Install Partner app"
+                  : "Continue on web"
             }
             style={{
               marginBottom: 10,
@@ -149,7 +162,11 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
             }}
           >
             <Text style={{ color: Colors.white, fontWeight: "600" }}>
-              {canOpenProvider ? "Open Partner app" : "Install Partner app"}
+              {canOpenProvider
+                ? "Open Partner app"
+                : providerStoreUrl()
+                  ? "Install Partner app"
+                  : "Continue on web"}
             </Text>
           </Pressable>
           {APP_URL ? (

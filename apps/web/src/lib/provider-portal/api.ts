@@ -155,7 +155,7 @@ export interface ProviderApi {
 
   // Team
   listTeamMembers(locationId?: string): Promise<TeamMember[]>;
-  createTeamMember(data: Partial<TeamMember>): Promise<TeamMember>;
+  createTeamMember(data: Partial<TeamMember> & { location_ids?: string[] }): Promise<TeamMember>;
   updateTeamMember(id: string, data: Partial<TeamMember>): Promise<TeamMember>;
   deleteTeamMember(id: string): Promise<void>;
 
@@ -2391,7 +2391,7 @@ export class ProviderApiClient implements ProviderApi {
     }
   }
 
-  async createTeamMember(data: Partial<TeamMember>): Promise<TeamMember> {
+  async createTeamMember(data: Partial<TeamMember> & { location_ids?: string[] }): Promise<TeamMember> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.post<{ data: any }>("/api/provider/staff", {
@@ -2399,6 +2399,7 @@ export class ProviderApiClient implements ProviderApi {
         role: data.role === "owner" ? "provider_owner" : data.role === "manager" ? "provider_manager" : "provider_staff",
         name: data.name,
         phone: data.mobile,
+        ...(data.location_ids?.length ? { location_ids: data.location_ids } : {}),
       });
       
       const member = response.data;

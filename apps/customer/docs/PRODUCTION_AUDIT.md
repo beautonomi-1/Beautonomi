@@ -84,7 +84,7 @@
 ## 7. Recommendations
 
 1. **iOS push (production):** Verify that production builds use production APNs (aps-environment: production) via EAS credentials. If not, add an override in eas.json or use a production entitlements file.
-2. **Store URLs:** useForceUpdate.ts uses placeholder iOS app id `id0000000000`. Replace with real App Store ID when published.
+2. **Store URLs:** iOS listing defaults to `id6748387058` (`IOS_APP_STORE_ID` / EAS). Confirm EAS `EXPO_PUBLIC_IOS_APP_STORE_ID` matches App Store Connect.
 3. **E2E / smoke:** Add a minimal smoke test (e.g. open app, login redirect or home loads) if not already in CI.
 4. **Changelog / release notes:** Keep a short CHANGELOG or release notes for store submissions.
 
@@ -98,8 +98,8 @@
 - [ ] Build: `eas build --profile production --platform ios` (and android); test install.
 - [ ] Confirm OneSignal and Sentry in production mode for production builds.
 - [ ] Verify password reset flow (forgot-password → email link → web reset page).
-- [ ] Verify OAuth (Google/Apple) redirect and callback in production.
-- [ ] Replace placeholder iOS app ID in useForceUpdate if needed.
+- [ ] Verify OAuth (Google/Apple) redirect and callback in production. iOS Sign in with Apple needs the App ID capability, regenerated provisioning profile (`com.apple.developer.applesignin`), and a new EAS iOS build.
+- [ ] Confirm iOS listing ID `6748387058` is set in EAS (`EXPO_PUBLIC_IOS_APP_STORE_ID`).
 
 ---
 

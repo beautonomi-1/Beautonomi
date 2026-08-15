@@ -137,11 +137,14 @@ export default function TabsLayout() {
   }, [provider?.id, session?.user?.id, selectedLocationId]);
 
   useEffect(() => {
+    // No provider row means the nav-counts endpoints can only reject — don't
+    // hold a recurring timer open for them.
+    if (!provider?.id) return;
     const interval = setInterval(() => {
       refreshNavCountsDebounced.current();
     }, 25_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [provider?.id]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {

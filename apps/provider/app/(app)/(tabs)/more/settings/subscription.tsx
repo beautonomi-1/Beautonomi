@@ -37,8 +37,19 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { startPaidSubscriptionCheckout } from "@/lib/subscription/start-paid-checkout";
+import { startAppleSubscriptionCheckout } from "@/lib/subscription/start-apple-subscription-checkout";
+import { shouldUseAppleIap, isAppleBillingActive } from "@/lib/iap/platform";
+import {
+  openAppleSubscriptionManagement,
+  presentAppleOfferCodeSheet,
+  restoreApplePurchases,
+  syncUnfinishedApplePurchases,
+} from "@/lib/iap/apple-iap";
+import { useAppleIapProducts } from "@/lib/iap/useAppleIapProducts";
+import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
+import { pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
 
 const ACCENT = "#FF0077";
 
@@ -54,6 +65,7 @@ interface Plan {
   features: string[];
   is_popular?: boolean;
   is_free?: boolean;
+  apple_product_id?: string | null;
 }
 
 interface Subscription {
@@ -64,6 +76,10 @@ interface Subscription {
   auto_renew: boolean;
   plan_id: string;
   billing_period?: "monthly" | "yearly" | null;
+  billing_provider?: "paystack" | "apple" | "manual" | null;
+  apple_price_increase_status?: "pending" | "consented" | "none" | null;
+  ios_purchase_eligible?: boolean;
+  ios_purchase_eligible_reason?: string | null;
   /** Set when an admin changed the plan and Paystack needs alignment */
   paystack_sync_pending?: boolean | null;
   paystack_sync_note?: string | null;
@@ -135,6 +151,12 @@ function formatOptionPrice(plan: Plan): string {
   return `${formatCurrency(plan.amount, plan.currency)}/${period}`;
 }
 
+/** StoreKit displayPrice is a bare localized amount; Guideline 3.1.2 needs the period. */
+function formatAppleOptionPrice(displayPrice: string, billingPeriod: string): string {
+  const period = billingPeriod === "yearly" ? "year" : "month";
+  return `${displayPrice}/${period}`;
+}
+
 /** Price line for the member’s current subscription (respects billing_period). */
 function currentSubscriptionPriceLine(sub: Subscription | null): string | null {
   if (!sub?.plan) return null;
@@ -179,6 +201,12 @@ function statusLabel(sub: Subscription): string {
 
 function billingActionLabel(sub: Subscription | null): string | null {
   if (!sub) return null;
+  if (isAppleBillingActive(sub.billing_provider, sub.status)) {
+    if (sub.billing_issue?.action === "manage_apple") return "Open App Store subscriptions";
+    if (sub.cancelled_at) return "Manage in App Store";
+    if (sub.status === "past_due") return "Update in App Store";
+    return null;
+  }
   if (isFreeTierSubscription(sub) && subscriptionNeedsReactivation(sub)) {
     return "Reactivate free plan";
   }
@@ -273,6 +301,7 @@ type SubscriptionPaymentOutcome =
 
 export default function SubscriptionScreen() {
   const router = useRouter();
+  const { provider } = useProvider();
   const localParams = useLocalSearchParams<{
     payment_success?: string;
     payment_failed?: string;
@@ -292,6 +321,16 @@ export default function SubscriptionScreen() {
   const { data: plans, error: plansError } = useApi<Plan[]>("/api/provider/subscription/plans", {
     staleTimeMs: 0,
   });
+  const appleProductIds = useMemo(
+    () =>
+      (plans ?? [])
+        .map((p) => p.apple_product_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    [plans],
+  );
+  const { byId: appleStoreProducts } = useAppleIapProducts(appleProductIds);
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
+  const [redeemingOfferCode, setRedeemingOfferCode] = useState(false);
   const { execute: postAction } = useApiMutation("post");
   /**
    * §Provider-paystack-audit 2026-05: Paystack only honors HTTPS callback URLs,
@@ -443,7 +482,10 @@ export default function SubscriptionScreen() {
   useFocusEffect(
     useCallback(() => {
       refresh();
-    }, [refresh]),
+      if (shouldUseAppleIap() && provider?.id) {
+        void syncUnfinishedApplePurchases(provider.id);
+      }
+    }, [refresh, provider?.id]),
   );
 
   /**
@@ -497,6 +539,17 @@ export default function SubscriptionScreen() {
   }, [refresh]);
 
   async function handleCancel() {
+    if (isAppleBillingActive(subscription?.billing_provider, subscription?.status)) {
+      Alert.alert(
+        "Cancel in the App Store",
+        "Apple manages this subscription. Cancel at least 24 hours before the period ends in Apple ID → Subscriptions. You keep access until the current period ends.",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Open App Store", onPress: () => openAppleSubscriptionManagement() },
+        ],
+      );
+      return;
+    }
     Alert.alert(
       "Cancel subscription",
       "Your plan will remain active until the end of the current period. After that you will be moved to the free plan.",
@@ -520,6 +573,10 @@ export default function SubscriptionScreen() {
   }
 
   async function handleRenew() {
+    if (isAppleBillingActive(subscription?.billing_provider, subscription?.status)) {
+      openAppleSubscriptionManagement();
+      return;
+    }
     const priceLine = currentSubscriptionPriceLine(subscription);
     const confirmed = await requestReviewConfirm({
       heading: "Renewal",
@@ -593,6 +650,10 @@ export default function SubscriptionScreen() {
     }
 
     if (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due") {
+      if (isAppleBillingActive(subscription.billing_provider, subscription.status)) {
+        openAppleSubscriptionManagement();
+        return;
+      }
       try {
         const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
         if (linkErr) {
@@ -624,6 +685,11 @@ export default function SubscriptionScreen() {
       return;
     }
 
+    if (isAppleBillingActive(subscription?.billing_provider, subscription?.status)) {
+      openAppleSubscriptionManagement();
+      return;
+    }
+
     await handleRenew();
   }
 
@@ -635,6 +701,10 @@ export default function SubscriptionScreen() {
    * failure.
    */
   async function handleManageCard() {
+    if (isAppleBillingActive(subscription?.billing_provider, subscription?.status)) {
+      openAppleSubscriptionManagement();
+      return;
+    }
     setManagingCard(true);
     try {
       const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
@@ -661,7 +731,25 @@ export default function SubscriptionScreen() {
     const barePlanId = selectedPlan.plan_id || planId;
     const isPaidSelection = !(selectedPlan.is_free || selectedPlan.amount === 0);
 
+    if (
+      isAppleBillingActive(subscription?.billing_provider, subscription?.status) &&
+      !shouldUseAppleIap()
+    ) {
+      Alert.alert(
+        "App Store billing",
+        "This plan is billed through the App Store. Manage, change, or cancel it in Apple ID → Subscriptions to avoid a second charge.",
+      );
+      return;
+    }
+
     if (isPaidSelection) {
+      const appleDisplayPrice =
+        shouldUseAppleIap() && selectedPlan.apple_product_id
+          ? appleStoreProducts.get(selectedPlan.apple_product_id)?.displayPrice
+          : null;
+      const priceLabel = appleDisplayPrice
+        ? formatAppleOptionPrice(appleDisplayPrice, billingPeriod)
+        : formatOptionPrice(selectedPlan);
       const planFeatures = Array.isArray(selectedPlan.features)
         ? selectedPlan.features.map((f) => stripHtmlToPlainText(f)).filter(Boolean).slice(0, 5)
         : [];
@@ -672,13 +760,13 @@ export default function SubscriptionScreen() {
         lineItems: [
           {
             label: `${selectedPlan.name} (${billingPeriod === "yearly" ? "yearly" : "monthly"})`,
-            value: formatOptionPrice(selectedPlan),
+            value: priceLabel,
           },
-          { label: "Total due now", value: formatOptionPrice(selectedPlan) },
+          { label: "Total due now", value: priceLabel },
         ],
         benefits: planFeatures,
-        total: formatOptionPrice(selectedPlan),
-        confirmLabel: `Pay ${formatOptionPrice(selectedPlan)}`,
+        total: priceLabel,
+        confirmLabel: shouldUseAppleIap() ? `Subscribe ${priceLabel}` : `Pay ${priceLabel}`,
         recurring: true,
       });
       if (!confirmed) return;
@@ -705,7 +793,53 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      // Paid plans: match provider web — try Paystack subscription upgrade when authorization exists,
+      // iOS: StoreKit is the only permitted path for digital subscriptions.
+      // Never fall through to Paystack if a product ID or session is missing.
+      if (shouldUseAppleIap()) {
+        if (subscription?.ios_purchase_eligible === false) {
+          Alert.alert(
+            "Not available",
+            subscription.ios_purchase_eligible_reason ??
+              "In-app purchase is not available for this account. Use a free-tier review account, or manage an existing Paystack plan on Android or the web.",
+          );
+          return;
+        }
+        if (!provider?.id) {
+          Alert.alert("Error", "Your business account is still loading. Try again in a moment.");
+          return;
+        }
+        if (!selectedPlan.apple_product_id) {
+          Alert.alert(
+            "Not available",
+            "This plan is not mapped to an App Store product yet. Ask support to add the Apple product ID — iOS cannot check out through the web.",
+          );
+          return;
+        }
+        const checkoutStart = await startAppleSubscriptionCheckout({
+          subscriptionPlanId: barePlanId,
+          billingPeriod: billingPeriod as "monthly" | "yearly",
+          appleProductId: selectedPlan.apple_product_id,
+          providerId: provider.id,
+        });
+        if (!checkoutStart.ok) {
+          if (!checkoutStart.cancelled) {
+            Alert.alert("Error", checkoutStart.error);
+          }
+          return;
+        }
+        if (checkoutStart.alreadyActive) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Success", "Subscription updated!");
+          refresh();
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Subscription activated through the App Store.");
+        refresh();
+        return;
+      }
+
+      // Paid plans: Paystack on Android/web — try subscription upgrade when authorization exists,
       // otherwise initialize a checkout (first payment or new card).
       const checkoutStart = await startPaidSubscriptionCheckout({
         subscriptionPlanId: barePlanId,
@@ -778,6 +912,94 @@ export default function SubscriptionScreen() {
         outcome={paymentOutcome}
         onDismiss={() => setPaymentOutcome({ phase: "idle" })}
       />
+
+      {paidSubscriber && isAppleBillingActive(subscription.billing_provider, subscription.status) ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-blue-900")}>Billed through Apple</Text>
+          <Text style={twStyle("mt-1 text-sm leading-5 text-blue-900")}>
+            Your plan renews via the App Store. Manage, cancel, or accept a price change in Apple ID → Subscriptions.
+          </Text>
+        </View>
+      ) : null}
+
+      {paidSubscriber && subscription.apple_price_increase_status === "pending" ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-amber-900")}>Price increase needs your consent</Text>
+          <Text style={twStyle("mt-1 text-sm leading-5 text-amber-900")}>
+            Apple is asking you to accept a new price before this plan can renew. Open App Store subscriptions to consent or change plans.
+          </Text>
+          <TouchableOpacity
+            style={twStyle("mt-3 self-start rounded-xl bg-amber-900 px-4 py-2")}
+            onPress={() => openAppleSubscriptionManagement()}
+          >
+            <Text style={twStyle("text-sm font-semibold text-white")}>Open App Store subscriptions</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {shouldUseAppleIap() ? (
+        <View style={twStyle("mb-4 gap-2")}>
+          <TouchableOpacity
+            style={twStyle("flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+            onPress={async () => {
+              if (!provider?.id) return;
+              setRestoringPurchases(true);
+              try {
+                const result = await restoreApplePurchases(provider.id);
+                if (result.ok) {
+                  Alert.alert("Restore complete", "Your App Store purchases were synced.");
+                  refresh();
+                } else {
+                  Alert.alert("Restore failed", result.error ?? "Could not restore purchases.");
+                }
+              } finally {
+                setRestoringPurchases(false);
+              }
+            }}
+            disabled={restoringPurchases || redeemingOfferCode}
+          >
+            {restoringPurchases ? (
+              <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            )}
+            <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+              {restoringPurchases ? "Restoring…" : "Restore App Store purchases"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={twStyle("flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+            onPress={async () => {
+              if (!provider?.id) return;
+              setRedeemingOfferCode(true);
+              try {
+                const result = await presentAppleOfferCodeSheet(provider.id);
+                if (result.ok) {
+                  Alert.alert(
+                    "Offer code",
+                    "If the code is valid, Apple applies it to this Apple ID. Restore purchases if the plan does not update immediately.",
+                  );
+                  refresh();
+                } else {
+                  Alert.alert("Offer code", result.error ?? "Could not open the App Store offer-code sheet.");
+                }
+              } finally {
+                setRedeemingOfferCode(false);
+              }
+            }}
+            disabled={restoringPurchases || redeemingOfferCode}
+          >
+            {redeemingOfferCode ? (
+              <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            ) : (
+              <Ionicons name="gift-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            )}
+            <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+              {redeemingOfferCode ? "Opening…" : "Redeem App Store offer code"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {paidSubscriber && subscription?.paystack_sync_pending ? (
         <View
@@ -885,7 +1107,7 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {paidSubscriber ? (
+          {paidSubscriber && subscription.billing_provider !== "apple" ? (
             <TouchableOpacity
               style={twStyle("mt-4 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
               onPress={() => router.push("/(app)/(tabs)/more/settings/billing" as never)}
@@ -902,7 +1124,20 @@ export default function SubscriptionScreen() {
               reactive "Pay now / update card" CTA below only appears once
               something has already gone wrong, so this is the only way to
               proactively swap cards. */}
-          {paidSubscriber && !billingCta ? (
+          {paidSubscriber && !billingCta && isAppleBillingActive(subscription.billing_provider, subscription.status) ? (
+            <TouchableOpacity
+              style={twStyle("mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+              onPress={handleManageCard}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="logo-apple" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+                Manage in App Store
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {paidSubscriber && !billingCta && subscription.billing_provider !== "apple" ? (
             <TouchableOpacity
               style={twStyle("mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
               onPress={handleManageCard}
@@ -926,7 +1161,11 @@ export default function SubscriptionScreen() {
               onPress={handleCancel}
               activeOpacity={0.85}
             >
-              <Text style={twStyle("text-center text-sm font-semibold text-red-600")}>Cancel subscription</Text>
+              <Text style={twStyle("text-center text-sm font-semibold text-red-600")}>
+                {isAppleBillingActive(subscription.billing_provider, subscription.status)
+                  ? "Cancel in App Store"
+                  : "Cancel subscription"}
+              </Text>
             </TouchableOpacity>
           ) : null}
           {subscription.cancelled_at ? (
@@ -987,6 +1226,11 @@ export default function SubscriptionScreen() {
               subscription={subscription}
               upgradingId={upgradingId}
               onUpgrade={handleUpgrade}
+              appleDisplayPrice={
+                plan.apple_product_id
+                  ? appleStoreProducts.get(plan.apple_product_id)?.displayPrice
+                  : undefined
+              }
             />
           ))}
         </View>
@@ -995,6 +1239,39 @@ export default function SubscriptionScreen() {
       ) : (
         <EmptyState icon="pricetag-outline" title="No plans" description="Subscription plans will appear here." />
       )}
+
+      {shouldUseAppleIap() ? (
+        <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-4")}>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wider text-gray-500")}>
+            Auto-renewable subscription
+          </Text>
+          <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>
+            Payment is charged to your Apple ID. The subscription renews automatically unless you
+            cancel at least 24 hours before the end of the current period. Manage, cancel, or accept a
+            price change anytime in Apple ID → Subscriptions. Introductory offers configured in App
+            Store Connect apply automatically at checkout. Redeem a promotional or win-back offer code
+            with Redeem App Store offer code. Any unused portion of a free trial, if offered, is
+            forfeited when you purchase.
+          </Text>
+          <View style={twStyle("mt-3 flex-row flex-wrap items-center gap-x-3 gap-y-2")}>
+            <TouchableOpacity
+              onPress={() => pushWebTermsOfService(router)}
+              accessibilityRole="link"
+              accessibilityLabel="Terms of Use"
+            >
+              <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Terms of Use</Text>
+            </TouchableOpacity>
+            <Text style={twStyle("text-sm text-gray-400")}>·</Text>
+            <TouchableOpacity
+              onPress={() => pushWebPrivacyPolicy(router)}
+              accessibilityRole="link"
+              accessibilityLabel="Privacy Policy"
+            >
+              <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Privacy Policy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       <View style={twStyle("h-10")} />
     </ScreenContainer>
@@ -1019,11 +1296,13 @@ function PlanCard({
   subscription,
   upgradingId,
   onUpgrade,
+  appleDisplayPrice,
 }: {
   plan: Plan;
   subscription: Subscription | null;
   upgradingId: string | null;
   onUpgrade: (id: string) => void;
+  appleDisplayPrice?: string;
 }) {
   const isCurrent = isActiveCurrentPlan(subscription, plan);
   const needsReactivate =
@@ -1056,7 +1335,11 @@ function PlanCard({
             ) : null}
           </View>
           <Text style={twStyle("mt-2 text-3xl font-bold text-gray-900")}>
-            {plan.is_free || plan.amount === 0 ? "Free" : formatOptionPrice(plan)}
+            {plan.is_free || plan.amount === 0
+              ? "Free"
+              : appleDisplayPrice
+                ? formatAppleOptionPrice(appleDisplayPrice, plan.billing_period)
+                : formatOptionPrice(plan)}
           </Text>
           {plan.description ? (
             <Text style={twStyle("mt-3 text-sm leading-5 text-gray-600")}>

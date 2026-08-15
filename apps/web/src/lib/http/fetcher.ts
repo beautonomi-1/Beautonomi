@@ -58,6 +58,18 @@ function isProviderApiUrl(url: string): boolean {
   }
 }
 
+function readActiveProviderIdFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)bn_active_provider_id=([^;]+)/);
+  if (!match?.[1]) return null;
+  try {
+    const id = decodeURIComponent(match[1]).trim();
+    return looksLikeUuid(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 function readActiveProviderIdFromPortalCache(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -105,7 +117,7 @@ export function mergeProviderPortalFetchHeaders(
   if (typeof document !== "undefined" && isProviderApiUrl(url)) {
     const existing = out["x-provider-id"] ?? out["X-Provider-Id"];
     if (!existing) {
-      const id = readActiveProviderIdFromPortalCache();
+      const id = readActiveProviderIdFromCookie() ?? readActiveProviderIdFromPortalCache();
       if (id) out[ACTIVE_PROVIDER_ID_HEADER] = id;
     }
   }

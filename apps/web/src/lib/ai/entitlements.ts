@@ -8,14 +8,16 @@ import {
   SUBSCRIPTION_ENTITLED_STATUSES,
   SUBSCRIPTION_PAST_DUE_GRACE_DAYS,
 } from "@/lib/subscriptions/feature-access";
+import { isPastDueWithinGrace } from "@/lib/iap/apple/billing-active";
+import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
 
 /**
- * Resolve the entitled subscription plan id for a provider.
+ * Resolve the effective subscription plan id for AI entitlements.
  *
  * Uses the same status semantics as the rest of the stack
  * (`SUBSCRIPTION_ENTITLED_STATUSES`): active + trialing always count; past_due
- * counts only within the grace window. A lapse returns null so callers fall
- * back to the free tier.
+ * counts only within the grace window. Lapsed or missing subscriptions fall
+ * back to the free catalog plan (same as `getProviderSubscriptionTier`).
  */
 export async function determineProviderPlan(providerId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -25,20 +27,40 @@ export async function determineProviderPlan(providerId: string): Promise<string 
   ).toISOString();
   const { data } = await supabase
     .from("provider_subscriptions")
-    .select("plan_id, status, updated_at")
+    .select("plan_id, status, updated_at, billing_provider, apple_grace_period_expires_at")
     .eq("provider_id", providerId)
     .in("status", SUBSCRIPTION_ENTITLED_STATUSES as unknown as string[])
-    .or(`expires_at.gte.${nowIso},expires_at.is.null`)
+    .or(
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso}`,
+    )
     .order("status", { ascending: true })
     .limit(1)
     .maybeSingle();
-  const row = data as { plan_id?: string; status?: string; updated_at?: string } | null;
-  if (!row?.plan_id) return null;
-  // past_due only grants access within the grace window.
-  if (row.status === "past_due" && row.updated_at && row.updated_at < graceCutoff) {
-    return null;
+  const row = data as {
+    plan_id?: string;
+    status?: string;
+    updated_at?: string;
+    billing_provider?: string | null;
+    apple_grace_period_expires_at?: string | null;
+  } | null;
+
+  if (row?.plan_id) {
+    if (row.status === "past_due") {
+      const entitled = isPastDueWithinGrace({
+        billingProvider: row.billing_provider,
+        updatedAt: row.updated_at,
+        appleGracePeriodExpiresAt: row.apple_grace_period_expires_at,
+        nowIso,
+        graceCutoffIso: graceCutoff,
+      });
+      if (!entitled) {
+        return resolveCatalogPlanIdForProviderSubscription(supabase);
+      }
+    }
+    return row.plan_id;
   }
-  return row.plan_id;
+
+  return resolveCatalogPlanIdForProviderSubscription(supabase);
 }
 
 export interface AiEntitlement {
@@ -89,6 +111,21 @@ export async function checkProviderAiEntitlement(
   }
   if (!entitlement.enabled) {
     return { allowed: false, entitlement, reason: "feature_disabled_for_plan" };
+  }
+
+  if (entitlement.calls_per_day > 0) {
+    const supabase = getSupabaseAdmin();
+    const today = new Date().toISOString().slice(0, 10);
+    const { count } = await supabase
+      .from("ai_usage_log")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("feature_key", featureKey)
+      .gte("created_at", `${today}T00:00:00Z`)
+      .lt("created_at", `${today}T23:59:59.999Z`);
+    if ((count ?? 0) >= entitlement.calls_per_day) {
+      return { allowed: false, entitlement, reason: "plan_daily_limit_exceeded" };
+    }
   }
 
   return { allowed: true, entitlement };

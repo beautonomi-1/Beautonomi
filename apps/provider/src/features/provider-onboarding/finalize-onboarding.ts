@@ -19,6 +19,9 @@ import {
   startPaidSubscriptionCheckout,
   type BillingPeriod,
 } from "@/lib/subscription/start-paid-checkout";
+import { startAppleSubscriptionCheckout } from "@/lib/subscription/start-apple-subscription-checkout";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
+import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 
 type WaitForCheckout = (
   url: string,
@@ -207,6 +210,7 @@ export async function resumePendingOnboardingCheckout(router: Router): Promise<b
 
 export interface OnboardingCompletionData {
   message?: string;
+  provider?: { id?: string } | null;
   subscription_endpoint?: string | null;
   selected_plan_id?: string | null;
   selected_subscription_plan_id?: string | null;
@@ -320,6 +324,10 @@ export async function finalizeOnboardingSuccess(options: {
   }
 
   clearPortalCache();
+  const newProviderId = data?.provider?.id?.trim();
+  if (newProviderId) {
+    await persistActiveProviderOrgHint(userId, newProviderId);
+  }
   await refreshProvider();
   await refreshProviderPortal(userId ?? undefined);
 
@@ -356,6 +364,68 @@ export async function finalizeOnboardingSuccess(options: {
               { text: "Skip for now", style: "cancel", onPress: () => router.replace("/(app)/onboarding/verify-identity" as never) },
             ],
           );
+          return;
+        }
+
+        if (shouldUseAppleIap()) {
+          const plansRes = await api.get<
+            Array<{ plan_id: string; billing_period: string; apple_product_id?: string | null }>
+          >("/api/provider/subscription/plans");
+          let providerId = newProviderId;
+          if (!providerId) {
+            const profileRes = await api.get<{ id?: string }>("/api/provider/profile");
+            providerId = profileRes.data?.id?.trim();
+          }
+          const planOption = plansRes.data?.find(
+            (p) => p.plan_id === subscriptionPlanId && p.billing_period === billingPeriod,
+          );
+          if (!providerId || !planOption?.apple_product_id) {
+            Alert.alert(
+              "Checkout failed",
+              "This plan is not available as an App Store purchase yet. Complete checkout from Subscription in the app — iOS cannot use web billing.",
+              [
+                {
+                  text: "Open subscription",
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+                },
+                {
+                  text: "Skip for now",
+                  style: "cancel",
+                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+                },
+              ],
+            );
+            return;
+          }
+          const appleCheckout = await startAppleSubscriptionCheckout({
+            subscriptionPlanId,
+            billingPeriod,
+            appleProductId: planOption.apple_product_id,
+            providerId,
+          });
+          if (appleCheckout.ok) {
+            router.replace("/(app)/onboarding/verify-identity" as never);
+            return;
+          }
+          if (!appleCheckout.cancelled) {
+            Alert.alert(
+              "Checkout failed",
+              appleCheckout.error || "Unable to complete App Store subscription.",
+              [
+                {
+                  text: "Open subscription",
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+                },
+                {
+                  text: "Skip for now",
+                  style: "cancel",
+                  onPress: () => router.replace("/(app)/onboarding/verify-identity" as never),
+                },
+              ],
+            );
+          }
           return;
         }
 
@@ -474,11 +544,11 @@ export async function finalizeOnboardingSuccess(options: {
 }
 
 export async function probeProviderProfileExists(): Promise<boolean> {
-  const profileRes = await api.get<{ id?: string }>("/api/provider/profile");
-  if (profileRes.error) {
-    const status = (profileRes.error as { status?: number }).status;
-    if (status === 404) return false;
+  const res = await api.get<{
+    memberships?: Array<{ relationship?: string }>;
+  }>("/api/provider/memberships");
+  if (res.error || !Array.isArray(res.data?.memberships)) {
     return false;
   }
-  return Boolean(profileRes.data?.id);
+  return res.data.memberships.some((m) => m.relationship === "owner");
 }

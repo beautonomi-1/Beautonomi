@@ -8,6 +8,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
+import { resolveIosPurchaseEligibility } from "@/lib/iap/apple/ios-eligibility";
+import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
 
 /**
  * GET /api/provider/subscription
@@ -47,6 +49,8 @@ export async function GET(request: NextRequest) {
       cancelled_at?: string | null;
       paystack_sync_pending?: boolean | null;
       paystack_sync_note?: string | null;
+      billing_provider?: string | null;
+      apple_price_increase_status?: string | null;
       plan?: Record<string, unknown>;
     };
     const currentPlanIsFree = sub.plan?.is_free === true;
@@ -64,11 +68,19 @@ export async function GET(request: NextRequest) {
       sub.plan = { ...sub.plan, feature_bullets };
     }
 
-    // Auto-mark expired if past expires_at (best-effort)
+    // Auto-mark expired if past expires_at (best-effort). Apple-billed rows are
+    // owned by ASN + reconcile: expires_at can lapse while Apple is still in
+    // billing retry (up to 16 days). Flipping those to expired here would drop
+    // paid features before DID_FAIL_TO_RENEW / EXPIRED arrives.
     const expiresAt = (subscription as any).expires_at
       ? new Date((subscription as any).expires_at)
       : null;
-    if ((subscription as any).status === "active" && expiresAt && expiresAt < new Date()) {
+    if (
+      (subscription as any).status === "active" &&
+      expiresAt &&
+      expiresAt < new Date() &&
+      sub.billing_provider !== "apple"
+    ) {
       await (supabase.from("provider_subscriptions") as any)
         .update({ status: "expired", updated_at: new Date().toISOString() })
         .eq("id", (subscription as any).id);
@@ -109,12 +121,22 @@ export async function GET(request: NextRequest) {
 
     const billingIssue = currentPlanIsFree
       ? null
-      : sub.status === "past_due"
+      : isAppleBillingActive(sub.billing_provider, sub.status) &&
+          sub.apple_price_increase_status === "pending"
+        ? {
+            type: "apple_price_increase",
+            message:
+              "Apple needs you to accept a price increase to keep this plan renewing. Open Apple ID → Subscriptions to consent or switch plans.",
+            action: "manage_apple",
+          }
+        : sub.status === "past_due"
         ? {
             type: "past_due",
             message:
-              "Your last subscription payment did not go through. Update your card or pay now to keep premium features active.",
-            action: "pay_now",
+              sub.billing_provider === "apple"
+                ? "Apple could not renew this plan. Update the payment method on your Apple ID to keep premium features."
+                : "Your last subscription payment did not go through. Update your card or pay now to keep premium features active.",
+            action: sub.billing_provider === "apple" ? "manage_apple" : "pay_now",
           }
         : sub.paystack_sync_pending
           ? {
@@ -141,11 +163,16 @@ export async function GET(request: NextRequest) {
                 }
               : null;
 
+    const iosPurchaseEligible = await resolveIosPurchaseEligibility(supabase, providerId);
+
     return successResponse({
       ...(subscription as any),
       status: sub.status,
       latest_order: effectiveOrder,
       billing_issue: billingIssue,
+      ios_purchase_eligible: iosPurchaseEligible.eligible,
+      ios_purchase_eligible_reason: iosPurchaseEligible.reason,
+      billing_provider: iosPurchaseEligible.billing_provider,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch subscription");

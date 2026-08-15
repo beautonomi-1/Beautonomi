@@ -20,7 +20,7 @@ interface Props {
   ledger: MarketingLedgerResponse | null;
   loading: boolean;
   creditsApply: boolean;
-  onTopUp: () => void;
+  onTopUp?: () => void;
 }
 
 export function MarketingCreditsCard({ status, ledger, loading, creditsApply, onTopUp }: Props) {
@@ -75,6 +75,7 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
             MARKETING CREDIT
           </Text>
         </View>
+        {onTopUp ? (
         <TouchableOpacity
           onPress={onTopUp}
           style={{ flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 9999, backgroundColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 6 }}
@@ -84,6 +85,7 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
           <Ionicons name="add" size={14} color={Colors.white} />
           <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.white }}>Top up</Text>
         </TouchableOpacity>
+        ) : null}
       </View>
 
       <Text style={{ marginTop: 8, fontSize: 28, fontWeight: "800", color: low ? "#dc2626" : Colors.gray[900] }}>

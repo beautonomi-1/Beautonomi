@@ -811,13 +811,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     // Fetch team members
     const requestPromise = (async () => {
       try {
-        // Try with location filter first
-        let locationMembers = await providerApi.listTeamMembers(locationId);
-        // If no members found with location filter, try without location filter
-        if (locationMembers.length === 0 && locationId) {
-          // API now falls back for legacy DBs without provider_staff_locations; keep one retry for older servers.
-          locationMembers = await providerApi.listTeamMembers(undefined);
-        }
+        const locationMembers = await providerApi.listTeamMembers(locationId);
         
         // Update cache
         teamMembersCacheRef.current = {

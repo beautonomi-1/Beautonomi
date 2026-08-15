@@ -1,11 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const repoRoot = join(__dirname, "../../../../../..");
+const migrationsDir = join(repoRoot, "supabase/migrations");
 
 function readMigration(name: string): string {
-  return readFileSync(join(repoRoot, "supabase/migrations", name), "utf8");
+  return readFileSync(join(migrationsDir, name), "utf8");
+}
+
+/** Migration filenames in apply order (numeric prefix, then lexical). */
+function listMigrations(): string[] {
+  return readdirSync(migrationsDir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort((a, b) => {
+      const na = Number.parseInt(a, 10);
+      const nb = Number.parseInt(b, 10);
+      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+      return a.localeCompare(b);
+    });
 }
 
 describe("RLS harness (static policy verification)", () => {
@@ -49,6 +62,49 @@ describe("RLS harness (static policy verification)", () => {
     expect(sql).toContain("'wallet'");
     expect(sql).toContain("'gift_card'");
     expect(sql).toContain("'paycloud'");
+  });
+
+  // 842 bulk-revoked EXECUTE on every SECURITY DEFINER function in public and
+  // forgot to re-grant is_superadmin to anon. Because the superadmin policies on
+  // public.users call is_superadmin(), and permissive policies are all evaluated,
+  // every anonymous read (global_service_categories, providers, offerings, ...)
+  // failed with 42501. 844 restores it.
+  it("anon keeps EXECUTE on is_superadmin after any SECURITY DEFINER bulk revoke", () => {
+    const migrations = listMigrations();
+    const grantsAnonExecute = (sql: string) =>
+      /'is_superadmin'/.test(sql) &&
+      /GRANT EXECUTE ON FUNCTION %s TO anon/.test(sql);
+
+    const bulkRevokeIndexes = migrations
+      .map((name, index) => ({ name, index, sql: readMigration(name) }))
+      .filter(
+        ({ sql }) =>
+          /p\.prosecdef/.test(sql) &&
+          /REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated/.test(sql),
+      );
+
+    expect(bulkRevokeIndexes.length).toBeGreaterThan(0);
+
+    const lastRevoke = bulkRevokeIndexes[bulkRevokeIndexes.length - 1];
+    const restoredAtOrAfter = migrations
+      .slice(lastRevoke.index)
+      .some((name) => grantsAnonExecute(readMigration(name)));
+
+    expect(
+      restoredAtOrAfter,
+      `${lastRevoke.name} revokes EXECUTE on all SECURITY DEFINER functions from anon, ` +
+        "but no migration at or after it grants is_superadmin back to anon. " +
+        "Anonymous reads will fail with 'permission denied for function is_superadmin'.",
+    ).toBe(true);
+  });
+
+  it("844 restores the anon RLS helper grants dropped by 842", () => {
+    const sql = readMigration("844_restore_anon_rls_helper_execute.sql");
+    expect(sql).toContain("'is_superadmin'");
+    expect(sql).toContain("'reserve_gift_card_redemption'");
+    expect(sql).toContain("TO anon, authenticated");
+    // Portal tokens stay service_role-only per 843.
+    expect(sql).not.toMatch(/GRANT EXECUTE[\s\S]{0,80}validate_portal_token[\s\S]{0,40}anon/);
   });
 
   it("STRICT_TENANT_HOST_RESOLUTION documented in web env example", () => {

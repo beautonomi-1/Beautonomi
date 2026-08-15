@@ -72,6 +72,8 @@ import { currencySelectLabel } from "@/lib/locale/currency";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
 import { ProviderAppDownloadNudge } from "@/components/provider/ProviderAppDownloadNudge";
+import { useAuth } from "@/providers/AuthProvider";
+import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 
 interface GlobalCategory {
   id: string;
@@ -483,6 +485,7 @@ const STEPS = [
 
 export default function ProviderOnboarding() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -1005,6 +1008,9 @@ export default function ProviderOnboarding() {
       const selectedPlanId = response.data?.selected_plan_id;
       const requiresCheckout = response.data?.requires_checkout ?? Boolean(subscriptionEndpoint);
 
+      invalidateProviderPortalCache();
+      void refreshUser();
+
       // If a paid plan was selected, send user through checkout, then back to dashboard.
       if (requiresCheckout && selectedPlanId) {
         try {
@@ -1124,7 +1130,7 @@ export default function ProviderOnboarding() {
   if (onboardingSuccessMessage) {
     return (
       <RoleGuard
-        allowedRoles={["customer", "provider_owner", "provider_onboarding"]}
+        allowedRoles={["customer", "provider_owner", "provider_staff", "provider_onboarding"]}
         redirectTo="/become-a-partner"
         showLoading={true}
       >
@@ -1145,7 +1151,7 @@ export default function ProviderOnboarding() {
 
   return (
     <RoleGuard
-      allowedRoles={["customer", "provider_owner", "provider_onboarding"]}
+      allowedRoles={["customer", "provider_owner", "provider_staff", "provider_onboarding"]}
       redirectTo="/become-a-partner"
       showLoading={true}
     >

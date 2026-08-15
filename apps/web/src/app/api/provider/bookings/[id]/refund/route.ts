@@ -20,6 +20,8 @@ import {
   notifyCustomerCashRefundConfirmation,
 } from "@/lib/bookings/cash-refund-confirmation";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { loadBookingRefundCoverage } from "@/lib/admin/booking-refund-coverage";
+import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-transaction-refund";
 
 /**
  * POST /api/provider/bookings/[id]/refund
@@ -469,6 +471,19 @@ export async function POST(
           "FINALIZE_ERROR",
           500,
         );
+      }
+
+      try {
+        const coverage = await loadBookingRefundCoverage(supabaseAdmin, bookingId);
+        await syncPaymentTransactionRefundState({
+          supabase: supabaseAdmin,
+          bookingId,
+          cumulativeRefundAmount: coverage.walletCreditedTotal,
+          reason,
+          actorUserId: user.id,
+        });
+      } catch (syncErr) {
+        console.warn("Failed to sync payment transaction after provider wallet refund:", syncErr);
       }
     }
 

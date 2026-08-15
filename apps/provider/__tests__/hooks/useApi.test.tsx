@@ -98,6 +98,35 @@ describe("useApi transient failure handling", () => {
     expect(snap.errorCode).toBeNull();
   });
 
+  it("stops re-requesting a role-gated path on resume after a 403", async () => {
+    mockApiGet.mockResolvedValue({
+      data: null,
+      error: { message: "Insufficient permissions", code: "FORBIDDEN", status: 403 },
+    });
+
+    const { getByTestId } = render(<Harness path="/api/provider/nav-counts" />);
+
+    await waitFor(
+      () => {
+        const snap = JSON.parse(getByTestId("snap").props.children);
+        expect(snap.errorCode).toBe("FORBIDDEN");
+      },
+      { timeout: 10_000 },
+    );
+
+    const callsAfterMount = mockApiGet.mock.calls.length;
+
+    await act(async () => {
+      DeviceEventEmitter.emit("beautonomi:app:focus");
+      DeviceEventEmitter.emit("beautonomi:network:recover");
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    });
+
+    // Onboarding users lack the provider role for the whole wizard; resuming
+    // cannot change that, so the request must not be repeated.
+    expect(mockApiGet.mock.calls.length).toBe(callsAfterMount);
+  });
+
   it("keeps cached data on screen when a background revalidate fails", async () => {
     mockApiGet.mockResolvedValueOnce({
       data: { transactions: [{ id: "t1" }] },

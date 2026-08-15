@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError, errorResponse } from '@/lib/supabase/api-helpers';
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { createClient } from '@supabase/supabase-js';
 import { disableSubscriptionByCode } from '@/lib/payments/paystack-complete';
@@ -20,6 +21,11 @@ export async function POST(request: NextRequest) {
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const appleBilling = await getAppleBillingPaystackBlock(supabase, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
+    }
 
     const marketMismatch = await providerTenantMismatchResponse(supabase, tenantId, providerId);
     if (marketMismatch) return marketMismatch;

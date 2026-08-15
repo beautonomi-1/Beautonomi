@@ -5,7 +5,13 @@ import { sendResendEmail, resolveResendCredentials } from "@/lib/integrations/re
 import { resolveProviderAppLinks } from "@/lib/provider-ops/resolve-provider-app-links";
 import { getNotificationTemplate } from "@/lib/notifications/onesignal";
 import { enqueueNotification } from "@/lib/notifications/enqueue";
-import type { UsersRoleFromDb } from "@/lib/auth/role";
+import {
+  persistJoinedProviderRole,
+  resolveEffectiveProviderRole,
+} from "@/lib/auth/effective-provider-role";
+
+// Re-export for callers that imported from this module.
+export { persistJoinedProviderRole, persistProviderStaffRole, resolveEffectiveProviderRole } from "@/lib/auth/effective-provider-role";
 
 export const STAFF_INVITE_EXPIRY_DAYS = 14;
 
@@ -120,6 +126,24 @@ export async function loadStaffInviteRowByToken(
   };
 }
 
+/** Invite email must match the signed-in person unless they are already linked. */
+export function staffInviteEmailAllowed(opts: {
+  inviteEmail: string | null | undefined;
+  authEmail: string | null | undefined;
+  profileEmail: string | null | undefined;
+  staffUserId: string | null | undefined;
+  acceptingUserId: string;
+}): boolean {
+  if (opts.staffUserId && opts.staffUserId === opts.acceptingUserId) return true;
+  const invite = (opts.inviteEmail || "").trim().toLowerCase();
+  if (!invite) return true;
+  const candidate =
+    (opts.authEmail || "").trim().toLowerCase() ||
+    (opts.profileEmail || "").trim().toLowerCase();
+  if (!candidate) return false;
+  return invite === candidate;
+}
+
 export function isStaffInviteTokenValid(row: {
   is_active: boolean;
   invite_accepted_at: string | null;
@@ -153,70 +177,22 @@ export async function generateStaffSetPasswordUrl(
   return data.properties.action_link;
 }
 
-export async function persistProviderStaffRole(userId: string): Promise<void> {
-  const admin = getSupabaseAdmin();
-  await admin.from("users").update({ role: "provider_staff" }).eq("id", userId);
-}
-
-/**
- * Elevate `customer` → `provider_owner` / `provider_staff` using admin lookups.
- * Optionally persist owner/staff role to `users.role`.
- */
-export async function resolveEffectiveProviderRole(
-  userId: string,
-  dbRole: UsersRoleFromDb,
-  options?: { persist?: boolean },
-): Promise<UsersRoleFromDb> {
-  if (
-    dbRole === "provider_owner" ||
-    dbRole === "provider_staff" ||
-    dbRole === "superadmin" ||
-    dbRole === "provider_onboarding"
-  ) {
-    return dbRole;
-  }
-
-  if (dbRole !== "customer") return dbRole;
-
-  const admin = getSupabaseAdmin();
-
-  const { data: ownerRow } = await admin
-    .from("providers")
-    .select("id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-
-  if (ownerRow) {
-    if (options?.persist) {
-      await admin.from("users").update({ role: "provider_owner" }).eq("id", userId);
-    }
-    return "provider_owner";
-  }
-
-  const { data: staffRow } = await admin
-    .from("provider_staff")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  if (staffRow) {
-    if (options?.persist) {
-      await persistProviderStaffRole(userId);
-    }
-    return "provider_staff";
-  }
-
-  return dbRole;
+async function resolveJoinedRole(admin: ReturnType<typeof getSupabaseAdmin>, userId: string) {
+  await persistJoinedProviderRole(userId);
+  const { data } = await admin.from("users").select("role").eq("id", userId).maybeSingle();
+  return (data?.role as string | undefined) ?? "provider_staff";
 }
 
 export async function acceptStaffInvite(params: {
   token: string;
   userId: string;
   userEmail: string | null | undefined;
-}): Promise<{ staff_id: string; provider_id: string; already_accepted: boolean }> {
+}): Promise<{
+  staff_id: string;
+  provider_id: string;
+  already_accepted: boolean;
+  role: string;
+}> {
   const admin = getSupabaseAdmin();
   const row = await loadStaffInviteRowByToken(admin, params.token);
   if (!row) {
@@ -227,11 +203,12 @@ export async function acceptStaffInvite(params: {
     if (row.user_id && row.user_id !== params.userId) {
       throw new Error("INVITE_ALREADY_ACCEPTED");
     }
-    await persistProviderStaffRole(params.userId);
+    const role = await resolveJoinedRole(admin, params.userId);
     return {
       staff_id: row.id,
       provider_id: row.provider_id,
       already_accepted: true,
+      role,
     };
   }
 
@@ -239,9 +216,21 @@ export async function acceptStaffInvite(params: {
     throw new Error("INVITE_EXPIRED");
   }
 
-  const inviteEmail = (row.email || "").trim().toLowerCase();
-  const authEmail = (params.userEmail || "").trim().toLowerCase();
-  if (inviteEmail && authEmail && inviteEmail !== authEmail) {
+  const { data: profile } = await admin
+    .from("users")
+    .select("email")
+    .eq("id", params.userId)
+    .maybeSingle();
+
+  if (
+    !staffInviteEmailAllowed({
+      inviteEmail: row.email,
+      authEmail: params.userEmail,
+      profileEmail: profile?.email,
+      staffUserId: row.user_id,
+      acceptingUserId: params.userId,
+    })
+  ) {
     throw new Error("EMAIL_MISMATCH");
   }
 
@@ -257,12 +246,13 @@ export async function acceptStaffInvite(params: {
 
   if (upErr) throw upErr;
 
-  await persistProviderStaffRole(params.userId);
+  const role = await resolveJoinedRole(admin, params.userId);
 
   return {
     staff_id: row.id,
     provider_id: row.provider_id,
     already_accepted: false,
+    role,
   };
 }
 
@@ -335,7 +325,9 @@ export async function sendStaffInvite(params: {
   );
   let emailHtml = substituteTemplateVars(
     template?.email_body ||
-      `<p>Hi ${staffName}, you've been invited to join ${businessName}. <a href="${joinUrl}">Join the team</a></p>`,
+      `<p>Hi ${staffName}, you've been invited to join ${businessName}.</p>
+<p><a href="${setPasswordUrl || joinUrl}">Set password &amp; join the team</a></p>
+<p style="font-size:12px;color:#6b7280;">Or open your invite: <a href="${joinUrl}">${joinUrl}</a></p>`,
     templateVars,
   );
   const emailText =

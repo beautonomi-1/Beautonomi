@@ -256,6 +256,17 @@ export const adminQueryKeys = {
   callsConfig: () => [...adminQueryKeys.root, "integrations", "calls"] as const,
   yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
   paycloudIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "paycloud"] as const,
+  appleIntegration: () => [...adminQueryKeys.root, "integrations", "apple"] as const,
+  shippingIntegration: () => [...adminQueryKeys.root, "integrations", "shipping"] as const,
+  appleSetupSheet: () => [...adminQueryKeys.root, "monetization", "apple", "setup-sheet"] as const,
+  appleProducts: () => [...adminQueryKeys.root, "monetization", "apple", "products"] as const,
+  appleTransactionsRoot: () =>
+    [...adminQueryKeys.root, "monetization", "apple", "transactions"] as const,
+  appleTransactions: (page: number, environment: string, attributionStatus: string) =>
+    [...adminQueryKeys.root, "monetization", "apple", "transactions", page, environment, attributionStatus] as const,
+  appleNotifications: (page: number) =>
+    [...adminQueryKeys.root, "monetization", "apple", "notifications", page] as const,
+  appleSettlements: () => [...adminQueryKeys.root, "monetization", "apple", "settlements"] as const,
   paycloudOperations: {
     all: () => [...adminQueryKeys.root, "paycloud-operations"] as const,
     payments: (signature: string) =>

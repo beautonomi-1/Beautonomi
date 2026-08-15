@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, any> | null;
 let nextRow: Row = null;
+let catalogPlanId: string | null = "free-plan";
+
+vi.mock("@/lib/subscriptions/ensure-provider-free-subscription", () => ({
+  resolveCatalogPlanIdForProviderSubscription: vi.fn(async () => catalogPlanId),
+}));
 
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => ({
@@ -25,6 +30,7 @@ import { determineProviderPlan } from "../entitlements";
 describe("determineProviderPlan status consistency", () => {
   beforeEach(() => {
     nextRow = null;
+    catalogPlanId = "free-plan";
   });
 
   it("returns the plan for an active subscription", async () => {
@@ -46,17 +52,23 @@ describe("determineProviderPlan status consistency", () => {
     expect(await determineProviderPlan("prov-1")).toBe("plan-1");
   });
 
-  it("revokes past_due beyond the grace window (falls back to free)", async () => {
+  it("falls back to free catalog plan when past_due is beyond grace", async () => {
     nextRow = {
       plan_id: "plan-1",
       status: "past_due",
       updated_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
     };
-    expect(await determineProviderPlan("prov-1")).toBeNull();
+    expect(await determineProviderPlan("prov-1")).toBe("free-plan");
   });
 
-  it("returns null when no entitled subscription exists", async () => {
+  it("falls back to free catalog plan when no entitled subscription exists", async () => {
     nextRow = null;
+    expect(await determineProviderPlan("prov-1")).toBe("free-plan");
+  });
+
+  it("returns null when no subscription and no catalog free plan", async () => {
+    nextRow = null;
+    catalogPlanId = null;
     expect(await determineProviderPlan("prov-1")).toBeNull();
   });
 });

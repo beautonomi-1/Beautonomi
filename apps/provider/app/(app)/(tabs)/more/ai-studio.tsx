@@ -114,6 +114,28 @@ export default function AiStudioScreen() {
             <Text selectable style={twStyle("font-mono text-xs text-gray-800")}>
               {typeof result === "object" ? JSON.stringify(result, null, 2) : String(result)}
             </Text>
+            {typeof result === "object" &&
+            result &&
+            "suggested_profile_patch" in result &&
+            typeof (result as { suggested_profile_patch?: { bio?: string } }).suggested_profile_patch
+              ?.bio === "string" ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const bio = (result as { suggested_profile_patch: { bio: string } })
+                    .suggested_profile_patch.bio;
+                  void api.patch("/api/provider/profile", { description: bio }).then((res) => {
+                    if (res.error) {
+                      Alert.alert("Could not apply", res.error.message ?? "Try again");
+                      return;
+                    }
+                    Alert.alert("Applied", "Business description updated.");
+                  });
+                }}
+                style={twStyle("mt-3 items-center rounded-xl bg-indigo-600 py-3")}
+              >
+                <Text style={twStyle("font-semibold text-white")}>Apply bio to profile</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

@@ -5,6 +5,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getUserRoleServer } from "@/lib/auth/role-server";
 import { getPortalForUser, type Portal } from "@/lib/auth/role";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import {
+  persistJoinedProviderRole,
+  syncPortalRoleAfterWorkplaceChange,
+} from "@/lib/auth/effective-provider-role";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import type { UserRole } from "@/types/beautonomi";
 
@@ -93,11 +97,16 @@ async function handleGetRole(request: NextRequest) {
       const staffRow = (staffRowResult as { data?: { id: string } | null } | null)?.data;
       if (staffRow) {
         role = "provider_staff";
-        await supabaseAdmin
-          .from("users")
-          .update({ role: "provider_staff" })
-          .eq("id", user.id);
+        await persistJoinedProviderRole(user.id);
       }
+    }
+
+    if (isProviderContext && (role === "provider_staff" || role === "provider_onboarding")) {
+      const healed = await withTimeout(
+        syncPortalRoleAfterWorkplaceChange(user.id),
+        ROLE_QUERY_TIMEOUT_MS,
+      );
+      if (healed) role = healed;
     }
 
     // Provider app boot: when `/api/me/portal` fails, the native shell falls back

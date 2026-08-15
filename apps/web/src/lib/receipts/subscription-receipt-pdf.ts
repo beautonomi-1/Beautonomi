@@ -109,6 +109,7 @@ export async function generateSubscriptionReceiptPdf(opts: {
     kind?: string | null;
     invoice_code?: string | null;
     subscription_code?: string | null;
+    payment_provider?: string | null;
   };
 
   let planName = "Subscription plan";
@@ -138,13 +139,25 @@ export async function generateSubscriptionReceiptPdf(opts: {
     : `${planName} — subscription`;
   const reference = String(metadata.reference || metadata.invoice_code || tx.id);
 
+  let isApplePayment = String(metadata.payment_provider ?? "").toLowerCase() === "apple";
+  if (!isApplePayment && reference) {
+    const { data: paymentTxRow } = await supabase
+      .from("payment_transactions")
+      .select("provider")
+      .eq("reference", reference)
+      .maybeSingle();
+    isApplePayment = String((paymentTxRow as { provider?: string } | null)?.provider ?? "").toLowerCase() === "apple";
+  }
+
   const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
   drawPdfHeader(doc, {
-    title: "Subscription receipt",
-    subtitle: "Provider copy for platform subscription payment records",
+    title: isApplePayment ? "App Store subscription receipt" : "Subscription receipt",
+    subtitle: isApplePayment
+      ? "Apple is the merchant of record for this App Store purchase"
+      : "Provider copy for platform subscription payment records",
     documentNumber: reference,
     status: "paid",
     note: provider?.receipt_header ?? null,
@@ -157,6 +170,7 @@ export async function generateSubscriptionReceiptPdf(opts: {
       lines: [
         `Paid ${formatPdfDate(tx.created_at)}`,
         metadata.reference ? `Ref: ${metadata.reference}` : null,
+        isApplePayment ? "Processor: Apple App Store" : null,
       ],
     },
     { label: "Plan", lines: [planName] },
@@ -168,8 +182,9 @@ export async function generateSubscriptionReceiptPdf(opts: {
     [
       {
         description: productLabel,
-        detail:
-          vatBreakdown.ratePercent > 0
+        detail: isApplePayment
+          ? "Platform subscription purchased through the App Store"
+          : vatBreakdown.ratePercent > 0
             ? "Platform subscription — VAT inclusive"
             : "Platform subscription — charged after payment was verified",
         amount: moneyPdf(amount, currency),
@@ -178,7 +193,21 @@ export async function generateSubscriptionReceiptPdf(opts: {
     { title: "Items" },
   );
 
-  if (vatBreakdown.ratePercent > 0) {
+  if (isApplePayment) {
+    drawPdfTotals(
+      doc,
+      [{ label: "Gross paid to Apple", value: moneyPdf(amount, currency) }],
+      { label: "Total paid to Apple", value: moneyPdf(amount, currency) },
+    );
+    doc.moveDown(0.5);
+    doc
+      .fontSize(8)
+      .fillColor("#6b7280")
+      .text(
+        "Apple is the seller of record for App Store purchases. Any applicable VAT or sales tax is collected and remitted by Apple, not Beautonomi. This document is a provider copy for your records and is not a Beautonomi tax invoice.",
+        { align: "left" },
+      );
+  } else if (vatBreakdown.ratePercent > 0) {
     drawPdfTotals(
       doc,
       [

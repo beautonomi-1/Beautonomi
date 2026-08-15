@@ -19,6 +19,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Colors } from "@/constants/colors";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
 
 type StaffMember = {
   id: string;
@@ -300,6 +301,10 @@ export default function TeamScreen() {
             </Text>
             <TouchableOpacity
               onPress={() => {
+                if (shouldUseAppleIap()) {
+                  router.push("/(app)/(tabs)/more/settings/subscription" as never);
+                  return;
+                }
                 const base = getWebProviderBaseUrl().replace(/\/$/, "");
                 pushInAppBrowser(
                   router,

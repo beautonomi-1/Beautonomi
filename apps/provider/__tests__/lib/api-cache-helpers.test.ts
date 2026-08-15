@@ -11,6 +11,10 @@ describe("api-cache-helpers", () => {
     expect(buildApiCacheKey("user-1", "/api/provider/dashboard")).toContain("user-1");
     expect(buildApiCacheKey("user-1", "/api/provider/dashboard")).toContain("/api/provider/dashboard");
     expect(buildApiCacheKey(undefined, "/api/public/home")).toContain("_anon");
+    expect(buildApiCacheKey("user-1", "/api/provider/dashboard", "salon-a")).toContain("salon-a");
+    expect(buildApiCacheKey("user-1", "/api/provider/dashboard", "salon-a")).not.toBe(
+      buildApiCacheKey("user-1", "/api/provider/dashboard", "salon-b"),
+    );
   });
 
   it("blocks prefetch for payment and checkout paths", () => {

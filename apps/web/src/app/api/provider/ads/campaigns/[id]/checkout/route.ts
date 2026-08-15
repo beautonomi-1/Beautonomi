@@ -50,6 +50,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const paymentRedirect = String(body?.payment_redirect ?? "web").toLowerCase();
 
     const supabase = getSupabaseAdmin();
+    const paymentProvider = String(body?.payment_provider ?? "paystack").toLowerCase();
+
     const { data: campaign } = await supabase
       .from("ads_campaigns")
       .select(
@@ -102,22 +104,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
      * (the price column is in ZAR which `convertToSmallestUnit` handles).
      */
     let amountDue = 0;
+    let appleProductId: string | null = null;
     if (c.billing_model === "time_based" && c.duration_days != null) {
       const { data: pack } = await supabase
         .from("ads_time_packs")
-        .select("price_zar, duration_days")
+        .select("price_zar, duration_days, apple_product_id")
         .eq("duration_days", Number(c.duration_days))
         .eq("is_active", true)
         .maybeSingle();
       amountDue = Number((pack as { price_zar?: number } | null)?.price_zar ?? 0);
+      appleProductId =
+        (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
     } else if (c.pack_impressions != null) {
       const { data: pack } = await supabase
         .from("ads_impression_packs")
-        .select("price_zar, impressions")
+        .select("price_zar, impressions, apple_product_id")
         .eq("impressions", Number(c.pack_impressions))
         .eq("is_active", true)
         .maybeSingle();
       amountDue = Number((pack as { price_zar?: number } | null)?.price_zar ?? 0);
+      appleProductId =
+        (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
     } else {
       // CPC: re-use the most recent budget order amount as the agreed amount.
       const { data: latest } = await supabase
@@ -163,6 +170,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .select()
       .single();
     if (orderError || !order) throw orderError || new Error("Failed to create budget order");
+
+    if (paymentProvider === "apple") {
+      if (!appleProductId) {
+        await supabase
+          .from("ads_budget_orders")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+        return errorResponse(
+          "This ads pack is not mapped to an App Store product. Cancel the draft and buy a mapped pack, or ask support to add the Apple product ID.",
+          "IAP_PRODUCT_MISSING",
+          422,
+        );
+      }
+      await supabase
+        .from("ads_budget_orders")
+        .update({ payment_provider: "apple", updated_at: new Date().toISOString() })
+        .eq("id", order.id);
+      return successResponse({
+        requires_payment: true,
+        payment_provider: "apple",
+        order_id: order.id,
+        campaign_id: campaignId,
+        apple_product_id: appleProductId,
+      });
+    }
 
     const { data: userRow } = await supabase
       .from("users")

@@ -532,6 +532,15 @@ export default function ProductOrderDetailScreen() {
               );
             })()
           ) : null}
+          {order.tracking_events && order.tracking_events.length > 0 ? (
+            <View style={{ marginTop: 10, gap: 6 }}>
+              {order.tracking_events.slice(0, 5).map((event, index) => (
+                <Text key={`${event.occurredAt}-${index}`} style={{ fontSize: 12, color: "#4B5563" }}>
+                  {event.message}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {/* Returns */}

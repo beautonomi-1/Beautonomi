@@ -7,6 +7,8 @@ import {
   orphanPaymentLabel,
   normalizeRefundReason,
   isRefundReasonValid,
+  deriveRefundRowState,
+  creditedViaLabel,
 } from "./refundUiHelpers";
 
 describe("remainingRefundable", () => {
@@ -133,5 +135,56 @@ describe("isRefundReasonValid", () => {
     expect(isRefundReasonValid("Other", "Details")).toBe(true);
     expect(isRefundReasonValid("Other", "")).toBe(false);
     expect(isRefundReasonValid("", "")).toBe(false);
+  });
+});
+
+describe("deriveRefundRowState", () => {
+  it("shows not refunded with credit action for processable charges", () => {
+    const state = deriveRefundRowState({
+      status: "success",
+      booking: { id: "b-1" },
+      is_processable: true,
+      refund_state: "not_refunded",
+    });
+    expect(state.label).toBe("Not refunded");
+    expect(state.canProcess).toBe(true);
+    expect(state.actionLabel).toBe("Credit wallet");
+    expect(state.payoutLabel).toBeNull();
+  });
+
+  it("shows credited elsewhere without action", () => {
+    const state = deriveRefundRowState({
+      status: "success",
+      booking: { id: "b-1" },
+      is_processable: false,
+      refund_state: "credited_elsewhere",
+      effective_reason: "Cancellation refund",
+      effective_refunded_total: 208,
+      credited_via: "cancellation",
+    });
+    expect(state.label).toBe("Credited elsewhere");
+    expect(state.canProcess).toBe(false);
+    expect(state.reason).toBe("Cancellation refund");
+    expect(state.payoutLabel).toBe("Wallet credited");
+  });
+
+  it("shows wallet credited date from wallet_credited_at", () => {
+    const state = deriveRefundRowState({
+      status: "success",
+      booking: { id: "b-1" },
+      is_processable: false,
+      refund_state: "credited_elsewhere",
+      effective_refunded_total: 208,
+      wallet_credited_at: "2026-07-24T12:00:00.000Z",
+    });
+    expect(state.payoutLabel).toContain("2026");
+    expect(state.payoutLabel).toContain("Wallet credited");
+  });
+});
+
+describe("creditedViaLabel", () => {
+  it("maps known sources", () => {
+    expect(creditedViaLabel("cancellation")).toBe("Cancellation policy");
+    expect(creditedViaLabel(null)).toBeNull();
   });
 });

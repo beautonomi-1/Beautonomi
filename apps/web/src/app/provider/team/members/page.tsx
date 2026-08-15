@@ -347,8 +347,12 @@ export default function ProviderTeamMembers() {
       ) : filteredMembers.length === 0 ? (
         <SectionCard className="p-8 sm:p-12">
           <EmptyState
-            title="No team members"
-            description="Add your first team member to get started. They'll be able to manage appointments, services, and more."
+            title={selectedLocationId ? "No staff at this location" : "No team members"}
+            description={
+              selectedLocationId
+                ? "No one is assigned to this branch yet. Assign existing team members to this location, or add someone new."
+                : "Add your first team member to get started. They'll be able to manage appointments, services, and more."
+            }
             action={
               canManageTeam
                 ? {

@@ -41,11 +41,15 @@ import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 
-async function goToAppRoot(router: { replace: (href: string) => void }, method: string) {
+async function goToAppRoot(
+  router: { replace: (href: string) => void },
+  method: string,
+  redirectPath?: string,
+) {
   await applyPendingSignupPreferences();
   await supabase.auth.getSession();
   logLoginSuccessBreadcrumb(method);
-  router.replace("/");
+  router.replace(redirectPath ?? "/");
 }
 
 function prefillPhoneFromE164(value: string | undefined) {
@@ -65,7 +69,11 @@ type SignupMode = "phone" | "email";
 
 export default function SignupScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string; phone?: string }>();
+  const params = useLocalSearchParams<{ email?: string; phone?: string; joinToken?: string }>();
+  const postLoginPath = useMemo(() => {
+    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
+    return token ? `/join?token=${encodeURIComponent(token)}` : undefined;
+  }, [params.joinToken]);
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,
@@ -92,7 +100,13 @@ export default function SignupScreen() {
 
   const initialPhone = prefillPhoneFromE164(typeof params.phone === "string" ? params.phone : undefined);
 
-  const [mode, setMode] = useState<SignupMode>(auth.phone_provider_enabled ? "phone" : "email");
+  const [mode, setMode] = useState<SignupMode>(
+    typeof params.email === "string" && params.email.trim()
+      ? "email"
+      : auth.phone_provider_enabled
+        ? "phone"
+        : "email",
+  );
   const [countryCode, setCountryCode] = useState(initialPhone.cc ?? getDeviceDefaultCountryDial);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [phone, setPhone] = useState(initialPhone.digits);
@@ -166,8 +180,14 @@ export default function SignupScreen() {
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
 
   const goToLogin = useCallback(() => {
-    router.replace("/(auth)/login" as never);
-  }, [router]);
+    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
+    const emailPrefill = typeof params.email === "string" ? params.email.trim() : "";
+    const qs = new URLSearchParams();
+    if (token) qs.set("joinToken", token);
+    if (emailPrefill) qs.set("email", emailPrefill);
+    const href = qs.toString() ? `/(auth)/login?${qs.toString()}` : "/(auth)/login";
+    router.replace(href as never);
+  }, [router, params.joinToken, params.email]);
 
   function handlePhoneChange(text: string) {
     const digits = text.replace(/[^\d\s]/g, "");
@@ -264,7 +284,7 @@ export default function SignupScreen() {
       }
       trackSignUp("phone");
       await writeSignupPhoneHandoff(e164);
-      await goToAppRoot(router, "phone_otp_signup");
+      await goToAppRoot(router, "phone_otp_signup", postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
     } finally {
@@ -321,7 +341,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup");
+      await goToAppRoot(router, "email_signup", postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Sign up failed. Please try again.");
     } finally {
@@ -341,7 +361,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup");
+      await goToAppRoot(router, "email_signup", postLoginPath);
     } catch (e: unknown) {
       setSignupOtpError(e instanceof Error ? e.message : "Verification failed.");
     } finally {
@@ -384,7 +404,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp(provider === "google" ? "email" : "email");
-      await goToAppRoot(router, `oauth_${provider}`);
+      await goToAppRoot(router, `oauth_${provider}`, postLoginPath);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "OAuth sign-up failed. Please try again.");
     } finally {

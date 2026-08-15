@@ -17,6 +17,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
@@ -96,6 +97,11 @@ export async function POST(request: NextRequest) {
     const planRow = plan as PlanRow | null;
     if (planError || !planRow || planRow.is_active === false) {
       throw planError || new Error("Subscription plan not found");
+    }
+
+    const appleBilling = await getAppleBillingPaystackBlock(supabase, providerId);
+    if (appleBilling.blocked) {
+      return errorResponse(appleBilling.message, "APPLE_BILLING_ACTIVE", 409);
     }
 
     if (planRow.is_free) {

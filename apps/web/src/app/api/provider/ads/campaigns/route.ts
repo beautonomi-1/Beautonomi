@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
       }
       const { data: pack } = await supabase
         .from("ads_time_packs")
-        .select("id, duration_days, price_zar, label")
+        .select("id, duration_days, price_zar, label, apple_product_id")
         .eq("id", timePackId)
         .eq("is_active", true)
         .single();
@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
       }
       const { data: pack } = await supabase
         .from("ads_impression_packs")
-        .select("id, impressions, price_zar")
+        .select("id, impressions, price_zar, apple_product_id")
         .eq("id", impressionPackId)
         .eq("is_active", true)
         .single();
@@ -420,6 +420,48 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (orderError || !order) throw orderError || new Error("Failed to create budget order");
+
+    const paymentProvider = String(body.payment_provider ?? "paystack").toLowerCase();
+    if (paymentProvider === "apple") {
+      let appleProductId: string | null = null;
+      if (timePackId) {
+        const { data: pack } = await supabase
+          .from("ads_time_packs")
+          .select("apple_product_id")
+          .eq("id", timePackId)
+          .maybeSingle();
+        appleProductId = (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
+      } else if (impressionPackId) {
+        const { data: pack } = await supabase
+          .from("ads_impression_packs")
+          .select("apple_product_id")
+          .eq("id", impressionPackId)
+          .maybeSingle();
+        appleProductId = (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
+      }
+      if (!appleProductId) {
+        await supabase
+          .from("ads_budget_orders")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+        return errorResponse(
+          "This ads pack is not mapped to an App Store product. Choose a mapped pack, or ask support to add the Apple product ID.",
+          "IAP_PRODUCT_MISSING",
+          422,
+        );
+      }
+      await supabase
+        .from("ads_budget_orders")
+        .update({ payment_provider: "apple", updated_at: new Date().toISOString() })
+        .eq("id", order.id);
+      return successResponse({
+        campaign,
+        requires_payment: true,
+        payment_provider: "apple",
+        order_id: order.id,
+        apple_product_id: appleProductId,
+      });
+    }
 
     const { data: userRow } = await supabase.from("users").select("email").eq("id", user.id).single();
     const email = (userRow as any)?.email || user.email;

@@ -76,3 +76,28 @@ export async function linkActiveStaffToNewLocation(
     console.warn("linkActiveStaffToNewLocation:", error);
   }
 }
+
+/** New hires and onboarding owners with no locations default to every active branch. */
+export async function assignStaffToAllActiveLocations(
+  providerId: string,
+  staffId: string,
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  const { data: locs } = await admin
+    .from("provider_locations")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("is_active", true);
+  if (!locs?.length) return;
+  const rows = locs.map((l: { id: string }, i: number) => ({
+    staff_id: staffId,
+    location_id: l.id,
+    is_primary: i === 0,
+  }));
+  const { error } = await (admin.from("provider_staff_locations") as any).upsert(rows, {
+    onConflict: "staff_id,location_id",
+  });
+  if (error) {
+    console.warn("assignStaffToAllActiveLocations:", error);
+  }
+}

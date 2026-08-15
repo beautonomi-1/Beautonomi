@@ -17,6 +17,7 @@ import {
   redactStaffRowForViewer,
 } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
+import { syncPortalRoleAfterWorkplaceChange } from "@/lib/auth/effective-provider-role";
 
 const updateStaffSchema = z.object({
   name: z.string().optional(),
@@ -295,7 +296,7 @@ export async function PATCH(
 
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id, role")
+      .select("id, role, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -304,7 +305,7 @@ export async function PATCH(
       return notFoundResponse("Staff member not found");
     }
 
-    const existing = existingRow as { id: string; role: string };
+    const existing = existingRow as { id: string; role: string; user_id?: string | null };
     const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner" && !ownerOps) {
@@ -365,6 +366,10 @@ export async function PATCH(
       if (updateError) {
         throw updateError;
       }
+    }
+
+    if (d.is_active === false && existing.user_id) {
+      await syncPortalRoleAfterWorkplaceChange(existing.user_id);
     }
 
     if (replaceLocations) {
@@ -435,7 +440,7 @@ export async function DELETE(
 
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id, role")
+      .select("id, role, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -444,7 +449,7 @@ export async function DELETE(
       return notFoundResponse("Staff member not found");
     }
 
-    const existing = existingRow as { id: string; role: string };
+    const existing = existingRow as { id: string; role: string; user_id?: string | null };
     const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner") {
@@ -465,6 +470,10 @@ export async function DELETE(
 
     if (deleteError) {
       throw deleteError;
+    }
+
+    if (existing.user_id) {
+      await syncPortalRoleAfterWorkplaceChange(existing.user_id);
     }
 
     return successResponse({ success: true });

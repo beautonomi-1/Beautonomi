@@ -30,10 +30,10 @@ export async function GET(request: NextRequest) {
 
     const [impressionRes, timeRes] = await Promise.all([
       availableModels.includes("impression_pack")
-        ? admin.from("ads_impression_packs").select("id, impressions, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin.from("ads_impression_packs").select("id, impressions, price_zar, display_order, apple_product_id").eq("is_active", true).order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       availableModels.includes("time_based")
-        ? admin.from("ads_time_packs").select("id, duration_days, label, price_zar, display_order").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin.from("ads_time_packs").select("id, duration_days, label, price_zar, display_order, apple_product_id").eq("is_active", true).order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
 

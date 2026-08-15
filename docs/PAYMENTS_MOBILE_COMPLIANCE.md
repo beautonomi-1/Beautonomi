@@ -94,17 +94,16 @@ The following are the **specific code-level controls** in the React Native apps:
 
 ## 4. App Store §3.1.3 / Play Billing carve-out
 
-### Why Beautonomi uses Paystack instead of Apple IAP / Google Play Billing
+### Why some flows use Apple IAP and others use Paystack / Play carve-outs
 
-Apple App Store Review Guideline §3.1.3 explicitly **exempts** services that fall into any of the following from the IAP requirement:
+**Do not paste an “we never use IAP” story into App Review notes.** The Provider iOS app sells digital platform subscription and ads through StoreKit (Guideline 3.1.1). Everything else stays on the physical-goods / in-person carve-out.
 
-- **§3.1.3(b) Multiplatform Services**: services usable cross-platform may use any payment method.
+Apple App Store Review Guideline §3.1.3 **exempts** real-world services from IAP:
+
 - **§3.1.3(d) Person-to-Person Services**: payment for in-person, one-on-one services.
-- **§3.1.3(e) Goods & Services Outside of the App**: physical or real-world services consumed outside the app (haircuts, beauty treatments, hotel stays, ride shares).
-- **§3.1.3(f) Free Stand-Alone Apps with Optional In-App Purchases for Real-World Experiences**.
-- **§3.1.3 Reader app provisions** for B2B SaaS where the subscription unlocks tools used to serve customers in the real world.
+- **§3.1.3(e) Goods & Services Outside of the App**: physical or real-world services consumed outside the app (haircuts, beauty treatments, retail collected in store).
 
-Google Play Billing has a near-identical carve-out for "physical goods or services" and "person-to-person payments".
+Google Play Billing has a matching carve-out for physical goods, person-to-person services, and **B2B products sold exclusively to businesses**. Provider Android subscriptions and ads use Paystack under that B2B / operations-tool position — not because digital IAP is unused on iOS.
 
 | Beautonomi flow | Exemption clause | Notes |
 |---|---|---|
@@ -114,12 +113,20 @@ Google Play Billing has a near-identical carve-out for "physical goods or servic
 | Customer **memberships** (salon-specific) | §3.1.3(b) + §3.1.3(e) | Unlocks discounts for in-person services; usable on web + iOS + Android. |
 | Customer **wallet top-up** | §3.1.3(e) | Funds future real-world bookings, refundable to source. |
 | Customer **custom offers** | §3.1.3(d) | One-to-one negotiated price for a real-world service. |
-| Provider **subscription** | §3.1.3 Reader / B2B SaaS exemption | Provider-side B2B SaaS — subscription unlocks tools the provider uses to serve their own customers in the real world. Equivalent to Squarespace, Square, Shopify, Mindbody, Fresha. |
-| Provider **ads** (paid promotion) | §3.1.3(b) Multiplatform Services | Provider's ad spend appears on web + iOS + Android explore feeds; payment unlocks distribution outside the app. |
+| Provider **subscription** (iOS) | **Apple IAP required (3.1.1)** | Growth/Scale auto-renewable subscriptions via StoreKit. Apple is merchant of record. |
+| Provider **ads** (iOS) | **Apple IAP required (3.1.1)** | Consumable ads packs via StoreKit. Unmapped packs fail closed (no Paystack). |
+| Provider **subscription / ads** (Android + web) | Play B2B / Paystack | Same digital products, billed through Paystack. Play position is B2B tools sold to businesses, not personal digital content. |
+| Provider **in-person POS** (PayCloud / Yoco / cash) | §3.1.3(e) | Chip/tap at the salon for real-world services and retail. |
 
 ### Reviewer-facing summary (paste this in App Store / Play Store submission notes when asked)
 
-> Beautonomi is a two-sided marketplace for real-world beauty and wellness services. The customer app books in-person appointments, gift cards redeemable for in-person services, retail products, and salon memberships. The provider app subscribes to a B2B SaaS that providers use to run their physical businesses, and lets providers buy paid promotion across web + iOS + Android. None of the in-app purchases unlock digital content consumed within the app. Per App Store Review Guideline §3.1.3 (specifically §3.1.3(b), §3.1.3(d), §3.1.3(e), and the Reader / Multiplatform Services exemptions) and the equivalent Google Play Billing physical-services carve-out, all payments use Paystack (a PCI DSS Level 1 hosted gateway) opened in `ASWebAuthenticationSession` / Chrome Custom Tabs. We do not link out to an external website for purchase — the entire purchase flow stays in-app within the system-managed authentication session.
+**Customer app (iOS + Android):**
+
+> Beautonomi is a marketplace for real-world beauty and wellness services. Customers book in-person appointments, buy gift cards redeemable for in-person services, order retail products, and purchase salon memberships. Those payments are for goods and services consumed outside the app (Guideline §3.1.3(e) / Play physical-goods carve-out) and use Paystack hosted checkout in ASWebAuthenticationSession / Chrome Custom Tabs. Account deletion is in Settings → Privacy → Delete account.
+
+**Provider / Partner app (iOS) — use this, not the old “no IAP” paragraph:**
+
+> Beautonomi Partner uses Apple In-App Purchase for the platform subscription (Growth/Scale) and paid ad placement. Those are digital entitlements; Apple is merchant of record. Restore purchases and subscription management are on More → Subscription. In-person salon checkout (Paystack/Yoco/PayCloud card terminals) is for physical services and goods under Guideline §3.1.3(e) and does not unlock digital features. Demo account and IAP steps are in App Review notes (`apps/provider/docs/APP_REVIEW_APPLE_IAP.md`).
 
 ---
 

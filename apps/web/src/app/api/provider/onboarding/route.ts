@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {  requireRoleInApi, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  ACTIVE_PROVIDER_ID_COOKIE,
+  isValidUUID,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { geocodeProviderLocation } from "@/lib/mapbox/geocodeProviderLocation";
@@ -13,6 +20,8 @@ import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark
 import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
 import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
+import { persistJoinedProviderRole } from "@/lib/auth/effective-provider-role";
+import { assignStaffToAllActiveLocations } from "@/lib/provider/location-maintenance";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -210,14 +219,34 @@ const onboardingSchema = z.object({
   // Provider Ops: invite token from an admin-sent onboarding invite link.
   // Used to deterministically match this signup back to the originating lead.
   invite_token: z.string().uuid().optional().nullable(),
-});/**
+});
+
+function attachActiveProviderCookie(
+  response: ReturnType<typeof successResponse>,
+  providerId: unknown,
+) {
+  if (typeof providerId === "string" && isValidUUID(providerId)) {
+    response.cookies.set(ACTIVE_PROVIDER_ID_COOKIE, providerId, {
+      path: "/",
+      httpOnly: false,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+  return response;
+}
+
+/**
  * POST /api/provider/onboarding
  * 
  * Complete provider onboarding - create provider profile and associate with global categories
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
 
     const _supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -344,7 +373,7 @@ export async function POST(request: NextRequest) {
         alreadyCompleted: true,
       });
 
-      return successResponse(completion);
+      return attachActiveProviderCookie(successResponse(completion), existingProvider.id);
     }
 
     const { data: tenantRow } = await supabaseAdmin
@@ -1277,17 +1306,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Upgrade user role to provider_owner (customer or legacy provider_onboarding)
-    const userRole = user.role;
-    if (userRole === "customer" || userRole === "provider_onboarding") {
-      const { error: roleError } = await supabaseAdmin
-        .from("users")
-        .update({ role: "provider_owner" })
-        .eq("id", user.id);
-
-      if (roleError) {
-        console.error("Error upgrading user role:", roleError);
-      }
+    // Owner-first persist: staff who just created their own salon become
+    // provider_owner without demoting anyone who already was.
+    try {
+      await persistJoinedProviderRole(user.id);
+    } catch (roleError) {
+      console.error("Error upgrading user role after onboarding:", roleError);
     }
 
     const supportsHouseCalls = business_type === "mobile" || business_type === "both";
@@ -1531,6 +1555,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    try {
+      const { data: onboardStaff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("provider_id", providerId);
+      for (const row of onboardStaff ?? []) {
+        await assignStaffToAllActiveLocations(providerId, (row as { id: string }).id);
+      }
+    } catch (locAssignErr) {
+      console.warn("Onboarding staff location defaults:", locAssignErr);
+    }
+
     // Delete draft after successful onboarding using admin client
     await supabaseAdmin
       .from("provider_onboarding_drafts")
@@ -1619,7 +1655,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(completion);
+    return attachActiveProviderCookie(
+      successResponse(completion),
+      (provider as { id?: string } | null)?.id,
+    );
   } catch (error) {
     return handleApiError(error, "Failed to complete onboarding");
   }

@@ -24,6 +24,12 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
+
+const APPLE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
+const APPLE_BILLED_MESSAGE =
+  "This plan is billed through the App Store. Manage, change, or cancel it in Apple ID → Subscriptions to avoid a second charge.";
+
 interface SubscriptionPlan {
   id: string;
   plan_id: string;
@@ -75,6 +81,7 @@ interface ProviderSubscription {
     message: string;
     action: "pay_now" | "update_payment" | "retry_payment" | "complete_payment" | string;
   } | null;
+  billing_provider?: "paystack" | "apple" | "manual" | null;
 }
 
 function isPaidSubscriptionState(sub: ProviderSubscription | null): boolean {
@@ -109,6 +116,14 @@ function isInProviderAppWebView(): boolean {
 
 function isPaidCurrentPlan(plan: SubscriptionPlan | null): boolean {
   return Boolean(plan && !plan.is_free && planDisplayPrice(plan) > 0);
+}
+
+function isAppleBilled(sub: ProviderSubscription | null): boolean {
+  return isAppleBillingActive(sub?.billing_provider, sub?.status);
+}
+
+function openAppleSubscriptions(): void {
+  window.open(APPLE_SUBSCRIPTIONS_URL, "_blank", "noopener,noreferrer");
 }
 
 function subscriptionNeedsReactivation(sub: ProviderSubscription | null): boolean {
@@ -147,6 +162,11 @@ function billingActionLabel(
 ): string | null {
   if (!isPaidPlan) {
     if (subscriptionNeedsReactivation(subscription)) return "Reactivate free plan";
+    return null;
+  }
+  if (isAppleBillingActive(subscription.billing_provider, subscription.status)) {
+    if (subscription.status === "past_due") return "Update payment in App Store";
+    if (subscription.cancelled_at || subscription.auto_renew === false) return "Resume in App Store";
     return null;
   }
   if (subscription.status === "past_due") return "Pay now / update card";
@@ -350,6 +370,10 @@ export default function SubscriptionPage() {
 
   // Paid plans open the review dialog first; free plans activate immediately.
   const handleUpgrade = async (planId: string) => {
+    if (isAppleBilled(subscription)) {
+      toast.error(APPLE_BILLED_MESSAGE);
+      return;
+    }
     const plan = plans.find((p) => p.id === planId);
     if (!plan) {
       toast.error("Plan not found");
@@ -364,6 +388,12 @@ export default function SubscriptionPage() {
   };
 
   const proceedUpgrade = async (planId: string) => {
+    if (isAppleBilled(subscription)) {
+      toast.error(APPLE_BILLED_MESSAGE);
+      setReviewPlan(null);
+      setReviewSubmitting(false);
+      return;
+    }
     try {
       const plan = plans.find((p) => p.id === planId);
       if (!plan) throw new Error("Plan not found");
@@ -449,6 +479,11 @@ export default function SubscriptionPage() {
   };
 
   const handleCancel = async () => {
+    if (isAppleBilled(subscription)) {
+      toast.message(APPLE_BILLED_MESSAGE);
+      openAppleSubscriptions();
+      return;
+    }
     if (
       !confirm(
         "Are you sure you want to cancel your subscription? You'll retain access until the end of your billing period."
@@ -471,6 +506,11 @@ export default function SubscriptionPage() {
   };
 
   const handleRenew = async () => {
+    if (isAppleBilled(subscription)) {
+      toast.message(APPLE_BILLED_MESSAGE);
+      openAppleSubscriptions();
+      return;
+    }
     try {
       const res = await fetcher.post<{
         data: { payment_url?: string | null; is_free?: boolean; message?: string };
@@ -496,6 +536,10 @@ export default function SubscriptionPage() {
   };
 
   const handleBillingAction = async () => {
+    if (isAppleBilled(subscription)) {
+      openAppleSubscriptions();
+      return;
+    }
     if (subscription && subscriptionNeedsReactivation(subscription) && !isPaidPlan) {
       const freePlan = plans.find((p) => p.is_free || planDisplayPrice(p) === 0);
       if (freePlan) {
@@ -552,6 +596,11 @@ export default function SubscriptionPage() {
    * failure.
    */
   const handleManageCard = async () => {
+    if (isAppleBilled(subscription)) {
+      toast.message(APPLE_BILLED_MESSAGE);
+      openAppleSubscriptions();
+      return;
+    }
     setManagingCard(true);
     try {
       const res = await fetcher.get<{ data: { link: string } }>(
@@ -735,6 +784,11 @@ export default function SubscriptionPage() {
                             Past Due
                           </Badge>
                         )}
+                        {isAppleBilled(subscription) ? (
+                          <Badge variant="secondary" className="bg-violet-100 text-violet-800">
+                            App Store
+                          </Badge>
+                        ) : null}
                       </CardTitle>
                       <div className="text-base text-gray-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
                         {currentPlan?.description ? (
@@ -787,6 +841,25 @@ export default function SubscriptionPage() {
                     </div>
                   ) : null}
 
+                  {isAppleBilled(subscription) ? (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+                      <p className="font-semibold">Billed through the App Store</p>
+                      <p className="mt-1 leading-relaxed">
+                        Apple is the seller of record for this plan. Change, cancel, or update
+                        payment in Apple ID → Subscriptions. Web and Android checkout stay closed
+                        until this Apple subscription ends, so you are not charged twice.
+                      </p>
+                      <a
+                        href={APPLE_SUBSCRIPTIONS_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-block font-medium text-violet-800 underline"
+                      >
+                        Manage in App Store
+                      </a>
+                    </div>
+                  ) : null}
+
                   {currentPlan && (
                     <div>
                       <div className="mb-2 flex flex-wrap items-baseline gap-1">
@@ -835,7 +908,7 @@ export default function SubscriptionPage() {
                         {billingLabel}
                       </Button>
                     ) : null}
-                    {isPaidPlan && !billingLabel ? (
+                    {isPaidPlan && !billingLabel && !isAppleBilled(subscription) ? (
                       <Button
                         onClick={handleManageCard}
                         variant="outline"
@@ -847,7 +920,9 @@ export default function SubscriptionPage() {
                     ) : null}
                     {showCancel ? (
                       <Button onClick={handleCancel} variant="outline" className="text-red-600">
-                        Cancel Subscription
+                        {isAppleBilled(subscription)
+                          ? "Cancel in App Store"
+                          : "Cancel Subscription"}
                       </Button>
                     ) : null}
                   </div>
@@ -862,8 +937,9 @@ export default function SubscriptionPage() {
                     Change plan
                   </h3>
                   <p className="mt-1 max-w-xl text-sm text-gray-500">
-                    Only plans linked to an active public pricing card for your region are shown —
-                    same as your marketing site.
+                    {isAppleBilled(subscription)
+                      ? "This plan is billed through the App Store. Plan changes and cancellation happen in Apple ID → Subscriptions, not here."
+                      : "Only plans linked to an active public pricing card for your region are shown — same as your marketing site."}
                   </p>
                 </div>
               </div>

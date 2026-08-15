@@ -9,7 +9,7 @@ import type { UserRole } from "@/types/beautonomi";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { ProviderStatus, UserRoleResult, UsersRoleFromDb } from "./role";
-import { resolveEffectiveProviderRole } from "@/lib/provider/staff-invite";
+import { resolveEffectiveProviderRole } from "@/lib/auth/effective-provider-role";
 
 /**
  * §Release-audit 2026-04: self-heal a missing `public.users` row for a Bearer/mobile caller,

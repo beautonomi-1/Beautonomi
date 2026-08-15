@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
+import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 import { cn } from "@/lib/utils";
 
 type Membership = {
@@ -35,12 +36,8 @@ export function ProviderOrgSwitcher({
         }>("/api/provider/memberships");
         if (cancelled) return;
         const data = res.data;
-        if (!data?.has_multiple) {
-          setMemberships([]);
-          return;
-        }
-        setMemberships(data.memberships ?? []);
-        setActiveId(data.active_provider_id ?? null);
+        setMemberships(data?.memberships ?? []);
+        setActiveId(data?.active_provider_id ?? null);
       } catch {
         if (!cancelled) setMemberships([]);
       } finally {
@@ -52,17 +49,34 @@ export function ProviderOrgSwitcher({
     };
   }, []);
 
-  if (loading || memberships.length < 2) return null;
+  if (loading || memberships.length === 0) return null;
 
   const isLight = variant === "light";
+  const current = memberships.find((m) => m.provider_id === activeId) ?? memberships[0];
+  const canSwitch = memberships.length > 1;
 
   async function switchOrg(providerId: string) {
+    if (providerId === activeId) return;
     await fetcher.post("/api/provider/memberships", { provider_id: providerId });
+    invalidateProviderPortalCache();
     setActiveId(providerId);
     window.location.reload();
   }
 
   if (collapsed) {
+    if (!canSwitch) {
+      return (
+        <p
+          className={cn(
+            "w-full text-[10px] truncate px-1 mb-2",
+            isLight ? "text-gray-600" : "text-white/80",
+          )}
+          title={current?.business_name}
+        >
+          {current?.business_name}
+        </p>
+      );
+    }
     return (
       <select
         aria-label="Switch business"
@@ -77,7 +91,7 @@ export function ProviderOrgSwitcher({
       >
         {memberships.map((m) => (
           <option key={m.provider_id} value={m.provider_id} className="text-gray-900">
-            {m.business_name}
+            {m.business_name}{m.relationship === "owner" ? " (owner)" : " (staff)"}
           </option>
         ))}
       </select>
@@ -99,22 +113,29 @@ export function ProviderOrgSwitcher({
       >
         Active business
       </label>
-      <select
-        className={cn(
-          "w-full text-sm rounded-md px-2 py-1.5",
-          isLight
-            ? "bg-white text-gray-900 border border-gray-200"
-            : "bg-white/10 text-white border border-white/20",
-        )}
-        value={activeId ?? ""}
-        onChange={(e) => void switchOrg(e.target.value)}
-      >
-        {memberships.map((m) => (
-          <option key={m.provider_id} value={m.provider_id} className="text-gray-900">
-            {m.business_name}
-          </option>
-        ))}
-      </select>
+      {canSwitch ? (
+        <select
+          className={cn(
+            "w-full text-sm rounded-md px-2 py-1.5",
+            isLight
+              ? "bg-white text-gray-900 border border-gray-200"
+              : "bg-white/10 text-white border border-white/20",
+          )}
+          value={activeId ?? ""}
+          onChange={(e) => void switchOrg(e.target.value)}
+        >
+          {memberships.map((m) => (
+            <option key={m.provider_id} value={m.provider_id} className="text-gray-900">
+              {m.business_name}{m.relationship === "owner" ? " (owner)" : " (staff)"}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className={cn("text-sm font-medium truncate", isLight ? "text-gray-900" : "text-white")}>
+          {current?.business_name}
+          {current?.relationship === "owner" ? " (owner)" : " (staff)"}
+        </p>
+      )}
     </div>
   );
 }
