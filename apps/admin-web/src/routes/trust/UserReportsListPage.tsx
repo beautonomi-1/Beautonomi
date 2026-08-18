@@ -1,12 +1,12 @@
 import { Fragment, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSectionPageAny } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -35,17 +35,27 @@ const STATUS_BADGE: Record<string, string> = {
   dismissed: "bg-gray-100 text-gray-600",
 };
 
+const REPORT_TYPE_LABELS: Record<string, string> = {
+  customer_reported_provider: "Customer → provider",
+  provider_reported_customer: "Provider → customer",
+  safety_report_user: "Safety hub",
+};
+
 export function UserReportsListPage() {
   useAdminDocumentTitle("User Reports");
-  const { allowed, denied } = useAdminSectionPage(
-    ADMIN_SECTION_PROVIDERS_OPERATIONS,
-    "Providers & operations access is required."
+  const { allowed, denied } = useAdminSectionPageAny(
+    [ADMIN_SECTION_USERS_TRUST, ADMIN_SECTION_PROVIDERS_OPERATIONS],
+    "Users & trust or providers & operations access is required.",
   );
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
+  const reportedUserId = sp.get("reported_user_id") || "";
   const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
-  const qk = useMemo(() => adminQueryKeys.userReports(`s=${status}|o=${offset}`), [status, offset]);
+  const qk = useMemo(
+    () => adminQueryKeys.userReports(`s=${status}|u=${reportedUserId}|o=${offset}`),
+    [status, reportedUserId, offset],
+  );
 
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<"resolve" | "dismiss" | null>(null);
@@ -60,6 +70,7 @@ export function UserReportsListPage() {
       p.set("limit", "50");
       p.set("offset", String(offset));
       if (status !== "all") p.set("status", status);
+      if (reportedUserId) p.set("reported_user_id", reportedUserId);
       return adminApi.getJson<UserReportsPayload>(`/api/admin/user-reports?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -127,6 +138,27 @@ export function UserReportsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="User reports" description="Manage user-submitted reports. Resolve or dismiss with notes." />
+      {reportedUserId ? (
+        <AdminPanel>
+          <p className="text-sm text-gray-600">
+            Filtered to reports against user{" "}
+            <span className="font-mono text-xs">{reportedUserId}</span>
+            {" · "}
+            <button
+              type="button"
+              className="text-primary underline"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                n.delete("reported_user_id");
+                n.delete("offset");
+                setSp(n, { replace: true });
+              }}
+            >
+              Show all reports
+            </button>
+          </p>
+        </AdminPanel>
+      ) : null}
       <AdminPanel>
         <TrustReportsTabNav />
       </AdminPanel>
@@ -177,7 +209,7 @@ export function UserReportsListPage() {
                     className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                   >
-                    <AdminTd>{String(row.report_type ?? "")}</AdminTd>
+                    <AdminTd>{REPORT_TYPE_LABELS[String(row.report_type ?? "")] ?? String(row.report_type ?? "")}</AdminTd>
                     <AdminTd>
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
                         {statusStr}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, TouchableOpacity, Alert, Pressable, ScrollView, Modal, ActivityIndicator, Platform } from "react-native";
+import { useRouter } from "expo-router";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +28,7 @@ import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
+  const router = useRouter();
   const { t } = useTranslation();
   const pi = useCallback(
     (key: string, options?: Record<string, string | number>) => {
@@ -50,10 +52,6 @@ export default function PersonalInfoScreen() {
   const [fullName, setFullName] = useState("");
   const [phoneCountryCode, setPhoneCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneNational, setPhoneNational] = useState("");
-  const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyCountryCode, setEmergencyCountryCode] = useState(getDeviceDefaultCountryDial);
-  const [emergencyPhoneNational, setEmergencyPhoneNational] = useState("");
-  const [emergencyRelationship, setEmergencyRelationship] = useState("");
   const [about, setAbout] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -109,11 +107,6 @@ export default function PersonalInfoScreen() {
         const main = parsePhoneToCountryAndNational(p?.phone, deviceDial);
         setPhoneCountryCode(main.countryCode);
         setPhoneNational(main.national);
-        const ec = p?.emergency_contact;
-        setEmergencyName(ec?.name ?? "");
-        setEmergencyCountryCode(ec?.country_code || deviceDial);
-        setEmergencyPhoneNational(getNationalFromStored(ec?.country_code, ec?.phone));
-        setEmergencyRelationship(ec?.relationship ?? "");
       }
       if (profileDataRes && !profileDataRes.error && profileDataRes.data) {
         setAbout(profileDataRes.data.about ?? "");
@@ -259,17 +252,10 @@ export default function PersonalInfoScreen() {
       const parts = fullName.trim().split(/\s+/);
       const first = parts[0] || "";
       const last = parts.slice(1).join(" ") || "";
-      const emergencyPhoneDigits = emergencyPhoneNational.trim().replace(/\D/g, "");
       const profilePayload: Record<string, unknown> = {
         first_name: first,
         last_name: last,
         full_name: fullName.trim(),
-        emergency_contact: {
-          name: emergencyName.trim() || null,
-          country_code: emergencyPhoneDigits ? emergencyCountryCode : null,
-          phone: emergencyPhoneDigits || null,
-          relationship: emergencyRelationship.trim() || null,
-        },
       };
       const res = await api.patch<any>("/api/me/profile", profilePayload);
       if (res.error) {
@@ -406,42 +392,21 @@ export default function PersonalInfoScreen() {
             />
           </View>
 
-          {/* Emergency contact card */}
-          <View style={cardStyle}>
-            <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>{pi("emergencyContactSection")}</Text>
-            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 16 }}>{pi("emergencyContactSubtitle")}</Text>
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>{pi("emergencyNameLabel")}</Text>
-              <TextInput
-                style={[inputStyle, { backgroundColor: Colors.white }]}
-                value={emergencyName}
-                onChangeText={setEmergencyName}
-                placeholder={pi("emergencyNamePlaceholder")}
-                placeholderTextColor={Colors.gray[400]}
-              />
+          {/* Emergency contact — managed on dedicated screen */}
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/account-settings/emergency-contact" as never)}
+            style={[cardStyle, { flexDirection: "row", alignItems: "center" }]}
+            accessibilityRole="button"
+            accessibilityLabel={pi("emergencyContactSection")}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>
+                {pi("emergencyContactSection")}
+              </Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{pi("emergencyContactManageHint")}</Text>
             </View>
-            <View style={{ marginBottom: 16 }}>
-              <PhoneInputWithCountry
-                label={pi("emergencyPhoneLabel")}
-                countryCode={emergencyCountryCode}
-                onCountryCodeChange={setEmergencyCountryCode}
-                nationalValue={emergencyPhoneNational}
-                onNationalChange={setEmergencyPhoneNational}
-                placeholder={pi("emergencyPhonePlaceholder")}
-                accessibilityLabel={pi("emergencyPhonePlaceholder")}
-              />
-            </View>
-            <View>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>{pi("relationshipLabel")}</Text>
-              <TextInput
-                style={[inputStyle, { backgroundColor: Colors.white }]}
-                value={emergencyRelationship}
-                onChangeText={setEmergencyRelationship}
-                placeholder={pi("emergencyRelationPlaceholder")}
-                placeholderTextColor={Colors.gray[400]}
-              />
-            </View>
-          </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={save}

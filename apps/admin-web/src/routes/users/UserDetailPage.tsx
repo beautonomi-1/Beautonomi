@@ -39,6 +39,27 @@ const SIGNUP_SOURCE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+const SAFETY_SETTING_LABELS: Record<string, string> = {
+  restricted_mode: "Restricted mode",
+  hide_social_feed: "Hide social feed",
+  disable_comments_likes: "Disable comments & likes",
+  disable_direct_messaging: "Disable direct messaging",
+  sensitive_content_filter: "Sensitive content filter",
+  require_device_auth: "Require device auth",
+};
+
+type UserReportSummary = {
+  total_reports?: number;
+  adverse_finding_count?: number;
+  unique_adverse_reporters?: number;
+  is_flagged?: boolean;
+  flag_threshold?: number;
+  last_adverse_finding_at?: string | null;
+  pending_count?: number;
+  dismissed_count?: number;
+  actions_taken?: string[];
+};
+
 /** Must match `MANAGEABLE_USER_ROLES` in apps/web `api/admin/users/[id]/role/route.ts`. */
 const MANAGEABLE_USER_ROLES = [
   "customer",
@@ -107,6 +128,16 @@ type UserDetail = Record<string, unknown> & {
   wallet?: Record<string, unknown> | null;
   support_tickets?: Record<string, unknown>[];
   recent_product_orders?: Record<string, unknown>[];
+  trust_safety?: {
+    age_band?: string;
+    age_source?: string;
+    safety_settings?: Record<string, boolean>;
+    safety_locked?: Record<string, boolean>;
+    blocks_initiated_count?: number;
+    blocks_received_count?: number;
+    user_reports_count?: number;
+    safety_support_tickets_count?: number;
+  };
   signup_source?: string | null;
   is_shadow?: boolean;
   claimed_at?: string | null;
@@ -202,6 +233,7 @@ export function UserDetailPage() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [topUpReason, setTopUpReason] = useState("");
   const [showTopUp, setShowTopUp] = useState(false);
+  const [warnReason, setWarnReason] = useState("");
 
   const q = useQuery({
     queryKey: adminQueryKeys.userDetail(id),
@@ -325,6 +357,29 @@ export function UserDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to reset identity verification: ${e.message}`),
   });
 
+  const warnPost = useMutation({
+    mutationFn: (reason: string) =>
+      adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/warn`, {
+        reason,
+        send_notification: true,
+      }),
+    onSuccess: () => {
+      setWarnReason("");
+      adminToast.success("Warning issued and logged");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to issue warning: ${e.message}`),
+  });
+
+  const reportSummaryQ = useQuery({
+    queryKey: adminQueryKeys.userReportSummary(id),
+    queryFn: () =>
+      adminApi.getJson<UserReportSummary>(
+        `/api/admin/user-reports/summary?user_id=${encodeURIComponent(id)}`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!id,
+  });
+
   const walletTopUp = useMutation({
     mutationFn: (payload: { amount: number; reason: string }) =>
       adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
@@ -440,6 +495,7 @@ export function UserDetailPage() {
           rolePut.error instanceof Error ? rolePut.error : null,
           impersonatePost.error instanceof Error ? impersonatePost.error : null,
           identityResetPost.error instanceof Error ? identityResetPost.error : null,
+          warnPost.error instanceof Error ? warnPost.error : null,
           bookingsQ.error instanceof Error ? bookingsQ.error : null,
           walletTxQ.error instanceof Error ? walletTxQ.error : null,
           loyaltyQ.error instanceof Error ? loyaltyQ.error : null,
@@ -609,6 +665,158 @@ export function UserDetailPage() {
           </dl>
         </AdminPanel>
       </div>
+
+      {data.trust_safety ? (
+        <AdminPanel>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">Trust &amp; safety</h2>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <Link
+                className="font-medium text-primary underline"
+                to={adminSpaTo(`/admin/user-reports?reported_user_id=${encodeURIComponent(id)}`)}
+              >
+                User reports ({data.trust_safety.user_reports_count ?? 0})
+              </Link>
+              <Link
+                className="font-medium text-primary underline"
+                to={adminSpaTo(`/admin/user-blocks?user_id=${encodeURIComponent(id)}`)}
+              >
+                Blocks ({(data.trust_safety.blocks_initiated_count ?? 0) + (data.trust_safety.blocks_received_count ?? 0)})
+              </Link>
+              <Link
+                className="font-medium text-primary underline"
+                to={adminSpaTo("/admin/content-reports?status=pending")}
+              >
+                Content reports queue
+              </Link>
+            </div>
+          </div>
+
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <dt className="text-gray-500">Age band</dt>
+              <dd className="font-medium capitalize">
+                {str(data.trust_safety.age_band) || "—"}
+                {data.trust_safety.age_source ? (
+                  <span className="ml-1 text-xs font-normal text-gray-500">
+                    ({str(data.trust_safety.age_source)})
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Blocks initiated</dt>
+              <dd className="font-medium tabular-nums">{data.trust_safety.blocks_initiated_count ?? 0}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Blocks received</dt>
+              <dd className="font-medium tabular-nums">{data.trust_safety.blocks_received_count ?? 0}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Open user reports</dt>
+              <dd className="font-medium tabular-nums">{data.trust_safety.user_reports_count ?? 0}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Safety support tickets</dt>
+              <dd className="font-medium tabular-nums">
+                {data.trust_safety.safety_support_tickets_count ?? 0}
+              </dd>
+            </div>
+            {reportSummaryQ.data ? (
+              <>
+                <div>
+                  <dt className="text-gray-500">Adverse findings</dt>
+                  <dd className="font-medium tabular-nums">
+                    {reportSummaryQ.data.adverse_finding_count ?? 0}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Flag status</dt>
+                  <dd className={reportSummaryQ.data.is_flagged ? "font-medium text-red-700" : "font-medium text-green-700"}>
+                    {reportSummaryQ.data.is_flagged
+                      ? `Flagged (${reportSummaryQ.data.unique_adverse_reporters ?? 0} unique reporters ≥ ${reportSummaryQ.data.flag_threshold ?? 3})`
+                      : "Not flagged"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Pending reports</dt>
+                  <dd className="font-medium tabular-nums">{reportSummaryQ.data.pending_count ?? 0}</dd>
+                </div>
+              </>
+            ) : reportSummaryQ.isLoading ? (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <p className="text-sm text-gray-500">Loading report summary…</p>
+              </div>
+            ) : null}
+          </dl>
+
+          {data.trust_safety.safety_settings ? (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-gray-700">Effective safety settings</h3>
+              <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(data.trust_safety.safety_settings).map(([key, enabled]) => {
+                  const locked = data.trust_safety?.safety_locked?.[key] === true;
+                  return (
+                    <li key={key} className="flex items-center gap-2">
+                      <span
+                        className={
+                          enabled ? "inline-block h-2 w-2 rounded-full bg-amber-500" : "inline-block h-2 w-2 rounded-full bg-gray-300"
+                        }
+                        aria-hidden
+                      />
+                      <span>
+                        {SAFETY_SETTING_LABELS[key] ?? key.replace(/_/g, " ")}
+                        {locked ? " (locked)" : ""}
+                        {enabled ? " · on" : " · off"}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
+          <p className="mt-4 text-xs text-gray-500">
+            Safety-hub user reports are filed via <span className="font-mono">user_reports</span> (
+            <span className="font-mono">safety_report_user</span>). Urgent concerns may still use support
+            tickets (<span className="font-mono">safety_emergency</span>).
+          </p>
+
+          <div className="mt-6 border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-medium text-gray-900">Issue formal warning</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Sends an in-app notification and records an audit entry. Use for policy violations before suspension.
+            </p>
+            <textarea
+              className="mt-3 w-full max-w-xl rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              rows={3}
+              value={warnReason}
+              onChange={(e) => setWarnReason(e.target.value)}
+              placeholder="Describe the violation and expected behavior…"
+            />
+            <div className="mt-2">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(warnPost.isPending)}
+                disabled={warnPost.isPending || !warnReason.trim()}
+                onClick={() => {
+                  const reason = warnReason.trim();
+                  if (
+                    !window.confirm(
+                      "Issue a formal warning to this user? They will receive an in-app notification.",
+                    )
+                  ) {
+                    return;
+                  }
+                  void warnPost.mutateAsync(reason);
+                }}
+              >
+                {warnPost.isPending ? "Sending…" : "Issue warning"}
+              </button>
+            </div>
+          </div>
+        </AdminPanel>
+      ) : null}
 
       {stats.provider_finance_summary ? (
         <ProviderFinanceSummaryCard

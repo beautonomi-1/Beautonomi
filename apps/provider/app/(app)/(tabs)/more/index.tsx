@@ -112,7 +112,8 @@ function getStepNativeRoute(step: SetupStatusStep): string {
 interface MenuItem {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  subtitle: string;
+  subtitle?: string;
+  subtitleKey?: string;
   route: string;
   color: string;
   bg: string;
@@ -187,7 +188,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Settings",
     items: [
-      { icon: "shield-outline", label: "Trust & Safety", subtitle: "Age assurance, content controls & blocked users", route: "/(app)/(tabs)/more/safety", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "shield-outline", label: "Trust & Safety", subtitleKey: "provider.mobile.screens.safetyHub.moreMenuSubtitle", route: "/(app)/(tabs)/more/safety", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "lock-closed-outline", label: "Login & security", subtitle: "Email, phone, password, biometrics & sessions", route: "/(app)/(tabs)/more/settings-login-and-security", color: "#6366f1", bg: "#eef2ff" },
       { icon: "shield-checkmark-outline", label: "Identity verification", subtitle: "Verify your identity (KYC) & earn the Verified badge", route: "/(app)/(tabs)/more/settings/verification", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
@@ -1080,6 +1081,7 @@ export default function MoreScreen() {
                     },
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
+                    const itemSubtitle = item.subtitleKey ? t(item.subtitleKey) : (item.subtitle ?? "");
                     return (
                       <TouchableOpacity
                         key={item.route}
@@ -1095,7 +1097,7 @@ export default function MoreScreen() {
                         onPress={() => handleMenuPress(item.route)}
                         activeOpacity={0.6}
                         accessibilityRole="button"
-                        accessibilityLabel={badge ? `${item.label}: ${item.subtitle}. ${badge} alerts.` : `${item.label}: ${item.subtitle}`}
+                        accessibilityLabel={badge ? `${item.label}: ${itemSubtitle}. ${badge} alerts.` : `${item.label}: ${itemSubtitle}`}
                       >
                         <View
                           style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
@@ -1107,7 +1109,7 @@ export default function MoreScreen() {
                             {item.label}
                           </Text>
                           <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                            {item.subtitle}
+                            {itemSubtitle}
                           </Text>
                         </View>
                         {badge ? (

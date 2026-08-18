@@ -9,11 +9,16 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { slackNotifyUserReportCreated } from "@/lib/integrations/slack/ops-triggers";
+import { resolveReportedUserId } from "@/lib/safety/resolve-reported-user";
+import { USER_REPORT_TYPE_SAFETY_HUB } from "@/lib/safety/user-report-types";
 
 /**
  * POST /api/reports
- * Create a user report: customer reports provider, or provider reports customer.
- * Body: report_type, description, and either provider_id (for customer_reported_provider) or reported_user_id (for provider_reported_customer). Optional booking_id.
+ * Create a user report: customer reports provider, provider reports customer,
+ * or safety-hub user report (harassment / abuse).
+ * Body: report_type, description, and either provider_id (for customer_reported_provider),
+ * reported_user_id (for provider_reported_customer or safety_report_user),
+ * or reported_handle (for safety_report_user). Optional booking_id.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +44,23 @@ export async function POST(request: NextRequest) {
 
     let reportedUserId: string;
     let customerReportProviderTenantId: string | null = null;
-    if (reportType === "customer_reported_provider") {
+    if (reportType === USER_REPORT_TYPE_SAFETY_HUB) {
+      const supabaseLookup = await getSupabaseAdmin();
+      const resolved = await resolveReportedUserId(supabaseLookup, {
+        reported_user_id:
+          typeof body.reported_user_id === "string" ? body.reported_user_id : undefined,
+        reported_handle:
+          typeof body.reported_handle === "string" ? body.reported_handle : undefined,
+      });
+      if (!resolved) {
+        return errorResponse(
+          "reported_user_id or reported_handle is required for safety_report_user",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      reportedUserId = resolved;
+    } else if (reportType === "customer_reported_provider") {
       const providerId =
         typeof body.provider_id === "string" ? body.provider_id.trim() : "";
       if (!providerId) {
@@ -82,12 +103,21 @@ export async function POST(request: NextRequest) {
 
     if (
       reportType !== "customer_reported_provider" &&
-      reportType !== "provider_reported_customer"
+      reportType !== "provider_reported_customer" &&
+      reportType !== USER_REPORT_TYPE_SAFETY_HUB
     ) {
       return errorResponse(
-        "report_type must be customer_reported_provider or provider_reported_customer",
+        "report_type must be customer_reported_provider, provider_reported_customer, or safety_report_user",
         "VALIDATION_ERROR",
         400
+      );
+    }
+
+    if (reportType === USER_REPORT_TYPE_SAFETY_HUB && description.length < 10) {
+      return errorResponse(
+        "Description must be at least 10 characters for safety reports",
+        "VALIDATION_ERROR",
+        400,
       );
     }
 
@@ -153,6 +183,8 @@ export async function POST(request: NextRequest) {
     if (reportType === "customer_reported_provider") {
       // Allow any authenticated user to report a provider (customer, partner, etc.)
       // No role restriction so reporting works regardless of user role.
+    } else if (reportType === USER_REPORT_TYPE_SAFETY_HUB) {
+      // Any authenticated customer or provider may file a safety-hub user report.
     } else {
       if (!reporterProviderId) {
         reporterProviderId = await getProviderIdForUser(user.id);

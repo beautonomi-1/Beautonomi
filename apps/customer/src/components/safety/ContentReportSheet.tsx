@@ -12,6 +12,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
+import { trackContentReportSubmitted } from "@/lib/analytics";
 
 export type ContentReportTargetType =
   | "explore_post"
@@ -107,6 +108,7 @@ export function ContentReportSheet({
       }
 
       haptic.success();
+      trackContentReportSubmitted(targetType);
       handleClose();
       Alert.alert(tr("submittedTitle"), tr("submittedBody"));
     } catch {

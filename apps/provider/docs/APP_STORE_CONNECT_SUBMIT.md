@@ -138,8 +138,13 @@ Fresh install (delete app first). Use Sandbox Apple ID for IAP.
 | 4 | Demo login email `buntulink@gmail.com` + password or OTP `246810` | ☐ |
 | 5 | Sign in with Apple — no name/email re-entry in onboarding Step 2 | ☐ |
 | 6 | **More → Trust & Safety → Age assurance** | ☐ |
-| 7 | **More → Subscription** → Growth Monthly → StoreKit sheet | ☐ |
-| 8 | Terms + Privacy links on subscription screen | ☐ |
+| 7 | **More → Trust & Safety → Emergency contact** (save → hub shows masked phone) | ☐ |
+| 8 | **More → Trust & Safety → Content & safety** (back works; toggles persist) | ☐ |
+| 9 | **More → Trust & Safety → Blocked users** | ☐ |
+| 10 | **More → Trust & Safety → Report a user** (support ticket preset) | ☐ |
+| 11 | **More → Buy ads → Failed filter → Try payment again + Billing link** | ☐ |
+| 12 | **More → Subscription** → Growth Monthly → StoreKit sheet | ☐ |
+| 13 | Terms + Privacy links on subscription screen | ☐ |
 
 ---
 
@@ -174,6 +179,11 @@ First-session flow covers notifications only (Continue buttons). Photo library a
 
 AGE ASSURANCE (Guideline 2.3.6)
 More → Trust & Safety → Age assurance (edit date of birth).
+Trust & Safety also includes Emergency contact, Content & safety controls, Blocked users, and Report user (support ticket).
+
+PAID ADS vs BILLING
+More → Buy ads: each campaign is paid at checkout. Saved cards for subscriptions/invoices: More → Billing (Settings → Billing).
+
 Age Suitability: https://www.beautonomi.com/age-suitability
 
 SUBSCRIPTION LEGAL (Guideline 3.1.2)

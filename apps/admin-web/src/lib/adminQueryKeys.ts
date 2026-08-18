@@ -74,6 +74,8 @@ export const adminQueryKeys = {
     [...adminQueryKeys.root, "provider-client-ratings", page, limit] as const,
 
   userReports: (q: string) => [...adminQueryKeys.root, "user-reports", q] as const,
+  userBlocks: (q: string) => [...adminQueryKeys.root, "user-blocks", q] as const,
+  userReportSummary: (userId: string) => [...adminQueryKeys.root, "user-report-summary", userId] as const,
 
   contentReports: (q: string) => [...adminQueryKeys.root, "content-reports", q] as const,
 

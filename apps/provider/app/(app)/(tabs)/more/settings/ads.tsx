@@ -52,6 +52,15 @@ import {
   retryAdsCampaignWithApplePayment,
 } from "@/lib/iap/ads-apple-payment";
 import { useAppleIapProducts } from "@/lib/iap/useAppleIapProducts";
+import { useTranslation } from "@beautonomi/i18n";
+import {
+  type CampaignFilterChip,
+  countCampaignsByChip,
+  filterCampaignsByChip,
+  isPastCampaign,
+  listClearableDraftCampaigns,
+} from "@/lib/ads/campaign-filters";
+import { trackAdsCampaignFilter } from "@/lib/analytics";
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
@@ -253,14 +262,13 @@ function isFreshPendingOrder(order: LatestBudgetOrder | null | undefined): boole
   return Date.now() - new Date(order.created_at).getTime() < PENDING_ORDER_FRESH_MS;
 }
 
-function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
-  return (
-    lifecycle === "budget_exhausted" ||
-    lifecycle === "expired" ||
-    lifecycle === "delivered" ||
-    lifecycle === "cancelled"
-  );
-}
+const CAMPAIGN_FILTER_CHIPS: CampaignFilterChip[] = [
+  "all",
+  "needs_payment",
+  "payment_failed",
+  "active",
+  "past",
+];
 
 const packCardShadow = Platform.select({
   ios: {
@@ -357,9 +365,13 @@ function campaignProgress(c: Campaign, nowMs: number, metrics?: CampaignPerforma
 function AdsPaymentOutcomeCard({
   outcome,
   onDismiss,
+  onManageBilling,
+  billingLabel,
 }: {
   outcome: AdsPaymentOutcome;
   onDismiss: () => void;
+  onManageBilling?: () => void;
+  billingLabel?: string;
 }) {
   if (outcome.phase === "idle") return null;
 
@@ -402,6 +414,15 @@ function AdsPaymentOutcomeCard({
       <View style={{ flex: 1 }}>
         <Text style={twStyle(`text-sm font-semibold ${tone.title}`)}>{outcome.title}</Text>
         <Text style={twStyle(`text-xs ${tone.body}`)}>{outcome.body}</Text>
+        {outcome.phase === "failed" && onManageBilling ? (
+          <TouchableOpacity
+            onPress={onManageBilling}
+            style={twStyle("mt-2 self-start rounded-lg bg-white/80 px-3 py-2 border border-amber-200")}
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-xs font-semibold text-amber-900")}>{billingLabel ?? "Manage payment methods"}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <TouchableOpacity
         onPress={onDismiss}
@@ -437,6 +458,7 @@ function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: stri
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const localParams = useLocalSearchParams<{
     payment_success?: string;
     payment_failed?: string;
@@ -464,6 +486,7 @@ export default function AdsSettingsScreen() {
   // before the webhook has provisioned the budget on the server.
   const [paymentOutcome, setPaymentOutcome] = useState<AdsPaymentOutcome>({ phase: "idle" });
   const [showEndedCampaigns, setShowEndedCampaigns] = useState(false);
+  const [campaignFilterChip, setCampaignFilterChip] = useState<CampaignFilterChip>("all");
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -1149,6 +1172,53 @@ export default function AdsSettingsScreen() {
     [handleSetStatus],
   );
 
+  const af = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`provider.mobile.screens.adsCampaignFilters.${key}`, opts ?? {}) as string,
+    [t],
+  );
+
+  const campaignChipCounts = useMemo(() => countCampaignsByChip(campaigns), [campaigns]);
+
+  const filteredCampaigns = useMemo(
+    () =>
+      filterCampaignsByChip(campaigns, campaignFilterChip, {
+        showPast: showEndedCampaigns || campaignFilterChip === "past",
+      }),
+    [campaigns, campaignFilterChip, showEndedCampaigns],
+  );
+
+  const clearableDrafts = useMemo(() => listClearableDraftCampaigns(campaigns), [campaigns]);
+
+  const openBilling = useCallback(() => {
+    router.push("/(app)/(tabs)/more/settings/billing" as never);
+  }, [router]);
+
+  const handleClearDrafts = useCallback(() => {
+    const drafts = clearableDrafts;
+    if (drafts.length < 2) return;
+    Alert.alert(
+      af("clearDraftsConfirmTitle"),
+      af("clearDraftsConfirmBody", { count: drafts.length }),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: af("clearDrafts"),
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              for (const c of drafts) {
+                await api.patch(`/api/provider/ads/campaigns/${c.id}`, { status: "ended" });
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              loadAll();
+            })();
+          },
+        },
+      ],
+    );
+  }, [af, clearableDrafts, loadAll, t]);
+
   const handleAbandonPendingOrder = useCallback(
     async (campaign: Campaign) => {
       const orderId = campaign.latest_budget_order?.id;
@@ -1280,6 +1350,8 @@ export default function AdsSettingsScreen() {
           <AdsPaymentOutcomeCard
             outcome={paymentOutcome}
             onDismiss={() => setPaymentOutcome({ phase: "idle" })}
+            onManageBilling={openBilling}
+            billingLabel={af("managePaymentMethods")}
           />
 
           {/* Performance */}
@@ -1722,6 +1794,79 @@ export default function AdsSettingsScreen() {
                 </Text>
               </View>
             ) : null}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+              style={twStyle("mb-3")}
+            >
+              {CAMPAIGN_FILTER_CHIPS.map((chip) => {
+                const active = campaignFilterChip === chip;
+                const chipKey =
+                  chip === "needs_payment"
+                    ? "needsPayment"
+                    : chip === "payment_failed"
+                      ? "paymentFailed"
+                      : chip;
+                const count = campaignChipCounts[chip];
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    onPress={() => {
+                      if (campaignFilterChip === chip) return;
+                      Haptics.selectionAsync();
+                      setCampaignFilterChip(chip);
+                      trackAdsCampaignFilter(chip);
+                      if (chip === "past") setShowEndedCampaigns(true);
+                    }}
+                    style={twStyle(
+                      `rounded-full border px-3 py-2 flex-row items-center ${active ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"}`,
+                    )}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${af(chipKey)} (${count})`}
+                  >
+                    <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-700"}`)}>
+                      {af(chipKey)}
+                    </Text>
+                    <View
+                      style={twStyle(
+                        `ml-1.5 min-w-[20px] rounded-full px-1.5 py-0.5 ${active ? "bg-white/20" : "bg-gray-100"}`,
+                      )}
+                    >
+                      <Text style={twStyle(`text-[10px] font-bold text-center ${active ? "text-white" : "text-gray-600"}`)}>
+                        {count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {(campaignFilterChip === "payment_failed" ||
+              filteredCampaigns.some(
+                (c) => c.payment_state === "failed" || c.lifecycle === "payment_failed",
+              )) ? (
+              <View style={twStyle("mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+                <Text style={twStyle("text-sm font-semibold text-amber-900")}>{af("paymentEducationTitle")}</Text>
+                <Text style={twStyle("mt-1 text-xs leading-5 text-amber-800")}>{af("paymentEducationBody")}</Text>
+                <TouchableOpacity
+                  onPress={openBilling}
+                  style={twStyle("mt-3 self-start rounded-lg bg-white px-3 py-2 border border-amber-200")}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("text-xs font-semibold text-amber-900")}>{af("managePaymentMethods")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {clearableDrafts.length >= 2 ? (
+              <TouchableOpacity
+                onPress={handleClearDrafts}
+                style={twStyle("mb-3 self-start rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>{af("clearDrafts")}</Text>
+              </TouchableOpacity>
+            ) : null}
             {campaigns.some((c) => isPastCampaign(c.lifecycle)) ? (
               <TouchableOpacity
                 onPress={() => setShowEndedCampaigns((v) => !v)}
@@ -1732,7 +1877,7 @@ export default function AdsSettingsScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
-            {campaigns.filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle)).length === 0 ? (
+            {filteredCampaigns.length === 0 ? (
               campaigns.length === 0 ? (
               // §Ads-mobile-audit 2026-05: empty state previously referenced
               // "packs above" even when no packs were configured. Now the
@@ -1772,17 +1917,35 @@ export default function AdsSettingsScreen() {
               </View>
               ) : (
               <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-5")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-900")}>No active campaigns</Text>
-                <Text style={twStyle("mt-1 text-xs text-gray-600")}>
-                  Past campaigns are hidden. Tap show past campaigns to review ended boosts.
-                </Text>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>{af("emptyFiltered")}</Text>
+                <Text style={twStyle("mt-1 text-xs text-gray-600")}>{af("emptyFilteredHint")}</Text>
+                <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
+                  {campaignFilterChip !== "all" ? (
+                    <ActionButton
+                      label={af("showAllCampaigns")}
+                      onPress={() => {
+                        setCampaignFilterChip("all");
+                        trackAdsCampaignFilter("all");
+                      }}
+                      variant="secondary"
+                      size="sm"
+                    />
+                  ) : null}
+                  {cpcBudgetAvailable ? (
+                    <ActionButton
+                      label={af("createCampaign")}
+                      onPress={() => setCreateOpen(true)}
+                      variant="primary"
+                      size="sm"
+                      icon="add"
+                    />
+                  ) : null}
+                </View>
               </View>
               )
             ) : (
               <View style={twStyle("gap-3")}>
-                {campaigns
-                  .filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle))
-                  .map((c) => {
+                {filteredCampaigns.map((c) => {
                   const metrics = campaignPerformance[c.id] ?? {
                     impressions: 0,
                     reach: 0,
@@ -1887,6 +2050,17 @@ export default function AdsSettingsScreen() {
                                 {paymentState === "failed" ? "Try payment again" : "Complete payment"}
                               </Text>
                             </TouchableOpacity>
+                            {paymentState === "failed" ? (
+                              <TouchableOpacity
+                                onPress={openBilling}
+                                disabled={updating === c.id}
+                                style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                              >
+                                <Text style={twStyle("text-gray-800 text-xs font-medium")}>
+                                  {af("managePaymentMethods")}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : null}
                             <TouchableOpacity
                               onPress={() => handleCancelDraft(c)}
                               disabled={updating === c.id}

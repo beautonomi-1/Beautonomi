@@ -64,6 +64,8 @@ function makeSupabase() {
       if (table === "providers") return makeCountChain(0);
       if (table === "bookings") return makeCountChain(0);
       if (table === "user_reports") return makeCountChain(0);
+      if (table === "content_reports") return makeCountChain(0);
+      if (table === "user_blocks") return makeCountChain(12);
       if (table === "product_orders") return makeCountChain(0);
       if (table === "product_return_requests") return makeCountChain(0);
       if (table === "provider_subscriptions") return makeCountChain(0);
@@ -94,5 +96,15 @@ describe("GET /api/admin/nav-counts refunds badge", () => {
 
     expect(mockCountRefundable).toHaveBeenCalledWith(expect.anything(), "tenant-1");
     expect(body.data["/admin/refunds"]).toBe(42);
+  });
+
+  it("includes tenant user_blocks total for /admin/user-blocks badge", async () => {
+    mockCountRefundable.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/admin/nav-counts"));
+    const body = await res.json();
+
+    expect(body.data["/admin/user-blocks"]).toBe(12);
   });
 });

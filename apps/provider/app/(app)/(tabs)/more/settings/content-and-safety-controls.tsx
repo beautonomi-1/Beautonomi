@@ -7,7 +7,9 @@ import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { Colors } from "@/constants/colors";
+import { trackContentSafetyToggle } from "@/lib/analytics";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import {
   useSafetySettings,
@@ -90,9 +92,18 @@ export default function ContentAndSafetyControlsScreen() {
   const [authPending, setAuthPending] = useState(false);
 
   const cs = useCallback(
-    (key: string) => t(`customer.mobile.screens.contentSafety.${key}`) as string,
+    (key: string) =>
+      t(`provider.mobile.screens.contentSafety.${key}`, {
+        defaultValue: t(`customer.mobile.screens.contentSafety.${key}`),
+      }) as string,
     [t],
   );
+
+  const screenTitle = t("customer.accountSettings.contentSafetyTitle");
+  const screenDesc = t("customer.accountSettings.contentSafetyDesc");
+  const breadcrumbSegment = t("provider.mobile.screens.contentSafety.breadcrumb", {
+    defaultValue: "Content controls",
+  });
 
   const promptDeviceAuth = useCallback(async () => {
     if (Platform.OS === "web") {
@@ -150,12 +161,18 @@ export default function ContentAndSafetyControlsScreen() {
   const showAgeBandNote = age_band === "13_17";
 
   if (loading) {
-    return <LoadingState />;
+    return (
+      <ScreenContainer scrollable={false}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+        <LoadingState />
+      </ScreenContainer>
+    );
   }
 
   if (!authUnlocked && settings.require_device_auth) {
     return (
       <ScreenContainer scrollable={false}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
           <View
             style={{
@@ -202,20 +219,18 @@ export default function ContentAndSafetyControlsScreen() {
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={refresh} />;
+    return (
+      <ScreenContainer scrollable={false}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+        <ErrorState message={error} onRetry={refresh} />
+      </ScreenContainer>
+    );
   }
 
   return (
     <ScreenContainer>
+      <TrustScreenShell title={screenTitle} subtitle={screenDesc} breadcrumbSegment={breadcrumbSegment} />
       <View>
-        <View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
-            {t("customer.accountSettings.contentSafetyTitle")}
-          </Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-            {t("customer.accountSettings.contentSafetyDesc")}
-          </Text>
-        </View>
 
         {showAgeBandNote ? (
           <View
@@ -241,7 +256,10 @@ export default function ContentAndSafetyControlsScreen() {
               lockedNote={cs("lockedNote")}
               disabled={savingKey != null}
               saving={savingKey === key}
-              onToggle={(v) => void toggle(key, v)}
+              onToggle={(v) => {
+                trackContentSafetyToggle(key, v);
+                void toggle(key, v);
+              }}
             />
           ))}
         </View>

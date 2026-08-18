@@ -290,8 +290,9 @@ export default function ProfileScreen() {
       case "photo":
       case "preferred_name":
       case "bio":
-      case "emergency_contact":
         return "/(app)/account-settings/personal-info";
+      case "emergency_contact":
+        return "/(app)/account-settings/emergency-contact";
       case "email":
       case "phone":
         return "/(app)/account-settings/login-and-security";

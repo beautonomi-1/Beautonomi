@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { requireAdminSectionAny, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
@@ -14,7 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    await requireAdminSectionAny(
+      [ADMIN_SECTION_USERS_TRUST, ADMIN_SECTION_PROVIDERS_OPERATIONS],
+      request,
+    );
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
@@ -46,7 +49,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSectionAny(
+      [ADMIN_SECTION_USERS_TRUST, ADMIN_SECTION_PROVIDERS_OPERATIONS],
+      request,
+    );
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();

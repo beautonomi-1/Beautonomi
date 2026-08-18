@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
+  requireAdminSection,
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 async function fetchTargetPreview(
@@ -70,7 +71,7 @@ async function fetchTargetPreview(
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 

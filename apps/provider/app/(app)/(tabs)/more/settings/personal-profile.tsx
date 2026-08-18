@@ -18,6 +18,7 @@ import { api } from "@/lib/api-client";
 import { invalidateSetupStatusCache } from "@/lib/setup-status-cache";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { useSafetyStackBack } from "@/lib/provider-tab-navigation";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
@@ -36,6 +37,7 @@ type MeProfile = {
 
 export default function PersonalProfileScreen() {
   const router = useRouter();
+  const handleBack = useSafetyStackBack();
   const { data, loading, error, refresh } = useApi<MeProfile>("/api/me/profile");
 
   const [about, setAbout] = useState("");
@@ -101,7 +103,7 @@ export default function PersonalProfileScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Personal Profile" />
+        <ScreenHeader title="Personal Profile" showBack onBack={handleBack} />
         <LoadingState message="Loading your profile…" />
       </ScreenContainer>
     );
@@ -110,7 +112,7 @@ export default function PersonalProfileScreen() {
   if (error && !data) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Personal Profile" />
+        <ScreenHeader title="Personal Profile" showBack onBack={handleBack} />
         <ErrorState
           message="Couldn't load your profile."
           onRetry={() => {
@@ -127,7 +129,7 @@ export default function PersonalProfileScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Personal Profile" subtitle={displayName} />
+      <ScreenHeader title="Personal Profile" subtitle={displayName} showBack onBack={handleBack} />
       <KeyboardAvoidingView
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}

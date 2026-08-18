@@ -8,13 +8,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useSafetySettings } from "@/hooks/useSafetySettings";
 import { api } from "@/lib/api-client";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import {
   LEGAL_DOB_MONTHS,
   composeLegalDobIso,
@@ -76,6 +78,11 @@ function BandCard({
 export default function AgeAssuranceScreen() {
   useScreenTracking("Age assurance");
   const { t } = useTranslation();
+  const aa = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`provider.mobile.screens.ageAssurance.${key}`, opts ?? {}) as string,
+    [t],
+  );
   const { age_band, age_source, refresh } = useSafetySettings();
   const [dateOfBirth, setDateOfBirth] = useState<string>("");
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -109,56 +116,64 @@ export default function AgeAssuranceScreen() {
   }, [loadProfile]);
 
   const years = useMemo(() => legalDobYearRange({ minAge: 13, maxAge: 100 }), []);
-  const monthLabel = LEGAL_DOB_MONTHS.find((m) => m.value === month)?.label ?? "Month";
+  const monthLabel = LEGAL_DOB_MONTHS.find((m) => m.value === month)?.label ?? aa("month");
   const maxDay = year != null && month != null ? daysInMonth(year, month) : 31;
   const dayOptions = Array.from({ length: maxDay }, (_, i) => i + 1);
   const draftIso = composeLegalDobIso({ day, month, year });
   const dobError =
     day != null && month != null && year != null
       ? validateLegalDobParts({ day, month, year }, { minAge: 13 })
-      : "Select day, month, and year";
+      : aa("selectAllParts");
 
   const saveDob = useCallback(async () => {
     if (!draftIso || dobError) {
-      Alert.alert("Date of birth", dobError || "Enter a valid date of birth.");
+      Alert.alert(aa("dobInvalidTitle"), dobError || aa("selectAllParts"));
       return;
     }
     setSaving(true);
     try {
       const res = await api.patch("/api/me/profile", { date_of_birth: draftIso });
-      if (res.error) throw new Error(res.error.message || "Could not save date of birth.");
+      if (res.error) throw new Error(res.error.message || aa("saveFailedTitle"));
       setDateOfBirth(draftIso);
       await refresh();
-      Alert.alert("Saved", "Your date of birth is saved for age assurance.");
+      Alert.alert(aa("savedTitle"), aa("savedBody"));
     } catch (e) {
-      Alert.alert("Could not save", e instanceof Error ? e.message : "Try again.");
+      Alert.alert(aa("saveFailedTitle"), e instanceof Error ? e.message : t("common.tryAgain", { defaultValue: "Try again." }));
     } finally {
       setSaving(false);
     }
-  }, [dobError, draftIso, refresh]);
+  }, [aa, dobError, draftIso, refresh, t]);
 
   const currentBandLabel = t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
     defaultValue: age_band,
   });
   const missingDob = !dateOfBirth.trim();
 
+  const ageSourceLabel =
+    age_source === "verified_dob"
+      ? aa("sourceVerified")
+      : age_source === "declared_dob"
+        ? aa("sourceDeclared")
+        : aa("sourceNone");
+
+  if (loadingProfile) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <TrustScreenShell title={aa("title")} breadcrumbSegment={aa("breadcrumb")} />
+        <LoadingState />
+      </ScreenContainer>
+    );
+  }
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: "Age assurance",
-          headerBackTitle: t("common.back"),
-          headerShown: true,
-        }}
-      />
+    <ScreenContainer>
+      <TrustScreenShell title={aa("title")} breadcrumbSegment={aa("breadcrumb")} />
       <ScrollView
-        style={{ flex: 1, backgroundColor: Colors.gray[50] }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={{ fontSize: 15, color: Colors.gray[600], lineHeight: 22, marginBottom: 20 }}>
-          Beautonomi uses your date of birth to apply age-appropriate features, parental controls, and
-          verification requirements. Your current age band is shown below.
-        </Text>
+        <Text style={{ fontSize: 15, color: Colors.gray[600], lineHeight: 22, marginBottom: 20 }}>{aa("intro")}</Text>
 
         <View
           style={{
@@ -171,21 +186,21 @@ export default function AgeAssuranceScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Your age band
+            {aa("yourAgeBand")}
           </Text>
           <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>
             {currentBandLabel}
           </Text>
           <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>
-            Source: {age_source === "verified_dob" ? "Verified identity" : age_source === "declared_dob" ? "Date of birth on file" : "Not yet declared"}
+            {aa("sourceLabel", { source: ageSourceLabel })}
           </Text>
           {dateOfBirth ? (
             <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 4, fontWeight: "600" }}>
-              Date of birth: {formatLegalDobDisplay(dateOfBirth)}
+              {aa("dobOnFile", { date: formatLegalDobDisplay(dateOfBirth) })}
             </Text>
           ) : (
             <Text style={{ fontSize: 13, color: Colors.primary, marginTop: 4, fontWeight: "600" }}>
-              Add your date of birth below. Calendar and bookings stay available.
+              {aa("addDobHint")}
             </Text>
           )}
         </View>
@@ -201,144 +216,139 @@ export default function AgeAssuranceScreen() {
           }}
         >
           <Text style={{ fontWeight: "700", fontSize: 16, color: Colors.gray[900], marginBottom: 6 }}>
-            {missingDob ? "Add your date of birth" : "Update date of birth"}
+            {missingDob ? aa("formTitleAdd") : aa("formTitleUpdate")}
           </Text>
-          <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 19, marginBottom: 12 }}>
-            You must be at least 13 to use Beautonomi. Identity verification and payouts require 18+.
-          </Text>
-          {loadingProfile ? (
-            <ActivityIndicator color={Colors.primary} />
-          ) : (
-            <>
-              <View style={{ flexDirection: "row", gap: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 19, marginBottom: 12 }}>{aa("formHint")}</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setShowDay(true);
+                setShowMonth(false);
+                setShowYear(false);
+              }}
+              style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={aa("selectDayA11y")}
+            >
+              <Text style={{ color: day != null ? Colors.gray[900] : Colors.gray[400] }}>{day ?? aa("day")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setShowMonth(true);
+                setShowDay(false);
+                setShowYear(false);
+              }}
+              style={{ flex: 1.4, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={aa("selectMonthA11y")}
+            >
+              <Text style={{ color: month != null ? Colors.gray[900] : Colors.gray[400] }}>{monthLabel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setShowYear(true);
+                setShowDay(false);
+                setShowMonth(false);
+              }}
+              style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={aa("selectYearA11y")}
+            >
+              <Text style={{ color: year != null ? Colors.gray[900] : Colors.gray[400] }}>{year ?? aa("year")}</Text>
+            </TouchableOpacity>
+          </View>
+          {showDay ? (
+            <ScrollView style={{ marginTop: 8, maxHeight: 160 }} nestedScrollEnabled>
+              {dayOptions.map((d) => (
                 <TouchableOpacity
-                  onPress={() => { setShowDay(true); setShowMonth(false); setShowYear(false); }}
-                  style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select day of birth"
+                  key={d}
+                  onPress={() => {
+                    setDay(d);
+                    setShowDay(false);
+                  }}
+                  style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
                 >
-                  <Text style={{ color: day != null ? Colors.gray[900] : Colors.gray[400] }}>{day ?? "Day"}</Text>
+                  <Text>{d}</Text>
                 </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+          {showMonth ? (
+            <ScrollView style={{ marginTop: 8, maxHeight: 200 }} nestedScrollEnabled>
+              {LEGAL_DOB_MONTHS.map((m) => (
                 <TouchableOpacity
-                  onPress={() => { setShowMonth(true); setShowDay(false); setShowYear(false); }}
-                  style={{ flex: 1.4, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select month of birth"
+                  key={m.value}
+                  onPress={() => {
+                    setMonth(m.value);
+                    setShowMonth(false);
+                  }}
+                  style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
                 >
-                  <Text style={{ color: month != null ? Colors.gray[900] : Colors.gray[400] }}>{monthLabel}</Text>
+                  <Text>{m.label}</Text>
                 </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+          {showYear ? (
+            <ScrollView style={{ marginTop: 8, maxHeight: 200 }} nestedScrollEnabled>
+              {years.map((y) => (
                 <TouchableOpacity
-                  onPress={() => { setShowYear(true); setShowDay(false); setShowMonth(false); }}
-                  style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select year of birth"
+                  key={y}
+                  onPress={() => {
+                    setYear(y);
+                    setShowYear(false);
+                  }}
+                  style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
                 >
-                  <Text style={{ color: year != null ? Colors.gray[900] : Colors.gray[400] }}>{year ?? "Year"}</Text>
+                  <Text>{y}</Text>
                 </TouchableOpacity>
-              </View>
-              {showDay ? (
-                <ScrollView style={{ marginTop: 8, maxHeight: 160 }} nestedScrollEnabled>
-                  {dayOptions.map((d) => (
-                    <TouchableOpacity
-                      key={d}
-                      onPress={() => { setDay(d); setShowDay(false); }}
-                      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
-                    >
-                      <Text>{d}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : null}
-              {showMonth ? (
-                <ScrollView style={{ marginTop: 8, maxHeight: 200 }} nestedScrollEnabled>
-                  {LEGAL_DOB_MONTHS.map((m) => (
-                    <TouchableOpacity
-                      key={m.value}
-                      onPress={() => { setMonth(m.value); setShowMonth(false); }}
-                      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
-                    >
-                      <Text>{m.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : null}
-              {showYear ? (
-                <ScrollView style={{ marginTop: 8, maxHeight: 200 }} nestedScrollEnabled>
-                  {years.map((y) => (
-                    <TouchableOpacity
-                      key={y}
-                      onPress={() => { setYear(y); setShowYear(false); }}
-                      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
-                    >
-                      <Text>{y}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : null}
-              {dobError && day != null && month != null && year != null ? (
-                <Text style={{ color: "#DC2626", fontSize: 13, marginTop: 8 }}>{dobError}</Text>
-              ) : null}
-              <TouchableOpacity
-                onPress={() => void saveDob()}
-                disabled={saving}
-                style={{
-                  marginTop: 14,
-                  backgroundColor: Colors.primary,
-                  borderRadius: 12,
-                  paddingVertical: 14,
-                  alignItems: "center",
-                  opacity: saving ? 0.7 : 1,
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Save date of birth"
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-                    {missingDob ? "Save date of birth" : "Update date of birth"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
+              ))}
+            </ScrollView>
+          ) : null}
+          {dobError && day != null && month != null && year != null ? (
+            <Text style={{ color: "#DC2626", fontSize: 13, marginTop: 8 }}>{dobError}</Text>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => void saveDob()}
+            disabled={saving}
+            style={{
+              marginTop: 14,
+              backgroundColor: Colors.primary,
+              borderRadius: 12,
+              paddingVertical: 14,
+              alignItems: "center",
+              opacity: saving ? 0.7 : 1,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={aa("saveA11y")}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
+                {missingDob ? aa("saveAdd") : aa("saveUpdate")}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
 
-        <BandCard
-          icon="close-circle-outline"
-          accent="#DC2626"
-          title="Under 13"
-          body="Accounts for users under 13 are not permitted. Social features and account creation are blocked."
-        />
-        <BandCard
-          icon="people-outline"
-          accent="#2563EB"
-          title="Ages 13–17"
-          body="You can use the Partner app with parental controls enabled by default. Some social features may be restricted, and a parent or guardian can adjust content & safety settings."
-        />
-        <BandCard
-          icon="shield-checkmark-outline"
-          accent="#059669"
-          title="18 and over"
-          body="Full access to partner tools. Identity verification (KYC) and payouts require you to be at least 18 with a valid government ID."
-        />
+        <BandCard icon="close-circle-outline" accent="#DC2626" title={aa("bandUnder13Title")} body={aa("bandUnder13Body")} />
+        <BandCard icon="people-outline" accent="#2563EB" title={aa("bandTeenTitle")} body={aa("bandTeenBody")} />
+        <BandCard icon="shield-checkmark-outline" accent="#059669" title={aa("bandAdultTitle")} body={aa("bandAdultBody")} />
 
-        <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 19, marginTop: 8 }}>
-          Verified identity (KYC) date of birth takes precedence over the date you entered at signup when
-          determining your age band for payouts and compliance.
-        </Text>
+        <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 19, marginTop: 8 }}>{aa("kycPrecedence")}</Text>
 
         <TouchableOpacity
           onPress={() => void Linking.openURL(AGE_SUITABILITY_URL)}
           style={{ marginTop: 24, alignSelf: "flex-start" }}
           accessibilityRole="link"
-          accessibilityLabel="Learn more about age suitability on beautonomi.com"
+          accessibilityLabel={aa("learnMoreA11y")}
         >
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}>
-            Learn more about age suitability
+            {aa("learnMore")}
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </>
+    </ScreenContainer>
   );
 }

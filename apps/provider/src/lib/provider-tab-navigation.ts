@@ -7,9 +7,13 @@ export const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as co
 export const FROM_TRANSACTIONS_HUB = "transactions-hub" as const;
 export const HUB_RETURN_SUFFIX = `?from=${FROM_TRANSACTIONS_HUB}` as const;
 
+export const SAFETY_HUB_HREF = "/(app)/(tabs)/more/safety" as const;
+export const FROM_SAFETY_HUB = "safety" as const;
+
 /** Explicit back targets when tab switches or deep links leave no stack history. */
 export const FROM_RETURN_ROUTES: Record<string, string> = {
   [FROM_TRANSACTIONS_HUB]: TRANSACTIONS_HUB_HREF,
+  [FROM_SAFETY_HUB]: SAFETY_HUB_HREF,
   dashboard: "/(app)/(tabs)/dashboard",
   bookings: "/(app)/(tabs)/bookings",
 };
@@ -82,6 +86,23 @@ export function useFromTransactionsHub(): boolean {
   return matchesFromParam(fromParam, FROM_TRANSACTIONS_HUB);
 }
 
+export function useFromSafetyHub(): boolean {
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  return matchesFromParam(fromParam, FROM_SAFETY_HUB);
+}
+
+/** Push from Trust & Safety hub — child screens return via useSafetyStackBack. */
+export function navigateFromSafetyHub(
+  router: Router,
+  pathname: string,
+  params?: Record<string, string | undefined>,
+): void {
+  router.push({
+    pathname,
+    params: { ...params, from: FROM_SAFETY_HUB },
+  } as never);
+}
+
 export function useFromReturnHref(): string | undefined {
   const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
   return resolveFromReturnHref(fromParam);
@@ -109,6 +130,12 @@ export function useProviderStackBack(explicitReturnHref?: string) {
   );
 
   return handleBack;
+}
+
+/** Back to Safety hub when opened with from=safety; else normal stack back. */
+export function useSafetyStackBack() {
+  const fromSafety = useFromSafetyHub();
+  return useProviderStackBack(fromSafety ? SAFETY_HUB_HREF : undefined);
 }
 
 /**

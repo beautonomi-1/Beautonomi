@@ -32,7 +32,7 @@ export default function SupportTicketsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "Support tickets" }} />
-      <Stack.Screen name="new" options={{ title: "New ticket" }} />
+      <Stack.Screen name="new" options={{ title: "New ticket", headerShown: false }} />
       <Stack.Screen name="[id]" options={{ title: "Ticket" }} />
     </Stack>
   );

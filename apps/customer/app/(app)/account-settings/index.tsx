@@ -10,7 +10,7 @@ import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { api } from "@/lib/api-client";
-import { trackReferralShared } from "@/lib/analytics";
+import { trackReferralShared, trackSafetyHubNav } from "@/lib/analytics";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
@@ -21,6 +21,14 @@ interface ProfileCompletion {
 }
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+const TRUST_SAFETY_ROUTE_DESTINATIONS: Record<string, string> = {
+  "/(app)/safety": "safety_hub",
+  "/(app)/safety/age-assurance": "age_assurance",
+  "emergency-contact": "emergency_contact",
+  "content-and-safety-controls": "content_safety",
+  "blocked-users": "blocked_users",
+};
 
 interface SettingsItem {
   id: string;
@@ -46,6 +54,14 @@ function buildAccountSettingsGroups(t: TFunction): SettingsGroup[] {
         { id: "identity-verification", title: t("customer.accountSettings.identityVerificationTitle"), desc: t("customer.accountSettings.identityVerificationDesc"), route: "identity-verification", icon: "card-outline" },
         { id: "addresses", title: t("customer.accountSettings.savedAddressesTitle"), desc: t("customer.accountSettings.savedAddressesDesc"), route: "addresses", icon: "location-outline" },
         { id: "privacy-and-sharing", title: t("customer.accountSettings.privacySharingTitle"), desc: t("customer.accountSettings.privacySharingDesc"), route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
+      ],
+    },
+    {
+      heading: t("customer.accountSettings.groupTrustSafety"),
+      items: [
+        { id: "safety-hub", title: t("customer.mobile.screens.safetyHub.title"), desc: t("customer.mobile.screens.safetyHub.helpCardBody"), route: "/(app)/safety", icon: "shield-outline" },
+        { id: "age-assurance", title: t("customer.mobile.screens.ageAssurance.title"), desc: t("customer.mobile.screens.ageAssurance.formHint"), route: "/(app)/safety/age-assurance", icon: "calendar-outline" },
+        { id: "emergency-contact", title: t("customer.mobile.screens.emergencyContact.title"), desc: t("customer.mobile.screens.emergencyContact.subtitle"), route: "emergency-contact", icon: "person-outline" },
         { id: "content-and-safety-controls", title: t("customer.accountSettings.contentSafetyTitle"), desc: t("customer.accountSettings.contentSafetyDesc"), route: "content-and-safety-controls", icon: "eye-off-outline" },
         { id: "blocked-users", title: t("customer.mobile.screens.blockedUsers.title"), desc: t("customer.mobile.screens.blockedUsers.settingsDesc"), route: "blocked-users", icon: "ban-outline" },
       ],
@@ -132,10 +148,11 @@ export default function AccountSettingsScreen() {
   };
 
   const handleNavigate = (route: string) => {
+    const destination = TRUST_SAFETY_ROUTE_DESTINATIONS[route];
+    if (destination) trackSafetyHubNav(destination, "settings");
     if (route.startsWith("/")) {
       router.push(route as any);
     } else {
-      // Must include `/(app)/` — bare `/account-settings/...` does not resolve in the native stack.
       router.push(`/(app)/account-settings/${route}` as any);
     }
   };
