@@ -16,7 +16,6 @@ import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
-import { SCREEN_PADDING, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { useSafetyStackBack } from "@/lib/provider-tab-navigation";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -145,14 +144,14 @@ export default function ReportUserScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.gray[50] },
-  scrollContent: { padding: SCREEN_PADDING, paddingBottom: 40 },
+  scrollContent: { padding: 16, paddingBottom: 40 },
   intro: { fontSize: 15, lineHeight: 22, color: Colors.gray[700], marginBottom: 20 },
   label: { fontSize: 14, fontWeight: "600", color: Colors.gray[800], marginBottom: 6 },
   hint: { fontSize: 12, color: Colors.gray[500], marginTop: 4, marginBottom: 16 },
   input: {
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    borderRadius: RADIUS_INPUT,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
@@ -163,7 +162,7 @@ const styles = StyleSheet.create({
   primaryBtn: {
     marginTop: 8,
     backgroundColor: Colors.primary,
-    borderRadius: RADIUS_BUTTON,
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
   },

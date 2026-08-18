@@ -45,7 +45,7 @@ export function E164PhoneField({
   showHint = true,
   accessibilityLabel = "Phone number",
 }: E164PhoneFieldProps) {
-  const { screenPadding } = useResponsive();
+  const { contentPadding } = useResponsive();
   const lastSyncedExternal = useRef<string | undefined>(undefined);
   const resolvedDefaultDial = defaultCountryDial ?? getDeviceDefaultCountryDial();
   const defaultDialRef = useRef(resolvedDefaultDial);
@@ -189,7 +189,7 @@ export function E164PhoneField({
             </View>
             <View
               style={{
-                paddingHorizontal: screenPadding,
+                paddingHorizontal: contentPadding,
                 paddingVertical: 12,
                 borderBottomWidth: 1,
                 borderColor: "#F3F4F6",
@@ -236,7 +236,7 @@ export function E164PhoneField({
                     flexDirection: "row",
                     alignItems: "center",
                     paddingVertical: 14,
-                    paddingHorizontal: screenPadding,
+                    paddingHorizontal: contentPadding,
                     borderBottomWidth: 1,
                     borderColor: "#F9FAFB",
                   }}

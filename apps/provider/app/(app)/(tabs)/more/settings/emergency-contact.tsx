@@ -24,6 +24,7 @@ import { useSafetyStackBack } from "@/lib/provider-tab-navigation";
 import { trackEmergencyContactSaved } from "@/lib/analytics";
 import {
   splitPhoneForNationalInput,
+  composeE164FromNational,
   validateE164Phone,
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
@@ -51,7 +52,7 @@ function profileToForm(profile: MeProfile | null | undefined) {
   const e164 = phone.startsWith("+")
     ? phone
     : phone
-      ? composeE164FromNational(split.countryCode, split.nationalDigits)
+      ? composeE164FromNational(split.countryCode, split.nationalDisplay) ?? ""
       : "";
   return {
     name: ec?.name?.trim() ?? "",

@@ -53,11 +53,11 @@ export type FilterCampaignsOptions = {
   showPast?: boolean;
 };
 
-export function filterCampaignsByChip(
-  campaigns: FilterableCampaign[],
+export function filterCampaignsByChip<T extends FilterableCampaign>(
+  campaigns: T[],
   chip: CampaignFilterChip,
   opts: FilterCampaignsOptions = {},
-): FilterableCampaign[] {
+): T[] {
   const showPast = opts.showPast ?? false;
 
   return campaigns.filter((c) => {
@@ -92,7 +92,7 @@ export function countCampaignsByChip(
 }
 
 /** Drafts that can be bulk-cancelled (unpaid, failed, or unpaid pending). */
-export function listClearableDraftCampaigns(campaigns: FilterableCampaign[]): FilterableCampaign[] {
+export function listClearableDraftCampaigns<T extends FilterableCampaign>(campaigns: T[]): T[] {
   return campaigns.filter(
     (c) =>
       !isPastCampaign(c.lifecycle) &&

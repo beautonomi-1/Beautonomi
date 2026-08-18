@@ -368,7 +368,7 @@ export default function ExplorePostsScreen() {
           onPress: () =>
             confirmBlockUser({
               userId: authorId,
-              displayName: authorName,
+              displayName: authorName ?? undefined,
               onBlocked: () => refreshComments(),
             }),
         });
