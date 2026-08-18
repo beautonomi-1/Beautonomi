@@ -18,6 +18,10 @@ export {
   NON_MAILABLE_EMAIL_DOMAINS,
 } from "./auth/mailable-email";
 export {
+  appleDisplayNameFallback,
+  isApplePrimaryIdentity,
+} from "./auth/apple-identity";
+export {
   resolveMailableAccountEmail,
   resolveProfileEmailVerificationState,
   shouldShowEmailVerificationBanner,

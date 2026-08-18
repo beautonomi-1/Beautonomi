@@ -72,6 +72,10 @@ vi.mock("@/lib/audit/audit", () => ({
   extractRequestMeta: () => ({ ip_address: "127.0.0.1", user_agent: "test" }),
 }));
 
+vi.mock("@/lib/auth/revoke-apple-sign-in", () => ({
+  revokeAppleSignInForAuthUser: vi.fn().mockResolvedValue(undefined),
+}));
+
 function request(body: Record<string, unknown>) {
   return new NextRequest("https://app.example.com/api/me/delete-account", {
     method: "POST",

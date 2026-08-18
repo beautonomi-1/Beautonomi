@@ -138,6 +138,8 @@ export interface OnboardingFormData {
   email_verified: boolean;
   owner_phone: string;
   phone_verified: boolean;
+  /** Declared date of birth (YYYY-MM-DD) for age assurance. */
+  date_of_birth?: string;
   business_name: string;
   business_type: BusinessType;
   description: string;

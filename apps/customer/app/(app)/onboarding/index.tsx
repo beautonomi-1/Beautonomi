@@ -29,7 +29,7 @@ import { RADIUS_BUTTON, RADIUS_CARD, RADIUS_INPUT, SCREEN_PADDING } from "@/cons
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
-import { appendFormDataFileNative, isMailableEmail } from "@beautonomi/utils";
+import { appendFormDataFileNative, appleDisplayNameFallback, isApplePrimaryIdentity, isMailableEmail } from "@beautonomi/utils";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
 import { readAndClearCustomerPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import {
@@ -211,6 +211,7 @@ export default function CustomerOnboarding() {
   const { width: windowWidth } = useWindowDimensions();
   const { refreshSession, user } = useAuth();
   const userId = user?.id ?? null;
+  const appleIdentity = isApplePrimaryIdentity(user);
   const { bundle: configBundle } = useConfigBundle();
   const tenantRegionName = configBundle?.meta?.tenant_region?.name?.trim();
   const authPolicy = configBundle?.auth ?? DEFAULT_AUTH;
@@ -407,6 +408,16 @@ export default function CustomerOnboarding() {
           if (p?.phone_verified) setPhoneVerified(true);
         }
 
+        if (isApplePrimaryIdentity(user)) {
+          const fallback = appleDisplayNameFallback(user);
+          setFullName((prev) => prev.trim() || fallback);
+          setPreferredName((prev) => prev.trim() || fallback.split(/\s+/)[0] || fallback);
+          if (user?.email && isMailableEmail(user.email)) {
+            setEmail(user.email);
+            setEmailVerified(true);
+          }
+        }
+
         const handoff = await readAndClearCustomerPhoneHandoff();
         if (handoff) {
           const { countryCode, national } = parsePhoneToCountryAndNational(
@@ -490,8 +501,10 @@ export default function CustomerOnboarding() {
   /* ── Step validation ── */
   const validateStep = useCallback((): string | null => {
     if (step === 1) {
-      if (!fullName.trim()) return ob("validationFullName");
-      if (!preferredName.trim()) return ob("validationPreferredName");
+      if (!appleIdentity) {
+        if (!fullName.trim()) return ob("validationFullName");
+        if (!preferredName.trim()) return ob("validationPreferredName");
+      }
     }
     if (step === 2 && !avatarUri) return ob("validationPhoto");
     if (step === 3 && !buildDob(dobYear, dobMonth, dobDay)) return ob("validationDob");
@@ -503,12 +516,13 @@ export default function CustomerOnboarding() {
       }
     }
     if (step === 6) {
-      if (!emailVerified) return ob("validationEmailVerify");
+      if (!appleIdentity && !emailVerified) return ob("validationEmailVerify");
       if (!phoneVerified) return ob("validationPhoneVerify");
     }
     return null;
   }, [
     step,
+    appleIdentity,
     fullName,
     preferredName,
     avatarUri,
@@ -1042,20 +1056,44 @@ export default function CustomerOnboarding() {
                   About 2 minutes · Beauty preferences are optional
                 </Text>
               </View>
-              <SectionLabel required>Full name</SectionLabel>
-              <TextInput
-                ref={fullNameRef}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="e.g. Nolo Sehlolo"
-                style={inputStyle}
-                placeholderTextColor="#94A3B8"
-                returnKeyType="next"
-                onSubmitEditing={() => preferredNameRef.current?.focus()}
-                onFocus={scrollToFocusedInput(fullNameRef)}
-              />
-              <Text style={hintStyle}>Your legal or full name for your personal profile.</Text>
-              <SectionLabel required>Preferred name</SectionLabel>
+              {appleIdentity ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#E2E8F0",
+                    borderRadius: RADIUS_CARD,
+                    padding: 16,
+                    marginBottom: 18,
+                    backgroundColor: "#F8FAFC",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <Ionicons name="logo-apple" size={18} color="#0F172A" />
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>Signed in with Apple</Text>
+                  </View>
+                  <Text style={{ fontSize: 14, color: "#475569", lineHeight: 20 }}>
+                    Your name and email from Apple are already saved
+                    {email ? ` (${email})` : ""}.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <SectionLabel required>Full name</SectionLabel>
+                  <TextInput
+                    ref={fullNameRef}
+                    value={fullName}
+                    onChangeText={setFullName}
+                    placeholder="e.g. Nolo Sehlolo"
+                    style={inputStyle}
+                    placeholderTextColor="#94A3B8"
+                    returnKeyType="next"
+                    onSubmitEditing={() => preferredNameRef.current?.focus()}
+                    onFocus={scrollToFocusedInput(fullNameRef)}
+                  />
+                  <Text style={hintStyle}>Your legal or full name for your personal profile.</Text>
+                </>
+              )}
+              <SectionLabel required={!appleIdentity}>Preferred name</SectionLabel>
               <TextInput
                 ref={preferredNameRef}
                 value={preferredName}
@@ -1650,6 +1688,8 @@ export default function CustomerOnboarding() {
               />
 
               {/* Email */}
+              {!appleIdentity ? (
+              <>
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>
                 Email
               </Text>
@@ -1787,6 +1827,8 @@ export default function CustomerOnboarding() {
                   )}
                 </View>
               )}
+              </>
+              ) : null}
 
               {/* Phone */}
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>

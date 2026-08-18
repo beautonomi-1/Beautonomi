@@ -36,6 +36,7 @@ import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
 } from "@/lib/native-permissions";
+import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 
 interface ExplorePost {
   id: string;
@@ -285,7 +286,13 @@ export default function ExplorePostsScreen() {
 
   const { data, loading, error, refresh } = useApi<MinePostsResponse>("/api/explore/posts/mine?limit=100&offset=0");
   const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
-  const canCreateExplorePosts = permissionData?.permissions?.create_explore_posts === true;
+  const { settings: safetySettings } = useSafetySettings();
+  const ugcCreate = useSocialCapability("ugc_create");
+  const commentCapability = useSocialCapability("comment");
+  const hideSocialFeed = Boolean(safetySettings.hide_social_feed);
+  const canCreateExplorePosts =
+    permissionData?.permissions?.create_explore_posts === true && ugcCreate.allowed;
+  const canComment = commentCapability.allowed;
   const { execute: deletePost } = useApiMutation("delete");
   const { execute: createPost, loading: creating } = useApiMutation<ExplorePost>("post");
   const { execute: updatePost, loading: updating } = useApiMutation<ExplorePost>("patch");
@@ -964,6 +971,21 @@ export default function ExplorePostsScreen() {
   }
 
   const scrollBottomPad = tabScreenScrollBottomPadding(insets.bottom, 24) + 64;
+
+  if (hideSocialFeed) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Explore" showBack subtitle="Your Explore posts" />
+        <View style={twStyle("flex-1 justify-center px-6")}>
+          <EmptyState
+            icon="eye-off-outline"
+            title="Social feed hidden"
+            description="The Explore feed is hidden in your content & safety settings. Turn it back on in Trust & Safety to manage posts."
+          />
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer scrollable={false}>
@@ -1653,6 +1675,8 @@ export default function ExplorePostsScreen() {
                 </ScrollView>
               )}
               <View style={twStyle("flex-row items-end")}>
+                {canComment ? (
+                <>
                 <TextInput
                   style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-base text-gray-900"), { marginRight: 8 }]}
                   placeholder="Add a comment…"
@@ -1686,6 +1710,12 @@ export default function ExplorePostsScreen() {
                     {postingComment ? "Posting…" : "Post"}
                   </Text>
                 </TouchableOpacity>
+                </>
+                ) : (
+                  <Text style={twStyle("flex-1 text-sm text-gray-500 py-2")}>
+                    Comments and likes are turned off in your content & safety settings.
+                  </Text>
+                )}
               </View>
               {commentBody.length > 0 && (
                 <Text style={twStyle("mt-1 text-xs text-gray-500")}>{commentBody.length}/200</Text>

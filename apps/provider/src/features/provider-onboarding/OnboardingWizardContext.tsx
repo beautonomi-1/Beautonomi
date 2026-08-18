@@ -17,7 +17,8 @@ import { useProvider } from "@/providers/ProviderContext";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { coerceOwnerPhoneToE164ForForm, phoneNumbersMatchProfile } from "./onboarding-phone";
 import { applySignupPhoneHandoffToForm } from "@/lib/auth/signup-phone-handoff";
-import { isMailableEmail } from "@beautonomi/utils";
+import { appleDisplayNameFallback, isApplePrimaryIdentity, isMailableEmail } from "@beautonomi/utils";
+import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 import {
   finalizeOnboardingSuccess,
   probeProviderProfileExists,
@@ -123,6 +124,22 @@ function scrubPlaceholderEmailsFromOnboardingForm(form: Partial<OnboardingFormDa
   }
 }
 
+function applyAppleIdentityPrefill(
+  form: Partial<OnboardingFormData>,
+  user: { email?: string | null; user_metadata?: Record<string, unknown> } | null | undefined,
+) {
+  if (!isApplePrimaryIdentity(user as never)) return;
+  const email = user?.email?.trim();
+  if (email && isMailableEmail(email)) {
+    form.owner_email = email;
+    form.email = email;
+    form.email_verified = true;
+  }
+  if (!form.owner_name?.trim()) {
+    form.owner_name = appleDisplayNameFallback(user as never);
+  }
+}
+
 interface OnboardingWizardProviderProps {
   children: ReactNode;
   /**
@@ -202,6 +219,12 @@ export function OnboardingWizardProvider({
     focusUnmappedRef.current = focusUnmapped;
   }, [initialStep, focusUnmapped]);
   const paystackCheckout = useInAppPaystackCheckout();
+  const appleIdentity = useMemo(() => isApplePrimaryIdentity(user), [user]);
+  const demoIdentity = useMemo(() => isAppReviewDemoUserId(user?.id), [user?.id]);
+  const validateOptions = useMemo(
+    () => ({ appleIdentity, demoIdentity }),
+    [appleIdentity, demoIdentity],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -282,6 +305,9 @@ export function OnboardingWizardProvider({
         if (!cancelled && !profileRes.error && profileRes.data) {
           mergePrefill(merged, profileRes.data);
         }
+        if (!cancelled && user) {
+          applyAppleIdentityPrefill(merged, user);
+        }
         if (!cancelled) {
           scrubPlaceholderEmailsFromOnboardingForm(merged);
           await applySignupPhoneHandoffToForm(merged);
@@ -317,7 +343,7 @@ export function OnboardingWizardProvider({
     return () => {
       cancelled = true;
     };
-  }, [initialStep, focusUnmapped]);
+  }, [initialStep, focusUnmapped, user]);
 
   const persistDraft = useCallback(async (data: Partial<OnboardingFormData>, step: number) => {
     setSavingDraft(true);
@@ -395,7 +421,7 @@ export function OnboardingWizardProvider({
   }, [formData, currentStep, loadingDraft]);
 
   const goNext = useCallback(() => {
-    const v = validateStep(currentStep, formData);
+    const v = validateStep(currentStep, formData, validateOptions);
     if (!v.valid) {
       Alert.alert("Check this step", v.errors[0] ?? "Please complete required fields.");
       return;
@@ -408,7 +434,7 @@ export function OnboardingWizardProvider({
     }
     const next = getNextStep(currentStep, formData);
     if (next !== null) setCurrentStepState(next);
-  }, [currentStep, formData, editingFromReview]);
+  }, [currentStep, formData, editingFromReview, validateOptions]);
 
   const goBack = useCallback(() => {
     Keyboard.dismiss();
@@ -477,7 +503,7 @@ export function OnboardingWizardProvider({
 
     for (let s = 1; s <= STEPS.length; s++) {
       if (!stepIsVisible(s, formData)) continue;
-      const v = validateStep(s, formData);
+      const v = validateStep(s, formData, validateOptions);
       if (!v.valid) {
         Keyboard.dismiss();
         setCurrentStepState(s);

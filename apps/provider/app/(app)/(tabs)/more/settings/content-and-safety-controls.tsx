@@ -130,9 +130,18 @@ export default function ContentAndSafetyControlsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setAuthUnlocked(Platform.OS === "web");
+      if (Platform.OS === "web") {
+        setAuthUnlocked(true);
+        return;
+      }
+      if (loading) return;
+      if (!settings.require_device_auth) {
+        setAuthUnlocked(true);
+        return;
+      }
+      setAuthUnlocked(false);
       void promptDeviceAuth();
-    }, [promptDeviceAuth]),
+    }, [loading, settings.require_device_auth, promptDeviceAuth]),
   );
 
   const toggleLabel = (key: SafetySettingKey) => cs(`toggle_${key}_label`);
@@ -140,7 +149,11 @@ export default function ContentAndSafetyControlsScreen() {
 
   const showAgeBandNote = age_band === "13_17";
 
-  if (!authUnlocked) {
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (!authUnlocked && settings.require_device_auth) {
     return (
       <ScreenContainer scrollable={false}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
@@ -186,10 +199,6 @@ export default function ContentAndSafetyControlsScreen() {
         </View>
       </ScreenContainer>
     );
-  }
-
-  if (loading) {
-    return <LoadingState />;
   }
 
   if (error) {

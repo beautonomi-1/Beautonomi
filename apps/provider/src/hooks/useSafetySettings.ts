@@ -235,7 +235,8 @@ export function useSocialCapability(capability: SocialCapability): {
   const { settings, age_band, loading } = useSafetySettings();
 
   if (loading) {
-    return { allowed: false, reason: "loading" };
+    // Fail-open while settings load so messaging/Explore are not briefly locked.
+    return { allowed: true, reason: "loading" };
   }
 
   if (age_band === "under_13") {

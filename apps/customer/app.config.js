@@ -88,7 +88,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "275",
+    buildNumber: "276",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -241,9 +241,9 @@ const BASE_EXPO_CONFIG = {
       "expo-image-picker",
       {
         photosPermission:
-          "Allow Beautonomi to access your photos for your profile, reviews, and sharing images.",
+          "Beautonomi uses your photo library for your profile, reviews, and sharing images.",
         cameraPermission:
-          "Allow Beautonomi to use the camera for your profile, reviews, and sharing photos.",
+          "Beautonomi uses the camera for your profile, reviews, and sharing photos.",
       },
     ],
     [

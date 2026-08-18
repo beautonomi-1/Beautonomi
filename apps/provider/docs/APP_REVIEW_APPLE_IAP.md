@@ -12,10 +12,35 @@ Provide reviewers a **staging provider account** that is already onboarded (prof
 
 | Field | Value |
 | --- | --- |
-| Email | `appreview.provider@beautonomi.co.za` |
-| Password | *(set in staging admin; rotate after review)* |
+| Email | `buntulink@gmail.com` |
+| Phone | `+27790624995` |
+| App Review OTP | `246810` (override with env `APP_REVIEW_DEMO_OTP`) |
+| User ID | `11ccc539-9160-47be-b7b3-5fef986f1033` |
+| Password | Optional — `buntulink@gmail.com` supports **email + password** sign-in on the Partner login screen |
 | Environment | Staging backend (`EXPO_PUBLIC_APP_URL` / web API used by the review build) |
 | Subscription | **Must be the free tier** with `billing_provider` not `paystack` |
+
+Legacy alias documented for ops: `appreview.provider@beautonomi.co.za` (prefer the Buntu account above for App Review builds).
+
+**Phone / email OTP (App Review flow)**
+
+1. On the Partner login screen, set country to **South Africa (+27)** if needed, then enter **790624995** (or `0790624995`).
+2. Tap send code — the app detects the demo account and prompts for the **App Review OTP** (default `246810`). Typing `buntulink@gmail.com` on the Email tab uses **password** (not email OTP).
+3. The app calls `POST /api/auth/app-review/verify-otp` and establishes a Supabase session (no SMS/email delivery required in review).
+
+**ATT (App Tracking Transparency)**
+
+Customer and Partner iOS builds request ATT via `request-att-before-tracking.ts` before initializing Singular / ad attribution. Declining tracking does not block core app use.
+
+**In-app paths for reviewers**
+
+| Feature | Path |
+| --- | --- |
+| Trust & Safety hub | **More → Trust & Safety** |
+| Age assurance | **More → Trust & Safety → Age assurance** (also **Settings → Age assurance**). Add/edit date of birth here; Calendar is not locked. |
+| Content & safety controls | **More → Settings & account → Trust & Safety → Content & Safety Controls** |
+| Subscription (StoreKit) | **More → Subscription** (shortcut) or **Settings → Billing** |
+| Delete account | **More → Settings & account → Account → Delete account** (native in-app; not web-only) |
 
 The iOS app blocks StoreKit checkout for accounts that already have an active Paystack subscription (grandfathering). If the demo account is on a paid Paystack plan, the reviewer taps Upgrade and sees **Not available** instead of the purchase sheet — a guaranteed Guideline 2.1 rejection. Keep this account on free, with Apple product IDs mapped on Growth and Scale.
 
@@ -57,7 +82,10 @@ From the subscription screen, use **Restore purchases** (if shown) or reinstall 
 | `APPLE_APP_STORE_BUNDLE_ID` | `com.beautonomi.partner` | Rejects signed payloads issued for any other app. |
 | `APPLE_IAP_COMMISSION_RATE` | `0.15` | Commission split used for uplift pricing and ledger fees. |
 | `APPLE_IAP_ENABLED` | enabled | Emergency kill switch, set to `false` to stop in-app purchases. iOS has no permitted Paystack fallback, so switching this off leaves iOS providers with no way to buy. |
-| `APPLE_IAP_VERIFY_JWS` | enabled | Verifies every signed transaction and notification against Apple Root CA - G3. **Never disable outside local StoreKit testing** — it is the only thing preventing a forged payload from granting a free subscription. |
+| `APP_REVIEW_DEMO_OTP` | `246810` | Fixed App Review verification code (server only). |
+| `APP_REVIEW_DEMO_PHONE` | `+27790624995` | Demo phone matcher (accepts `790624995` / `0790624995` / `+27…`). |
+| `APP_REVIEW_DEMO_ENABLED` | enabled | Kill switch only. Set `false` to disable `POST /api/auth/app-review/verify-otp`. Unset means **enabled**. |
+| `APPLE_SIGN_IN_CLIENT_ID`, `APPLE_SIGN_IN_TEAM_ID`, `APPLE_SIGN_IN_KEY_ID`, `APPLE_SIGN_IN_PRIVATE_KEY` | — | Sign in with Apple token exchange + revoke on account deletion. Native SIWA stores a refresh token after the first authorization. |
 
 Both switches are surfaced with their live values on the **Admin → Integrations → Apple** status panel.
 
@@ -120,7 +148,7 @@ These are not in the binary. Missing any of them produces an empty paywall or a 
 ## Privacy & account deletion
 
 - Privacy Policy and Terms URLs are configured in App Store Connect (see `docs/store-compliance-provider-app.md`).
-- Account deletion: **Settings → Account → Delete account** (opens the web deletion flow).
+- Account deletion: **Settings → Account → Delete account** in the Partner app (native flow; Apple Sign in tokens are revoked server-side when configured).
 
 ---
 

@@ -22,6 +22,7 @@ import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
 import {
   isCompleteSupabaseSmsOtp,
   normalizeSupabaseSmsOtpToken,
@@ -816,7 +817,12 @@ export default function SignupScreen() {
               </TouchableOpacity>
             )}
 
-            {socialAuth.apple && (
+            {socialAuth.apple && Platform.OS === "ios" ? (
+              <AppleAuthButton
+                onPress={() => void handleSocialOAuth("apple")}
+                disabled={loading || !agreedToTerms}
+              />
+            ) : socialAuth.apple ? (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("apple")}
                 disabled={loading || !agreedToTerms}
@@ -837,7 +843,7 @@ export default function SignupScreen() {
                 <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
                 <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
 
             {/* Divider */}
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>

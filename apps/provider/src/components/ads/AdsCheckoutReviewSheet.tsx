@@ -1,9 +1,11 @@
-import { View, Text, ScrollView } from "react-native";
+import { View, Text, ScrollView, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
+import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 
 export type AdsCheckoutReview = {
   /** Accent badge label, e.g. "Time boost". */
@@ -40,6 +42,7 @@ export function AdsCheckoutReviewSheet({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const useAppleIap = shouldUseAppleIap();
 
   return (
     <BottomSheet
@@ -48,7 +51,11 @@ export function AdsCheckoutReviewSheet({
         if (!submitting) onClose();
       }}
       title="Review your boost"
-      subtitle="Confirm the details below before paying securely."
+      subtitle={
+        useAppleIap
+          ? "Confirm the details below before completing your App Store purchase."
+          : "Confirm the details below before paying securely."
+      }
       snapHeight="full"
     >
       {review ? (
@@ -120,13 +127,39 @@ export function AdsCheckoutReviewSheet({
             <View style={twStyle("flex-row items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-3")}>
               <Ionicons name="shield-checkmark-outline" size={16} color="#047857" />
               <Text style={twStyle("flex-1 text-xs leading-5 text-emerald-800")}>
-                You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is
-                verified — never before.
+                {useAppleIap
+                  ? "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before."
+                  : "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before."}
               </Text>
             </View>
 
+            {useAppleIap ? (
+              <View style={twStyle("flex-row flex-wrap gap-x-4 gap-y-1 px-1")}>
+                <Text
+                  onPress={() => void Linking.openURL(webTermsOfServiceUrl())}
+                  style={twStyle("text-xs font-semibold text-gray-600 underline")}
+                  accessibilityRole="link"
+                >
+                  Terms of Use
+                </Text>
+                <Text
+                  onPress={() => void Linking.openURL(webPrivacyPolicyUrl())}
+                  style={twStyle("text-xs font-semibold text-gray-600 underline")}
+                  accessibilityRole="link"
+                >
+                  Privacy Policy
+                </Text>
+              </View>
+            ) : null}
+
             <ActionButton
-              label={submitting ? "Opening secure checkout…" : (review.confirmLabel ?? `Pay ${review.total}`)}
+              label={
+                submitting
+                  ? useAppleIap
+                    ? "Opening App Store purchase…"
+                    : "Opening secure checkout…"
+                  : (review.confirmLabel ?? (useAppleIap ? `Purchase ${review.total}` : `Pay ${review.total}`))
+              }
               onPress={onConfirm}
               loading={submitting}
               disabled={submitting}

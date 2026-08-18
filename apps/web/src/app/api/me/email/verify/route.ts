@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { isMailableEmail } from "@beautonomi/utils";
+import { isAppReviewDemoUserId, APP_REVIEW_DEMO_EMAIL } from "@/lib/auth/app-review-demo";
 
 /**
  * POST /api/me/email/verify
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
     await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     const supabase = await getSupabaseServer(request);
+
+    if (isAppReviewDemoUserId(user.id)) {
+      const body = await request.json().catch(() => ({})) as { email?: string };
+      const confirmedEmail = (body.email?.trim() || user.email || APP_REVIEW_DEMO_EMAIL).trim();
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ email_verified: true, email: confirmedEmail })
+        .eq("id", user.id);
+      if (updateError) throw updateError;
+      return successResponse({ verified: true, email: confirmedEmail });
+    }
 
     // Read Supabase Auth's own user record — email_confirmed_at is only
     // populated after a successful verifyOtp call or OAuth confirmation.

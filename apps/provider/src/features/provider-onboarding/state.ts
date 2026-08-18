@@ -8,6 +8,7 @@ export const INITIAL_FORM: OnboardingFormData = {
   email_verified: false,
   owner_phone: "",
   phone_verified: false,
+  date_of_birth: "",
   business_name: "",
   business_type: "salon",
   description: "",

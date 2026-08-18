@@ -21,6 +21,7 @@ import { setActiveMessagingConversationId } from "@/lib/active-messaging-context
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { useTranslation } from "@beautonomi/i18n";
+import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 import { CustomOfferCard } from "@beautonomi/ui/native";
 import { Image } from "expo-image";
@@ -151,6 +152,9 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
   const { adjustChatUnreadCount } = useNotificationsCount();
+  const directMessaging = useSocialCapability("direct_message");
+  const { settings: safetySettings } = useSafetySettings();
+  const canSendMessages = directMessaging.allowed && !safetySettings.restricted_mode;
 
   const [message, setMessage] = useState("");
   const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
@@ -1363,6 +1367,8 @@ export default function ChatScreen() {
                 { paddingTop: 8, paddingBottom: 8 + insets.bottom },
               ]}
             >
+              {canSendMessages ? (
+              <>
               <TouchableOpacity
                 onPress={openAttachmentMenu}
                 disabled={sending || uploading}
@@ -1408,6 +1414,14 @@ export default function ChatScreen() {
                   />
                 )}
               </TouchableOpacity>
+              </>
+              ) : (
+                <View style={twStyle("flex-1 py-2")}>
+                  <Text style={twStyle("text-sm text-gray-600 text-center leading-5")}>
+                    {t("customer.chatScreen.safetyMessagingOff")}
+                  </Text>
+                </View>
+              )}
             </View>
           </>
         )}

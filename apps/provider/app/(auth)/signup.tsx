@@ -26,6 +26,7 @@ import {
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
 import { trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
@@ -698,12 +699,14 @@ export default function SignupScreen() {
                     <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
                   </TouchableOpacity>
                 )}
-                {socialAuth.apple && (
+                {socialAuth.apple && Platform.OS === "ios" ? (
+                  <AppleAuthButton onPress={() => void handleSocialOAuth("apple")} disabled={loading} />
+                ) : socialAuth.apple ? (
                   <TouchableOpacity onPress={() => void handleSocialOAuth("apple")} disabled={loading} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, marginBottom: 12, backgroundColor: "#fff" }}>
                     <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
                     <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
                   </TouchableOpacity>
-                )}
+                ) : null}
               </>
             ) : null}
 

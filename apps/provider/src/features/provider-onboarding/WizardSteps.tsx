@@ -37,9 +37,18 @@ import {
 } from "@/lib/phone-country-codes";
 import {
   appendFormDataFileNative,
+  appleDisplayNameFallback,
+  composeLegalDobIso,
   countryFilterIso2FromStorage,
+  daysInMonth,
+  formatLegalDobDisplay,
+  isApplePrimaryIdentity,
   isMailableEmail,
+  LEGAL_DOB_MONTHS,
+  legalDobYearRange,
+  parseLegalDobIso,
   resolveGlobalCategoryIconUri,
+  validateLegalDobParts,
 } from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
@@ -66,6 +75,8 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useApi } from "@/hooks/useApi";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
+import { useAuth } from "@/providers/AuthProvider";
+import { isAppReviewDemoUserId, APP_REVIEW_DEMO_EMAIL, APP_REVIEW_DEMO_PHONE } from "@/lib/auth/app-review-demo";
 import { defaultBillingPeriod } from "@/lib/subscription/start-paid-checkout";
 import { OnboardingTextField } from "./OnboardingTextField";
 import { FocusAwareTextInput } from "./FocusAwareTextInput";
@@ -189,10 +200,183 @@ function Step1TeamSize() {
 
 // ─── Step 2: Identity ────────────────────────────────────────────────────────
 
+function DobFieldsSection({
+  dateOfBirth,
+  onChange,
+}: {
+  dateOfBirth?: string;
+  onChange: (iso: string) => void;
+}) {
+  const parts = parseLegalDobIso(dateOfBirth);
+  const [day, setDay] = useState<number | null>(parts.day);
+  const [month, setMonth] = useState<number | null>(parts.month);
+  const [year, setYear] = useState<number | null>(parts.year);
+  const [showDay, setShowDay] = useState(false);
+  const [showMonth, setShowMonth] = useState(false);
+  const [showYear, setShowYear] = useState(false);
+
+  useEffect(() => {
+    const p = parseLegalDobIso(dateOfBirth);
+    setDay(p.day);
+    setMonth(p.month);
+    setYear(p.year);
+  }, [dateOfBirth]);
+
+  const commit = useCallback(
+    (next: { day: number | null; month: number | null; year: number | null }) => {
+      const iso = composeLegalDobIso(next);
+      onChange(iso);
+      if (iso) {
+        void api.patch("/api/me/profile", { date_of_birth: iso }).catch(() => {
+          /* saved on submit if offline */
+        });
+      }
+    },
+    [onChange],
+  );
+
+  const years = useMemo(() => legalDobYearRange({ minAge: 13, maxAge: 100 }), []);
+  const monthLabel = LEGAL_DOB_MONTHS.find((m) => m.value === month)?.label ?? "Month";
+  const maxDay = year != null && month != null ? daysInMonth(year, month) : 31;
+  const dayOptions = Array.from({ length: maxDay }, (_, i) => i + 1);
+  const dobError =
+    day != null && month != null && year != null
+      ? validateLegalDobParts({ day, month, year }, { minAge: 13 })
+      : null;
+
+  return (
+    <View>
+      <Text style={twStyle(labelCls)}>Date of birth</Text>
+      <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
+        Required for age assurance. You must be at least 13 to use Beautonomi.
+      </Text>
+      <View style={twStyle("flex-row gap-2")}>
+        <TouchableOpacity
+          onPress={() => {
+            setShowDay(true);
+            setShowMonth(false);
+            setShowYear(false);
+          }}
+          style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
+          accessibilityRole="button"
+          accessibilityLabel="Select day of birth"
+        >
+          <Text style={twStyle(day != null ? "text-gray-900" : "text-gray-400")}>{day ?? "Day"}</Text>
+          <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            setShowMonth(true);
+            setShowDay(false);
+            setShowYear(false);
+          }}
+          style={twStyle("flex-[1.4] rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
+          accessibilityRole="button"
+          accessibilityLabel="Select month of birth"
+        >
+          <Text style={twStyle(month != null ? "text-gray-900" : "text-gray-400")}>{monthLabel}</Text>
+          <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            setShowYear(true);
+            setShowDay(false);
+            setShowMonth(false);
+          }}
+          style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
+          accessibilityRole="button"
+          accessibilityLabel="Select year of birth"
+        >
+          <Text style={twStyle(year != null ? "text-gray-900" : "text-gray-400")}>{year ?? "Year"}</Text>
+          <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+        </TouchableOpacity>
+      </View>
+
+      {showDay ? (
+        <FlatList<number>
+          {...verticalFlatListPerf}
+          data={dayOptions}
+          keyExtractor={(d: number) => String(d)}
+          style={twStyle("mt-2 max-h-40 rounded-xl border border-gray-100 bg-white")}
+          renderItem={({ item: d }: { item: number }) => (
+            <TouchableOpacity
+              style={twStyle("px-4 py-3 border-b border-gray-50")}
+              onPress={() => {
+                setDay(d);
+                setShowDay(false);
+                commit({ day: d, month, year });
+              }}
+            >
+              <Text style={twStyle("text-base text-gray-900")}>{d}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      ) : null}
+      {showMonth ? (
+        <FlatList<(typeof LEGAL_DOB_MONTHS)[number]>
+          {...verticalFlatListPerf}
+          data={LEGAL_DOB_MONTHS}
+          keyExtractor={(m: (typeof LEGAL_DOB_MONTHS)[number]) => String(m.value)}
+          style={twStyle("mt-2 max-h-48 rounded-xl border border-gray-100 bg-white")}
+          renderItem={({ item: m }: { item: (typeof LEGAL_DOB_MONTHS)[number] }) => (
+            <TouchableOpacity
+              style={twStyle("px-4 py-3 border-b border-gray-50")}
+              onPress={() => {
+                setMonth(m.value);
+                setShowMonth(false);
+                const max = year != null ? daysInMonth(year, m.value) : 31;
+                const nextDay = day != null && day > max ? max : day;
+                if (nextDay !== day) setDay(nextDay);
+                commit({ day: nextDay, month: m.value, year });
+              }}
+            >
+              <Text style={twStyle("text-base text-gray-900")}>{m.label}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      ) : null}
+      {showYear ? (
+        <FlatList<number>
+          {...verticalFlatListPerf}
+          data={years}
+          keyExtractor={(y: number) => String(y)}
+          style={twStyle("mt-2 max-h-48 rounded-xl border border-gray-100 bg-white")}
+          renderItem={({ item: y }: { item: number }) => (
+            <TouchableOpacity
+              style={twStyle("px-4 py-3 border-b border-gray-50")}
+              onPress={() => {
+                setYear(y);
+                setShowYear(false);
+                const max = month != null ? daysInMonth(y, month) : 31;
+                const nextDay = day != null && day > max ? max : day;
+                if (nextDay !== day) setDay(nextDay);
+                commit({ day: nextDay, month, year: y });
+              }}
+            >
+              <Text style={twStyle("text-base text-gray-900")}>{y}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      ) : null}
+
+      {dateOfBirth && !dobError ? (
+        <Text style={twStyle("mt-2 text-sm text-emerald-700")}>
+          {formatLegalDobDisplay(dateOfBirth)}
+        </Text>
+      ) : null}
+      {dobError ? <Text style={twStyle("mt-2 text-sm text-red-600")}>{dobError}</Text> : null}
+    </View>
+  );
+}
+
 const KEYBOARD_ACCESSORY_EMAIL = "step2-email-done";
 
 function Step2Identity() {
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
+  const { user } = useAuth();
+  const appleIdentity = isApplePrimaryIdentity(user);
+  const demoIdentity = isAppReviewDemoUserId(user?.id);
+  const skipIdentityFields = appleIdentity || demoIdentity;
   const onboardingScroll = useOnboardingScroll();
   const { bundle } = useConfigBundle();
   const identityVerificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
@@ -204,6 +388,48 @@ function Step2Identity() {
   const phoneRef = useRef<TextInput>(null);
   useAutoFocus(nameRef);
   const deviceDial = getDeviceDefaultCountryDial();
+
+  useEffect(() => {
+    if (loadingDraft || !user) return;
+    if (appleIdentity) {
+      const email = user.email?.trim();
+      const patch: Partial<typeof formData> = {};
+      if (email && isMailableEmail(email)) {
+        if (formData.owner_email !== email) patch.owner_email = email;
+        if (!formData.email_verified) patch.email_verified = true;
+        if (formData.email !== email) patch.email = email;
+      }
+      if (!formData.owner_name?.trim()) {
+        patch.owner_name = appleDisplayNameFallback(user);
+      }
+      if (Object.keys(patch).length > 0) updateFormData(patch);
+      return;
+    }
+    if (demoIdentity) {
+      const patch: Partial<typeof formData> = {};
+      if (formData.owner_email !== APP_REVIEW_DEMO_EMAIL) patch.owner_email = APP_REVIEW_DEMO_EMAIL;
+      if (formData.email !== APP_REVIEW_DEMO_EMAIL) patch.email = APP_REVIEW_DEMO_EMAIL;
+      if (!formData.email_verified) patch.email_verified = true;
+      if (formData.owner_phone !== APP_REVIEW_DEMO_PHONE) patch.owner_phone = APP_REVIEW_DEMO_PHONE;
+      if (formData.phone !== APP_REVIEW_DEMO_PHONE) patch.phone = APP_REVIEW_DEMO_PHONE;
+      if (!formData.phone_verified) patch.phone_verified = true;
+      if (!formData.owner_name?.trim()) patch.owner_name = "Buntu";
+      if (Object.keys(patch).length > 0) updateFormData(patch);
+    }
+  }, [
+    appleIdentity,
+    demoIdentity,
+    formData.email,
+    formData.email_verified,
+    formData.owner_email,
+    formData.owner_name,
+    formData.owner_phone,
+    formData.phone,
+    formData.phone_verified,
+    loadingDraft,
+    updateFormData,
+    user,
+  ]);
 
   // ── Phone local state (keyboard-safe: only commit to context on blur) ──────
   const [countryCode, setCountryCode] = useState("+27");
@@ -484,6 +710,30 @@ function Step2Identity() {
 
   return (
     <View style={twStyle("gap-5")}>
+      {appleIdentity ? (
+        <View style={twStyle("rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5")}>
+          <View style={twStyle("mb-2 flex-row items-center gap-2")}>
+            <Ionicons name="logo-apple" size={18} color="#111827" />
+            <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>Signed in with Apple</Text>
+          </View>
+          <Text style={twStyle("text-[14px] text-gray-600")}>
+            Your name and email from Apple are already on your account
+            {formData.owner_email ? ` (${formData.owner_email})` : ""}.
+          </Text>
+        </View>
+      ) : null}
+
+      {demoIdentity && !appleIdentity ? (
+        <View style={twStyle("rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5")}>
+          <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>App Review demo account</Text>
+          <Text style={twStyle("text-[14px] text-gray-600 mt-1")}>
+            Email and phone are already verified for this review account.
+          </Text>
+        </View>
+      ) : null}
+
+      {!skipIdentityFields ? (
+      <>
       {/* Name */}
       <View>
         <Text style={twStyle(labelCls)}>Full name</Text>
@@ -622,6 +872,8 @@ function Step2Identity() {
           </>
         )}
       </View>
+      </>
+      ) : null}
 
       {/* Phone with OTP */}
       <View>
@@ -790,6 +1042,11 @@ function Step2Identity() {
           </>
         )}
       </View>
+
+      <DobFieldsSection
+        dateOfBirth={formData.date_of_birth}
+        onChange={(iso) => updateFormData({ date_of_birth: iso || undefined })}
+      />
 
       {/* Identity verification hint */}
       <View style={twStyle("flex-row gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm mt-2")}>
@@ -3456,6 +3713,15 @@ function Step13Review() {
           label="Mobile"
           value={formData.owner_phone || "—"}
           ok={formData.phone_verified}
+          onPress={() => editFromReview(2)}
+        />
+        <ReviewRow
+          icon="calendar-outline"
+          iconBg={formData.date_of_birth ? "#f0fdf4" : "#fffbeb"}
+          iconColor={formData.date_of_birth ? "#16a34a" : "#d97706"}
+          label="Date of birth"
+          value={formData.date_of_birth ? formatLegalDobDisplay(formData.date_of_birth) : "—"}
+          ok={!!formData.date_of_birth}
           onPress={() => editFromReview(2)}
         />
       </View>

@@ -1,22 +1,42 @@
+import { parseLegalDobIso, validateLegalDobParts } from "@beautonomi/utils";
 import type { OnboardingFormData } from "./types";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
+
+export type ValidateStepOptions = {
+  /** Skip Apple-provided identity fields (name, email, email OTP). */
+  appleIdentity?: boolean;
+  /** App Review demo account — contacts already verified. */
+  demoIdentity?: boolean;
+};
 
 export function validateStep(
   step: number,
   formData: Partial<OnboardingFormData>,
+  options?: ValidateStepOptions,
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
+  const skipIdentityFields = options?.appleIdentity === true || options?.demoIdentity === true;
 
   switch (step) {
     case 1:
       if (!formData.team_size) errors.push("Please select your team size");
       break;
     case 2:
-      if (!formData.owner_name?.trim()) errors.push("Your name is required");
-      if (!formData.owner_email?.trim()) errors.push("Email is required");
-      if (!formData.email_verified) errors.push("Please verify your email address");
+      if (!skipIdentityFields) {
+        if (!formData.owner_name?.trim()) errors.push("Your name is required");
+        if (!formData.owner_email?.trim()) errors.push("Email is required");
+        if (!formData.email_verified) errors.push("Please verify your email address");
+      }
       if (!isValidOwnerPhoneE164(formData.owner_phone)) errors.push("Phone number is required");
       if (!formData.phone_verified) errors.push("Please verify your phone number");
+      if (!formData.date_of_birth?.trim()) {
+        errors.push("Date of birth is required");
+      } else {
+        const dobError = validateLegalDobParts(parseLegalDobIso(formData.date_of_birth), {
+          minAge: 13,
+        });
+        if (dobError) errors.push(dobError);
+      }
       break;
     case 3:
       if (!formData.business_name?.trim()) errors.push("Business name is required");
@@ -177,6 +197,7 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     owner_name: formData.owner_name,
     owner_email: formData.owner_email,
     owner_phone: ownerE164,
+    date_of_birth: formData.date_of_birth ?? null,
     terminal_ownership_status: formData.terminal_ownership_status ?? null,
     terminal_provider: formData.terminal_provider ?? null,
     terminal_provider_other: formData.terminal_provider_other ?? null,

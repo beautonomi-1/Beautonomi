@@ -1,6 +1,6 @@
 /**
- * First-session native setup for the provider app: push, location, and media.
- * Shown once per install after sign-in.
+ * First-session native setup: push notifications only.
+ * Location and photos are requested in-context when the user starts those flows.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
@@ -23,13 +23,11 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import Svg, { Circle, Path } from "react-native-svg";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 import { Colors } from "@/constants/colors";
 import {
-  ensureForegroundLocationPermission,
-  ensureMediaLibraryPermission,
   openAppNotificationSettings,
   showPermissionRecoveryAlert,
 } from "@/lib/native-permissions";
@@ -40,7 +38,7 @@ import {
 } from "@/lib/onesignal-client";
 import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 
-const STEPS = ["welcome", "notifications", "location", "photos"] as const;
+const STEPS = ["welcome", "notifications"] as const;
 
 function useReduceMotion(): boolean {
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -270,32 +268,6 @@ function BellIllustration() {
   );
 }
 
-function LocationPinIllustration() {
-  return (
-    <Svg width={88} height={88} viewBox="0 0 88 88" fill="none">
-      <Circle cx="44" cy="52" r="22" stroke={Colors.primary} strokeWidth={2} opacity={0.2} />
-      <Circle cx="44" cy="52" r="14" stroke={Colors.primary} strokeWidth={2} opacity={0.35} />
-      <Path
-        d="M44 20C34 20 28 30 28 40C28 54 44 68 44 68C44 68 60 54 60 40C60 30 54 20 44 20Z"
-        fill={Colors.primary}
-      />
-      <Circle cx="44" cy="40" r="7" fill={Colors.white} />
-    </Svg>
-  );
-}
-
-function PhotosIllustration() {
-  return (
-    <Svg width={88} height={88} viewBox="0 0 88 88" fill="none">
-      <Rect x="18" y="24" width="40" height="40" rx="8" fill={Colors.primary} opacity={0.2} />
-      <Rect x="30" y="18" width="40" height="40" rx="8" fill={Colors.primary} opacity={0.35} />
-      <Rect x="24" y="30" width="40" height="40" rx="8" fill={Colors.white} stroke={Colors.primary} strokeWidth={2.5} />
-      <Circle cx="36" cy="42" r="5" fill={Colors.primary} opacity={0.5} />
-      <Path d="M28 58L38 48L46 54L56 42" stroke={Colors.primary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
 function BenefitRow({ text }: { text: string }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }}>
@@ -404,45 +376,15 @@ export function NativePermissionsOnboarding() {
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
   }, []);
 
-  const onEnableNotifications = useCallback(async () => {
+  const onContinueNotifications = useCallback(async () => {
     setBusy(true);
     try {
       if (user?.id) await requestOneSignalPush(user.id);
     } finally {
       setBusy(false);
-      goNext();
-    }
-  }, [goNext, user?.id]);
-
-  const onEnableLocation = useCallback(async () => {
-    setBusy(true);
-    try {
-      await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access while using the app for journey, arrival, and at-home service features.",
-      });
-    } finally {
-      setBusy(false);
-      goNext();
-    }
-  }, [goNext]);
-
-  const onEnablePhotos = useCallback(async () => {
-    setBusy(true);
-    try {
-      // Library only — camera permission is requested in-context the first
-      // time the user taps "Take photo" so Apple's review guideline (request
-      // permission only when needed) is satisfied and the user understands
-      // exactly which feature is asking.
-      await ensureMediaLibraryPermission({
-        title: "Photo library access",
-        message: "Allow photo access for catalogue images, profile photos, and documenting work.",
-      });
-    } finally {
-      setBusy(false);
       await finish();
     }
-  }, [finish]);
+  }, [finish, user?.id]);
 
   if (!visible) return null;
 
@@ -487,12 +429,11 @@ export function NativePermissionsOnboarding() {
                 reduceMotion={reduceMotion}
                 illustration={<WelcomeIllustration />}
                 title="Set up Beautonomi Provider"
-                body="Turn on a few permissions so you never miss bookings, can navigate to clients, and add photos to your work. You can skip any step and change these later in device settings."
+                body="Turn on notifications so you never miss bookings, messages, and payout updates. Location and photo access are requested later when you use those features."
               />
               <View style={{ marginTop: 28 }}>
                 <BenefitRow text="New bookings, on-demand requests, and messages" />
-                <BenefitRow text="Location while using the app for arrival and route features" />
-                <BenefitRow text="Photo library for your gallery, services, and proof images" />
+                <BenefitRow text="Payout and time-sensitive alerts" />
               </View>
             </View>
           )}
@@ -506,32 +447,6 @@ export function NativePermissionsOnboarding() {
                 illustration={<BellIllustration />}
                 title="Don’t miss a booking"
                 body="Notifications alert you to new bookings, on-demand requests, client messages, payouts, and time-sensitive updates."
-              />
-            </View>
-          )}
-
-          {step === "location" && (
-            <View style={{ flex: 1, paddingTop: 28 }}>
-              <StepHeader
-                stepIndex={stepIndex}
-                stepKey={step}
-                reduceMotion={reduceMotion}
-                illustration={<LocationPinIllustration />}
-                title="Location while using the app"
-                body="Used when you start a journey, mark arrival, or share your position with a client for at-home services. We only request access while you are using the app."
-              />
-            </View>
-          )}
-
-          {step === "photos" && (
-            <View style={{ flex: 1, paddingTop: 28 }}>
-              <StepHeader
-                stepIndex={stepIndex}
-                stepKey={step}
-                reduceMotion={reduceMotion}
-                illustration={<PhotosIllustration />}
-                title="Photos"
-                body="Optional: for catalogue images, profile photos, and documenting work when your workflow requires it."
               />
             </View>
           )}
@@ -564,93 +479,20 @@ export function NativePermissionsOnboarding() {
           )}
 
           {step === "notifications" && (
-            <>
-              <ScalePressable
-                onPress={() => void onEnableNotifications()}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={primaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Enable notifications"
-              >
-                {busy ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Turn on notifications</Text>
-                )}
-              </ScalePressable>
-              <ScalePressable
-                onPress={goNext}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={secondaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Not now"
-              >
-                <Text style={{ textAlign: "center", color: Colors.gray[500], fontSize: 15 }}>Not now</Text>
-              </ScalePressable>
-            </>
-          )}
-
-          {step === "location" && (
-            <>
-              <ScalePressable
-                onPress={() => void onEnableLocation()}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={primaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Allow location access"
-              >
-                {busy ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Allow location access</Text>
-                )}
-              </ScalePressable>
-              <ScalePressable
-                onPress={goNext}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={secondaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Not now"
-              >
-                <Text style={{ textAlign: "center", color: Colors.gray[500], fontSize: 15 }}>Not now</Text>
-              </ScalePressable>
-            </>
-          )}
-
-          {step === "photos" && (
-            <>
-              <ScalePressable
-                onPress={() => void onEnablePhotos()}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={primaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Allow photo access"
-              >
-                {busy ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Allow photo access</Text>
-                )}
-              </ScalePressable>
-              <ScalePressable
-                onPress={() => void finish()}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={{
-                  ...primaryButtonStyle,
-                  backgroundColor: Colors.gray[900],
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Continue without photo access"
-              >
-                <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Get started</Text>
-              </ScalePressable>
-            </>
+            <ScalePressable
+              onPress={() => void onContinueNotifications()}
+              disabled={busy}
+              reduceMotion={reduceMotion}
+              style={primaryButtonStyle}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+            >
+              {busy ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Continue</Text>
+              )}
+            </ScalePressable>
           )}
         </View>
       </View>
