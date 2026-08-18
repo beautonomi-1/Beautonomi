@@ -15,6 +15,13 @@ jest.mock("expo-apple-authentication", () => ({
   AppleAuthenticationScope: { FULL_NAME: 0, EMAIL: 1 },
 }));
 
+jest.mock("@/lib/api-client", () => ({
+  api: {
+    patch: jest.fn().mockResolvedValue({ error: null }),
+    post: jest.fn().mockResolvedValue({ error: null }),
+  },
+}));
+
 import { tryNativeAppleSignIn } from "@/lib/auth/try-native-apple-sign-in";
 
 describe("tryNativeAppleSignIn", () => {

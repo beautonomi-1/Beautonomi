@@ -120,6 +120,13 @@ const SETTINGS_SECTIONS: { title: string; titleKey?: string; items: SettingItem[
         color: "#dc2626",
       },
       {
+        icon: "calendar-outline",
+        label: "Age assurance",
+        subtitle: "Date of birth, 13+ app use, 18+ payouts",
+        route: "/(app)/(tabs)/more/safety/age-assurance",
+        color: "#0ea5e9",
+      },
+      {
         icon: "options-outline",
         labelKey: "customer.accountSettings.contentSafetyTitle",
         subtitleKey: "customer.accountSettings.contentSafetyDesc",

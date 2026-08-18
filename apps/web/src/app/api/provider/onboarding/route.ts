@@ -22,6 +22,11 @@ import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 import { persistJoinedProviderRole } from "@/lib/auth/effective-provider-role";
 import { assignStaffToAllActiveLocations } from "@/lib/provider/location-maintenance";
+import {
+  APP_REVIEW_DEMO_EMAIL,
+  APP_REVIEW_DEMO_PHONE,
+  isAppReviewDemoUserId,
+} from "@/lib/auth/app-review-demo";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -36,6 +41,11 @@ const onboardingSchema = z.object({
   owner_name: z.string().min(1, "Owner name is required").optional(),
   owner_email: z.string().email("Invalid email address").optional(),
   owner_phone: z.string().min(1, "Phone is required").optional(),
+  date_of_birth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date of birth")
+    .optional()
+    .nullable(),
   // Terminal capture (replaces yoco_machine)
   terminal_ownership_status: z.enum(["has_terminal", "no_terminal", "planning_to_get_terminal", "unsure"]).optional().nullable(),
   terminal_provider: z.string().optional().nullable(),
@@ -273,6 +283,7 @@ export async function POST(request: NextRequest) {
       owner_name,
       owner_email,
       owner_phone,
+      date_of_birth,
       terminal_ownership_status,
       terminal_provider,
       terminal_provider_other,
@@ -689,6 +700,9 @@ export async function POST(request: NextRequest) {
     if (owner_name && owner_name.trim()) {
       userUpdates.full_name = owner_name.trim();
     }
+    if (date_of_birth && /^\d{4}-\d{2}-\d{2}$/.test(date_of_birth.trim())) {
+      userUpdates.date_of_birth = date_of_birth.trim();
+    }
 
     // Read Supabase Auth's own confirmation state — the source of truth for verification.
     // NEVER blindly trust the client-submitted owner_phone/owner_email as "verified";
@@ -729,6 +743,14 @@ export async function POST(request: NextRequest) {
       ) {
         userUpdates.email_verified = true;
       }
+    }
+
+    if (isAppReviewDemoUserId(user.id)) {
+      userUpdates.email = APP_REVIEW_DEMO_EMAIL;
+      userUpdates.phone = APP_REVIEW_DEMO_PHONE;
+      userUpdates.email_verified = true;
+      userUpdates.phone_verified = true;
+      userUpdates.phone_verified_at = new Date().toISOString();
     }
 
     if (Object.keys(userUpdates).length > 0) {

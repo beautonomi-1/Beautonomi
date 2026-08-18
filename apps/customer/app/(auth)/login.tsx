@@ -30,6 +30,7 @@ import {
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { navigateAfterCustomerAuth, navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
@@ -1529,7 +1530,12 @@ export default function LoginScreen() {
                       </TouchableOpacity>
                     )}
 
-                    {socialAuth.apple && (
+                    {socialAuth.apple && Platform.OS === "ios" ? (
+                      <AppleAuthButton
+                        onPress={() => void handleSocialOAuth("apple")}
+                        disabled={loading}
+                      />
+                    ) : socialAuth.apple ? (
                       <TouchableOpacity
                         onPress={() => void handleSocialOAuth("apple")}
                         disabled={loading}
@@ -1550,7 +1556,7 @@ export default function LoginScreen() {
                         <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
                         <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{al("continueApple")}</Text>
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </>
                 )}
 

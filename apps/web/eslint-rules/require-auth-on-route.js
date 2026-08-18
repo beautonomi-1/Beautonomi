@@ -15,6 +15,7 @@
  *   - /api/auth/sign-in           proxy sign-in (rate limited)
  *   - /api/auth/sign-out          proxy sign-out
  *   - /api/auth/mfa-policy        unauthenticated MFA policy lookup
+ *   - /api/auth/app-review/**     App Review demo OTP (rate limited; identifier + OTP gated)
  *   - /api/mapbox/distance/route   local haversine — no paid Mapbox API call, no auth needed
  *                                  All other /api/mapbox/** routes require optionalAuthInApi + rate limit
  *   - /api/i18n/**                public translations bundle
@@ -99,6 +100,7 @@ const ALLOW_LIST_PREFIXES = [
   "src/app/api/auth/sign-in",
   "src/app/api/auth/sign-out",
   "src/app/api/auth/mfa-policy",
+  "src/app/api/auth/app-review/",
   "src/app/api/mapbox/distance/route", // local haversine — no paid API, no auth needed
   "src/app/api/i18n/",
   "src/app/api/feature-flags/check",

@@ -14,6 +14,9 @@ import { OnboardingStepBody } from "./WizardSteps";
 import { validateStep } from "./validation";
 import { useKeyboardOffset } from "./useKeyboardOffset";
 import { OnboardingScrollProvider } from "./OnboardingScrollContext";
+import { useAuth } from "@/providers/AuthProvider";
+import { isApplePrimaryIdentity } from "@beautonomi/utils";
+import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -65,6 +68,11 @@ export function WizardChrome() {
     submitLabel,
     submitBusyLabel,
   } = useOnboardingWizard();
+  const { user } = useAuth();
+  const validateOptions = {
+    appleIdentity: isApplePrimaryIdentity(user),
+    demoIdentity: isAppReviewDemoUserId(user?.id),
+  };
 
   useLayoutEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -82,7 +90,7 @@ export function WizardChrome() {
   const isLast = currentStep === STEPS.length;
   const milestoneLabel = getMilestoneLabel(currentStep);
   const milestoneProgress = getMilestoneProgress(currentStep);
-  const currentStepValidation = validateStep(currentStep, formData);
+  const currentStepValidation = validateStep(currentStep, formData, validateOptions);
   const canProceed = currentStepValidation.valid;
 
   const milestoneStates = MILESTONES.map((m, i) => {
@@ -92,7 +100,7 @@ export function WizardChrome() {
     const visibleStepsInM = m.stepIds.filter((id) => stepIsVisible(id, formData));
     const allValid =
       visibleStepsInM.length > 0 &&
-      visibleStepsInM.every((id) => validateStep(id, formData).valid);
+      visibleStepsInM.every((id) => validateStep(id, formData, validateOptions).valid);
 
     const done = isPast && allValid;
 

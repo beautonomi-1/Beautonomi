@@ -187,6 +187,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Settings",
     items: [
+      { icon: "shield-outline", label: "Trust & Safety", subtitle: "Age assurance, content controls & blocked users", route: "/(app)/(tabs)/more/safety", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "lock-closed-outline", label: "Login & security", subtitle: "Email, phone, password, biometrics & sessions", route: "/(app)/(tabs)/more/settings-login-and-security", color: "#6366f1", bg: "#eef2ff" },
       { icon: "shield-checkmark-outline", label: "Identity verification", subtitle: "Verify your identity (KYC) & earn the Verified badge", route: "/(app)/(tabs)/more/settings/verification", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
@@ -213,7 +214,7 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
   { icon: "hardware-chip-outline", label: "Card machines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
   { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
-  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/billing?tab=subscription", color: "#8b5cf6" },
+  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
   { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/money?tab=payouts", color: "#047857" },
   { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/payment-setup", color: "#059669" },
 ];

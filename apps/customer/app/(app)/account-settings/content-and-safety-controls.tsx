@@ -128,9 +128,18 @@ export default function ContentAndSafetyControlsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setAuthUnlocked(Platform.OS === "web");
+      if (Platform.OS === "web") {
+        setAuthUnlocked(true);
+        return;
+      }
+      if (loading) return;
+      if (!settings.require_device_auth) {
+        setAuthUnlocked(true);
+        return;
+      }
+      setAuthUnlocked(false);
       void promptDeviceAuth();
-    }, [promptDeviceAuth]),
+    }, [loading, settings.require_device_auth, promptDeviceAuth]),
   );
 
   const toggleLabel = (key: SafetySettingKey) => cs(`toggle_${key}_label`);
@@ -138,7 +147,15 @@ export default function ContentAndSafetyControlsScreen() {
 
   const showAgeBandNote = age_band === "13_17";
 
-  if (!authUnlocked) {
+  if (loading) {
+    return <ScreenFrame loading error={null} onRetry={refresh}><View /></ScreenFrame>;
+  }
+
+  if (error) {
+    return <ScreenFrame loading={false} error={error} onRetry={refresh}><View /></ScreenFrame>;
+  }
+
+  if (!authUnlocked && settings.require_device_auth) {
     return (
       <ScreenFrame loading={false} error={null}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
@@ -187,7 +204,7 @@ export default function ContentAndSafetyControlsScreen() {
   }
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={refresh}>
+    <ScreenFrame loading={false} error={null}>
       <View>
         <View>
           <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>

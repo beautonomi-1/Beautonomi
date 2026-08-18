@@ -25,6 +25,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { providerMessagingBaseFromPathname } from "@/lib/provider-messaging-routes";
+import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 
 interface Conversation {
   id: string;
@@ -65,6 +66,9 @@ export default function MessagingListScreen() {
   const hasRedirected = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const directMessaging = useSocialCapability("direct_message");
+  const { settings: safetySettings } = useSafetySettings();
+  const messagingDisabled = !directMessaging.allowed || safetySettings.restricted_mode;
   const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations", {
     staleTimeMs: 0,
   });
@@ -231,6 +235,23 @@ export default function MessagingListScreen() {
         showBack={canGoBack}
         subtitle={`${filteredConversations.length} conversation${filteredConversations.length === 1 ? "" : "s"}`}
       />
+      {messagingDisabled ? (
+        <View
+          style={{
+            marginHorizontal: screenPadding,
+            marginTop: 8,
+            marginBottom: 4,
+            borderRadius: 12,
+            backgroundColor: Colors.gray[100],
+            padding: 12,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: Colors.gray[600], lineHeight: 20, textAlign: "center" }}>
+            Direct messaging is turned off in your content & safety settings. You can still read past
+            conversations.
+          </Text>
+        </View>
+      ) : null}
       <View
         style={{
           paddingHorizontal: screenPadding,

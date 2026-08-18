@@ -19,6 +19,7 @@ import {
 } from "@/lib/account/account-deletion-config";
 import { scheduleAccountDeletion } from "@/lib/account/schedule-account-deletion";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { revokeAppleSignInForAuthUser } from "@/lib/auth/revoke-apple-sign-in";
 
 /**
  * POST /api/me/delete-account
@@ -85,6 +86,8 @@ export async function POST(request: NextRequest) {
     const userId = authUser.id;
     const admin = getSupabaseAdmin();
     const userEmail = authUser.email ?? user.email ?? null;
+
+    await revokeAppleSignInForAuthUser(admin, userId);
 
     if (isAccountDeletionGraceEnabled()) {
       const scheduleResult = await scheduleAccountDeletion(admin, {

@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { api } from "@/lib/api-client";
 
 /**
  * Native Sign in with Apple (Guideline 4.8).
@@ -36,6 +37,13 @@ export async function tryNativeAppleSignIn(
     const fullName = [given, family].filter(Boolean).join(" ");
     if (fullName) {
       await supabase.auth.updateUser({ data: { full_name: fullName } }).catch(() => undefined);
+      await api.patch("/api/me/profile", { full_name: fullName }).catch(() => undefined);
+    }
+    const authorizationCode = credential.authorizationCode?.trim();
+    if (authorizationCode) {
+      await api
+        .post("/api/me/apple/store-refresh-token", { authorization_code: authorizationCode })
+        .catch(() => undefined);
     }
     return { handled: true, error: null };
   } catch (err) {

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import { APP_REVIEW_DEMO_PHONE, isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 
 /**
  * POST /api/me/phone/verify
@@ -31,6 +32,17 @@ export async function POST(request: NextRequest) {
     await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     const supabase = await getSupabaseServer(request);
+
+    if (isAppReviewDemoUserId(user.id)) {
+      const body = await request.json().catch(() => ({})) as { phone?: string };
+      const confirmedPhone = (body.phone?.trim() || APP_REVIEW_DEMO_PHONE).trim();
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ phone_verified: true, phone: confirmedPhone })
+        .eq("id", user.id);
+      if (updateError) throw updateError;
+      return successResponse({ verified: true, phone: confirmedPhone });
+    }
 
     // Read Supabase Auth's own user record — phone_confirmed_at is only
     // populated after a successful verifyOtp call on the Supabase side.

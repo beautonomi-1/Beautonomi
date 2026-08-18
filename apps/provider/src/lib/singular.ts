@@ -155,7 +155,7 @@ function onSingularLink(params: SingularLinkParams) {
 /**
  * Initialize Singular. Call once at app startup (root layout).
  * No-op on web or when key/secret missing.
- * ATT is not requested at cold start; Singular initializes without IDFA unless the user grants tracking elsewhere.
+ * On iOS, requests ATT before init when status is undetermined.
  */
 export function initSingular() {
   if (Platform.OS === "web") return;
@@ -166,6 +166,8 @@ export function initSingular() {
 
   void (async () => {
     try {
+      const { requestAttBeforeTracking } = await import("@/lib/tracking/request-att-before-tracking");
+      await requestAttBeforeTracking();
       const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
       Singular.init(config);
     } catch (e) {

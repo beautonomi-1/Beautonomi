@@ -27,6 +27,7 @@ import {
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
 import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
@@ -38,6 +39,11 @@ import {
   persistProviderSignupSource,
 } from "@/features/auth/pending-signup-preferences";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
+import {
+  completeAppReviewDemoSignIn,
+  isAppReviewDemoEmail,
+  isAppReviewDemoPhone,
+} from "@/lib/auth/app-review-demo";
 
 const PRIMARY = Colors.primary;
 
@@ -258,6 +264,13 @@ export default function LoginScreen() {
     const e164 = normalizeSupabaseAuthPhone(raw);
     setLoading(true);
     try {
+      if (isAppReviewDemoPhone(e164)) {
+        setPendingPhone(e164);
+        setOtpSent(true);
+        setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
+        setFormSuccess("App Review demo account — enter the review OTP code.");
+        return;
+      }
       const { error } = await signInWithOtp(e164);
       if (error) {
         setFormError(error.message);
@@ -284,6 +297,12 @@ export default function LoginScreen() {
     setFormError(null);
     setResendingSms(true);
     try {
+      if (isAppReviewDemoPhone(pendingPhone)) {
+        setToken("");
+        setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
+        setFormSuccess("App Review demo account — enter the review OTP code.");
+        return;
+      }
       const { error } = await signInWithOtp(pendingPhone);
       if (error) {
         setFormError(error.message);
@@ -306,6 +325,12 @@ export default function LoginScreen() {
     setFormError(null);
     setResendingEmail(true);
     try {
+      if (isAppReviewDemoEmail(addr)) {
+        setEmailOtpCode("");
+        setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        setFormSuccess("App Review demo account — enter the review OTP code.");
+        return;
+      }
       const { error } = await signInWithOtpEmail(addr);
       if (error) {
         setFormError(error.message);
@@ -337,6 +362,13 @@ export default function LoginScreen() {
     const e164 = normalizeSupabaseAuthPhone(raw);
     setLoading(true);
     try {
+      if (isAppReviewDemoPhone(e164)) {
+        await completeAppReviewDemoSignIn({ phone: e164, otp: otpToken });
+        await writeSignupPhoneHandoff(e164);
+        await applyPendingSignupPreferences();
+        await goToAppRoot(router, "phone_otp_app_review", postLoginPath);
+        return;
+      }
       const { error } = await verifyOtp(e164, otpToken);
       if (error) {
         setFormError(error.message);
@@ -482,6 +514,14 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
+      if (isAppReviewDemoEmail(trimmed)) {
+        setPendingEmailOtp(trimmed);
+        setEmailOtpSent(true);
+        setEmailOtpCode("");
+        setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        setFormSuccess("App Review demo account — enter the review OTP code.");
+        return;
+      }
       const { error } = await signInWithOtpEmail(trimmed);
       if (error) {
         setFormError(error.message);
@@ -511,6 +551,13 @@ export default function LoginScreen() {
     const addr = pendingEmailOtp || email.trim();
     setLoading(true);
     try {
+      if (isAppReviewDemoEmail(addr)) {
+        await completeAppReviewDemoSignIn({ email: addr, otp: otpToken });
+        trackLogin("email");
+        await applyPendingSignupPreferences();
+        await goToAppRoot(router, "email_otp_app_review", postLoginPath);
+        return;
+      }
       const { error } = await verifyOtpEmail(addr, otpToken);
       if (error) {
         setFormError(error.message);
@@ -1100,7 +1147,14 @@ export default function LoginScreen() {
                 placeholder="you@example.com"
                 placeholderTextColor="#9CA3AF"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  if (isAppReviewDemoEmail(t)) {
+                    setMode("email");
+                    setEmailOtpMode(false);
+                    setEmailOtpSent(false);
+                  }
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -1410,7 +1464,12 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
 
-            {socialAuth.apple && (
+            {socialAuth.apple && Platform.OS === "ios" ? (
+              <AppleAuthButton
+                onPress={() => void handleSocialOAuth("apple")}
+                disabled={loading}
+              />
+            ) : socialAuth.apple ? (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("apple")}
                 disabled={loading}
@@ -1431,7 +1490,7 @@ export default function LoginScreen() {
                 <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
                 <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </>
         )}
 

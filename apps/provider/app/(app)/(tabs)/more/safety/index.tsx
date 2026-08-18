@@ -94,7 +94,7 @@ export default function SafetyHubScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
-  const { age_band } = useSafetySettings();
+  const { age_band, age_source } = useSafetySettings();
 
   const callEmergency = () => {
     Alert.alert(
@@ -147,6 +147,27 @@ export default function SafetyHubScreen() {
           </TouchableOpacity>
         </View>
 
+        {(age_band === "unknown" || age_source === "none") && user ? (
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
+            style={{
+              backgroundColor: "#FFF7ED",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 20,
+              borderWidth: 1,
+              borderColor: "#FED7AA",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Add your date of birth for age assurance"
+          >
+            <Text style={{ fontWeight: "700", color: "#9A3412", marginBottom: 4 }}>Add your date of birth</Text>
+            <Text style={{ color: "#9A3412", lineHeight: 20 }}>
+              Age assurance uses your date of birth. Under 13 cannot use the app; 13–17 can use it; payouts require 18+. Calendar stays available until you save it.
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <SectionCard title={t("customer.mobile.screens.safetyHub.getHelpTitle")}>
           <Row
             icon="ticket-outline"
@@ -183,6 +204,14 @@ export default function SafetyHubScreen() {
                 : t("customer.mobile.screens.safetyHub.signInHint")
             }
             onPress={() => router.push("/(app)/(tabs)/more/settings/personal-profile" as never)}
+          />
+          <Row
+            icon="calendar-outline"
+            label="Age assurance"
+            subtitle={t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
+              defaultValue: age_band,
+            })}
+            onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
           />
           <Row
             icon="shield-checkmark-outline"

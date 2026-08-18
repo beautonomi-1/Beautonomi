@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.83",
+  version: "1.0.84",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -138,7 +138,7 @@ const BASE_EXPO_CONFIG = {
       "expo-image-picker",
       {
         photosPermission:
-          "Allow Beautonomi Provider to access photos for your catalogue, profile, and documentation.",
+          "Beautonomi Provider uses your photo library for your catalogue, profile, and documentation.",
         cameraPermission:
           "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, and to scan product barcodes.",
       },
@@ -189,7 +189,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "275",
+    buildNumber: "276",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
