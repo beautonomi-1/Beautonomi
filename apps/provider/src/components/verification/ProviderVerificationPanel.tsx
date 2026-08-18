@@ -26,7 +26,7 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
 import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
-import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -228,7 +228,7 @@ export function ProviderVerificationPanel({
     try {
       const result = await launchImageLibraryWithPermission(
         { mediaTypes: ["images"], allowsEditing: false, quality: 0.9 },
-        { title: "Permission needed", message: "Allow access to photos to upload your document." },
+        PERMISSION_COPY.photosDocument,
       );
       if (!result || result.canceled) return;
       const asset = result.assets[0];

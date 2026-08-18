@@ -25,7 +25,7 @@ import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 function tenantCountryFallback(): string {
@@ -195,10 +195,7 @@ export default function EditLocationScreen() {
     if (locating) return;
     setLocating(true);
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access to place a map pin from your current position.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationPin);
       if (!allowed) {
         return;
       }

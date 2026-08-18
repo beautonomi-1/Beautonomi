@@ -35,6 +35,7 @@ import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 
@@ -570,10 +571,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photos to add media to your post.",
-      },
+      PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
@@ -595,10 +593,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow camera access to capture photos or videos for your post.",
-      },
+      PERMISSION_COPY.cameraPost,
     );
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
@@ -653,10 +648,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photos to add media to your post.",
-      },
+      PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
@@ -671,10 +663,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow camera access to capture photos or videos for your post.",
-      },
+      PERMISSION_COPY.cameraPost,
     );
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;

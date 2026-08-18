@@ -13,6 +13,7 @@ import {
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -222,6 +223,10 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = useCallback(async () => {
     if (!product) return;
+    if (!user) {
+      pushCustomerLogin(`/(app)/product-detail?id=${encodeURIComponent(product.id)}`);
+      return;
+    }
     if (!product.provider?.id) {
       Alert.alert(pd("unavailableTitle"), pd("unavailableBody"));
       return;

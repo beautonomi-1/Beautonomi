@@ -1177,6 +1177,16 @@ export default function SignupScreen() {
             <Text style={{ fontWeight: "700", color: PRIMARY }}>Log in</Text>
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.replace("/(app)/(tabs)/home" as never)}
+          style={{ marginTop: 12, paddingVertical: 8 }}
+          accessibilityRole="link"
+        >
+          <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#6B7280" }}>
+            Browse without an account
+          </Text>
+        </TouchableOpacity>
         </View>
       </ScrollView>
 

@@ -8,6 +8,7 @@ import { pm } from "@/lib/provider-translate";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY as NATIVE_PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { useImageCropper } from "@/components/image-crop";
 import { DEFAULT_ASPECT } from "@/components/image-crop/types";
@@ -38,22 +39,22 @@ export type ImagePickLaunchOptions = Pick<
 const PERMISSION_COPY = {
   photos: {
     title: () =>
-      pm("components.imagePicker.photosAccessTitle", undefined, "Photos access needed"),
+      pm("components.imagePicker.photosAccessTitle", undefined, NATIVE_PERMISSION_COPY.photosChoose.title),
     message: () =>
       pm(
         "components.imagePicker.photosAccessBody",
         undefined,
-        "Allow Beautonomi Provider to access your photos so you can choose a picture.",
+        NATIVE_PERMISSION_COPY.photosChoose.message,
       ),
   },
   camera: {
     title: () =>
-      pm("components.imagePicker.cameraAccessTitle", undefined, "Camera access needed"),
+      pm("components.imagePicker.cameraAccessTitle", undefined, NATIVE_PERMISSION_COPY.cameraPhoto.title),
     message: () =>
       pm(
         "components.imagePicker.cameraAccessBody",
         undefined,
-        "Allow Beautonomi Provider to use your camera so you can take a photo.",
+        NATIVE_PERMISSION_COPY.cameraPhoto.message,
       ),
   },
 };

@@ -1,24 +1,59 @@
-import { Platform } from "react-native";
-import { isScreenshotMode } from "@/config/public-env";
-
 /**
- * Show the system App Tracking Transparency prompt on iOS when status is undetermined.
- * Must run before Singular (or any SDK that reads IDFA).
+ * KEEP IN SYNC: apps/customer/src/lib/tracking/request-att-before-tracking.ts
+ *
+ * Request iOS App Tracking Transparency before any SDK that may read IDFA (Singular).
+ * No-op on Android/web. Only prompts when status is undetermined.
  */
-export async function requestAttBeforeTracking(): Promise<void> {
-  if (Platform.OS !== "ios" || isScreenshotMode()) return;
+import { InteractionManager, Platform } from "react-native";
+import {
+  getTrackingPermissionsAsync,
+  PermissionStatus,
+  requestTrackingPermissionsAsync,
+} from "expo-tracking-transparency";
+import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 
-  try {
-    const {
-      getTrackingPermissionsAsync,
-      requestTrackingPermissionsAsync,
-    } = await import("expo-tracking-transparency");
+export type AttRequestResult = PermissionStatus | "unavailable";
 
-    const current = await getTrackingPermissionsAsync();
-    if (current.status === "undetermined") {
-      await requestTrackingPermissionsAsync();
-    }
-  } catch {
-    // Expo Go / missing native module — init trackers without IDFA
+let inflight: Promise<AttRequestResult> | null = null;
+
+function afterSplashSettled(): Promise<void> {
+  return new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+export async function requestAttBeforeTracking(): Promise<AttRequestResult> {
+  if (Platform.OS !== "ios") return "unavailable";
+
+  if (!inflight) {
+    inflight = (async () => {
+      try {
+        await afterSplashSettled();
+        const current = await getTrackingPermissionsAsync();
+        if (current.status === PermissionStatus.UNDETERMINED) {
+          const { status } = await requestTrackingPermissionsAsync();
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb("att_request_completed", { status });
+          }
+          return status;
+        }
+        if (isSentryEnabled()) {
+          authFlowBreadcrumb("att_request_skipped", { status: current.status });
+        }
+        return current.status;
+      } catch (e) {
+        if (isSentryEnabled()) {
+          authFlowBreadcrumb("att_request_failed", {
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return "unavailable";
+      } finally {
+        inflight = null;
+      }
+    })();
   }
+  return inflight;
 }

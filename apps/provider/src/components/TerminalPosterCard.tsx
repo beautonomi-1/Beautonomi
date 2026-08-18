@@ -7,6 +7,7 @@ import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import { twStyle } from "@/lib/twStyle";
+import { ensureMediaLibraryPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 
 type TerminalLike = {
   display_name?: string | null;
@@ -85,11 +86,8 @@ export function TerminalPosterCard({
   const onSave = async () => {
     setBusy("save");
     try {
-      const { granted } = await MediaLibrary.requestPermissionsAsync();
-      if (!granted) {
-        Alert.alert("Permission needed", "Allow photo access to save the poster to your device.");
-        return;
-      }
+      const allowed = await ensureMediaLibraryPermission(PERMISSION_COPY.terminalPosterSave);
+      if (!allowed) return;
       const uri = await resolveLocalImageUri();
       if (!uri) {
         Alert.alert("Save poster", "Could not prepare the image to save.");

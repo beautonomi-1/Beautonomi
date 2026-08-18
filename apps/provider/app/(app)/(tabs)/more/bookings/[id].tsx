@@ -78,6 +78,7 @@ import {
 import {
   ensureForegroundLocationPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
 import {
@@ -1253,10 +1254,7 @@ export default function BookingDetailScreen() {
           allowsEditing: false,
           quality: 0.8,
         },
-        {
-          title: "Permission needed",
-          message: "Allow photo library access to upload the consent document.",
-        },
+        PERMISSION_COPY.photosDocument,
       );
       if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
@@ -2577,10 +2575,7 @@ export default function BookingDetailScreen() {
     const body: Record<string, unknown> = {};
     let journeyLocation: Location.LocationObject | null = null;
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access while using the app so clients can see journey and arrival updates. If you skip, the journey will continue without live location updates.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationJourney);
       if (allowed) {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -2617,10 +2612,7 @@ export default function BookingDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const body: Record<string, unknown> = {};
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access to include your arrival position.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationArrival);
       if (allowed) {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -2704,10 +2696,7 @@ export default function BookingDetailScreen() {
       // Capture the provider's exact location at override time so disputes and
       // the admin tracking panel can show where the provider actually was.
       try {
-        const allowed = await ensureForegroundLocationPermission({
-          title: "Location permission",
-          message: "Allow location access to record your position for this override.",
-        });
+        const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationOverride);
         if (allowed) {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,

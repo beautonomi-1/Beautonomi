@@ -1684,7 +1684,11 @@ export default function CustomerOnboarding() {
               <StepIcon name="shield-checkmark" />
               <StepTitle
                 title="Verify your details"
-                subtitle="Confirm your email and phone so you can book and receive updates"
+                subtitle={
+                  appleIdentity
+                    ? "Confirm your phone number so you can book and receive updates"
+                    : "Confirm your email and phone so you can book and receive updates"
+                }
               />
 
               {/* Email */}
@@ -2012,8 +2016,9 @@ export default function CustomerOnboarding() {
                   style={{ marginTop: 1 }}
                 />
                 <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-                  Both email and phone must be verified before you can finish setup and start
-                  booking.
+                  {appleIdentity
+                    ? "Your phone number must be verified before you can finish setup and start booking."
+                    : "Both email and phone must be verified before you can finish setup and start booking."}
                 </Text>
               </View>
             </View>

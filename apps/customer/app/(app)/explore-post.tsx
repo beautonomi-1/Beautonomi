@@ -17,6 +17,7 @@ import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
@@ -68,6 +69,10 @@ export default function ExplorePostScreen() {
   const [mediaIndex, setMediaIndex] = useState(0);
   const [reportTarget, setReportTarget] = useState<{ type: ContentReportTargetType; id: string; title?: string } | null>(null);
 
+  const explorePostReturnTo = id
+    ? `/(app)/explore-post?id=${encodeURIComponent(id)}`
+    : "/(app)/(tabs)/explore";
+
   const openContentReport = useCallback(
     (type: ContentReportTargetType, targetId: string, title?: string) => {
       if (!user) {
@@ -76,7 +81,7 @@ export default function ExplorePostScreen() {
           t("customer.contentReport.signInBody"),
           [
             { text: t("common.cancel"), style: "cancel" },
-            { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+            { text: t("auth.login"), onPress: () => pushCustomerLogin(explorePostReturnTo) },
           ],
         );
         return;
@@ -84,7 +89,7 @@ export default function ExplorePostScreen() {
       haptic.light();
       setReportTarget({ type, id: targetId, title });
     },
-    [router, t, user],
+    [explorePostReturnTo, t, user],
   );
 
   const heartAnim = useRef(new Animated.Value(0)).current;
@@ -142,7 +147,7 @@ export default function ExplorePostScreen() {
         t("customer.explorePost.signInToLikeBody"),
         [
           { text: t("common.cancel"), style: "cancel" },
-          { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+            { text: t("auth.login"), onPress: () => pushCustomerLogin(explorePostReturnTo) },
         ],
       );
       return;
@@ -184,7 +189,7 @@ export default function ExplorePostScreen() {
         t("customer.explorePost.signInToSaveBody"),
         [
           { text: t("common.cancel"), style: "cancel" },
-          { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+            { text: t("auth.login"), onPress: () => pushCustomerLogin(explorePostReturnTo) },
         ],
       );
       return;
@@ -289,13 +294,13 @@ export default function ExplorePostScreen() {
 
   const focusCommentInput = useCallback(() => {
     if (!user) {
-      router.replace("/(auth)/login");
+      pushCustomerLogin(explorePostReturnTo);
       return;
     }
     Keyboard.dismiss();
     scrollRef.current?.scrollToEnd({ animated: true });
     setTimeout(() => commentInputRef.current?.focus(), 400);
-  }, [user, router]);
+  }, [explorePostReturnTo, user]);
 
   const showMoreOptions = useCallback(() => {
     haptic.light();
@@ -941,7 +946,7 @@ export default function ExplorePostScreen() {
           </View>
         ) : (
           <Pressable
-            onPress={() => router.replace("/(auth)/login")}
+            onPress={() => pushCustomerLogin(explorePostReturnTo)}
             style={{
               paddingHorizontal: contentPadding,
               paddingVertical: 14,

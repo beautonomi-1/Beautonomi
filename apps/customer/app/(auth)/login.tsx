@@ -1597,6 +1597,17 @@ export default function LoginScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              onPress={() => router.replace("/(app)/(tabs)/home" as never)}
+              style={{ marginTop: 20, paddingVertical: 8 }}
+              accessibilityRole="link"
+              accessibilityLabel={al("browseWithoutAccountA11y")}
+            >
+              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#6B7280" }}>
+                {al("browseWithoutAccount")}
+              </Text>
+            </TouchableOpacity>
           </>
         )}
         </View>

@@ -1,10 +1,11 @@
 import { useAuth } from "@/providers/AuthProvider";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { SavedTabContent } from "@/components/SavedTabContent";
 import { Colors } from "@/constants/colors";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 
 /**
  * Saved tab: saved posts + providers + products (unified with wishlists).
@@ -49,6 +50,19 @@ export default function SavedScreen() {
             <Text style={styles.emptySubtitle}>
               Sign in to see your saved providers, products and posts
             </Text>
+            <TouchableOpacity
+              onPress={() => pushCustomerLogin("/(app)/(tabs)/saved")}
+              style={{
+                marginTop: 24,
+                backgroundColor: Colors.primary,
+                paddingHorizontal: 32,
+                paddingVertical: 16,
+                borderRadius: 12,
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>

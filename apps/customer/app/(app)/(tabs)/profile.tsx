@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { router, useFocusEffect } from "expo-router";
 import { getAppNativeVersion } from "@/lib/app-native-version";
 import { useAuth } from "@/providers/AuthProvider";
@@ -895,7 +896,7 @@ function LoggedOutProfile() {
 
       <View style={{ paddingHorizontal: 20, marginTop: 32 }}>
         <TouchableOpacity
-          onPress={() => router.replace("/(auth)/login")}
+          onPress={() => pushCustomerLogin("/(app)/(tabs)/profile")}
           style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center" }}
           accessibilityRole="button"
         >

@@ -24,6 +24,12 @@ import {
 import { useTranslation } from "@beautonomi/i18n";
 import { NotificationBannerListener } from "@/components/NotificationBannerListener";
 import {
+  requiresCustomerLogin,
+  requiresOnboardingBeforeAccess,
+  toAppReturnTo,
+  replaceCustomerLogin,
+} from "@/lib/guest-browse-policy";
+import {
   explorePostRouterTarget,
   parseExplorePostIdFromUrl,
   parseExplorePostReturnToFromAppPath,
@@ -145,23 +151,11 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!authLoading && !session) {
-      // Preserve an in-flight express booking link (e.g. a provider's custom
-      // shortlink opened while signed out) so it resumes after authentication
-      // instead of being dropped on the floor. Native booking still requires a
-      // session, so we round-trip through login and replay the deep link.
       const current = pathnameRef.current || "";
-      const isBookingDeepLink =
-        current.startsWith("/book/l/") || current.startsWith("/book");
-      const exploreReturnTo =
-        parseExplorePostReturnToFromAppPath(current) ?? peekExplorePostReturnTo();
-      const returnTo = isBookingDeepLink
-        ? `/(app)${current}`
-        : exploreReturnTo ?? undefined;
-      router.replace(
-        returnTo
-          ? ({ pathname: "/(auth)/login", params: { return_to: returnTo } } as never)
-          : ("/(auth)/login" as never),
-      );
+      if (!requiresCustomerLogin(current)) {
+        return;
+      }
+      replaceCustomerLogin(toAppReturnTo(current));
     }
   }, [authLoading, session]);
 
@@ -204,8 +198,11 @@ export default function AppLayout() {
           return;
         }
         if (!res.error && res.data?.completed === false) {
-          // Guard against double-replace: root index may have already navigated here.
-          if (!pathnameRef.current?.includes("/onboarding")) {
+          const currentPath = pathnameRef.current || "";
+          if (
+            requiresOnboardingBeforeAccess(currentPath) &&
+            !pathnameRef.current?.includes("/onboarding")
+          ) {
             router.replace("/(app)/onboarding");
           }
           return;

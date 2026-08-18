@@ -9,7 +9,7 @@ import { authFlowBreadcrumb, isSentryEnabled, withAuthNavigationSpan } from "@/l
 /**
  * After phone / email OTP / OAuth sign-in:
  * - Ensure session is persisted (iOS/Android) before navigation / API.
- * - Incomplete onboarding → root `/` so `app/index.tsx` runs portal + onboarding + profile checks (single pipeline).
+ * - Incomplete onboarding → home (browse allowed); stash `return_to` for post-wizard resume.
  * - Completed → deep link via `return_to` or home.
  */
 export async function navigateAfterCustomerAuth(returnTo: string | string[] | undefined): Promise<void> {
@@ -40,9 +40,9 @@ export async function navigateAfterCustomerAuth(returnTo: string | string[] | un
     if (!completed) {
       await stashPostOnboardingHref(returnTo);
       if (isSentryEnabled()) {
-        authFlowBreadcrumb("router_replace", { to: "root_index" });
+        authFlowBreadcrumb("router_replace", { to: "home", reason: "onboarding_incomplete" });
       }
-      router.replace("/" as Href);
+      router.replace("/(app)/(tabs)/home" as Href);
       return;
     }
     const href = resolvePostLoginHref(returnTo);
@@ -57,14 +57,14 @@ export async function navigateAfterCustomerAuth(returnTo: string | string[] | un
   });
 }
 
-/** Fresh email/password signups: stash deep link, then root index routes to onboarding. */
+/** Fresh email/password signups: stash deep link, then home (onboarding deferred until account actions). */
 export async function navigateAfterNewCustomerSignup(returnTo: string | string[] | undefined): Promise<void> {
   return withAuthNavigationSpan("navigate_after_new_customer_signup", async () => {
     await supabase.auth.getSession();
     await stashPostOnboardingHref(returnTo);
     if (isSentryEnabled()) {
-      authFlowBreadcrumb("router_replace", { to: "root_index", reason: "new_signup" });
+      authFlowBreadcrumb("router_replace", { to: "home", reason: "new_signup" });
     }
-    router.replace("/" as Href);
+    router.replace("/(app)/(tabs)/home" as Href);
   });
 }

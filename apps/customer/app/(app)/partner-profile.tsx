@@ -26,6 +26,7 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet } from "@/components/safety/ContentReportSheet";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
@@ -1213,6 +1214,22 @@ export default function PartnerProfileScreen() {
   // The public API now resolves UUIDs in the [slug] route segment.
   const effectiveSlug = (slug || paramProviderId) ?? "";
 
+  const partnerProfileReturnTo = useMemo(() => {
+    const s = provider?.slug || effectiveSlug;
+    if (!s) return "/(app)/(tabs)/home";
+    return `/(app)/partner-profile?slug=${encodeURIComponent(s)}`;
+  }, [provider?.slug, effectiveSlug]);
+
+  const promptPartnerSignIn = useCallback(
+    (title: string, body: string) => {
+      Alert.alert(title, body, [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("auth.login"), onPress: () => pushCustomerLogin(partnerProfileReturnTo) },
+      ]);
+    },
+    [partnerProfileReturnTo, t],
+  );
+
   useEffect(() => {
     setMemberships([]);
     setSalonMembership(null);
@@ -1536,12 +1553,12 @@ export default function PartnerProfileScreen() {
   /* ── Message ── */
   const handleMessage = useCallback(() => {
     if (!user) {
-      Alert.alert(pp("signInTitle"), pp("signInToMessageBody"));
+      promptPartnerSignIn(pp("signInTitle"), pp("signInToMessageBody"));
       return;
     }
     if (!provider) return;
     router.push({ pathname: "/(app)/chat", params: { provider_id: provider.id, provider_name: provider.business_name } });
-  }, [user, provider, pp]);
+  }, [user, provider, pp, promptPartnerSignIn]);
 
   /* ── Report Provider ── */
   const handleSubmitReport = useCallback(async () => {
@@ -1583,7 +1600,7 @@ export default function PartnerProfileScreen() {
   /* ── Join Membership ── */
   const handleJoinMembership = useCallback(async (plan: MembershipPlan) => {
     if (!user) {
-      Alert.alert(pp("signInTitle"), pp("signInToMembershipBody"));
+      promptPartnerSignIn(pp("signInTitle"), pp("signInToMembershipBody"));
       return;
     }
     if (!provider) return;
@@ -2070,7 +2087,7 @@ export default function PartnerProfileScreen() {
               <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
               <FloatingIcon name="ellipsis-horizontal" onPress={() => {
                 if (!user) {
-                  Alert.alert(pp("signInTitle"), pp("signInToReportBody"));
+                  promptPartnerSignIn(pp("signInTitle"), pp("signInToReportBody"));
                   return;
                 }
                 Alert.alert(pp("safetyActionsTitle"), undefined, [

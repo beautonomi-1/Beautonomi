@@ -9,6 +9,7 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -331,7 +332,7 @@ export default function BookingsScreen() {
             Log in to view and manage your bookings
           </Text>
           <TouchableOpacity
-            onPress={() => router.replace("/(auth)/login")}
+            onPress={() => pushCustomerLogin("/(app)/(tabs)/bookings")}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Log in"

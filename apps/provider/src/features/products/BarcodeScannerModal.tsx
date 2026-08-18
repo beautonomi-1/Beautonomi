@@ -32,8 +32,11 @@ export function BarcodeScannerModal({
   useEffect(() => {
     if (visible) {
       void getPermission();
+      if (!permission?.granted && permission?.canAskAgain !== false) {
+        void requestPermission();
+      }
     }
-  }, [getPermission, visible]);
+  }, [getPermission, permission?.canAskAgain, permission?.granted, requestPermission, visible]);
 
   useEffect(() => {
     if (!busy) {
@@ -82,7 +85,7 @@ export function BarcodeScannerModal({
           <View style={twStyle("flex-1 items-center justify-center px-6")}>
             <Text style={twStyle("mb-4 text-center text-white")}>Camera permission is required to scan barcodes.</Text>
             <TouchableOpacity onPress={() => void requestPermission()} style={twStyle("mb-3 rounded-xl bg-white px-6 py-3")}>
-              <Text style={twStyle("font-semibold text-gray-900")}>Allow camera</Text>
+              <Text style={twStyle("font-semibold text-gray-900")}>Continue</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => void openAppSettings()}>
               <Text style={twStyle("text-indigo-300")}>Open settings</Text>

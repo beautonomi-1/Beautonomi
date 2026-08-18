@@ -57,7 +57,7 @@ import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
@@ -173,10 +173,7 @@ export default function ProfileScreen() {
     if (locating) return;
     setLocating(true);
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access to place a pin from your current position.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationPin);
       if (!allowed) {
         return;
       }

@@ -239,7 +239,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
 
   // §Customer-audit 2026-04 (loading-polish): branded gate across session /
   // account-status checks so the flash between login and home is on-brand.
-  if (!session) return <GateLoadingScreen />;
+  if (!session) return <>{children}</>;
   if (checkError) {
     return (
       <View

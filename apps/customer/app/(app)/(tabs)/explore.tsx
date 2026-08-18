@@ -23,6 +23,7 @@ import { useExploreFeed } from "@/features/explore/useExploreFeed";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { MasonryList } from "@/components/MasonryList";
 import type { ExplorePost } from "@/types/api";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
@@ -665,7 +666,10 @@ export default function ExploreScreen() {
 
   const handleLike = useCallback(
     async (post: ExplorePost) => {
-      if (!user) return;
+      if (!user) {
+        pushCustomerLogin(`/(app)/explore-post?id=${encodeURIComponent(post.id)}`);
+        return;
+      }
       if (!socialInteractions.allowed) {
         Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
         return;
@@ -693,7 +697,10 @@ export default function ExploreScreen() {
 
   const handleSave = useCallback(
     async (post: ExplorePost) => {
-      if (!user) return;
+      if (!user) {
+        pushCustomerLogin(`/(app)/explore-post?id=${encodeURIComponent(post.id)}`);
+        return;
+      }
       if (!socialInteractions.allowed) {
         Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
         return;
@@ -772,7 +779,7 @@ export default function ExploreScreen() {
           t("customer.contentReport.signInBody"),
           [
             { text: t("common.cancel"), style: "cancel" },
-            { text: t("auth.login"), onPress: () => router.push("/(auth)/login") },
+            { text: t("auth.login"), onPress: () => pushCustomerLogin(`/(app)/explore-post?id=${encodeURIComponent(targetId)}`) },
           ],
         );
         return;

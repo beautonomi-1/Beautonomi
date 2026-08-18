@@ -11,11 +11,13 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: mockReplace }),
 }));
 
+const mockUseAuth = jest.fn(() => ({
+  session: { user: { id: "customer-user-1" } },
+  signOut: mockSignOut,
+}));
+
 jest.mock("@/providers/AuthProvider", () => ({
-  useAuth: () => ({
-    session: { user: { id: "customer-user-1" } },
-    signOut: mockSignOut,
-  }),
+  useAuth: () => mockUseAuth(),
 }));
 
 jest.mock("@/lib/api-client", () => ({
@@ -39,6 +41,22 @@ import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 describe("Customer AccountStatusGuard", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuth.mockImplementation(() => ({
+      session: { user: { id: "customer-user-1" } },
+      signOut: mockSignOut,
+    }));
+  });
+
+  it("passes through children when there is no session (guest browse)", () => {
+    mockUseAuth.mockReturnValue({ session: null, signOut: mockSignOut });
+
+    const screen = render(
+      <AccountStatusGuard>
+        <Text>Guest shell</Text>
+      </AccountStatusGuard>,
+    );
+    expect(screen.getByText("Guest shell")).toBeTruthy();
+    expect(mockApiGet).not.toHaveBeenCalled();
   });
 
   it("fails closed when account status cannot be verified", async () => {

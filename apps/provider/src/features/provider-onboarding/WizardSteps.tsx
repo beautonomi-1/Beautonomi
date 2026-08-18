@@ -71,7 +71,7 @@ import {
   type PlatformTravelLimits,
 } from "@/features/travel-fees/TravelFeesEditor";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useApi } from "@/hooks/useApi";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
@@ -1804,10 +1804,7 @@ function Step7Location() {
     if (locating) return;
     setLocating(true);
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location",
-        message: "Allow location access to set your address from your current position.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationAddressFromCurrent);
       if (!allowed) {
         return;
       }
