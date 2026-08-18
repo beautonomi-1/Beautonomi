@@ -114,6 +114,8 @@ If not tracking on iOS, update label to **No tracking** and remove Device ID tra
 
 ## 6. Build & submit
 
+**Build 1.0.84 (2026-08-18):** https://expo.dev/accounts/beautonomi/projects/provider/builds/8976b02c-1c07-4e02-8c99-d6c190138fc1
+
 ```bash
 cd apps/provider
 eas build --profile production --platform ios
