@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest inventory: **474** API rows, 2026-08-15 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest inventory: **475** API rows, 2026-08-19 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **474** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **475** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -101,6 +101,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 16 | `/admin/disputes` | W1 | providers_operations | Y | `GET /api/admin/disputes`, `PATCH .../:id` | **SPA (pattern wave):** list + client search + resolve modal; same RBAC note as bookings vs legacy `superadmin` guard. |
 | 17 | `/admin/user-reports` | W1 | providers_operations | Y | `GET /api/admin/user-reports`, `PATCH .../:id` | |
 | 17a | `/admin/content-reports` | W1 | providers_operations | Y (superadmin only) | `GET /api/admin/content-reports`, `PATCH .../:id` | **SPA:** [`ContentReportsListPage`](../../apps/admin-web/src/routes/trust/ContentReportsListPage.tsx). UGC/explore content reports; AuthZ superadmin; tenant via `resolveAdminApiTenantId`. |
+| 17b | `/admin/user-blocks` | W1 | users_trust | Y | `GET /api/admin/user-blocks` | **SPA:** [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx). Tenant-scoped `user_blocks` list (`blocker_id` / `blocked_user_id` / `user_id` filters). AuthZ `ADMIN_SECTION_USERS_TRUST`; tenant via `resolveAdminApiTenantId`. Linked from [`UserDetailPage`](../../apps/admin-web/src/routes/users/UserDetailPage.tsx). |
 | 18 | `/admin/refunds` | W1 | providers_operations | Y | `GET /api/admin/refunds`, `POST .../:id` | |
 | 19 | `/admin/finance` | W2 | finance | Y | `GET /api/admin/finance` (+ breakdown endpoints); `GET /api/admin/provider-subscriptions/receipts/:financeTxId/pdf` | **SPA:** [`FinanceOverviewPage`](../../apps/admin-web/src/routes/finance/FinanceOverviewPage.tsx) — subscription receipt PDF download. AuthZ `ADMIN_SECTION_FINANCE`. |
 | 20 | `/admin/payouts` | W2 | finance | Y | `GET/POST/PATCH /api/admin/payouts`; `POST .../bulk-approve`; `POST .../:id/finalize-transfer` (Paystack OTP) | **SPA:** [`PayoutsPage`](../../apps/admin-web/src/routes/finance/PayoutsPage.tsx) — bulk approve pending payouts + finalize transfer modal. AuthZ `ADMIN_SECTION_FINANCE`, `resolveAdminApiTenantId`. |
@@ -299,6 +300,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-07-23 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**457** rows) for terminal merchant onboarding (`GET/POST /api/admin/terminal-merchant-applications`, `GET/PATCH .../[id]`, `POST .../[id]/status`, `POST .../[id]/approve`, `GET .../[id]/export`, `GET/PATCH/POST .../[id]/documents/[docId]`). SPA: [`TerminalOnboardingPage`](../../apps/admin-web/src/routes/commercial/TerminalOnboardingPage.tsx), [`TerminalOnboardingDetailPage`](../../apps/admin-web/src/routes/commercial/TerminalOnboardingDetailPage.tsx). §4 rows **116**, **116a**. |
 | 2026-07-27 | **Taxonomy / CI:** Added `GET /api/admin/paycloud-operations/payments/[id]` (**458** rows) — support diagnostics for a single PayCloud payment (intent result, webhooks, terminal metadata). SPA: [`PaycloudPaymentDetailModal`](../../apps/admin-web/src/routes/integrations/PaycloudPaymentDetailModal.tsx). §4 row **61e**. |
 | 2026-08-15 | **Taxonomy / CI:** Added **2** rows for courier shipping integration (`GET/PATCH /api/admin/integrations/shipping`, `POST .../shipping/probe`). SPA: [`ShippingIntegrationPage`](../../apps/admin-web/src/routes/integrations/ShippingIntegrationPage.tsx). §1.1 inventory **474**; §4 row **61g**. |
+| 2026-08-19 | **Taxonomy / CI:** Added `GET /api/admin/user-blocks` (`ADMIN_SECTION_USERS_TRUST`, `resolveAdminApiTenantId`). SPA: [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx) at `/admin/user-blocks`. §1.1 inventory **475**; §4 row **17b**. |
 
 ---
 
@@ -345,3 +347,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-07-23 | Taxonomy regen **457** rows: terminal merchant onboarding (`/api/admin/terminal-merchant-applications` + `[id]`/`status`/`approve`/`export`/`documents/[docId]`); §4 rows **116**, **116a**; SPA terminal onboarding list/detail. |
 | 2026-07-27 | Taxonomy: `+1` route (`GET /api/admin/paycloud-operations/payments/[id]`); §4 row **61e**; SPA [`PaycloudPaymentDetailModal`](../../apps/admin-web/src/routes/integrations/PaycloudPaymentDetailModal.tsx). §1.1 inventory **458**. |
 | 2026-08-15 | Taxonomy: `+2` routes (`GET/PATCH /api/admin/integrations/shipping`, `POST .../shipping/probe`); §4 row **61g**; SPA [`ShippingIntegrationPage`](../../apps/admin-web/src/routes/integrations/ShippingIntegrationPage.tsx). §1.1 inventory **474**. |
+| 2026-08-19 | Taxonomy: `+1` route (`GET /api/admin/user-blocks`); §4 row **17b**; SPA [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx). §1.1 inventory **475**. |
