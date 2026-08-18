@@ -400,13 +400,6 @@ export function NativePermissionsOnboarding() {
     justifyContent: "center" as const,
   };
 
-  const secondaryButtonStyle = {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-  };
-
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => {}}>
       <View
@@ -454,28 +447,16 @@ export function NativePermissionsOnboarding() {
 
         <View style={{ gap: 10, marginTop: 12 }}>
           {step === "welcome" && (
-            <>
-              <ScalePressable
-                onPress={goNext}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={primaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Continue setup"
-              >
-                <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Continue</Text>
-              </ScalePressable>
-              <ScalePressable
-                onPress={() => void finish()}
-                disabled={busy}
-                reduceMotion={reduceMotion}
-                style={secondaryButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Skip for now"
-              >
-                <Text style={{ textAlign: "center", color: Colors.gray[500], fontSize: 15 }}>Skip for now</Text>
-              </ScalePressable>
-            </>
+            <ScalePressable
+              onPress={goNext}
+              disabled={busy}
+              reduceMotion={reduceMotion}
+              style={primaryButtonStyle}
+              accessibilityRole="button"
+              accessibilityLabel="Continue setup"
+            >
+              <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Continue</Text>
+            </ScalePressable>
           )}
 
           {step === "notifications" && (

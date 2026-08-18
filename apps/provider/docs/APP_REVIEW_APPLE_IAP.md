@@ -28,6 +28,10 @@ Legacy alias documented for ops: `appreview.provider@beautonomi.co.za` (prefer t
 2. Tap send code — the app detects the demo account and prompts for the **App Review OTP** (default `246810`). Typing `buntulink@gmail.com` on the Email tab uses **password** (not email OTP).
 3. The app calls `POST /api/auth/app-review/verify-otp` and establishes a Supabase session (no SMS/email delivery required in review).
 
+**Notifications onboarding (Guideline 5.1.1)**
+
+First-session setup is **notifications only**. Pre-prompt buttons say **Continue** (never "Allow"). There is no skip on the welcome step — reviewers must Continue to the notifications step, then Continue again to reach the **system** notification prompt. Photo library and location are requested in-context when those features are used.
+
 **ATT (App Tracking Transparency)**
 
 Customer and Partner iOS builds request ATT via `request-att-before-tracking.ts` before initializing Singular / ad attribution. Declining tracking does not block core app use.

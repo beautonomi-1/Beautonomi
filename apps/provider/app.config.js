@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.83",
+  version: "1.0.84",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
