@@ -189,7 +189,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "276",
+    buildNumber: "277",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -240,7 +240,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 276,
+    versionCode: 277,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
