@@ -19,6 +19,7 @@ Use this when you want to ship new builds to TestFlight / App Store and Google P
 - **App Tracking Transparency (2.1):** On first launch after install, the ATT prompt appears after the splash screen, before Singular initializes. To record: delete the app, reinstall from TestFlight, open once, and screen-record the system **Allow Beautonomi to track your activity across other companies' apps and websites?** dialog.
 - **Parental controls / age rating:** Profile tab → **Safety hub** → **Content & safety controls**, or **Account settings** → **Content & safety controls**. Restricted mode, social feed, messaging, and related toggles are there; device auth can gate changes.
 - **Sign in with Apple:** Available on login/sign-up; Apple identity skips redundant name/email collection in onboarding.
+- **Demo login (2.1(a)):** Email `nomi@ferdose.com`, phone `+27716429097` (or national `716429097`), OTP **`246810`** (fixed app-review code via `/api/auth/app-review/verify-otp`; no SMS required). Phone tab is fastest; on Email tab, enter the demo email and tap **Send code** (password not required).
 
 ### Provider app (`com.beautonomi.partner`)
 

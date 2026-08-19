@@ -5,17 +5,46 @@ export const APP_REVIEW_DEMO_UID = "11ccc539-9160-47be-b7b3-5fef986f1033";
 export const APP_REVIEW_DEMO_EMAIL = "buntulink@gmail.com";
 export const APP_REVIEW_DEMO_PHONE = "+27790624995";
 
+/** Fixed App Review demo account (Customer app). */
+export const APP_REVIEW_CUSTOMER_DEMO_UID = "8adda800-6d2e-47c8-bcab-caa2feb4f323";
+export const APP_REVIEW_CUSTOMER_DEMO_EMAIL = "nomi@ferdose.com";
+export const APP_REVIEW_CUSTOMER_DEMO_PHONE = "+27716429097";
+
+export type AppReviewDemoAccount = {
+  uid: string;
+  email: string;
+  phone: string;
+};
+
+const APP_REVIEW_DEMO_ACCOUNTS: AppReviewDemoAccount[] = [
+  {
+    uid: APP_REVIEW_DEMO_UID,
+    email: APP_REVIEW_DEMO_EMAIL,
+    phone: APP_REVIEW_DEMO_PHONE,
+  },
+  {
+    uid: APP_REVIEW_CUSTOMER_DEMO_UID,
+    email: APP_REVIEW_CUSTOMER_DEMO_EMAIL,
+    phone: APP_REVIEW_CUSTOMER_DEMO_PHONE,
+  },
+];
+
 export function getAppReviewDemoOtp(): string {
   return (process.env.APP_REVIEW_DEMO_OTP ?? "246810").trim();
 }
 
+/** Provider demo phone only — env override must not affect customer matcher. */
 export function getAppReviewDemoPhone(): string {
   const fromEnv = (process.env.APP_REVIEW_DEMO_PHONE ?? "").trim();
   return fromEnv || APP_REVIEW_DEMO_PHONE;
 }
 
-export function isAppReviewDemoUserId(userId: string | null | undefined): boolean {
-  return Boolean(userId && userId === APP_REVIEW_DEMO_UID);
+function getProviderDemoAccount(): AppReviewDemoAccount {
+  return {
+    uid: APP_REVIEW_DEMO_UID,
+    email: APP_REVIEW_DEMO_EMAIL,
+    phone: getAppReviewDemoPhone(),
+  };
 }
 
 function normalizeEmail(value: string | null | undefined): string {
@@ -37,21 +66,67 @@ export function normalizeZaMobileDigits(value: string | null | undefined): strin
   return digits;
 }
 
+function phonesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeZaMobileDigits(a);
+  const nb = normalizeZaMobileDigits(b);
+  return Boolean(na && nb && na === nb);
+}
+
+export function isAppReviewDemoProviderUserId(userId: string | null | undefined): boolean {
+  return Boolean(userId && userId === APP_REVIEW_DEMO_UID);
+}
+
+export function isAppReviewDemoUserId(userId: string | null | undefined): boolean {
+  return Boolean(
+    userId &&
+      APP_REVIEW_DEMO_ACCOUNTS.some((account) => account.uid === userId),
+  );
+}
+
+export function resolveAppReviewDemoAccount(input: {
+  email?: string | null;
+  phone?: string | null;
+  userId?: string | null;
+}): AppReviewDemoAccount | null {
+  if (input.userId) {
+    const byId = APP_REVIEW_DEMO_ACCOUNTS.find((account) => account.uid === input.userId);
+    if (byId) {
+      return byId.uid === APP_REVIEW_DEMO_UID ? getProviderDemoAccount() : byId;
+    }
+  }
+
+  const email = normalizeEmail(input.email);
+  if (email) {
+    if (email === normalizeEmail(APP_REVIEW_DEMO_EMAIL)) return getProviderDemoAccount();
+    if (email === normalizeEmail(APP_REVIEW_CUSTOMER_DEMO_EMAIL)) {
+      return APP_REVIEW_DEMO_ACCOUNTS.find((account) => account.uid === APP_REVIEW_CUSTOMER_DEMO_UID) ?? null;
+    }
+  }
+
+  const phone = input.phone?.trim();
+  if (phone) {
+    if (phonesMatch(phone, getAppReviewDemoPhone())) return getProviderDemoAccount();
+    if (phonesMatch(phone, APP_REVIEW_CUSTOMER_DEMO_PHONE)) {
+      return APP_REVIEW_DEMO_ACCOUNTS.find((account) => account.uid === APP_REVIEW_CUSTOMER_DEMO_UID) ?? null;
+    }
+  }
+
+  return null;
+}
+
 export function isAppReviewDemoEmail(email: string | null | undefined): boolean {
-  return normalizeEmail(email) === normalizeEmail(APP_REVIEW_DEMO_EMAIL);
+  return resolveAppReviewDemoAccount({ email }) !== null;
 }
 
 export function isAppReviewDemoPhone(phone: string | null | undefined): boolean {
-  const a = normalizeZaMobileDigits(phone);
-  const b = normalizeZaMobileDigits(getAppReviewDemoPhone());
-  return Boolean(a && b && a === b);
+  return resolveAppReviewDemoAccount({ phone }) !== null;
 }
 
 export function isAppReviewDemoIdentifier(input: {
   email?: string | null;
   phone?: string | null;
 }): boolean {
-  return isAppReviewDemoEmail(input.email) || isAppReviewDemoPhone(input.phone);
+  return resolveAppReviewDemoAccount(input) !== null;
 }
 
 function timingSafeEqualString(received: string, expected: string): boolean {

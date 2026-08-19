@@ -25,7 +25,7 @@ import { assignStaffToAllActiveLocations } from "@/lib/provider/location-mainten
 import {
   APP_REVIEW_DEMO_EMAIL,
   APP_REVIEW_DEMO_PHONE,
-  isAppReviewDemoUserId,
+  isAppReviewDemoProviderUserId,
 } from "@/lib/auth/app-review-demo";
 
 const slugifyCategory = (value: string): string =>
@@ -745,7 +745,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (isAppReviewDemoUserId(user.id)) {
+    if (isAppReviewDemoProviderUserId(user.id)) {
       userUpdates.email = APP_REVIEW_DEMO_EMAIL;
       userUpdates.phone = APP_REVIEW_DEMO_PHONE;
       userUpdates.email_verified = true;

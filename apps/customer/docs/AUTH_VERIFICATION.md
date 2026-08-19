@@ -25,6 +25,34 @@ The login screen (`app/(auth)/login.tsx`) supports:
 | Google OAuth | `supabase.auth.signInWithOAuth` |
 | Apple OAuth | `supabase.auth.signInWithOAuth` |
 
+### App Review demo (Customer app)
+
+Fixed credentials for Apple review — no SMS/email delivery:
+
+| Field | Value |
+|-------|-------|
+| Email | `nomi@ferdose.com` |
+| Phone | `+27716429097` (national `716429097` or `0716429097`) |
+| OTP | `246810` (override server-side with `APP_REVIEW_DEMO_OTP`) |
+
+Flow: login screen detects the demo identifier, skips `signInWithOtp`, then `POST /api/auth/app-review/verify-otp` mints a Supabase session. On the **Email** tab, typing `nomi@ferdose.com` switches to email-code mode (no password); tap **Send code**, then enter `246810`. Deploy `apps/web` with `APP_REVIEW_DEMO_ENABLED` unset or `true` before TestFlight review.
+
+**Pre-submit data checks** for user `8adda800-6d2e-47c8-bcab-caa2feb4f323`:
+
+- `users.customer_onboarding_completed_at` is set (otherwise onboarding step 4 sends real SMS).
+- `GET /api/me/profile-completion` has no blocking required items.
+- `role = customer`, `phone_verified` and `email_verified` true.
+
+**Smoke test (after deploy):**
+
+```bash
+curl -X POST https://www.beautonomi.com/api/auth/app-review/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"+27716429097","otp":"246810"}'
+```
+
+Expect HTTP **200** with `user.id === 8adda800-6d2e-47c8-bcab-caa2feb4f323`.
+
 The signup screen (`app/(auth)/signup.tsx`) supports email + password and OAuth only.
 New phone users are created from the **login screen** (`shouldCreateUser: true` on phone OTP).
 

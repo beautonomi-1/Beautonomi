@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
-import { APP_REVIEW_DEMO_PHONE, isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
+import { isAppReviewDemoUserId, resolveAppReviewDemoAccount } from "@/lib/auth/app-review-demo";
 
 /**
  * POST /api/me/phone/verify
@@ -35,7 +35,11 @@ export async function POST(request: NextRequest) {
 
     if (isAppReviewDemoUserId(user.id)) {
       const body = await request.json().catch(() => ({})) as { phone?: string };
-      const confirmedPhone = (body.phone?.trim() || APP_REVIEW_DEMO_PHONE).trim();
+      const demoAccount = resolveAppReviewDemoAccount({ userId: user.id });
+      const confirmedPhone = (body.phone?.trim() || demoAccount?.phone || "").trim();
+      if (!confirmedPhone) {
+        return errorResponse("Demo phone could not be resolved", "VALIDATION_ERROR", 400);
+      }
       const { error: updateError } = await supabase
         .from("users")
         .update({ phone_verified: true, phone: confirmedPhone })

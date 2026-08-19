@@ -36,6 +36,13 @@ import { navigateAfterCustomerAuth, navigateAfterNewCustomerSignup } from "@/lib
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
+import {
+  completeAppReviewDemoSignIn,
+  isAppReviewDemoEmail,
+  isAppReviewDemoPhone,
+} from "@/lib/auth/app-review-demo";
+
+const APP_REVIEW_DEMO_HINT = "App Review demo account — enter the review OTP code.";
 
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
@@ -329,6 +336,14 @@ export default function LoginScreen() {
     const e164 = normalizeSupabaseAuthPhone(raw);
     setLoading(true);
     try {
+      if (isAppReviewDemoPhone(e164)) {
+        setPendingPhone(e164);
+        setOtpSent(true);
+        setToken("");
+        setOtpResendIn(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
+        haptic.success();
+        return;
+      }
       const { error } = await signInWithOtp(e164);
       if (error) {
         // §QA 2026-05: with the unified flow, OTP auto-creates accounts.
@@ -376,6 +391,12 @@ export default function LoginScreen() {
     if (!phoneToSend) return;
     setResendingOtp(true);
     try {
+      if (isAppReviewDemoPhone(phoneToSend)) {
+        setToken("");
+        setOtpResendIn(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
+        haptic.light();
+        return;
+      }
       const { error } = await signInWithOtp(phoneToSend);
       if (error) {
         Alert.alert(al("couldntResendTitle"), error.message);
@@ -394,6 +415,12 @@ export default function LoginScreen() {
     if (!emailToSend) return;
     setResendingEmailOtp(true);
     try {
+      if (isAppReviewDemoEmail(emailToSend)) {
+        setEmailOtpCode("");
+        setEmailOtpResendIn(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        haptic.light();
+        return;
+      }
       const { error } = await signInWithOtpEmail(emailToSend);
       if (error) {
         Alert.alert(al("couldntResendTitle"), error.message);
@@ -417,6 +444,15 @@ export default function LoginScreen() {
     const e164 = normalizeSupabaseAuthPhone(raw);
     setLoading(true);
     try {
+      if (isAppReviewDemoPhone(e164)) {
+        await completeAppReviewDemoSignIn({ phone: e164, otp: otpToken });
+        trackLogin("phone");
+        await writeSignupPhoneHandoff(e164);
+        await applyPendingSignupPreferences();
+        logLoginSuccessBreadcrumb("phone_otp_app_review");
+        await navigateAfterCustomerAuth(params.return_to);
+        return;
+      }
       const { error } = await verifyOtp(e164, otpToken);
       if (error) {
         Alert.alert(al("errorTitle"), error.message);
@@ -427,6 +463,8 @@ export default function LoginScreen() {
       await applyPendingSignupPreferences();
       logLoginSuccessBreadcrumb("phone_otp");
       await navigateAfterCustomerAuth(params.return_to);
+    } catch (e) {
+      Alert.alert(al("errorTitle"), e instanceof Error ? e.message : al("genericErrorBody"));
     } finally {
       setLoading(false);
     }
@@ -448,6 +486,14 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
+      if (isAppReviewDemoEmail(trimmed)) {
+        setPendingEmailOtp(trimmed);
+        setEmailOtpSent(true);
+        setEmailOtpCode("");
+        setEmailOtpResendIn(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        haptic.success();
+        return;
+      }
       const { error } = await signInWithOtpEmail(trimmed);
       if (error) {
         // §QA 2026-05: with the unified flow, email OTP auto-creates
@@ -496,6 +542,14 @@ export default function LoginScreen() {
     const addr = pendingEmailOtp || email.trim();
     setLoading(true);
     try {
+      if (isAppReviewDemoEmail(addr)) {
+        await completeAppReviewDemoSignIn({ email: addr, otp: otpToken });
+        trackLogin("email");
+        await applyPendingSignupPreferences();
+        logLoginSuccessBreadcrumb("email_otp_app_review");
+        await navigateAfterCustomerAuth(params.return_to);
+        return;
+      }
       const { error } = await verifyOtpEmail(addr, otpToken);
       if (error) {
         Alert.alert(al("errorTitle"), error.message);
@@ -505,6 +559,8 @@ export default function LoginScreen() {
       await applyPendingSignupPreferences();
       logLoginSuccessBreadcrumb("email_otp");
       await navigateAfterCustomerAuth(params.return_to);
+    } catch (e) {
+      Alert.alert(al("errorTitle"), e instanceof Error ? e.message : al("genericErrorBody"));
     } finally {
       setLoading(false);
     }
@@ -533,8 +589,15 @@ export default function LoginScreen() {
   }
 
   async function handleEmailSubmit() {
-    if (!email.trim()) {
+    const trimmed = email.trim();
+    if (!trimmed) {
       Alert.alert(al("errorTitle"), al("enterEmail"));
+      return;
+    }
+    if (!isSignup && isAppReviewDemoEmail(trimmed)) {
+      setEmailOtpMode(true);
+      setPassword("");
+      await handleSendEmailOtp();
       return;
     }
     if (!password.trim()) {
@@ -881,7 +944,7 @@ export default function LoginScreen() {
                   key={item.key}
                   onPress={() => {
                     setShowEmailForm(item.key === "email");
-                    setEmailOtpMode(false);
+                    setEmailOtpMode(item.key === "email" && isAppReviewDemoEmail(email));
                     setEmailOtpSent(false);
                     setEmailOtpCode("");
                     setPendingEmailOtp("");
@@ -953,7 +1016,9 @@ export default function LoginScreen() {
             >
               <Ionicons name="checkmark-circle" size={18} color="#059669" />
               <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
-                Code sent. Valid for about {smsOtpExpiryMin} min.
+                {isAppReviewDemoPhone(pendingPhone)
+                  ? APP_REVIEW_DEMO_HINT
+                  : `Code sent. Valid for about ${smsOtpExpiryMin} min.`}
               </Text>
             </View>
             <OtpDigitRow
@@ -1083,7 +1148,16 @@ export default function LoginScreen() {
                 placeholder={al("emailPlaceholder")}
                 placeholderTextColor="#9CA3AF"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  if (isAppReviewDemoEmail(t)) {
+                    setEmailOtpMode(true);
+                    setPassword("");
+                    setEmailOtpSent(false);
+                    setEmailOtpCode("");
+                    setPendingEmailOtp("");
+                  }
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -1159,7 +1233,11 @@ export default function LoginScreen() {
                   accessibilityRole="alert"
                 >
                   <Ionicons name="checkmark-circle" size={18} color="#059669" />
-                  <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>Code sent. Check your inbox.</Text>
+                  <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>
+                    {isAppReviewDemoEmail(pendingEmailOtp || email)
+                      ? APP_REVIEW_DEMO_HINT
+                      : "Code sent. Check your inbox."}
+                  </Text>
                 </View>
                 <OtpDigitRow
                   length={emailOtpLen}

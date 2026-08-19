@@ -122,7 +122,7 @@ From **`apps/customer`** or **`apps/provider`**:
 
 1. Emulator running; app open with screenshot env + Metro or a prebuilt binary.
 2. **Signed out** → run `:public` flows for login/welcome frames.
-3. Sign in with **demo customer** / **demo provider** (complete profile, realistic data).
+3. Sign in with **demo customer** (`nomi@ferdose.com` / `+27716429097`, OTP `246810`) or **demo provider** (`buntulink@gmail.com` / `+27790624995`, OTP `246810`) — complete profile, realistic data.
 4. Run `:auth` flows for the main set.
 5. Run `pnpm screenshots:clean` before a fresh batch if you want a clean folder.
 
