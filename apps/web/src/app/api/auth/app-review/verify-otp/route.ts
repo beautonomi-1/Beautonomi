@@ -3,10 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkSignInRateLimit } from "@/lib/rate-limit/sign-in";
 import {
-  APP_REVIEW_DEMO_EMAIL,
   isAppReviewDemoEndpointEnabled,
   isAppReviewDemoIdentifier,
   isAppReviewDemoOtp,
+  resolveAppReviewDemoAccount,
 } from "@/lib/auth/app-review-demo";
 
 type VerifyBody = {
@@ -56,10 +56,15 @@ export async function POST(request: NextRequest) {
       return errorResponse("Invalid verification code", "INVALID_OTP", 401);
     }
 
+    const account = resolveAppReviewDemoAccount({ email, phone });
+    if (!account) {
+      return errorResponse("Invalid demo account", "INVALID_DEMO_ACCOUNT", 403);
+    }
+
     const admin = getSupabaseAdmin();
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
-      email: APP_REVIEW_DEMO_EMAIL,
+      email: account.email,
     });
 
     const hashedToken = linkData?.properties?.hashed_token;

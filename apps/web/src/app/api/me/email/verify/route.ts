@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { isMailableEmail } from "@beautonomi/utils";
-import { isAppReviewDemoUserId, APP_REVIEW_DEMO_EMAIL } from "@/lib/auth/app-review-demo";
+import { isAppReviewDemoUserId, resolveAppReviewDemoAccount } from "@/lib/auth/app-review-demo";
 
 /**
  * POST /api/me/email/verify
@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
 
     if (isAppReviewDemoUserId(user.id)) {
       const body = await request.json().catch(() => ({})) as { email?: string };
-      const confirmedEmail = (body.email?.trim() || user.email || APP_REVIEW_DEMO_EMAIL).trim();
+      const demoAccount = resolveAppReviewDemoAccount({ userId: user.id });
+      const confirmedEmail = (body.email?.trim() || user.email || demoAccount?.email || "").trim();
+      if (!confirmedEmail) {
+        return errorResponse("Demo email could not be resolved", "VALIDATION_ERROR", 400);
+      }
       const { error: updateError } = await supabase
         .from("users")
         .update({ email_verified: true, email: confirmedEmail })
