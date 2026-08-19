@@ -62,13 +62,16 @@ export function ArrivalQrScannerModal({
       return;
     }
     void getPermission();
+    if (!permission?.granted && permission?.canAskAgain !== false) {
+      void requestPermission();
+    }
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         void getPermission();
       }
     });
     return () => sub.remove();
-  }, [clearCooldown, getPermission, releaseScanLock, visible]);
+  }, [clearCooldown, getPermission, permission?.canAskAgain, permission?.granted, releaseScanLock, requestPermission, visible]);
 
   /** After a failed verify, wait before accepting another scan (camera keeps seeing the same QR). */
   useEffect(() => {
@@ -164,10 +167,10 @@ export function ArrivalQrScannerModal({
               }}
               style={twStyle("bg-primary py-3 rounded-xl items-center")}
               accessibilityRole="button"
-              accessibilityLabel={permission?.canAskAgain === false ? "Open settings for camera access" : "Allow camera"}
+              accessibilityLabel={permission?.canAskAgain === false ? "Open settings for camera access" : "Continue"}
             >
               <Text style={twStyle("text-white font-semibold")}>
-                {permission?.canAskAgain === false ? "Open Settings" : "Allow camera"}
+                {permission?.canAskAgain === false ? "Open Settings" : "Continue"}
               </Text>
             </TouchableOpacity>
           </View>

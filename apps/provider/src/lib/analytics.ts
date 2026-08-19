@@ -255,6 +255,36 @@ export function trackSupportTicketReply(ticketId: string) {
   track("provider_support_ticket_reply", { ticket_id: ticketId });
 }
 
+// ── Trust & Safety ───────────────────────────────────────────────────────────
+
+export function trackSafetyHubView() {
+  track("safety_hub_view", { portal: "provider" });
+}
+
+export function trackSafetyHubNav(destination: string, from: "hub" | "settings") {
+  track("safety_hub_nav", { destination, from, portal: "provider" });
+}
+
+export function trackEmergencyContactSaved() {
+  track("emergency_contact_saved", { portal: "provider" });
+}
+
+export function trackContentSafetyToggle(key: string, value: boolean) {
+  track("content_safety_toggle", { key, value, portal: "provider" });
+}
+
+export function trackAdsCampaignFilter(chip: string) {
+  track("ads_campaign_filter", { chip, portal: "provider" });
+}
+
+export function trackContentReportSubmitted(targetType: string) {
+  track("content_report_submitted", { target_type: targetType, portal: "provider" });
+}
+
+export function trackUserReportSubmitted(reportType: string) {
+  track("user_report_submitted", { report_type: reportType, portal: "provider" });
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 export function trackScreenView(screenName: string) {

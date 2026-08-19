@@ -13,6 +13,12 @@ jest.mock("expo-location", () => ({
 jest.mock("@/lib/native-permissions", () => ({
   ensureForegroundLocationPermission: (...args: unknown[]) =>
     mockEnsureForegroundLocationPermission(...args),
+  PERMISSION_COPY: {
+    locationNearby: {
+      title: "Location access",
+      message: "Location access is used to show nearby results and travel times.",
+    },
+  },
 }));
 
 jest.mock("@/providers/NativePermissionsOnboardingProvider", () => ({

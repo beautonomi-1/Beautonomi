@@ -10,6 +10,7 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { resolveAgeBand, readSafetySettingsStored, effectiveSafetySettings } from "@/lib/age-assurance";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -193,7 +194,7 @@ export async function GET(
     const { data: supportTicketsRaw } = await admin
       .from("support_tickets")
       .select(
-        "id, ticket_number, subject, status, priority, provider_id, created_at, provider:providers(tenant_id)",
+        "id, ticket_number, subject, status, priority, category, provider_id, created_at, provider:providers(tenant_id)",
       )
       .eq("user_id", id)
       .order("created_at", { ascending: false })
@@ -242,6 +243,53 @@ export async function GET(
         .filter(Boolean)
         .sort((a, b) => Date.parse(String(b)) - Date.parse(String(a)))[0] ?? null;
 
+    const [
+      ageBand,
+      safetyStored,
+      blocksAsBlocker,
+      blocksAsBlocked,
+      userReportsAgainst,
+    ] = await Promise.all([
+      resolveAgeBand(id, admin),
+      readSafetySettingsStored(id, admin),
+      admin
+        .from("user_blocks")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("blocker_id", id),
+      admin
+        .from("user_blocks")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("blocked_user_id", id),
+      admin
+        .from("user_reports")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("reported_user_id", id)
+        .neq("status", "dismissed"),
+    ]);
+
+    const safetyEffective = await effectiveSafetySettings(ageBand.band, safetyStored, tenantId);
+    const safetySettings: Record<string, boolean> = {};
+    const safetyLocked: Record<string, boolean> = {};
+    for (const key of [
+      "restricted_mode",
+      "hide_social_feed",
+      "disable_comments_likes",
+      "disable_direct_messaging",
+      "sensitive_content_filter",
+      "require_device_auth",
+    ] as const) {
+      safetySettings[key] = safetyEffective[key].value;
+      safetyLocked[key] = safetyEffective[key].locked;
+    }
+
+    const safetyTicketsCount = (support_tickets as unknown[]).filter((t) => {
+      const row = t as { category?: string };
+      return row.category === "safety_emergency" || row.category === "safety_report_user";
+    }).length;
+
     return successResponse({
       ...sanitizeUserForAdmin(userData as Record<string, unknown>),
       // Resolved phone: public.users first, then auth.users fallback.
@@ -264,6 +312,16 @@ export async function GET(
       wallet: wallet ?? null,
       support_tickets,
       recent_product_orders,
+      trust_safety: {
+        age_band: ageBand.band,
+        age_source: ageBand.source,
+        safety_settings: safetySettings,
+        safety_locked: safetyLocked,
+        blocks_initiated_count: blocksAsBlocker.count ?? 0,
+        blocks_received_count: blocksAsBlocked.count ?? 0,
+        user_reports_count: userReportsAgainst.count ?? 0,
+        safety_support_tickets_count: safetyTicketsCount,
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch user");

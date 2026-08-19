@@ -29,6 +29,7 @@ import {
   Alert,
 } from "react-native";
 import { Stack, useLocalSearchParams, router } from "expo-router";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -112,7 +113,12 @@ export default function ProductReviewsScreen() {
           t("customer.contentReport.signInBody"),
           [
             { text: t("common.cancel"), style: "cancel" },
-            { text: t("auth.login"), onPress: () => router.push("/(auth)/login") },
+            { text: t("auth.login"), onPress: () =>
+                pushCustomerLogin(
+                  productId
+                    ? `/(app)/product-reviews?id=${encodeURIComponent(productId)}`
+                    : "/(app)/(tabs)/shop",
+                ) },
           ],
         );
         return;

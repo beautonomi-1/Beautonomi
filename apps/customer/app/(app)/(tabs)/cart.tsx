@@ -24,6 +24,8 @@ import { formatMoney } from "@beautonomi/utils";
 import type { CartItem } from "@/types/api";
 import { useCart } from "@/features/shop/useCart";
 import { useTranslation } from "@beautonomi/i18n";
+import { useAuth } from "@/providers/AuthProvider";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 
 interface ProviderShippingConfig {
   offers_delivery: boolean;
@@ -68,6 +70,7 @@ function linePrice(item: CartItem): number {
 
 export default function CartScreen() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const tc = useCallback((key: string) => t(`customer.mobile.screens.cart.${key}`), [t]);
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -81,7 +84,6 @@ export default function CartScreen() {
     updateQuantity: patchCartQuantity,
     removeItem: removeCartLine,
     clearCart,
-    isGuestCart,
   } = useCart();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const [refreshing, setRefreshing] = useState(false);
@@ -193,16 +195,6 @@ export default function CartScreen() {
     [removeCartLine, tc, t],
   );
 
-  const signInForCheckout = useCallback((providerId: string) => {
-    haptic.medium();
-    router.push({
-      pathname: "/(auth)/login",
-      params: {
-        return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(providerId)}`,
-      },
-    } as any);
-  }, []);
-
   const openCheckout = useCallback(() => {
     haptic.medium();
     const url = `${APP_URL}/cart`;
@@ -211,6 +203,26 @@ export default function CartScreen() {
       params: { url: encodeURIComponent(url), title: "Cart" },
     });
   }, []);
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 32 }}>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+          {tc("headerTitle")}
+        </Text>
+        <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
+          Log in to view your cart and checkout
+        </Text>
+        <TouchableOpacity
+          onPress={() => pushCustomerLogin("/(app)/(tabs)/cart")}
+          style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
+          accessibilityRole="button"
+        >
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("auth.login")}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading && items.length === 0) {
     return (
@@ -257,43 +269,6 @@ export default function CartScreen() {
                 {fromCache ? `${cartError} Showing saved cart.` : cartError}
               </Text>
             </View>
-          </View>
-        ) : null}
-        {isGuestCart && items.length > 0 ? (
-          <View
-            style={{
-              marginHorizontal: contentPadding,
-              marginTop: 12,
-              marginBottom: 4,
-              padding: 14,
-              backgroundColor: "#EFF6FF",
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "#BFDBFE",
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#1E40AF" }}>Browsing as a guest</Text>
-            <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 4, lineHeight: 18 }}>
-              Your cart is saved on this device. Sign in to sync it everywhere and complete checkout.
-            </Text>
-            <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: "/(auth)/login",
-                  params: { return_to: "/(app)/(tabs)/cart" },
-                } as any)
-              }
-              style={{
-                alignSelf: "flex-start",
-                marginTop: 10,
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                backgroundColor: Colors.primary,
-                borderRadius: 10,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Sign in</Text>
-            </TouchableOpacity>
           </View>
         ) : null}
         {items.length === 0 ? (
@@ -455,10 +430,6 @@ export default function CartScreen() {
                 ) : (
                   <TouchableOpacity
                     onPress={() => {
-                      if (isGuestCart) {
-                        signInForCheckout(g.provider.id);
-                        return;
-                      }
                       haptic.medium();
                       router.push({
                         pathname: "/(app)/(tabs)/shop/product-checkout",

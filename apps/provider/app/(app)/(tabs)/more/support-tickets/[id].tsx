@@ -17,7 +17,7 @@ import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/ana
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
-import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
@@ -262,10 +262,7 @@ export default function SupportTicketDetailScreen() {
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.85,
         },
-        {
-          title: "Permission needed",
-          message: "Allow photo library access to attach images.",
-        },
+        PERMISSION_COPY.photosAttach,
       );
       if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;

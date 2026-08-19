@@ -18,7 +18,83 @@ type PermissionCopy = {
   openSettings?: string;
 };
 
-const DEFAULT_NOT_NOW = "Not now";
+export type { PermissionCopy };
+
+/** Neutral recovery copy — no "Allow" wording (App Store 5.1.1(iv)). KEEP IN SYNC: apps/provider/src/lib/native-permissions.ts */
+export const PERMISSION_COPY = {
+  locationNearby: {
+    title: "Location access",
+    message: "Location access is used to show nearby results and travel times.",
+  },
+  locationUseCurrent: {
+    title: "Location access",
+    message: "Location access is used to use your current position.",
+  },
+  locationPin: {
+    title: "Location access",
+    message: "Location access is used to place a pin from your current position.",
+  },
+  locationAddressFromCurrent: {
+    title: "Location access",
+    message: "Location access is used to fill an address from your current position.",
+  },
+  locationClientAddress: {
+    title: "Location access",
+    message: "Location access is used to fill the client address from your current position.",
+  },
+  locationJourney: {
+    title: "Location access",
+    message:
+      "Location access while using the app lets clients see journey and arrival updates. You can continue without live location.",
+  },
+  locationArrival: {
+    title: "Location access",
+    message: "Location access is used to include your arrival position.",
+  },
+  locationOverride: {
+    title: "Location access",
+    message: "Location access is used to record your position for this override.",
+  },
+  photosChoose: {
+    title: "Photos access",
+    message: "Photo library access lets you choose images.",
+  },
+  photosAttach: {
+    title: "Photos access",
+    message: "Photo library access lets you attach images.",
+  },
+  photosAttachVideo: {
+    title: "Photos access",
+    message: "Photo library access lets you attach videos.",
+  },
+  photosDocument: {
+    title: "Photos access",
+    message: "Photo library access lets you upload documents.",
+  },
+  photosPost: {
+    title: "Photos access",
+    message: "Photo library access lets you add media to your post.",
+  },
+  cameraPhoto: {
+    title: "Camera access",
+    message: "Camera access lets you take a photo.",
+  },
+  cameraVideo: {
+    title: "Camera access",
+    message: "Camera access lets you record a video.",
+  },
+  cameraPost: {
+    title: "Camera access",
+    message: "Camera access lets you capture photos or videos for your post.",
+  },
+  terminalPosterSave: {
+    title: "Photos access",
+    message: "Photo library access lets you save the terminal poster to your device.",
+  },
+} as const satisfies Record<string, PermissionCopy>;
+
+/** KEEP IN SYNC: apps/provider/src/lib/native-permissions.ts */
+const DEFAULT_NOT_NOW = "OK";
 const DEFAULT_RETRY = "Try again";
 const DEFAULT_OPEN_SETTINGS = "Open Settings";
 
@@ -34,7 +110,7 @@ export async function openAppSettings(): Promise<void> {
   try {
     await Linking.openSettings();
   } catch {
-    Alert.alert("Settings unavailable", "Open your device settings and allow Beautonomi permissions there.");
+    Alert.alert("Settings unavailable", "Open your device settings to manage Beautonomi permissions.");
   }
 }
 

@@ -29,14 +29,11 @@ import { useNotifications } from "@/providers/NotificationsContext";
 import { api } from "@/lib/api-client";
 import { onCartUpdated } from "@/lib/cart-events";
 import { haptic } from "@/lib/haptics";
-import { guestCartItemCount, loadGuestCartLines } from "@/lib/guest-cart";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
-    loadGuestCartLines()
-      .then((lines) => setCount(guestCartItemCount(lines)))
-      .catch(() => setCount(0));
+    setCount(0);
     return;
   }
   api

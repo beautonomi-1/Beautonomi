@@ -26,9 +26,11 @@ This document records every App Store Connect age-rating question, the answer we
 
 ### Suggested App Review notes (Customer)
 
-> Beautonomi is a beauty and wellness marketplace. Minimum age for social features is 13, enforced server-side using declared and verified date of birth. Account Settings includes Content & Safety Controls (restricted mode, hide social feed, disable comments/likes/messaging, sensitive content filter) protected by device authentication. In-app web views are limited to approved origins; there is no unrestricted browser. UGC can be reported in-app. Age suitability details: https://www.beautonomi.com/age-suitability
+> Beautonomi is a beauty and wellness marketplace. Users can browse Home, Search, Shop, Explore, partner profiles, and product pages without an account; booking, checkout, cart, messaging, and account features require sign-in (login/sign-up offer **Browse without an account**). Minimum age for social features is 13, enforced server-side using declared and verified date of birth. **Parental controls:** Profile → **Safety hub** → **Content & safety controls** (also under Account settings). Restricted mode, hide social feed, disable comments/likes/messaging, sensitive content filter; device authentication can gate changes. **ATT:** On first launch after install, the system tracking permission dialog appears after splash, before analytics SDK init — delete/reinstall to screen-record if needed. In-app web views are limited to approved origins; there is no unrestricted browser. UGC can be reported in-app. Age suitability: https://www.beautonomi.com/age-suitability
 
----
+### Suggested App Review notes (Provider)
+
+> Beautonomi Partner is a business tool for beauty/wellness providers (18+). **Demo account:** email `buntulink@gmail.com`, phone `+27790624995`, OTP **`246810`**. Camera scanners (arrival QR, product barcode) request permission when opened; UI uses **Continue** before the system dialog. **ATT:** Same post-splash ATT prompt as the customer app before Singular. Provider ↔ customer messaging is available; no consumer social feed. Apple In-App Purchase is used for platform subscription and paid ads only (see IAP review doc).
 
 ## Provider app (`com.beautonomi.partner`)
 

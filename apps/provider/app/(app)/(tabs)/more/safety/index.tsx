@@ -1,5 +1,6 @@
+import { useCallback } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Linking, Alert } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
@@ -7,14 +8,18 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { pushWebAgeSuitability, pushWebPrivacyPolicy, pushWebLearningCenter } from "@/lib/legal-web";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSafetySettings } from "@/hooks/useSafetySettings";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { useApi } from "@/hooks/useApi";
+import { navigateFromSafetyHub } from "@/lib/provider-tab-navigation";
+import {
+  countActiveSafetyRestrictions,
+  hasEmergencyContact,
+  maskPhoneForDisplay,
+} from "@/lib/safety/trust-hub-status";
+import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { trackSafetyHubNav, trackSafetyHubView } from "@/lib/analytics";
 
-function SectionCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={{ marginBottom: 20 }}>
       <Text
@@ -94,7 +99,66 @@ export default function SafetyHubScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
-  const { age_band, age_source } = useSafetySettings();
+  const { settings, age_band, age_source } = useSafetySettings();
+  const { blockedUsers, refresh: refreshBlocks } = useUserBlocks();
+  const { data: profile, refresh: refreshProfile } = useApi<{ emergency_contact?: { name?: string; phone?: string } }>(
+    "/api/me/profile",
+  );
+
+  const safetyConfig = useModuleConfig("safety") as { enabled?: boolean } | undefined;
+  const panicEnabled = useFeatureFlag("safety.panic.enabled");
+  const showBookingSafety = Boolean(safetyConfig?.enabled) && panicEnabled;
+
+  const ph = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`provider.mobile.screens.safetyHub.${key}`, opts ?? {}) as string,
+    [t],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      trackSafetyHubView();
+      void refreshBlocks();
+      void refreshProfile();
+    }, [refreshBlocks, refreshProfile]),
+  );
+
+  const restrictionCount = countActiveSafetyRestrictions(settings);
+  const contentSafetySubtitle =
+    restrictionCount === 0
+      ? ph("contentSafetySummaryNone")
+      : (t(`provider.mobile.screens.safetyHub.contentSafetySummary${restrictionCount === 1 ? "" : "_plural"}`, {
+          count: restrictionCount,
+          defaultValue:
+            restrictionCount === 1
+              ? ph("contentSafetySummary", { count: restrictionCount })
+              : ph("contentSafetySummary_plural", { count: restrictionCount }),
+        }) as string);
+
+  const emergencySubtitle = !user
+    ? t("customer.mobile.screens.safetyHub.signInHint")
+    : hasEmergencyContact(profile)
+      ? ph("emergencyContactSet", {
+          phone: maskPhoneForDisplay(profile?.emergency_contact?.phone) ?? "",
+        })
+      : ph("emergencyContactNotSet");
+
+  const blockedSubtitle =
+    blockedUsers.length === 0
+      ? ph("blockedUsersEmpty")
+      : ph("blockedUsersCount", { count: blockedUsers.length });
+
+  const ageBandLabel = t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
+    defaultValue: age_band,
+  });
+
+  const nav = useCallback(
+    (destination: string, pathname: string, params?: Record<string, string>) => {
+      trackSafetyHubNav(destination, "hub");
+      navigateFromSafetyHub(router, pathname, params);
+    },
+    [router],
+  );
 
   const callEmergency = () => {
     Alert.alert(
@@ -140,6 +204,8 @@ export default function SafetyHubScreen() {
           <TouchableOpacity
             onPress={callEmergency}
             style={{ marginTop: 12, alignSelf: "flex-start" }}
+            accessibilityRole="button"
+            accessibilityLabel={t("customer.mobile.screens.safetyHub.emergencyCallAction")}
           >
             <Text style={{ fontWeight: "600", color: "#DC2626" }}>
               {t("customer.mobile.screens.safetyHub.emergencyCallAction")}
@@ -149,7 +215,7 @@ export default function SafetyHubScreen() {
 
         {(age_band === "unknown" || age_source === "none") && user ? (
           <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
+            onPress={() => nav("age_assurance", "/(app)/(tabs)/more/safety/age-assurance")}
             style={{
               backgroundColor: "#FFF7ED",
               borderRadius: 12,
@@ -159,13 +225,31 @@ export default function SafetyHubScreen() {
               borderColor: "#FED7AA",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Add your date of birth for age assurance"
+            accessibilityLabel={ph("dobBannerA11y")}
           >
-            <Text style={{ fontWeight: "700", color: "#9A3412", marginBottom: 4 }}>Add your date of birth</Text>
-            <Text style={{ color: "#9A3412", lineHeight: 20 }}>
-              Age assurance uses your date of birth. Under 13 cannot use the app; 13–17 can use it; payouts require 18+. Calendar stays available until you save it.
-            </Text>
+            <Text style={{ fontWeight: "700", color: "#9A3412", marginBottom: 4 }}>{ph("dobBannerTitle")}</Text>
+            <Text style={{ color: "#9A3412", lineHeight: 20 }}>{ph("dobBannerBody")}</Text>
           </TouchableOpacity>
+        ) : null}
+
+        {showBookingSafety ? (
+          <SectionCard title={ph("bookingSafetyTitle")}>
+            <Row
+              icon="calendar-outline"
+              label={ph("bookingSafetyTitle")}
+              subtitle={ph("bookingSafetyHint")}
+              onPress={() => {
+                Alert.alert(ph("bookingSafetyTitle"), ph("bookingSafetyBody"), [
+                  { text: t("common.ok") },
+                  {
+                    text: t("customer.mobile.tabs.bookings", { defaultValue: "Bookings" }),
+                    onPress: () => router.push("/(app)/(tabs)/bookings" as never),
+                  },
+                ]);
+              }}
+              last
+            />
+          </SectionCard>
         ) : null}
 
         <SectionCard title={t("customer.mobile.screens.safetyHub.getHelpTitle")}>
@@ -174,10 +258,9 @@ export default function SafetyHubScreen() {
             label={t("customer.mobile.screens.safetyHub.contactTrustSafety")}
             subtitle={t("customer.mobile.screens.safetyHub.contactTrustSafetyHint")}
             onPress={() =>
-              router.push({
-                pathname: "/(app)/(tabs)/more/support-tickets/new",
-                params: { category: "safety_emergency" },
-              } as never)
+              nav("safety_emergency", "/(app)/(tabs)/more/support-tickets/new", {
+                category: "safety_emergency",
+              })
             }
           />
           <Row
@@ -185,10 +268,7 @@ export default function SafetyHubScreen() {
             label={t("customer.mobile.screens.safetyHub.reportUser")}
             subtitle={t("customer.mobile.screens.safetyHub.reportUserHint")}
             onPress={() =>
-              router.push({
-                pathname: "/(app)/(tabs)/more/support-tickets/new",
-                params: { category: "safety_report_user" },
-              } as never)
+              nav("safety_report_user", "/(app)/(tabs)/more/safety/report-user")
             }
             last
           />
@@ -198,27 +278,19 @@ export default function SafetyHubScreen() {
           <Row
             icon="person-outline"
             label={t("customer.mobile.screens.safetyHub.emergencyContact")}
-            subtitle={
-              user
-                ? t("customer.mobile.screens.safetyHub.emergencyContactHint")
-                : t("customer.mobile.screens.safetyHub.signInHint")
-            }
-            onPress={() => router.push("/(app)/(tabs)/more/settings/personal-profile" as never)}
+            subtitle={emergencySubtitle}
+            onPress={() => nav("emergency_contact", "/(app)/(tabs)/more/settings/emergency-contact")}
           />
           <Row
             icon="calendar-outline"
-            label="Age assurance"
-            subtitle={t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
-              defaultValue: age_band,
-            })}
-            onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
+            label={ph("ageAssuranceLabel")}
+            subtitle={ageBandLabel}
+            onPress={() => nav("age_assurance", "/(app)/(tabs)/more/safety/age-assurance")}
           />
           <Row
             icon="shield-checkmark-outline"
             label={t("customer.mobile.screens.safetyHub.ageBandLabel")}
-            subtitle={t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
-              defaultValue: age_band,
-            })}
+            subtitle={ageBandLabel}
             onPress={() => pushWebAgeSuitability(router)}
             last
           />
@@ -228,12 +300,14 @@ export default function SafetyHubScreen() {
           <Row
             icon="options-outline"
             label={t("customer.accountSettings.contentSafetyTitle")}
-            onPress={() => router.push("/(app)/(tabs)/more/settings/content-and-safety-controls" as never)}
+            subtitle={contentSafetySubtitle}
+            onPress={() => nav("content_safety", "/(app)/(tabs)/more/settings/content-and-safety-controls")}
           />
           <Row
             icon="ban-outline"
             label={t("customer.mobile.screens.blockedUsers.title")}
-            onPress={() => router.push("/(app)/(tabs)/more/settings/blocked-users" as never)}
+            subtitle={blockedSubtitle}
+            onPress={() => nav("blocked_users", "/(app)/(tabs)/more/settings/blocked-users")}
             last
           />
         </SectionCard>

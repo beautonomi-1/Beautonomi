@@ -13,6 +13,15 @@ import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { trackSafetyHubNav } from "@/lib/analytics";
+
+const TRUST_SAFETY_ROUTE_DESTINATIONS: Record<string, string> = {
+  "/(app)/(tabs)/more/safety": "safety_hub",
+  "/(app)/(tabs)/more/safety/age-assurance": "age_assurance",
+  "/(app)/(tabs)/more/settings/emergency-contact": "emergency_contact",
+  "/(app)/(tabs)/more/settings/content-and-safety-controls": "content_safety",
+  "/(app)/(tabs)/more/settings/blocked-users": "blocked_users",
+};
 
 interface SetupStatus {
   isComplete: boolean;
@@ -121,10 +130,17 @@ const SETTINGS_SECTIONS: { title: string; titleKey?: string; items: SettingItem[
       },
       {
         icon: "calendar-outline",
-        label: "Age assurance",
-        subtitle: "Date of birth, 13+ app use, 18+ payouts",
+        labelKey: "provider.mobile.screens.ageAssurance.title",
+        subtitleKey: "provider.mobile.screens.ageAssurance.formHint",
         route: "/(app)/(tabs)/more/safety/age-assurance",
         color: "#0ea5e9",
+      },
+      {
+        icon: "person-outline",
+        labelKey: "provider.mobile.screens.emergencyContact.title",
+        subtitleKey: "provider.mobile.screens.emergencyContact.subtitle",
+        route: "/(app)/(tabs)/more/settings/emergency-contact",
+        color: "#f97316",
       },
       {
         icon: "options-outline",
@@ -215,6 +231,15 @@ export default function SettingsScreen() {
     }, [refreshSetupStatus]),
   );
 
+  const openSetting = useCallback(
+    (route: string) => {
+      const destination = TRUST_SAFETY_ROUTE_DESTINATIONS[route];
+      if (destination) trackSafetyHubNav(destination, "settings");
+      router.push(route as never);
+    },
+    [router],
+  );
+
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
       void refreshSetupStatus();
@@ -276,7 +301,7 @@ export default function SettingsScreen() {
                   style={twStyle(`min-h-[56px] flex-row items-center px-4 py-3.5 ${
                     idx < items.length - 1 ? "border-b border-gray-50" : ""
                   }`)}
-                  onPress={() => item.route && router.push(item.route as never)}
+                  onPress={() => item.route && openSetting(item.route)}
                 >
                   <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
                     <Ionicons name={item.icon} size={18} color={item.color} />

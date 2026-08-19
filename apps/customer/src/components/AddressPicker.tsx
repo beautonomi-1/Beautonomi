@@ -18,7 +18,7 @@ import {
 } from "@/hooks/useAddresses";
 import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 import { haptic } from "@/lib/haptics";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -319,14 +319,11 @@ export function AddressPicker({
     Keyboard.dismiss();
     setGettingLocation(true);
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: t("customer.mobile.components.addressPicker.locationAccessTitle"),
-        message: t("customer.mobile.components.addressPicker.locationAccessBody"),
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationUseCurrent);
       if (!allowed) {
         Alert.alert(
-          t("customer.mobile.components.addressPicker.locationAccessTitle"),
-          t("customer.mobile.components.addressPicker.locationAccessBody"),
+          PERMISSION_COPY.locationUseCurrent.title,
+          PERMISSION_COPY.locationUseCurrent.message,
         );
         return;
       }

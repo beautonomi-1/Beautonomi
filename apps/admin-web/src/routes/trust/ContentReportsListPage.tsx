@@ -1,10 +1,12 @@
 import { Fragment, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -46,6 +48,10 @@ type ResolveMode = "resolve" | "resolve_hide" | "dismiss";
 
 export function ContentReportsListPage() {
   useAdminDocumentTitle("Content Reports");
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_USERS_TRUST,
+    "Users & trust access is required.",
+  );
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
@@ -74,6 +80,7 @@ export function ContentReportsListPage() {
         timeoutMs: 60_000,
       });
     },
+    enabled: allowed,
   });
 
   const updateReport = useMutation({
@@ -139,6 +146,7 @@ export function ContentReportsListPage() {
     setSp(n, { replace: true });
   }
 
+  if (denied) return denied;
   if (q.isLoading) {
     return (
       <div className="space-y-6">

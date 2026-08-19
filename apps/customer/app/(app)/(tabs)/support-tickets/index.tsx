@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { useRouter, useNavigation, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/providers/AuthProvider";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
@@ -99,6 +101,7 @@ export default function SupportTicketsListScreen() {
   useScreenTracking("Support tickets");
   const router = useRouter();
   const navigation = useNavigation();
+  const { user, loading: authLoading } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [extraTickets, setExtraTickets] = useState<Ticket[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -167,6 +170,10 @@ export default function SupportTicketsListScreen() {
   }, [loading, data]);
 
   useLayoutEffect(() => {
+    if (!user) {
+      navigation.setOptions({ headerRight: undefined });
+      return;
+    }
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
@@ -180,7 +187,35 @@ export default function SupportTicketsListScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [navigation, router]);
+  }, [navigation, router, user]);
+
+  if (authLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={[styles.centered, { padding: 32 }]}>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+          Support tickets
+        </Text>
+        <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
+          Log in to view and create support tickets
+        </Text>
+        <TouchableOpacity
+          onPress={() => pushCustomerLogin("/(app)/(tabs)/support-tickets")}
+          style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
+          accessibilityRole="button"
+        >
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading && !data) {
     return (

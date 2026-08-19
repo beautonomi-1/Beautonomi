@@ -42,7 +42,12 @@ Customer and Partner iOS builds request ATT via `request-att-before-tracking.ts`
 | --- | --- |
 | Trust & Safety hub | **More → Trust & Safety** |
 | Age assurance | **More → Trust & Safety → Age assurance** (also **Settings → Age assurance**). Add/edit date of birth here; Calendar is not locked. |
-| Content & safety controls | **More → Settings & account → Trust & Safety → Content & Safety Controls** |
+| Emergency contact | **More → Trust & Safety → Emergency contact** (also **Settings → Trust & Safety → Emergency contact**) |
+| Content & safety controls | **More → Trust & Safety → Content & safety** (also **Settings → Trust & Safety → Content & Safety Controls**) |
+| Blocked users | **More → Trust & Safety → Blocked users** |
+| Report a user | **More → Trust & Safety → Report a user** (opens support ticket with safety preset) |
+| Paid ads — retry failed campaign | **More → Buy ads → Failed filter → Try payment again** |
+| Saved payment cards (billing) | **More → Billing** or **Settings → Billing** — distinct from per-campaign ad checkout |
 | Subscription (StoreKit) | **More → Subscription** (shortcut) or **Settings → Billing** |
 | Delete account | **More → Settings & account → Account → Delete account** (native in-app; not web-only) |
 

@@ -35,8 +35,13 @@ import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY,
 } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
+import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface ExplorePost {
   id: string;
@@ -283,6 +288,15 @@ export default function ExplorePostsScreen() {
   const [editUploading, setEditUploading] = useState(false);
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{
+    type: ContentReportTargetType;
+    id: string;
+    title: string;
+  } | null>(null);
+
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const { confirmBlockUser, isBlocked } = useUserBlocks();
 
   const { data, loading, error, refresh } = useApi<MinePostsResponse>("/api/explore/posts/mine?limit=100&offset=0");
   const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
@@ -304,6 +318,66 @@ export default function ExplorePostsScreen() {
   const { execute: postComment, loading: postingComment } = useApiMutation<ExploreComment>("post");
 
   const [commentBody, setCommentBody] = useState("");
+
+  const openContentReport = useCallback(
+    (type: ContentReportTargetType, id: string, title: string) => {
+      setReportTarget({ type, id, title });
+    },
+    [],
+  );
+
+  const showPostSafetyMenu = useCallback(() => {
+    if (!viewPost) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      t("customer.explorePost.moreOptions", { defaultValue: "Post options" }),
+      undefined,
+      [
+        {
+          text: t("customer.contentReport.reportPost"),
+          style: "destructive",
+          onPress: () =>
+            openContentReport("explore_post", viewPost.id, t("customer.contentReport.reportPost")),
+        },
+        { text: t("common.cancel"), style: "cancel" },
+      ],
+    );
+  }, [openContentReport, t, viewPost]);
+
+  const showCommentSafetyMenu = useCallback(
+    (comment: ExploreComment) => {
+      const authorId = comment.author?.id ?? comment.user_id;
+      const authorName = comment.author?.full_name;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const actions: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
+        {
+          text: t("customer.contentReport.reportComment", { defaultValue: "Report comment" }),
+          style: "destructive",
+          onPress: () =>
+            openContentReport(
+              "explore_comment",
+              comment.id,
+              t("customer.contentReport.reportComment", { defaultValue: "Report comment" }),
+            ),
+        },
+      ];
+      if (authorId && authorId !== user?.id && !isBlocked(authorId)) {
+        actions.push({
+          text: t("customer.blockUser.confirmAction"),
+          style: "destructive",
+          onPress: () =>
+            confirmBlockUser({
+              userId: authorId,
+              displayName: authorName ?? undefined,
+              onBlocked: () => refreshComments(),
+            }),
+        });
+      }
+      actions.push({ text: t("common.cancel"), style: "cancel" });
+      Alert.alert(authorName ?? t("customer.blockUser.defaultName"), undefined, actions);
+    },
+    [confirmBlockUser, isBlocked, openContentReport, refreshComments, t, user?.id],
+  );
 
   const firstPagePosts = useMemo(() => {
     if (Array.isArray(data)) return data;
@@ -570,10 +644,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photos to add media to your post.",
-      },
+      PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
@@ -595,10 +666,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow camera access to capture photos or videos for your post.",
-      },
+      PERMISSION_COPY.cameraPost,
     );
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
@@ -653,10 +721,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photos to add media to your post.",
-      },
+      PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
@@ -671,10 +736,7 @@ export default function ExplorePostsScreen() {
         quality: 0.9,
         videoMaxDuration: 60,
       },
-      {
-        title: "Permission needed",
-        message: "Allow camera access to capture photos or videos for your post.",
-      },
+      PERMISSION_COPY.cameraPost,
     );
     if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
@@ -1584,6 +1646,19 @@ export default function ExplorePostsScreen() {
               <Text style={twStyle("mb-3 text-sm leading-5 text-gray-700")}>
                 {viewPost.caption || "No caption"}
               </Text>
+              {!editMode ? (
+                <TouchableOpacity
+                  onPress={showPostSafetyMenu}
+                  style={twStyle("mb-4 flex-row items-center self-start rounded-lg border border-gray-200 bg-white px-3 py-2")}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("customer.contentReport.reportPost")}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color="#6b7280" />
+                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
+                    {t("customer.explorePost.moreOptions", { defaultValue: "Post options" })}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <View style={twStyle("mb-4 flex-row flex-wrap items-center gap-x-3 gap-y-2")}>
                 <View
                   style={[twStyle(`rounded-full px-2.5 py-1 ${viewPost.status === "published" ? "bg-green-100" : "bg-gray-100"}`)]}
@@ -1662,14 +1737,24 @@ export default function ExplorePostsScreen() {
               ) : (
                 <ScrollView style={twStyle("mb-3 max-h-40")} nestedScrollEnabled>
                   {comments.map((c) => (
-                    <View key={c.id} style={twStyle("mb-2 rounded-lg bg-gray-50 px-3 py-2")}>
-                      <Text style={twStyle("text-xs font-medium text-gray-700")}>
-                        {c.author?.full_name ?? "Someone"}
-                      </Text>
-                      <Text style={twStyle("text-sm text-gray-900")}>{c.body}</Text>
-                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                        {formatDateSafe(c.created_at)}
-                      </Text>
+                    <View key={c.id} style={twStyle("mb-2 flex-row items-start rounded-lg bg-gray-50 px-3 py-2")}>
+                      <View style={twStyle("flex-1")}>
+                        <Text style={twStyle("text-xs font-medium text-gray-700")}>
+                          {c.author?.full_name ?? "Someone"}
+                        </Text>
+                        <Text style={twStyle("text-sm text-gray-900")}>{c.body}</Text>
+                        <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                          {formatDateSafe(c.created_at)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => showCommentSafetyMenu(c)}
+                        style={twStyle("ml-2 p-1")}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("customer.explorePost.moreOptions", { defaultValue: "Comment options" })}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={18} color="#9ca3af" />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </ScrollView>
@@ -1724,6 +1809,15 @@ export default function ExplorePostsScreen() {
           )}
         </BottomSheet>
       )}
+      {reportTarget ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportTarget(null)}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          title={reportTarget.title}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }

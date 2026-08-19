@@ -297,6 +297,9 @@ export const ReviewsListPage = lazy(() =>
 export const UserReportsListPage = lazy(() =>
   import("@/routes/trust/UserReportsListPage").then((m) => ({ default: m.UserReportsListPage }))
 );
+export const UserBlocksListPage = lazy(() =>
+  import("@/routes/trust/UserBlocksListPage").then((m) => ({ default: m.UserBlocksListPage }))
+);
 export const ContentReportsListPage = lazy(() =>
   import("@/routes/trust/ContentReportsListPage").then((m) => ({ default: m.ContentReportsListPage }))
 );

@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import * as Location from "expo-location";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 
 export interface Coords {
@@ -44,10 +44,7 @@ export function useLocation(options: UseLocationOptions = {}) {
           }
         }
 
-        const allowed = await ensureForegroundLocationPermission({
-          title: "Location permission",
-          message: "Allow location access to show nearby professionals and travel times.",
-        });
+        const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationNearby);
         if (cancelled) return;
         if (!allowed) {
           setError("Location permission denied");

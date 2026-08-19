@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
+  requireAdminSection,
   successResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { applyContentModerationTakedown } from "@/lib/safety/moderation-actions";
@@ -27,7 +28,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();

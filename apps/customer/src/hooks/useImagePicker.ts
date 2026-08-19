@@ -8,6 +8,7 @@ import { i18n } from "@beautonomi/i18n";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { useImageCropper } from "@/components/image-crop";
 import { DEFAULT_ASPECT } from "@/components/image-crop/types";
@@ -85,10 +86,7 @@ export function useImagePicker() {
           allowsEditing: false,
           quality: options.quality ?? 0.85,
         },
-        {
-          title: i18n.t("customer.mobile.components.imagePicker.photosAccessTitle"),
-          message: i18n.t("customer.mobile.components.imagePicker.photosAccessBody"),
-        },
+        PERMISSION_COPY.photosChoose,
         { defer: deferLaunch },
       );
       if (!result) {
@@ -122,10 +120,7 @@ export function useImagePicker() {
           selectionLimit: Math.max(1, Math.min(maxCount, 20)),
           quality: 0.85,
         },
-        {
-          title: i18n.t("customer.mobile.components.imagePicker.photosAccessTitle"),
-          message: i18n.t("customer.mobile.components.imagePicker.photosAccessBody"),
-        },
+        PERMISSION_COPY.photosChoose,
         { defer: deferLaunch },
       );
       if (!result) {
@@ -156,10 +151,7 @@ export function useImagePicker() {
           allowsEditing: false,
           quality: opts.quality ?? 0.85,
         },
-        {
-          title: i18n.t("customer.mobile.components.imagePicker.cameraAccessTitle"),
-          message: i18n.t("customer.mobile.components.imagePicker.cameraAccessBody"),
-        },
+        PERMISSION_COPY.cameraPhoto,
         { defer: deferLaunch },
       );
       if (!result) {

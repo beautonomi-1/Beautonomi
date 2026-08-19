@@ -89,7 +89,7 @@ import {
   resolveGroupParticipantCount,
   shouldRejectStaleListPaymentSync,
 } from "@/lib/group-booking-detail-helpers";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { countryFilterIso2FromStorage, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import {
@@ -2810,10 +2810,7 @@ export default function GroupBookingsScreen() {
     if (createLocatingHome) return;
     setCreateLocatingHome(true);
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location to fill the address.",
-      });
+      const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationAddressFromCurrent);
       if (!allowed) {
         return;
       }

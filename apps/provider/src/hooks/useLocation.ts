@@ -5,7 +5,7 @@
 import { useCallback, useState, useEffect } from "react";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
-import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 
 interface LocationData {
@@ -40,10 +40,7 @@ export function useLocation(): UseLocationResult {
     setError(null);
 
     try {
-      const allowed = await ensureForegroundLocationPermission({
-        title: "Location permission",
-        message: "Allow location access to use nearby, journey, and address features.",
-      });
+        const allowed = await ensureForegroundLocationPermission(PERMISSION_COPY.locationNearby);
       if (!allowed) {
         setError("Location permission denied");
         setLoading(false);

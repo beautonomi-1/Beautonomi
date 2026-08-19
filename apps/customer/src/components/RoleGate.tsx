@@ -120,7 +120,7 @@ export function RoleGate({ children }: RoleGateProps) {
   // §Customer-audit 2026-04 (loading-polish): branded gate for both the
   // "no user yet" and "checking role" phases so the whole auth chain shares
   // one animation instead of a mix of bare spinners.
-  if (!user) return <GateLoadingScreen />;
+  if (!user) return <>{children}</>;
   if (loading) return <GateLoadingScreen message="Checking access…" />;
   if (errorType) {
     const isNetwork = errorType === "network";

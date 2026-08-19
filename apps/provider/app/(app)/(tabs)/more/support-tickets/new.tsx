@@ -5,7 +5,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
 import { twStyle } from "@/lib/twStyle";
@@ -130,7 +130,10 @@ export default function NewSupportTicketScreen() {
 
   return (
     <ScreenContainer keyboardAvoiding={false}>
-      <ScreenHeader title="New support ticket" onBack={() => router.back()} />
+      <TrustScreenShell
+        title="New support ticket"
+        breadcrumbSegment="Support"
+      />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior="padding"

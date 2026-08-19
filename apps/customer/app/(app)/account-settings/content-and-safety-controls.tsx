@@ -5,7 +5,9 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { Colors } from "@/constants/colors";
+import { trackContentSafetyToggle } from "@/lib/analytics";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import {
   useSafetySettings,
@@ -92,6 +94,14 @@ export default function ContentAndSafetyControlsScreen() {
     [t],
   );
 
+  const screenTitle = t("customer.accountSettings.contentSafetyTitle");
+  const screenDesc = t("customer.accountSettings.contentSafetyDesc");
+  const breadcrumbSegment = t("customer.mobile.screens.contentSafety.breadcrumb", {
+    defaultValue: t("provider.mobile.screens.contentSafety.breadcrumb", {
+      defaultValue: "Content controls",
+    }),
+  });
+
   const promptDeviceAuth = useCallback(async () => {
     if (Platform.OS === "web") {
       setAuthUnlocked(true);
@@ -148,16 +158,27 @@ export default function ContentAndSafetyControlsScreen() {
   const showAgeBandNote = age_band === "13_17";
 
   if (loading) {
-    return <ScreenFrame loading error={null} onRetry={refresh}><View /></ScreenFrame>;
+    return (
+      <ScreenFrame loading error={null} onRetry={refresh}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+        <View />
+      </ScreenFrame>
+    );
   }
 
   if (error) {
-    return <ScreenFrame loading={false} error={error} onRetry={refresh}><View /></ScreenFrame>;
+    return (
+      <ScreenFrame loading={false} error={error} onRetry={refresh}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
+        <View />
+      </ScreenFrame>
+    );
   }
 
   if (!authUnlocked && settings.require_device_auth) {
     return (
       <ScreenFrame loading={false} error={null}>
+        <TrustScreenShell title={screenTitle} breadcrumbSegment={breadcrumbSegment} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, minHeight: 320 }}>
           <View
             style={{
@@ -205,16 +226,8 @@ export default function ContentAndSafetyControlsScreen() {
 
   return (
     <ScreenFrame loading={false} error={null}>
+      <TrustScreenShell title={screenTitle} subtitle={screenDesc} breadcrumbSegment={breadcrumbSegment} />
       <View>
-        <View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
-            {t("customer.accountSettings.contentSafetyTitle")}
-          </Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-            {t("customer.accountSettings.contentSafetyDesc")}
-          </Text>
-        </View>
-
         {showAgeBandNote ? (
           <View
             style={{
@@ -239,7 +252,10 @@ export default function ContentAndSafetyControlsScreen() {
               lockedNote={cs("lockedNote")}
               disabled={savingKey != null}
               saving={savingKey === key}
-              onToggle={(v) => void toggle(key, v)}
+              onToggle={(v) => {
+                trackContentSafetyToggle(key, v);
+                void toggle(key, v);
+              }}
             />
           ))}
         </View>

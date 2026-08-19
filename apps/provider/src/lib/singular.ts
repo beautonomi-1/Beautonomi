@@ -154,20 +154,21 @@ function onSingularLink(params: SingularLinkParams) {
 
 /**
  * Initialize Singular. Call once at app startup (root layout).
- * No-op on web or when key/secret missing.
- * On iOS, requests ATT before init when status is undetermined.
+ * No-op on web. On iOS, requests ATT before init when status is undetermined
+ * (even when Singular keys are missing — the ATT framework is still in the binary).
  */
 export function initSingular() {
   if (Platform.OS === "web") return;
-
-  const apikey = getSingularKey();
-  const secret = getSingularSecret();
-  if (!apikey || !secret) return;
 
   void (async () => {
     try {
       const { requestAttBeforeTracking } = await import("@/lib/tracking/request-att-before-tracking");
       await requestAttBeforeTracking();
+
+      const apikey = getSingularKey();
+      const secret = getSingularSecret();
+      if (!apikey || !secret) return;
+
       const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
       Singular.init(config);
     } catch (e) {

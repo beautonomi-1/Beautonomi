@@ -91,11 +91,11 @@ function computeGatePhase(args: {
   if (loading || (hasSession && portalState === "idle") || portalState === "loading") {
     return "loading_portal";
   }
-  if (!hasSession) return "redirect_login";
+  if (!hasSession) return "redirect_home_guest";
   if (portalState === "error") return "screen_portal_error";
   if (portalState === "wrong_app") return "screen_wrong_app";
   if (portalState === "customer" && screenshot) return "redirect_home_screenshot";
-  if (portalState === "customer" && customerOnboardingDone === false) return "redirect_onboarding";
+  if (portalState === "customer" && customerOnboardingDone === false) return "redirect_home_deferred_onboarding";
   if (portalState === "customer" && customerOnboardingDone === null && !screenshot) {
     return "loading_onboarding_status";
   }
@@ -103,7 +103,7 @@ function computeGatePhase(args: {
     return "loading_profile_completion";
   }
   if (portalState === "customer" && profileState === "error") return "redirect_home_profile_error";
-  if (portalState === "customer" && profileState === "incomplete") return "redirect_profile_incomplete";
+  if (portalState === "customer" && profileState === "incomplete") return "redirect_home_profile_incomplete";
   return "redirect_home";
 }
 
@@ -677,7 +677,7 @@ export default function Index() {
   }
 
   if (!session) {
-    return <Redirect href="/(auth)/login" />;
+    return <Redirect href="/(app)/(tabs)/home" />;
   }
 
   if (portalState === "wrong_app" && wrongPortal) {
@@ -791,7 +791,7 @@ export default function Index() {
   }
 
   if (portalState === "customer" && session && customerOnboardingDone === false) {
-    return <Redirect href="/(app)/onboarding" />;
+    return <Redirect href="/(app)/(tabs)/home" />;
   }
 
   // Onboarding status loading
@@ -822,10 +822,9 @@ export default function Index() {
     return <Redirect href="/(app)/(tabs)/home" />;
   }
 
-  // Required profile items incomplete → redirect to the right screen (address → addresses, else personal-info)
+  // Required profile items incomplete — allow browse; user can complete from profile
   if (portalState === "customer" && profileState === "incomplete") {
-    const href = getIncompleteRedirectRoute(profileCompletionData);
-    return <Redirect href={href as any} />;
+    return <Redirect href="/(app)/(tabs)/home" />;
   }
 
   return <Redirect href="/(app)/(tabs)/home" />;

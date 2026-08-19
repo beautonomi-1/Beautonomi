@@ -11,6 +11,11 @@ import {
   trackReviewSubmitted,
   trackPaymentMethodSelected,
   trackNotificationOpened,
+  trackSafetyHubView,
+  trackSafetyHubNav,
+  trackEmergencyContactSaved,
+  trackContentSafetyToggle,
+  trackContentReportSubmitted,
 } from "@/lib/analytics";
 
 describe("analytics tracking", () => {
@@ -60,5 +65,13 @@ describe("analytics tracking", () => {
 
   it("trackNotificationOpened does not throw", () => {
     expect(() => trackNotificationOpened("booking_reminder", { id: "1" })).not.toThrow();
+  });
+
+  it("trust & safety analytics do not throw", () => {
+    expect(() => trackSafetyHubView()).not.toThrow();
+    expect(() => trackSafetyHubNav("emergency_contact", "hub")).not.toThrow();
+    expect(() => trackEmergencyContactSaved()).not.toThrow();
+    expect(() => trackContentSafetyToggle("restricted_mode", true)).not.toThrow();
+    expect(() => trackContentReportSubmitted("explore_post")).not.toThrow();
   });
 });

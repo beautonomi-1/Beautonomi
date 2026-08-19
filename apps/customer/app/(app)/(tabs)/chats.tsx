@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -368,7 +369,7 @@ export default function ChatsScreen() {
         </Text>
         <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>{tc("loginToViewConversations")}</Text>
         <TouchableOpacity
-          onPress={() => router.replace("/(auth)/login")}
+          onPress={() => pushCustomerLogin("/(app)/(tabs)/chats")}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
           accessibilityRole="button"
           accessibilityLabel={tc("logInA11y")}

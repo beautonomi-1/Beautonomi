@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { api } from "@/lib/api-client";
 import { useLocation } from "@/hooks/useLocation";
@@ -3478,7 +3479,15 @@ export default function BookScreen() {
                     </TouchableOpacity>
                     {provider?.id && (
                       <TouchableOpacity
-                        onPress={() => (user ? joinWaitlist() : router.push("/(auth)/login"))}
+                        onPress={() =>
+                          user
+                            ? joinWaitlist()
+                            : pushCustomerLogin(
+                                slug
+                                  ? `/(app)/book?slug=${encodeURIComponent(slug)}`
+                                  : "/(app)/book",
+                              )
+                        }
                         disabled={waitlistJoining}
                         style={{
                           flexDirection: "row",

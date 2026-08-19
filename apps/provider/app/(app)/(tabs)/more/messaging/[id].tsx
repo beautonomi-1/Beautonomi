@@ -36,6 +36,7 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
+  PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
@@ -594,10 +595,7 @@ export default function ChatScreen() {
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.85,
         },
-        {
-          title: "Permission needed",
-          message: "Allow photo library access to attach images.",
-        },
+        PERMISSION_COPY.photosAttach,
         { defer: true },
       );
       if (!result) return;
@@ -616,10 +614,7 @@ export default function ChatScreen() {
           mediaTypes: ImagePicker.MediaTypeOptions.Videos,
           videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
         },
-        {
-          title: "Permission needed",
-          message: "Allow photo library access to attach videos.",
-        },
+        PERMISSION_COPY.photosAttachVideo,
         { defer: true },
       );
       if (!result) return;
@@ -641,10 +636,7 @@ export default function ChatScreen() {
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.85,
         },
-        {
-          title: "Permission needed",
-          message: "Allow camera access to take a photo.",
-        },
+        PERMISSION_COPY.cameraPhoto,
         { defer: true },
       );
       if (!result) return;
@@ -664,10 +656,7 @@ export default function ChatScreen() {
           videoMaxDuration: 120,
           videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
         },
-        {
-          title: "Permission needed",
-          message: "Allow camera access to record a video.",
-        },
+        PERMISSION_COPY.cameraVideo,
         { defer: true },
       );
       if (!result) return;

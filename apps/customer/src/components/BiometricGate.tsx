@@ -36,7 +36,7 @@ const BACKGROUND_GRACE_MS = 60_000; // 60 seconds
 type GateStatus = "checking" | "locked" | "authenticating" | "unlocked" | "unavailable";
 
 export function BiometricGate({ children }: { children: React.ReactNode }) {
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const [status, setStatus] = useState<GateStatus>("checking");
   const lastBackgroundedAtRef = useRef<number | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -73,6 +73,11 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (Platform.OS === "web") {
+      setStatus("unlocked");
+      return;
+    }
+
+    if (!session) {
       setStatus("unlocked");
       return;
     }
@@ -126,7 +131,7 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
       cancelled = true;
       sub.remove();
     };
-  }, [promptUnlock]);
+  }, [promptUnlock, session?.user?.id]);
 
   if (status === "checking") {
     return (

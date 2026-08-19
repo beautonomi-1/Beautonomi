@@ -7,6 +7,8 @@ import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
+import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
+import { useSafetyStackBack } from "@/lib/customer-safety-navigation";
 import {
   SUPPORT_TICKET_DEFAULT_CATEGORY,
   SUPPORT_TICKET_PRIORITIES,
@@ -31,6 +33,7 @@ export default function NewSupportTicketScreen() {
   const { t } = useTranslation();
   const sn = useCallback((key: string) => t(`customer.mobile.screens.supportTicketsNew.${key}`), [t]);
   const router = useRouter();
+  const handleBack = useSafetyStackBack();
   const params = useLocalSearchParams<{ category?: string; booking_id?: string }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -76,7 +79,7 @@ export default function NewSupportTicketScreen() {
       const ticketNumber = res.data?.ticket?.ticket_number;
       if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(sn("submittedTitle"), sn("submittedBody"), [{ text: t("common.ok"), onPress: () => router.back() }]);
+      Alert.alert(sn("submittedTitle"), sn("submittedBody"), [{ text: t("common.ok"), onPress: handleBack }]);
     } catch (e) {
       Alert.alert(
         t("customer.mobile.screens.authLogin.errorTitle"),
@@ -99,6 +102,10 @@ export default function NewSupportTicketScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <TrustScreenShell
+          title={sn("screenTitle")}
+          breadcrumbSegment={sn("breadcrumb")}
+        />
         <View style={styles.fieldGap}>
           <Text style={styles.label}>What is this about?</Text>
           <View style={styles.contextRow}>

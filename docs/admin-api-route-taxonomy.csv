@@ -428,6 +428,7 @@ path,class,note
 /api/admin/terminal-merchant-applications/[id]/status,T,"uses resolveAdminApiTenantId"
 /api/admin/terminal-merchant-applications,T,"uses resolveAdminApiTenantId"
 /api/admin/travel-fees,T,"review: likely tenant-scoped ops"
+/api/admin/user-blocks,T,"uses resolveAdminApiTenantId"
 /api/admin/user-reports/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/user-reports,U,"scoped"
 /api/admin/user-reports/summary,T,"uses resolveAdminApiTenantId"

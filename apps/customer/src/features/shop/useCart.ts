@@ -7,14 +7,7 @@ import { getRuntimeMarketHost } from "@/config/public-env";
 import { CART_CACHE_KEY_PREFIX, LEGACY_CART_CACHE_KEY } from "@/lib/cache-keys";
 import { emitCartUpdated, onCartUpdated } from "@/lib/cart-events";
 import {
-  loadGuestCartLines,
-  addOrIncrementGuestLine,
-  updateGuestLineQuantity,
-  removeGuestLine,
-  clearGuestCart,
   mergeGuestCartIntoServer,
-  guestLineToCartItem,
-  type GuestCartLine,
 } from "@/lib/guest-cart";
 import type { CartItem } from "@/types/api";
 
@@ -56,8 +49,7 @@ export function useCart() {
     : LEGACY_CART_CACHE_KEY;
 
   const reloadGuestCart = useCallback(async () => {
-    const lines = await loadGuestCartLines();
-    setItems(lines.map((l) => guestLineToCartItem(l)));
+    setItems([]);
     setLoading(false);
     setError(null);
     setFromCache(false);
@@ -147,24 +139,7 @@ export function useCart() {
       if (authLoading) return { error: "Please wait…" };
 
       if (!user) {
-        if (!guestSnapshot) {
-          return { error: "Sign in to add this item, or open the product page to continue as a guest." };
-        }
-        const line: GuestCartLine = {
-          product_id: productId,
-          product_variant_id: productVariantId ?? null,
-          quantity,
-          name: guestSnapshot.name,
-          retail_price: guestSnapshot.retail_price,
-          currency: guestSnapshot.currency,
-          image_url: guestSnapshot.image_url ?? null,
-          provider_id: guestSnapshot.provider_id,
-          provider_name: guestSnapshot.provider_name,
-          provider_slug: guestSnapshot.provider_slug,
-        };
-        await addOrIncrementGuestLine(line);
-        await reloadGuestCart();
-        return { error: null };
+        return { error: "Sign in to add items to your cart." };
       }
 
       const body: Record<string, unknown> = { product_id: productId, quantity };
@@ -182,12 +157,7 @@ export function useCart() {
     async (itemId: string, quantity: number) => {
       if (quantity < 1) return { error: "Invalid quantity" };
       if (!user) {
-        const { parseSyntheticGuestCartItemId } = await import("@/lib/guest-cart");
-        const parsed = parseSyntheticGuestCartItemId(itemId);
-        if (!parsed) return { error: "Invalid item" };
-        await updateGuestLineQuantity(parsed.product_id, parsed.variant_id, quantity);
-        await reloadGuestCart();
-        return { error: null };
+        return { error: "Sign in to update your cart." };
       }
       let rollback: CartItem[] | null = null;
       setItems((curr) => {
@@ -210,12 +180,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       if (!user) {
-        const { parseSyntheticGuestCartItemId } = await import("@/lib/guest-cart");
-        const parsed = parseSyntheticGuestCartItemId(itemId);
-        if (!parsed) return { error: "Invalid item" };
-        await removeGuestLine(parsed.product_id, parsed.variant_id);
-        await reloadGuestCart();
-        return { error: null };
+        return { error: "Sign in to update your cart." };
       }
       const res = await api.delete(`/api/me/cart/${itemId}`);
       if (res.error) return { error: getApiErrorMessage(res.error, "Could not remove item") };
@@ -228,9 +193,7 @@ export function useCart() {
 
   const clearCart = useCallback(async () => {
     if (!user) {
-      await clearGuestCart();
-      await reloadGuestCart();
-      return { error: null };
+      return { error: "Sign in to update your cart." };
     }
     const res = await api.delete("/api/me/cart");
     if (res.error) return { error: getApiErrorMessage(res.error, "Could not clear cart") };
@@ -287,6 +250,5 @@ export function useCart() {
     updateQuantity,
     removeItem,
     clearCart,
-    isGuestCart: !user,
   };
 }

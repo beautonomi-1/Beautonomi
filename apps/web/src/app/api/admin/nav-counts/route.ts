@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       bookingsPendingResult,
       userReportsResult,
       contentReportsResult,
+      userBlocksResult,
       productOrdersPendingResult,
       productReturnsResult,
       providerSubsPastDueResult,
@@ -131,6 +132,10 @@ export async function GET(request: NextRequest) {
         .from("content_reports")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending")
+        .eq("tenant_id", tenantId),
+      supabase
+        .from("user_blocks")
+        .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId),
       tenantProviderIds.length > 0
         ? supabase
@@ -279,6 +284,7 @@ export async function GET(request: NextRequest) {
       "/admin/bookings": bookingsPendingResult.count ?? 0,
       "/admin/user-reports": userReportsResult.count ?? 0,
       "/admin/content-reports": contentReportsResult.count ?? 0,
+      "/admin/user-blocks": userBlocksResult.count ?? 0,
       "/admin/ecommerce/orders": productOrdersPendingResult.count ?? 0,
       "/admin/ecommerce/returns": productReturnsResult.count ?? 0,
       "/admin/provider-subscriptions": providerSubsPastDueResult.count ?? 0,

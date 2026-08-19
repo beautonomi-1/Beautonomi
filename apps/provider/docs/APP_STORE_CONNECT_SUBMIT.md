@@ -1,4 +1,4 @@
-# Provider iOS — App Store Connect submission checklist (v1.0.84)
+# Provider iOS — App Store Connect submission checklist (v1.0.85)
 
 Use this checklist when resubmitting **Beautonomi Provider** (`com.beautonomi.partner`) after App Review rejection. Complete every item before clicking **Submit for Review**.
 
@@ -63,7 +63,7 @@ Create **13 products** matching [`Products.storekit`](../Products.storekit):
 
 **Attach to version:**
 
-1. Open the **1.0.84** version page
+1. Open the **1.0.85** version page
 2. **In-App Purchases and Subscriptions** → add all 13 products
 3. Submit IAPs **with** the new binary (first-time IAPs cannot be submitted alone)
 
@@ -114,7 +114,7 @@ If not tracking on iOS, update label to **No tracking** and remove Device ID tra
 
 ## 6. Build & submit
 
-**Build 1.0.84 (2026-08-18):** https://expo.dev/accounts/beautonomi/projects/provider/builds/8976b02c-1c07-4e02-8c99-d6c190138fc1
+**Build 1.0.85:** run production iOS build after merge (see commands below).
 
 ```bash
 cd apps/provider
@@ -122,7 +122,7 @@ eas build --profile production --platform ios
 eas submit --profile production --platform ios --latest
 ```
 
-On the version page: select build **1.0.84**, attach all IAPs, paste Review Notes below, **Submit for Review**.
+On the version page: select build **1.0.85**, attach all IAPs, paste Review Notes below, **Submit for Review**.
 
 ---
 
@@ -138,8 +138,13 @@ Fresh install (delete app first). Use Sandbox Apple ID for IAP.
 | 4 | Demo login email `buntulink@gmail.com` + password or OTP `246810` | ☐ |
 | 5 | Sign in with Apple — no name/email re-entry in onboarding Step 2 | ☐ |
 | 6 | **More → Trust & Safety → Age assurance** | ☐ |
-| 7 | **More → Subscription** → Growth Monthly → StoreKit sheet | ☐ |
-| 8 | Terms + Privacy links on subscription screen | ☐ |
+| 7 | **More → Trust & Safety → Emergency contact** (save → hub shows masked phone) | ☐ |
+| 8 | **More → Trust & Safety → Content & safety** (back works; toggles persist) | ☐ |
+| 9 | **More → Trust & Safety → Blocked users** | ☐ |
+| 10 | **More → Trust & Safety → Report a user** (support ticket preset) | ☐ |
+| 11 | **More → Buy ads → Failed filter → Try payment again + Billing link** | ☐ |
+| 12 | **More → Subscription** → Growth Monthly → StoreKit sheet | ☐ |
+| 13 | Terms + Privacy links on subscription screen | ☐ |
 
 ---
 
@@ -174,6 +179,11 @@ First-session flow covers notifications only (Continue buttons). Photo library a
 
 AGE ASSURANCE (Guideline 2.3.6)
 More → Trust & Safety → Age assurance (edit date of birth).
+Trust & Safety also includes Emergency contact, Content & safety controls, Blocked users, and Report user (support ticket).
+
+PAID ADS vs BILLING
+More → Buy ads: each campaign is paid at checkout. Saved cards for subscriptions/invoices: More → Billing (Settings → Billing).
+
 Age Suitability: https://www.beautonomi.com/age-suitability
 
 SUBSCRIPTION LEGAL (Guideline 3.1.2)

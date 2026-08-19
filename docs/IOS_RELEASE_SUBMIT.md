@@ -11,7 +11,24 @@ Use this when you want to ship new builds to TestFlight / App Store and Google P
 - **Age rating:** Before each submission, confirm answers against [APP_STORE_AGE_RATING.md](./APP_STORE_AGE_RATING.md) (parental controls, age assurance, UGC, social, messaging, medical/wellness frequency, and the public **Age Suitability URL** `https://www.beautonomi.com/age-suitability`). Social enforcement defaults to audit-only (`log` mode) until flipped in Admin feature flags — see the rollout section in that doc.
 - **After native changes:** Run a fresh **EAS production iOS build** so `prebuild` picks up plugin changes (`npx expo prebuild` locally is optional for verification).
 
-## Submit both apps, both platforms (iOS + Android)
+## App Review notes (paste into App Store Connect)
+
+### Customer app (`com.beautonomi`)
+
+- **Guest browse (5.1.1(v)):** Home, Search, Shop, Explore, partner profiles, and product pages work without an account. Book, checkout, cart, messages, and account settings require sign-in. Login and sign-up include **Browse without an account**.
+- **App Tracking Transparency (2.1):** On first launch after install, the ATT prompt appears after the splash screen, before Singular initializes. To record: delete the app, reinstall from TestFlight, open once, and screen-record the system **Allow Beautonomi to track your activity across other companies' apps and websites?** dialog.
+- **Parental controls / age rating:** Profile tab → **Safety hub** → **Content & safety controls**, or **Account settings** → **Content & safety controls**. Restricted mode, social feed, messaging, and related toggles are there; device auth can gate changes.
+- **Sign in with Apple:** Available on login/sign-up; Apple identity skips redundant name/email collection in onboarding.
+
+### Provider app (`com.beautonomi.partner`)
+
+- **Demo login (2.1(a)):** Email `buntulink@gmail.com`, phone `+27790624995`, OTP **`246810`** (fixed app-review code via `/api/auth/app-review/verify-otp`).
+- **App Tracking Transparency:** Same ATT-before-Singular flow as the customer app on iOS.
+- **Camera permission CTAs:** QR/barcode scanners auto-request camera access when opened; pre-grant UI uses **Continue**, not custom “Allow” copy.
+
+See also [APP_STORE_AGE_RATING.md](./APP_STORE_AGE_RATING.md) for age-rating declarations and expanded customer review notes.
+
+---
 
 After builds have finished on [expo.dev](https://expo.dev), from the **repo root** run:
 

@@ -341,3 +341,29 @@ export function trackSupportTicketCreated(ticketNumber?: string) {
 export function trackSupportTicketReply(ticketId: string) {
   track("customer_support_ticket_reply", { ticket_id: ticketId });
 }
+
+// ── Trust & Safety ───────────────────────────────────────────────────────────
+
+export function trackSafetyHubView() {
+  track("safety_hub_view", { portal: "customer" });
+}
+
+export function trackSafetyHubNav(destination: string, from: "hub" | "settings") {
+  track("safety_hub_nav", { destination, from, portal: "customer" });
+}
+
+export function trackEmergencyContactSaved() {
+  track("emergency_contact_saved", { portal: "customer" });
+}
+
+export function trackContentSafetyToggle(key: string, value: boolean) {
+  track("content_safety_toggle", { key, value, portal: "customer" });
+}
+
+export function trackContentReportSubmitted(targetType: string) {
+  track("content_report_submitted", { target_type: targetType, portal: "customer" });
+}
+
+export function trackUserReportSubmitted(reportType: string) {
+  track("user_report_submitted", { report_type: reportType, portal: "customer" });
+}
