@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       bookingsPendingResult,
       userReportsResult,
       contentReportsResult,
+      contentReportsSlaOverdueResult,
       userBlocksResult,
       productOrdersPendingResult,
       productReturnsResult,
@@ -133,6 +134,17 @@ export async function GET(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("status", "pending")
         .eq("tenant_id", tenantId),
+      (async () => {
+        const slaCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count, error } = await supabase
+          .from("content_reports")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+          .eq("tenant_id", tenantId)
+          .lt("created_at", slaCutoff);
+        if (error) return { count: 0 };
+        return { count: count ?? 0 };
+      })(),
       supabase
         .from("user_blocks")
         .select("id", { count: "exact", head: true })
@@ -284,6 +296,9 @@ export async function GET(request: NextRequest) {
       "/admin/bookings": bookingsPendingResult.count ?? 0,
       "/admin/user-reports": userReportsResult.count ?? 0,
       "/admin/content-reports": contentReportsResult.count ?? 0,
+      "/admin/content-reports/sla-overdue": contentReportsSlaOverdueResult.count ?? 0,
+      "/admin/trust-safety-ops":
+        (userReportsResult.count ?? 0) + (contentReportsResult.count ?? 0),
       "/admin/user-blocks": userBlocksResult.count ?? 0,
       "/admin/ecommerce/orders": productOrdersPendingResult.count ?? 0,
       "/admin/ecommerce/returns": productReturnsResult.count ?? 0,

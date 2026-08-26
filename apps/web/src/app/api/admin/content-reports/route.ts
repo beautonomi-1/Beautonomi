@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { resolveContentAuthorUserId } from "@/lib/safety/moderation-actions";
 
 async function fetchTargetPreview(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -67,7 +68,7 @@ async function fetchTargetPreview(
 /**
  * GET /api/admin/content-reports
  * List content reports (superadmin). Mirrors user-reports list shape.
- * Query: status=pending|resolved|dismissed, target_type, limit, offset
+ * Query: status=pending|resolved|dismissed, target_type, sla_overdue=1, limit, offset
  */
 export async function GET(request: NextRequest) {
   try {
@@ -78,6 +79,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const targetType = searchParams.get("target_type");
+    const slaOverdue =
+      searchParams.get("sla_overdue") === "1" ||
+      searchParams.get("sla_overdue") === "true";
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
@@ -91,7 +95,10 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (status && ["pending", "resolved", "dismissed"].includes(status)) {
+    if (slaOverdue) {
+      const slaCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      query = query.eq("status", "pending").lt("created_at", slaCutoff);
+    } else if (status && ["pending", "resolved", "dismissed"].includes(status)) {
       query = query.eq("status", status);
     }
     if (targetType) {
@@ -119,20 +126,34 @@ export async function GET(request: NextRequest) {
     };
     type UserMapRow = { id: string; full_name: string | null; email: string };
 
-    const reporterIds = [
-      ...new Set(
-        (rows || [])
+    const authorIdByReport = new Map<string, string>();
+    await Promise.all(
+      (rows || []).map(async (r: ReportRow) => {
+        if (!r.id || !r.target_type || !r.target_id) return;
+        const authorId = await resolveContentAuthorUserId(
+          supabase,
+          r.target_type as Parameters<typeof resolveContentAuthorUserId>[1],
+          r.target_id,
+        );
+        if (authorId) authorIdByReport.set(r.id, authorId);
+      }),
+    );
+
+    const relatedUserIds = [
+      ...new Set([
+        ...(rows || [])
           .map((r: ReportRow) => r.reporter_id)
-          .filter(Boolean) as string[]
-      ),
+          .filter(Boolean) as string[],
+        ...authorIdByReport.values(),
+      ]),
     ];
 
     let userMap: Record<string, UserMapRow> = {};
-    if (reporterIds.length > 0) {
+    if (relatedUserIds.length > 0) {
       const { data: users } = await supabase
         .from("users")
         .select("id, full_name, email")
-        .in("id", reporterIds);
+        .in("id", relatedUserIds);
       userMap = (users || []).reduce<Record<string, UserMapRow>>(
         (acc, u: UserMapRow) => {
           acc[u.id] = u;
@@ -143,13 +164,17 @@ export async function GET(request: NextRequest) {
     }
 
     const reports = await Promise.all(
-      (rows || []).map(async (r: ReportRow) => ({
-        ...r,
-        reporter: userMap[r.reporter_id ?? ""] ?? null,
-        target_preview: r.target_type && r.target_id
-          ? await fetchTargetPreview(supabase, r.target_type, r.target_id)
-          : null,
-      })),
+      (rows || []).map(async (r: ReportRow) => {
+        const authorUserId = authorIdByReport.get(r.id) ?? null;
+        return {
+          ...r,
+          reporter: userMap[r.reporter_id ?? ""] ?? null,
+          content_author: authorUserId ? userMap[authorUserId] ?? { id: authorUserId } : null,
+          target_preview: r.target_type && r.target_id
+            ? await fetchTargetPreview(supabase, r.target_type, r.target_id)
+            : null,
+        };
+      }),
     );
 
     return successResponse({

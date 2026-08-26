@@ -153,6 +153,12 @@ type UserDetail = Record<string, unknown> & {
     identity_verified?: boolean;
     identity_verification_status?: string | null;
   };
+  legal_acceptance?: {
+    partner_eula_version?: string | null;
+    partner_eula_accepted_at?: string | null;
+    customer_eula_version?: string | null;
+    customer_eula_accepted_at?: string | null;
+  };
 };
 
 function str(v: unknown): string {
@@ -645,6 +651,39 @@ export function UserDetailPage() {
               {identityResetPost.isPending ? "Resetting…" : "Reset identity verification"}
             </button>
           </div>
+        </AdminPanel>
+
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Legal acceptance</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            App EULA acceptance recorded in profile privacy settings.
+          </p>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-gray-500">Partner EULA version</dt>
+              <dd>{str(data.legal_acceptance?.partner_eula_version) || "Not accepted"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Partner EULA accepted</dt>
+              <dd>
+                {data.legal_acceptance?.partner_eula_accepted_at
+                  ? new Date(String(data.legal_acceptance.partner_eula_accepted_at)).toLocaleString()
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Customer EULA version</dt>
+              <dd>{str(data.legal_acceptance?.customer_eula_version) || "Not accepted"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Customer EULA accepted</dt>
+              <dd>
+                {data.legal_acceptance?.customer_eula_accepted_at
+                  ? new Date(String(data.legal_acceptance.customer_eula_accepted_at)).toLocaleString()
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
         </AdminPanel>
 
         <AdminPanel>

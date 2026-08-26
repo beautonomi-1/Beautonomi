@@ -746,7 +746,7 @@
       "savedAddressesDesc": "Ikhaya, umsebenzi namanye amakheli",
       "privacySharingTitle": "Ubumfihlo nokwabelana",
       "privacySharingDesc": "Izintandokazi zedatha, ukubonakala nokususa i-akhawunti",
-      "contentSafetyTitle": "Izilawuli zokuqukethwe nokuphepha",
+      "contentSafetyTitle": "Izilawuli zabazali — okuqukethwe nokuphepha",
       "contentSafetyDesc": "Okuphakelayo komphakathi, imilayezo nezilungiselelo zobudala",
       "bookingsMenuTitle": "Ukubhukha",
       "bookingsMenuDesc": "Okuzayo, okwedlule nokukhanseliwe",
@@ -1879,7 +1879,7 @@
           "a11y": "Ukuphepha - thola usizo"
         },
         "safetyHub": {
-          "title": "Ukuphepha nokwethembeka",
+          "title": "Ukuphepha nokulawula kwabazali",
           "helpCardBody": "Isiqondiso sezimo eziphuthumayo, ukubika, nokulawula kwakho",
           "emergencyNoticeTitle": "Esimweni esiphuthumayo",
           "emergencyNoticeBody": "I-Beautonomi ayiyona insiza yezimo eziphuthumayo. Shayela u-112 (iNingizimu Afrika) noma inombolo yakho yezimo eziphuthumayo.",
@@ -1891,6 +1891,9 @@
           "contactTrustSafetyHint": "Ivula itikithi lokusekela lethimba lezokuphepha",
           "reportUser": "Bika ukuhlukunyezwa noma umsebenzisi",
           "reportUserHint": "Chaza okwenzekile — siphendula phakathi kwamahora angu-24–48",
+          "reportContent": "Bika okuqukethwe",
+          "reportContentHint": "Maka okuthunyelwe kwe-Explore, amazwana noma imilayezo kusuka kumenyu yawo (⋯)",
+          "openExplorePosts": "Vula okuthunyelwe kwe-Explore",
           "yourProfileTitle": "Iphrofayili yakho yokuphepha",
           "emergencyContact": "Oxhumana naye esimweni esiphuthumayo",
           "emergencyContactHint": "Engeza oxhumana naye esimweni esiphuthumayo",

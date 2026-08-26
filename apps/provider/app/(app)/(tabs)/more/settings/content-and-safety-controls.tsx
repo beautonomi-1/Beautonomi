@@ -100,7 +100,7 @@ export default function ContentAndSafetyControlsScreen() {
   );
 
   const screenTitle = t("customer.accountSettings.contentSafetyTitle");
-  const screenDesc = t("customer.accountSettings.contentSafetyDesc");
+  const screenDesc = `${t("customer.accountSettings.contentSafetyDesc")} ${cs("reportingHint")}`.trim();
   const breadcrumbSegment = t("provider.mobile.screens.contentSafety.breadcrumb", {
     defaultValue: "Content controls",
   });

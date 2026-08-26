@@ -31,7 +31,7 @@ import { trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
-import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { webPartnerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import {
   applyPendingSignupPreferences,
@@ -544,8 +544,8 @@ export default function SignupScreen() {
               </View>
               <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
                 I agree to the{" "}
-                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}>
-                  Terms of Service
+                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPartnerEulaUrl()).catch(() => {})}>
+                  Partner EULA
                 </Text>{" "}
                 and{" "}
                 <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}>

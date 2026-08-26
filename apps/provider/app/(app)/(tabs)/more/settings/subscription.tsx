@@ -49,7 +49,7 @@ import { useAppleIapProducts } from "@/lib/iap/useAppleIapProducts";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
-import { pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
+import { pushWebPrivacyPolicy, pushWebPartnerEula } from "@/lib/legal-web";
 
 const ACCENT = "#FF0077";
 
@@ -903,6 +903,28 @@ export default function SubscriptionScreen() {
         <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
           Marketing lines on the website (e.g. hero text on /pricing) are edited in Admin → Content, not here.
         </Text>
+        {shouldUseAppleIap() ? (
+          <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
+            Subscriptions on iOS are auto-renewable In-App Purchases billed through Apple.
+          </Text>
+        ) : null}
+        <View style={twStyle("mt-3 flex-row flex-wrap items-center gap-x-3 gap-y-2")}>
+          <TouchableOpacity
+            onPress={() => pushWebPartnerEula(router)}
+            accessibilityRole="link"
+            accessibilityLabel="Terms of Use (EULA)"
+          >
+            <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Terms of Use (EULA)</Text>
+          </TouchableOpacity>
+          <Text style={twStyle("text-sm text-gray-400")}>·</Text>
+          <TouchableOpacity
+            onPress={() => pushWebPrivacyPolicy(router)}
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy"
+          >
+            <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* §Provider-paystack-audit 2026-05: post-payment outcome card. Reads
@@ -1253,23 +1275,6 @@ export default function SubscriptionScreen() {
             with Redeem App Store offer code. Any unused portion of a free trial, if offered, is
             forfeited when you purchase.
           </Text>
-          <View style={twStyle("mt-3 flex-row flex-wrap items-center gap-x-3 gap-y-2")}>
-            <TouchableOpacity
-              onPress={() => pushWebTermsOfService(router)}
-              accessibilityRole="link"
-              accessibilityLabel="Terms of Use"
-            >
-              <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Terms of Use</Text>
-            </TouchableOpacity>
-            <Text style={twStyle("text-sm text-gray-400")}>·</Text>
-            <TouchableOpacity
-              onPress={() => pushWebPrivacyPolicy(router)}
-              accessibilityRole="link"
-              accessibilityLabel="Privacy Policy"
-            >
-              <Text style={twStyle("text-sm font-semibold text-gray-900 underline")}>Privacy Policy</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       ) : null}
 

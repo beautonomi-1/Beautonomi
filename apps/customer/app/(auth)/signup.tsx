@@ -10,7 +10,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
-import { webCookiePolicyUrl, webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { webCookiePolicyUrl, webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
@@ -272,7 +272,7 @@ export default function SignupScreen() {
     if (password !== confirmPassword) newErrors.confirmPassword = "Passwords don't match";
     if (!agreedToTerms) {
       newErrors.terms =
-        "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in).";
+        "Confirm you agree to the End User License Agreement, Privacy Policy, and Cookie Policy (including product analytics while signed in).";
     }
     if (phone.trim()) {
       const pErr = validatePhone(phone, countryCode);
@@ -768,9 +768,9 @@ export default function SignupScreen() {
             I have read and agree to the{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
+              onPress={() => Linking.openURL(webCustomerEulaUrl()).catch(() => {})}
             >
-              Terms of Service
+              End User License Agreement
             </Text>{" "}
             and{" "}
             <Text
@@ -1185,6 +1185,17 @@ export default function SignupScreen() {
         >
           <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#6B7280" }}>
             Browse without an account
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push("/(auth)/safety-and-age" as never)}
+          style={{ marginTop: 4, paddingVertical: 8 }}
+          accessibilityRole="link"
+          accessibilityLabel={t("customer.mobile.screens.authSafetyAndAge.linkLabel")}
+        >
+          <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: PRIMARY }}>
+            {t("customer.mobile.screens.authSafetyAndAge.linkLabel")}
           </Text>
         </TouchableOpacity>
         </View>

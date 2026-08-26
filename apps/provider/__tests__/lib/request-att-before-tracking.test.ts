@@ -1,10 +1,13 @@
-import { InteractionManager, Platform } from "react-native";
+import { InteractionManager, Platform, AppState } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
   requestTrackingPermissionsAsync,
 } from "expo-tracking-transparency";
-import { requestAttBeforeTracking } from "@/lib/tracking/request-att-before-tracking";
+import {
+  requestAttBeforeTracking,
+  waitForAttPromptSurface,
+} from "@/lib/tracking/request-att-before-tracking";
 
 jest.mock("expo-tracking-transparency", () => ({
   PermissionStatus: {
@@ -26,7 +29,9 @@ describe("requestAttBeforeTracking (provider)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+    Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
     jest.spyOn(InteractionManager, "runAfterInteractions").mockImplementation((cb: () => void) => {
       cb();
       return { cancel: jest.fn() } as never;
@@ -38,6 +43,7 @@ describe("requestAttBeforeTracking (provider)", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: originalPlatform });
   });
 
@@ -49,7 +55,15 @@ describe("requestAttBeforeTracking (provider)", () => {
       status: PermissionStatus.GRANTED,
     });
 
-    await expect(requestAttBeforeTracking()).resolves.toBe(PermissionStatus.GRANTED);
+    const resultPromise = requestAttBeforeTracking();
+    await jest.runAllTimersAsync();
+    await expect(resultPromise).resolves.toBe(PermissionStatus.GRANTED);
     expect(requestTrackingPermissionsAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("waitForAttPromptSurface resolves on active AppState", async () => {
+    const p = waitForAttPromptSurface();
+    await jest.runAllTimersAsync();
+    await p;
   });
 });

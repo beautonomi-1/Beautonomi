@@ -15,6 +15,10 @@ export function webTermsOfServiceUrl(): string {
   return `${webOrigin()}/terms-and-condition`;
 }
 
+export function webPartnerEulaUrl(): string {
+  return `${webOrigin()}/provider/eula`;
+}
+
 export function webCookiePolicyUrl(): string {
   return `${webOrigin()}/cookie-policy`;
 }
@@ -34,6 +38,10 @@ export function pushWebPrivacyPolicy(router: Router): void {
 
 export function pushWebTermsOfService(router: Router): void {
   pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Use");
+}
+
+export function pushWebPartnerEula(router: Router): void {
+  pushInAppBrowser(router, webPartnerEulaUrl(), "Partner EULA");
 }
 
 export function pushWebAgeSuitability(router: Router): void {

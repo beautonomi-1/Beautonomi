@@ -4,7 +4,7 @@
  * Request iOS App Tracking Transparency before any SDK that may read IDFA (Singular).
  * No-op on Android/web. Only prompts when status is undetermined.
  */
-import { InteractionManager, Platform } from "react-native";
+import { AppState, InteractionManager, Platform } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
@@ -16,21 +16,60 @@ export type AttRequestResult = PermissionStatus | "unavailable";
 
 let inflight: Promise<AttRequestResult> | null = null;
 
-function afterSplashSettled(): Promise<void> {
+let attBootstrapResolve: (() => void) | null = null;
+
+/** Resolves when ATT flow completes (or is skipped on non-iOS). Gate analytics on this. */
+export const attBootstrapPromise: Promise<void> = new Promise((resolve) => {
+  attBootstrapResolve = resolve;
+});
+
+export function markAttBootstrapComplete(): void {
+  attBootstrapResolve?.();
+  attBootstrapResolve = null;
+}
+
+function waitForAppStateActive(): Promise<void> {
+  if (AppState.currentState === "active") return Promise.resolve();
   return new Promise((resolve) => {
-    InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => resolve());
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        sub.remove();
+        resolve();
+      }
     });
   });
 }
 
+function afterInteractionsAndFrames(): Promise<void> {
+  return new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+  });
+}
+
+const ATT_SURFACE_DELAY_MS = __DEV__ ? 300 : 500;
+
+/** Wait until splash is hidden and a visible UI surface exists (iPad-safe). */
+export async function waitForAttPromptSurface(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  await waitForAppStateActive();
+  await afterInteractionsAndFrames();
+  await new Promise((r) => setTimeout(r, ATT_SURFACE_DELAY_MS));
+}
+
 export async function requestAttBeforeTracking(): Promise<AttRequestResult> {
-  if (Platform.OS !== "ios") return "unavailable";
+  if (Platform.OS !== "ios") {
+    markAttBootstrapComplete();
+    return "unavailable";
+  }
 
   if (!inflight) {
     inflight = (async () => {
       try {
-        await afterSplashSettled();
+        await waitForAttPromptSurface();
         const current = await getTrackingPermissionsAsync();
         if (current.status === PermissionStatus.UNDETERMINED) {
           const { status } = await requestTrackingPermissionsAsync();
@@ -52,6 +91,7 @@ export async function requestAttBeforeTracking(): Promise<AttRequestResult> {
         return "unavailable";
       } finally {
         inflight = null;
+        markAttBootstrapComplete();
       }
     })();
   }

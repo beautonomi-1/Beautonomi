@@ -392,10 +392,10 @@
           "dobBannerTitle": "Add your date of birth",
           "dobBannerBody": "Age assurance uses your date of birth. Under 13 cannot use the app; 13–17 can use it; payouts require 18+.",
           "dobBannerA11y": "Add your date of birth for age assurance",
-          "ageAssuranceLabel": "Age assurance"
+          "ageAssuranceLabel": "Age assurance & date of birth"
         },
         "ageAssurance": {
-          "title": "Age assurance",
+          "title": "Age assurance & date of birth",
           "breadcrumb": "Age assurance",
           "intro": "Beautonomi uses your date of birth to apply age-appropriate features, parental controls, and verification requirements. Your current age band is shown below.",
           "yourAgeBand": "Your age band",
@@ -913,7 +913,7 @@
       "savedAddressesDesc": "Home, work and other addresses",
       "privacySharingTitle": "Privacy & sharing",
       "privacySharingDesc": "Data preferences, visibility & delete account",
-      "contentSafetyTitle": "Content & safety controls",
+      "contentSafetyTitle": "Parental controls — content & safety",
       "contentSafetyDesc": "Social feed, messaging & age-appropriate settings",
       "bookingsMenuTitle": "Bookings",
       "bookingsMenuDesc": "Upcoming, past and cancelled",
@@ -1025,7 +1025,7 @@
     "safety": {
       "socialRestricted": {
         "title": "Action not available",
-        "body": "This action isn't available with your current age or safety settings. Review options in Content & safety controls or the Safety hub.",
+        "body": "This action isn't available with your current age or safety settings. Review options in Parental controls — content & safety or Safety & parental controls.",
         "lockedBody": "This setting is managed for your age group and can't be changed here.",
         "openControls": "Open safety controls"
       }
@@ -1639,6 +1639,20 @@
           "sendResetLinkA11y": "Send reset link",
           "backToLoginA11y": "Back to login"
         },
+        "authSafetyAndAge": {
+          "linkLabel": "Safety & parental controls",
+          "title": "Safety, parental controls & age assurance",
+          "intro": "Beautonomi offers parental controls and age assurance so families can choose how social features, messaging, and content appear in the app.",
+          "minAgeNote": "You must be at least 13 to use social features such as Explore, comments, likes, and messaging. Age is verified using your date of birth after sign-in.",
+          "signInRequiredTitle": "Sign in to manage controls",
+          "signInRequiredBody": "Full safety and parental controls — including restricted mode, feed visibility, messaging limits, and blocked users — are available after you create an account or sign in.",
+          "viewPolicyCta": "View age suitability policy",
+          "viewPolicyA11y": "View age suitability policy on beautonomi.com",
+          "signInCta": "Sign in to manage controls",
+          "signInCtaA11y": "Sign in to manage safety and parental controls",
+          "postLoginTitle": "After sign-in you can manage",
+          "postLoginFootnote": "Open Profile → Safety & parental controls once you are signed in."
+        },
         "privacySharing": {
           "updateErrorBody": "Could not update setting. Please try again.",
           "loadFailed": "Failed to load privacy settings"
@@ -1652,6 +1666,7 @@
           "authRequired": "Unlock settings",
           "ageBandNote": "Some options are managed automatically for accounts aged 13–17 to help keep your experience age-appropriate.",
           "linkAgeSuitability": "Learn about age suitability & parental guidance",
+          "reportingHint": "To report a post, comment, or message, open it and choose Report from the menu (⋯). Reports go to our trust & safety team.",
           "toggle_restricted_mode_label": "Restricted mode",
           "toggle_restricted_mode_desc": "Limit social features and user-generated content across the app",
           "toggle_hide_social_feed_label": "Hide social feed",
@@ -2110,12 +2125,12 @@
           "doneTitle": "Help requested",
           "doneBody": "Help has been requested. Our team will reach out shortly.",
           "doneBodyWithEvent": "Reference {{eventId}}… — our team will follow up. Keep this reference if you contact support.",
-          "openSafetyHub": "Safety hub",
+          "openSafetyHub": "Safety & parental controls",
           "buttonLabel": "Safety / Get help",
           "a11y": "Safety - get help"
         },
         "safetyHub": {
-          "title": "Safety & trust",
+          "title": "Safety & parental controls",
           "breadcrumbHub": "Trust & Safety",
           "helpCardBody": "Emergency guidance, reporting, and your safety controls",
           "emergencyContactNotSet": "Not set — add for safety alerts",
@@ -2128,7 +2143,10 @@
           "dobBannerTitle": "Add your date of birth",
           "dobBannerBody": "Age assurance uses your date of birth. Under 13 cannot use the app; 13–17 can use it with teen safety defaults.",
           "dobBannerA11y": "Add your date of birth for age assurance",
-          "ageAssuranceLabel": "Age assurance",
+          "ageAssuranceLabel": "Age assurance & date of birth",
+          "reportContent": "Report content",
+          "reportContentHint": "Flag Explore posts, comments, or messages from their menu (⋯)",
+          "openExplorePosts": "Open Explore posts",
           "ageSuitabilityHint": "Read our age suitability policy online",
           "emergencyNoticeTitle": "In an emergency",
           "emergencyNoticeBody": "Beautonomi is not an emergency service. In immediate danger, call 112 (South Africa) or your local emergency number first.",
@@ -2157,7 +2175,7 @@
           "privacy": "Privacy policy"
         },
         "ageAssurance": {
-          "title": "Age assurance",
+          "title": "Age assurance & date of birth",
           "breadcrumb": "Age assurance",
           "intro": "Beautonomi uses your date of birth to apply age-appropriate features, parental controls, and verification requirements. Your current age band is shown below.",
           "yourAgeBand": "Your age band",
@@ -2245,7 +2263,7 @@
           "unblockTitle": "Unblock user?",
           "unblockBody": "{{name}} will be able to message you again and their content may appear in your feed.",
           "unblockAction": "Unblock",
-          "safetyHubLink": "Safety & trust hub"
+          "safetyHubLink": "Safety & parental controls"
         },
         "profileDetails": {
           "loadFailed": "Failed to load",

@@ -13,6 +13,7 @@ import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { setAnalyticsInstance } from "@/lib/analytics";
 import { useAuth } from "./AuthProvider";
+import { attBootstrapPromise } from "@/lib/tracking/request-att-before-tracking";
 
 type AnalyticsClient = NonNullable<Awaited<ReturnType<typeof initAnalytics>>>;
 
@@ -28,6 +29,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       void (async () => {
         try {
+          await attBootstrapPromise;
+          if (cancelled) return;
+
           if (user) {
             const consentRes = await api.get<{ analytics_consent?: boolean }>(
               "/api/me/analytics/consent"
@@ -151,6 +155,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
         /* ignore */
       });
     const subscription = Linking.addEventListener("url", async ({ url }) => {
+      await attBootstrapPromise;
       await captureMarketingAttributionFromUrl(url);
       const handled = await handleEngagementURL(url);
       if (handled) return;

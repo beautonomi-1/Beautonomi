@@ -5,6 +5,7 @@ import { Stack, router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { RoleGate } from "@/components/RoleGate";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
+import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
@@ -256,7 +257,7 @@ export default function AppLayout() {
     authFlowBreadcrumb("authenticated_app_layout", { phase: "mount" });
   }, [session?.user?.id]);
 
-  return (
+  const shell = (
     <MaintenanceGate>
     <BiometricGate>
     <AccountStatusGuard>
@@ -315,4 +316,10 @@ export default function AppLayout() {
     </BiometricGate>
     </MaintenanceGate>
   );
+
+  if (session) {
+    return <LegalAcceptanceGate>{shell}</LegalAcceptanceGate>;
+  }
+
+  return shell;
 }

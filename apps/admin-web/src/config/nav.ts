@@ -146,6 +146,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
   {
     label: "Trust & Safety",
     items: [
+      { title: "Trust & Safety Ops", href: "/admin/trust-safety-ops", icon: ShieldAlert, section: ADMIN_SECTION_USERS_TRUST },
       { title: "Disputes", href: "/admin/disputes", icon: AlertCircle, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw, section: ADMIN_SECTION_FINANCE },
       { title: "Reviews & Ratings", href: "/admin/reviews", icon: Star, section: ADMIN_SECTION_PROVIDERS_OPERATIONS },

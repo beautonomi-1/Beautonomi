@@ -48,6 +48,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   reviews: { label: "Reviews & Ratings", parentHref: null },
   "user-reports": { label: "User Reports", parentHref: null },
   "user-blocks": { label: "Blocked Users", parentHref: null },
+  "trust-safety-ops": { label: "Trust & Safety Ops", parentHref: null },
   "content-reports": { label: "Content Reports", parentHref: null },
   "fraud-cases": { label: "Fraud Cases", parentHref: null },
   verifications: { label: "Identity Verifications", parentHref: null },

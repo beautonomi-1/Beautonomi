@@ -21,7 +21,29 @@ Operational guide for Beautonomi Trust & Safety (UGC, blocks, moderation, age-ga
    - **Resolve** — close report only
    - **Resolve + hide** — calls `applyContentModerationTakedown` and sets `takedown_applied`
    - **Dismiss** — no content action
-6. SLA cron: pending reports older than 24h emit `safety.content_report.sla_overdue` via operational alerts.
+6. SLA: pending reports older than 24h — filter **Overdue (>24h)** in Admin → Content reports; resolve + hide + optional **suspend author**.
+
+## End User License Agreement (EULA) & legal acceptance
+
+Mobile apps block on a **versioned EULA gate** before sign-in and again after sign-in when the stored version is stale (see `PARTNER_EULA_VERSION` / `CUSTOMER_EULA_VERSION` in each app’s `legal-acceptance.ts`).
+
+| App | Public EULA URL | CMS slug |
+|-----|-----------------|----------|
+| Customer | `https://www.beautonomi.com/customer/eula` | `customer-eula` |
+| Partner | `https://www.beautonomi.com/provider/eula` | `provider-eula` |
+
+**Recording acceptance**
+
+- Client: `POST /api/me/legal-acceptance` with `{ app: "customer" \| "partner", version: "YYYY-MM-DD" }`
+- Server: persists `customer_eula_version` / `customer_eula_accepted_at` (or partner equivalents) in `user_profiles.privacy_settings`
+- Admin visibility: **Users → [user] → Legal acceptance** panel
+
+**When you bump EULA copy materially**
+
+1. Edit CMS slugs `customer-eula` / `provider-eula` (or static defaults in `apps/web/src/lib/legal/app-eula-defaults.ts`)
+2. Increment `CUSTOMER_EULA_VERSION` / `PARTNER_EULA_VERSION` in both mobile apps (keep in sync)
+3. Ship new app build — logged-in users are re-prompted on next launch via `(app)/_layout` gate
+4. Ops hub: **Admin → Trust & Safety ops** links to live EULA URLs and CMS pages
 
 ## Block enforcement
 
@@ -68,5 +90,7 @@ Operational guide for Beautonomi Trust & Safety (UGC, blocks, moderation, age-ga
 - `apps/web/src/lib/safety/user-blocks.ts`
 - `apps/web/src/lib/safety/moderation-actions.ts`
 - `apps/web/src/lib/safety/require-social-access.ts`
+- `apps/web/src/app/api/me/legal-acceptance/route.ts`
+- `apps/web/src/lib/legal/app-eula-defaults.ts`
 - `supabase/migrations/836_trust_safety_blocks_mutes_moderation.sql`
 - `supabase/migrations/837_trust_safety_device_age_signal_columns.sql`

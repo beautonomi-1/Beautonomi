@@ -746,7 +746,7 @@
       "savedAddressesDesc": "Tuis, werk en ander adresse",
       "privacySharingTitle": "Privaatheid en deel",
       "privacySharingDesc": "Datavoorkeure, sigbaarheid en skrap rekening",
-      "contentSafetyTitle": "Inhoud- en veiligheidskontroles",
+      "contentSafetyTitle": "Ouerlike kontroles — inhoud & veiligheid",
       "contentSafetyDesc": "Sosiale stroom, boodskappe en ouderdomstoepaslike instellings",
       "bookingsMenuTitle": "Besprekings",
       "bookingsMenuDesc": "Komende, verlede en gekanselleer",
@@ -1879,7 +1879,7 @@
           "a11y": "Veiligheid - kry hulp"
         },
         "safetyHub": {
-          "title": "Veiligheid & vertroue",
+          "title": "Veiligheid & ouerlike kontroles",
           "helpCardBody": "Noodriglyne, rapportering en jou veiligheidskontroles",
           "emergencyNoticeTitle": "In 'n noodgeval",
           "emergencyNoticeBody": "Beautonomi is nie 'n nooddienst nie. Skakel 112 (Suid-Afrika) of jou plaaslike noodnommer.",
@@ -1891,6 +1891,9 @@
           "contactTrustSafetyHint": "Open 'n ondersteuningskaartjie vir ons veiligheidspan",
           "reportUser": "Rapporteer teistering of 'n gebruiker",
           "reportUserHint": "Beskryf wat gebeur het — ons reageer binne 24–48 uur",
+          "reportContent": "Rapporteer inhoud",
+          "reportContentHint": "Merk Verken-plasings, kommentaar of boodskappe via hul kieslys (⋯)",
+          "openExplorePosts": "Open Verken-plasings",
           "yourProfileTitle": "Jou veiligheidsprofiel",
           "emergencyContact": "Noodkontak",
           "emergencyContactHint": "Voeg jou noodkontak by in persoonlike info",

@@ -264,6 +264,24 @@ export default function SafetyHubScreen() {
             }
           />
           <Row
+            icon="alert-circle-outline"
+            label={t("customer.mobile.screens.safetyHub.reportContent")}
+            subtitle={t("customer.mobile.screens.safetyHub.reportContentHint")}
+            onPress={() => {
+              Alert.alert(
+                t("customer.mobile.screens.safetyHub.reportContent"),
+                t("customer.mobile.screens.safetyHub.reportContentHint"),
+                [
+                  { text: t("common.ok") },
+                  {
+                    text: t("customer.mobile.screens.safetyHub.openExplorePosts"),
+                    onPress: () => router.push("/(app)/(tabs)/more/explore-posts" as never),
+                  },
+                ],
+              );
+            }}
+          />
+          <Row
             icon="flag-outline"
             label={t("customer.mobile.screens.safetyHub.reportUser")}
             subtitle={t("customer.mobile.screens.safetyHub.reportUserHint")}
