@@ -4,6 +4,7 @@ import { requireAdminSectionAny, successResponse, errorResponse, handleApiError 
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { suspendUserAsAdmin } from "@/lib/safety/moderation-actions";
 
 /**
  * GET /api/admin/user-reports/[id]
@@ -42,7 +43,7 @@ export async function GET(
 /**
  * PATCH /api/admin/user-reports/[id]
  * Resolve or dismiss a report. Supports marking as adverse finding.
- * Body: { status: 'resolved' | 'dismissed', resolution_notes?: string, is_adverse_finding?: boolean, admin_action_taken?: string }
+ * Body: { status: 'resolved' | 'dismissed', resolution_notes?: string, is_adverse_finding?: boolean, admin_action_taken?: string, suspend_author?: boolean }
  */
 export async function PATCH(
   request: NextRequest,
@@ -63,6 +64,7 @@ export async function PATCH(
         ? body.resolution_notes.trim()
         : null;
     const isAdverseFinding = body.is_adverse_finding === true;
+    const suspendAuthor = body.suspend_author === true;
     const adminActionTaken =
       typeof body.admin_action_taken === "string"
         ? body.admin_action_taken.trim()
@@ -116,6 +118,28 @@ export async function PATCH(
 
     if (error) return handleApiError(error, "Failed to update report");
 
+    let authorSuspended = false;
+    let authorSuspendWarning: string | undefined;
+    if (
+      suspendAuthor &&
+      status === "resolved" &&
+      isAdverseFinding &&
+      existing.reported_user_id
+    ) {
+      const suspendResult = await suspendUserAsAdmin(supabase, {
+        userId: String(existing.reported_user_id),
+        adminUserId: user.id,
+        reason:
+          adminActionTaken ??
+          resolutionNotes ??
+          "Suspended after adverse user report finding",
+      });
+      authorSuspended = suspendResult.suspended;
+      if (!authorSuspended && suspendResult.message) {
+        authorSuspendWarning = suspendResult.message;
+      }
+    }
+
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({
       actor_user_id: user.id,
@@ -126,12 +150,20 @@ export async function PATCH(
       module: "providers_operations",
       risk_level: "high",
       retention_tier: "operational",
-      metadata: { status, is_adverse_finding: isAdverseFinding },
+      metadata: {
+        status,
+        is_adverse_finding: isAdverseFinding,
+        author_suspended: authorSuspended,
+      },
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
     });
 
-    return successResponse(updated);
+    return successResponse({
+      ...updated,
+      author_suspended: authorSuspended,
+      author_suspend_warning: authorSuspendWarning,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to update report");
   }

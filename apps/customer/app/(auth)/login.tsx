@@ -12,7 +12,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { BeautonomiWordmark } from "@/components/BeautonomiWordmark";
-import { webCookiePolicyUrl, webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { webCookiePolicyUrl, webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
@@ -1536,7 +1536,7 @@ export default function LoginScreen() {
               {" · "}
               <Text
                 style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
+                onPress={() => Linking.openURL(webCustomerEulaUrl()).catch(() => {})}
               >
                 {al("termsLink")}
               </Text>
@@ -1684,6 +1684,17 @@ export default function LoginScreen() {
             >
               <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#6B7280" }}>
                 {al("browseWithoutAccount")}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => router.push("/(auth)/safety-and-age" as never)}
+              style={{ marginTop: 8, paddingVertical: 8 }}
+              accessibilityRole="link"
+              accessibilityLabel={t("customer.mobile.screens.authSafetyAndAge.linkLabel")}
+            >
+              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: PRIMARY }}>
+                {t("customer.mobile.screens.authSafetyAndAge.linkLabel")}
               </Text>
             </TouchableOpacity>
           </>

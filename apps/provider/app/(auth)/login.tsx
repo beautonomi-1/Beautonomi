@@ -32,7 +32,7 @@ import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
-import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { webPartnerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import {
   applyPendingSignupPreferences,
@@ -976,9 +976,9 @@ export default function LoginScreen() {
                   {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                    onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
+                    onPress={() => Linking.openURL(webPartnerEulaUrl()).catch(() => {})}
                   >
-                    Terms of Service
+                    Partner EULA
                   </Text>
                   {" · "}
                   <Text
@@ -1417,9 +1417,9 @@ export default function LoginScreen() {
           By continuing, you agree to our{" "}
           <Text
             style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-            onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
+            onPress={() => Linking.openURL(webPartnerEulaUrl()).catch(() => {})}
           >
-            Terms of Service
+            Partner EULA
           </Text>{" "}
           and{" "}
           <Text

@@ -137,6 +137,7 @@ export default function App() {
           <Route path="user-reports" element={<P.UserReportsListPage />} />
           <Route path="user-blocks" element={<P.UserBlocksListPage />} />
           <Route path="content-reports" element={<P.ContentReportsListPage />} />
+          <Route path="trust-safety-ops" element={<P.TrustSafetyOpsPage />} />
           <Route path="fraud-cases" element={<P.FraudCasesPage />} />
           <Route path="refunds" element={<P.RefundsListPage />} />
           <Route path="finance" element={<P.FinanceOverviewPage />} />

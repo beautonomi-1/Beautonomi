@@ -55,17 +55,19 @@ export function ContentReportsListPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
+  const slaOverdue = sp.get("sla_overdue") === "1";
   const targetType = sp.get("target_type") || "all";
   const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
   const qk = useMemo(
-    () => adminQueryKeys.contentReports(`s=${status}|t=${targetType}|o=${offset}`),
-    [status, targetType, offset]
+    () => adminQueryKeys.contentReports(`s=${status}|sla=${slaOverdue}|t=${targetType}|o=${offset}`),
+    [status, slaOverdue, targetType, offset]
   );
 
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<ResolveMode | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [adminActionTaken, setAdminActionTaken] = useState("");
+  const [suspendAuthor, setSuspendAuthor] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const q = useQuery({
@@ -74,7 +76,8 @@ export function ContentReportsListPage() {
       const p = new URLSearchParams();
       p.set("limit", "50");
       p.set("offset", String(offset));
-      if (status !== "all") p.set("status", status);
+      if (slaOverdue) p.set("sla_overdue", "1");
+      else if (status !== "all") p.set("status", status);
       if (targetType !== "all") p.set("target_type", targetType);
       return adminApi.getJson<ContentReportsPayload>(`/api/admin/content-reports?${p}`, {
         timeoutMs: 60_000,
@@ -90,12 +93,14 @@ export function ContentReportsListPage() {
       notes,
       applyTakedown,
       actionTaken,
+      suspendAuthor: suspendAuthorFlag,
     }: {
       id: string;
       newStatus: string;
       notes: string;
       applyTakedown?: boolean;
       actionTaken?: string;
+      suspendAuthor?: boolean;
     }) => {
       return adminApi.patchJson(`/api/admin/content-reports/${id}`, {
         status: newStatus,
@@ -103,6 +108,7 @@ export function ContentReportsListPage() {
         apply_takedown: applyTakedown === true,
         takedown_action: "hide",
         admin_action_taken: actionTaken?.trim() || undefined,
+        suspend_author: suspendAuthorFlag === true,
       });
     },
     onSuccess: (data, vars) => {
@@ -112,6 +118,7 @@ export function ContentReportsListPage() {
       setActionMode(null);
       setResolutionNotes("");
       setAdminActionTaken("");
+      setSuspendAuthor(false);
       if (vars.newStatus === "resolved") {
         const takedownApplied = Boolean(
           (data as { takedown_applied?: boolean } | undefined)?.takedown_applied,
@@ -119,14 +126,24 @@ export function ContentReportsListPage() {
         const takedownWarning = Boolean(
           (data as { takedown_warning?: boolean | string } | undefined)?.takedown_warning,
         );
+        const authorSuspended = Boolean(
+          (data as { author_suspended?: boolean } | undefined)?.author_suspended,
+        );
+        const authorSuspendWarning = (data as { author_suspend_warning?: string } | undefined)
+          ?.author_suspend_warning;
         if (vars.applyTakedown && takedownWarning) {
           adminToast.error("Report resolved but content could not be hidden for this target type.");
+        } else if (vars.applyTakedown && takedownApplied && authorSuspended) {
+          adminToast.success("Report resolved, content hidden, and author suspended");
         } else if (vars.applyTakedown && takedownApplied) {
           adminToast.success("Report resolved and content hidden");
         } else if (vars.applyTakedown && !takedownApplied) {
           adminToast.success("Report resolved (takedown not applied)");
         } else {
           adminToast.success("Report resolved");
+        }
+        if (authorSuspendWarning) {
+          adminToast.error(authorSuspendWarning);
         }
       } else {
         adminToast.success("Report dismissed");
@@ -138,10 +155,21 @@ export function ContentReportsListPage() {
   const rows = q.data?.data ?? [];
   const hasMore = q.data?.has_more ?? false;
 
-  function setFilter(key: "status" | "target_type", next: string) {
+  function setFilter(key: "status" | "target_type" | "sla_overdue", next: string) {
     const n = new URLSearchParams(sp);
-    if (next === "all") n.delete(key);
-    else n.set(key, next);
+    if (key === "sla_overdue") {
+      n.delete("status");
+      if (next === "1") n.set("sla_overdue", "1");
+      else n.delete("sla_overdue");
+    } else if (key === "status") {
+      n.delete("sla_overdue");
+      if (next === "all") n.delete("status");
+      else n.set("status", next);
+    } else if (next === "all") {
+      n.delete(key);
+    } else {
+      n.set(key, next);
+    }
     n.delete("offset");
     setSp(n, { replace: true });
   }
@@ -162,7 +190,8 @@ export function ContentReportsListPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const statusTabs = ["all", "pending", "resolved", "dismissed"] as const;
+  const statusTabs = ["all", "pending", "overdue", "resolved", "dismissed"] as const;
+  const activeStatusTab = slaOverdue ? "overdue" : status;
 
   return (
     <div className="space-y-6">
@@ -180,10 +209,13 @@ export function ContentReportsListPage() {
             <button
               key={t}
               type="button"
-              className={adminTabButtonClass(status === t)}
-              onClick={() => setFilter("status", t)}
+              className={adminTabButtonClass(activeStatusTab === t)}
+              onClick={() => {
+                if (t === "overdue") setFilter("sla_overdue", "1");
+                else setFilter("status", t);
+              }}
             >
-              {t}
+              {t === "overdue" ? "Overdue (>24h)" : t}
             </button>
           ))}
         </div>
@@ -211,6 +243,7 @@ export function ContentReportsListPage() {
               <AdminTh>Reason</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Reporter</AdminTh>
+              <AdminTh>Author</AdminTh>
               <AdminTh>Preview</AdminTh>
               <AdminTh>Date</AdminTh>
               <AdminTh>Actions</AdminTh>
@@ -221,11 +254,15 @@ export function ContentReportsListPage() {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
               const rep = row.reporter as { full_name?: string; email?: string } | null;
+              const author = row.content_author as { id?: string; full_name?: string; email?: string } | null;
               const preview = row.target_preview as { snippet?: string } | null;
               const isPending = String(row.status ?? "") === "pending";
               const isExpanded = expandedId === id;
               const statusStr = String(row.status ?? "pending");
               const badgeClass = STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
+              const createdAt = row.created_at ? new Date(String(row.created_at)) : null;
+              const isSlaOverdue =
+                isPending && createdAt != null && Date.now() - createdAt.getTime() > 24 * 60 * 60 * 1000;
 
               return (
                 <Fragment key={id}>
@@ -246,8 +283,12 @@ export function ContentReportsListPage() {
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
                         {statusStr}
                       </span>
+                      {isSlaOverdue ? (
+                        <span className="mt-1 block text-[10px] font-semibold text-red-600">SLA overdue</span>
+                      ) : null}
                     </AdminTd>
                     <AdminTd className="text-xs">{String(rep?.full_name ?? rep?.email ?? "")}</AdminTd>
+                    <AdminTd className="text-xs">{String(author?.full_name ?? author?.email ?? "—")}</AdminTd>
                     <AdminTd className="max-w-xs truncate text-xs text-gray-600">
                       {preview?.snippet ?? String(row.details ?? "—")}
                     </AdminTd>
@@ -266,6 +307,7 @@ export function ContentReportsListPage() {
                               setActionMode("resolve");
                               setResolutionNotes("");
                               setAdminActionTaken("");
+                              setSuspendAuthor(false);
                             }}
                           >
                             Resolve
@@ -279,6 +321,7 @@ export function ContentReportsListPage() {
                               setActionMode("resolve_hide");
                               setResolutionNotes("");
                               setAdminActionTaken("");
+                              setSuspendAuthor(false);
                             }}
                           >
                             Resolve + hide
@@ -292,6 +335,7 @@ export function ContentReportsListPage() {
                               setActionMode("dismiss");
                               setResolutionNotes("");
                               setAdminActionTaken("");
+                              setSuspendAuthor(false);
                             }}
                           >
                             Dismiss
@@ -302,11 +346,19 @@ export function ContentReportsListPage() {
                   </tr>
                   {isExpanded && (
                     <tr key={`${id}-detail`}>
-                      <td colSpan={7} className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+                      <td colSpan={8} className="border-t border-gray-100 bg-gray-50 px-4 py-3">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="mb-1 font-medium text-gray-700">Target ID</p>
                             <p className="font-mono text-xs text-gray-600">{String(row.target_id ?? "")}</p>
+                            {author ? (
+                              <div className="mt-3">
+                                <p className="mb-1 font-medium text-gray-700">Content author</p>
+                                <p className="text-xs text-gray-600">
+                                  {String(author.full_name ?? author.email ?? author.id ?? "—")}
+                                </p>
+                              </div>
+                            ) : null}
                             {Boolean(row.details) ? (
                               <div className="mt-3">
                                 <p className="mb-1 font-medium text-gray-700">Reporter details</p>
@@ -383,6 +435,20 @@ export function ContentReportsListPage() {
                   value={adminActionTaken}
                   onChange={(e) => setAdminActionTaken(e.target.value)}
                 />
+                {actionMode === "resolve_hide" ? (
+                  <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-red-600"
+                      checked={suspendAuthor}
+                      onChange={(e) => setSuspendAuthor(e.target.checked)}
+                    />
+                    <span>
+                      Also suspend content author
+                      <span className="ml-1 text-xs text-gray-400">(deactivates account + auth ban)</span>
+                    </span>
+                  </label>
+                ) : null}
               </>
             ) : null}
             <div className="mt-4 flex justify-end gap-2">
@@ -392,6 +458,7 @@ export function ContentReportsListPage() {
                 onClick={() => {
                   setActionId(null);
                   setActionMode(null);
+                  setSuspendAuthor(false);
                 }}
               >
                 Cancel
@@ -413,6 +480,7 @@ export function ContentReportsListPage() {
                     notes: resolutionNotes,
                     applyTakedown: actionMode === "resolve_hide",
                     actionTaken: adminActionTaken,
+                    suspendAuthor: actionMode === "resolve_hide" ? suspendAuthor : false,
                   });
                 }}
               >

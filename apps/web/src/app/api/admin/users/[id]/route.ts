@@ -290,6 +290,36 @@ export async function GET(
       return row.category === "safety_emergency" || row.category === "safety_report_user";
     }).length;
 
+    const { data: profileRow } = await admin
+      .from("user_profiles")
+      .select("privacy_settings")
+      .eq("user_id", id)
+      .maybeSingle();
+
+    const privacySettings =
+      profileRow?.privacy_settings && typeof profileRow.privacy_settings === "object"
+        ? (profileRow.privacy_settings as Record<string, unknown>)
+        : {};
+
+    const legal_acceptance = {
+      partner_eula_version:
+        typeof privacySettings.partner_eula_version === "string"
+          ? privacySettings.partner_eula_version
+          : null,
+      partner_eula_accepted_at:
+        typeof privacySettings.partner_eula_accepted_at === "string"
+          ? privacySettings.partner_eula_accepted_at
+          : null,
+      customer_eula_version:
+        typeof privacySettings.customer_eula_version === "string"
+          ? privacySettings.customer_eula_version
+          : null,
+      customer_eula_accepted_at:
+        typeof privacySettings.customer_eula_accepted_at === "string"
+          ? privacySettings.customer_eula_accepted_at
+          : null,
+    };
+
     return successResponse({
       ...sanitizeUserForAdmin(userData as Record<string, unknown>),
       // Resolved phone: public.users first, then auth.users fallback.
@@ -322,6 +352,7 @@ export async function GET(
         user_reports_count: userReportsAgainst.count ?? 0,
         safety_support_tickets_count: safetyTicketsCount,
       },
+      legal_acceptance,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch user");

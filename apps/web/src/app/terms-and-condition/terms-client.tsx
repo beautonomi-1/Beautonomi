@@ -20,6 +20,8 @@ export interface TermsData {
   heroImage: string | null;
   supplementalPolicies: { title: string; link: string }[];
   articles: { category?: string; title: string; description: string; link: string }[];
+  /** Breadcrumb current-page label (defaults to Terms & Conditions). */
+  breadcrumbLabel?: string;
 }
 
 export default function TermsClient({ data }: { data: TermsData }) {
@@ -33,6 +35,7 @@ export default function TermsClient({ data }: { data: TermsData }) {
     heroImage,
     supplementalPolicies,
     articles,
+    breadcrumbLabel = "Terms & Conditions",
   } = data;
 
   return (
@@ -42,7 +45,7 @@ export default function TermsClient({ data }: { data: TermsData }) {
         <Breadcrumb
           items={[
             { label: "Home", href: "/" },
-            { label: "Terms & Conditions" },
+            { label: breadcrumbLabel },
           ]}
         />
 

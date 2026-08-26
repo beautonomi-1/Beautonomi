@@ -15,6 +15,112 @@ export interface ModerationApplyResult {
   message?: string;
 }
 
+export interface SuspendUserResult {
+  suspended: boolean;
+  message?: string;
+}
+
+/** Resolve the user_id of the author for a reported content target. */
+export async function resolveContentAuthorUserId(
+  supabase: SupabaseClient,
+  targetType: ContentReportTargetType,
+  targetId: string,
+): Promise<string | null> {
+  switch (targetType) {
+    case "explore_post": {
+      const { data } = await supabase
+        .from("explore_posts")
+        .select("created_by_user_id")
+        .eq("id", targetId)
+        .maybeSingle();
+      return (data as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null;
+    }
+    case "explore_comment": {
+      const { data } = await supabase
+        .from("explore_comments")
+        .select("user_id")
+        .eq("id", targetId)
+        .maybeSingle();
+      return (data as { user_id?: string | null } | null)?.user_id ?? null;
+    }
+    case "message": {
+      const { data } = await supabase
+        .from("messages")
+        .select("sender_id")
+        .eq("id", targetId)
+        .maybeSingle();
+      return (data as { sender_id?: string | null } | null)?.sender_id ?? null;
+    }
+    case "review": {
+      const { data } = await supabase
+        .from("reviews")
+        .select("customer_id")
+        .eq("id", targetId)
+        .maybeSingle();
+      return (data as { customer_id?: string | null } | null)?.customer_id ?? null;
+    }
+    case "product_review": {
+      const { data } = await supabase
+        .from("product_reviews")
+        .select("customer_id")
+        .eq("id", targetId)
+        .maybeSingle();
+      return (data as { customer_id?: string | null } | null)?.customer_id ?? null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Suspend a platform user account (auth ban + users.deactivated_at). */
+export async function suspendUserAsAdmin(
+  supabase: SupabaseClient,
+  options: {
+    userId: string;
+    adminUserId: string;
+    reason?: string | null;
+  },
+): Promise<SuspendUserResult> {
+  const { userId, adminUserId, reason } = options;
+  if (userId === adminUserId) {
+    return { suspended: false, message: "Cannot suspend your own account" };
+  }
+
+  const { data: target, error: fetchError } = await supabase
+    .from("users")
+    .select("id, role, deactivated_at")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!target) return { suspended: false, message: "User not found" };
+  if ((target as { role?: string }).role === "superadmin") {
+    return { suspended: false, message: "Cannot suspend a superadmin account" };
+  }
+  if ((target as { deactivated_at?: string | null }).deactivated_at) {
+    return { suspended: true, message: "User is already suspended" };
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({
+      deactivated_at: now,
+      deactivated_by: "admin",
+      is_active: false,
+      deactivation_reason: reason?.trim() || "Suspended via trust & safety moderation",
+    })
+    .eq("id", userId);
+
+  if (updateError) throw updateError;
+
+  await supabase.auth.admin.updateUserById(userId, {
+    ban_duration: "876000h",
+  });
+
+  return { suspended: true };
+}
+
 export async function applyContentModerationTakedown(
   supabase: SupabaseClient,
   options: {

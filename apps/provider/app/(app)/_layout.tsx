@@ -24,6 +24,7 @@ import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
+import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { BiometricGate } from "@/components/BiometricGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
@@ -76,6 +77,7 @@ export default function AppLayout() {
   if (!session) return <Redirect href="/(auth)/login" />;
 
   return (
+    <LegalAcceptanceGate>
     <MaintenanceGate>
     {/*
       §Provider-launch (audit 2026-04): BiometricGate enforces the
@@ -125,5 +127,6 @@ export default function AppLayout() {
     </AccountStatusGuard>
     </BiometricGate>
     </MaintenanceGate>
+    </LegalAcceptanceGate>
   );
 }

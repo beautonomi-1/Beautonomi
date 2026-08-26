@@ -14,6 +14,10 @@ export function webTermsOfServiceUrl(): string {
   return `${webOrigin()}/terms-and-condition`;
 }
 
+export function webCustomerEulaUrl(): string {
+  return `${webOrigin()}/customer/eula`;
+}
+
 export function webCookiePolicyUrl(): string {
   return `${webOrigin()}/cookie-policy`;
 }
@@ -40,6 +44,13 @@ function termsParams(): LegalParams {
   return {
     url: encodeURIComponent(webTermsOfServiceUrl()),
     title: encodeURIComponent("Terms of service"),
+  };
+}
+
+function customerEulaParams(): LegalParams {
+  return {
+    url: encodeURIComponent(webCustomerEulaUrl()),
+    title: encodeURIComponent("End User License Agreement"),
   };
 }
 
@@ -84,6 +95,11 @@ export function pushWebTermsOfService(router: Router): void {
 export function replaceWebTermsOfService(router: Router): void {
   const { url, title } = termsParams();
   router.replace({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
+}
+
+export function pushWebCustomerEula(router: Router): void {
+  const { url, title } = customerEulaParams();
+  router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }
 
 export function pushWebCookiePolicy(router: Router): void {

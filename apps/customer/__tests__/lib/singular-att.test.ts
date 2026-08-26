@@ -1,8 +1,6 @@
 /**
- * Ensures App Tracking Transparency is requested before Singular initializes (Guideline 2.1).
+ * Ensures Singular.init is synchronous after ATT (AttTrackingBootstrap path).
  */
-
-const mockRequestAttBeforeTracking = jest.fn(async () => undefined);
 
 jest.mock("react-native", () => ({
   Platform: { OS: "ios" },
@@ -19,22 +17,16 @@ jest.mock("expo-constants", () => ({
   expoConfig: { extra: {} },
 }));
 
-jest.mock("@/lib/tracking/request-att-before-tracking", () => ({
-  requestAttBeforeTracking: mockRequestAttBeforeTracking,
-}));
-
 import { Singular, SingularConfig } from "singular-react-native";
 import { initSingular } from "@/lib/singular";
 
-describe("initSingular ATT ordering (customer)", () => {
+describe("initSingular (customer)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("requests ATT even when Singular keys are missing", async () => {
+  it("no-ops when Singular keys are missing", () => {
     initSingular();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockRequestAttBeforeTracking).toHaveBeenCalledTimes(1);
     expect(Singular.init).not.toHaveBeenCalled();
     expect(SingularConfig).not.toHaveBeenCalled();
   });

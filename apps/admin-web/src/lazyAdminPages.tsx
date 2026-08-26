@@ -306,6 +306,9 @@ export const ContentReportsListPage = lazy(() =>
 export const FraudCasesPage = lazy(() =>
   import("@/routes/trust/FraudCasesPage").then((m) => ({ default: m.FraudCasesPage }))
 );
+export const TrustSafetyOpsPage = lazy(() =>
+  import("@/routes/trust/TrustSafetyOpsPage").then((m) => ({ default: m.TrustSafetyOpsPage }))
+);
 export const RefundsListPage = lazy(() =>
   import("@/routes/refunds/RefundsListPage").then((m) => ({ default: m.RefundsListPage }))
 );

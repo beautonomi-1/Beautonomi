@@ -5,7 +5,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
-import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { webPrivacyPolicyUrl, webPartnerEulaUrl } from "@/lib/legal-web";
 
 export type SubscriptionCheckoutReview = {
   /** Accent badge label, e.g. "Upgrade" / "Renewal". */
@@ -142,11 +142,11 @@ export function SubscriptionCheckoutReviewSheet({
             {useAppleIap ? (
               <View style={twStyle("flex-row flex-wrap gap-x-4 gap-y-1 px-1")}>
                 <Text
-                  onPress={() => void Linking.openURL(webTermsOfServiceUrl())}
+                  onPress={() => void Linking.openURL(webPartnerEulaUrl())}
                   style={twStyle("text-xs font-semibold text-gray-600 underline")}
                   accessibilityRole="link"
                 >
-                  Terms of Use
+                  Terms of Use (EULA)
                 </Text>
                 <Text
                   onPress={() => void Linking.openURL(webPrivacyPolicyUrl())}

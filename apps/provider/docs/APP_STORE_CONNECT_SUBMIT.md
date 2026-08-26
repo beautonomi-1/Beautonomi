@@ -1,4 +1,4 @@
-# Provider iOS — App Store Connect submission checklist (v1.0.86)
+# Provider iOS — App Store Connect submission checklist (v1.0.87)
 
 Use this checklist when resubmitting **Beautonomi Provider** (`com.beautonomi.partner`) after App Review rejection. Complete every item before clicking **Submit for Review**.
 
@@ -73,7 +73,7 @@ Create **13 products** matching [`Products.storekit`](../Products.storekit):
 
 **Attach to version:**
 
-1. Open the **1.0.86** version page
+1. Open the **1.0.87** version page
 2. **In-App Purchases and Subscriptions** → add all 13 products
 3. Submit IAPs **with** the new binary (first-time IAPs cannot be submitted alone)
 
@@ -103,7 +103,7 @@ Public URL: https://www.beautonomi.com/age-suitability
 | Field | Value |
 | --- | --- |
 | **Privacy Policy URL** | `https://www.beautonomi.com/privacy-policy` |
-| **Terms of Use** | Custom EULA **or** add to **App Description**: `Terms of Use: https://www.beautonomi.com/terms-and-condition` |
+| **Terms of Use (EULA)** | `https://www.beautonomi.com/provider/eula` (also in App Description footer) |
 
 Verify both URLs load in Safari on device before submitting.
 
@@ -124,7 +124,7 @@ If not tracking on iOS, update label to **No tracking** and remove Device ID tra
 
 ## 6. Build & submit
 
-**Build 1.0.86:** run production iOS build after merge (see commands below).
+**Build 1.0.87:** run production iOS build after merge (see commands below).
 
 ```bash
 cd apps/provider
@@ -132,7 +132,7 @@ eas build --profile production --platform ios
 eas submit --profile production --platform ios --latest
 ```
 
-On the version page: select build **1.0.86**, attach all IAPs, paste Review Notes below, **Submit for Review**.
+On the version page: select build **1.0.87 (280)**, attach all IAPs, paste Review Notes below, **Submit for Review**.
 
 ---
 
@@ -199,6 +199,6 @@ Age Suitability: https://www.beautonomi.com/age-suitability
 SUBSCRIPTION LEGAL (Guideline 3.1.2)
 More → Subscription shows plan name, price, billing period, auto-renew disclosure, and links to Terms of Use and Privacy Policy.
 
-Terms: https://www.beautonomi.com/terms-and-condition
+Terms (EULA): https://www.beautonomi.com/provider/eula
 Privacy: https://www.beautonomi.com/privacy-policy
 ```

@@ -1,4 +1,4 @@
-import { InteractionManager, Platform } from "react-native";
+import { InteractionManager, Platform, AppState } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
@@ -26,7 +26,9 @@ describe("requestAttBeforeTracking (customer)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+    Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
     jest.spyOn(InteractionManager, "runAfterInteractions").mockImplementation((cb: () => void) => {
       cb();
       return { cancel: jest.fn() } as never;
@@ -38,10 +40,12 @@ describe("requestAttBeforeTracking (customer)", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: originalPlatform });
   });
 
   it("returns unavailable on non-iOS", async () => {
+    jest.useRealTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: "android" });
     await expect(requestAttBeforeTracking()).resolves.toBe("unavailable");
     expect(getTrackingPermissionsAsync).not.toHaveBeenCalled();
@@ -55,7 +59,9 @@ describe("requestAttBeforeTracking (customer)", () => {
       status: PermissionStatus.GRANTED,
     });
 
-    await expect(requestAttBeforeTracking()).resolves.toBe(PermissionStatus.GRANTED);
+    const resultPromise = requestAttBeforeTracking();
+    await jest.runAllTimersAsync();
+    await expect(resultPromise).resolves.toBe(PermissionStatus.GRANTED);
     expect(requestTrackingPermissionsAsync).toHaveBeenCalledTimes(1);
   });
 
@@ -64,7 +70,9 @@ describe("requestAttBeforeTracking (customer)", () => {
       status: PermissionStatus.DENIED,
     });
 
-    await expect(requestAttBeforeTracking()).resolves.toBe(PermissionStatus.DENIED);
+    const resultPromise = requestAttBeforeTracking();
+    await jest.runAllTimersAsync();
+    await expect(resultPromise).resolves.toBe(PermissionStatus.DENIED);
     expect(requestTrackingPermissionsAsync).not.toHaveBeenCalled();
   });
 
@@ -72,14 +80,14 @@ describe("requestAttBeforeTracking (customer)", () => {
     (getTrackingPermissionsAsync as jest.Mock).mockResolvedValue({
       status: PermissionStatus.UNDETERMINED,
     });
-    (requestTrackingPermissionsAsync as jest.Mock).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => resolve({ status: PermissionStatus.GRANTED }), 20);
-        }),
-    );
+    (requestTrackingPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: PermissionStatus.GRANTED,
+    });
 
-    const [a, b] = await Promise.all([requestAttBeforeTracking(), requestAttBeforeTracking()]);
+    const aPromise = requestAttBeforeTracking();
+    const bPromise = requestAttBeforeTracking();
+    await jest.runAllTimersAsync();
+    const [a, b] = await Promise.all([aPromise, bPromise]);
     expect(a).toBe(PermissionStatus.GRANTED);
     expect(b).toBe(PermissionStatus.GRANTED);
     expect(getTrackingPermissionsAsync).toHaveBeenCalledTimes(1);

@@ -61,6 +61,7 @@ export function UserReportsListPage() {
   const [actionType, setActionType] = useState<"resolve" | "dismiss" | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [isAdverseFinding, setIsAdverseFinding] = useState(false);
+  const [suspendAuthor, setSuspendAuthor] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const q = useQuery({
@@ -82,26 +83,46 @@ export function UserReportsListPage() {
       newStatus,
       notes,
       adverseFinding,
+      suspendAuthor: suspendAuthorFlag,
     }: {
       id: string;
       newStatus: string;
       notes: string;
       adverseFinding?: boolean;
+      suspendAuthor?: boolean;
     }) => {
       return adminApi.patchJson(`/api/admin/user-reports/${id}`, {
         status: newStatus,
         resolution_notes: notes.trim() || undefined,
         is_adverse_finding: adverseFinding ?? false,
+        suspend_author: suspendAuthorFlag === true,
       });
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: (data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
       setActionId(null);
       setActionType(null);
       setResolutionNotes("");
       setIsAdverseFinding(false);
-      adminToast.success(vars.newStatus === "resolved" ? "Report resolved" : "Report dismissed");
+      setSuspendAuthor(false);
+      if (vars.newStatus === "resolved") {
+        const authorSuspended = Boolean(
+          (data as { author_suspended?: boolean } | undefined)?.author_suspended,
+        );
+        const authorSuspendWarning = (data as { author_suspend_warning?: string } | undefined)
+          ?.author_suspend_warning;
+        if (authorSuspended) {
+          adminToast.success("Report resolved and reported user suspended");
+        } else {
+          adminToast.success("Report resolved");
+        }
+        if (authorSuspendWarning) {
+          adminToast.error(authorSuspendWarning);
+        }
+      } else {
+        adminToast.success("Report dismissed");
+      }
     },
     onError: (e: Error) => adminToast.error(`Failed to update report: ${e.message}`),
   });
@@ -236,14 +257,14 @@ export function UserReportsListPage() {
                           <button
                             type="button"
                             className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700"
-                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("resolve"); setResolutionNotes(""); setIsAdverseFinding(false); }}
+                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("resolve"); setResolutionNotes(""); setIsAdverseFinding(false); setSuspendAuthor(false); }}
                           >
                             Resolve
                           </button>
                           <button
                             type="button"
                             className="rounded bg-gray-500 px-2 py-1 text-xs text-white hover:bg-gray-600"
-                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("dismiss"); setResolutionNotes(""); setIsAdverseFinding(false); }}
+                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("dismiss"); setResolutionNotes(""); setIsAdverseFinding(false); setSuspendAuthor(false); }}
                           >
                             Dismiss
                           </button>
@@ -310,18 +331,37 @@ export function UserReportsListPage() {
               onChange={(e) => setResolutionNotes(e.target.value)}
             />
             {actionType === "resolve" && (
-              <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 text-red-600"
-                  checked={isAdverseFinding}
-                  onChange={(e) => setIsAdverseFinding(e.target.checked)}
-                />
-                <span>
-                  Mark as <strong className="text-red-600">adverse finding</strong>
-                  <span className="ml-1 text-gray-400 text-xs">(3+ from different reporters flags the user)</span>
-                </span>
-              </label>
+              <>
+                <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-red-600"
+                    checked={isAdverseFinding}
+                    onChange={(e) => {
+                      setIsAdverseFinding(e.target.checked);
+                      if (!e.target.checked) setSuspendAuthor(false);
+                    }}
+                  />
+                  <span>
+                    Mark as <strong className="text-red-600">adverse finding</strong>
+                    <span className="ml-1 text-gray-400 text-xs">(3+ from different reporters flags the user)</span>
+                  </span>
+                </label>
+                {isAdverseFinding ? (
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-red-600"
+                      checked={suspendAuthor}
+                      onChange={(e) => setSuspendAuthor(e.target.checked)}
+                    />
+                    <span>
+                      Also suspend reported user
+                      <span className="ml-1 text-xs text-gray-400">(deactivates account + auth ban)</span>
+                    </span>
+                  </label>
+                ) : null}
+              </>
             )}
             {updateReport.error && (
               <p className="mt-2 text-sm text-red-600">
@@ -332,7 +372,7 @@ export function UserReportsListPage() {
               <button
                 type="button"
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-                onClick={() => { setActionId(null); setActionType(null); setIsAdverseFinding(false); }}
+                onClick={() => { setActionId(null); setActionType(null); setIsAdverseFinding(false); setSuspendAuthor(false); }}
               >
                 Cancel
               </button>
@@ -348,6 +388,7 @@ export function UserReportsListPage() {
                     newStatus: actionType === "resolve" ? "resolved" : "dismissed",
                     notes: resolutionNotes,
                     adverseFinding: actionType === "resolve" ? isAdverseFinding : false,
+                    suspendAuthor: actionType === "resolve" && isAdverseFinding ? suspendAuthor : false,
                   });
                 }}
               >

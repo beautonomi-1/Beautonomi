@@ -19,8 +19,8 @@ import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
 import { initConnectivityTracking } from "@/lib/connectivity";
-import { initSingular } from "@/lib/singular";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
+import { AttTrackingBootstrap } from "@/components/AttTrackingBootstrap";
 import {
   initializeRuntimeMarketHost,
   startRuntimeMarketHostLinkListener,
@@ -37,9 +37,6 @@ try {
 } catch {}
 try {
   initConnectivityTracking();
-} catch {}
-try {
-  initSingular();
 } catch {}
 if (Platform.OS !== "web") {
   configureNativePushNotifications();
@@ -100,6 +97,7 @@ function ThemedApp() {
   return (
     <>
       <SplashController />
+      <AttTrackingBootstrap />
       <OfflineBar />
       <ForceUpdateGate>
         <InAppBannerProvider>
