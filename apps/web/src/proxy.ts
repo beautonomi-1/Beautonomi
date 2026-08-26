@@ -334,6 +334,8 @@ export async function proxy(request: NextRequest) {
       '/privacy-policy',
       '/terms-and-condition',
       '/age-suitability',
+      '/customer/eula',
+      '/provider/eula',
       '/accessibility',
       '/BCover-for-partners',
       '/beautonomi-friendly',
@@ -578,6 +580,11 @@ export async function proxy(request: NextRequest) {
 
         // Public: staff join preview (no session required — invite links from email)
         if (pathname === '/provider/join' || pathname.startsWith('/provider/join/')) {
+          return finalizePageResponse(request, response);
+        }
+
+        // Public: Partner EULA for App Store / in-app legal links (no session required)
+        if (pathname === '/provider/eula' || pathname.startsWith('/provider/eula/')) {
           return finalizePageResponse(request, response);
         }
 
