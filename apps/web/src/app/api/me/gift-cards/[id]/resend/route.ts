@@ -25,6 +25,9 @@ const bodySchema = z
  * Re-sends a purchased gift card to its recipient (email and/or SMS). Only the
  * purchaser of the order may resend, and it is rate limited to 3 per card per day.
  * Optional body overrides let the buyer fix a typo in the recipient contact.
+ *
+ * @tenant-hint Service-role reads are scoped to the authenticated purchaser
+ *   (order.purchaser_user_id === user.id) after requireRoleInApi.
  */
 export async function POST(
   request: NextRequest,

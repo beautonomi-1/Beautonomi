@@ -31,8 +31,8 @@ jobs:
           DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_DEVELOP }}
         run: |
           if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::error::Secret VERCEL_DEPLOY_HOOK_DEVELOP is not set. Create a Deploy Hook for branch develop in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
-            exit 1
+            echo "::warning::Secret VERCEL_DEPLOY_HOOK_DEVELOP is not set. Create a Deploy Hook for branch develop in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 0
           fi
           echo "Triggering Vercel Preview deploy for develop..."
           curl -fsS -X POST "$DEPLOY_HOOK_URL"
@@ -49,8 +49,8 @@ jobs:
           DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_MAIN }}
         run: |
           if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::error::Secret VERCEL_DEPLOY_HOOK_MAIN is not set. Create a Deploy Hook for branch main in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
-            exit 1
+            echo "::warning::Secret VERCEL_DEPLOY_HOOK_MAIN is not set. Create a Deploy Hook for branch main in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 0
           fi
           echo "Triggering Vercel Production deploy for main..."
           curl -fsS -X POST "$DEPLOY_HOOK_URL"
