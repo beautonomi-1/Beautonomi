@@ -31,6 +31,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { postBookingPayment, isBalanced } from "../posting-map";
 
 /**
  * Canonical allowlist (kept in sync with migration 510's
@@ -224,7 +225,6 @@ describe("Reconciliation drift (Wave 5.3)", () => {
   });
 
   it("posting-map stays documentation-only and balanced; SQL allowlist covers TS fixture types", () => {
-    const { postBookingPayment, isBalanced } = require("../posting-map") as typeof import("../posting-map");
     const entry = postBookingPayment({
       paymentId: "map-agree",
       gross: 100,

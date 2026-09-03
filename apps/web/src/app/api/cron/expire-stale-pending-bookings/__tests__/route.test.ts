@@ -128,6 +128,13 @@ function makeAdmin() {
     },
     rpc: (...args: unknown[]) => {
       mockRpc(...args);
+      const fn = args[0];
+      if (fn === "claim_cron_run") {
+        return Promise.resolve({ data: 1, error: null });
+      }
+      if (fn === "finish_cron_run") {
+        return Promise.resolve({ data: null, error: null });
+      }
       return Promise.resolve({ data: null, error: null });
     },
   };
@@ -182,7 +189,10 @@ describe("GET /api/cron/expire-stale-pending-bookings", () => {
       }),
     );
     expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledWith(expect.anything(), "b1");
-    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalledWith(
+      "restore_customer_package_entitlement",
+      expect.anything(),
+    );
   });
 
   it("skips a booking that was resolved concurrently (update affects zero rows)", async () => {

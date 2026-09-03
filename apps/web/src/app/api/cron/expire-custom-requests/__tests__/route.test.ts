@@ -123,6 +123,11 @@ function makeAdmin(opts: {
         },
       };
     },
+    rpc: async (name: string) => {
+      if (name === "claim_cron_run") return { data: 1, error: null };
+      if (name === "finish_cron_run") return { data: null, error: null };
+      return { data: null, error: null };
+    },
   };
 }
 

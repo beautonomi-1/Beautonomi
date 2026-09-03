@@ -4,14 +4,14 @@
  * 1. Every `EVENT_*` constant referenced anywhere in apps/web, apps/customer and apps/provider
  *    source is declared in the single source of truth `packages/analytics/src/events.ts`.
  * 2. Web `types.ts` mirrors the package: every shared identifier has the identical string value.
- * 3. Mobile helper modules (`apps/*/src/lib/analytics.ts`) use constants, not string literals.
+ * 3. Mobile helper modules (apps/{app}/src/lib/analytics.ts) use constants, not string literals.
  * 4. Every canonical event value is documented in docs/analytics/EVENT_TAXONOMY.md.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(__dirname, "../../../../../..");
+const REPO_ROOT = path.resolve(__dirname, "../../../../../../..");
 const PACKAGE_EVENTS = path.join(REPO_ROOT, "packages/analytics/src/events.ts");
 const WEB_TYPES = path.join(REPO_ROOT, "apps/web/src/lib/analytics/amplitude/types.ts");
 const TAXONOMY_DOC = path.join(REPO_ROOT, "docs/analytics/EVENT_TAXONOMY.md");
@@ -28,6 +28,10 @@ const SCAN_ROOTS = [
 const IDENTIFIER_ALLOWLIST = new Set<string>([
   // Operational / infra events tracked outside the product taxonomy.
   "EVENT_KEYS",
+  // Doc filename / comment token (`EVENT_TAXONOMY.md`), not an event constant.
+  "EVENT_TAXONOMY",
+  // Staff-notification type map in notify-staff-event.ts, not an Amplitude event.
+  "EVENT_TO_TYPE",
 ]);
 
 /** Regex-ish identifiers that are not analytics event constants (Slack/ops event keys etc.). */
@@ -117,8 +121,8 @@ describe("analytics taxonomy — single source of truth", () => {
     const pkgValues = new Set(packageEvents.values());
     const webValues = new Set(webEvents.values());
     for (const name of required) {
-      expect(pkgValues.has(name), `package missing ${name}`).toBe(true);
-      expect(webValues.has(name), `web types.ts missing ${name}`).toBe(true);
+      expect(pkgValues.has(name), "pkg events missing " + name).toBe(true);
+      expect(webValues.has(name), "web types.ts missing " + name).toBe(true);
     }
   });
 
