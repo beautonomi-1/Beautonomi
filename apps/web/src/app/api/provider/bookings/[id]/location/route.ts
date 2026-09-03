@@ -61,7 +61,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, location_id, location_type, status, current_stage, staff_id, address_latitude, address_longitude")
+      .select("id, provider_id, location_id, location_type, status, current_stage, staff_id, address_latitude, address_longitude, eta_source, estimated_arrival, provider_eta_minutes")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -149,15 +149,26 @@ export async function POST(
       }
     }
 
+    const bookingRow = booking as {
+      eta_source?: string | null;
+      estimated_arrival?: string | null;
+    };
+    const manualEtaActive =
+      bookingRow.eta_source === "manual" &&
+      bookingRow.estimated_arrival &&
+      new Date(bookingRow.estimated_arrival).getTime() > Date.now();
+
     // Persist latest provider location and ETA on booking for customer status/ETA UI
     const bookingUpdate: Record<string, unknown> = {
       provider_location: { latitude: data.latitude, longitude: data.longitude },
       updated_at: new Date().toISOString(),
     };
-    if (etaMinutes != null) {
+    if (etaMinutes != null && (!manualEtaActive || bookingRow.eta_source === "gps")) {
       const etaDate = new Date();
       etaDate.setMinutes(etaDate.getMinutes() + etaMinutes);
       bookingUpdate.estimated_arrival = etaDate.toISOString();
+      bookingUpdate.provider_eta_minutes = etaMinutes;
+      bookingUpdate.eta_source = "gps";
     }
     const { error: bookingUpdateError } = await supabaseAdminLoc
       .from("bookings")

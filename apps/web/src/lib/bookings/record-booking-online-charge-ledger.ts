@@ -1,6 +1,7 @@
 /**
  * Finance ledger writer for platform-held online gateway charges (Paystack, Stripe, Flutterwave).
- * Trigger `create_finance_ledger_from_payment` skips these providers; the webhook must post rows.
+ * Trigger `create_finance_ledger_from_payment` skips these providers; rows are posted by the
+ * Paystack webhook, in-process capture (`recordPaystackBookingSettlement`), or the reconcile cron.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -17,6 +18,9 @@ import {
 } from "./post-booking-audit-ledger-legs";
 
 export type OnlineGatewayLedgerProvider = "paystack" | "stripe" | "flutterwave";
+
+/** platform_settings: online checkout; provider_collected: terminal / card-machine (commission 0). */
+export type CommissionMode = "platform_settings" | "provider_collected";
 
 export type RecordBookingOnlineChargeLedgerInput = {
   bookingId: string;
@@ -42,6 +46,7 @@ export type RecordBookingOnlineChargeLedgerInput = {
   descriptions?: { payment?: string; providerEarnings?: string };
   paymentTransactionType?: string;
   auditLegStyle?: AuditLegDescriptionStyle;
+  commissionMode?: CommissionMode;
 };
 
 export type RecordBookingOnlineChargeLedgerResult =
@@ -53,6 +58,7 @@ type BookingRow = {
   booking_number?: string | null;
   provider_id?: string | null;
   tenant_id?: string | null;
+  currency?: string | null;
   total_amount?: number | null;
   tip_amount?: number | null;
   tax_amount?: number | null;
@@ -68,8 +74,10 @@ type BookingRow = {
 function withSourcePaymentId(
   row: Record<string, unknown>,
   sourcePaymentId?: string | null,
+  currency?: string | null,
 ): Record<string, unknown> {
-  return sourcePaymentId ? { ...row, source_payment_id: sourcePaymentId } : row;
+  const base = sourcePaymentId ? { ...row, source_payment_id: sourcePaymentId } : row;
+  return currency ? { ...base, currency } : base;
 }
 
 function resolveBookingLevelAmounts(
@@ -125,7 +133,7 @@ export async function recordBookingOnlineChargeLedger(
   const { data: booking, error: bookingError } = await supabase
     .from("bookings")
     .select(
-      "id, booking_number, provider_id, tenant_id, total_amount, tip_amount, tax_amount, travel_fee, platform_fee_amount, service_fee_amount, platform_service_fee, promotion_discount_amount, membership_discount_amount, loyalty_discount_amount",
+      "id, booking_number, provider_id, tenant_id, currency, total_amount, tip_amount, tax_amount, travel_fee, platform_fee_amount, service_fee_amount, platform_service_fee, promotion_discount_amount, membership_discount_amount, loyalty_discount_amount",
     )
     .eq("id", input.bookingId)
     .maybeSingle();
@@ -209,12 +217,22 @@ export async function recordBookingOnlineChargeLedger(
     bookingLevelItemsAlreadyPosted: commissionContext.bookingLevelItemsAlreadyPosted,
   });
 
-  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
-    tenantId: financeTenantId,
-    providerId: bookingData.provider_id ?? null,
-  });
+  const commissionMode = input.commissionMode ?? "platform_settings";
+  const commissionRate =
+    commissionMode === "provider_collected"
+      ? 0
+      : await resolveCommissionPercentageForProvider(supabase, {
+          tenantId: financeTenantId,
+          providerId: bookingData.provider_id ?? null,
+        });
   const platformCommission = commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
-  const providerEarnings = subtractMoney(commissionBase, platformCommission);
+  const providerEarnings =
+    commissionMode === "provider_collected"
+      ? commissionBase
+      : subtractMoney(commissionBase, platformCommission);
+  const paymentNet =
+    commissionMode === "provider_collected" ? 0 : platformCommission;
+  const bookingCurrency = bookingData.currency?.trim() || "ZAR";
 
   const webhookNow = new Date().toISOString();
   const bookingNumber = bookingData.booking_number ?? input.bookingId;
@@ -245,6 +263,7 @@ export async function recordBookingOnlineChargeLedger(
         customer_email: input.customerEmail ?? null,
       },
       created_at: webhookNow,
+      currency: bookingCurrency,
     };
     if (input.paymentTransactionType) {
       paymentTxRow.transaction_type = input.paymentTransactionType;
@@ -272,11 +291,12 @@ export async function recordBookingOnlineChargeLedger(
           amount: commissionBase,
           fees: feesInCurrency,
           commission: platformCommission,
-          net: platformCommission,
+          net: paymentNet,
           description: paymentDescription,
           created_at: webhookNow,
         },
         sourcePaymentId,
+        bookingCurrency,
       ),
     );
 
@@ -295,6 +315,7 @@ export async function recordBookingOnlineChargeLedger(
           created_at: webhookNow,
         },
         sourcePaymentId,
+        bookingCurrency,
       ),
     );
 
@@ -314,6 +335,7 @@ export async function recordBookingOnlineChargeLedger(
             created_at: webhookNow,
           },
           sourcePaymentId,
+          bookingCurrency,
         ),
       );
     }
@@ -337,6 +359,7 @@ export async function recordBookingOnlineChargeLedger(
                     created_at: webhookNow,
                   },
                   sourcePaymentId,
+                  bookingCurrency,
                 ),
               ]
             : []),
@@ -356,6 +379,7 @@ export async function recordBookingOnlineChargeLedger(
                     created_at: webhookNow,
                   },
                   sourcePaymentId,
+                  bookingCurrency,
                 ),
               ]
             : []),
@@ -375,6 +399,7 @@ export async function recordBookingOnlineChargeLedger(
                     created_at: webhookNow,
                   },
                   sourcePaymentId,
+                  bookingCurrency,
                 ),
               ]
             : []),
@@ -392,11 +417,12 @@ export async function recordBookingOnlineChargeLedger(
           amount: commissionBase,
           fees: feesInCurrency,
           commission: platformCommission,
-          net: platformCommission,
+          net: paymentNet,
           description: secondPaymentDescription,
           created_at: webhookNow,
         },
         sourcePaymentId,
+        bookingCurrency,
       ),
       withSourcePaymentId(
         {
@@ -412,6 +438,7 @@ export async function recordBookingOnlineChargeLedger(
           created_at: webhookNow,
         },
         sourcePaymentId,
+        bookingCurrency,
       ),
     ]);
 
@@ -442,6 +469,7 @@ export async function recordBookingOnlineChargeLedger(
             created_at: webhookNow,
           },
           sourcePaymentId,
+          bookingCurrency,
         ),
       );
     }
@@ -461,6 +489,7 @@ export async function recordBookingOnlineChargeLedger(
             created_at: webhookNow,
           },
           sourcePaymentId,
+          bookingCurrency,
         ),
       );
     }
@@ -480,6 +509,7 @@ export async function recordBookingOnlineChargeLedger(
             created_at: webhookNow,
           },
           sourcePaymentId,
+          bookingCurrency,
         ),
       );
     }
@@ -499,6 +529,7 @@ export async function recordBookingOnlineChargeLedger(
             created_at: webhookNow,
           },
           sourcePaymentId,
+          bookingCurrency,
         ),
       );
     }
@@ -528,6 +559,16 @@ export async function recordBookingOnlineChargeLedger(
     dedupeScope,
     reference: input.reference,
   });
+
+  if (tipAmount > 0) {
+    void import("@/lib/notifications/notify-staff-event")
+      .then(({ notifyStaffTipReceivedForBooking }) =>
+        notifyStaffTipReceivedForBooking(supabase, input.bookingId, {
+          currency: bookingCurrency,
+        }),
+      )
+      .catch(() => undefined);
+  }
 
   return { ok: true, skipped: false, isSecondCharge };
 }

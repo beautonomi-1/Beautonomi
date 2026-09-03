@@ -12,6 +12,7 @@ import {
   computeBookingsStats,
   type BookingsStatsRange,
 } from "@/lib/server/provider/bookings-stats";
+import { getCalendarScopeForUser } from "@/lib/auth/calendar-scope";
 
 const VALID_RANGES = new Set<BookingsStatsRange>(["today", "week", "month", "all"]);
 
@@ -35,12 +36,15 @@ export async function GET(request: NextRequest) {
       return errorResponse("Invalid range", "VALIDATION_ERROR", 400);
     }
     const locationId = request.nextUrl.searchParams.get("location_id")?.trim() || undefined;
+    const { scope, staffId } = await getCalendarScopeForUser(user.id, request);
+    const scopedStaffId = scope === "own" ? staffId : null;
 
     const stats = await computeBookingsStats(
       supabaseAdmin,
       providerId,
       rangeParam as BookingsStatsRange,
       locationId,
+      scopedStaffId,
     );
 
     return successResponse(stats);

@@ -43,6 +43,7 @@ export default function GiftCardPurchasePage() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
+  const [deliverAt, setDeliverAt] = useState("");
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -158,6 +159,7 @@ export default function GiftCardPurchasePage() {
         recipient_email: recipientEmail.trim() ? recipientEmail.trim() : null,
         recipient_name: recipientEmail.trim() && recipientName.trim() ? recipientName.trim() : undefined,
         message: recipientEmail.trim() && giftMessage.trim() ? giftMessage.trim() : undefined,
+        deliver_at: deliverAt.trim() ? new Date(deliverAt).toISOString() : undefined,
         template_id: selectedTemplate?.id || undefined,
         template_name: selectedTemplate?.name || undefined,
         template_image_url: selectedTemplate?.image_url || undefined,
@@ -390,6 +392,20 @@ export default function GiftCardPurchasePage() {
                     rows={3}
                     className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
+                </div>
+                <div>
+                  <Label htmlFor="deliverAt" className="text-sm font-medium mb-1 block">
+                    Send later (optional)
+                  </Label>
+                  <Input
+                    id="deliverAt"
+                    type="datetime-local"
+                    value={deliverAt}
+                    onChange={(e) => setDeliverAt(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty to send immediately after payment.
+                  </p>
                 </div>
                 <p className="text-xs text-gray-500 rounded-md bg-pink-50 p-2">
                   We&apos;ll email the code{isBulkMode && Number(quantity) > 1 ? "s" : ""} to {recipientEmail.trim()} after payment, with steps to redeem. If they have a Beautonomi account, it also appears in their wallet automatically.

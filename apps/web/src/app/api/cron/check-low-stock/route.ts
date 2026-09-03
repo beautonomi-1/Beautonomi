@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { checkLowStockAndAlert } from "@/lib/inventory/stock-alerts";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "check-low-stock";
+export const maxDuration = 120;
 
 /**
  * GET /api/cron/check-low-stock
@@ -17,11 +21,13 @@ export async function GET(request: NextRequest) {
       return new Response(auth.error || "Unauthorized", { status: 401 });
     }
 
-    const result = await checkLowStockAndAlert();
+    return await runLockedCronRoute(JOB_NAME, async () => {
+      const result = await checkLowStockAndAlert();
 
-    return successResponse({
-      message: "Low stock check completed",
-      ...result,
+      return successResponse({
+        message: "Low stock check completed",
+        ...result,
+      });
     });
   } catch (error) {
     return handleApiError(error, "Failed to check low stock");

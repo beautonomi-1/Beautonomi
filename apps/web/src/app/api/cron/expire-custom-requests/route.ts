@@ -5,6 +5,10 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { creditWalletForCustomOfferAbandon } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
 import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "expire-custom-requests";
+export const maxDuration = 300;
 
 type ExpiredRequestRow = {
   id: string;
@@ -161,6 +165,14 @@ async function notifyExpiredOfferBestEffort(row: ExpiredOfferRow): Promise<void>
  * §custom-requests-lifecycle-2026-05
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error ?? "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

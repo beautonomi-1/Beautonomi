@@ -27,7 +27,23 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
-    const { estimated_arrival } = body; // Optional: estimated arrival time
+    const { estimated_arrival, eta_minutes: etaMinutesRaw } = body;
+
+    let estimatedArrivalIso: string | null =
+      typeof estimated_arrival === "string" && estimated_arrival.trim()
+        ? estimated_arrival.trim()
+        : null;
+    let providerEtaMinutes: number | null = null;
+    if (etaMinutesRaw != null && etaMinutesRaw !== "") {
+      const etaMinutes = Math.round(Number(etaMinutesRaw));
+      if (!Number.isFinite(etaMinutes) || etaMinutes < 1 || etaMinutes > 240) {
+        return errorResponse("eta_minutes must be between 1 and 240", "VALIDATION_ERROR", 400);
+      }
+      providerEtaMinutes = etaMinutes;
+      const etaDate = new Date();
+      etaDate.setMinutes(etaDate.getMinutes() + etaMinutes);
+      estimatedArrivalIso = etaDate.toISOString();
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -78,7 +94,8 @@ export async function POST(
         booking_id: id,
         event_type: "provider_on_way",
         event_data: {
-          estimated_arrival: estimated_arrival || null,
+          estimated_arrival: estimatedArrivalIso,
+          eta_minutes: providerEtaMinutes,
           started_at: new Date().toISOString(),
         },
         created_by: user.id,
@@ -94,8 +111,12 @@ export async function POST(
       provider_en_route_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    if (estimated_arrival) {
-      updatePayload.estimated_arrival = estimated_arrival;
+    if (estimatedArrivalIso) {
+      updatePayload.estimated_arrival = estimatedArrivalIso;
+    }
+    if (providerEtaMinutes != null) {
+      updatePayload.provider_eta_minutes = providerEtaMinutes;
+      updatePayload.eta_source = "manual";
     }
     const { error: updateError } = await supabase
       .from("bookings")
@@ -108,7 +129,7 @@ export async function POST(
     }
 
     // Notify customer via template pipeline (push + in-app bell row).
-    await notifyProviderEnRoute(id, estimated_arrival ?? null, ["push", "email"]);
+    await notifyProviderEnRoute(id, estimatedArrivalIso, ["push", "email"]);
 
     // Fetch updated booking
     const { data: updatedBooking } = await supabase

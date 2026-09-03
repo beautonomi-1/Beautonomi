@@ -7,6 +7,10 @@ import {
   reconcileWindowFromDays,
   type ReconcileLocalTerminal,
 } from "@/lib/payments/paystack-terminal-reconcile";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "sync-paystack-terminal-payments";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/sync-paystack-terminal-payments
@@ -16,6 +20,14 @@ import {
  * upserts any the webhook missed. Idempotent on `paystack_reference`.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request), { staleAfterMinutes: 20 });
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

@@ -179,6 +179,23 @@ export {
   type BookingPaymentDisplay,
 } from "./booking/paymentStatusDisplay";
 export {
+  SUPPORT_CONTEXT_LABEL_MAX,
+  SUPPORT_UUID_CONTEXT_TYPES,
+  bookingSupportQuery,
+  formatBookingSupportLabel,
+  getBookingSupportPrompt,
+  getProductOrderSupportPrompt,
+  resolveBookingSupportTicketPrefill,
+  resolveSupportTicketPrefillFromSearch,
+  shouldSendSupportContextId,
+  supportPrefillNoun,
+  supportTicketQuery,
+  type BookingSupportAudience,
+  type BookingSupportPrompt,
+  type BookingSupportTicketPrefill,
+  type SupportTicketPrefill,
+} from "./booking/bookingSupportContext";
+export {
   PROVIDER_EXCELLENCE_DASHBOARD_BODY,
   PROVIDER_EXCELLENCE_DASHBOARD_COOLDOWN_MS,
   PROVIDER_EXCELLENCE_DASHBOARD_CTA,

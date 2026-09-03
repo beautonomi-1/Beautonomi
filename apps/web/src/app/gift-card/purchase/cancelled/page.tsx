@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { XCircle, Loader2 } from "lucide-react";
 import Navbar4 from "@/components/global/Navbar4";
 import { Button } from "@/components/ui/button";
+import { supportTicketQuery } from "@beautonomi/utils";
 
 /**
  * Cancelled checkout landing page for gift card purchases.
@@ -22,8 +23,12 @@ function GiftCardPurchaseCancelledInner() {
   const reference = searchParams.get("reference")?.trim() || searchParams.get("trxref")?.trim() || "";
   const [retryUrl, setRetryUrl] = useState<string>("/gift-card/purchase");
 
-  const supportSubject = useMemo(
-    () => (reference ? `Gift card checkout cancelled (${reference})` : "Gift card checkout cancelled"),
+  const supportHref = useMemo(
+    () =>
+      `/help/submit-ticket${supportTicketQuery({
+        giftCardCode: reference || null,
+        category: "payment_gift_card",
+      })}`,
     [reference],
   );
 
@@ -62,7 +67,7 @@ function GiftCardPurchaseCancelledInner() {
             <Link href="/gift-card">Back to gift cards</Link>
           </Button>
           <p className="mt-2 text-center text-sm text-gray-500">
-            Need help? <Link href={`mailto:support@beautonomi.co.za?subject=${encodeURIComponent(supportSubject)}`} className="font-medium text-primary underline">Contact support</Link>.
+            Need help? <Link href={supportHref} className="font-medium text-primary underline">Contact support</Link>.
           </p>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateStaffCommission } from "./commission-calculator";
 import { getTipsByStaff } from "./tips-helper";
+import { sumStaffEarningsLines } from "./staff-earnings-from-lines";
 
 export interface PayRunItem {
   staffId: string;
@@ -59,13 +60,34 @@ export async function calculatePayRun(
   const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, periodStart, periodEnd);
 
   for (const staff of staffMembers) {
-    const commission = await calculateStaffCommission(
+    const linesSummary = await sumStaffEarningsLines(
       supabaseAdmin,
-      providerId,
       staff.id,
       periodStart,
-      periodEnd
-    );
+      periodEnd,
+    ).catch(() => null);
+
+    const commissionAdjustments =
+      linesSummary?.adjustment_breakdown?.commission ?? linesSummary?.adjustments ?? 0;
+    const tipAdjustments = linesSummary?.adjustment_breakdown?.tips ?? 0;
+    const commission =
+      linesSummary && (linesSummary.commission !== 0 || linesSummary.tips !== 0 || linesSummary.adjustments !== 0)
+        ? {
+            totalCommission: Math.max(0, linesSummary.commission + commissionAdjustments),
+            totalBookings: 0,
+            serviceCommission: linesSummary.commission,
+            productCommission: 0,
+            serviceRevenue: 0,
+            productRevenue: 0,
+            totalRevenue: 0,
+          }
+        : await calculateStaffCommission(
+            supabaseAdmin,
+            providerId,
+            staff.id,
+            periodStart,
+            periodEnd,
+          );
 
     const hours = hoursByStaff.get(staff.id) || 0;
     const hourlyRate = Number(staff.hourly_rate || 0);
@@ -85,7 +107,12 @@ export async function calculatePayRun(
     // They are NOT included in the commission base (STAFF_COMMISSION_REVENUE_TYPES
     // = ["provider_earnings"] only), so there is no double-count.
     const staffTipsEnabled = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
-    const tipsAmount = staffTipsEnabled ? (tipsByStaff.get(staff.id) || 0) : 0;
+    const tipsFromLines = Math.max(0, (linesSummary?.tips ?? 0) + tipAdjustments);
+    const tipsAmount = staffTipsEnabled
+      ? (linesSummary?.tips ?? 0) > 0
+        ? tipsFromLines
+        : tipsByStaff.get(staff.id) || 0
+      : 0;
 
     const grossPay = commissionAmount + hourlyAmount + (salary > 0 ? salaryAmount : 0) + tipsAmount;
     const manualDeductions = 0;

@@ -228,6 +228,87 @@ describe("GET /api/me/gift-cards", () => {
     expect(body.data.gift_cards).toEqual([]);
   });
 
+  it("surfaces expires_at, balance, is_active and the order's deliver_at on each card", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === "gift_card_orders") {
+          return ordersChain([{ id: "order-1", gift_card_id: "card-1" }]);
+        }
+        if (table === "gift_card_redemptions") return redemptionsChain([]);
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    });
+
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "user_gift_card_hides") return hidesChain([]);
+        if (table === "gift_card_orders") {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: "order-1",
+                    deliver_at: "2030-01-01T08:00:00.000Z",
+                    delivered_at: null,
+                    delivery_channel: "email_sms",
+                  },
+                ],
+                error: null,
+              }),
+            })),
+          };
+        }
+        return {
+          select: vi.fn((cols: string) => {
+            if (cols === "id") {
+              return { or: vi.fn().mockResolvedValue({ data: [{ id: "card-1" }], error: null }) };
+            }
+            if (cols === "id, metadata") {
+              return {
+                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+              };
+            }
+            if (cols === "*") {
+              return {
+                in: vi.fn(() => ({
+                  order: vi.fn().mockResolvedValue({
+                    data: [
+                      {
+                        id: "card-1",
+                        code: "AAA",
+                        balance: "250.00",
+                        currency: "ZAR",
+                        is_active: true,
+                        expires_at: "2031-01-01T00:00:00.000Z",
+                        metadata: { order_id: "order-1" },
+                      },
+                    ],
+                    error: null,
+                  }),
+                })),
+              };
+            }
+            throw new Error(`Unexpected select(${cols})`);
+          }),
+        };
+      }),
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/me/gift-cards"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    const card = body.data.gift_cards[0];
+    expect(card.expires_at).toBe("2031-01-01T00:00:00.000Z");
+    expect(card.balance).toBe(250);
+    expect(card.is_active).toBe(true);
+    expect(card.deliver_at).toBe("2030-01-01T08:00:00.000Z");
+    expect(card.delivered_at).toBeNull();
+    expect(card.delivery_channel).toBe("email_sms");
+  });
+
   it("excludes cards the user has hidden from their wallet", async () => {
     mockGetSupabaseServer.mockResolvedValue({
       from: vi.fn((table: string) => {

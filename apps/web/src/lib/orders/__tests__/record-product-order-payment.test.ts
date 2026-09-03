@@ -23,6 +23,10 @@ vi.mock("@/lib/utils/logger", () => ({
   },
 }));
 
+vi.mock("@/lib/analytics/amplitude/track-product-order-paid-server", () => ({
+  trackProductOrderPaidServer: vi.fn().mockResolvedValue(undefined),
+}));
+
 type Row = Record<string, unknown>;
 
 function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts: Record<string, Row[][]>; updates: Record<string, Row[]> }) {

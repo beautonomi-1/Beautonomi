@@ -99,9 +99,18 @@ describe("provider-revenue-semantics", () => {
     expect(b.netAfterRefunds).toBe(providerNetAfterRefunds(rows));
   });
 
+  it("counts membership_provider_earnings in recognized revenue", () => {
+    const rows: ProviderRevenueLedgerRow[] = [
+      row("provider_earnings", 100),
+      row("membership_provider_earnings", 50),
+    ];
+    expect(recognizedRevenue(rows)).toBe(150);
+  });
+
   it("RECOGNIZED_REVENUE_TYPES is the documented closed set", () => {
     expect([...RECOGNIZED_REVENUE_TYPES]).toEqual([
       "provider_earnings",
+      "membership_provider_earnings",
       "tip",
       "travel_fee",
       "cancellation_fee",

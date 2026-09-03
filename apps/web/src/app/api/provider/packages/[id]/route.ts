@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 function supabaseServiceRole() {
@@ -137,7 +138,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = supabaseServiceRole();
     const { id } = await params;
     const body = await request.json();

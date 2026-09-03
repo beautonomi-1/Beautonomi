@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, notFoundResponse, handleApiError, getProviderIdForUser, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { successResponse, notFoundResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 
 type Params = { params: Promise<{ id: string; addonId: string }> };
 
 /**
  * PATCH /api/provider/services/[id]/addons/[addonId]
+ * Requires `edit_services` (owner / manager / staff with the permission).
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { id: _serviceId, addonId } = await params;
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -52,11 +58,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 /**
  * DELETE /api/provider/services/[id]/addons/[addonId]
+ * Requires `edit_services`.
  */
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const { id: _serviceId, addonId } = await params;
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

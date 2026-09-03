@@ -217,6 +217,21 @@ export function getBookingPaymentDisplay(input: {
     };
   }
 
+  if (
+    paymentStatus === "failed" ||
+    paymentStatus === "payment_failed" ||
+    paymentStatus === "declined"
+  ) {
+    return {
+      label: "Payment failed",
+      description: "The payment did not go through. Retry, or contact support with this booking number.",
+      tone: "danger",
+      isPaymentSettled: false,
+      isDepositPaid: false,
+      isPaymentPending: true,
+    };
+  }
+
   return {
     label: "Payment pending",
     description: "Payment has not been confirmed yet.",

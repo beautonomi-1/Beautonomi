@@ -19,6 +19,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSupportTicketsSearchHref } from "@/lib/adminSupportContextHref";
 import { adminToast } from "@/lib/adminToast";
 
 function str(v: unknown): string {
@@ -138,22 +139,61 @@ export function ProductOrderDetailPage() {
       <AdminPageHeader
         title={`Order ${str(order.order_number ?? id)}`}
         description={
-          <span className="flex items-center gap-2">
-            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.status)] ?? "bg-gray-100 text-gray-600"}`}>
-              {str(order.status)}
+          <span className="flex flex-col gap-2">
+            <span className="flex items-center gap-2">
+              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.status)] ?? "bg-gray-100 text-gray-600"}`}>
+                {str(order.status)}
+              </span>
+              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.payment_status)] ?? "bg-gray-100 text-gray-600"}`}>
+                payment: {str(order.payment_status)}
+              </span>
             </span>
-            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.payment_status)] ?? "bg-gray-100 text-gray-600"}`}>
-              payment: {str(order.payment_status)}
+            <span className="flex flex-wrap items-center gap-2 font-mono text-xs text-gray-600">
+              <span className="select-all break-all">{id}</span>
+              <button
+                type="button"
+                className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(id).then(
+                    () => adminToast.success("Order ID copied"),
+                    () => adminToast.error("Could not copy order ID"),
+                  );
+                }}
+              >
+                Copy ID
+              </button>
+              {order.order_number ? (
+                <button
+                  type="button"
+                  className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(str(order.order_number)).then(
+                      () => adminToast.success("Order number copied"),
+                      () => adminToast.error("Could not copy order number"),
+                    );
+                  }}
+                >
+                  Copy number
+                </button>
+              ) : null}
             </span>
           </span>
         }
         actions={
-          <Link
-            to={adminSpaTo("/admin/ecommerce/orders")}
-            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
-          >
-            ← Orders
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={adminSpaTo(adminSupportTicketsSearchHref(str(order.order_number ?? id)))}
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+            >
+              Related tickets
+            </Link>
+            <Link
+              to={adminSpaTo("/admin/ecommerce/orders")}
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+            >
+              ← Orders
+            </Link>
+          </div>
         }
       />
 

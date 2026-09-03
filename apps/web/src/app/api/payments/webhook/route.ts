@@ -16,6 +16,9 @@ import {
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
+import { persistFailedWebhookSignature } from "@/lib/payment/persist-failed-webhook-signature";
+
+export const maxDuration = 60;
 
 const MAX_WEBHOOK_BODY_BYTES = 1_000_000; // 1 MB safety cap
 
@@ -205,6 +208,12 @@ export async function POST(request: Request) {
       captureWebhookFailure(new Error("Invalid webhook signature"), {
         stage: "verify_signature",
         tenantId: tenant?.id ?? null,
+      });
+      await persistFailedWebhookSignature(getSupabaseAdmin(), {
+        source: "paystack",
+        body,
+        errorMessage: `HMAC mismatch after trying tenant secrets for: ${candidateTenantIds.map((id) => id ?? "global").join(", ")}`,
+        parsedPayload: safeParseJson(body) ?? undefined,
       });
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }

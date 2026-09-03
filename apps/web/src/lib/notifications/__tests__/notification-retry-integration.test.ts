@@ -283,6 +283,11 @@ describe("process-notification-queue cron integration", () => {
 
     vi.doMock("@/lib/supabase/admin", () => ({
       getSupabaseAdmin: vi.fn().mockReturnValue({
+        rpc: async (name: string) => {
+          if (name === "claim_cron_run") return { data: 1, error: null };
+          if (name === "finish_cron_run") return { data: null, error: null };
+          return { data: null, error: null };
+        },
         from: vi.fn().mockImplementation((table: string) => {
           if (table !== "notification_delivery_queue") {
             throw new Error(`unexpected table ${table}`);

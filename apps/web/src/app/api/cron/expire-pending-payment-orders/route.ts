@@ -32,10 +32,13 @@ import {
   creditWalletForProductOrderIfNeeded,
 } from "@/lib/orders/product-order-lifecycle";
 import { dispatchProductOrderStatusNotification } from "@/lib/notifications/notify-product-order-status";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
+const JOB_NAME = "expire-pending-payment-orders";
 /** Minutes an unpaid card order may sit before stock is released. */
 const DEFAULT_TTL_MINUTES = 30;
 const BATCH_LIMIT = 200;
@@ -51,6 +54,17 @@ type StaleOrderRow = {
 };
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: auth.error ?? "unauthorized" },
+      { status: 401 },
+    );
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json(

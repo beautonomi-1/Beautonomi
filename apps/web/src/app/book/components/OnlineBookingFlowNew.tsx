@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
-import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
+import { EVENT_CHECKOUT_START, EVENT_BOOKING_HOLD_CREATED } from "@/lib/analytics/amplitude/types";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
 import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
@@ -1529,6 +1529,11 @@ export default function OnlineBookingFlowNew({
           if (expTrim) sessionStorage.setItem("beautonomi_hold_expires_at", expTrim);
           else sessionStorage.removeItem("beautonomi_hold_expires_at");
         } catch {}
+        track(EVENT_BOOKING_HOLD_CREATED, {
+          portal: "web",
+          provider_id: provider.id,
+          hold_id: id,
+        });
         try {
           const tc = await fetch("/api/public/tenant-context", { credentials: "same-origin", cache: "no-store" }).then((r) =>
             r.json().catch(() => null)

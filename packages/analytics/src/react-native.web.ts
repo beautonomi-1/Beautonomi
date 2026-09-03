@@ -29,8 +29,10 @@ let isInitialized = false;
 export interface AnalyticsClient {
   track: (eventType: string, eventProperties?: Record<string, unknown>) => void;
   identify: (userId: string, userProperties?: Record<string, unknown>) => void;
+  setGroup: (groupType: string, groupName: string) => void;
   screen: (screenName: string) => void;
   reset: () => void;
+  flush: () => void;
 }
 
 export function resetAnalyticsModule(): void {
@@ -83,6 +85,12 @@ function createClient(): AnalyticsClient {
         }
       } catch {}
     },
+    setGroup: (groupType: string, groupName: string) => {
+      if (!isInitialized) return;
+      try {
+        amplitude.setGroup(groupType, groupName);
+      } catch {}
+    },
     screen: (screenName: string) => {
       if (!isInitialized) return;
       try {
@@ -92,6 +100,12 @@ function createClient(): AnalyticsClient {
     reset: () => {
       try {
         amplitude.reset();
+      } catch {}
+    },
+    flush: () => {
+      if (!isInitialized) return;
+      try {
+        void amplitude.flush();
       } catch {}
     },
   };

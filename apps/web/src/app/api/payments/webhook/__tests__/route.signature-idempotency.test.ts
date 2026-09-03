@@ -77,6 +77,12 @@ vi.mock("@/lib/payment/webhook-payload-sanitizer", () => ({
   sanitizeWebhookPayload: (e: unknown) => e,
 }));
 
+const mockPersistFailedWebhookSignature = vi.fn(async () => undefined);
+vi.mock("@/lib/payment/persist-failed-webhook-signature", () => ({
+  persistFailedWebhookSignature: (...args: unknown[]) =>
+    mockPersistFailedWebhookSignature(...(args as [])),
+}));
+
 vi.mock("@/lib/monitoring/route-metrics", () => ({
   withRouteMetrics: (_req: Request, _route: string, _method: string, handler: () => Promise<Response>) =>
     handler(),
@@ -160,6 +166,32 @@ describe("POST /api/payments/webhook — signature & idempotency (money path)", 
     const res = await POST(makeRequest(body, "deadbeef".repeat(16)));
     expect(res.status).toBe(401);
     expect(mockHandleChargeSuccess).not.toHaveBeenCalled();
+  });
+
+  it("persists a rejected signature to webhook_events (forensics) and still returns 401", async () => {
+    const { POST } = await import("../route");
+    const body = chargeSuccessBody("ref-sigfail");
+    const res = await POST(makeRequest(body, "deadbeef".repeat(16)));
+    expect(res.status).toBe(401);
+    expect(mockPersistFailedWebhookSignature).toHaveBeenCalledTimes(1);
+    expect(mockPersistFailedWebhookSignature).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        source: "paystack",
+        body,
+        errorMessage: expect.stringContaining("HMAC mismatch"),
+        parsedPayload: expect.objectContaining({ event: "charge.success" }),
+      }),
+    );
+    expect(mockHandleChargeSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not persist a signature failure for a correctly signed event", async () => {
+    const { POST } = await import("../route");
+    const body = chargeSuccessBody("ref-valid-nopersist");
+    const res = await POST(makeRequest(body, sign(body)));
+    expect(res.status).toBe(200);
+    expect(mockPersistFailedWebhookSignature).not.toHaveBeenCalled();
   });
 
   it("accepts a correctly HMAC-SHA512-signed charge.success and dispatches to the handler", async () => {

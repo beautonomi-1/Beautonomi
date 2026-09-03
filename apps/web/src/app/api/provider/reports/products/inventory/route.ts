@@ -10,9 +10,11 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
+  costStockValue,
   displayRetailPriceMin,
   effectiveStockQuantity,
   retailStockValue,
+  valueInventory,
 } from "@/lib/provider-portal/product-inventory-metrics";
 
 const PREVIEW_LIMIT_LOW = 25;
@@ -31,6 +33,8 @@ export type InventoryProductRow = {
   price: number;
   retail_price: number;
   retail_line_value: number;
+  /** qty × supply_price (COGS basis). */
+  cost_line_value: number;
 };
 
 /**
@@ -57,7 +61,7 @@ export async function GET(_request: NextRequest) {
     const { data: products, error: productsError } = await supabaseAdmin
       .from("products")
       .select(
-        "id, name, category, retail_price, quantity, low_stock_level, track_stock_quantity, is_active, has_variants, product_variants(quantity, retail_price)",
+        "id, name, category, retail_price, supply_price, quantity, low_stock_level, track_stock_quantity, is_active, has_variants, product_variants(quantity, retail_price, supply_price)",
       )
       .eq("provider_id", providerId)
       .order("name", { ascending: true });
@@ -72,6 +76,7 @@ export async function GET(_request: NextRequest) {
       const stock_quantity = effectiveStockQuantity(p);
       const price = displayRetailPriceMin(p);
       const retail_line_value = retailStockValue(p);
+      const cost_line_value = costStockValue(p);
       return {
         id: p.id,
         name: p.name,
@@ -85,6 +90,7 @@ export async function GET(_request: NextRequest) {
         price,
         retail_price: price,
         retail_line_value,
+        cost_line_value,
       };
     };
 
@@ -110,17 +116,32 @@ export async function GET(_request: NextRequest) {
     const inactiveProducts = totalProducts - activeProducts;
     const productsTrackingStock = rows.filter((p) => tracksStock(p)).length;
 
-    const totalStockValue = rows.reduce((sum, p) => sum + retailStockValue(p), 0);
+    // Part I (Commerce): inventory is valued at cost (supply_price) — that is the
+    // balance-sheet number. Retail value is exposed separately as sell-through potential.
+    const valuation = valueInventory(rows);
+    const totalStockValue = valuation.cost_stock_value;
 
     const lowStockProducts = lowStockCandidates.map(shapeRow).slice(0, PREVIEW_LIMIT_LOW);
     const outOfStockProducts = outOfStockCandidates.map(shapeRow).slice(0, PREVIEW_LIMIT_OUT);
 
-    const categoryMap = new Map<string, { count: number; stockValue: number }>();
+    const categoryMap = new Map<
+      string,
+      { count: number; stockValue: number; costStockValue: number; retailStockValue: number }
+    >();
     rows.forEach((product) => {
       const category = product.category || "Uncategorized";
-      const existing = categoryMap.get(category) || { count: 0, stockValue: 0 };
+      const existing = categoryMap.get(category) || {
+        count: 0,
+        stockValue: 0,
+        costStockValue: 0,
+        retailStockValue: 0,
+      };
       existing.count += 1;
-      existing.stockValue += retailStockValue(product);
+      const cost = costStockValue(product);
+      const retail = retailStockValue(product);
+      existing.stockValue += cost;
+      existing.costStockValue += cost;
+      existing.retailStockValue += retail;
       categoryMap.set(category, existing);
     });
 
@@ -132,7 +153,8 @@ export async function GET(_request: NextRequest) {
       `Catalogue snapshot from \`products\` (nested \`product_variants\`) for this provider. ` +
       `Generated in context of ${reportContext.timezone} for date/time labels only — quantities are not stored per branch. ` +
       `Effective quantity is the sum of \`product_variants.quantity\` when \`has_variants\` is true and at least one variant row exists; otherwise \`products.quantity\`. ` +
-      `Retail stock value is Σ (\`quantity × retail_price\`) per variant line, or \`products.quantity × products.retail_price\` when there are no variant rows. ` +
+      `Stock value (totalStockValue / costStockValue) is COGS: Σ (\`quantity × supply_price\`) per variant line (variant supply falls back to the parent's), or \`products.quantity × products.supply_price\` when there are no variant rows. ` +
+      `Retail stock value (retailStockValue) is Σ (\`quantity × retail_price\`) and is reported separately as sell-through potential, not an asset value. ` +
       `When \`track_stock_quantity\` is false, stock value is treated as 0 and the SKU is excluded from low/out-of-stock alerts. ` +
       `Low stock: tracked SKUs with quantity from 1 through \`low_stock_level\` inclusive (\`low_stock_level\` defaults to 5 when null). ` +
       `Out of stock: tracked SKUs with effective quantity 0.`;
@@ -147,7 +169,7 @@ export async function GET(_request: NextRequest) {
         quantityRule:
           "Variant quantities summed only when has_variants is true and product_variants has at least one row; otherwise parent quantity.",
         valueRule:
-          "Per product: sum of (variant qty × variant retail price) when variant rows exist; else parent qty × parent retail price; if track_stock_quantity is false, value is 0.",
+          "Cost basis (totalStockValue): per product, sum of (variant qty × variant supply price, falling back to parent supply price) when variant rows exist; else parent qty × parent supply price. Retail basis (retailStockValue) uses retail_price the same way. If track_stock_quantity is false, both are 0.",
         alertsRule:
           "Low/out counts include only products where track_stock_quantity is not false; low band uses low_stock_level ?? 5.",
         categoryRule:
@@ -159,6 +181,9 @@ export async function GET(_request: NextRequest) {
       inactiveProducts,
       productsTrackingStock,
       totalStockValue,
+      costStockValue: valuation.cost_stock_value,
+      retailStockValue: valuation.retail_stock_value,
+      potentialGrossMargin: valuation.potential_gross_margin,
       lowStockCount,
       outOfStockCount,
       previewLimits: { lowStock: PREVIEW_LIMIT_LOW, outOfStock: PREVIEW_LIMIT_OUT },

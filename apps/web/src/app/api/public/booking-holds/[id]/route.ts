@@ -15,8 +15,12 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
+import { withNoStore } from "@/lib/http/no-store";
 
-export async function GET(
+/** Hold state is per-session; responses are `Cache-Control: no-store` (never edge-cached). */
+export const GET = withNoStore(handleGet);
+
+async function handleGet(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {

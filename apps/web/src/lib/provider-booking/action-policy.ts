@@ -135,18 +135,33 @@ export function buildProviderBookingActionModel(booking: BookingActionInput): Pr
     disabledReasons.push(`${STATUS_LABELS[currentDbStatus] || currentDbStatus} bookings have no further status actions.`);
   }
 
-  const primaryAction =
-    actions.find((action) => action.id === "confirm") ||
-    (atHome && effectiveDbStatus === "confirmed" && stage === "provider_on_way"
-      ? actions.find((action) => action.id === "mark_arrived")
-      : null) ||
-    (atHome && effectiveDbStatus === "confirmed" && (stage === "" || stage === "confirmed") && isToday(booking.scheduled_at)
-      ? actions.find((action) => action.id === "start_journey")
-      : null) ||
-    actions.find((action) => action.id === "check_in") ||
-    actions.find((action) => action.id === "start_service") ||
-    actions.find((action) => action.id === "complete_service") ||
-    null;
+  const primaryAction = (() => {
+    if (atHome && effectiveDbStatus === "confirmed") {
+      const stageNorm = stage.trim();
+      if (stageNorm === "provider_on_way") {
+        return actions.find((action) => action.id === "mark_arrived") ?? null;
+      }
+      if (stageNorm === "provider_arrived" && (arrivalVerified || !arrivalPending)) {
+        return actions.find((action) => action.id === "start_service") ?? null;
+      }
+      if (stageNorm === "" || stageNorm === "confirmed") {
+        if (isToday(booking.scheduled_at)) {
+          return actions.find((action) => action.id === "start_journey") ?? null;
+        }
+        return actions.find((action) => action.id === "confirm") ?? null;
+      }
+    }
+    if (effectiveDbStatus === "in_progress" && atHome) {
+      return actions.find((action) => action.id === "complete_service") ?? null;
+    }
+    return (
+      actions.find((action) => action.id === "confirm") ||
+      actions.find((action) => action.id === "check_in") ||
+      actions.find((action) => action.id === "start_service") ||
+      actions.find((action) => action.id === "complete_service") ||
+      null
+    );
+  })();
 
   const happyPath = atHome
     ? ["Confirm", "Start journey", "Arrived", "Verify", "Start", "Complete"]

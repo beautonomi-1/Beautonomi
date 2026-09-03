@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { dispatchCampaign, type DispatchableCampaign } from "@/lib/marketing/dispatch-campaign";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const JOB_NAME = "dispatch-scheduled-campaigns";
 
 /**
  * GET /api/cron/dispatch-scheduled-campaigns
@@ -14,6 +18,14 @@ export const dynamic = "force-dynamic";
  * to manual sends). Designed to run every few minutes.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

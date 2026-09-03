@@ -47,6 +47,8 @@ export function buildEmailConfirmationRedirectUrl(params: {
 export interface SignInData {
   email: string;
   password: string;
+  rememberMe?: boolean;
+  captchaToken?: string;
 }
 
 /**
@@ -113,7 +115,12 @@ export async function signIn(data: SignInData) {
     res = await fetch('/api/auth/sign-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: trimmedEmail, password }),
+      body: JSON.stringify({
+        email: trimmedEmail,
+        password,
+        remember_me: data.rememberMe === true,
+        captcha_token: data.captchaToken,
+      }),
       credentials: 'same-origin',
       signal: controller.signal,
     });
@@ -129,7 +136,7 @@ export async function signIn(data: SignInData) {
   const json = await res.json().catch(() => ({}));
   const message = typeof json?.error === 'string' ? json.error : 'Sign-in failed. Please try again.';
 
-  if (!res.ok) {
+  if (res.ok === false) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Sign in error details:', {
         status: res.status,
@@ -137,7 +144,9 @@ export async function signIn(data: SignInData) {
         email: trimmedEmail,
       });
     }
-    throw new Error(message);
+    const err = new Error(message) as Error & { captchaRequired?: boolean };
+    if (json?.captcha_required === true) err.captchaRequired = true;
+    throw err;
   }
 
   const session = json?.data?.session;

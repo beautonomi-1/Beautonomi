@@ -150,5 +150,31 @@ export async function settleAdditionalChargeWithoutPaystack(
     created_by: customerId,
   });
 
+  try {
+    const { notifyAdditionalChargePaid } = await import(
+      "@/lib/notifications/notify-additional-charge-paid"
+    );
+    await notifyAdditionalChargePaid(admin, chargeId);
+  } catch (notifErr) {
+    console.warn("[settle-additional-charge-without-paystack] notification failed:", notifErr);
+  }
+
+  try {
+    const { trackAdditionalChargePaidServer } = await import(
+      "@/lib/analytics/amplitude/track-additional-charge-paid-server"
+    );
+    await trackAdditionalChargePaidServer({
+      reference,
+      bookingId,
+      chargeId,
+      amount: collectible,
+      customerId,
+      paymentMethod: walletAmountApplied > 0 ? "wallet" : "gift_card",
+      paymentProvider: "platform",
+    });
+  } catch (analyticsErr) {
+    console.warn("[settle-additional-charge-without-paystack] analytics failed:", analyticsErr);
+  }
+
   return { ok: true };
 }

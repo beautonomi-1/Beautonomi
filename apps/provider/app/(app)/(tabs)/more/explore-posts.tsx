@@ -259,6 +259,8 @@ export default function ExplorePostsScreen() {
     caption?: string;
     addToGallery?: string;
     bookingId?: string;
+    returnTo?: string;
+    step?: string;
   }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -819,6 +821,13 @@ export default function ExplorePostsScreen() {
       resetCreateForm();
       setCreateOpen(false);
       refresh();
+      const returnBookingId = params.bookingId || preseedBookingId;
+      if (publish && params.returnTo === "booking" && returnBookingId) {
+        router.replace(
+          `/(app)/(tabs)/more/bookings/${returnBookingId}?step=rate` as never,
+        );
+        return;
+      }
     } catch (e) {
       setUploading(false);
       setSubmittingMode(null);
@@ -827,7 +836,7 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : "Something went wrong.",
       );
     }
-  }, [canCreateExplorePosts, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, tagInput, createPost, refresh, resetCreateForm]);
+  }, [canCreateExplorePosts, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, params.bookingId, params.returnTo, tagInput, createPost, refresh, resetCreateForm, router]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (!canCreateExplorePosts) {

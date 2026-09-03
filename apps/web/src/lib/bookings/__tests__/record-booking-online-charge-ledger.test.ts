@@ -9,6 +9,10 @@ vi.mock("@/lib/finance/resolve-commission-percentage", () => ({
   resolveCommissionPercentageForProvider: vi.fn(async () => 10),
 }));
 
+vi.mock("@/lib/notifications/notify-staff-event", () => ({
+  notifyStaffTipReceivedForBooking: vi.fn(async () => 0),
+}));
+
 type Row = Record<string, unknown>;
 
 type LedgerScenario = {
@@ -158,6 +162,7 @@ describe("recordBookingOnlineChargeLedger", () => {
         net_amount: 208,
         status: "success",
         provider: "stripe",
+        currency: "ZAR",
         metadata: {
           fee_source: "stripe_webhook",
           customer_email: null,

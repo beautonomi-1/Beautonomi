@@ -38,6 +38,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AdsPlacementPreview } from "@/components/provider/ads/AdsPlacementPreview";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
@@ -246,6 +249,7 @@ type TimePack = {
 export default function ProviderAdsPage() {
   const { currencyCode, format: fmt } = useReportCurrency();
   const searchParams = useSearchParams();
+  const { provider } = useProviderPortal();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsEnabled = useFeatureFlag("ads.enabled");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -381,6 +385,31 @@ export default function ProviderAdsPage() {
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis);
     };
   }, [enabled, loadCampaigns, loadPerformance]);
+
+  useEffect(() => {
+    if (!enabled || !provider?.id) return;
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) return;
+    const channel = supabaseClient
+      .channel(`ads-campaigns:${provider.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ads_campaigns",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        () => {
+          void loadCampaigns();
+          void loadPerformance();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [enabled, provider?.id, loadCampaigns, loadPerformance]);
 
   useEffect(() => {
     if (searchParams.get("payment_success") === "1") {
@@ -1514,6 +1543,11 @@ export default function ProviderAdsPage() {
                   ))}
                 </ul>
               ) : null}
+
+              <AdsPlacementPreview
+                headline={checkoutReview.title}
+                businessName={checkoutReview.subtitle ?? undefined}
+              />
 
               <div className="rounded-lg border p-4">
                 {checkoutReview.lineItems.map((item, idx) => {

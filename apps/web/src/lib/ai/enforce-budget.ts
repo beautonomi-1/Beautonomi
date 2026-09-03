@@ -30,7 +30,9 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
 
   const { data: aiConfig, error: configError } = await supabase
     .from("ai_module_config")
-    .select("enabled, daily_budget_credits, per_provider_calls_per_day, per_user_calls_per_day")
+    .select(
+      "enabled, daily_budget_credits, per_provider_calls_per_day, per_user_calls_per_day, cache_ttl_seconds",
+    )
     .eq("environment", environment)
     .maybeSingle();
 
@@ -43,6 +45,28 @@ export async function enforceAiBudget(params: EnforceAiBudgetParams): Promise<En
   }
 
   const today = new Date().toISOString().slice(0, 10);
+
+  const { data: agentConfig } = await supabase
+    .from("agent_module_config")
+    .select("global_daily_spend_cap_usd")
+    .eq("environment", environment)
+    .maybeSingle();
+
+  const spendCapUsd = Number(agentConfig?.global_daily_spend_cap_usd ?? 0);
+  if (spendCapUsd > 0) {
+    const { data: spendRows } = await supabase
+      .from("ai_usage_log")
+      .select("cost_estimate")
+      .gte("created_at", `${today}T00:00:00Z`)
+      .lt("created_at", `${today}T23:59:59.999Z`);
+    const spentUsd = (spendRows ?? []).reduce(
+      (sum, row) => sum + Number((row as { cost_estimate?: number }).cost_estimate ?? 0),
+      0,
+    );
+    if (spentUsd >= spendCapUsd) {
+      return { allowed: false, reason: "global_spend_cap_exceeded", fallback_mode: "templates_only" };
+    }
+  }
 
   if (Number(aiConfig.daily_budget_credits) > 0) {
     const { count } = await supabase

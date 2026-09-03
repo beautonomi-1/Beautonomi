@@ -15,6 +15,7 @@ import {
   Pressable,
   RefreshControl,
   Share,
+  Switch,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, parseISO } from "date-fns";
@@ -49,6 +50,7 @@ import { formatCurrency } from "@/lib/format";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
@@ -92,6 +94,10 @@ import {
 } from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 import { BookingEditSheet } from "@/components/bookings/BookingEditSheet";
+import { PostCompletionSheet, POST_COMPLETION_STORAGE_PREFIX } from "@/components/bookings/PostCompletionSheet";
+import { EtaPicker } from "@/components/bookings/EtaPicker";
+import { ReassignStaffSheet } from "@/components/bookings/ReassignStaffSheet";
+import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { BookingPaymentTimeline } from "@/components/bookings/BookingPaymentTimeline";
 import { buildBookingCompletionChecklist } from "@/lib/booking-completion-checklist";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
@@ -545,8 +551,6 @@ function statusTextColor(status: string): string {
   }
 }
 
-const ETA_OPTIONS = [15, 30, 45] as const;
-
 /** At-home reschedule slot queries: matches `new.tsx` fallback before /api/location/validate returns. */
 const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
@@ -621,7 +625,7 @@ const SEND_LINK_OPTIONS = [
   { label: "Email & SMS", value: "both" as const },
 ];
 
-const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
+const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = POST_COMPLETION_STORAGE_PREFIX;
 
 function providerParamTruthy(v: string | string[] | undefined): boolean {
   const s = typeof v === "string" ? v : Array.isArray(v) ? v[0] ?? "" : "";
@@ -648,7 +652,7 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm } =
+  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
@@ -659,8 +663,12 @@ export default function BookingDetailScreen() {
     openReschedule?: string;
     openCancel?: string;
     highlightConfirm?: string;
+    step?: string;
   }>();
-  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(15);
+  const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
+  const [isUpdatingEta, setIsUpdatingEta] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
 
   // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
@@ -730,6 +738,11 @@ export default function BookingDetailScreen() {
     setOptimisticBookingStatus(null);
     setOptimisticArrivalVerified(false);
   }, [bookingIdStr]);
+
+  useEffect(() => {
+    const tick = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
 
   // Once the server confirms arrival_otp_verified or qr_code_verified, retire the
   // optimistic flag so the source of truth is the refreshed DB row.
@@ -839,10 +852,12 @@ export default function BookingDetailScreen() {
 
   // Reschedule
   const [showEditAppointment, setShowEditAppointment] = useState(false);
+  const [showReassignStaff, setShowReassignStaff] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState<Date>(() => new Date());
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduling, setRescheduling] = useState(false);
+  const [notifyCustomerOnReschedule, setNotifyCustomerOnReschedule] = useState(true);
   /** From POST /api/location/validate using the booking’s stored address (at-home only). */
   const [rescheduleTravelBufferMinutes, setRescheduleTravelBufferMinutes] = useState(
     DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES,
@@ -1147,6 +1162,38 @@ export default function BookingDetailScreen() {
             if (showRescheduleRef.current) {
               void refreshRescheduleSlotsRef.current();
             }
+          }, 400);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${bookingIdStr}`,
+        },
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            void refreshBookingDetailRef.current();
+          }, 400);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "additional_charges",
+          filter: `booking_id=eq.${bookingIdStr}`,
+        },
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            void refreshBookingDetailRef.current();
           }, 400);
         },
       )
@@ -1502,9 +1549,14 @@ export default function BookingDetailScreen() {
     };
   }, [bookingIdStr, data, canViewClientRatings]);
 
-  // Show provider post-completion modal once per booking when opening a completed booking
+  // Show provider post-completion modal once per booking when opening a completed booking.
+  // `step=rate` is the Explore-publish return path — reopen even if already dismissed.
   useEffect(() => {
     if (!bookingIdStr || !data || data.status !== "completed") return;
+    if (step === "rate") {
+      setShowProviderCompletionModal(true);
+      return;
+    }
     let mounted = true;
     AsyncStorage.getItem(PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingIdStr)
       .then((seen) => {
@@ -1514,7 +1566,7 @@ export default function BookingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [bookingIdStr, data]);
+  }, [bookingIdStr, data, step]);
 
   const dismissProviderCompletionModal = (markSeen: boolean) => {
     setShowProviderCompletionModal(false);
@@ -1720,6 +1772,11 @@ export default function BookingDetailScreen() {
   const canMarkArrived = canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = b.current_stage === "provider_on_way";
   const isArrived = b.current_stage === "provider_arrived";
+  const estimatedArrivalMs = (b as { estimated_arrival?: string }).estimated_arrival
+    ? new Date((b as { estimated_arrival?: string }).estimated_arrival as string).getTime()
+    : NaN;
+  const isRunningLate =
+    isEnRoute && !isArrived && Number.isFinite(estimatedArrivalMs) && estimatedArrivalMs < nowMs;
   const arrivalVerified =
     optimisticArrivalVerified ||
     b.arrival_otp_verified === true ||
@@ -1761,6 +1818,8 @@ export default function BookingDetailScreen() {
       : ps === "refunded"
         ? 0
         : Math.max(0, outstandingRawLocal);
+  const markPaidPrimary =
+    outstanding > 0 && (b.current_stage === "service_completed" || b.status === "completed");
   /**
    * Amount for Yoco / POS sale / "Mark paid" without a custom line: deposit bookings collect the
    * remaining deposit first (pending or partially_paid until deposit is satisfied), then full AR.
@@ -2275,7 +2334,7 @@ export default function BookingDetailScreen() {
       if (errorCode === "CONFLICT" || isConflictError(err)) {
         Alert.alert(
           "Conflict",
-          "This booking was modified by another user. Please refresh and try again.",
+          "This booking changed, reload",
           [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
         );
       } else {
@@ -2398,13 +2457,14 @@ export default function BookingDetailScreen() {
       const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
         scheduled_at: newScheduledAt,
         travel_buffer: rescheduleIsHome ? rescheduleTravelBufferMinutes : 0,
+        notify_customer: notifyCustomerOnReschedule,
         ...(version !== undefined && { version }),
       });
       if (err) {
         if (isConflictError(err)) {
           Alert.alert(
             "Conflict",
-            "This booking was modified by another user. Please refresh and try again.",
+            "This booking changed, reload",
             [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
           );
         } else {
@@ -2448,7 +2508,7 @@ export default function BookingDetailScreen() {
       if (isConflictError(err)) {
         Alert.alert(
           "Conflict",
-          "This booking was modified by another user. Please refresh and try again.",
+          "This booking changed, reload",
           [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
         );
       } else {
@@ -2586,7 +2646,7 @@ export default function BookingDetailScreen() {
       // Continue without live location if permission or GPS lookup fails.
     }
     if (etaMinutes != null && etaMinutes > 0) {
-      body.estimated_arrival = new Date(Date.now() + etaMinutes * 60 * 1000).toISOString();
+      body.eta_minutes = etaMinutes;
     }
     const res = await postMutation(`/api/provider/bookings/${id}/start-journey`, body);
     if (res.error) {
@@ -2601,6 +2661,31 @@ export default function BookingDetailScreen() {
       });
     }
     await refresh();
+  };
+
+  const handleUpdateEta = async () => {
+    if (!id) return;
+    if (updateEtaMinutes == null || updateEtaMinutes < 1) {
+      Alert.alert("ETA", "Choose an ETA between 1 and 240 minutes.");
+      return;
+    }
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to update this booking.");
+      return;
+    }
+    setIsUpdatingEta(true);
+    try {
+      const res = await api.patch(`/api/provider/bookings/${id}/eta`, {
+        eta_minutes: updateEtaMinutes,
+      });
+      if (res.error) {
+        Alert.alert("Error", getApiErrorMessage(res.error, "Could not update ETA."));
+        return;
+      }
+      await refresh();
+    } finally {
+      setIsUpdatingEta(false);
+    }
   };
 
   const handleMarkArrived = async () => {
@@ -3107,6 +3192,23 @@ export default function BookingDetailScreen() {
           />
         }
       >
+        <BookingReferencePanel
+          bookingId={String(b.id ?? id)}
+          bookingNumber={b.booking_number ?? null}
+          status={currentDbStatus ?? b.status}
+          paymentStatus={b.payment_status}
+          outstandingBalance={outstanding}
+          onContactSupport={(category) => {
+            router.push({
+              pathname: "/(app)/(tabs)/more/support-tickets/new",
+              params: {
+                booking_id: String(b.id ?? id),
+                ...(b.booking_number ? { booking_number: b.booking_number } : {}),
+                category,
+              },
+            } as never);
+          }}
+        />
         {isAtHome ? (
           <View style={twStyle("rounded-3xl border-2 border-primary/20 bg-primary/10 p-4 mb-3")}>
             <View style={twStyle("flex-row items-center justify-between mb-2")}>
@@ -3360,6 +3462,265 @@ export default function BookingDetailScreen() {
             </View>
           </View>
 
+        {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
+          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>Journey steps</Text>
+            <View style={twStyle("flex-row items-center justify-between mb-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>At-home visit</Text>
+              {addressLine ? (
+                <TouchableOpacity
+                  onPress={openMapsUrl}
+                  style={twStyle("py-1")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Get directions"
+                >
+                  <Text style={twStyle("text-sm font-medium text-primary")}>Get directions</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {isArrived && (
+              <>
+                <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3 mb-3")}>
+                  <Text style={twStyle("text-sm font-medium text-green-800")}>
+                    {arrivalVerified ? "Customer verified – you can start service" : "Provider arrived"}
+                  </Text>
+                </View>
+                {isArrived && !arrivalVerified && arrivalOtpPending && (
+                  <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 p-3 mb-3")}>
+                    <Text style={twStyle("text-sm font-medium text-blue-900 mb-1")}>{ARRIVAL_PIN_PROVIDER_HEADING}</Text>
+                    <Text style={twStyle("text-xs text-blue-800 mb-1")}>{ARRIVAL_PIN_PROVIDER_SUBTEXT}</Text>
+                    <Text style={twStyle("text-xs text-blue-800 mb-2")}>{ARRIVAL_PIN_LENGTH_HINT}</Text>
+                    <TextInput
+                      value={arrivalPinInput}
+                      onChangeText={(t) => setArrivalPinInput(t.replace(/\D/g, "").slice(0, 6))}
+                      placeholder={ARRIVAL_PIN_PLACEHOLDER}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white")}
+                      accessibilityLabel={ARRIVAL_PIN_PROVIDER_HEADING}
+                    />
+                    <View style={twStyle("flex-row gap-2")}>
+                      <TouchableOpacity
+                        onPress={handleVerifyArrival}
+                        disabled={
+                          isVerifyingArrival ||
+                          ![4, 6].includes(arrivalPinInput.replace(/\D/g, "").length)
+                        }
+                        style={twStyle("flex-1 rounded-lg bg-primary py-2.5 items-center")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Verify arrival"
+                      >
+                        {isVerifyingArrival ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={twStyle("text-white font-semibold")}>Verify</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleResendArrivalOtp}
+                        disabled={isResendingArrivalOtp}
+                        style={twStyle("rounded-lg border border-gray-400 py-2.5 px-3 justify-center")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Resend code"
+                      >
+                        {isResendingArrivalOtp ? (
+                          <ActivityIndicator size="small" color="#111" />
+                        ) : (
+                          <Text style={twStyle("text-gray-700 font-medium")}>Resend code & QR</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleOverrideArrivalVerification}
+                      disabled={isOverridingArrival}
+                      style={twStyle("mt-2 py-2")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Customer cannot verify"
+                    >
+                      <Text style={twStyle("text-amber-800 font-medium text-sm text-center")}>
+                        {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {isArrived && !arrivalVerified && qrArrivalPending && (
+                  <View style={twStyle("rounded-2xl bg-primary/10 border border-primary/20 p-3 mb-3")}>
+                    <Text style={twStyle("text-sm font-medium text-primary mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
+                    <Text style={twStyle("text-xs text-gray-700 mb-2")}>
+                      Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
+                      {arrivalOtpPending
+                        ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
+                        : " If it expired, use Resend below — the customer gets a fresh code and QR."}
+                    </Text>
+                    {!arrivalOtpPending ? (
+                      <TouchableOpacity
+                        onPress={handleResendArrivalOtp}
+                        disabled={isResendingArrivalOtp}
+                        style={twStyle("rounded-2xl border border-primary/20 py-2.5 px-3 items-center mb-2")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Resend QR and code to customer"
+                      >
+                        {isResendingArrivalOtp ? (
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                          <Text style={twStyle("text-primary font-semibold")}>Resend QR & code to customer</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                    <TextInput
+                      value={qrArrivalCodeInput}
+                      onChangeText={(t) => setQrArrivalCodeInput(t.replace(/\s/g, "").toUpperCase().slice(0, 12))}
+                      placeholder="e.g. AB12CD34"
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white font-mono")}
+                      accessibilityLabel="QR verification code from customer"
+                    />
+                    <Text style={twStyle("text-xs text-primary mb-1")}>Or paste raw scan result (JSON)</Text>
+                    <TextInput
+                      value={qrPasteJson}
+                      onChangeText={setQrPasteJson}
+                      placeholder='{"booking_id":"…"'
+                      multiline
+                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 bg-white min-h-[72px]")}
+                      accessibilityLabel="Pasted QR JSON"
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        setQrScanError(null);
+                        setShowArrivalQrScanner(true);
+                      }}
+                      disabled={isVerifyingQrArrival || Platform.OS === "web"}
+                      style={twStyle(
+                        `rounded-2xl border-2 border-primary py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open QR scanner"
+                    >
+                      <Text style={twStyle("text-primary font-semibold")}>
+                        {Platform.OS === "web" ? "Scan QR (use mobile app)" : "Scan QR"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleVerifyQrArrival}
+                      disabled={
+                        isVerifyingQrArrival ||
+                        (qrPasteJson.trim().length === 0 &&
+                          qrArrivalCodeInput.replace(/\s/g, "").length < 8)
+                      }
+                      style={twStyle("rounded-2xl bg-primary py-2.5 items-center")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Verify QR arrival"
+                    >
+                      {isVerifyingQrArrival ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={twStyle("text-white font-semibold")}>Verify QR</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {canStartServiceInJourney ? (
+                  <TouchableOpacity
+                    onPress={() => void applyDbStatusTransition("in_progress")}
+                    disabled={mutating || patchLoading}
+                    style={twStyle("rounded-xl bg-primary py-3 items-center mt-1")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Start service"
+                  >
+                    {mutating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={twStyle("text-white font-semibold")}>Start service</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )}
+            {isEnRoute && !isArrived && (
+              <View style={twStyle("mb-3")}>
+                <View
+                  style={twStyle(
+                    `rounded-lg border py-2 px-3 mb-3 ${
+                      isRunningLate
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-blue-50 border-blue-100"
+                    }`,
+                  )}
+                >
+                  <Text
+                    style={twStyle(
+                      `text-sm font-medium ${isRunningLate ? "text-amber-900" : "text-blue-800"}`,
+                    )}
+                  >
+                    {isRunningLate
+                      ? "You're past the estimated arrival. Update your ETA so the client knows you're running a little late."
+                      : "En route"}
+                  </Text>
+                </View>
+                <EtaPicker
+                  value={updateEtaMinutes}
+                  onChange={setUpdateEtaMinutes}
+                  disabled={isUpdatingEta || mutating}
+                />
+                <TouchableOpacity
+                  onPress={() => void handleUpdateEta()}
+                  disabled={isUpdatingEta || mutating || updateEtaMinutes == null}
+                  style={twStyle("rounded-xl border border-primary py-3 items-center mt-1 mb-2")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Update ETA"
+                >
+                  {isUpdatingEta ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={twStyle("text-primary font-semibold")}>Update ETA</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+            {canStartJourney && (
+              <>
+                <EtaPicker
+                  value={etaMinutes}
+                  onChange={setEtaMinutes}
+                  disabled={mutating}
+                />
+                <TouchableOpacity
+                  onPress={handleStartJourney}
+                  disabled={mutating}
+                  style={twStyle("rounded-xl bg-primary py-3 items-center mb-2")}
+                  accessibilityRole="button"
+                  accessibilityLabel={etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
+                >
+                  {mutating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={twStyle("text-white font-semibold")}>
+                      {etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+            {canMarkArrived && !isArrived && (
+              <TouchableOpacity
+                onPress={handleMarkArrived}
+                disabled={mutating}
+                style={twStyle("rounded-xl border border-primary py-3 items-center")}
+                accessibilityRole="button"
+                accessibilityLabel="Mark arrived"
+              >
+                {mutating ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text style={twStyle("text-primary font-semibold")}>Mark arrived</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
               <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Appointment</Text>
@@ -3455,7 +3816,7 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 onPress={() => setShowMarkPaid(true)}
                 style={twStyle(
-                  isAtHome
+                  markPaidPrimary
                     ? "rounded-xl bg-emerald-600 px-4 py-2.5"
                     : "rounded-xl border border-emerald-600 bg-white px-4 py-2.5",
                 )}
@@ -3463,7 +3824,7 @@ export default function BookingDetailScreen() {
                 accessibilityLabel="Collect payment for booking"
               >
                 <Text
-                  style={twStyle(`text-sm font-semibold ${isAtHome ? "text-white" : "text-emerald-700"}`)}
+                  style={twStyle(`text-sm font-semibold ${markPaidPrimary ? "text-white" : "text-emerald-700"}`)}
                 >
                   Collect payment
                 </Text>
@@ -3673,251 +4034,6 @@ export default function BookingDetailScreen() {
 
         <SafetyPanicButton bookingId={id ?? null} />
 
-        {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
-          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>Journey steps</Text>
-            <View style={twStyle("flex-row items-center justify-between mb-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>At-home visit</Text>
-              {addressLine ? (
-                <TouchableOpacity
-                  onPress={openMapsUrl}
-                  style={twStyle("py-1")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Get directions"
-                >
-                  <Text style={twStyle("text-sm font-medium text-primary")}>Get directions</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-            {isArrived && (
-              <>
-                <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3 mb-3")}>
-                  <Text style={twStyle("text-sm font-medium text-green-800")}>
-                    {arrivalVerified ? "Customer verified – you can start service" : "Provider arrived"}
-                  </Text>
-                </View>
-                {isArrived && !arrivalVerified && arrivalOtpPending && (
-                  <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 p-3 mb-3")}>
-                    <Text style={twStyle("text-sm font-medium text-blue-900 mb-1")}>{ARRIVAL_PIN_PROVIDER_HEADING}</Text>
-                    <Text style={twStyle("text-xs text-blue-800 mb-1")}>{ARRIVAL_PIN_PROVIDER_SUBTEXT}</Text>
-                    <Text style={twStyle("text-xs text-blue-800 mb-2")}>{ARRIVAL_PIN_LENGTH_HINT}</Text>
-                    <TextInput
-                      value={arrivalPinInput}
-                      onChangeText={(t) => setArrivalPinInput(t.replace(/\D/g, "").slice(0, 6))}
-                      placeholder={ARRIVAL_PIN_PLACEHOLDER}
-                      keyboardType="number-pad"
-                      maxLength={6}
-                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white")}
-                      accessibilityLabel={ARRIVAL_PIN_PROVIDER_HEADING}
-                    />
-                    <View style={twStyle("flex-row gap-2")}>
-                      <TouchableOpacity
-                        onPress={handleVerifyArrival}
-                        disabled={
-                          isVerifyingArrival ||
-                          ![4, 6].includes(arrivalPinInput.replace(/\D/g, "").length)
-                        }
-                        style={twStyle("flex-1 rounded-lg bg-primary py-2.5 items-center")}
-                        accessibilityRole="button"
-                        accessibilityLabel="Verify arrival"
-                      >
-                        {isVerifyingArrival ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text style={twStyle("text-white font-semibold")}>Verify</Text>
-                        )}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={handleResendArrivalOtp}
-                        disabled={isResendingArrivalOtp}
-                        style={twStyle("rounded-lg border border-gray-400 py-2.5 px-3 justify-center")}
-                        accessibilityRole="button"
-                        accessibilityLabel="Resend code"
-                      >
-                        {isResendingArrivalOtp ? (
-                          <ActivityIndicator size="small" color="#111" />
-                        ) : (
-                          <Text style={twStyle("text-gray-700 font-medium")}>Resend code & QR</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleOverrideArrivalVerification}
-                      disabled={isOverridingArrival}
-                      style={twStyle("mt-2 py-2")}
-                      accessibilityRole="button"
-                      accessibilityLabel="Customer cannot verify"
-                    >
-                      <Text style={twStyle("text-amber-800 font-medium text-sm text-center")}>
-                        {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {isArrived && !arrivalVerified && qrArrivalPending && (
-                  <View style={twStyle("rounded-2xl bg-primary/10 border border-primary/20 p-3 mb-3")}>
-                    <Text style={twStyle("text-sm font-medium text-primary mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
-                    <Text style={twStyle("text-xs text-gray-700 mb-2")}>
-                      Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
-                      {arrivalOtpPending
-                        ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
-                        : " If it expired, use Resend below — the customer gets a fresh code and QR."}
-                    </Text>
-                    {!arrivalOtpPending ? (
-                      <TouchableOpacity
-                        onPress={handleResendArrivalOtp}
-                        disabled={isResendingArrivalOtp}
-                        style={twStyle("rounded-2xl border border-primary/20 py-2.5 px-3 items-center mb-2")}
-                        accessibilityRole="button"
-                        accessibilityLabel="Resend QR and code to customer"
-                      >
-                        {isResendingArrivalOtp ? (
-                          <ActivityIndicator size="small" color={Colors.primary} />
-                        ) : (
-                          <Text style={twStyle("text-primary font-semibold")}>Resend QR & code to customer</Text>
-                        )}
-                      </TouchableOpacity>
-                    ) : null}
-                    <TextInput
-                      value={qrArrivalCodeInput}
-                      onChangeText={(t) => setQrArrivalCodeInput(t.replace(/\s/g, "").toUpperCase().slice(0, 12))}
-                      placeholder="e.g. AB12CD34"
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white font-mono")}
-                      accessibilityLabel="QR verification code from customer"
-                    />
-                    <Text style={twStyle("text-xs text-primary mb-1")}>Or paste raw scan result (JSON)</Text>
-                    <TextInput
-                      value={qrPasteJson}
-                      onChangeText={setQrPasteJson}
-                      placeholder='{"booking_id":"…"'
-                      multiline
-                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 bg-white min-h-[72px]")}
-                      accessibilityLabel="Pasted QR JSON"
-                    />
-                    <TouchableOpacity
-                      onPress={() => {
-                        setQrScanError(null);
-                        setShowArrivalQrScanner(true);
-                      }}
-                      disabled={isVerifyingQrArrival || Platform.OS === "web"}
-                      style={twStyle(
-                        `rounded-2xl border-2 border-primary py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
-                      )}
-                      accessibilityRole="button"
-                      accessibilityLabel="Open QR scanner"
-                    >
-                      <Text style={twStyle("text-primary font-semibold")}>
-                        {Platform.OS === "web" ? "Scan QR (use mobile app)" : "Scan QR"}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={handleVerifyQrArrival}
-                      disabled={
-                        isVerifyingQrArrival ||
-                        (qrPasteJson.trim().length === 0 &&
-                          qrArrivalCodeInput.replace(/\s/g, "").length < 8)
-                      }
-                      style={twStyle("rounded-2xl bg-primary py-2.5 items-center")}
-                      accessibilityRole="button"
-                      accessibilityLabel="Verify QR arrival"
-                    >
-                      {isVerifyingQrArrival ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={twStyle("text-white font-semibold")}>Verify QR</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {canStartServiceInJourney ? (
-                  <TouchableOpacity
-                    onPress={() => void applyDbStatusTransition("in_progress")}
-                    disabled={mutating || patchLoading}
-                    style={twStyle("rounded-xl bg-primary py-3 items-center mt-1")}
-                    accessibilityRole="button"
-                    accessibilityLabel="Start service"
-                  >
-                    {mutating ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={twStyle("text-white font-semibold")}>Start service</Text>
-                    )}
-                  </TouchableOpacity>
-                ) : null}
-              </>
-            )}
-            {isEnRoute && !isArrived && (
-              <View style={twStyle("rounded-lg bg-blue-50 border border-blue-100 py-2 px-3 mb-3")}>
-                <Text style={twStyle("text-sm font-medium text-blue-800")}>En route</Text>
-              </View>
-            )}
-            {canStartJourney && (
-              <>
-                <Text style={twStyle("text-xs text-gray-500 mb-2")}>Optional: I will arrive in</Text>
-                <View style={twStyle("flex-row flex-wrap mb-3")}>
-                  {ETA_OPTIONS.map((min) => (
-                    <TouchableOpacity
-                      key={min}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setEtaMinutes((prev) => (prev === min ? null : min));
-                      }}
-                      style={[twStyle(`rounded-lg border px-3 py-2 ${
-                        etaMinutes === min
-                          ? "bg-primary border-primary"
-                          : "bg-white border-gray-300"
-                      }`), { marginRight: 8, marginBottom: 8 }]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${min} minutes`}
-                      accessibilityState={{ selected: etaMinutes === min }}
-                    >
-                      <Text
-                        style={twStyle(`text-sm font-medium ${
-                          etaMinutes === min ? "text-white" : "text-gray-700"
-                        }`)}
-                      >
-                        {min} min
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TouchableOpacity
-                  onPress={handleStartJourney}
-                  disabled={mutating}
-                  style={twStyle("rounded-xl bg-primary py-3 items-center mb-2")}
-                  accessibilityRole="button"
-                  accessibilityLabel={etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
-                >
-                  {mutating ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={twStyle("text-white font-semibold")}>
-                      {etaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-            {canMarkArrived && !isArrived && (
-              <TouchableOpacity
-                onPress={handleMarkArrived}
-                disabled={mutating}
-                style={twStyle("rounded-xl border border-primary py-3 items-center")}
-                accessibilityRole="button"
-                accessibilityLabel="Mark arrived"
-              >
-                {mutating ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : (
-                  <Text style={twStyle("text-primary font-semibold")}>Mark arrived</Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
         {/* At-salon check-in removed: the "Client arrived" button consistently fails for at-salon
             bookings and duplicates the "Change Status" flow. Providers should use Change Status. */}
 
@@ -3926,7 +4042,7 @@ export default function BookingDetailScreen() {
             After the customer verifies arrival, use{" "}
             <Text style={twStyle("font-semibold text-gray-700")}>Start service</Text> in the Journey card (same as{" "}
             <Text style={twStyle("font-semibold text-gray-700")}>Booking actions</Text> → In progress). For cancel or
-            no-show, use Booking actions above.
+            no-show, use Booking actions below.
           </Text>
         ) : null}
 
@@ -4450,8 +4566,14 @@ export default function BookingDetailScreen() {
                   {s.offering_name ?? "Service"}
                   {s.guest_name ? ` · ${s.guest_name}` : ""}
                 </Text>
-                {s.staff_name && (
-                  <Text style={twStyle("text-sm text-gray-500")}>{s.staff_name}</Text>
+                {s.staff_name ? (
+                  <TouchableOpacity onPress={() => setShowReassignStaff(true)} activeOpacity={0.7}>
+                    <Text style={twStyle("text-sm text-teal-700")}>{s.staff_name} · Change</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={() => setShowReassignStaff(true)} activeOpacity={0.7}>
+                    <Text style={twStyle("text-sm text-teal-700")}>Assign staff</Text>
+                  </TouchableOpacity>
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
@@ -4827,6 +4949,13 @@ export default function BookingDetailScreen() {
           <View style={twStyle("mb-4")}>
             <BookingDateStrip selectedDate={rescheduleDate} onSelectDate={setRescheduleDate} />
           </View>
+          <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 px-3 py-2")}>
+            <Text style={twStyle("flex-1 pr-3 text-sm text-gray-800")}>Notify client</Text>
+            <Switch
+              value={notifyCustomerOnReschedule}
+              onValueChange={setNotifyCustomerOnReschedule}
+            />
+          </View>
           <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Time</Text>
           <BookingTimeSlotGrid
             rows={rescheduleTimeRows}
@@ -5158,105 +5287,34 @@ export default function BookingDetailScreen() {
         ) : null}
       </BottomSheet>
 
-      {/* Provider post-completion modal: shown immediately on completing a booking, and
-          once per booking thereafter (see PROVIDER_COMPLETION_MODAL_STORAGE_KEY effect above).
-          Primary CTA drives providers to capture a photo of the finished work, which posts to
-          Explore (and, when the toggle is on in the create sheet, to their portfolio gallery). */}
-      <Modal
+      <PostCompletionSheet
         visible={showProviderCompletionModal}
-        animationType="fade"
-        transparent
-        onRequestClose={() => dismissProviderCompletionModal(true)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
-          onPress={() => dismissProviderCompletionModal(true)}
-        >
-          <Pressable
-            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={{ alignItems: "center", marginBottom: 16 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="trophy" size={32} color={Colors.primary} />
-              </View>
-            </View>
-            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>Booking complete</Text>
-            {(() => {
-              const raw = b?.provider_points_earned;
-              const pointsNum = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
-              return pointsNum > 0 ? (
-                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 16 }}>
-                  You earned {pointsNum} points. {"They've been added to your balance."}
-                </Text>
-              ) : (
-                <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 16 }}>
-                  You earn points for each completed booking—keep going to unlock badges.
-                </Text>
-              );
-            })()}
+        bookingId={bookingIdStr ?? ""}
+        providerPointsEarned={
+          typeof b?.provider_points_earned === "number" ? b.provider_points_earned : null
+        }
+        primaryServiceName={primaryServiceName}
+        primaryOfferingId={services[0]?.offering_id ?? services[0]?.service_id ?? undefined}
+        hasExistingRating={hasProviderClientRating === true}
+        initialStep={step === "rate" ? "rate" : "choose"}
+        onDismiss={(markSeen) => dismissProviderCompletionModal(markSeen)}
+        onRated={() => {
+          setHasProviderClientRating(true);
+          if (typeof refresh === "function") refresh();
+        }}
+      />
 
-            {/* Primary: capture and post the finished work — the world-class moment. */}
-            <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-                <Ionicons name="camera" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>Show off your work</Text>
-              </View>
-              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 12, lineHeight: 18 }}>
-                Post a photo to Explore to reach new clients and grow your portfolio. Earn bonus reward points for every post.
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  dismissProviderCompletionModal(true);
-                  const primaryOfferingId = services[0]?.offering_id ?? services[0]?.service_id ?? "";
-                  const defaultCaption = `Fresh ${primaryServiceName} \u2728`;
-                  const qs = new URLSearchParams({
-                    create: "1",
-                    addToGallery: "1",
-                    caption: defaultCaption,
-                    ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
-                    ...(bookingIdStr ? { bookingId: bookingIdStr } : {}),
-                  }).toString();
-                  router.push(`/(app)/(tabs)/more/explore-posts?${qs}` as never);
-                }}
-                style={{ flexDirection: "row", backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", justifyContent: "center" }}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="camera" size={18} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Add a photo of your work</Text>
-              </TouchableOpacity>
-              <Text style={{ fontSize: 11, color: Colors.gray[400], textAlign: "center", marginTop: 8 }}>
-                Make sure your client is happy to be featured.
-              </Text>
-            </View>
-
-            <Text style={{ fontSize: 13, color: Colors.gray[500], textAlign: "center", marginBottom: 16 }}>
-              Your client can leave a review. Reviews help you get more bookings and earn extra points.
-            </Text>
-            {hasProviderClientRating !== true ? (
-              <TouchableOpacity
-                onPress={() => {
-                  dismissProviderCompletionModal(true);
-                  setTimeout(() => {
-                    setShowRateClientSheet(true);
-                  }, 400);
-                }}
-                style={{ backgroundColor: "#fff", borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
-                activeOpacity={0.8}
-              >
-                <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 16 }}>Rate this client</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={() => dismissProviderCompletionModal(true)}
-              style={{ paddingVertical: 14, alignItems: "center" }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <ReassignStaffSheet
+        visible={showReassignStaff}
+        bookingId={bookingIdStr ?? ""}
+        bookingServiceId={services[0]?.offering_id ?? ""}
+        currentStaffId={services[0]?.staff_id}
+        offeringId={services[0]?.offering_id ?? services[0]?.service_id}
+        onClose={() => setShowReassignStaff(false)}
+        onReassigned={() => {
+          if (typeof refresh === "function") refresh();
+        }}
+      />
 
       {/* Change status: lists allowed DB transitions (matches provider web PATCH rules).
           For at-home, salon-only states (checked_in, waiting) are filtered out by the action
@@ -5511,7 +5569,7 @@ export default function BookingDetailScreen() {
                       setShowCancelModal(false);
                       Alert.alert(
                         "Conflict",
-                        "This booking was modified by another user. Please refresh and try again.",
+                        "This booking changed, reload",
                         [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
                       );
                     } else {
@@ -5598,7 +5656,7 @@ export default function BookingDetailScreen() {
                       setShowNoShowModal(false);
                       Alert.alert(
                         "Conflict",
-                        "This booking was modified by another user. Please refresh and try again.",
+                        "This booking changed, reload",
                         [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
                       );
                     } else {

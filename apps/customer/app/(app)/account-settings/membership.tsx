@@ -29,6 +29,10 @@ type ProviderMembership = {
   next_billing_at: string | null;
   last_payment_at: string | null;
   past_due_since: string | null;
+  paused_until?: string | null;
+  scheduled_plan_id?: string | null;
+  scheduled_plan_name?: string | null;
+  scheduled_change_at?: string | null;
   renewal_payment_method_missing?: boolean;
   card: { last4: string; brand: string; exp: string } | null;
 };
@@ -65,6 +69,7 @@ export default function MembershipScreen() {
   const [cancellingSalonId, setCancellingSalonId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [updatingCardId, setUpdatingCardId] = useState<string | null>(null);
+  const [pausingId, setPausingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -243,6 +248,124 @@ export default function MembershipScreen() {
     }
   };
 
+  const pauseOrResume = (membership: ProviderMembership) => {
+    const paused = membership.status === "paused";
+    const run = async () => {
+      setPausingId(membership.id);
+      try {
+        const res = paused
+          ? await api.post<{ resumed?: boolean; message?: string }>(
+              "/api/me/membership/resume",
+              { provider_membership_id: membership.id },
+            )
+          : await api.post<{ paused?: boolean; message?: string }>(
+              "/api/me/membership/pause",
+              { provider_membership_id: membership.id },
+            );
+        if (res.error) {
+          Alert.alert(errTitle, getApiErrorMessage(res.error, "Failed to update membership"));
+        } else {
+          await load();
+        }
+      } catch (e) {
+        Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to update membership"));
+      } finally {
+        setPausingId(null);
+      }
+    };
+    if (paused) {
+      void run();
+      return;
+    }
+    Alert.alert(
+      "Pause membership",
+      `Pause ${membership.plan_name} with ${membership.provider_name}? Auto-renew will turn off.`,
+      [
+        { text: "Keep active", style: "cancel" },
+        { text: "Pause", onPress: () => void run() },
+      ],
+    );
+  };
+
+  const changePlan = async (membership: ProviderMembership) => {
+    if (membership.auto_renew !== true) {
+      Alert.alert("Change plan", "Turn on auto-renew first. The new plan applies at the next renewal.");
+      return;
+    }
+    if (!membership.provider_slug) {
+      Alert.alert("Change plan", "This provider has no public profile, so other plans cannot be loaded.");
+      return;
+    }
+    try {
+      const res = await api.get<{ plans?: Array<{ id: string; name: string; price_monthly?: number; price?: number; currency?: string }> }>(
+        `/api/public/providers/${membership.provider_slug}/membership-plans`,
+      );
+      const plans = Array.isArray(res.data?.plans) ? res.data.plans : [];
+      if (plans.length === 0) {
+        Alert.alert("Change plan", "No other plans available.");
+        return;
+      }
+      Alert.alert(
+        "Change plan",
+        "Takes effect at period end. Choose a plan.",
+        [
+          { text: "Cancel", style: "cancel" },
+          ...plans.map((plan) => ({
+            text: `${plan.name}${plan.id === membership.plan_id ? " (current)" : ""}`,
+            onPress: async () => {
+              const change = await api.post<{ scheduled?: boolean; cleared?: boolean }>(
+                "/api/me/membership/change-plan",
+                { provider_membership_id: membership.id, plan_id: plan.id },
+              );
+              if (change.error) {
+                Alert.alert(errTitle, getApiErrorMessage(change.error, "Failed to schedule plan change"));
+              } else {
+                await load();
+                Alert.alert("Done", change.data?.cleared ? "Scheduled change cleared." : "Plan change scheduled for period end.");
+              }
+            },
+          })),
+        ],
+      );
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to load plans"));
+    }
+  };
+
+  const openUsage = async (membership: ProviderMembership) => {
+    try {
+      const res = await api.get<{
+        booking_count?: number;
+        discount_total?: number;
+        bookings?: Array<{ booking_number?: string | null; membership_discount_amount?: number; currency?: string }>;
+      }>(`/api/me/membership/usage?provider_membership_id=${encodeURIComponent(membership.id)}`);
+      if (res.error) {
+        Alert.alert(errTitle, getApiErrorMessage(res.error, "Failed to load usage"));
+        return;
+      }
+      const bookings = Array.isArray(res.data?.bookings) ? res.data.bookings : [];
+      const total = Number(res.data?.discount_total ?? 0);
+      const count = Number(res.data?.booking_count ?? bookings.length);
+      const lines = bookings.slice(0, 8).map((b) => {
+        const amt = Number(b.membership_discount_amount ?? 0);
+        return `${b.booking_number ?? "Booking"} · ${membership.currency} ${amt.toFixed(2)}`;
+      });
+      Alert.alert(
+        "Membership usage",
+        [
+          `${count} booking${count === 1 ? "" : "s"} used this membership.`,
+          `Saved ${membership.currency} ${total.toFixed(2)}.`,
+          lines.length > 0 ? `\n${lines.join("\n")}` : "",
+          bookings.length > 8 ? `\n+${bookings.length - 8} more` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to load usage"));
+    }
+  };
+
   const hasMembership = data?.has_membership && data?.membership;
   const membership = data?.membership;
   const benefits = data?.benefits ?? [];
@@ -329,8 +452,15 @@ export default function MembershipScreen() {
             </Text>
             {providerMemberships.map((pm) => {
               const isPastDue = pm.status === "past_due";
-              const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue;
-              const cardBorderColor = isPastDue ? "#EF4444" : needsRenewalCard ? "#F59E0B" : Colors.gray[100];
+              const isPaused = pm.status === "paused";
+              const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue && !isPaused;
+              const cardBorderColor = isPastDue
+                ? "#EF4444"
+                : needsRenewalCard
+                  ? "#F59E0B"
+                  : isPaused
+                    ? "#94A3B8"
+                    : Colors.gray[100];
 
               return (
                 <View
@@ -340,10 +470,24 @@ export default function MembershipScreen() {
                     borderRadius: 16,
                     padding: 16,
                     marginBottom: 12,
-                    borderWidth: isPastDue || needsRenewalCard ? 1.5 : 1,
+                    borderWidth: isPastDue || needsRenewalCard || isPaused ? 1.5 : 1,
                     borderColor: cardBorderColor,
                   }}
                 >
+                  {isPaused && (
+                    <View style={{ backgroundColor: "#F8FAFC", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                      <Ionicons name="pause-circle-outline" size={18} color="#475569" style={{ marginTop: 1 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: "600", color: "#334155", fontSize: 13 }}>Paused</Text>
+                        <Text style={{ color: "#475569", fontSize: 13, marginTop: 2 }}>
+                          Auto-renew is off
+                          {pm.paused_until ? ` until ${formatDateSafe(pm.paused_until)}` : ""}.
+                          Resume anytime to keep your benefits.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
                   {/* Dunning banner */}
                   {isPastDue && (
                     <View style={{ backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
@@ -380,6 +524,12 @@ export default function MembershipScreen() {
                     {pm.discount_percent > 0 && (
                       <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{pm.discount_percent}% off services</Text>
                     )}
+                    {pm.scheduled_plan_id ? (
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                        Changes to {pm.scheduled_plan_name ?? "the selected plan"}{" "}
+                        {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : "at period end"}
+                      </Text>
+                    ) : null}
                     {pm.auto_renew && pm.next_billing_at ? (
                       <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
                         {mem("renewsLabel")} {formatDateSafe(pm.next_billing_at)}
@@ -443,6 +593,21 @@ export default function MembershipScreen() {
                     style={{ marginTop: 8 }}
                   >
                     <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("billingHistoryTitle")} →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void openUsage(pm)} style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Usage history →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void changePlan(pm)} style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Change plan →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => pauseOrResume(pm)}
+                    disabled={pausingId === pm.id}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>
+                      {pausingId === pm.id ? "Saving…" : isPaused ? "Resume membership" : "Pause membership"}
+                    </Text>
                   </TouchableOpacity>
 
                   {pm.provider_slug && (

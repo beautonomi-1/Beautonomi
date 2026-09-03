@@ -39,20 +39,31 @@ Provider-facing AI features are powered by the **Google Gemini API**, with stric
 **Route**: `POST /api/provider/ai/[feature_key]`
 
 - **Auth**: `requireRoleInApi(['provider_owner','provider_staff'])`, `getProviderIdForUser()`
-- **Flow**: Resolve provider → check entitlement → enforce budget → load Gemini config → build provider context → load prompt template (or use built-in) → call Gemini → log usage → return JSON.
-- **Features** (built-in templates):
+- **Flow**: Resolve provider → check entitlement → enforce budget → load Gemini config → build provider context → load prompt template (`ai_prompt_templates`, else built-in) → call Gemini with `responseSchema` → compute cost → log usage → cache → return JSON.
+- **Shipped features** (built-in templates in `apps/web/src/lib/ai/feature-templates.ts`):
   - `ai.provider.profile_completion`: suggested_profile_patch (headline, bio, specialties, faq, policies)
   - `ai.provider.content_studio`: post_captions, hashtags, short_description
+- Any other `feature_key` returns 404. The previously documented `smart_replies`, `pricing_assistant`, `booking_ops` and `reputation_coach` features are **not shipped**; adding one requires an entitlement seed, a prompt template, a fallback builder and UI.
+- **Budget fallback**: when `enforceAiBudget` returns `fallback_mode: "templates_only"` (daily budget, per-provider/user caps, global spend cap) the route returns **200** with a deterministic payload built from the provider capsule (`feature-fallbacks.ts`) and `fallback: true` / `fallback_reason`. `fallback_mode: "off"` (module disabled) still returns 403.
+- **Rate limit**: 30 Gemini calls/minute per provider, enforced through the shared Upstash rate-limit store (`@/lib/rate-limit/store`, in-process fallback when Upstash env is absent). Limited calls return 429.
+- **Failures** are reported to Sentry with tags `source=gemini`, `feature_key`, `model`, `stage`.
+- **Analytics**: every call emits Amplitude `ai_feature_called` (feature_key, cache_hit, fallback, tokens_in/out, cost_usd) via the server tracker.
 
-Stub features (off by default): smart_replies, pricing_assistant, booking_ops, reputation_coach.
+## Cost metering
+
+- **Table**: `ai_model_pricing` (model PK, input_usd_per_1k, output_usd_per_1k, effective_from, is_active) — migration 874, superadmin-editable.
+- `apps/web/src/lib/ai/pricing.ts` caches the table for 5 minutes and exposes `estimateCostUsd(model, tokensIn, tokensOut)`; unknown models fall back to in-code defaults so spend is never recorded as 0.
+- Written to `ai_usage_log.cost_estimate` (provider features) and `agent_steps.cost_usd` + `agent_runs.total_*` (agent LLM calls via `callAgentLlm({ runId })`).
+- `enforceAiBudget` sums `cost_estimate` for the day against `agent_module_config.global_daily_spend_cap_usd`.
 
 ## Templates and usage (Superadmin)
 
 - **Templates**: `ai_prompt_templates` table (key, version, enabled, platform_scopes, role_scopes, template, system_instructions, output_schema). Managed from **Control Plane → Modules → AI → Templates** (list and create).
+  - Runtime resolution (`apps/web/src/lib/ai/prompt-templates.ts`): highest enabled `version` for `key = feature_key`, cached 5 minutes; `system_instructions` → system prompt, `template` → user prompt, non-empty `output_schema` → Gemini `responseSchema`. Missing/disabled rows fall back to the built-in template.
 - **Usage**: `ai_usage_log` is used for dashboards and cost estimates. **Control Plane → Modules → AI → Usage** lists usage log entries.
 - **Entitlements**: **Control Plane → Modules → AI → Entitlements** lists and manages plan-based AI entitlements.
 
 ## Caching
 
 - **Table**: `ai_cache` (key_hash, feature_key, provider_id, response, expires_at)
-- Cache key can be derived from feature_key + provider_id + input hash. TTL from `ai_module_config.cache_ttl_seconds`. Implemented in the provider AI route when needed.
+- Key: `sha256(feature_key:provider_id:<template version>:<user prompt>:<model>)`. TTL from `ai_module_config.cache_ttl_seconds` (default 24h). Cache hits skip Gemini and are reported with `cache_hit: true` in analytics.

@@ -335,7 +335,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       } else if (result.errorCode === "INSUFFICIENT_STOCK") {
         Alert.alert("Insufficient stock", result.error);
       } else if (result.errorCode === "CONFLICT") {
-        Alert.alert("Conflict", "This booking was modified elsewhere. Close, refresh, and try again.");
+        Alert.alert("Conflict", "This booking changed, reload");
       } else {
         Alert.alert("Could not save", result.error);
       }

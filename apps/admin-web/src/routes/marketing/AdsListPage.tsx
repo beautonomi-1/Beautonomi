@@ -54,6 +54,8 @@ const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
   paused: "bg-amber-100 text-amber-800",
   ended: "bg-slate-100 text-slate-500",
+  pending_review: "bg-violet-100 text-violet-800",
+  rejected: "bg-red-100 text-red-800",
 };
 
 const MODEL_LABELS: Record<string, string> = {
@@ -275,7 +277,7 @@ export function AdsListPage() {
     ? ((overview.events_30d.clicks / overview.events_30d.impressions) * 100).toFixed(1)
     : "0.0";
 
-  const statuses = ["all", "active", "draft", "paused", "ended"] as const;
+  const statuses = ["all", "pending_review", "active", "draft", "paused", "ended", "rejected"] as const;
 
   return (
     <div className="space-y-6">

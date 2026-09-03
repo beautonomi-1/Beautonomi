@@ -176,6 +176,10 @@ export async function PATCH(request: NextRequest) {
     if (body.receive_marketing !== undefined) {
       privacySettingsJsonb.receive_marketing = body.receive_marketing;
     }
+    if (body.marketing_consent !== undefined) {
+      privacySettingsJsonb.marketing_consent = Boolean(body.marketing_consent);
+      privacySettingsJsonb.receive_marketing = Boolean(body.marketing_consent);
+    }
     if (body.analytics_consent !== undefined) {
       privacySettingsJsonb.analytics_consent = Boolean(body.analytics_consent);
     }

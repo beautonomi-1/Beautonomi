@@ -10,6 +10,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { handleChargeFailed } from "../charge-success";
 import type { PaystackEvent, SupabaseClient } from "../shared";
 
+vi.mock("@/lib/integrations/slack/ops-triggers", () => ({
+  slackNotifyPaymentFailed: vi.fn(),
+}));
+
 function makeGiftCardOrderFailedSupabase(claimedRows: Array<{ id: string }>) {
   const updates: Array<Record<string, unknown>> = [];
 

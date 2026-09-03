@@ -114,6 +114,7 @@ function createAppointmentFromBookingRow(
     location_landmarks: address.location_landmarks ?? booking.location_landmarks ?? null,
     house_call_instructions: booking.house_call_instructions ?? null,
     current_stage: booking.current_stage,
+    estimated_arrival: booking.estimated_arrival ?? null,
     travel_fee: booking.travel_fee || 0,
     payment_status: booking.payment_status,
     tip_amount: booking.tip_amount || 0,

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,17 +13,41 @@ import { toast } from "sonner";
 import {
   SUPPORT_TICKET_CATEGORY_GROUPS,
 } from "@/lib/support/ticket-categories";
+import { resolveBookingSupportTicketPrefill } from "@beautonomi/utils";
 
 const DEFAULT_CATEGORY =
   SUPPORT_TICKET_CATEGORY_GROUPS[0]?.items[0]?.value ?? "account_sign_in";
 
 export default function ProviderNewSupportTicketPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const bookingPrefill = useMemo(
+    () =>
+      resolveBookingSupportTicketPrefill({
+        bookingId: searchParams.get("booking_id"),
+        bookingNumber: searchParams.get("booking_number"),
+        category: searchParams.get("category"),
+      }),
+    [searchParams],
+  );
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(DEFAULT_CATEGORY);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (bookingPrefill.category) {
+      setCategory(bookingPrefill.category);
+    }
+    if (bookingPrefill.supportContextType === "booking" && bookingPrefill.supportContextLabel) {
+      setSubject((current) =>
+        current.trim()
+          ? current
+          : `Help with booking ${bookingPrefill.supportContextLabel.split(" (")[0]}`,
+      );
+    }
+  }, [bookingPrefill]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +64,9 @@ export default function ProviderNewSupportTicketPage() {
           message: message.trim(),
           priority,
           category,
+          support_context_type: bookingPrefill.supportContextType ?? undefined,
+          support_context_id: bookingPrefill.supportContextId,
+          support_context_label: bookingPrefill.supportContextLabel || null,
         },
       );
       const id = res.data?.ticket?.id;
@@ -66,6 +93,11 @@ export default function ProviderNewSupportTicketPage() {
       />
 
       <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 max-w-xl space-y-4">
+        {bookingPrefill.supportContextLabel ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            Related booking: <span className="font-medium">{bookingPrefill.supportContextLabel}</span>
+          </div>
+        ) : null}
         <div>
           <Label htmlFor="category">Category</Label>
           <select

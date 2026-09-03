@@ -14,6 +14,16 @@ import {
   checkNewGateFeatureAccess,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
+import {
+  createWalkInOrderFromLegacySale,
+  isProductOnlyLegacySale,
+} from "@/lib/provider-sales/create-walk-in-order-from-legacy-sale";
+import {
+  mapWalkInOrderToSaleShape,
+  mergeSaleHistoryRows,
+  type SaleHistoryRow,
+} from "@/lib/provider-sales/map-walk-in-order-to-sale";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -154,14 +164,45 @@ export async function GET(request: NextRequest) {
       salesQuery = salesQuery.or(clauses.join(","));
     }
 
-    // Apply pagination after all filters
-    salesQuery = salesQuery.range(offset, offset + limit - 1);
-
-    const { data: sales, error: salesError, count } = await salesQuery;
+    const { data: sales, error: salesError } = await salesQuery;
 
     if (salesError) {
       console.error("Error fetching sales:", salesError);
       throw salesError;
+    }
+
+    let walkInQuery = supabaseAdmin
+      .from("product_orders")
+      .select(
+        "id, order_number, created_at, paid_at, subtotal, tax_amount, total_amount, payment_method, payment_status, customer_id, customer_name, staff_id, collection_location_id, legacy_sale_id",
+      )
+      .eq("provider_id", providerId)
+      .eq("order_source", "walk_in")
+      .order("created_at", { ascending: false });
+
+    if (locationId) {
+      walkInQuery = walkInQuery.eq("collection_location_id", locationId);
+    }
+    if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+      const d0 = dateFrom.slice(0, 10);
+      walkInQuery = walkInQuery.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
+    }
+    if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+      const d1 = dateTo.slice(0, 10);
+      walkInQuery = walkInQuery.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
+    }
+    if (searchTerm) {
+      const walkClauses = [`order_number.ilike.%${searchTerm}%`, `customer_name.ilike.%${searchTerm}%`];
+      if (customerIdsMatchingSearch.length > 0) {
+        walkClauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+      }
+      walkInQuery = walkInQuery.or(walkClauses.join(","));
+    }
+
+    const { data: walkInOrders, error: walkInError } = await walkInQuery;
+    if (walkInError) {
+      console.error("Error fetching walk-in product orders:", walkInError);
+      throw walkInError;
     }
 
     // Also compute a period-wide aggregate (sum of total_amount) across the FILTERED rows,
@@ -212,12 +253,20 @@ export async function GET(request: NextRequest) {
     const saleIds = (sales || []).map(s => s.id);
     const customerIds = new Set<string>();
     const staffIds = new Set<string>();
+    const staffUserIds = new Set<string>();
     const locationIds = new Set<string>();
 
     (sales || []).forEach((sale: any) => {
       if (sale.customer_id) customerIds.add(sale.customer_id);
       if (sale.staff_id) staffIds.add(sale.staff_id);
       if (sale.location_id) locationIds.add(sale.location_id);
+    });
+    (walkInOrders || []).forEach((order: any) => {
+      if (order.customer_id) customerIds.add(order.customer_id);
+      if (order.staff_id) {
+        staffIds.add(order.staff_id);
+        staffUserIds.add(order.staff_id);
+      }
     });
 
     // Fetch customers
@@ -240,19 +289,34 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch staff
+    // Fetch staff (walk-in orders store either provider_staff.id or user.id)
     const staffMap = new Map<string, string>();
-    if (staffIds.size > 0) {
-      const { data: staffMembers, error: staffError } = await supabaseAdmin
-        .from('provider_staff')
-        .select('id, name')
-        .in('id', Array.from(staffIds));
+    const staffIdByUserId = new Map<string, string>();
+    if (staffIds.size > 0 || staffUserIds.size > 0) {
+      let staffQuery = supabaseAdmin
+        .from("provider_staff")
+        .select("id, name, user_id")
+        .eq("provider_id", providerId);
+      const idList = Array.from(staffIds);
+      const userList = Array.from(staffUserIds);
+      if (idList.length > 0 && userList.length > 0) {
+        staffQuery = staffQuery.or(`id.in.(${idList.join(",")}),user_id.in.(${userList.join(",")})`);
+      } else if (idList.length > 0) {
+        staffQuery = staffQuery.in("id", idList);
+      } else {
+        staffQuery = staffQuery.in("user_id", userList);
+      }
+      const { data: staffMembers, error: staffError } = await staffQuery;
 
       if (staffError) {
         console.warn("Error fetching staff:", staffError);
       } else {
         staffMembers?.forEach((staff: any) => {
           staffMap.set(staff.id, staff.name || "Unknown");
+          if (staff.user_id) {
+            staffMap.set(staff.user_id, staff.name || "Unknown");
+            staffIdByUserId.set(staff.user_id, staff.id);
+          }
         });
       }
     }
@@ -302,7 +366,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform to Sale format
-    const transformedSales = (sales || []).map((sale: any) => {
+    const transformedSales: SaleHistoryRow[] = (sales || []).map((sale: any) => {
       const customerInfo = sale.customer_id ? customerMap.get(sale.customer_id) : null;
       const staffName = sale.staff_id ? staffMap.get(sale.staff_id) : null;
       
@@ -322,13 +386,71 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const totalPages = count ? Math.ceil(count / limit) : 1;
+    const walkInIds = (walkInOrders || []).map((order: { id: string }) => order.id);
+    const walkInItemsMap = new Map<string, Array<{
+      id: string;
+      product_id?: string | null;
+      product_variant_id?: string | null;
+      product_name?: string | null;
+      quantity?: number | null;
+      unit_price?: number | string | null;
+      total_price?: number | string | null;
+    }>>();
+    if (walkInIds.length > 0) {
+      const { data: walkInItems } = await supabaseAdmin
+        .from("product_order_items")
+        .select("id, order_id, product_id, product_variant_id, product_name, quantity, unit_price, total_price")
+        .in("order_id", walkInIds);
+      (walkInItems || []).forEach((item: {
+        id: string;
+        order_id: string;
+        product_id?: string | null;
+        product_variant_id?: string | null;
+        product_name?: string | null;
+        quantity?: number | null;
+        unit_price?: number | string | null;
+        total_price?: number | string | null;
+      }) => {
+        const list = walkInItemsMap.get(item.order_id) ?? [];
+        list.push(item);
+        walkInItemsMap.set(item.order_id, list);
+      });
+    }
+
+    const walkInSales = (walkInOrders || []).map((order: any) => {
+      const customerInfo = order.customer_id ? customerMap.get(order.customer_id) : null;
+      const resolvedStaffId = order.staff_id
+        ? (staffIdByUserId.get(order.staff_id) ?? (staffMap.has(order.staff_id) ? order.staff_id : null))
+        : null;
+      return mapWalkInOrderToSaleShape({
+        order,
+        items: walkInItemsMap.get(order.id) || [],
+        clientName: customerInfo?.full_name || order.customer_name || null,
+        teamMemberId: resolvedStaffId,
+        teamMemberName: order.staff_id ? staffMap.get(order.staff_id) ?? null : null,
+      });
+    });
+
+    const migratedSaleIds = new Set(
+      (walkInOrders || [])
+        .map((order: { legacy_sale_id?: string | null }) => order.legacy_sale_id)
+        .filter((id: string | null | undefined): id is string => Boolean(id)),
+    );
+    const mergedSales = mergeSaleHistoryRows(transformedSales, walkInSales, migratedSaleIds);
+    const pagedSales = mergedSales.slice(offset, offset + limit);
+    const mergedCount = mergedSales.length;
+    const walkInTotal = walkInSales.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const migratedSalesTotal = transformedSales
+      .filter((row) => migratedSaleIds.has(row.id))
+      .reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const periodTotalMerged = periodTotalAmount + walkInTotal - migratedSalesTotal;
+    const totalPages = mergedCount ? Math.ceil(mergedCount / limit) : 1;
 
     return successResponse({
-      data: transformedSales,
-      total: count || transformedSales.length,
+      data: pagedSales,
+      total: mergedCount,
       /** Sum of `total_amount` across ALL rows matching the filters (not just this page). */
-      total_amount_sum: periodTotalAmount,
+      total_amount_sum: periodTotalMerged,
       total_partial: totalPartial,
       page,
       limit,
@@ -432,6 +554,84 @@ export async function POST(request: NextRequest) {
         "STOCK_ERROR",
         400,
       );
+    }
+
+    // Product-only POS sales → walk_in product_orders (Part I migration path).
+    if (isProductOnlyLegacySale(items)) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", providerId)
+        .maybeSingle();
+      let tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+      if (!tenantId) {
+        tenantId = await resolveTenantIdWithZaFallback(request);
+      }
+
+      const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) =>
+        sum + (item.unit_price || 0) * (item.quantity || 1), 0
+      );
+      const calculatedTax = tax_amount || (calculatedSubtotal * (tax_rate || 0));
+      const tipNum = Number(tip_amount || 0);
+      const calculatedTotal =
+        total_amount !== undefined && total_amount !== null
+          ? Number(total_amount)
+          : calculatedSubtotal + calculatedTax - Number(discount_amount || 0) + tipNum;
+
+      const { orderId, orderNumber } = await createWalkInOrderFromLegacySale({
+        supabase,
+        providerId,
+        userId: user.id,
+        tenantId,
+        locationId: location_id || null,
+        customerId: customer_id || null,
+        items,
+        subtotal: calculatedSubtotal,
+        taxRate: tax_rate || 0,
+        taxAmount: calculatedTax,
+        discountAmount: discount_amount || 0,
+        totalAmount: calculatedTotal,
+        paymentMethod: normalizedPaymentMethod,
+        paymentStatus: resolvedPaymentStatus,
+        paymentReference: payment_reference || null,
+      });
+
+      let clientName = null;
+      let staffName = null;
+      if (customer_id) {
+        const { data: customer } = await supabase.from("users").select("full_name").eq("id", customer_id).maybeSingle();
+        clientName = customer?.full_name || null;
+      }
+      if (staff_id) {
+        const { data: staff } = await supabase.from("provider_staff").select("name").eq("id", staff_id).maybeSingle();
+        staffName = staff?.name || null;
+      }
+
+      return successResponse({
+        id: orderId,
+        ref_number: orderNumber,
+        client_name: clientName,
+        date: sale_date || new Date().toISOString(),
+        items: items.map((item: any, idx: number) => ({
+          id: `${orderId}-${idx}`,
+          type: item.type || "product",
+          name: item.name,
+          quantity: item.quantity || 1,
+          unit_price: Number(item.unit_price || 0),
+          total: Number(item.unit_price || 0) * (item.quantity || 1),
+          item_id: item.item_id ?? null,
+          product_variant_id: item.product_variant_id ?? null,
+        })),
+        subtotal: calculatedSubtotal,
+        tax: calculatedTax,
+        total: calculatedTotal,
+        payment_method: normalizedPaymentMethod,
+        payment_status: resolvedPaymentStatus,
+        team_member_id: staff_id || null,
+        team_member_name: staffName,
+        product_order_id: orderId,
+        migrated_to_product_order: true,
+      });
     }
 
     // Calculate totals if not provided

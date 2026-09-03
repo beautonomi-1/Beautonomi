@@ -95,12 +95,31 @@ type AgentModuleResponse = {
   } | null;
 };
 
+type GateStatusResponse = {
+  environment: string;
+  reads_allowed: boolean;
+  mutations_allowed: boolean;
+  blockers: string[];
+  gates: Array<{
+    key: string;
+    label: string;
+    ok: boolean;
+    reason: string;
+    remediation?: string;
+  }>;
+  agents: Array<{ id: string; key: string; display_name: string; risk_ceiling: number; state: string }>;
+  active_agents: number;
+  checked_at: string;
+};
+
 export function CpAgenticConsolePage() {
   const { allowed, denied } = useSuperadminPage("Agentic console is superadmin-only.");
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [blockers, setBlockers] = useState<string[] | null>(null);
+  const [gateStatus, setGateStatus] = useState<GateStatusResponse | null>(null);
   const [data, setData] = useState<AgentModuleResponse | null>(null);
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -126,16 +145,20 @@ export function CpAgenticConsolePage() {
       const actionsPath = statusFilter
         ? `/api/admin/agent-actions?status=${encodeURIComponent(statusFilter)}`
         : "/api/admin/agent-actions";
-      const [mod, act, runList] = await Promise.all([
+      const [mod, act, runList, gates] = await Promise.all([
         adminApi.getJson<AgentModuleResponse>(
           `/api/admin/control-plane/modules/agents?environment=${encodeURIComponent(env)}`,
         ),
         adminApi.getJson<AgentAction[]>(actionsPath),
         adminApi.getJson<AgentRun[]>("/api/admin/agent-runs"),
+        adminApi
+          .getJson<GateStatusResponse>(`/api/admin/agents/gate-status?environment=${encodeURIComponent(env)}`)
+          .catch(() => null),
       ]);
       setData(mod);
       setActions(act ?? []);
       setRuns(runList ?? []);
+      setGateStatus(gates);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -146,15 +169,26 @@ export function CpAgenticConsolePage() {
   const decideAction = async (id: string, decision: "approve" | "reject" | "execute") => {
     setDeciding(id);
     setMsg(null);
+    setBlockers(null);
     try {
       const body =
         decision === "reject" && rejectComment.trim() ? { comments: rejectComment.trim() } : {};
-      const res = await adminApi.postJson<{ ok?: boolean; status?: string; executed?: boolean; reason?: string }>(
-        `/api/admin/agent-actions/${id}/${decision}`,
-        body,
-      );
+      const res = await adminApi.postJson<{
+        ok?: boolean;
+        status?: string;
+        executed?: boolean;
+        reason?: string;
+        gate?: string[];
+      }>(`/api/admin/agent-actions/${id}/${decision}`, body);
       if (decision === "execute") {
-        setMsg(res.executed ? "Action executed." : `Execution blocked: ${res.reason ?? "gate or lease failed"}`);
+        if (res.executed) {
+          setMsg("Action executed.");
+        } else if (Array.isArray(res.gate) && res.gate.length > 0) {
+          setMsg("Execution blocked by the P0 safety gate. Resolve the blockers below (see Preflight).");
+          setBlockers(res.gate);
+        } else {
+          setMsg(`Execution blocked: ${res.reason ?? "lease failed"}`);
+        }
       } else {
         setMsg(
           decision === "approve"
@@ -285,12 +319,73 @@ export function CpAgenticConsolePage() {
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>
+          {blockers && blockers.length > 0 ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700">
+              {blockers.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          ) : null}
         </AdminPanel>
       ) : null}
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (
         <>
+          <AdminPanel>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-gray-900">Preflight — execution gates</h2>
+              {gateStatus ? (
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${
+                    gateStatus.mutations_allowed
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {gateStatus.mutations_allowed ? "Execution allowed" : "Execution blocked"}
+                </span>
+              ) : null}
+            </div>
+            {!gateStatus ? (
+              <p className="text-sm text-gray-500">Gate status unavailable (endpoint not deployed or request failed).</p>
+            ) : (
+              <>
+                <ul className="space-y-1 text-sm">
+                  {gateStatus.gates.map((g) => (
+                    <li key={g.key} className="flex flex-wrap items-start gap-2">
+                      <span
+                        className={`mt-0.5 inline-block h-2.5 w-2.5 rounded-full ${g.ok ? "bg-emerald-500" : "bg-red-500"}`}
+                        aria-label={g.ok ? "ok" : "blocked"}
+                      />
+                      <span className="font-medium">{g.label}</span>
+                      <span className="text-gray-500">— {g.reason}</span>
+                      {!g.ok && g.remediation ? (
+                        <span className="basis-full pl-5 text-xs text-gray-400">{g.remediation}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-gray-500">
+                  {gateStatus.active_agents} active agent(s) · reads {gateStatus.reads_allowed ? "allowed" : "blocked"} ·
+                  checked {new Date(gateStatus.checked_at).toLocaleTimeString()}
+                </p>
+                {gateStatus.blockers.length > 0 ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2">
+                    <p className="text-xs font-medium text-amber-900">Blockers</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-amber-900">
+                      {gateStatus.blockers.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Staged enablement steps: docs/AGENT_ENABLEMENT_RUNBOOK.md
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </AdminPanel>
           <AdminPanel>
             <h2 className="mb-3 text-sm font-semibold text-gray-900">Module controls</h2>
             <div className="flex flex-wrap gap-4 items-center">

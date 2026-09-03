@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runAutoFeeReconciliation } from "@/lib/admin/auto-fee-reconciliation";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "auto-fee-reconciliation";
+export const maxDuration = 120;
 
 /**
  * GET /api/cron/auto-fee-reconciliation
@@ -17,10 +21,12 @@ export async function GET(request: NextRequest) {
       return new Response(auth.error || "Unauthorized", { status: 401 });
     }
 
-    const supabase = getSupabaseAdmin();
-    const summary = await runAutoFeeReconciliation(supabase);
+    return await runLockedCronRoute(JOB_NAME, async () => {
+      const supabase = getSupabaseAdmin();
+      const summary = await runAutoFeeReconciliation(supabase);
 
-    return successResponse(summary);
+      return successResponse(summary);
+    });
   } catch (error) {
     return handleApiError(error, "Failed to run auto fee reconciliation");
   }

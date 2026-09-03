@@ -404,6 +404,20 @@ export async function issueAdminWalletRefund(
     console.warn("[issueAdminWalletRefund] audit log write failed:", auditErr);
   }
 
+  void import("@/lib/integrations/slack/ops-triggers")
+    .then(({ slackNotifyHighValueRefund }) =>
+      slackNotifyHighValueRefund({
+        tenantId,
+        refundId,
+        bookingId,
+        amountMajor: amount,
+        stage: "processed",
+        actorUserId,
+        reason,
+      }),
+    )
+    .catch(() => undefined);
+
   return {
     success: true,
     refundId,

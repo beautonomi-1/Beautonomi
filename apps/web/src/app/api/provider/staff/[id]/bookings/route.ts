@@ -1,28 +1,48 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { getCalendarScopeForUser } from "@/lib/auth/calendar-scope";
+import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const permissionCheck = await requirePermission("view_team", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
-
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: prow } = await supabaseAdmin
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", providerId)
-      .maybeSingle();
+    const resolvedStaffId = await resolveProviderStaffRowId(supabaseAdmin, providerId, id);
+    if (!resolvedStaffId) return notFoundResponse("Staff member not found");
+
+    const { scope, staffId: selfStaffId } = await getCalendarScopeForUser(user.id, request);
+    if (scope === "own" && selfStaffId && resolvedStaffId !== selfStaffId) {
+      return errorResponse(
+        "You can only view your own bookings",
+        "FORBIDDEN",
+        403,
+      );
+    }
+
     const effectiveTenantId =
-      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
-      (await resolveTenantIdWithZaFallback(request));
+      (await supabaseAdmin.from("providers").select("tenant_id").eq("id", providerId).maybeSingle())
+        .data?.tenant_id ?? (await resolveTenantIdWithZaFallback(request));
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
@@ -32,9 +52,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: bookingServiceIds } = await supabaseAdmin
       .from("booking_services")
       .select("booking_id")
-      .eq("staff_id", id);
+      .eq("staff_id", resolvedStaffId);
 
-    const bookingIds = [...new Set((bookingServiceIds || []).map((bs: any) => bs.booking_id))];
+    const bookingIds = [...new Set((bookingServiceIds || []).map((bs: { booking_id: string }) => bs.booking_id))];
 
     if (bookingIds.length === 0) {
       return successResponse([]);

@@ -14,10 +14,21 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { notifyMembershipRenewalReminder } from "@/lib/notifications/notification-service";
 import { insertNotification } from "@/lib/notifications/insert-notification";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 const REMINDER_DAYS = [3, 1] as const;
+const JOB_NAME = "membership-renewal-reminders";
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

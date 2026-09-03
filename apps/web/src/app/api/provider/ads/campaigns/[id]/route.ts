@@ -5,6 +5,8 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { refundUnusedAdsBudget } from "@/lib/ads/refund-unused-ads-budget";
+import { notifyAdsCampaignEvent } from "@/lib/ads/notify-ads-campaign-event";
 
 export async function PATCH(
   request: NextRequest,
@@ -19,7 +21,7 @@ export async function PATCH(
     const updates: Record<string, any> = {};
     if (body.status !== undefined) {
       const status = String(body.status);
-      if (!["draft", "active", "paused", "ended"].includes(status)) {
+      if (!["draft", "active", "paused", "ended", "pending_review", "rejected"].includes(status)) {
         return errorResponse("Invalid status", "VALIDATION", 400);
       }
       updates.status = status;
@@ -41,6 +43,14 @@ export async function PATCH(
     const isTimeBased = billingModel === "time_based";
 
     if (updates.status === "active") {
+      const prevStatus = String((existing as { status?: string }).status ?? "");
+      if (prevStatus === "pending_review") {
+        return errorResponse(
+          "This campaign is awaiting admin approval before it can go live.",
+          "PENDING_REVIEW",
+          400,
+        );
+      }
       const budget = Number((existing as any).budget ?? 0);
       const spent = Number((existing as any).spent ?? 0);
       // Serve-time funding guard (migration 664): only a verified, non-reversed
@@ -116,6 +126,23 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+
+    if (updates.status === "ended") {
+      await refundUnusedAdsBudget({
+        supabase,
+        campaignId,
+        providerId: campaignProviderId,
+        reason: "provider_ended",
+      }).catch(() => undefined);
+      await notifyAdsCampaignEvent({
+        supabase,
+        providerId: campaignProviderId,
+        campaignId,
+        event: "campaign_ended",
+        reason: "provider_ended",
+      }).catch(() => undefined);
+    }
+
     return successResponse(data);
   } catch (error) {
     return handleApiError(error as Error, "Failed to update campaign");

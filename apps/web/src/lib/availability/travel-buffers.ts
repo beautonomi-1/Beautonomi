@@ -6,6 +6,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { haversineDistanceKmFromCoords } from '@/lib/geo/distance';
+import { getCachedDirections } from '@/lib/availability/directions-cache';
 
 export interface TravelTimeResult {
   distanceKm: number;
@@ -13,9 +14,15 @@ export interface TravelTimeResult {
   bufferMinutes: number; // ETA + 15 minutes safety margin
 }
 
+const DIRECTIONS_PROFILE = 'driving';
+
 /**
  * Calculate travel time between two locations.
  * Prefers Mapbox Directions (driving) for distance and duration; fallback is Haversine + 50 km/h.
+ *
+ * Directions results are cached for 24h by rounded coords (4 dp) + profile — Upstash when
+ * configured, else in-memory LRU (see `directions-cache.ts`) — so repeated availability
+ * checks for the same address pair do not re-bill Mapbox.
  */
 export async function calculateTravelTime(
   _supabase: SupabaseClient,
@@ -25,15 +32,21 @@ export async function calculateTravelTime(
   toLng: number
 ): Promise<TravelTimeResult> {
   try {
-    const { getMapboxService } = await import('@/lib/mapbox/mapbox');
-    const mapbox = await getMapboxService();
-    const from = { latitude: fromLat, longitude: fromLng };
-    const to = { latitude: toLat, longitude: toLng };
-    const route = await mapbox.calculateRoute([from, to], {
-      profile: 'driving',
-      steps: false,
-      overview: 'simplified',
-    });
+    const route = await getCachedDirections(
+      { fromLat, fromLng, toLat, toLng, profile: DIRECTIONS_PROFILE },
+      async () => {
+        const { getMapboxService } = await import('@/lib/mapbox/mapbox');
+        const mapbox = await getMapboxService();
+        const from = { latitude: fromLat, longitude: fromLng };
+        const to = { latitude: toLat, longitude: toLng };
+        const result = await mapbox.calculateRoute([from, to], {
+          profile: DIRECTIONS_PROFILE,
+          steps: false,
+          overview: 'simplified',
+        });
+        return { distance: result.distance, duration: result.duration };
+      },
+    );
     const distanceKm = route.distance / 1000;
     const estimatedMinutes = Math.ceil(route.duration / 60);
     const bufferMinutes = estimatedMinutes + 15;

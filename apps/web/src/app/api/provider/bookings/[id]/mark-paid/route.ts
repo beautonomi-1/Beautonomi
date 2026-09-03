@@ -35,7 +35,6 @@ async function settleUnpaidAdditionalChargesForMarkPaid(params: {
   effectivePaymentMethod: string;
   paymentProvider: string;
   stableReference: string | null;
-  formatMoney: (value: number) => string;
   paymentMethodLabel: string;
 }): Promise<
   { charge_id: string; amount: number; description?: string | null; reference: string }[]
@@ -51,7 +50,6 @@ async function settleUnpaidAdditionalChargesForMarkPaid(params: {
     effectivePaymentMethod,
     paymentProvider,
     stableReference,
-    formatMoney,
     paymentMethodLabel,
   } = params;
 
@@ -116,47 +114,11 @@ async function settleUnpaidAdditionalChargesForMarkPaid(params: {
       console.warn("Failed to create additional charge booking event:", eventErr);
     }
 
-    const currency =
-      charge.currency || booking.currency || "ZAR";
     try {
-      const { insertNotification } = await import("@/lib/notifications/insert-notification");
-      await insertNotification({
-        user_id: booking.customer_id,
-        type: "additional_charge_paid",
-        title: "Additional Charge Paid",
-        message: `Your additional charge of ${currency} ${chargeAmount.toFixed(2)} has been paid and confirmed.`,
-        data: {
-          booking_id: bookingId,
-          charge_id: charge.id,
-          amount: chargeAmount,
-          payment_method: paymentMethodLabel,
-        },
-        action_url: `/account-settings/bookings/${bookingId}`,
-      });
-
-      try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const bookingRef =
-          booking.ref_number ||
-          booking.booking_number ||
-          bookingId.slice(0, 8).toUpperCase();
-        await sendTemplateNotification(
-          "payment_successful",
-          [booking.customer_id],
-          {
-            amount: formatMoney(chargeAmount),
-            booking_number: bookingRef,
-            payment_method: paymentMethodLabel,
-            transaction_id: chargeRef,
-            booking_id: bookingId,
-            charge_description: charge.description ?? "",
-          },
-          ["push", "email"],
-          { appType: "customer", skipInApp: true },
-        );
-      } catch (pushError) {
-        console.warn("OneSignal push for additional charge failed:", pushError);
-      }
+      const { notifyAdditionalChargePaid } = await import(
+        "@/lib/notifications/notify-additional-charge-paid"
+      );
+      await notifyAdditionalChargePaid(supabaseAdmin, charge.id);
     } catch (notifError) {
       console.warn("Failed to create additional charge payment notification:", notifError);
     }
@@ -788,7 +750,6 @@ export async function POST(
           effectivePaymentMethod,
           paymentProvider,
           stableReference,
-          formatMoney,
           paymentMethodLabel: payment_method,
         });
       } catch (settleErr) {

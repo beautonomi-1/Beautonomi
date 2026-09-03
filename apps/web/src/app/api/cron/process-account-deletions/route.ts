@@ -3,6 +3,10 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { processScheduledAccountDeletions } from "@/lib/account/process-scheduled-deletions";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "process-account-deletions";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/process-account-deletions
@@ -17,18 +21,20 @@ export async function GET(request: NextRequest) {
       return new Response(auth.error || "Unauthorized", { status: 401 });
     }
 
-    const dryRun = request.nextUrl.searchParams.get("dry_run") === "1";
-    const admin = getSupabaseAdmin();
-    const result = await processScheduledAccountDeletions(admin, {
-      dryRun,
-      request,
-    });
+    return await runLockedCronRoute(JOB_NAME, async () => {
+      const dryRun = request.nextUrl.searchParams.get("dry_run") === "1";
+      const admin = getSupabaseAdmin();
+      const result = await processScheduledAccountDeletions(admin, {
+        dryRun,
+        request,
+      });
 
-    return successResponse({
-      message: dryRun
-        ? "Account deletion cron dry run completed"
-        : "Account deletion cron completed",
-      ...result,
+      return successResponse({
+        message: dryRun
+          ? "Account deletion cron dry run completed"
+          : "Account deletion cron completed",
+        ...result,
+      });
     });
   } catch (error) {
     return handleApiError(error, "Account deletion cron failed");

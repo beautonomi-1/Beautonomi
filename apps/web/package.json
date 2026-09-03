@@ -39,11 +39,11 @@
     "@amplitude/analytics-browser": "^2.41.1",
     "@amplitude/engagement-browser": "^1.0.9",
     "@amplitude/plugin-session-replay-browser": "^1.28.0",
+    "@beautonomi/admin-access": "workspace:*",
+    "@beautonomi/agent-evals": "workspace:*",
+    "@beautonomi/agent-model-router": "workspace:*",
     "@beautonomi/agent-policy": "workspace:*",
     "@beautonomi/agent-tools": "workspace:*",
-    "@beautonomi/agent-model-router": "workspace:*",
-    "@beautonomi/agent-evals": "workspace:*",
-    "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/learning-mockups": "workspace:*",
     "@beautonomi/maintenance-paths": "workspace:*",
@@ -113,6 +113,7 @@
     "tailwind-merge": "^2.6.1",
     "tailwindcss-animate": "^1.0.7",
     "web-vitals": "^5.2.0",
+    "workflow": "^4.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

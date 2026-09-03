@@ -33,6 +33,7 @@ import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/Sele
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
+import { trackProviderViewed } from "@/lib/analytics";
 import {
   isProviderUnavailableError,
   reportProviderUnavailable,
@@ -1034,11 +1035,13 @@ function MembershipCard({
   onJoin,
   contentPadding,
   isActiveMember,
+  isPaused,
 }: {
   plan: MembershipPlan;
   onJoin: () => void;
   contentPadding: number;
   isActiveMember: boolean;
+  isPaused?: boolean;
 }) {
   const fb = getTenantDefaultCurrency();
   const unitPrice = Number.isFinite(plan.price) ? plan.price : 0;
@@ -1085,7 +1088,9 @@ function MembershipCard({
             borderColor: Colors.gray[200],
           }}
         >
-          <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{"You're subscribed"}</Text>
+          <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>
+            {isPaused ? "Paused — manage in account" : "You're subscribed"}
+          </Text>
           <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>Manage in Account → Membership</Text>
         </View>
       ) : (
@@ -1189,6 +1194,7 @@ export default function PartnerProfileScreen() {
     plan_id: string;
     plan_name: string;
     expires_at: string | null;
+    status?: string;
   } | null>(null);
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
@@ -1286,6 +1292,7 @@ export default function PartnerProfileScreen() {
         const prov = provRes.data;
         setProvider(prov);
         setDisclosureTier(prov?.disclosure_tier ?? "anon");
+        if (prov?.id) trackProviderViewed(String(prov.id), undefined, "partner_profile");
       }
       if (!svcRes.error) {
         setServices(svcRes.data);
@@ -1437,12 +1444,17 @@ export default function PartnerProfileScreen() {
             plan_id: string;
             plan_name: string;
             expires_at: string | null;
+            status?: string;
           }[];
         }>("/api/me/membership")
         .then((res) => {
           if (res.error || cancelled) return;
           const rows = res.data?.provider_memberships ?? [];
-          const mine = rows.find((r) => r.provider_id === provider.id);
+          const mine = rows.find(
+            (r) =>
+              r.provider_id === provider.id &&
+              (r.status === "active" || r.status === "past_due" || r.status === "paused" || !r.status),
+          );
           setSalonMembership(
             mine
               ? {
@@ -1450,6 +1462,7 @@ export default function PartnerProfileScreen() {
                   plan_id: mine.plan_id,
                   plan_name: mine.plan_name,
                   expires_at: mine.expires_at ?? null,
+                  status: mine.status,
                 }
               : null,
           );
@@ -1611,14 +1624,16 @@ export default function PartnerProfileScreen() {
     const recurringConsent = pp("recurringConsentBody", { price }) as string;
     const bodyWithConsent = `${pp("joinMembershipBody", { price, interval: plan.interval })}\n\n${recurringConsent}`;
 
-    Alert.alert(
-      pp("joinMembershipTitle", { planName: plan.name }),
-      bodyWithConsent,
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: pp("subscribeCta"),
-          onPress: async () => {
+    let walletBalance = 0;
+    try {
+      const walletRes = await api.get<{ wallet?: { balance?: number } }>("/api/me/wallet");
+      walletBalance = Number(walletRes.data?.wallet?.balance ?? 0);
+    } catch {
+      walletBalance = 0;
+    }
+    const canPayWithWallet = walletBalance >= unit && unit > 0;
+
+    const subscribe = async (tender: "paystack" | "wallet") => {
             try {
               const membershipReturnUrl =
                 Platform.OS !== "web" ? ExpoLinking.createURL("membership-paystack") : undefined;
@@ -1629,6 +1644,7 @@ export default function PartnerProfileScreen() {
               const res = await api.post("/api/me/membership/subscribe", {
                 membership_id: plan.id,
                 provider_id: provider.id,
+                tender,
                 source: "customer_app_partner_profile",
                 campaign_id: paramCampaignId,
                 idempotency_key: membershipIdempotencyKey,
@@ -1748,9 +1764,18 @@ export default function PartnerProfileScreen() {
             } catch {
               Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), t("customer.mobile.screens.maintenance.genericError"));
             }
-          },
-        },
-      ]
+    };
+
+    Alert.alert(
+      pp("joinMembershipTitle", { planName: plan.name }),
+      bodyWithConsent,
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        ...(canPayWithWallet
+          ? [{ text: "Pay with wallet", onPress: () => void subscribe("wallet") }]
+          : []),
+        { text: pp("subscribeCta"), onPress: () => void subscribe("paystack") },
+      ],
     );
   }, [user, provider, paramCampaignId, pp, t]);
 
@@ -2845,6 +2870,7 @@ export default function PartnerProfileScreen() {
                         onJoin={() => handleJoinMembership(plan)}
                         contentPadding={contentPadding}
                         isActiveMember={salonMembership?.plan_id === plan.id}
+                        isPaused={salonMembership?.plan_id === plan.id && salonMembership?.status === "paused"}
                       />
                     ))
                   ) : (

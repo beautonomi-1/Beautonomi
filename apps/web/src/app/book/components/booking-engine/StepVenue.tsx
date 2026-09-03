@@ -1,6 +1,7 @@
 "use client";
 
-import { MapPin, Home, ChevronRight, Loader2 } from "lucide-react";
+import { MapPin, Home, ChevronRight, Loader2, LocateFixed } from "lucide-react";
+import { useAtHomeAddressPrefill } from "@/hooks/use-at-home-address-prefill";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -69,6 +70,37 @@ export function StepVenue({
   const venueType = data.venueType;
   const [travelPreview, setTravelPreview] = useState<TravelFeePreviewState>({ status: "idle" });
   const previewSeq = useRef(0);
+  const { state: prefillState, prefillFromCurrentLocation, tryAutoPrefill } = useAtHomeAddressPrefill({
+    defaultCountryCode,
+  });
+
+  useEffect(() => {
+    if (venueType !== "at_home") return;
+    void tryAutoPrefill(true, data.atHomeAddress).then((result) => {
+      if (!result?.address.line1?.trim() && !result?.address.city?.trim()) return;
+      onChange({
+        atHomeAddress: {
+          ...data.atHomeAddress,
+          ...result.address,
+          latitude: result.latitude,
+          longitude: result.longitude,
+        },
+      });
+    });
+  }, [venueType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUseCurrentLocation = async () => {
+    const result = await prefillFromCurrentLocation();
+    if (!result) return;
+    onChange({
+      atHomeAddress: {
+        ...data.atHomeAddress,
+        ...result.address,
+        latitude: result.latitude,
+        longitude: result.longitude,
+      },
+    });
+  };
 
   const atHomeAddressKey = useMemo(
     () =>
@@ -319,9 +351,28 @@ export function StepVenue({
           className="p-5 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-3xl"
           style={cardStyle}
         >
-          <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Your address (search for geocoding & travel fee)
-          </Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
+              Your address (search for geocoding & travel fee)
+            </Label>
+            <button
+              type="button"
+              onClick={() => void handleUseCurrentLocation()}
+              disabled={prefillState.status === "locating"}
+              className="inline-flex items-center gap-1.5 text-xs font-medium shrink-0 touch-manipulation"
+              style={{ color: BOOKING_ACCENT }}
+            >
+              {prefillState.status === "locating" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <LocateFixed className="h-3.5 w-3.5" aria-hidden />
+              )}
+              Use current location
+            </button>
+          </div>
+          {prefillState.status === "error" ? (
+            <p className="text-xs text-amber-700">{prefillState.message}</p>
+          ) : null}
           <AddressAutocomplete
             value={data.atHomeAddress.line1}
             country={data.atHomeAddress.country || defaultCountryCode}

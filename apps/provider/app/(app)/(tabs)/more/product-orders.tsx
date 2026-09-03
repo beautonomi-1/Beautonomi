@@ -34,10 +34,40 @@ import { twStyle } from "@/lib/twStyle";
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+const LINE_FULFILMENT_STATUSES = ["pending", "packed", "shipped", "delivered", "cancelled"] as const;
+const LINE_FULFILMENT_RANK: Record<string, number> = {
+  pending: 0,
+  packed: 1,
+  shipped: 2,
+  delivered: 3,
+  cancelled: -1,
+};
+
+function canAdvanceLineFulfilment(from: string, to: string): boolean {
+  if (from === to) return true;
+  if (from === "cancelled" || from === "delivered") return false;
+  if (to === "cancelled") return true;
+  return (LINE_FULFILMENT_RANK[to] ?? -2) > (LINE_FULFILMENT_RANK[from] ?? -2);
+}
+
+/** Immediate next status plus cancel — keeps Android Alert at 3 buttons. */
+function nextLineFulfilmentOptions(from: string): string[] {
+  const order = ["pending", "packed", "shipped", "delivered"] as const;
+  const idx = order.indexOf(from as (typeof order)[number]);
+  const next: string[] = idx >= 0 && idx < order.length - 1 ? [order[idx + 1]] : [];
+  if (from !== "cancelled" && from !== "delivered") next.push("cancelled");
+  return next.filter(
+    (status) =>
+      (LINE_FULFILMENT_STATUSES as readonly string[]).includes(status) &&
+      canAdvanceLineFulfilment(from, status),
+  );
+}
+
 interface OrderItem {
   id: string;
   product_name: string;
   quantity: number;
+  fulfilment_status?: string | null;
   unit_price: number;
   total_price: number;
   product_variant?: { option_values?: Record<string, string> } | null;
@@ -71,6 +101,8 @@ interface Order {
   order_number: string;
   total_amount: number | string;
   wallet_amount?: number | string | null;
+  gift_card_amount?: number | string | null;
+  promotion_code?: string | null;
   subtotal?: number | string | null;
   tax_amount?: number | string | null;
   delivery_fee?: number | string | null;
@@ -298,6 +330,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<OrdersListResponse>(url);
   const { execute: patchOrder, loading: patching } = useApiMutation<{ order: Order }>("patch");
+  const { execute: patchLine, loading: patchingLine } = useApiMutation<{ item: { id: string; fulfilment_status: string } }>("patch");
   const { execute: postOrderMutation, loading: postingOrderMutation } = useApiMutation<{ order: Order }>("post");
 
   const onRefresh = useCallback(async () => {
@@ -994,20 +1027,73 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   Object.keys(item.product_variant.option_values).length > 0
                     ? " · " + Object.values(item.product_variant.option_values).join(", ")
                     : "";
+                const currentFulfilment = item.fulfilment_status ?? "pending";
+                const lineLocked =
+                  patchingLine ||
+                  activeOrder.status === "cancelled" ||
+                  activeOrder.status === "refunded" ||
+                  currentFulfilment === "delivered" ||
+                  currentFulfilment === "cancelled";
                 return (
                   <View
                     key={item.id}
-                    style={twStyle("mb-2 flex-row items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5")}
+                    style={twStyle("mb-2 rounded-xl bg-gray-50 px-3 py-2.5")}
                   >
-                    <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={2}>
-                      {item.product_name}
-                      {variantLabel}
-                      {" × "}
-                      {item.quantity}
-                    </Text>
-                    <Text style={twStyle("ml-3 text-sm font-semibold text-gray-800")}>
-                      {formatCurrency(Number(item.total_price), currency)}
-                    </Text>
+                    <View style={twStyle("flex-row items-center justify-between")}>
+                      <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={2}>
+                        {item.product_name}
+                        {variantLabel}
+                        {" × "}
+                        {item.quantity}
+                      </Text>
+                      <Text style={twStyle("ml-3 text-sm font-semibold text-gray-800")}>
+                        {formatCurrency(Number(item.total_price), currency)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      disabled={lineLocked}
+                      onPress={() => {
+                        const nextStatuses = nextLineFulfilmentOptions(currentFulfilment);
+                        if (nextStatuses.length === 0) return;
+                        Alert.alert(
+                          "Line fulfilment",
+                          `${item.product_name} is ${currentFulfilment.replace(/_/g, " ")}. Choose next status.`,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            ...nextStatuses.map((status) => ({
+                              text: status.replace(/_/g, " "),
+                              onPress: async () => {
+                                const { error } = await patchLine(
+                                  `/api/provider/product-orders/${activeOrder.id}/items/${item.id}`,
+                                  { fulfilment_status: status },
+                                );
+                                if (error) {
+                                  Alert.alert("Error", error);
+                                  return;
+                                }
+                                const apply = (prev: Order | null) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        items: (prev.items ?? []).map((row) =>
+                                          row.id === item.id ? { ...row, fulfilment_status: status } : row,
+                                        ),
+                                      }
+                                    : prev;
+                                setOrderDetail((prev) => apply(prev));
+                                setViewOrder((prev) => apply(prev));
+                              },
+                            })),
+                          ],
+                        );
+                      }}
+                      style={{ marginTop: 6, alignSelf: "flex-start", opacity: lineLocked ? 0.5 : 1 }}
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-violet-700")}>
+                        {currentFulfilment.replace(/_/g, " ")}
+                        {lineLocked ? "" : " · tap to update"}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -1050,6 +1136,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     {tax > 0 ? row("Tax", tax) : null}
                     {del > 0 ? row("Delivery", del) : null}
                     {disc > 0 ? row("Discount", -disc, true) : null}
+                    {numOrZero(activeOrder.gift_card_amount) > 0
+                      ? row("Gift card", -numOrZero(activeOrder.gift_card_amount), true)
+                      : null}
+                    {activeOrder.promotion_code ? (
+                      <View style={twStyle("mb-1 flex-row justify-between")}>
+                        <Text style={twStyle("text-sm text-gray-500")}>Promotion</Text>
+                        <Text style={twStyle("text-sm font-medium text-gray-500")}>
+                          {activeOrder.promotion_code}
+                        </Text>
+                      </View>
+                    ) : null}
                     {platformFee > 0 ? row("Platform fee", -platformFee, true) : null}
                     {platformFee > 0 ? row("Provider earnings", providerEarnings) : null}
                     <View style={twStyle("mt-2 flex-row justify-between border-t border-gray-200 pt-2")}>

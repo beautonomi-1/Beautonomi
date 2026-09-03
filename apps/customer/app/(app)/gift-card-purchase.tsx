@@ -11,6 +11,7 @@ import {
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
+import { trackGiftCardPurchased } from "@/lib/analytics";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -61,6 +62,7 @@ export default function GiftCardPurchaseScreen() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
+  const [deliverAt, setDeliverAt] = useState("");
   const [loading, setLoading] = useState(false);
   const { cards: savedCards, defaultCard } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
@@ -149,10 +151,15 @@ export default function GiftCardPurchaseScreen() {
           body.recipient_email = recipientEmail.trim();
           if (recipientName.trim()) body.recipient_name = recipientName.trim();
           if (giftMessage.trim()) body.message = giftMessage.trim();
+          if (deliverAt.trim()) {
+            const parsed = new Date(deliverAt.includes("T") ? deliverAt : deliverAt.replace(" ", "T"));
+            if (Number.isFinite(parsed.getTime())) body.deliver_at = parsed.toISOString();
+          }
         }
         if (Platform.OS !== "web") {
           body.callback_url = ExpoLinking.createURL("gift-card-return");
         }
+        trackGiftCardPurchased(finalAmount);
         const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
           "/api/public/gift-cards/purchase",
           body,
@@ -453,6 +460,14 @@ export default function GiftCardPurchaseScreen() {
                 onChangeText={setGiftMessage}
                 multiline
                 maxLength={500}
+              />
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 10, marginBottom: 6 }}>Send later (optional)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 }}
+                placeholder="YYYY-MM-DD HH:mm"
+                placeholderTextColor={Colors.gray[400]}
+                value={deliverAt}
+                onChangeText={setDeliverAt}
               />
               <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10, backgroundColor: "#FDF2F8", borderRadius: 10, padding: 12 }}>
                 <Ionicons name="mail-outline" size={16} color={Colors.primary} style={{ marginTop: 1 }} />

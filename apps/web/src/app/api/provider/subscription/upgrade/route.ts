@@ -20,6 +20,8 @@ import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscrip
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
+import { isPaidToPaidDowngrade } from "@/lib/subscriptions/trial";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -43,6 +45,8 @@ type ExistingSubRow = {
   paystack_authorization_code?: string | null;
   paystack_subscription_code?: string | null;
   paystack_customer_code?: string | null;
+  expires_at?: string | null;
+  next_payment_date?: string | null;
   subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null;
 };
 
@@ -166,6 +170,11 @@ export async function POST(request: NextRequest) {
 
       if (subError) throw subError;
 
+      // Part F: downgrade to free may put active staff over the plan cap.
+      void enforceStaffCapForProviderPlan(providerId, { admin: supabaseAdmin }).catch((err) =>
+        console.warn("[subscription/upgrade] enforceStaffCap failed:", err),
+      );
+
       // For free tier, send notification if upgrading from paid plan
 
       const { data: providerData } = await supabaseAdmin
@@ -271,6 +280,8 @@ export async function POST(request: NextRequest) {
         paystack_customer_code,
         paystack_subscription_code,
         plan_id,
+        expires_at,
+        next_payment_date,
         subscription_plans:plan_id(name, price_monthly, price_yearly)
       `)
       .eq("provider_id", providerId)
@@ -289,6 +300,36 @@ export async function POST(request: NextRequest) {
         plan_code: paystackPlanCode,
         message: "Payment authorization required. Please complete a payment first.",
       });
+    }
+
+    // Paid-to-paid downgrade: keep the current plan until period end (no proration).
+    if (
+      existingRow &&
+      isPaidToPaidDowngrade(existingRow.subscription_plans, planRow, billing_period)
+    ) {
+      const changeAt = existingRow.expires_at || existingRow.next_payment_date;
+      if (changeAt) {
+        const supabaseAdmin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          { auth: { autoRefreshToken: false, persistSession: false } },
+        );
+        const { error: scheduleErr } = await supabaseAdmin
+          .from("provider_subscriptions")
+          .update({
+            scheduled_plan_id: plan_id,
+            scheduled_change_at: changeAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("provider_id", providerId);
+        if (scheduleErr) throw scheduleErr;
+        return successResponse({
+          scheduled: true,
+          scheduled_plan_id: plan_id,
+          scheduled_change_at: changeAt,
+          changes_on: changeAt,
+        });
+      }
     }
 
     // Create subscription with authorization code
@@ -345,6 +386,11 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (subError) throw subError;
+
+      // Part F: plan change (possibly a downgrade) — deactivate excess staff with grace.
+      void enforceStaffCapForProviderPlan(providerId).catch((err) =>
+        console.warn("[subscription/upgrade] enforceStaffCap failed:", err),
+      );
 
       // Get provider and plan details for notification
       const supabaseAdmin = createClient(

@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -19,7 +20,12 @@ import { subDays } from "date-fns";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    // Payout statements are finance data: owner, view_reports or manage_finance only.
+    const permissionCheck = await requireAnyPermission(["view_reports", "manage_finance"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);

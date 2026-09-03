@@ -421,7 +421,29 @@ export async function POST(request: NextRequest) {
 
     if (orderError || !order) throw orderError || new Error("Failed to create budget order");
 
-    const paymentProvider = String(body.payment_provider ?? "paystack").toLowerCase();
+    const paymentMethod = String(body.payment_method ?? body.payment_provider ?? "paystack").toLowerCase();
+
+    if (paymentMethod === "marketing_credit") {
+      const { payAdsBudgetOrderWithMarketingCredit } = await import("@/lib/ads/pay-ads-with-marketing-credit");
+      const paid = await payAdsBudgetOrderWithMarketingCredit({
+        supabase,
+        orderId: order.id,
+        providerId,
+      });
+      if (paid.ok === false) {
+        return errorResponse(paid.reason, "INSUFFICIENT_CREDIT", 402);
+      }
+      const { data: refreshed } = await supabase.from("ads_campaigns").select("*").eq("id", campaign.id).single();
+      return successResponse({
+        campaign: refreshed ?? campaign,
+        requires_payment: false,
+        paid: true,
+        order_id: order.id,
+        payment_method: "marketing_credit",
+      });
+    }
+
+    const paymentProvider = paymentMethod === "apple" ? "apple" : "paystack";
     if (paymentProvider === "apple") {
       let appleProductId: string | null = null;
       if (timePackId) {
@@ -501,7 +523,7 @@ export async function POST(request: NextRequest) {
 
     await supabase
       .from("ads_budget_orders")
-      .update({ paystack_reference: reference, updated_at: new Date().toISOString() })
+      .update({ paystack_reference: reference, payment_method: "paystack", updated_at: new Date().toISOString() })
       .eq("id", order.id);
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

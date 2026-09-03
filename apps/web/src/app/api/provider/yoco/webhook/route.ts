@@ -12,6 +12,8 @@ import {
   settleYocoPayment,
 } from "@/lib/payments/settle-yoco-payment";
 
+export const maxDuration = 60;
+
 function yocoAmountCents(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object") {

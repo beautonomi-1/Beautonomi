@@ -16,6 +16,7 @@ import { sendAppleConsumptionInformation } from "@/lib/iap/apple/app-store-api";
 import { buildAppleConsumptionInformation } from "@/lib/iap/apple/consumption";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * POST /api/webhooks/apple/notifications

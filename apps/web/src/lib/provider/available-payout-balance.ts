@@ -16,8 +16,9 @@ export type GetAvailablePayoutBalanceOptions = {
  *   When a finance row carries source_payment_id, exclusion is per payment tender
  *   (mixed Paystack deposit + PayCloud balance only the Paystack-sourced rows count).
  * - Add refund rows (net is negative), with the same exclusion when tied to a booking.
- * - Optionally exclude earnings newer than holdDays (payout hold period) for **provider_earnings, tip, and travel_fee**
- *   (F15: hold applies consistently to platform-held booking take). Refunds always apply (clawback).
+ * - Optionally exclude earnings newer than holdDays (payout hold period) for **provider_earnings, tip,
+ *   travel_fee, and cancellation_fee** (F15 / Part C2: hold applies consistently to every platform-held
+ *   provider take). Refunds always apply (clawback).
  * - Subtract completed payouts (finance_transactions type 'payout').
  * - Subtract pending/processing payout requests (payouts table).
  *
@@ -39,7 +40,7 @@ export type GetAvailablePayoutBalanceOptions = {
 export type PayoutBalanceBreakdown = {
   /** Released + on-hold platform-held earnings net of refunds (before hold/payout deductions). */
   recognizedPayoutableEarnings: number;
-  /** provider_earnings/tip/travel still inside the payout hold window (will release later). */
+  /** provider_earnings/tip/travel/cancellation_fee still inside the payout hold window (will release later). */
   onHold: number;
   /** provider_earnings/tip/travel excluded because the booking was settled in provider-collected cash. */
   excludedProviderCollected: number;
@@ -92,10 +93,11 @@ export async function getAvailablePayoutBalance(
   // the payout balance (see the function doc — that would double-charge the provider).
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
-    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id")
+    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, metadata")
     .eq("provider_id", providerId)
     .in("transaction_type", [
       "provider_earnings",
+      "membership_provider_earnings",
       "payout",
       "refund",
       "cancellation_fee",
@@ -207,6 +209,11 @@ export async function getAvailablePayoutBalance(
   for (const r of rows) {
     const row = r as any;
     if (row.transaction_type === "payout") {
+      // A payout whose transfer later failed/reversed keeps its ledger row for the
+      // audit trail but is marked metadata.reversed_at (transfer-events.ts). The
+      // money never left, so it must not reduce the withdrawable balance.
+      const reversedAt = row.metadata?.reversed_at;
+      if (typeof reversedAt === "string" && reversedAt.length > 0) continue;
       // recordPayoutLedger writes amount === net === net_amount, so these agree
       // today. Prefer `net` (falling back to amount) for consistency with every
       // other branch and to stay correct if a payout ledger row ever carries fees
@@ -227,8 +234,15 @@ export async function getAvailablePayoutBalance(
     }
     if (row.transaction_type === "cancellation_fee") {
       // Cancellation fees are retained by the provider (compensation for late cancellations).
-      // They are always platform-processed (never walk-in cash), so no exclusion needed.
-      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      // They are always platform-processed (never walk-in cash), so no tender exclusion is
+      // needed — but they ARE platform-held provider take, so the same payout hold applies
+      // as for earnings/tips/travel (a chargeback on the cancelled booking claws them back).
+      const fee = Number(row.net ?? row.amount ?? 0);
+      if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
+        onHoldAmount += fee;
+        continue;
+      }
+      onlineEarnings += fee;
       continue;
     }
     if (row.transaction_type === "service_fee") {
@@ -250,7 +264,12 @@ export async function getAvailablePayoutBalance(
       onlineEarnings += value;
       continue;
     }
-    if (row.transaction_type !== "provider_earnings") continue;
+    if (
+      row.transaction_type !== "provider_earnings" &&
+      row.transaction_type !== "membership_provider_earnings"
+    ) {
+      continue;
+    }
     const earnings = Number(row.net ?? row.amount ?? 0);
     if (shouldExcludeProviderCollectedRow(row)) {
       excludedProviderCollectedAmount += earnings;

@@ -380,25 +380,42 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     Boolean(needsOTPVerification && booking.arrival_otp && arrivalQrRaw);
   const pendingCharges = additionalCharges.filter(c => c.status === "pending" || c.status === "approved");
   /** `provider_en_route_at` is historical — only `current_stage === "provider_on_way"` means still en route. */
-  const showETA =
+  const showEnRoute =
     booking.location_type === "at_home" &&
     !["completed", "cancelled", "no_show"].includes(booking.status) &&
-    booking.current_stage === "provider_on_way" &&
-    booking.estimated_arrival;
-  const etaParts = showETA ? getCustomerEtaUiParts(booking.estimated_arrival ?? null) : { show: false, timeLabel: null as string | null, minutesLabel: "" };
+    booking.current_stage === "provider_on_way";
+  const etaParts = showEnRoute
+    ? getCustomerEtaUiParts(booking.estimated_arrival ?? null)
+    : { show: false, timeLabel: null as string | null, minutesLabel: "", isLate: false };
 
   return (
     <div className="flex flex-col bg-white text-gray-900 p-4">
       <h2 className="text-xl font-semibold mb-4">Order #{booking.booking_number}</h2>
-      {showETA && etaParts.show && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
-          <p className="font-medium text-blue-900">Provider en route</p>
-          <p className="text-blue-800 mt-0.5">
-            Estimated arrival: {etaParts.timeLabel}
-            {" · "}
-            {etaParts.minutesLabel}
+      {showEnRoute && (
+        <div
+          className={`mb-4 rounded-lg border p-3 text-sm ${
+            etaParts.isLate
+              ? "border-amber-200 bg-amber-50"
+              : "border-blue-200 bg-blue-50"
+          }`}
+        >
+          <p className={`font-medium ${etaParts.isLate ? "text-amber-900" : "text-blue-900"}`}>
+            {etaParts.isLate ? "Running a little late" : "Provider en route"}
           </p>
-          <p className="text-blue-700/90 mt-1 text-xs">We refresh this as your provider moves.</p>
+          {etaParts.show ? (
+            <p className={`mt-0.5 ${etaParts.isLate ? "text-amber-800" : "text-blue-800"}`}>
+              Estimated arrival: {etaParts.timeLabel}
+              {" · "}
+              {etaParts.minutesLabel}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-blue-800">Arrival time will appear when your provider shares an ETA.</p>
+          )}
+          <p className={`mt-1 text-xs ${etaParts.isLate ? "text-amber-700/90" : "text-blue-700/90"}`}>
+            {etaParts.isLate
+              ? "Your provider is on the way and will update their arrival time."
+              : "We refresh this as your provider moves."}
+          </p>
         </div>
       )}
       <div className="flex space-x-4 mb-4 text-sm">

@@ -9,7 +9,9 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
-import { isProviderOwner } from "@/lib/auth/permissions";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { notifyStaffUser } from "@/lib/notifications/notify-staff-event";
+import { findFutureBookingsForStaff } from "@/lib/provider/find-future-bookings-for-staff";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
 
@@ -110,7 +112,32 @@ export async function GET(
       throw error;
     }
 
-    return successResponse(daysOff || []);
+    const { data: timeOffRows } = await supabase
+      .from("staff_time_off")
+      .select("id, start_date, end_date, status")
+      .eq("staff_id", access.staffId)
+      .eq("provider_id", providerId);
+
+    const enriched = (daysOff || []).map((d: { date: string; is_approved?: boolean | null }) => {
+      const day = String(d.date).slice(0, 10);
+      const matches = (timeOffRows ?? []).filter((t: { start_date: string; end_date: string | null }) => {
+        const start = String(t.start_date).slice(0, 10);
+        const end = String(t.end_date || t.start_date).slice(0, 10);
+        return start <= day && end >= day;
+      });
+      const match =
+        matches.find((t: { status?: string }) => t.status === "pending") ?? matches[0];
+      return {
+        ...d,
+        time_off_id: match?.id ?? null,
+        time_off_status:
+          (match as { status?: string } | undefined)?.status ??
+          (d.is_approved === false ? "pending" : "approved"),
+        is_approved: d.is_approved !== false,
+      };
+    });
+
+    return successResponse(enriched);
   } catch (error) {
     return handleApiError(error, "Failed to fetch days off");
   }
@@ -168,6 +195,14 @@ export async function POST(
       return errorResponse("Day off already exists for this date", "DUPLICATE_ERROR", 400);
     }
 
+    // Employees request; owners/managers auto-approve. A pending day off
+    // (is_approved=false) does not block availability until approved in
+    // PATCH /staff/[id]/time-off/[timeOffId].
+    const ownerOrManager =
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "manage_team", undefined, request));
+    const timeOffStatus = ownerOrManager ? "approved" : "pending";
+
     // Create day off
     const { data: dayOff, error: insertError } = await supabase
       .from("staff_days_off")
@@ -177,6 +212,7 @@ export async function POST(
         date: validationResult.data.date,
         reason: validationResult.data.reason || null,
         type: validationResult.data.type || null,
+        is_approved: ownerOrManager,
       })
       .select()
       .single();
@@ -190,6 +226,7 @@ export async function POST(
 
     // Keep the broader availability/conflict table in sync with the simple
     // mobile "day off" table. Reschedule conflict checks read staff_time_off.
+    // Uses the resolved provider_staff.id (route param may be a user id).
     try {
       await supabase
         .from("staff_time_off")
@@ -198,22 +235,57 @@ export async function POST(
         .eq("provider_id", providerId)
         .eq("start_date", validationResult.data.date)
         .eq("end_date", validationResult.data.date);
-      await supabase.from("staff_time_off").insert({
-        staff_id: id,
+      const { error: timeOffInsertError } = await supabase.from("staff_time_off").insert({
+        staff_id: access.staffId,
         provider_id: providerId,
         start_date: validationResult.data.date,
         end_date: validationResult.data.date,
         reason: validationResult.data.reason || null,
         type: validationResult.data.type || "day_off",
-        status: "approved",
-        approved_by: user.id,
-        approved_at: new Date().toISOString(),
+        status: timeOffStatus,
+        approved_by: ownerOrManager ? user.id : null,
+        approved_at: ownerOrManager ? new Date().toISOString() : null,
       });
+      if (timeOffInsertError) {
+        if (!ownerOrManager) {
+          await supabase.from("staff_days_off").delete().eq("id", (dayOff as { id: string }).id);
+          throw timeOffInsertError;
+        }
+        console.warn("Failed to sync staff_time_off for day off:", timeOffInsertError);
+      }
+
+      if (!ownerOrManager) {
+        const { data: managers } = await supabase
+          .from("provider_staff")
+          .select("id")
+          .eq("provider_id", providerId)
+          .in("role", ["owner", "manager"])
+          .eq("is_active", true);
+        for (const mgr of managers ?? []) {
+          await notifyStaffUser((mgr as { id: string }).id, "staff_time_off_requested", {
+            title: "Time off request",
+            message: `A team member requested time off on ${validationResult.data.date}.`,
+            url: `/provider/staff/${access.staffId}/days-off`,
+          });
+        }
+      }
     } catch (syncError) {
+      if (!ownerOrManager) {
+        await supabase.from("staff_days_off").delete().eq("id", (dayOff as { id: string }).id);
+        throw syncError;
+      }
       console.warn("Failed to sync staff_time_off for day off:", syncError);
     }
 
-    return successResponse(dayOff);
+    let overlapping_bookings: Array<{ id: string; booking_number: string | null; scheduled_at: string }> = [];
+    try {
+      const future = await findFutureBookingsForStaff(supabase, providerId, access.staffId);
+      overlapping_bookings = future.filter((b) => String(b.scheduled_at).slice(0, 10) === validationResult.data.date);
+    } catch {
+      overlapping_bookings = [];
+    }
+
+    return successResponse({ ...dayOff, overlapping_bookings });
   } catch (error) {
     return handleApiError(error, "Failed to create day off");
   }

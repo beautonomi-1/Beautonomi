@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { runInactivityRetentionArchives, sendInactivityRetentionWarnings } from "@/lib/retention/inactivity-retention";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "inactivity-retention";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/inactivity-retention
@@ -9,6 +13,14 @@ import { runInactivityRetentionArchives, sendInactivityRetentionWarnings } from 
  * 2) Deactivate accounts past scheduled archive date who have not signed in since the warning.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

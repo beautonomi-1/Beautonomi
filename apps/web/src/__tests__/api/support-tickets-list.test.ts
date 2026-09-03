@@ -80,9 +80,30 @@ describe("GET /api/admin/support-tickets", () => {
     expect(builder.is).toHaveBeenCalledWith("assigned_to", null);
     expect(builder.eq).toHaveBeenCalledWith("user_id", "user-123");
     expect(builder.or).toHaveBeenCalledWith(
-      "subject.ilike.%abc123%,ticket_number.ilike.%abc123%,description.ilike.%abc123%"
+      "subject.ilike.%abc123%,ticket_number.ilike.%abc123%,description.ilike.%abc123%,support_context_label.ilike.%abc123%"
     );
     expect(builder.range).toHaveBeenCalledWith(40, 59);
+  });
+
+  it("also matches a UUID query to support_context_id", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn().mockReturnValue(builder),
+    });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const uuid = "11111111-1111-4111-8111-111111111111";
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { q: uuid },
+    });
+
+    await GET(req as NextRequest);
+    expect(builder.or).toHaveBeenCalledWith(
+      `subject.ilike.%${uuid}%,ticket_number.ilike.%${uuid}%,description.ilike.%${uuid}%,support_context_label.ilike.%${uuid}%,support_context_id.eq.${uuid}`
+    );
   });
 
   it("returns tickets enriched with attention fields and total from count query", async () => {

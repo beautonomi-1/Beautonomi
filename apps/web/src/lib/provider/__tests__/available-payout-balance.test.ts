@@ -245,16 +245,18 @@ describe("getAvailablePayoutBalance", () => {
     expect(result.availableBalance).toBe(60);
   });
 
-  it("gates provider_earnings/tip/travel_fee by hold period but never gates cancellation_fee or refunds", async () => {
+  it("gates provider_earnings/tip/travel_fee/cancellation_fee by hold period but never gates refunds", async () => {
     const rows = {
       finance_transactions: [
         // Settled (old) — always available
         { provider_id: providerId, transaction_type: "provider_earnings", amount: 200, net: 200, booking_id: "b1", created_at: "2026-01-01T00:00:00.000Z" },
+        // Old cancellation fee — released
+        { provider_id: providerId, transaction_type: "cancellation_fee", amount: 30, net: 30, booking_id: null, created_at: "2026-01-01T00:00:00.000Z" },
         // Newer than hold window — gated when holdDays > 0
         { provider_id: providerId, transaction_type: "provider_earnings", amount: 100, net: 100, booking_id: "b2", created_at: "2999-01-01T00:00:00.000Z" },
         { provider_id: providerId, transaction_type: "tip", amount: 20, net: 20, booking_id: "b2", created_at: "2999-01-01T00:00:00.000Z" },
         { provider_id: providerId, transaction_type: "travel_fee", amount: 10, net: 10, booking_id: "b2", created_at: "2999-01-01T00:00:00.000Z" },
-        // Cancellation fee is never hold-gated (provider-retained, platform-processed)
+        // Cancellation fee is platform-held provider take: same hold as earnings/tips/travel (Part C2)
         { provider_id: providerId, transaction_type: "cancellation_fee", amount: 50, net: 50, booking_id: null, created_at: "2999-01-01T00:00:00.000Z" },
       ],
       bookings: [
@@ -269,12 +271,35 @@ describe("getAvailablePayoutBalance", () => {
     };
 
     const gated = await getAvailablePayoutBalance(mockSupabase(rows), providerId, { holdDays: 30 });
-    // 200 old earnings + 50 cancellation fee (never gated); the future-dated earnings/tip/travel are held.
-    expect(gated.rawBalance).toBe(250);
+    // 200 old earnings + 30 old cancellation fee; the future-dated earnings/tip/travel/cancellation fee are held.
+    expect(gated.rawBalance).toBe(230);
+    expect(gated.breakdown.onHold).toBe(180);
+    expect(gated.breakdown.recognizedPayoutableEarnings).toBe(410);
 
     const ungated = await getAvailablePayoutBalance(mockSupabase(rows), providerId, { holdDays: 0 });
-    // Everything available: 200 + 100 + 20 + 10 + 50.
-    expect(ungated.rawBalance).toBe(380);
+    // Everything available: 200 + 30 + 100 + 20 + 10 + 50.
+    expect(ungated.rawBalance).toBe(410);
+  });
+
+  it("ignores a completed payout whose transfer was later reversed (metadata.reversed_at) so the money stays withdrawable", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          { provider_id: providerId, transaction_type: "provider_earnings", amount: 100, net: 100, booking_id: "b1", created_at: "2026-01-01T00:00:00.000Z" },
+          // Live payout: subtracted.
+          { provider_id: providerId, transaction_type: "payout", amount: 30, net: 30, created_at: "2026-01-02T00:00:00.000Z", metadata: {} },
+          // Reversed payout: audit row retained, must NOT be subtracted.
+          { provider_id: providerId, transaction_type: "payout", amount: 50, net: 50, created_at: "2026-01-03T00:00:00.000Z", metadata: { reversed_at: "2026-01-04T00:00:00.000Z" } },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.breakdown.completedPayouts).toBe(30);
+    expect(result.rawBalance).toBe(70);
   });
 
   it("floors a balance driven negative by a refund clawback and flags hasNegativeBalance", async () => {

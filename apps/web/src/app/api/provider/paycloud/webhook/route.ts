@@ -11,6 +11,8 @@ import { resolvePaycloudGatewayPublicKey } from "@/lib/payments/resolve-paycloud
 import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   let rawBody: Record<string, string> = {};

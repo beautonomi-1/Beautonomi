@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { notifyPayRunStaff } from "@/lib/notifications/notify-staff-event";
 
 /**
  * POST /api/provider/pay-runs/[id]/approve
@@ -27,7 +28,7 @@ export async function POST(
 
     const { data: payRun, error: fetchError } = await supabaseAdmin
       .from("provider_pay_runs")
-      .select("id, status")
+      .select("id, status, pay_period_start, pay_period_end")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -47,6 +48,11 @@ export async function POST(
       .eq("id", id);
 
     if (updateError) throw updateError;
+
+    void notifyPayRunStaff(supabaseAdmin, id, "staff_pay_run_approved", {
+      periodStart: payRun.pay_period_start as string,
+      periodEnd: payRun.pay_period_end as string,
+    }).catch((err) => console.warn("[pay-runs/approve] notify failed:", err));
 
     return successResponse({ status: "approved" });
   } catch (error) {

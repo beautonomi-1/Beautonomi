@@ -610,6 +610,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const calendarViewportMd = useMediaQueryMatch(TW_MD_MIN_QUERY);
   const [selectedTeamMember, setSelectedTeamMember] = useState<string>("all");
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<string[]>([]);
+  const [calendarScopeOwn, setCalendarScopeOwn] = useState(false);
+  const [selfStaffId, setSelfStaffId] = useState<string | null>(null);
   const loadDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastForegroundRefreshRef = useRef(0);
   const [_isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -639,6 +641,27 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
     openGroupSheet();
   }, [selectedTeamMember]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetcher
+      .get<{ data?: { calendar_scope?: string; staff_id?: string | null } }>("/api/provider/team-access")
+      .then((res) => {
+        if (cancelled) return;
+        const scope = res.data?.calendar_scope;
+        const staffId = res.data?.staff_id ?? null;
+        if (scope === "own" && staffId) {
+          setCalendarScopeOwn(true);
+          setSelfStaffId(staffId);
+          setSelectedTeamMember(staffId);
+          setSelectedTeamMemberIds([staffId]);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Self-heal invalid date state so format()/date-fns calls never throw.
   useEffect(() => {
@@ -1629,15 +1652,25 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     newStaffId: string
   ) => {
     try {
-      const apt = appointments.find((a) => a.id === appointmentId || (a as any).booking_id === appointmentId);
-      await providerApi.updateAppointment(appointmentId, {
+      const apt = appointments.find((a) => a.id === appointmentId || a.booking_id === appointmentId);
+      const patch: Partial<Appointment> = {
         scheduled_date: newDate,
         scheduled_time: newTime,
         team_member_id: newStaffId,
-        ...(apt && (apt as any).version !== undefined && { version: (apt as any).version }),
-      });
+        notify_customer: calendarPreferences.notifyCustomerOnDrag !== false,
+      };
+      if (apt?.version !== undefined) {
+        patch.version = apt.version;
+      }
+      await providerApi.updateAppointment(appointmentId, patch);
       loadData();
     } catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (status === 409) {
+        toast.error("This booking changed, reload");
+      } else {
+        toast.error("Failed to reschedule appointment");
+      }
       console.error("Failed to reschedule appointment:", error);
       throw error;
     }
@@ -1645,11 +1678,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   // Filter team members based on selection
   // If selectedTeamMemberIds is empty but teamMembers exist, show all members
-  const filteredTeamMembers = selectedTeamMember === "all" 
-    ? (selectedTeamMemberIds.length > 0 
-        ? teamMembers.filter(m => selectedTeamMemberIds.includes(m.id))
-        : teamMembers) // Show all if no selection made yet
-    : teamMembers.filter(m => m.id === selectedTeamMember);
+  const filteredTeamMembers =
+    calendarScopeOwn && selfStaffId
+      ? teamMembers.filter((m) => m.id === selfStaffId)
+      : selectedTeamMember === "all"
+        ? (selectedTeamMemberIds.length > 0
+            ? teamMembers.filter((m) => selectedTeamMemberIds.includes(m.id))
+            : teamMembers)
+        : teamMembers.filter((m) => m.id === selectedTeamMember);
 
   // Toggle team member in filter (always resets to "all" API mode so
   // checkbox filtering stays client-side and doesn't conflict with
@@ -1833,6 +1869,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             </div>
 
             {/* Center: Filters */}
+            {!calendarScopeOwn ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1902,6 +1939,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
 
             {/* Right: View Toggle + Actions */}
             <div className="flex items-center gap-1 lg:gap-3 flex-shrink-0">

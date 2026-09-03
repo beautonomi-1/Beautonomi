@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Pressable,
   ScrollView,
@@ -180,6 +181,8 @@ export default function ProductCheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
+  const [promotionCode, setPromotionCode] = useState("");
+  const [giftCardCode, setGiftCardCode] = useState("");
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState<{
     type: string;
@@ -425,6 +428,10 @@ export default function ProductCheckoutScreen() {
         collection_location_id: fulfillment === "collection" ? selectedLocation! : undefined,
         payment_method: paymentMethod,
         use_wallet: paymentMethod === "paystack" ? useWallet : false,
+        ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
+        ...(giftCardCode.trim()
+          ? { gift_card: { code: giftCardCode.trim().toUpperCase() } }
+          : {}),
       },
       { idempotencyKey },
     );
@@ -809,6 +816,8 @@ export default function ProductCheckoutScreen() {
     paymentMethod,
     fb,
     paystackHostedCheckout,
+    promotionCode,
+    giftCardCode,
   ]);
 
   if (loading) {
@@ -1474,6 +1483,43 @@ export default function ProductCheckoutScreen() {
                 : null}
             </View>
           )}
+
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Promo & gift card
+            </Text>
+            <TextInput
+              value={promotionCode}
+              onChangeText={setPromotionCode}
+              autoCapitalize="characters"
+              placeholder="Promotion code"
+              style={{
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+                color: "#111827",
+                marginBottom: 8,
+              }}
+            />
+            <TextInput
+              value={giftCardCode}
+              onChangeText={setGiftCardCode}
+              autoCapitalize="characters"
+              placeholder="Gift card code"
+              style={{
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+                color: "#111827",
+              }}
+            />
+          </View>
 
           {/* Payment method */}
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>

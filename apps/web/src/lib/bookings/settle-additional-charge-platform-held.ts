@@ -233,40 +233,31 @@ export async function settleAdditionalChargePlatformHeld(
     created_by: customerId,
   });
 
-  // Notifications (best-effort)
+  // Notifications (best-effort, deduped via paid_notified_at)
   try {
-    const { insertNotification } = await import("@/lib/notifications/insert-notification");
-    const bookingRef =
-      bookingData.booking_number ?? bookingData.ref_number ?? bookingId.slice(0, 8).toUpperCase();
-    const notifCurrency = bookingData.currency ?? "ZAR";
-
-    await insertNotification({
-      user_id: customerId,
-      type: "additional_charge_paid",
-      title: "Additional Payment Confirmed",
-      message: `Your additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} for booking #${bookingRef} was successful.`,
-      data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
-      action_url: `/account-settings/bookings/${bookingId}`,
-    });
-
-    const { data: providerRow } = await admin
-      .from("providers")
-      .select("user_id")
-      .eq("id", bookingData.provider_id ?? "")
-      .single();
-    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
-    if (providerUserId) {
-      await insertNotification({
-        user_id: providerUserId,
-        type: "additional_charge_paid",
-        title: "Additional Payment Received",
-        message: `Additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} received for booking #${bookingRef}.`,
-        data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
-        action_url: `/provider/bookings/${bookingId}`,
-      });
-    }
+    const { notifyAdditionalChargePaid } = await import(
+      "@/lib/notifications/notify-additional-charge-paid"
+    );
+    await notifyAdditionalChargePaid(admin, chargeId);
   } catch (notifErr) {
     console.warn("[settle-additional-charge] notification failed:", notifErr);
+  }
+
+  try {
+    const { trackAdditionalChargePaidServer } = await import(
+      "@/lib/analytics/amplitude/track-additional-charge-paid-server"
+    );
+    await trackAdditionalChargePaidServer({
+      reference,
+      bookingId,
+      chargeId,
+      amount: amountInCurrency,
+      customerId,
+      paymentMethod: "saved_card",
+      paymentProvider: "paystack",
+    });
+  } catch (analyticsErr) {
+    console.warn("[settle-additional-charge] analytics failed:", analyticsErr);
   }
 
   return { ok: true };

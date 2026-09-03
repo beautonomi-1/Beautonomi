@@ -166,4 +166,17 @@ export async function handleStripeChargeRefunded(charge: StripeChargeLike): Prom
     status: "completed",
     notes: `Stripe charge refund (${currency})`,
   });
+
+  void import("@/lib/integrations/slack/ops-triggers")
+    .then(({ slackNotifyHighValueRefund }) =>
+      slackNotifyHighValueRefund({
+        refundId: String(refundProviderId ?? charge.id ?? bookingId),
+        bookingId,
+        amountMajor: refundMajor,
+        currency,
+        stage: "processed",
+        reason: "stripe_charge.refunded",
+      }),
+    )
+    .catch(() => undefined);
 }

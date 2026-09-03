@@ -9,6 +9,15 @@
  * - Automatic error handling
  */
 
+import {
+  ensureCsrfToken,
+  getInMemoryCsrfToken,
+  readCsrfTokenFromCookie,
+  setInMemoryCsrfToken,
+} from "@/lib/http/csrf-fetch-guard";
+
+export { setInMemoryCsrfToken };
+
 export interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: Record<string, unknown> | FormData;
   timeoutMs?: number;
@@ -97,12 +106,6 @@ function readActiveProviderIdFromPortalCache(): string | null {
  */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-function readCsrfTokenFromCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-  return match?.[1] ?? null;
-}
-
 export function mergeProviderPortalFetchHeaders(
   url: string,
   headers?: HeadersInit,
@@ -125,7 +128,7 @@ export function mergeProviderPortalFetchHeaders(
   if (MUTATION_METHODS.has(upperMethod)) {
     const existingCsrf = out["x-csrf-token"] ?? out["X-CSRF-Token"];
     if (!existingCsrf) {
-      const token = readCsrfTokenFromCookie();
+      const token = getInMemoryCsrfToken() ?? readCsrfTokenFromCookie();
       if (token) out["x-csrf-token"] = token;
     }
   }
@@ -294,7 +297,8 @@ export const DEFAULT_FETCH_TIMEOUT_MS =
  */
 export async function fetchJson<T = unknown>(
   url: string,
-  options: FetchOptions = {}
+  options: FetchOptions = {},
+  csrfRetried = false,
 ): Promise<T> {
   const {
     method = 'GET',
@@ -323,9 +327,9 @@ export async function fetchJson<T = unknown>(
 
     // Auto-inject CSRF token for mutation requests (POST/PUT/PATCH/DELETE)
     if (typeof document !== "undefined" && method !== "GET" && method !== "HEAD") {
-      const csrfMatch = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-      if (csrfMatch?.[1]) {
-        (requestHeaders as Record<string, string>)["x-csrf-token"] = csrfMatch[1];
+      const token = (await ensureCsrfToken()) ?? readCsrfTokenFromCookie();
+      if (token) {
+        (requestHeaders as Record<string, string>)["x-csrf-token"] = token;
       }
     }
 
@@ -451,6 +455,18 @@ export async function fetchJson<T = unknown>(
           default:
             errorData.message = `Request failed with status ${response.status}`;
         }
+      }
+
+      if (
+        !csrfRetried &&
+        response.status === 403 &&
+        typeof document !== "undefined" &&
+        MUTATION_METHODS.has(method.toUpperCase()) &&
+        String(errorData.message || "").toLowerCase().includes("csrf")
+      ) {
+        setInMemoryCsrfToken(null);
+        await ensureCsrfToken();
+        return fetchJson<T>(url, options, true);
       }
 
       throw new FetchError(

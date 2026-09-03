@@ -18,10 +18,11 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { Camera, Mail, Phone, Shield, Clock, DollarSign, Bell, Send, MapPin } from "lucide-react";
+import { Camera, Mail, Phone, Shield, Clock, DollarSign, Bell, Send, MapPin, Scissors } from "lucide-react";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { FetchError } from "@/lib/http/fetcher";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
@@ -44,6 +45,8 @@ export function TeamMemberCreateEditDialog({
   const [activeTab, setActiveTab] = useState("basic");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [locationIds, setLocationIds] = useState<string[]>([]);
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [offerings, setOfferings] = useState<Array<{ id: string; title: string }>>([]);
 
   const [formData, setFormData] = useState({
     // Basic Information
@@ -176,6 +179,17 @@ export function TeamMemberCreateEditDialog({
             setLocationIds(selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id));
           }
         })();
+        void (async () => {
+          try {
+            const { fetcher } = await import("@/lib/http/fetcher");
+            const staffRes = await fetcher.get<{ data?: { service_ids?: string[] } }>(
+              `/api/provider/staff/${member.id}`,
+            );
+            setServiceIds(Array.isArray(staffRes.data?.service_ids) ? staffRes.data.service_ids : []);
+          } catch {
+            setServiceIds([]);
+          }
+        })();
       } else {
         setFormData({
           name: "",
@@ -205,7 +219,20 @@ export function TeamMemberCreateEditDialog({
         });
         setAvatarPreview(null);
         setLocationIds(selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id));
+        setServiceIds([]);
       }
+      void (async () => {
+        try {
+          const { fetcher } = await import("@/lib/http/fetcher");
+          const svcRes = await fetcher.get<{ data: Array<{ id: string; title?: string; name?: string }> }>(
+            "/api/provider/services",
+          );
+          const rows = Array.isArray(svcRes.data) ? svcRes.data : [];
+          setOfferings(rows.map((r) => ({ id: r.id, title: r.title || r.name || "Service" })));
+        } catch {
+          setOfferings([]);
+        }
+      })();
       setActiveTab("basic");
     }
   }, [member, open]);
@@ -263,15 +290,33 @@ export function TeamMemberCreateEditDialog({
           role: (formData.role as string) === "staff" ? "employee" : formData.role,
         };
         await providerApi.updateTeamMember(member.id, updateData);
-        
-        // Update basic info and settings separately
+
+        const { fetcher } = await import("@/lib/http/fetcher");
         try {
-          const { fetcher } = await import("@/lib/http/fetcher");
-          // Update is_active via the main staff endpoint
           await fetcher.patch(`/api/provider/staff/${member.id}`, {
             is_active: formData.is_active,
           });
-          
+        } catch (activeErr) {
+          const fetchErr = activeErr as FetchError;
+          if (
+            formData.is_active === false &&
+            (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT")
+          ) {
+            const proceed = window.confirm(
+              `${formData.name} has upcoming bookings. Reassign those bookings to any available staff and deactivate?`,
+            );
+            if (!proceed) throw activeErr;
+            await fetcher.patch(`/api/provider/staff/${member.id}`, {
+              is_active: false,
+              reassign_to: "any",
+            });
+          } else {
+            throw activeErr;
+          }
+        }
+        
+        // Update basic info and settings separately
+        try {
           // Update all other settings
           await fetcher.patch(`/api/provider/staff/${member.id}/settings`, {
             is_service_provider: formData.is_service_provider,
@@ -395,8 +440,52 @@ export function TeamMemberCreateEditDialog({
             primary_location_id: locationIds[0],
           });
         } catch (locErr) {
-          console.error("Failed to save staff locations:", locErr);
-          toast.warning("Staff saved but location assignments may not have been updated");
+          const fetchErr = locErr as FetchError;
+          if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
+            const proceed = window.confirm(
+              "Upcoming bookings are at a location being removed. Save the new locations anyway?",
+            );
+            if (proceed) {
+              const { fetcher } = await import("@/lib/http/fetcher");
+              await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
+                location_ids: locationIds,
+                primary_location_id: locationIds[0],
+                force: true,
+              });
+            } else {
+              toast.warning("Locations not updated because of upcoming bookings");
+            }
+          } else {
+            console.error("Failed to save staff locations:", locErr);
+            toast.warning("Staff saved but location assignments may not have been updated");
+          }
+        }
+      }
+      if (staffId) {
+        try {
+          const { fetcher } = await import("@/lib/http/fetcher");
+          await fetcher.put(`/api/provider/staff/${staffId}/services`, {
+            service_ids: serviceIds,
+          });
+        } catch (svcErr) {
+          const fetchErr = svcErr as FetchError;
+          if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
+            const proceed = window.confirm(
+              "Upcoming bookings use a service being removed. Save the new service list anyway?",
+            );
+            if (proceed) {
+              const { fetcher } = await import("@/lib/http/fetcher");
+              await fetcher.put(`/api/provider/staff/${staffId}/services`, {
+                service_ids: serviceIds,
+                force: true,
+              });
+            } else {
+              toast.warning("Services not updated because of upcoming bookings");
+            }
+          } else {
+            console.error("Failed to save staff services:", svcErr);
+            toast.warning("Staff saved but service assignments may not have been updated");
+          }
         }
       }
 
@@ -655,6 +744,41 @@ export function TeamMemberCreateEditDialog({
                               {salon.name}
                               {salon.city ? ` · ${salon.city}` : ""}
                             </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {offerings.length > 0 ? (
+                  <div className="mt-6 space-y-3">
+                    <Label className="text-sm sm:text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <Scissors className="w-4 h-4" />
+                      Assign services
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      This person can only be booked for the services you select.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {offerings.map((offering) => {
+                        const checked = serviceIds.includes(offering.id);
+                        return (
+                          <label
+                            key={offering.id}
+                            className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 min-h-[44px] cursor-pointer hover:bg-gray-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setServiceIds((prev) =>
+                                  checked ? prev.filter((id) => id !== offering.id) : [...prev, offering.id],
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary"
+                            />
+                            <span className="text-sm text-gray-900">{offering.title}</span>
                           </label>
                         );
                       })}

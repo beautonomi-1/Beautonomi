@@ -14,6 +14,7 @@ import {
 } from "@/lib/calendar/ics";
 import { PortalErrorState } from "../components/portal-error-state";
 import { PortalBookingSkeleton } from "../components/portal-skeleton";
+import { getCustomerEtaUiParts } from "@beautonomi/utils";
 
 interface Booking {
   id: string;
@@ -330,11 +331,34 @@ export default function PortalBookingPage() {
                     ? `${booking.provider.name} is on the way`
                     : `${booking.provider.name} has arrived`}
                 </p>
-                {booking.estimated_arrival && booking.current_stage === "provider_on_way" && (
-                  <p className="text-sm text-pink-800">
-                    Estimated arrival: {formatTime(booking.estimated_arrival)}
-                  </p>
-                )}
+                {booking.current_stage === "provider_on_way" && (() => {
+                  const eta = getCustomerEtaUiParts(booking.estimated_arrival);
+                  if (eta.show) {
+                    return (
+                      <div
+                        className={`rounded-md border p-2 text-sm ${
+                          eta.isLate
+                            ? "border-amber-200 bg-amber-50 text-amber-900"
+                            : "border-pink-200 bg-white/60 text-pink-900"
+                        }`}
+                      >
+                        <p className="font-medium">
+                          {eta.isLate ? "Running a little late" : "Estimated arrival"}
+                        </p>
+                        <p>
+                          {eta.timeLabel}
+                          {" · "}
+                          {eta.minutesLabel}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-sm text-pink-800">
+                      Your provider is on the way and will share an arrival time shortly.
+                    </p>
+                  );
+                })()}
                 {booking.current_stage === "provider_arrived" &&
                   !booking.arrival_otp_verified &&
                   !booking.qr_code_verified &&

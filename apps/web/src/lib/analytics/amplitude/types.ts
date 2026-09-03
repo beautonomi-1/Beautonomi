@@ -79,11 +79,44 @@ export const EVENT_CHECKOUT_START = "checkout_start";
 export const EVENT_PAYMENT_INITIATED = "payment_initiated";
 export const EVENT_PAYMENT_SUCCESS = "payment_success";
 export const EVENT_PAYMENT_FAILED = "payment_failed";
+export const EVENT_ADDITIONAL_CHARGE_PAID = "additional_charge_paid";
 export const EVENT_REFUND_REQUESTED = "refund_requested";
 export const EVENT_MESSAGE_THREAD_OPEN = "message_thread_open";
 export const EVENT_MESSAGE_SENT = "message_sent";
 export const EVENT_REVIEW_SUBMITTED = "review_submitted";
 export const EVENT_PAGE_VIEW = "page_view";
+/** Taxonomy names shared with `packages/analytics/src/events.ts` (keep values identical). */
+export const EVENT_SEARCH_PERFORMED = "search_performed";
+export const EVENT_SERVICE_SELECTED = "service_selected";
+export const EVENT_WISHLIST_TOGGLE = "wishlist_toggle";
+export const EVENT_LOYALTY_POINTS_EARNED = "loyalty_points_earned";
+export const EVENT_LOYALTY_REDEEMED = "loyalty_redeemed";
+export const EVENT_REFERRAL_SHARED = "referral_shared";
+export const EVENT_APP_OPEN = "app_open";
+export const EVENT_PUSH_NOTIFICATION_OPENED = "push_notification_opened";
+export const EVENT_DEEP_LINK_OPENED = "deep_link_opened";
+
+// Server-authoritative money events (trackServer + insert_id = `${reference}:${event}`; see track-*-server.ts)
+export const EVENT_WALLET_TOPUP = "wallet_topup";
+export const EVENT_GIFT_CARD_PURCHASED = "gift_card_purchased";
+export const EVENT_GIFT_CARD_REDEEMED = "gift_card_redeemed";
+export const EVENT_MEMBERSHIP_PURCHASED = "membership_purchased";
+export const EVENT_MEMBERSHIP_RENEWED = "membership_renewed";
+export const EVENT_PRODUCT_ORDER_PAID = "product_order_paid";
+export const EVENT_PROVIDER_SUBSCRIPTION_PAID = "provider_subscription_paid";
+export const EVENT_ADS_BUDGET_PAID = "ads_budget_paid";
+export const EVENT_APPLE_IAP_VERIFIED = "apple_iap_verified";
+
+// At-home journey (B3)
+export const EVENT_PROVIDER_JOURNEY_STARTED = "provider_journey_started";
+export const EVENT_PROVIDER_ETA_UPDATED = "provider_eta_updated";
+export const EVENT_PROVIDER_ARRIVED = "provider_arrived";
+
+// Provider growth funnel
+export const EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED = "provider_onboarding_step_completed";
+export const EVENT_PROVIDER_SUBSCRIPTION_CHECKOUT_START = "provider_subscription_checkout_start";
+export const EVENT_ADS_CAMPAIGN_CHECKOUT_START = "ads_campaign_checkout_start";
+export const EVENT_STAFF_INVITE_ACCEPTED = "staff_invite_accepted";
 
 // Provider portal events
 export const EVENT_PROVIDER_DASHBOARD_VIEW = "provider_dashboard_view";

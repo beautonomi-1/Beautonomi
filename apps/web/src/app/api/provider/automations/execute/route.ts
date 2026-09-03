@@ -5,8 +5,12 @@
  * It checks for automations that need to be triggered and sends messages via
  * the provider's configured Twilio/Mailchimp integrations.
  * 
- * Usage: This should be called periodically (e.g., every 5-15 minutes) by a cron job
- * or background service to check and execute pending automations.
+ * Schedule: invoked every 15 minutes by the Vercel cron `/api/cron/execute-automations`
+ * (see `apps/web/vercel.json`, "every 15 minutes"). Trigger windows below are sized to that cadence.
+ *
+ * Before any message is sent the recipient's notification / marketing opt-outs are
+ * checked (`filterAutomationRecipientsByOptOut`); skipped recipients are reported in
+ * the response under `skipped` with a reason.
  */
 
 import { NextRequest } from "next/server";
@@ -15,6 +19,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/marketing/unified-service";
 import { debitMarketingBalance, getMarketingBalance, priceFor, creditMarketingBalance } from "@/lib/marketing/credits";
 import { resolveMarketingSendingContext } from "@/lib/marketing/sending-path";
+import { filterAutomationRecipientsByOptOut } from "@/lib/marketing/automation-opt-out";
 import { addDays, subDays, subMinutes } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -80,6 +85,7 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const executedAutomations: string[] = [];
     const errors: Array<{ automationId: string; error: string }> = [];
+    const skipped: Array<{ automationId: string; customerId: string; reason: string }> = [];
 
     // Get all active automations
     const { data: automations, error: automationsError } = await supabaseAdmin
@@ -109,7 +115,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get the target customer(s) for this automation
-        const customers = await getAutomationRecipients(
+        const candidateCustomers = await getAutomationRecipients(
           supabaseAdmin,
           automation.provider_id,
           automation.trigger_type,
@@ -117,11 +123,24 @@ export async function POST(request: NextRequest) {
           shouldExecute.context
         );
 
-        if (customers.length === 0) {
+        if (candidateCustomers.length === 0) {
           continue; // No recipients for this automation
         }
 
         const channel = automation.action_type as "email" | "sms" | "whatsapp" | "notification";
+
+        // Enforce customer notification / marketing opt-outs before anything is sent or debited.
+        const optOut = await filterAutomationRecipientsByOptOut(supabaseAdmin, candidateCustomers, {
+          triggerType: String(automation.trigger_type ?? ""),
+          channel,
+        });
+        for (const s of optOut.skipped) {
+          skipped.push({ automationId: automation.id, customerId: s.customerId, reason: s.reason });
+        }
+        const customers = optOut.allowed;
+        if (customers.length === 0) {
+          continue; // Everyone opted out of this channel
+        }
         const sendCtx =
           channel !== "notification"
             ? await resolveMarketingSendingContext(
@@ -294,10 +313,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (skipped.length > 0) {
+      console.info(
+        JSON.stringify({
+          metric: "automation_recipients_skipped_opt_out",
+          count: skipped.length,
+          ts: new Date().toISOString(),
+        }),
+      );
+    }
+
     return successResponse({
       executed: executedAutomations.length,
       automationIds: executedAutomations,
       errors: errors.length > 0 ? errors : undefined,
+      skipped: skipped.length > 0 ? skipped : undefined,
     });
   } catch (error) {
     console.error("Error executing automations:", error);

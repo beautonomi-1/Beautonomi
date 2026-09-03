@@ -1,17 +1,23 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
+import { checkGiftCardValidateRateLimit } from "@/lib/rate-limit/gift-card-validate";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { withNoStore } from "@/lib/http/no-store";
 
 /**
  * GET /api/public/gift-cards/validate?code=XXX
  *
  * Authenticated validation (balance lookup). Uses RLS-safe
  * lookup_gift_card_by_code (787) — no service-role table scan.
+ *
+ * Per-user balance data: every response is `Cache-Control: no-store` (never edge-cached).
  */
-export async function GET(request: Request) {
+export const GET = withNoStore(handleGet);
+
+async function handleGet(request: Request) {
   try {
     let tenantId: string | null = null;
     try {
@@ -42,6 +48,14 @@ export async function GET(request: Request) {
 
     if (userError || !user) {
       return NextResponse.json({ valid: false, message: "Login required to use gift cards" }, { status: 401 });
+    }
+
+    const rateLimit = await checkGiftCardValidateRateLimit(request, user.id);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { valid: false, message: "Too many validation attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } },
+      );
     }
 
     const { data: rows, error } = await supabase.rpc("lookup_gift_card_by_code", { p_code: code });

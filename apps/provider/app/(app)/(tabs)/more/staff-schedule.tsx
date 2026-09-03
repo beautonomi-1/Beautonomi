@@ -29,6 +29,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -227,6 +228,7 @@ export default function StaffScheduleScreen() {
   const prevBusinessTodayRef = useRef(businessToday);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const { calendarScopeOwn, selfStaffId } = useCalendarScopeLock();
   const [shiftFormOpen, setShiftFormOpen] = useState(false);
   const [dateShiftFormOpen, setDateShiftFormOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
@@ -284,6 +286,29 @@ export default function StaffScheduleScreen() {
 
   const { execute: saveShift, loading: creating } = useApiMutation("post");
   const { execute: deleteShift, loading: deleting } = useApiMutation("delete");
+
+  const saveWeeklyShift = useCallback(
+    async (url: string, body: Record<string, unknown>) => {
+      const first = await saveShift(url, body);
+      if (first.errorCode !== "FUTURE_BOOKINGS_CONFLICT") return first;
+      return await new Promise<typeof first>((resolve) => {
+        Alert.alert(
+          "Upcoming bookings",
+          "Some upcoming bookings fall outside these hours. Save anyway?",
+          [
+            { text: "Cancel", style: "cancel", onPress: () => resolve(first) },
+            {
+              text: "Save anyway",
+              onPress: () => {
+                void saveShift(url, { ...body, force: true }).then(resolve);
+              },
+            },
+          ],
+        );
+      });
+    },
+    [saveShift],
+  );
   const { execute: saveDateShift, loading: savingDateShift } = useApiMutation("post");
   const { execute: patchDateShift, loading: patchingDateShift } = useApiMutation("patch");
   const { execute: deleteDateShift } = useApiMutation("delete");
@@ -304,6 +329,10 @@ export default function StaffScheduleScreen() {
 
   /* ── Select staff from route param or first member ── */
   useEffect(() => {
+    if (calendarScopeOwn && selfStaffId) {
+      setSelectedStaffId(selfStaffId);
+      return;
+    }
     if (params.staffId && staff?.some((s) => s.id === params.staffId)) {
       setSelectedStaffId(params.staffId);
       return;
@@ -311,7 +340,7 @@ export default function StaffScheduleScreen() {
     if (!selectedStaffId && staff && staff.length > 0 && staff[0]) {
       setSelectedStaffId(staff[0].id);
     }
-  }, [staff, selectedStaffId, params.staffId]);
+  }, [staff, selectedStaffId, params.staffId, calendarScopeOwn, selfStaffId]);
 
   /* ── Group shifts by day ── */
   const shiftsByDay = useMemo(() => {
@@ -351,7 +380,7 @@ export default function StaffScheduleScreen() {
       }
       let failed = 0;
       for (const shift of working) {
-        const { error: err } = await saveShift(`/api/provider/staff/${targetStaffId}/shifts`, {
+        const { error: err } = await saveWeeklyShift(`/api/provider/staff/${targetStaffId}/shifts`, {
           day_of_week: shift.day_of_week,
           start_time: shift.start_time as string,
           end_time: shift.end_time as string,
@@ -366,7 +395,7 @@ export default function StaffScheduleScreen() {
         Alert.alert("Done", `Weekly schedule copied to ${targetName}.`);
       }
     },
-    [shifts, saveShift],
+    [shifts, saveWeeklyShift],
   );
 
   const promptCopyScheduleTarget = useCallback(() => {
@@ -523,7 +552,7 @@ export default function StaffScheduleScreen() {
       }
     }
 
-    const { error } = await saveShift(
+    const { error } = await saveWeeklyShift(
       `/api/provider/staff/${staffId}/shifts`,
       payload,
     );
@@ -616,12 +645,32 @@ export default function StaffScheduleScreen() {
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            const { error } = await deleteShift(
-              `/api/provider/staff/${shift.staff_id}/shifts/${shift.id}`,
-              {},
-            );
-            if (error) {
-              Alert.alert("Error", error);
+            const path = `/api/provider/staff/${shift.staff_id}/shifts/${shift.id}`;
+            const first = await deleteShift(path, {});
+            if (first.errorCode === "FUTURE_BOOKINGS_CONFLICT") {
+              Alert.alert(
+                "Upcoming bookings",
+                "Bookings exist on this weekday. Delete the hours anyway?",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete anyway",
+                    style: "destructive",
+                    onPress: async () => {
+                      const retry = await deleteShift(`${path}?force=true`, {});
+                      if (retry.error) Alert.alert("Error", retry.error);
+                      else {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        refreshShifts();
+                      }
+                    },
+                  },
+                ],
+              );
+              return;
+            }
+            if (first.error) {
+              Alert.alert("Error", first.error);
             } else {
               Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success,
@@ -759,7 +808,7 @@ export default function StaffScheduleScreen() {
               </View>
             ) : null}
             {(staff ?? [])
-              .filter((s) => s.is_active)
+              .filter((s) => s.is_active && (!calendarScopeOwn || s.id === selfStaffId))
               .map((member) => {
                 const isSelected = selectedStaffId === member.id;
                 return (
@@ -848,7 +897,7 @@ export default function StaffScheduleScreen() {
                       const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
                       const failures: string[] = [];
                       for (const day of weekdays) {
-                        const { error: err } = await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
+                        const { error: err } = await saveWeeklyShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
                           day_of_week: day,
                           start_time: "09:00",
                           end_time: "17:00",
@@ -884,7 +933,7 @@ export default function StaffScheduleScreen() {
                       const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
                       const failures: string[] = [];
                       for (const day of days) {
-                        const { error: err } = await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
+                        const { error: err } = await saveWeeklyShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
                           day_of_week: day,
                           start_time: "08:00",
                           end_time: "20:00",
@@ -907,7 +956,7 @@ export default function StaffScheduleScreen() {
             <Text style={twStyle("ml-1.5 text-xs font-medium text-violet-600")}>Extended Hours</Text>
           </TouchableOpacity>
           </View>
-          {(staff ?? []).filter((s) => s.is_active && s.id !== selectedStaffId).length > 0 ? (
+          {!calendarScopeOwn && (staff ?? []).filter((s) => s.is_active && s.id !== selectedStaffId).length > 0 ? (
             <TouchableOpacity
               style={twStyle("mt-2 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
               onPress={() => {

@@ -2,15 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { grantMonthlyIncludedCredits } from "@/lib/marketing/credits";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+
+const JOB_NAME = "grant-marketing-credits";
 
 /**
  * GET /api/cron/grant-marketing-credits
  * Monthly reset of plan-included marketing credits (1st of month).
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

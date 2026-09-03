@@ -49,6 +49,24 @@ export const SLACK_EVENT_KEYS = {
   AGENT_ACTION_PROPOSED: "agents.action.proposed",
   AGENT_RUN_FAILED: "agents.run.failed",
   AGENT_EMERGENCY_ACTIVATED: "agents.emergency.activated",
+  /** Canonical key for PSP webhook HMAC failures (labelled "Finance: webhook signature rejected" in the UI). */
+  PAYMENTS_WEBHOOK_SIGNATURE_REJECTED: "payments.webhook.signature_rejected",
+  OPS_CRON_FAILED: "ops.cron.failed",
+  FINANCE_PAYMENT_FAILED: "finance.payment.failed",
+  FINANCE_REFUND_HIGH_VALUE: "finance.refund.high_value",
+  FINANCE_UNRECOGNIZED_PAYMENTS: "finance.unrecognized_payments",
+  SUBSCRIPTION_CHURNED: "subscription.churned",
+  OPS_WORKFLOW_FAILED: "ops.workflow.failed",
+  OPS_DEPLOY_COMPLETED: "ops.deploy.completed",
+  OPS_DEPLOY_FAILED: "ops.deploy.failed",
 } as const;
+
+/**
+ * Alias used by the plan / docs for the signature-failure alert. Resolves to the
+ * canonical `payments.webhook.signature_rejected` key so existing routing rules keep working.
+ */
+export const SLACK_EVENT_KEY_ALIASES: Record<string, SlackEventKey> = {
+  "finance.webhook.signature_rejected": "payments.webhook.signature_rejected",
+};
 
 export type SlackEventKey = (typeof SLACK_EVENT_KEYS)[keyof typeof SLACK_EVENT_KEYS];

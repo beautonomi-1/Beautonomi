@@ -8,8 +8,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { withNoStore } from "@/lib/http/no-store";
 
-export async function POST(
+/** Mutation on per-session state; responses are `Cache-Control: no-store` (never edge-cached). */
+export const POST = withNoStore(handlePost);
+
+async function handlePost(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {

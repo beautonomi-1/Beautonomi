@@ -23,6 +23,7 @@ import {
   isCustomerVerificationApproved,
 } from "@/lib/verification/verification-policy";
 import { z } from "zod";
+import { withNoStore } from "@/lib/http/no-store";
 
 const consumeBodySchema = z.object({
   client_info: z
@@ -96,7 +97,10 @@ const consumeBodySchema = z.object({
     ),
 });
 
-export async function POST(
+/** Consumes per-session hold state; responses are `Cache-Control: no-store` (never edge-cached). */
+export const POST = withNoStore(handlePost);
+
+async function handlePost(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {

@@ -115,6 +115,11 @@ function makeSupabase(
       }
       throw new Error(`unexpected table ${table}`);
     }),
+    rpc: async (name: string) => {
+      if (name === "claim_cron_run") return { data: 1, error: null };
+      if (name === "finish_cron_run") return { data: null, error: null };
+      return { data: null, error: null };
+    },
   };
 }
 

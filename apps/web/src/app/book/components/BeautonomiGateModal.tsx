@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { Label } from "@/components/ui/label";
 import { signInWithOAuth } from "@/lib/supabase/auth";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { MarketingConsentCheckbox } from "@/components/auth/MarketingConsentCheckbox";
+import { sendAuthOtp, verifyAuthOtp } from "@/lib/auth/auth-otp-client";
+import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
+import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +43,26 @@ import { clearBeautonomiHoldIdCookie } from "@/lib/booking/clear-hold-client-mar
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
+import { isSafeRelativeRedirect, sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
+
+function resolveGatePostLoginNext(customRedirectUrl: string | undefined, holdId: string): string {
+  const fallback = `/book/continue?hold_id=${holdId}`;
+  const raw = customRedirectUrl?.trim();
+  if (!raw) return fallback;
+  if (isSafeRelativeRedirect(raw)) return raw.trim();
+  if (typeof window !== "undefined") {
+    try {
+      const u = new URL(raw, window.location.origin);
+      if (u.origin === window.location.origin) {
+        const pathWithQuery = `${u.pathname}${u.search}`;
+        return sanitizeRelativeRedirect(pathWithQuery) ?? fallback;
+      }
+    } catch {
+      /* use fallback */
+    }
+  }
+  return fallback;
+}
 
 function holdSecondsRemaining(iso: string): number {
   const ms = new Date(iso).getTime() - Date.now();
@@ -76,6 +99,7 @@ export function BeautonomiGateModal({
     google: true,
     apple: true,
   });
+  const [marketingConsent, setMarketingConsent] = useState(false);
 
   const { bundle: configBundle } = useConfigBundle();
   const authPolicy = configBundle?.auth ?? DEFAULT_PUBLIC_AUTH;
@@ -118,9 +142,10 @@ export function BeautonomiGateModal({
     }
   }, [authPolicy.phone_provider_enabled, otpSent]);
 
-  const redirectUrl =
-    customRedirectUrl ||
-    `${typeof window !== "undefined" ? window.location.origin : ""}/book/continue?hold_id=${holdId}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const postLoginNext = resolveGatePostLoginNext(customRedirectUrl, holdId);
+  const redirectUrl = customRedirectUrl || `${origin}${postLoginNext}`;
+  const oauthCallbackUrl = `${origin || ""}/auth/callback?next=${encodeURIComponent(postLoginNext)}`;
 
   const handleSocialOAuth = async (provider: "google" | "apple") => {
     setLoading(provider);
@@ -128,7 +153,10 @@ export function BeautonomiGateModal({
       if (typeof document !== "undefined" && holdId) {
         document.cookie = `beautonomi_hold_id=${holdId}; path=/; max-age=600; SameSite=Lax`;
       }
-      await signInWithOAuth(provider, redirectUrl);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
+      }
+      await signInWithOAuth(provider, oauthCallbackUrl);
       onAuthComplete();
     } catch (err) {
       clearBeautonomiHoldIdCookie();
@@ -151,14 +179,7 @@ export function BeautonomiGateModal({
     }
     setLoading("email");
     try {
-      const supabase = getSupabaseClient();
-      // Passwordless email: no emailRedirectTo; Supabase email content follows the Magic Link template (`{{ .Token }}` for OTP).
-      // shouldCreateUser: true so brand-new visitors can complete checkout without a separate signup.
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ email: email.trim() });
       setOtpCode("");
       setOtpSent("email");
       toast.success(
@@ -187,13 +208,7 @@ export function BeautonomiGateModal({
     }
     setLoading("phone");
     try {
-      const supabase = getSupabaseClient();
-      // Unified auth: account is created automatically when OTP is verified.
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: normalizeSupabaseAuthPhone(e164),
-        options: { channel: "sms", shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ phone: normalizeSupabaseAuthPhone(e164) });
       setOtpCode("");
       setSentPhoneE164(normalizeSupabaseAuthPhone(e164));
       setOtpSent("phone");
@@ -225,22 +240,16 @@ export function BeautonomiGateModal({
 
     setLoading("verify");
     try {
-      const supabase = getSupabaseClient();
-      let error: { message: string } | null = null;
       if (otpSent === "email") {
-        ({ error } = await supabase.auth.verifyOtp({
-          email: email.trim(),
-          token,
-          type: "email",
-        }));
+        await verifyAuthOtp({ email: email.trim(), token, type: "email" });
       } else {
-        ({ error } = await supabase.auth.verifyOtp({
+        await verifyAuthOtp({
           phone: normalizeSupabaseAuthPhone(sentPhoneE164),
           token,
           type: "sms",
-        }));
+        });
       }
-      if (error) throw new Error(error.message);
+      await submitMarketingConsent(marketingConsent);
       if (holdId && typeof document !== "undefined") {
         document.cookie = `beautonomi_hold_id=${holdId}; path=/; max-age=600; SameSite=Lax`;
       }
@@ -318,6 +327,12 @@ export function BeautonomiGateModal({
           )}
         </DialogHeader>
         <div className="flex flex-col gap-4">
+          <MarketingConsentCheckbox
+            id="gate-marketing-consent"
+            checked={marketingConsent}
+            onCheckedChange={setMarketingConsent}
+            className="flex items-start gap-3"
+          />
           {socialAuth.google && (
             <Button
               variant="outline"

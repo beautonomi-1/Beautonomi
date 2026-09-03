@@ -12,11 +12,22 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeQualityScoreForProvider } from "@/lib/ranking/quality-score";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 const BATCH_SIZE = 100;
 const ENVIRONMENT = "production";
+const JOB_NAME = "ranking-recompute";
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error ?? "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

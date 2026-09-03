@@ -32,6 +32,9 @@ interface DayOff {
   team_member_name: string;
   date: string;
   reason?: string;
+  is_approved?: boolean;
+  time_off_id?: string | null;
+  time_off_status?: string | null;
 }
 
 export default function DaysOffPage() {
@@ -45,6 +48,7 @@ export default function DaysOffPage() {
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [reason, setReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const todayStart = startOfDay(new Date());
 
@@ -107,15 +111,26 @@ export default function DaysOffPage() {
 
       const results = await Promise.allSettled(
         selectedMembers.map((memberId) =>
-          fetcher.post(`/api/provider/staff/${memberId}/days-off`, body)
+          fetcher.post<{
+            data?: { overlapping_bookings?: Array<{ booking_number?: string | null }> };
+          }>(`/api/provider/staff/${memberId}/days-off`, body)
         )
       );
 
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+      const overlapCount = results.reduce((sum, r) => {
+        if (r.status !== "fulfilled") return sum;
+        return sum + (r.value.data?.overlapping_bookings?.length ?? 0);
+      }, 0);
 
       if (ok === selectedMembers.length) {
         toast.success(`Day off set for ${ok} team member(s)`);
+        if (overlapCount > 0) {
+          toast.warning(
+            `${overlapCount} upcoming booking${overlapCount === 1 ? "" : "s"} fall on this day. Reassign or reschedule them.`,
+          );
+        }
         setIsDialogOpen(false);
         loadData();
         return;
@@ -156,6 +171,26 @@ export default function DaysOffPage() {
     } catch (error: any) {
       console.error("Failed to remove day off:", error);
       toast.error(error?.message || "Failed to remove day off");
+    }
+  };
+
+  const handleReviewTimeOff = async (dayOff: DayOff, status: "approved" | "denied") => {
+    if (!dayOff.time_off_id) {
+      toast.error("This request is not ready to review yet. Refresh and try again.");
+      return;
+    }
+    setReviewingId(dayOff.id);
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      await fetcher.patch(`/api/provider/staff/${dayOff.team_member_id}/time-off/${dayOff.time_off_id}`, {
+        status,
+      });
+      toast.success(status === "approved" ? "Time off approved" : "Time off denied");
+      loadData();
+    } catch (error: unknown) {
+      toast.error(error instanceof FetchError ? error.message : "Failed to update time off");
+    } finally {
+      setReviewingId(null);
     }
   };
 
@@ -265,6 +300,7 @@ export default function DaysOffPage() {
                   <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Team Member</th>
                   <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Date</th>
                   <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Reason</th>
+                  <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700">Status</th>
                   <th className="px-4 py-3 text-right text-xs sm:text-sm font-medium text-gray-700">Actions</th>
                 </tr>
               </thead>
@@ -299,15 +335,45 @@ export default function DaysOffPage() {
                       <td className="px-4 py-3">
                         <span className="text-sm text-gray-600">{dayOff.reason || "-"}</span>
                       </td>
+                      <td className="px-4 py-3">
+                        {dayOff.time_off_status === "pending" || dayOff.is_approved === false ? (
+                          <Badge className="bg-amber-100 text-amber-800 text-xs">Pending</Badge>
+                        ) : (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Approved</Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveDayOff(dayOff)}
-                          className="min-h-[36px] touch-manipulation"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          {(dayOff.time_off_status === "pending" || dayOff.is_approved === false) &&
+                          dayOff.time_off_id ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={reviewingId === dayOff.id}
+                                onClick={() => void handleReviewTimeOff(dayOff, "approved")}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={reviewingId === dayOff.id}
+                                onClick={() => void handleReviewTimeOff(dayOff, "denied")}
+                              >
+                                Deny
+                              </Button>
+                            </>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveDayOff(dayOff)}
+                            className="min-h-[36px] touch-manipulation"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );

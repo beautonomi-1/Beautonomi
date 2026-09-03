@@ -18,6 +18,7 @@ import { clearFetcherCache } from "@/lib/http/fetcher";
 import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 import { signIn as signInViaProxy } from "@/lib/supabase/auth";
 import { resolveMailableAccountEmail } from "@beautonomi/utils";
+import { getAmplitudeInstance } from "@/lib/analytics/amplitude/client";
 
 interface AuthContextType {
   user: User | null;
@@ -31,7 +32,7 @@ interface AuthContextType {
   isEmailVerified: boolean; // Email verification status
   signOut: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, options?: { rememberMe?: boolean; captchaToken?: string }) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string, phone?: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
 }
@@ -1017,6 +1018,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         /* ignore */
       }
 
+      try {
+        getAmplitudeInstance()?.reset();
+      } catch {
+        /* ignore */
+      }
+
       // Call server to clear HTTP-only cookies
       await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => {});
 
@@ -1065,12 +1072,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase, router]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (
+    email: string,
+    password: string,
+    options?: { rememberMe?: boolean; captchaToken?: string },
+  ) => {
     if (!supabase) return;
     setIsSigningIn(true);
     try {
       // Use the same /api/auth/sign-in proxy as the login page (avoids CORS/502 on some networks).
-      await signInViaProxy({ email, password });
+      await signInViaProxy({
+        email,
+        password,
+        rememberMe: options?.rememberMe,
+        captchaToken: options?.captchaToken,
+      });
       await refreshUser();
     } catch (error) {
       console.error("Sign in error:", error);

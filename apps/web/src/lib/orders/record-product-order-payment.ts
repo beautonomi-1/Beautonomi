@@ -22,7 +22,7 @@ type RecordProductOrderPaymentInput = {
     | "walk_in_pos"
     | "paycloud_terminal"
     | "yoco_terminal";
-  provider: "paystack" | "wallet" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
+  provider: "paystack" | "wallet" | "gift_card" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
   /** True when Beautonomi/gateway holds money that can become provider payout balance. */
   platformHeld?: boolean;
 };
@@ -52,7 +52,7 @@ async function recordProductOrderPaymentInner(
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
     .select(
-      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status",
+      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status, currency, promotion_id, promotion_discount_amount, gift_card_amount",
     )
     .eq("id", productOrderId)
     .maybeSingle();
@@ -79,7 +79,11 @@ async function recordProductOrderPaymentInner(
   const orderTotal = Number((order as any).total_amount || amountMajor);
   const grossForProvider = Math.max(0, subtractMoney(orderTotal, platformFee));
   const providerEarnings = grossForProvider;
-  const isPlatformHeld = input.platformHeld ?? (provider === "paystack" || provider === "wallet");
+  // Gift-card tender is platform liability (2400) being consumed — platform-held like wallet.
+  const isPlatformHeld =
+    input.platformHeld ?? (provider === "paystack" || provider === "wallet" || provider === "gift_card");
+  const giftCardAmount = Math.max(0, Number((order as any).gift_card_amount ?? 0));
+  const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
   const orderReferenceForLedger = (order as any).order_number ?? productOrderId;
   const { data: existingLedgerRows } = await (supabase.from("finance_transactions") as any)
     .select("id")
@@ -123,11 +127,46 @@ async function recordProductOrderPaymentInner(
     }
     transitionedToPaid = true;
 
+    void import("@/lib/analytics/amplitude/track-product-order-paid-server")
+      .then(({ trackProductOrderPaidServer }) =>
+        trackProductOrderPaidServer({
+          reference,
+          orderId: productOrderId,
+          amount: amountMajor,
+          currency: (order as any).currency ?? null,
+          customerId: (order as any).customer_id ?? null,
+          providerId: (order as any).provider_id ?? null,
+          paymentMethod: paymentMethodForOrder,
+          paymentProvider: provider,
+        }),
+      )
+      .catch(() => undefined);
+
     const customerId = (order as any).customer_id as string | undefined;
     const providerId = (order as any).provider_id as string | undefined;
     if (customerId && providerId) {
       await clearCustomerCartForProvider(supabase, customerId, providerId);
     }
+
+    const promotionId = (order as any).promotion_id as string | null | undefined;
+    if (promotionId && customerId && promotionDiscount > 0) {
+      const { recordProductOrderPromotionUsage } = await import(
+        "@/lib/ecommerce/product-order-promotion"
+      );
+      await recordProductOrderPromotionUsage(supabase, {
+        promotionId,
+        userId: customerId,
+        productOrderId,
+        discountAmount: promotionDiscount,
+      });
+    }
+  }
+
+  // Gift card reserved at checkout becomes a real redemption once the order is paid
+  // (idempotent RPC; safe on verify + webhook double-fire).
+  if (giftCardAmount > 0 && (transitionedToPaid || !alreadyRecorded)) {
+    const { captureProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
+    await captureProductOrderGiftCard(supabase, productOrderId);
   }
 
   if (!alreadyRecorded) {
@@ -251,6 +290,22 @@ async function recordProductOrderPaymentInner(
       transitionedToPaid,
       ledgerIncomplete: true,
     };
+  }
+
+  // Promotion / gift-card audit legs (parity with booking ledger; idempotent per type).
+  if (promotionDiscount > 0 || giftCardAmount > 0) {
+    const { postProductOrderTenderLegsIfMissing } = await import(
+      "@/lib/ecommerce/product-order-tender-legs"
+    );
+    await postProductOrderTenderLegsIfMissing(supabase, {
+      productOrderId,
+      providerId: (order as any).provider_id ?? null,
+      tenantId: financeTenantId,
+      orderNumber: String(orderReferenceForLedger),
+      currency: (order as any).currency ?? null,
+      promotionDiscount,
+      giftCardAmount,
+    });
   }
 
   return { ok: true, duplicate: false, transitionedToPaid };

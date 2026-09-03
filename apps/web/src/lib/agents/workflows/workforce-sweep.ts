@@ -25,6 +25,8 @@ import {
   proposeReportBriefing,
 } from "../services/gap-services";
 import { runSupportTriageWorkflow } from "./support-agent";
+import { isWorkflowFamilyEnabled } from "@/workflows/config";
+import { startSupportTriageForTicket } from "@/workflows/start-support-triage";
 
 const PER_KIND_LIMIT = 10;
 
@@ -289,6 +291,22 @@ export async function runSupportTriageBackstop(environment: string): Promise<{
 }> {
   const supabase = getSupabaseAdmin();
   const result = { ticketsTriaged: 0, errors: [] as string[] };
+
+  let skipTicketIds = new Set<string>();
+  if (isWorkflowFamilyEnabled("agent")) {
+    const { data: runningRuns } = await supabase
+      .from("workflow_runs")
+      .select("domain_id")
+      .eq("workflow", "support-triage")
+      .eq("status", "running")
+      .eq("domain_type", "support_ticket");
+    skipTicketIds = new Set(
+      (runningRuns ?? [])
+        .map((row: { domain_id?: string | null }) => row.domain_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+  }
+
   const { data: tickets } = await supabase
     .from("support_tickets")
     .select("id")
@@ -298,7 +316,13 @@ export async function runSupportTriageBackstop(environment: string): Promise<{
     .order("created_at", { ascending: true })
     .limit(PER_KIND_LIMIT);
   for (const t of tickets ?? []) {
+    if (skipTicketIds.has(t.id)) continue;
     try {
+      if (isWorkflowFamilyEnabled("agent")) {
+        await startSupportTriageForTicket(t.id);
+        result.ticketsTriaged += 1;
+        continue;
+      }
       const triage = await runSupportTriageWorkflow({ ticketId: t.id, environment });
       if (!("skipped" in triage)) result.ticketsTriaged += 1;
     } catch (err) {

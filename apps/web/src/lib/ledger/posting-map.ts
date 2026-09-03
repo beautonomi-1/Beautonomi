@@ -1,11 +1,11 @@
 /**
- * F14 — Posting map from domain events to journal entries.
+ * Documentation-only posting map for a simple booking payment journal.
  *
- * These mappings are the canonical spec for "what should the shadow-writer
- * and any future application-level writer emit into journal_entries /
- * journal_lines". The SQL shadow trigger (migration 495) implements a
- * simplified subset; this file lets us cross-check, expand posting, and
- * eventually move ledger writes out of the trigger into application code.
+ * The live shadow writer is `_shadow_replay_finance_tx_row` in migrations
+ * 809 / 863 / 870 (plus 880 for `gift_card_refund`). Do not treat this
+ * TypeScript map as the allowlist — `reconciliation-drift.test.ts` pins
+ * that. `sum-of-legs.test.ts` uses `isBalanced` / `postBookingPayment` as
+ * the app-level journal invariant for the gateway charge fixture.
  */
 
 export type GlAccountCode =

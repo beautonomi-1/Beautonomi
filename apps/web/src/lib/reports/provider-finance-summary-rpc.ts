@@ -6,6 +6,7 @@ export const PROVIDER_FINANCE_SUMMARY_RPC_FLAG = "reports.provider_finance_summa
 
 type FinanceSummaryRpcRow = {
   serviceEarnings?: number;
+  membershipEarnings?: number;
   tips?: number;
   travelFees?: number;
   cancellationFees?: number;
@@ -19,6 +20,7 @@ export function mapFinanceSummaryRpcRow(row: FinanceSummaryRpcRow | null): Provi
   if (!row) return null;
   return {
     serviceEarnings: Number(row.serviceEarnings ?? 0),
+    membershipEarnings: Number(row.membershipEarnings ?? 0),
     tips: Number(row.tips ?? 0),
     travelFees: Number(row.travelFees ?? 0),
     cancellationFees: Number(row.cancellationFees ?? 0),
@@ -54,6 +56,7 @@ export function shadowCompareFinanceSummary(
 ): boolean {
   const keys = [
     "serviceEarnings",
+    "membershipEarnings",
     "tips",
     "travelFees",
     "cancellationFees",

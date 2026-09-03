@@ -23,7 +23,9 @@ import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { convertToSmallestUnit, convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 import { recordMembershipPayment } from "@/lib/memberships/membership-payment";
+import { applyScheduledMembershipPlanChange } from "@/lib/memberships/apply-scheduled-plan-change";
 import { insertNotification } from "@/lib/notifications/insert-notification";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 const MEMBERSHIP_PAST_DUE_GRACE_DAYS = 3;
 const MEMBERSHIP_MAX_RENEWAL_RETRIES = 3;
@@ -49,7 +51,18 @@ function generateRenewalReference(orderId: string): string {
   return `membership_renewal_${orderId}_${Date.now()}`;
 }
 
+const JOB_NAME = "process-membership-renewals";
+export const maxDuration = 300;
+
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {
@@ -105,6 +118,8 @@ export async function GET(request: NextRequest) {
         user_id,
         provider_id,
         plan_id,
+        scheduled_plan_id,
+        scheduled_change_at,
         status,
         expires_at,
         next_billing_at,
@@ -118,6 +133,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq("auto_renew", true)
       .in("status", ["active", "past_due"])
+      .or("paused_until.is.null,paused_until.lt." + nowIso)
       .not("payment_method_id", "is", null)
       .not("paystack_authorization_code", "is", null)
       .lte("next_billing_at", nowIso)
@@ -137,8 +153,19 @@ export async function GET(request: NextRequest) {
       const membershipId: string = row.id;
       const userId: string = row.user_id;
       const providerId: string = row.provider_id;
-      const planId: string = row.plan_id;
-      const plan = Array.isArray(row.plan) ? row.plan[0] : row.plan;
+      let planId: string = row.plan_id;
+      try {
+        const scheduled = await applyScheduledMembershipPlanChange(supabase, membershipId, now);
+        if (scheduled.applied) {
+          planId = scheduled.planId;
+        }
+      } catch (schedErr) {
+        console.error(`[membership-renewals] scheduled plan change failed for ${membershipId}:`, schedErr);
+      }
+      const { data: planFresh } = planId !== row.plan_id
+        ? await supabase.from("membership_plans").select("id, name, price_monthly, currency, is_active").eq("id", planId).maybeSingle()
+        : { data: null };
+      const plan = planFresh ?? (Array.isArray(row.plan) ? row.plan[0] : row.plan);
       const provider = Array.isArray(row.provider) ? row.provider[0] : row.provider;
       const tenantId: string | null = provider?.tenant_id ?? null;
 

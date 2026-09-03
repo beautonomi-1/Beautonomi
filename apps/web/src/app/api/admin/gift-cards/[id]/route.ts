@@ -48,7 +48,7 @@ export async function GET(
     const { data: redemptions, error: redemptionsError } = await supabaseAdmin
       .from("gift_card_redemptions")
       .select(
-        "id, booking_id, amount, currency, status, created_at, captured_at, voided_at, bookings!inner(tenant_id)"
+        "id, booking_id, user_id, amount, currency, status, created_at, captured_at, voided_at, bookings!inner(id, tenant_id, booking_number)"
       )
       .eq("gift_card_id", id)
       .eq("bookings.tenant_id", tenantId)
@@ -62,7 +62,17 @@ export async function GET(
     return successResponse({
       gift_card: {
         ...gc,
-        redemptions: redemptions || [],
+        redemptions: (redemptions || []).map((row) => {
+          const r = row as Record<string, unknown>;
+          const bookingEmbed = r.bookings;
+          const booking = Array.isArray(bookingEmbed)
+            ? (bookingEmbed[0] as { booking_number?: string } | undefined)
+            : (bookingEmbed as { booking_number?: string } | null);
+          return {
+            ...r,
+            booking_number: booking?.booking_number ?? null,
+          };
+        }),
       },
     });
   } catch (error) {

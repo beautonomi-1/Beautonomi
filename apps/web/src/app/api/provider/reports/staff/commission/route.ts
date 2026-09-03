@@ -107,11 +107,27 @@ export async function GET(request: NextRequest) {
       ? sorted.reduce((sum, s) => sum + s.commissionRate, 0) / sorted.length
       : 0;
 
+    const enabledStaff = (staffMembers || []).filter(
+      (s: { commission_enabled?: boolean | null }) => s.commission_enabled === true,
+    );
+    const { data: disabledServices } = await supabaseAdmin
+      .from("offerings")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .eq("team_member_commission_enabled", false)
+      .is("parent_service_id", null);
+    const zeroCommissionServiceWarning =
+      enabledStaff.length > 0 && (disabledServices?.length ?? 0) > 0
+        ? `${enabledStaff.length} staff have commission enabled, but ${disabledServices?.length ?? 0} active services have staff commission turned off.`
+        : null;
+
     return successResponse({
       totalCommission,
       totalRevenue,
       averageCommissionRate,
       staffCommissions: sorted,
+      zeroCommissionServiceWarning,
     });
   } catch (error) {
     return handleApiError(error, "COMMISSION_REPORT_ERROR", 500);

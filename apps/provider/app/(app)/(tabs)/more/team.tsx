@@ -29,6 +29,7 @@ type StaffMember = {
   avatar_url?: string | null;
   role: string;
   is_active: boolean;
+  over_cap_grace_until?: string | null;
 };
 
 type TeamAccessPayload = {
@@ -66,6 +67,16 @@ export default function TeamScreen() {
         : (data as { data?: StaffMember[] } | null | undefined)?.data ?? [],
     [data],
   );
+
+  const overCapUntil = useMemo(() => {
+    const times = staff
+      .map((s) => s.over_cap_grace_until)
+      .filter((v): v is string => !!v)
+      .map((v) => new Date(v).getTime())
+      .filter((t) => Number.isFinite(t) && t > Date.now())
+      .sort((a, b) => a - b);
+    return times[0] ? new Date(times[0]) : null;
+  }, [staff]);
 
   const totalCount = staff.length;
   const activeCount = staff.filter((s) => s.is_active).length;
@@ -481,6 +492,15 @@ export default function TeamScreen() {
         >
           {selectedLocationId ? "At this location" : "Team preview"}
         </Text>
+        {overCapUntil ? (
+          <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", backgroundColor: "#FFFBEB", padding: 12 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>Over staff cap</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#92400E" }}>
+              Some team members were deactivated after a plan downgrade. Grace lasts until{" "}
+              {overCapUntil.toLocaleDateString()}. Upgrade or keep the roster at the new limit to reactivate them.
+            </Text>
+          </View>
+        ) : null}
         {staff.length === 0 ? (
           <View style={{ paddingVertical: 24, paddingHorizontal: 8, alignItems: "center" }}>
             <Ionicons name="people-circle-outline" size={48} color="#9ca3af" />

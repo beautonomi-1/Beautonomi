@@ -133,6 +133,147 @@ function applyGroupLocation(query: HeadCountBuilder, locationId?: string | null)
   return query.or(dashboardGroupBookingLocationOrFilter(locationId));
 }
 
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
+const ID_IN_CHUNK = 200;
+
+function chunkIds(ids: string[], size = ID_IN_CHUNK): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
+function applyIdScope(query: HeadCountBuilder, ids?: string[] | null): HeadCountBuilder {
+  if (!ids) return query;
+  if (ids.length === 0) return query.eq("id", EMPTY_UUID);
+  return query.in("id", ids);
+}
+
+type StaffScopeIds = {
+  standaloneBookingIds: string[];
+  groupIds: string[];
+  ledgerBookingIds: string[];
+};
+
+async function fetchPagedIds(
+  supabaseAdmin: SupabaseClient,
+  table: "bookings" | "group_bookings" | "booking_services",
+  columns: string,
+  apply: (query: {
+    eq: (col: string, value: unknown) => any;
+    in: (col: string, values: readonly string[]) => any;
+    range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
+  }) => {
+    range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
+  },
+): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    const built = apply(
+      supabaseAdmin.from(table).select(columns) as unknown as {
+        eq: (col: string, value: unknown) => any;
+        in: (col: string, values: readonly string[]) => any;
+        range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
+      },
+    );
+    const { data, error } = await built.range(offset, offset + GMV_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < GMV_PAGE_SIZE) break;
+    offset += GMV_PAGE_SIZE;
+  }
+  return rows;
+}
+
+/**
+ * Calendar-scope IDs: booking header staff, any booking_services line, and
+ * group parents the staff leads or appears on as a child.
+ */
+async function resolveStaffScopeIds(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  staffId: string,
+): Promise<StaffScopeIds> {
+  const standalone = new Set<string>();
+  const groups = new Set<string>();
+  const ledger = new Set<string>();
+
+  const headerRows = await fetchPagedIds(supabaseAdmin, "bookings", "id, group_booking_id", (q) =>
+    q.eq("provider_id", providerId).eq("staff_id", staffId),
+  );
+  for (const row of headerRows) {
+    const id = String(row.id ?? "");
+    const groupId = row.group_booking_id ? String(row.group_booking_id) : null;
+    if (!id) continue;
+    ledger.add(id);
+    if (groupId) groups.add(groupId);
+    else standalone.add(id);
+  }
+
+  const lineRows = await fetchPagedIds(supabaseAdmin, "booking_services", "booking_id", (q) =>
+    q.eq("staff_id", staffId),
+  );
+  const lineBookingIds = [
+    ...new Set(lineRows.map((row) => String(row.booking_id ?? "")).filter(Boolean)),
+  ];
+  for (const chunk of chunkIds(lineBookingIds)) {
+    const owned = await fetchPagedIds(supabaseAdmin, "bookings", "id, group_booking_id", (q) =>
+      q.eq("provider_id", providerId).in("id", chunk),
+    );
+    for (const row of owned) {
+      const id = String(row.id ?? "");
+      const groupId = row.group_booking_id ? String(row.group_booking_id) : null;
+      if (!id) continue;
+      ledger.add(id);
+      if (groupId) groups.add(groupId);
+      else standalone.add(id);
+    }
+  }
+
+  const groupRows = await fetchPagedIds(supabaseAdmin, "group_bookings", "id", (q) =>
+    q.eq("provider_id", providerId).eq("staff_id", staffId),
+  );
+  for (const row of groupRows) {
+    const id = String(row.id ?? "");
+    if (id) groups.add(id);
+  }
+
+  for (const chunk of chunkIds([...groups])) {
+    const children = await fetchPagedIds(supabaseAdmin, "bookings", "id", (q) =>
+      q.eq("provider_id", providerId).in("group_booking_id", chunk),
+    );
+    for (const row of children) {
+      const id = String(row.id ?? "");
+      if (id) ledger.add(id);
+    }
+  }
+
+  return {
+    standaloneBookingIds: [...standalone],
+    groupIds: [...groups],
+    ledgerBookingIds: [...ledger],
+  };
+}
+
+function emptyBookingsStats(range: BookingsStatsRange, timezone: string): BookingsStatsResult {
+  return {
+    range,
+    timezone,
+    booked_gmv: 0,
+    recognized_revenue: 0,
+    appointment_count: 0,
+    pending_count: 0,
+    confirmed_count: 0,
+    in_progress_count: 0,
+    completed_count: 0,
+    cancelled_count: 0,
+    no_show_count: 0,
+    basis_note:
+      "Counts mirror the merged provider bookings list: standalone rows exclude group children; group parents are included. Pending = standalone pending/pending_payment + pending group parents. Booked GMV sums non-cancelled totals scheduled in the window.",
+  };
+}
+
 function bookingsHeadCount(supabaseAdmin: SupabaseClient): HeadCountBuilder {
   return supabaseAdmin.from("bookings").select("id", {
     count: "exact",
@@ -153,13 +294,16 @@ async function countStandaloneBookings(
   statuses: readonly string[],
   window: StatsWindow,
   locationId?: string | null,
+  staffBookingIds?: string[] | null,
 ): Promise<number> {
+  if (staffBookingIds && staffBookingIds.length === 0) return 0;
   let q = bookingsHeadCount(supabaseAdmin)
     .eq("provider_id", providerId)
     .in("status", [...statuses])
     .is("group_booking_id", null);
   q = applyScheduledWindow(q, window);
   q = applyBookingLocation(q, locationId);
+  q = applyIdScope(q, staffBookingIds);
   return countExact(q);
 }
 
@@ -169,12 +313,15 @@ async function countGroupBookings(
   statuses: readonly string[],
   window: StatsWindow,
   locationId?: string | null,
+  staffGroupIds?: string[] | null,
 ): Promise<number> {
+  if (staffGroupIds && staffGroupIds.length === 0) return 0;
   let q = groupsHeadCount(supabaseAdmin)
     .eq("provider_id", providerId)
     .in("status", [...statuses]);
   q = applyScheduledWindow(q, window);
   q = applyGroupLocation(q, locationId);
+  q = applyIdScope(q, staffGroupIds);
   return countExact(q);
 }
 
@@ -183,7 +330,11 @@ async function sumBookedGmv(
   providerId: string,
   window: StatsWindow,
   locationId?: string | null,
+  staffScope?: StaffScopeIds | null,
 ): Promise<number> {
+  if (staffScope && staffScope.standaloneBookingIds.length === 0 && staffScope.groupIds.length === 0) {
+    return 0;
+  }
   let total = 0;
   let offset = 0;
 
@@ -195,6 +346,12 @@ async function sumBookedGmv(
       .is("group_booking_id", null)
       .order("scheduled_at", { ascending: true })
       .range(offset, offset + GMV_PAGE_SIZE - 1);
+    if (staffScope) {
+      q = q.in(
+        "id",
+        staffScope.standaloneBookingIds.length > 0 ? staffScope.standaloneBookingIds : [EMPTY_UUID],
+      );
+    }
     if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
     if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
     if (locationId) q = q.or(dashboardBookingLocationOrFilter(locationId));
@@ -218,6 +375,9 @@ async function sumBookedGmv(
       .eq("provider_id", providerId)
       .order("scheduled_at", { ascending: true })
       .range(offset, offset + GMV_PAGE_SIZE - 1);
+    if (staffScope) {
+      q = q.in("id", staffScope.groupIds.length > 0 ? staffScope.groupIds : [EMPTY_UUID]);
+    }
     if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
     if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
     if (locationId) q = q.or(dashboardGroupBookingLocationOrFilter(locationId));
@@ -241,6 +401,7 @@ export async function computeBookingsStats(
   providerId: string,
   range: BookingsStatsRange,
   locationId?: string | null,
+  staffId?: string | null,
 ): Promise<BookingsStatsResult> {
   const { data: providerRow } = await supabaseAdmin
     .from("providers")
@@ -249,6 +410,18 @@ export async function computeBookingsStats(
     .maybeSingle();
   const timezone = resolveTz((providerRow as { timezone?: string | null } | null)?.timezone);
   const window = resolveStatsWindow(range, timezone);
+  const staffScope = staffId
+    ? await resolveStaffScopeIds(supabaseAdmin, providerId, staffId)
+    : null;
+  if (
+    staffScope &&
+    staffScope.standaloneBookingIds.length === 0 &&
+    staffScope.groupIds.length === 0
+  ) {
+    return emptyBookingsStats(range, timezone);
+  }
+  const standaloneIds = staffScope?.standaloneBookingIds ?? null;
+  const groupIds = staffScope?.groupIds ?? null;
 
   const [
     pendingStandalone,
@@ -264,26 +437,30 @@ export async function computeBookingsStats(
     noShowStandalone,
   ] = await Promise.all([
     (async () => {
+      if (standaloneIds && standaloneIds.length === 0) return 0;
       let q = bookingsHeadCount(supabaseAdmin).eq("provider_id", providerId);
       q = applyPendingBookingsScope(q, locationId);
       q = applyScheduledWindow(q, window);
+      q = applyIdScope(q, standaloneIds);
       return countExact(q);
     })(),
     (async () => {
+      if (groupIds && groupIds.length === 0) return 0;
       let q = groupsHeadCount(supabaseAdmin).eq("provider_id", providerId);
       q = applyPendingGroupsScope(q, locationId);
       q = applyScheduledWindow(q, window);
+      q = applyIdScope(q, groupIds);
       return countExact(q);
     })(),
-    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.confirmed, window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.confirmed, window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.inProgress, window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.inProgress, window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.completed, window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.completed, window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.cancelled, window, locationId),
-    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.cancelled, window, locationId),
-    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.noShow, window, locationId),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.confirmed, window, locationId, standaloneIds),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.confirmed, window, locationId, groupIds),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.inProgress, window, locationId, standaloneIds),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.inProgress, window, locationId, groupIds),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.completed, window, locationId, standaloneIds),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.completed, window, locationId, groupIds),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.cancelled, window, locationId, standaloneIds),
+    countGroupBookings(supabaseAdmin, providerId, GROUP_BOOKING_STATUS.cancelled, window, locationId, groupIds),
+    countStandaloneBookings(supabaseAdmin, providerId, BOOKING_STATUS.noShow, window, locationId, standaloneIds),
   ]);
 
   const pendingCount = pendingStandalone + pendingGroups;
@@ -293,7 +470,7 @@ export async function computeBookingsStats(
   const cancelledCount = cancelledStandalone + cancelledGroups;
   const noShowCount = noShowStandalone;
 
-  const bookedGmv = await sumBookedGmv(supabaseAdmin, providerId, window, locationId);
+  const bookedGmv = await sumBookedGmv(supabaseAdmin, providerId, window, locationId, staffScope);
 
   const appointmentCount =
     pendingCount + confirmedCount + inProgressCount + completedCount;
@@ -316,12 +493,19 @@ export async function computeBookingsStats(
     ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
     MAX_FINANCE_TRANSACTIONS,
   );
-  const scopedLedger = await filterLedgerRowsForLocation(
+  const locationScopedLedger = await filterLedgerRowsForLocation(
     supabaseAdmin,
     providerId,
     ledgerRows,
     locationId ?? null,
   );
+  const ledgerBookingSet = staffScope ? new Set(staffScope.ledgerBookingIds) : null;
+  const scopedLedger = ledgerBookingSet
+    ? locationScopedLedger.filter((row) => {
+        const bookingId = (row as { booking_id?: string | null }).booking_id;
+        return Boolean(bookingId && ledgerBookingSet.has(bookingId));
+      })
+    : locationScopedLedger;
 
   const recognizedRevenue = recognizedRevenueInRange(scopedLedger, {
     start: window.ledgerFrom,

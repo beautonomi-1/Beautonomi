@@ -259,7 +259,9 @@ export async function isProviderCalendarWindowBlocked(
 
     for (const d of days) {
       for (const row of timeOffRows || []) {
-        if (row.status === "denied") continue;
+        // Only approved time off blocks the calendar; pending requests wait
+        // for owner/manager approval. Legacy rows without status = approved.
+        if (row.status != null && row.status !== "approved") continue;
         const sd = row.start_date as string;
         const ed = row.end_date as string;
         if (d >= sd && d <= ed) {

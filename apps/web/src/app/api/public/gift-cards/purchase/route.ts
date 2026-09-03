@@ -10,6 +10,14 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 import { multiplyMoney } from "@beautonomi/utils";
+import { enforceGiftCardPurchaseCaps } from "@/lib/gift-cards/gift-card-purchase-caps";
+import {
+  normalizeRecipientPhone,
+  normalizeRequestedDeliverAt,
+  parseGiftCardDeliveryChannel,
+  channelIncludesSms,
+  channelIncludesEmail,
+} from "@/lib/gift-cards/gift-card-delivery";
 
 const purchaseSchema = z.object({
   amount: z.number().positive(),
@@ -18,6 +26,12 @@ const purchaseSchema = z.object({
   recipient_email: z.string().email().optional().nullable(),
   recipient_name: z.string().trim().min(1).max(120).optional().nullable(),
   message: z.string().trim().max(500).optional().nullable(),
+  /** Scheduled send (ISO timestamp). Past/near-future values deliver immediately. */
+  deliver_at: z.string().trim().max(40).optional().nullable(),
+  /** email (default) | sms | email_sms */
+  delivery_channel: z.enum(["email", "sms", "email_sms"]).optional(),
+  /** Required when delivery_channel includes sms. */
+  recipient_phone: z.string().trim().max(32).optional().nullable(),
   template_id: z.string().trim().min(1).max(120).optional(),
   template_name: z.string().trim().min(1).max(160).optional(),
   template_image_url: z.string().trim().min(1).max(2000).optional(),
@@ -105,6 +119,73 @@ export async function POST(request: NextRequest) {
     const quantity = parsed.data.quantity || 1;
     const totalAmount = multiplyMoney(amount, quantity);
 
+    // Server-side caps (min/max per card, per-purchaser daily card + value caps).
+    const capCheck = await enforceGiftCardPurchaseCaps({
+      supabase,
+      tenantId,
+      purchaserUserId,
+      amount,
+      quantity,
+      totalAmount,
+    });
+    if (capCheck.ok === false) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: capCheck.violation.message,
+            code: capCheck.violation.code,
+            limit: capCheck.violation.limit,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // Delivery options: scheduled send + SMS channel.
+    const deliveryChannel = parseGiftCardDeliveryChannel(parsed.data.delivery_channel);
+    const recipientPhone = normalizeRecipientPhone(parsed.data.recipient_phone);
+    if (channelIncludesSms(deliveryChannel) && !recipientPhone) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: { message: "A valid recipient phone number is required for SMS delivery.", code: "RECIPIENT_PHONE_REQUIRED" },
+        },
+        { status: 400 },
+      );
+    }
+    const requestedRecipientEmail = parsed.data.recipient_email?.trim().toLowerCase() || null;
+    if (channelIncludesEmail(deliveryChannel) && deliveryChannel !== "email" && !requestedRecipientEmail) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: { message: "A recipient email is required for email delivery.", code: "RECIPIENT_EMAIL_REQUIRED" },
+        },
+        { status: 400 },
+      );
+    }
+    const deliverAtCheck = normalizeRequestedDeliverAt(parsed.data.deliver_at);
+    if (deliverAtCheck.ok === false) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              deliverAtCheck.code === "DELIVER_AT_TOO_FAR"
+                ? "Scheduled delivery can be at most one year ahead."
+                : "Invalid scheduled delivery time.",
+            code: deliverAtCheck.code,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    const deliverAt = deliverAtCheck.deliverAt;
+    // Scheduled orders keep the recipient email OUT of the column so the payment webhook
+    // does not deliver at pay time; the cron restores it when it sends (see gift-card-delivery.ts).
+    const isScheduled = deliverAt !== null;
+    const recipientEmailColumn = isScheduled ? null : requestedRecipientEmail;
+
     const email =
       authUser.email ||
       (await supabase.from("users").select("email").eq("id", purchaserUserId).maybeSingle()).data?.email ||
@@ -135,7 +216,10 @@ export async function POST(request: NextRequest) {
     const { data: order, error: orderError } = await (supabase.from("gift_card_orders") as any)
       .insert({
         purchaser_user_id: purchaserUserId,
-        recipient_email: parsed.data.recipient_email || null,
+        recipient_email: recipientEmailColumn,
+        recipient_phone: recipientPhone,
+        delivery_channel: deliveryChannel,
+        deliver_at: deliverAt,
         provider_id: null, // Platform-only gift cards (no provider_id)
         tenant_id: tenantId,
         amount,
@@ -148,6 +232,9 @@ export async function POST(request: NextRequest) {
           attribution,
           recipient_name: parsed.data.recipient_name || undefined,
           message: parsed.data.message || undefined,
+          ...(isScheduled && requestedRecipientEmail
+            ? { scheduled_recipient_email: requestedRecipientEmail }
+            : {}),
           ...templateMetadata,
         },
       })
@@ -179,7 +266,9 @@ export async function POST(request: NextRequest) {
         metadata: {
           gift_card_order_id: order.id,
           purchaser_user_id: purchaserUserId,
-          recipient_email: parsed.data.recipient_email || null,
+          recipient_email: recipientEmailColumn,
+          deliver_at: deliverAt,
+          delivery_channel: deliveryChannel,
           quantity,
           attribution,
           cancel_action: giftCancelAction,
@@ -206,6 +295,8 @@ export async function POST(request: NextRequest) {
       order_id: order.id,
       payment_url: paymentUrl,
       reference,
+      deliver_at: deliverAt,
+      delivery_channel: deliveryChannel,
     });
   } catch (error) {
     return handleApiError(error, "Failed to initialize gift card purchase");

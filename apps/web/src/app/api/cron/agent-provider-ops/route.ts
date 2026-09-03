@@ -6,8 +6,11 @@ import { runProviderOpsSweepForTenant } from "@/lib/agents/workflows/provider-op
 import { runReviewFraudSweepForTenant } from "@/lib/agents/workflows/trust-review-fraud";
 import { runMembershipDunningSweepForTenant } from "@/lib/agents/workflows/membership-dunning";
 import { slackNotifyAgentRunFailed } from "@/lib/integrations/slack/agent-triggers";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const maxDuration = 300;
+
+const JOB_NAME = "agent-provider-ops";
 
 /**
  * Daily provider-operations agent sweep: provider health check-ins,
@@ -16,6 +19,14 @@ export const maxDuration = 300;
  * Agentic Console before any message is sent or case is opened.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

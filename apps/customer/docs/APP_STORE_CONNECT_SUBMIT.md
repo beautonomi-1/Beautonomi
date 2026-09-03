@@ -1,4 +1,4 @@
-# Customer iOS — App Store Connect submission checklist (v1.0.87)
+# Customer iOS — App Store Connect submission checklist (v1.0.88)
 
 Use this checklist when resubmitting **Beautonomi Customer** (`com.beautonomi`) after App Review rejection (Guideline 2.3.6 age rating, 2.1 ATT, proactive 1.2 UGC).
 
@@ -8,8 +8,8 @@ Related: [APP_STORE_AGE_RATING.md](../../../docs/APP_STORE_AGE_RATING.md) · [IO
 
 ## 1. Version & build
 
-- [ ] App Store Connect → **1.0.87** with iOS build **280**
-- [ ] `apps/customer/app.config.js`: `version: "1.0.87"`, `buildNumber: "280"`, `versionCode: 280`
+- [ ] App Store Connect → **1.0.88** with iOS build **281**
+- [ ] `apps/customer/app.config.js`: `version: "1.0.88"`, `buildNumber: "281"`, `versionCode: 281`
 - [ ] EAS production iOS build uploaded to TestFlight
 
 ---
@@ -75,6 +75,6 @@ Delete app → reinstall → ATT prompt after splash, before analytics. Screen r
 
 ## 6. Submit
 
-1. Attach build **280** to version **1.0.87**
+1. Attach build **281** to version **1.0.88**
 2. Paste review notes + ATT recording
 3. **Submit for Review**

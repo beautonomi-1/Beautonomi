@@ -48,7 +48,7 @@ export function mapPaycloudPaymentError(
       };
     case PAYCLOUD_ERROR_CODES.CONFLICT:
       return {
-        message: "This booking was updated elsewhere. Refresh and try again.",
+        message: "This booking changed, reload",
         canRetry: false,
       };
     default:

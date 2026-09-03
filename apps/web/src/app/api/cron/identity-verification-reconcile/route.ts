@@ -15,14 +15,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { reconcileSession } from "@/lib/identity-verification/identity-verification-service";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const JOB_NAME = "identity-verification-reconcile";
 const STALE_MINUTES = 15;
 const MAX_BATCH = 50;
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

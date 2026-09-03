@@ -18,8 +18,13 @@ import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_LOGIN_SUCCESS } from "@/lib/analytics/amplitude/types";
-import { signInWithOAuth, sendEmailSignInOtp } from "@/lib/supabase/auth";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { signInWithOAuth } from "@/lib/supabase/auth";
+import { sendAuthOtp, verifyAuthOtp, AuthOtpError } from "@/lib/auth/auth-otp-client";
+import { shouldOfferSetPassword } from "@/lib/auth/account-link";
+import { AuthTurnstile } from "@/components/auth/AuthTurnstile";
+import { PasskeyComingSoonButton } from "@/components/auth/PasskeyComingSoonButton";
+import { SetPasswordOffer } from "@/components/auth/SetPasswordOffer";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
   SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
@@ -112,6 +117,10 @@ export default function LoginPage() {
   const [phoneInputError, setPhoneInputError] = useState<string | null>(null);
   const [emailInputError, setEmailInputError] = useState<string | null>(null);
   const [passwordFailedSuggestOtp, setPasswordFailedSuggestOtp] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [offerSetPassword, setOfferSetPassword] = useState(false);
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -338,13 +347,9 @@ export default function LoginPage() {
     setFormError(null);
     setInfoBanner(null);
     try {
-      const supabase = getSupabaseClient();
       const phone = normalizeSupabaseAuthPhone(normalizedPhone);
-      const { error } = await supabase.auth.signInWithOtp({
-        phone,
-        options: { channel: "sms", shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ phone, captchaToken });
+      setCaptchaRequired(false);
       setSentPhoneE164(phone);
       setOtpSent(true);
       setOtpCode("");
@@ -352,6 +357,7 @@ export default function LoginPage() {
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setInfoBanner(`Code sent. Valid for about ${Math.max(1, Math.round(publicAuth.sms_otp_expiration_seconds / 60))} min.`);
     } catch (err: unknown) {
+      if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
       const msg = err instanceof Error ? err.message : "Failed to send OTP";
       setFormError(friendlyAuthErrorMessage(msg, "phone"));
     } finally {
@@ -365,14 +371,12 @@ export default function LoginPage() {
     setLoading(true);
     setFormError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.verifyOtp({
-        phone: sentPhoneE164,
-        token,
-        type: "sms",
-      });
-      if (error) throw error;
+      const { identities } = await verifyAuthOtp({ phone: sentPhoneE164, token, type: "sms" });
       writeSignupPhoneHandoff(sentPhoneE164);
+      if (shouldOfferSetPassword(identities)) {
+        setOfferSetPassword(true);
+        return;
+      }
       await routeAfterAuth("phone");
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Invalid code";
@@ -419,8 +423,8 @@ export default function LoginPage() {
     setFormError(null);
     setInfoBanner(null);
     try {
-      const { error } = await sendEmailSignInOtp(trimmedEmail);
-      if (error) throw error;
+      await sendAuthOtp({ email: trimmedEmail, captchaToken });
+      setCaptchaRequired(false);
       setSentEmailForOtp(trimmedEmail);
       setEmailOtpSent(true);
       setEmailOtpCode("");
@@ -441,13 +445,11 @@ export default function LoginPage() {
     setLoading(true);
     setFormError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.verifyOtp({
-        email: sentEmailForOtp,
-        token,
-        type: "email",
-      });
-      if (error) throw error;
+      const { identities } = await verifyAuthOtp({ email: sentEmailForOtp, token, type: "email" });
+      if (shouldOfferSetPassword(identities)) {
+        setOfferSetPassword(true);
+        return;
+      }
       await routeAfterAuth("email");
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Invalid code";
@@ -464,8 +466,7 @@ export default function LoginPage() {
     setEmailOtpResending(true);
     setFormError(null);
     try {
-      const { error } = await sendEmailSignInOtp(sentEmailForOtp);
-      if (error) throw error;
+      await sendAuthOtp({ email: sentEmailForOtp, captchaToken });
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + publicAuth.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
@@ -483,12 +484,7 @@ export default function LoginPage() {
     setOtpResending(true);
     setFormError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: normalizeSupabaseAuthPhone(sentPhoneE164),
-        options: { channel: "sms", shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ phone: normalizeSupabaseAuthPhone(sentPhoneE164), captchaToken });
       setOtpCode("");
       setOtpExpiresAt(Date.now() + publicAuth.sms_otp_expiration_seconds * 1000);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
@@ -516,10 +512,14 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await signInWithSession(trimmedEmail, password);
+      await signInWithSession(trimmedEmail, password, { rememberMe, captchaToken });
+      setCaptchaRequired(false);
       setFormError(null);
       await routeAfterAuth("email");
     } catch (err: unknown) {
+      if (err && typeof err === "object" && "captchaRequired" in err && (err as { captchaRequired?: boolean }).captchaRequired) {
+        setCaptchaRequired(true);
+      }
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
       const lower = msg.toLowerCase();
       // Accounts created via OTP/social have no password — guide users to email-code login.
@@ -587,6 +587,13 @@ export default function LoginPage() {
           <Link href="/" className="inline-block mb-6" aria-label="Beautonomi home">
             <Image src={logo} alt="Beautonomi" className="h-8 w-auto" />
           </Link>
+          <SetPasswordOffer
+            open={offerSetPassword}
+            onSkip={() => {
+              setOfferSetPassword(false);
+              void routeAfterAuth("email");
+            }}
+          />
           <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-1.5" id="login-heading">
             Welcome back
           </h1>
@@ -708,6 +715,7 @@ export default function LoginPage() {
                 <p className="mt-1.5 text-xs text-red-600" role="alert">{phoneInputError}</p>
               )}
             </div>
+            {captchaRequired ? <AuthTurnstile onToken={setCaptchaToken} /> : null}
             <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
               {loading ? (
                 <span className="flex items-center gap-2">{spinner} Sending code…</span>
@@ -1009,7 +1017,18 @@ export default function LoginPage() {
                 </p>
               )}
             </div>
-            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses}>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="login-remember-me"
+                checked={rememberMe}
+                onCheckedChange={(c) => setRememberMe(c === true)}
+              />
+              <label htmlFor="login-remember-me" className="text-xs text-gray-600 cursor-pointer">
+                {t("auth.rememberMe")}
+              </label>
+            </div>
+            {captchaRequired ? <AuthTurnstile onToken={setCaptchaToken} /> : null}
+            <Button type="submit" disabled={loading} aria-busy={loading} className={primaryCtaClasses} data-testid="login-submit">
               {loading ? (
                 <span className="flex items-center gap-2">{spinner} Signing in…</span>
               ) : (
@@ -1063,6 +1082,7 @@ export default function LoginPage() {
                   <span>{t("auth.continueWithApple")}</span>
                 </Button>
               )}
+              <PasskeyComingSoonButton />
             </div>
           </>
         )}

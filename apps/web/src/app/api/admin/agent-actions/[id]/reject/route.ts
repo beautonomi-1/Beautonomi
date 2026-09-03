@@ -5,6 +5,7 @@ import { recordApproval } from "@/lib/agents/actions/action-service";
 import { getAgentApprovalPolicy } from "@/lib/agents/actions/approval-policy";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { resumeAgentApprovalHook } from "@/workflows/resume-agent-approval-hook";
 
 /** Reject an agent action. Section/role requirements come from the server-side policy matrix. */
 export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       comments: typeof body.comments === "string" ? body.comments : undefined,
       allowedReviewerRoles: policy.approverRoles,
     });
+
+    await resumeAgentApprovalHook(id, "reject");
 
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({

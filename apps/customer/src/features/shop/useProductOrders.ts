@@ -18,6 +18,8 @@ export interface ProductOrder {
   platform_fee?: number | null;
   /** Amount applied from customer wallet at checkout. */
   wallet_amount?: number | null;
+  gift_card_amount?: number | null;
+  promotion_code?: string | null;
   total_amount: number;
   currency: string;
   payment_status: string;
@@ -146,6 +148,8 @@ export function useProductOrders() {
         collection_location_id?: string;
         payment_method?: string;
         use_wallet?: boolean;
+        promotion_code?: string;
+        gift_card?: { code: string; amount?: number };
         idempotency_key?: string;
       },
       opts?: { idempotencyKey?: string },

@@ -195,6 +195,25 @@ export function PreferencesPanel({
                 onCheckedChange={(checked) => updatePreference("showPrices", checked)}
               />
             </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <Label htmlFor="notify-drag" className="text-sm font-normal cursor-pointer">
+                    Notify client on drag
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Email/SMS the customer when you reschedule by dragging
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="notify-drag"
+                checked={preferences.notifyCustomerOnDrag !== false}
+                onCheckedChange={(checked) => updatePreference("notifyCustomerOnDrag", checked)}
+              />
+            </div>
           </div>
 
           <Separator />

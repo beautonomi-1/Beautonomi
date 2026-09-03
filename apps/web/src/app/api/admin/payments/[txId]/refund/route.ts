@@ -298,6 +298,20 @@ export async function POST(
       console.error("Error sending refund notifications:", notifError);
     }
 
+    void import("@/lib/integrations/slack/ops-triggers")
+      .then(({ slackNotifyHighValueRefund }) =>
+        slackNotifyHighValueRefund({
+          tenantId,
+          refundId: String(refundReference),
+          bookingId: txData.booking_id,
+          amountMajor: refundAmount,
+          stage: "processed",
+          actorUserId: user.id,
+          reason,
+        }),
+      )
+      .catch(() => undefined);
+
     return NextResponse.json({
       data: {
         refund_id: refundReference,

@@ -54,6 +54,7 @@ export interface ProviderDashboardStats {
   retail_sales_this_month?: number;
   earnings_mix_time_basis?: string;
   metrics_time_basis?: string;
+  unrecognized_payments_today?: number;
   tips_total?: number;
   tips_this_month?: number;
   gift_card_sales_total: number;

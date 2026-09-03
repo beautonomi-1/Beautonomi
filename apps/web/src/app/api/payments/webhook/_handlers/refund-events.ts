@@ -9,6 +9,8 @@ import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { reverseMembershipPayment } from "@/lib/memberships/reverse-membership-payment";
+import { reverseGiftCardOrder } from "@/lib/gift-cards/reverse-gift-card-order";
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 import { reverseProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import { reverseMarketingCreditTopupPayment } from "@/lib/marketing/marketing-credit-topup-payment";
@@ -255,84 +257,55 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
         }
       }
     } else if (giftCardOrderId) {
-      const { data: orderRow } = await supabase
-        .from("gift_card_orders")
-        .select("id, provider_id, tenant_id, total_amount, status")
-        .eq("id", giftCardOrderId)
-        .maybeSingle();
-
-      if (orderRow) {
-        const providerId = (orderRow as { provider_id?: string | null }).provider_id ?? null;
-        const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-          tenant_id: (orderRow as { tenant_id?: string | null }).tenant_id ?? null,
-          provider_id: providerId,
+      // Gift card refund: void the unspent cards and back out the 2400 liability
+      // (posts gift_card_refund; idempotent on the Paystack reference). The money
+      // has already left via Paystack, so a partially-spent order is refunded for
+      // the unspent remainder only — never more than the liability still on book.
+      const reversal = await reverseGiftCardOrder({
+        supabase,
+        orderId: String(giftCardOrderId),
+        reference: String(reference ?? ""),
+        refundAmountMajor: refundAmount > 0 ? refundAmount : null,
+        allowPartial: true,
+        reason: "paystack_refund",
+      });
+      if (reversal.ok === false) {
+        console.error("[refund-events] gift card order reversal not applied", {
+          giftCardOrderId,
+          reference,
+          reason: reversal.reason,
+          unspentBalance: reversal.unspentBalance,
         });
-        const { data: existingRefund } = await supabase
-          .from("finance_transactions")
-          .select("id")
-          .eq("transaction_type", "refund")
-          .ilike("description", `%gift card order ${giftCardOrderId}%`)
-          .limit(1);
-
-        if (!Array.isArray(existingRefund) || existingRefund.length === 0) {
-          await supabase
-            .from("gift_card_orders")
-            .update({ status: "refunded", updated_at: new Date().toISOString() })
-            .eq("id", giftCardOrderId);
-
-          await supabase.from("finance_transactions").insert({
-            booking_id: null,
-            provider_id: providerId,
-            tenant_id: refundLedgerTenantId,
-            transaction_type: "refund",
-            refund_component: "_legacy",
-            amount: refundAmount,
-            fees: 0,
-            commission: 0,
-            net: -refundAmount,
-            description: `Gift card order refund (${giftCardOrderId}) — liability reversed`,
-            created_at: new Date().toISOString(),
-          });
-        }
       }
     } else if (membershipOrderId) {
       const { data: orderRow } = await supabase
         .from("membership_orders")
-        .select("id, provider_id, tenant_id, total_amount, status")
+        .select("id, provider_id, tenant_id, user_id, total_amount, status")
         .eq("id", membershipOrderId)
         .maybeSingle();
 
       if (orderRow) {
         const providerId = (orderRow as { provider_id?: string | null }).provider_id ?? null;
+        const userId = (orderRow as { user_id?: string | null }).user_id ?? null;
         const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
           tenant_id: (orderRow as { tenant_id?: string | null }).tenant_id ?? null,
           provider_id: providerId,
         });
-        const { data: existingRefund } = await supabase
-          .from("finance_transactions")
-          .select("id")
-          .eq("transaction_type", "refund")
-          .ilike("description", `%membership order ${membershipOrderId}%`)
-          .limit(1);
 
-        if (!Array.isArray(existingRefund) || existingRefund.length === 0) {
-          await supabase
-            .from("membership_orders")
-            .update({ status: "refunded", updated_at: new Date().toISOString() })
-            .eq("id", membershipOrderId);
+        await supabase
+          .from("membership_orders")
+          .update({ status: "refunded", updated_at: new Date().toISOString() })
+          .eq("id", membershipOrderId);
 
-          await supabase.from("finance_transactions").insert({
-            booking_id: null,
-            provider_id: providerId,
-            tenant_id: refundLedgerTenantId,
-            transaction_type: "refund",
-            refund_component: "provider_earnings",
-            amount: refundAmount,
-            fees: 0,
-            commission: 0,
-            net: -refundAmount,
-            description: `Membership order refund (${membershipOrderId}) — provider earnings reversed`,
-            created_at: new Date().toISOString(),
+        if (providerId && userId) {
+          await reverseMembershipPayment({
+            supabase,
+            membershipOrderId,
+            providerId,
+            userId,
+            refundAmountMajor: refundAmount,
+            reference: String(reference ?? ""),
+            tenantIdHint: refundLedgerTenantId,
           });
         }
       }
@@ -400,6 +373,20 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
   }
 
   console.log(`Refund processed for transaction ${reference} — ${refundAmount}`);
+
+  if (refundAmount > 0) {
+    void import("@/lib/integrations/slack/ops-triggers")
+      .then(({ slackNotifyHighValueRefund }) =>
+        slackNotifyHighValueRefund({
+          refundId: refundRef,
+          bookingId: (txn as { booking_id?: string | null } | null)?.booking_id ?? null,
+          amountMajor: refundAmount,
+          stage: "processed",
+          reason: "paystack_refund.processed",
+        }),
+      )
+      .catch(() => undefined);
+  }
 }
 
 async function handleRefundFailed(data: Record<string, unknown>, supabase: SupabaseClient) {

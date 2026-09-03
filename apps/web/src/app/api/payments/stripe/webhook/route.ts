@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+
+export const maxDuration = 60;
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
+import { persistFailedWebhookSignature } from "@/lib/payment/persist-failed-webhook-signature";
 import type { VerifiedWebhookEvent } from "@/lib/payments/provider/types";
 import {
   handleStripeChargeRefunded,
@@ -153,6 +156,18 @@ export async function POST(request: Request) {
     verified = await verifyStripeWebhookAcrossTenants(body, signature, candidateTenantIds);
   } catch (err) {
     console.error("[stripe/webhook] signature verification failed:", err);
+    let parsed: Record<string, unknown> | undefined;
+    try {
+      parsed = JSON.parse(body) as Record<string, unknown>;
+    } catch {
+      parsed = undefined;
+    }
+    await persistFailedWebhookSignature(getSupabaseAdmin(), {
+      source: "stripe",
+      body,
+      errorMessage: String(err instanceof Error ? err.message : err),
+      parsedPayload: parsed,
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -236,9 +251,30 @@ export async function POST(request: Request) {
       case "charge.refunded":
         await handleStripeChargeRefunded(eventObject);
         break;
-      case "payment_intent.payment_failed":
+      case "payment_intent.payment_failed": {
         console.info("[stripe/webhook] received", eventType, eventId);
+        const intent = eventObject as {
+          id?: string;
+          amount?: number;
+          currency?: string;
+          receipt_email?: string | null;
+          last_payment_error?: { message?: string | null } | null;
+          metadata?: Record<string, unknown> | null;
+        };
+        const meta = intent.metadata && typeof intent.metadata === "object" ? intent.metadata : {};
+        const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");
+        slackNotifyPaymentFailed({
+          source: "stripe",
+          reference: intent.id ?? eventId,
+          bookingId: typeof meta.booking_id === "string" ? meta.booking_id : null,
+          orderId: typeof meta.product_order_id === "string" ? meta.product_order_id : null,
+          amountMajor: typeof intent.amount === "number" ? intent.amount / 100 : null,
+          currency: intent.currency ? String(intent.currency).toUpperCase() : null,
+          reason: intent.last_payment_error?.message ?? "payment_intent.payment_failed",
+          customerEmail: intent.receipt_email ?? null,
+        });
         break;
+      }
       case "charge.dispute.created":
         await handleStripeChargeDisputeCreated(eventObject, eventId);
         break;

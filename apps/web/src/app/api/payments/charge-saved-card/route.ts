@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { chargeAuthorization, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 import { convertFromSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -52,11 +53,14 @@ const chargeSavedCardSchema = z
       typeof m.gift_card_order_id === "string" && String(m.gift_card_order_id).trim().length > 0;
     const hasAdditionalCharge =
       typeof m.additional_charge_id === "string" && String(m.additional_charge_id).trim().length > 0;
+    const hasAdsBudgetOrder =
+      typeof m.ads_budget_order_id === "string" && String(m.ads_budget_order_id).trim().length > 0;
     if (
       !hasProductOrder &&
       !hasBooking &&
       !hasGiftCardOrder &&
       !hasAdditionalCharge &&
+      !hasAdsBudgetOrder &&
       (val.amount == null || val.amount <= 0)
     ) {
       ctx.addIssue({
@@ -165,6 +169,12 @@ export async function POST(request: NextRequest) {
       typeof meta.additional_charge_id === "string" && meta.additional_charge_id.trim()
         ? meta.additional_charge_id.trim()
         : null;
+    const adsBudgetOrderIdFromMeta =
+      typeof meta.ads_budget_order_id === "string" && meta.ads_budget_order_id.trim()
+        ? meta.ads_budget_order_id.trim()
+        : null;
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     if (productOrderIdFromMeta) {
       const { data: poRow, error: poErr } = await (supabase.from("product_orders") as any)
@@ -270,6 +280,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (adsBudgetOrderIdFromMeta && !productOrderIdFromMeta && !bookingIdFromMeta) {
+      const { data: adsOrder } = await supabaseAdmin
+        .from("ads_budget_orders")
+        .select("id, provider_id, amount, status")
+        .eq("id", adsBudgetOrderIdFromMeta)
+        .maybeSingle();
+      if (!adsOrder) return notFoundResponse("Ads budget order not found");
+      const adsProviderId = String((adsOrder as { provider_id?: string }).provider_id ?? "");
+      const { getProviderIdForUser } = await import("@/lib/supabase/api-helpers");
+      const callerProviderId = await getProviderIdForUser(user.id, supabase);
+      if (!callerProviderId || callerProviderId !== adsProviderId) {
+        return errorResponse("You do not have access to this ads order", "FORBIDDEN", 403);
+      }
+      if (String((adsOrder as { status?: string }).status ?? "") === "paid") {
+        return errorResponse("This ads order is already paid", "ALREADY_PAID", 400);
+      }
+    }
+
     if (bookingIdFromMeta && !productOrderIdFromMeta) {
       const { data: bookingRow, error: bookingErr } = await supabase
         .from("bookings")
@@ -324,13 +352,23 @@ export async function POST(request: NextRequest) {
         return errorResponse("Invalid gift card order amount", "INVALID_ORDER", 400);
       }
       amountInSmallestUnit = convertToSmallestUnit(total);
+    } else if (adsBudgetOrderIdFromMeta && !productOrderIdFromMeta && !bookingIdFromMeta) {
+      const { data: adsOrderAmount } = await supabaseAdmin
+        .from("ads_budget_orders")
+        .select("amount")
+        .eq("id", adsBudgetOrderIdFromMeta)
+        .maybeSingle();
+      const adsAmount = Number((adsOrderAmount as { amount?: number } | null)?.amount ?? 0);
+      if (!Number.isFinite(adsAmount) || adsAmount <= 0) {
+        return errorResponse("Invalid ads order amount", "INVALID_ORDER", 400);
+      }
+      amountInSmallestUnit = convertToSmallestUnit(adsAmount);
     } else if (bookingIdFromMeta) {
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
-      const admin = getSupabaseAdmin();
-      const slotOk = await revalidateBookingSlotBeforePayment(admin, bookingIdFromMeta);
+      const slotOk = await revalidateBookingSlotBeforePayment(supabaseAdmin, bookingIdFromMeta);
       if (slotOk.ok === false) {
         return errorResponse(slotOk.message, slotOk.code, 409);
       }
@@ -348,11 +386,14 @@ export async function POST(request: NextRequest) {
             ? "booking"
             : giftCardOrderIdFromMeta
               ? "giftcard"
-              : "savedcard",
+              : adsBudgetOrderIdFromMeta
+                ? "ads_budget"
+                : "savedcard",
       productOrderIdFromMeta ??
         additionalChargeIdFromMeta ??
         bookingIdFromMeta ??
         giftCardOrderIdFromMeta ??
+        adsBudgetOrderIdFromMeta ??
         user.id
     );
 
@@ -369,6 +410,16 @@ export async function POST(request: NextRequest) {
     );
 
     if (!chargeResult.status) {
+      const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");
+      slackNotifyPaymentFailed({
+        source: "saved_card",
+        reference: chargeReference,
+        bookingId: bookingIdFromMeta || additionalChargeBookingId,
+        orderId: productOrderIdFromMeta,
+        amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+        reason: chargeResult.message || "Charge failed",
+        customerEmail: body.email,
+      });
       return handleApiError(
         new Error(chargeResult.message || "Charge failed"),
         "Failed to charge card",
@@ -377,13 +428,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
     const chargeStatus = String(chargeResult.data?.status ?? "");
     const chargeSucceeded = chargeStatus === "success";
 
     // Additional-charge card-on-file: settle commission + earnings accounting.
     if (additionalChargeIdFromMeta && additionalChargeBookingId) {
       if (!chargeSucceeded) {
+        if (chargeStatus === "failed") {
+          const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");
+          slackNotifyPaymentFailed({
+            source: "saved_card",
+            reference: chargeReference,
+            bookingId: additionalChargeBookingId,
+            amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+            reason: chargeResult.message || "Card charge did not complete",
+            customerEmail: body.email,
+          });
+        }
         return errorResponse(
           chargeResult.message || "Card charge did not complete. Try again or use a different card.",
           chargeStatus === "failed" ? "CHARGE_FAILED" : "CHARGE_PENDING",
@@ -465,6 +526,18 @@ export async function POST(request: NextRequest) {
     // already wrote the booking_payments row and the finance ledger.
     if (bookingIdFromMeta && !additionalChargeIdFromMeta) {
       if (!chargeSucceeded) {
+        if (chargeStatus === "failed") {
+          const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");
+          slackNotifyPaymentFailed({
+            source: "saved_card",
+            reference: chargeReference,
+            bookingId: bookingIdFromMeta,
+            orderId: productOrderIdFromMeta,
+            amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+            reason: chargeResult.message || "Card charge did not complete",
+            customerEmail: body.email,
+          });
+        }
         return errorResponse(
           chargeResult.message || "Card charge did not complete. Try again or use a different card.",
           chargeStatus === "failed" ? "CHARGE_FAILED" : "CHARGE_PENDING",
@@ -500,6 +573,30 @@ export async function POST(request: NextRequest) {
           recordedPayment
         );
       }
+      const chargeFees =
+        typeof (chargeData as { fees?: number }).fees === "number"
+          ? (chargeData as { fees?: number }).fees
+          : 0;
+      const requiresDeposit = Boolean(meta.requires_deposit);
+      const paymentOptionMeta =
+        typeof meta.payment_option === "string" ? meta.payment_option : "full";
+      const isDepositPayment = requiresDeposit && paymentOptionMeta !== "full";
+      const settlement = await recordPaystackBookingSettlement(supabaseAdmin, {
+        bookingId: bookingIdFromMeta,
+        reference: chargeData.reference ?? chargeReference,
+        amountMajor,
+        feesSmallestOrMajor: chargeFees,
+        bookingPaymentId: recordedPayment.ok ? recordedPayment.bookingPaymentId : null,
+        isDeposit: isDepositPayment,
+        feeSource: "charge_saved_card",
+        metadata: { source: "charge_saved_card", ...meta },
+      });
+      if (!settlement.ok) {
+        console.error(
+          "[charge-saved-card] ledger settlement failed after charge; reconcile cron will retry",
+          { bookingId: bookingIdFromMeta, settlement },
+        );
+      }
       try {
         await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingIdFromMeta, {
           paymentReference: chargeData.reference ?? chargeReference,
@@ -507,6 +604,35 @@ export async function POST(request: NextRequest) {
         });
       } catch (syncErr) {
         console.error("[charge-saved-card] Failed to sync booking after charge:", syncErr);
+      }
+    }
+
+    if (
+      adsBudgetOrderIdFromMeta &&
+      !productOrderIdFromMeta &&
+      !bookingIdFromMeta &&
+      chargeSucceeded &&
+      chargeResult.data?.reference
+    ) {
+      try {
+        const chargeData = chargeResult.data as { reference?: string; amount?: number; fees?: number };
+        await supabaseAdmin
+          .from("ads_budget_orders")
+          .update({ payment_method: "saved_card", updated_at: new Date().toISOString() })
+          .eq("id", adsBudgetOrderIdFromMeta);
+        const { recordAdsBudgetOrderPayment } = await import("@/lib/ads/ads-budget-order-payment");
+        await recordAdsBudgetOrderPayment({
+          supabase: supabaseAdmin,
+          orderId: adsBudgetOrderIdFromMeta,
+          reference: String(chargeData.reference ?? chargeReference),
+          amountMajor: convertFromSmallestUnit(
+            typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+          ),
+          feesMajor: convertFromSmallestUnit(typeof chargeData.fees === "number" ? chargeData.fees : 0),
+          paymentProvider: "paystack",
+        });
+      } catch (adsErr) {
+        console.error("[charge-saved-card] Failed to fund ads campaign after charge:", adsErr);
       }
     }
 

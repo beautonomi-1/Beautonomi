@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { syncApprovalStatus } from "@/lib/whatsapp/content-templates";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
+const JOB_NAME = "sync-whatsapp-template-status";
 const BATCH_LIMIT = 25;
 
 /**
@@ -13,6 +16,14 @@ const BATCH_LIMIT = 25;
  * Poll Twilio for pending WhatsApp Content template approvals.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

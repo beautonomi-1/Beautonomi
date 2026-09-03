@@ -18,12 +18,19 @@ export async function GET() {
 
     const settings = (row?.settings as Record<string, unknown> | undefined) ?? {};
     const security = (settings.security as Record<string, unknown> | undefined) ?? {};
-    const tf = (security.two_factor as { enabled?: boolean; required_for_admins?: boolean } | undefined) ?? {};
+    const tf =
+      (security.two_factor as
+        | { enabled?: boolean; required_for_admins?: boolean; required_roles?: unknown }
+        | undefined) ?? {};
 
     return NextResponse.json({
       data: {
         two_factor_enabled: tf.enabled === true,
-        two_factor_required_for_admins: tf.required_for_admins === true,
+        // Default is true (Part L): superadmin + admin_finance must use MFA when 2FA is enabled.
+        two_factor_required_for_admins: tf.required_for_admins !== false,
+        two_factor_required_roles: Array.isArray(tf.required_roles)
+          ? (tf.required_roles as unknown[]).filter((r): r is string => typeof r === "string")
+          : ["superadmin", "admin_finance"],
       },
     });
   } catch {

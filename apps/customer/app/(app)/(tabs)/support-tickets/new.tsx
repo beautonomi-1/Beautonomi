@@ -17,6 +17,7 @@ import {
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { trackSupportTicketCreated } from "@/lib/analytics";
+import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId, supportPrefillNoun } from "@beautonomi/utils";
 
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking" },
@@ -34,12 +35,21 @@ export default function NewSupportTicketScreen() {
   const sn = useCallback((key: string) => t(`customer.mobile.screens.supportTicketsNew.${key}`), [t]);
   const router = useRouter();
   const handleBack = useSafetyStackBack();
-  const params = useLocalSearchParams<{ category?: string; booking_id?: string }>();
+  const params = useLocalSearchParams<{
+    category?: string;
+    booking_id?: string;
+    booking_number?: string;
+    order_id?: string;
+    order_number?: string;
+    gift_card_id?: string;
+    gift_card_code?: string;
+  }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
   const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
   const [supportContextLabel, setSupportContextLabel] = useState("");
+  const [supportContextId, setSupportContextId] = useState<string | null>(null);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,11 +61,27 @@ export default function NewSupportTicketScreen() {
       if (derived.priority) setPriority(derived.priority);
       if (derived.subject) setSubject(derived.subject);
     }
-    if (typeof params.booking_id === "string" && params.booking_id.trim()) {
-      setSupportContextType("booking");
-      setSupportContextLabel(params.booking_id.trim());
+    const prefill = resolveSupportTicketPrefillFromSearch({
+      bookingId: typeof params.booking_id === "string" ? params.booking_id : null,
+      bookingNumber: typeof params.booking_number === "string" ? params.booking_number : null,
+      orderId: typeof params.order_id === "string" ? params.order_id : null,
+      orderNumber: typeof params.order_number === "string" ? params.order_number : null,
+      giftCardId: typeof params.gift_card_id === "string" ? params.gift_card_id : null,
+      giftCardCode: typeof params.gift_card_code === "string" ? params.gift_card_code : null,
+      category: preset || null,
+    });
+    if (prefill.supportContextType) {
+      setSupportContextType(prefill.supportContextType);
+      setSupportContextLabel(prefill.supportContextLabel);
+      setSupportContextId(prefill.supportContextId);
+      if (!preset) {
+        const kind = supportPrefillNoun(prefill.supportContextType);
+        setSubject((current) =>
+          current.trim() ? current : `Help with ${kind} ${prefill.supportContextLabel.split(" (")[0]}`,
+        );
+      }
     }
-  }, [params.category, params.booking_id]);
+  }, [params.category, params.booking_id, params.booking_number, params.order_id, params.order_number, params.gift_card_id, params.gift_card_code]);
 
   const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
 
@@ -70,6 +96,7 @@ export default function NewSupportTicketScreen() {
         category,
         priority,
         support_context_type: supportContextType,
+        support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
         support_context_label: supportContextLabel.trim() || null,
       });
       if (res.error) {

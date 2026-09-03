@@ -6,8 +6,12 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { withNoStore } from "@/lib/http/no-store";
 
-export async function POST(request: NextRequest) {
+/** Event ingestion is per-request; responses are `Cache-Control: no-store` (never edge-cached). */
+export const POST = withNoStore(handlePost);
+
+async function handlePost(request: NextRequest) {
   try {
     const body = await request.json();
     const eventType =

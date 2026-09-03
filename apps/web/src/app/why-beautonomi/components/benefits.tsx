@@ -46,7 +46,7 @@ export default function Benefits({ content }: BenefitsProps) {
     content?.benefits_description?.content ||
     "Join thousands of beauty professionals who trust Beautonomi to power their bookings, payments, and client relationships — every single day.";
   const ctaText = content?.benefits_cta_text?.content || "Start your journey";
-  const ctaUrl = content?.benefits_cta_url?.content || "/signup?type=provider";
+  const ctaUrl = content?.benefits_cta_url?.content || "/provider/signup";
   const benefitsImage = content?.benefits_image?.content;
 
   return (

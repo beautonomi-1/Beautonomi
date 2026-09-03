@@ -1,4 +1,4 @@
-import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
+import { SLACK_EVENT_KEYS, SLACK_EVENT_KEY_ALIASES } from "@/lib/integrations/slack/event-keys";
 
 export type SlackRouteRule = {
   enabled: boolean;
@@ -23,8 +23,22 @@ function defaultDedupeWindowSeconds(key: string): number {
   if (key.includes(".queue.") || key.includes(".pipeline.") || key.includes("digest")) {
     return 86_400;
   }
-  if (key.includes("stale") || key.includes("overdue") || key.includes("blocked") || key.includes("reconciliation")) {
+  if (
+    key.includes("stale") ||
+    key.includes("overdue") ||
+    key.includes("blocked") ||
+    key.includes("reconciliation") ||
+    key.includes("unrecognized_payments")
+  ) {
     return 21_600;
+  }
+  if (
+    key.includes("cron.failed") ||
+    key.includes("workflow.failed") ||
+    key.includes("signature_rejected") ||
+    key.includes("churned")
+  ) {
+    return 3_600;
   }
   if (
     key.includes("payout") ||
@@ -41,7 +55,8 @@ function defaultDedupeWindowSeconds(key: string): number {
 export function mergeSlackRouting(existing: unknown): Record<string, SlackRouteRule> {
   const base = defaultSlackRouting();
   if (!existing || typeof existing !== "object") return base;
-  for (const [k, v] of Object.entries(existing as Record<string, unknown>)) {
+  for (const [rawKey, v] of Object.entries(existing as Record<string, unknown>)) {
+    const k = SLACK_EVENT_KEY_ALIASES[rawKey] ?? rawKey;
     if (!base[k]) continue;
     const r = v as Record<string, unknown>;
     base[k] = {

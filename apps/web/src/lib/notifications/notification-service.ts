@@ -11,7 +11,12 @@ import {
   withTenantVariable,
 } from "./dispatch-template-notification";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderTeamUserIds } from "@/lib/notifications/notify-provider-team";
+import { getProviderStaffUserIds, getProviderTeamUserIds } from "@/lib/notifications/notify-provider-team";
+import {
+  collectAssignedStaffIds,
+  resolveBookingProviderRecipients,
+  type BookingLikeForRecipients,
+} from "@/lib/notifications/resolve-booking-notification-recipients";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
@@ -37,25 +42,28 @@ import {
  * transient DB hiccup, or a provider with no linked staff and a null
  * `user_id`), we fall back to the original owner id so we never silently
  * drop the notification entirely.
+ *
+ * §Part M (2026-09, OneSignal fan-out): when a `booking` is supplied and it has
+ * assigned staff (`booking_services.staff_id`), recipients default to the
+ * ASSIGNED staff + owner. Team-wide fan-out is now only the fallback for
+ * bookings with no assignee (or none with an app login). Non-booking callers
+ * (payouts, subscriptions) keep the team-wide behaviour.
  */
 async function resolveProviderRecipients(
   providerId: string | null | undefined,
   ownerUserId: string | null | undefined,
+  booking?: BookingLikeForRecipients | null,
 ): Promise<string[]> {
-  if (!providerId) {
-    return ownerUserId ? [ownerUserId] : [];
-  }
-  try {
-    const team = await getProviderTeamUserIds(providerId);
-    if (team.length > 0) return team;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[notification-service] getProviderTeamUserIds(${providerId}) failed — falling back to owner only`,
-      err,
-    );
-  }
-  return ownerUserId ? [ownerUserId] : [];
+  const { recipients } = await resolveBookingProviderRecipients({
+    providerId,
+    ownerUserId,
+    assignedStaffIds: collectAssignedStaffIds(booking),
+    loaders: {
+      loadStaffUserIds: getProviderStaffUserIds,
+      loadTeamUserIds: getProviderTeamUserIds,
+    },
+  });
+  return recipients;
 }
 
 /**
@@ -499,6 +507,7 @@ export async function notifyBookingCancelled(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_booking_cancelled",
@@ -564,6 +573,7 @@ export async function notifyBookingRescheduled(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_booking_rescheduled",
@@ -1470,6 +1480,7 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
   const recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
+    booking,
   );
 
   return await dispatchTemplateNotification(
@@ -1515,6 +1526,7 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
   const recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
+    booking,
   );
 
   return await dispatchTemplateNotification(
@@ -1547,6 +1559,7 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
   const recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
+    booking,
   );
 
   return await dispatchTemplateNotification(
@@ -1579,6 +1592,7 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
   const recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
+    booking,
   );
 
   return await dispatchTemplateNotification(
@@ -2137,6 +2151,7 @@ export async function notifyBookingTimeChanged(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_booking_time_changed",
@@ -2182,6 +2197,7 @@ export async function notifyBookingDateChanged(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_booking_date_changed",
@@ -2976,6 +2992,7 @@ export async function notifyDisputeOpened(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_dispute_opened",
@@ -3021,6 +3038,7 @@ export async function notifyDisputeResolved(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_dispute_resolved",
@@ -3169,6 +3187,7 @@ export async function notifySpecialInstructionsAdded(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_special_instructions",
@@ -3210,6 +3229,7 @@ export async function notifyAllergyAlert(
   const recipients = await resolveProviderRecipients(
     booking.provider_id,
     booking.provider.user_id,
+    booking,
   );
 
   return await dispatchTemplateNotification(
@@ -3252,6 +3272,7 @@ export async function notifyWeatherAlert(
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,
+      booking,
     );
     await dispatchTemplateNotification(
       "provider_weather_alert",

@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type DriftRow = {
@@ -17,7 +18,18 @@ type DriftRow = {
   last_posted_at: string | null;
 };
 
+const JOB_NAME = "gl-currency-drift";
+export const maxDuration = 300;
+
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

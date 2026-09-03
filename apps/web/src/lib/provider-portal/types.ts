@@ -62,6 +62,8 @@ export interface TeamMember {
   time_clock_pin?: string;
   /** Staff-specific working hours (day key -> { open, close, closed }). From provider_staff.working_hours. */
   working_hours?: Record<string, WorkingHoursDay> | null;
+  /** Set when this staff row was auto-deactivated after a plan downgrade over the staff cap. */
+  over_cap_grace_until?: string | null;
 }
 
 export interface ServiceCategory {
@@ -219,6 +221,8 @@ export interface Appointment {
   service_customization?: string; // Service customization/request notes
   team_member_id: string;
   team_member_name: string;
+  /** Request-only: include on PATCH so the customer is notified of a reschedule. */
+  notify_customer?: boolean;
   scheduled_date: string;
   scheduled_time: string;
   duration_minutes: number;
@@ -290,6 +294,7 @@ export interface Appointment {
   membership_discount_amount?: number;
   // At-home tracking
   current_stage?: "confirmed" | "client_arrived" | "provider_on_way" | "provider_arrived" | "service_started" | "service_completed";
+  estimated_arrival?: string | null;
   arrival_otp?: string | null;
   arrival_otp_expires_at?: string | null;
   arrival_otp_verified?: boolean;

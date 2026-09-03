@@ -15,6 +15,10 @@ import crypto from "crypto";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  computeGiftCardExpiresAt,
+  resolveGiftCardValidityMonths,
+} from "@/lib/gift-cards/gift-card-expiry";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
 import type { PaystackEvent, SupabaseClient } from "./shared";
@@ -55,6 +59,7 @@ import {
 } from "@/lib/ads/ads-budget-order-payment";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/api/payments/webhook/_handlers/subscription-events";
+import { slackNotifyPaymentFailed } from "@/lib/integrations/slack/ops-triggers";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -148,6 +153,25 @@ type ChargeBookingRow = Record<string, unknown> & {
   promotion_discount_amount?: number;
   tenant_id?: string | null;
 };
+
+function emitPaystackPaymentFailedSlack(
+  data: PaystackChargeData,
+  extras?: { bookingId?: string | null; orderId?: string | null },
+) {
+  slackNotifyPaymentFailed({
+    source: "paystack",
+    reference: data.reference ?? null,
+    bookingId:
+      extras?.bookingId ??
+      (typeof data.metadata?.booking_id === "string" ? data.metadata.booking_id : null),
+    orderId:
+      extras?.orderId ??
+      (typeof data.metadata?.product_order_id === "string" ? data.metadata.product_order_id : null),
+    amountMajor: typeof data.amount === "number" ? convertFromSmallestUnit(data.amount) : null,
+    reason: data.gateway_response || data.message || null,
+    customerEmail: data.customer?.email ?? null,
+  });
+}
 
 // ─── Exported Handlers ───────────────────────────────────────────────────────
 
@@ -1033,6 +1057,13 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         transaction_id: reference,
       },
       bookingData.customer_id,
+      {
+        insertId: `${reference}:payment_success`,
+        revenue: amountInCurrency,
+        revenueType: "booking",
+        productId: String(metadata.booking_id),
+        quantity: 1,
+      },
     );
   } catch (amplitudeError) {
     console.error("[Amplitude] Failed to track payment success:", amplitudeError);
@@ -1085,6 +1116,8 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     .select("id");
 
   if ((claimed?.length ?? 0) === 0) return;
+
+  emitPaystackPaymentFailedSlack(data, { orderId: o.id });
 
   await creditWalletForProductOrderIfNeeded(supabase, o, "Wallet refund (card payment failed)", "product_order_payment_failed");
 
@@ -1274,26 +1307,34 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     }
     const subscriptionCode = extractPaystackSubscriptionCodeFromCharge(data);
     if (subscriptionCode) {
+      emitPaystackPaymentFailedSlack(data);
       await handleSubscriptionRenewalChargeFailed(data, subscriptionCode, supabase);
       return;
     }
     if (metadata?.custom_offer_id) {
+      emitPaystackPaymentFailedSlack(data);
       await handleCustomOfferFailed({ reference, metadata, message, gateway_response }, supabase);
       return;
     }
     if (metadata?.wallet_topup_id) {
+      emitPaystackPaymentFailedSlack(data);
       await handleWalletTopupFailed({ reference, metadata, message, gateway_response }, supabase);
       return;
     }
     if (metadata?.gift_card_order_id) {
-      await handleGiftCardOrderFailed({ reference, metadata, message }, supabase);
+      const claimedGiftCard = await handleGiftCardOrderFailed({ reference, metadata, message }, supabase);
+      if (claimedGiftCard) {
+        emitPaystackPaymentFailedSlack(data, { orderId: String(metadata.gift_card_order_id) });
+      }
       return;
     }
     if (metadata?.membership_order_id) {
+      emitPaystackPaymentFailedSlack(data, { orderId: String(metadata.membership_order_id) });
       await handleMembershipOrderFailed({ reference, metadata, message }, supabase);
       return;
     }
     if (metadata?.provider_subscription_order_id) {
+      emitPaystackPaymentFailedSlack(data, { orderId: String(metadata.provider_subscription_order_id) });
       await handleProviderSubscriptionOrderFailed({ reference, metadata, message }, supabase);
       return;
     }
@@ -1301,6 +1342,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       // Covers the success-then-failed race (a prior charge.success funded the
       // campaign, then a later charge.failed/reversal arrives): stop serving and
       // back out the revenue. For a never-paid order this just marks it failed.
+      emitPaystackPaymentFailedSlack(data, { orderId: String(metadata.ads_budget_order_id) });
       await reverseAdsBudgetOrderPayment({
         supabase,
         orderId: String(metadata.ads_budget_order_id),
@@ -1316,6 +1358,9 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
 
   // Additional charge failure flow
   if (metadata?.additional_charge_id) {
+    emitPaystackPaymentFailedSlack(data, {
+      bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
+    });
     await handleAdditionalChargeFailed(
       { reference, metadata, message, gateway_response },
       supabase,
@@ -1378,6 +1423,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     } catch (notifError) {
       console.error("Error sending booking_remaining failure notification:", notifError);
     }
+    emitPaystackPaymentFailedSlack(data, { bookingId: metadata.booking_id });
     return;
   }
 
@@ -1430,6 +1476,8 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     );
     return;
   }
+
+  emitPaystackPaymentFailedSlack(data, { bookingId: metadata.booking_id });
 
   const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
     supabase,
@@ -1956,6 +2004,8 @@ async function handleGiftCardOrderSuccess(
 
   const giftCardIds: string[] = [];
   const giftCardCodes: string[] = [];
+  const validityMonths = await resolveGiftCardValidityMonths(supabase, giftOrderFinanceTenantId);
+  const giftCardExpiresAt = computeGiftCardExpiresAt(new Date(), validityMonths);
 
   for (let i = 0; i < quantity; i++) {
     let code = generateGiftCardCode();
@@ -1975,6 +2025,7 @@ async function handleGiftCardOrderSuccess(
         initial_balance: value,
         balance: value,
         is_active: true,
+        expires_at: giftCardExpiresAt,
         tenant_id: giftOrderFinanceTenantId,
         metadata: {
           source: "purchase",
@@ -2138,9 +2189,9 @@ async function handleGiftCardOrderSuccess(
 async function handleGiftCardOrderFailed(
   payload: { reference: string; metadata: any; message: any },
   supabase: SupabaseClient,
-) {
+): Promise<boolean> {
   const orderId = payload.metadata.gift_card_order_id as string;
-  if (!orderId) return;
+  if (!orderId) return false;
 
   const { data: claimedOrder } = await supabase
     .from("gift_card_orders")
@@ -2153,7 +2204,9 @@ async function handleGiftCardOrderFailed(
     console.log(
       `[charge.failed] Skipping gift card order failure — order ${orderId} no longer pending`,
     );
+    return false;
   }
+  return true;
 }
 
 // ─── Membership Order ────────────────────────────────────────────────────────
@@ -3396,7 +3449,17 @@ async function handleAdditionalChargeSuccess(
     );
     throw err;
   }
-  if ((charge as { status?: string }).status === "paid") return;
+  if ((charge as { status?: string }).status === "paid") {
+    try {
+      const { notifyAdditionalChargePaid } = await import(
+        "@/lib/notifications/notify-additional-charge-paid"
+      );
+      await notifyAdditionalChargePaid(supabase, chargeId);
+    } catch {
+      /* best-effort */
+    }
+    return;
+  }
 
   const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
   const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
@@ -3446,6 +3509,14 @@ async function handleAdditionalChargeSuccess(
   if (paymentTxInsertError) {
     if (paymentTxInsertError.code === "23505") {
       console.log(`Additional charge payment ${reference} was settled concurrently`);
+      try {
+        const { notifyAdditionalChargePaid } = await import(
+          "@/lib/notifications/notify-additional-charge-paid"
+        );
+        await notifyAdditionalChargePaid(supabase, chargeId);
+      } catch {
+        /* best-effort */
+      }
       return;
     }
     throw paymentTxInsertError;
@@ -3575,89 +3646,31 @@ async function handleAdditionalChargeSuccess(
     created_by: bookingData.customer_id,
   });
 
-  // In-app notification rows
   try {
-    const { insertNotification } = await import("@/lib/notifications/insert-notification");
-    const bookingRef = bookingData.booking_number || bookingId.slice(0, 8).toUpperCase();
-    const notifCurrency = bookingData.currency || "ZAR";
-    await insertNotification({
-      user_id: bookingData.customer_id,
-      type: "additional_charge_paid",
-      title: "Additional Payment Confirmed",
-      message: `Your additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} for booking #${bookingRef} was successful.`,
-      data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
-      action_url: `/account-settings/bookings/${bookingId}`,
-    });
-    const { data: providerRowForNotif } = await supabase
-      .from("providers")
-      .select("user_id")
-      .eq("id", bookingData.provider_id)
-      .single();
-    const providerUserIdForNotif = (providerRowForNotif as { user_id?: string } | null)?.user_id;
-    if (providerUserIdForNotif) {
-      await insertNotification({
-        user_id: providerUserIdForNotif,
-        type: "additional_charge_paid",
-        title: "Additional Payment Received",
-        message: `Additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} received for booking #${bookingRef}.`,
-        data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
-        action_url: `/provider/bookings/${bookingId}`,
-      });
-    }
+    const { notifyAdditionalChargePaid } = await import(
+      "@/lib/notifications/notify-additional-charge-paid"
+    );
+    await notifyAdditionalChargePaid(supabase, chargeId);
   } catch (notifErr) {
-    console.warn("[additional-charge-webhook] in-app notification failed:", notifErr);
+    console.warn("[additional-charge-webhook] notification failed:", notifErr);
   }
 
-  // Push notification (customer + provider)
   try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
-    const notifyCurrency =
-      bookingData.currency ||
-      (await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
-        supabase,
-        providerId: bookingData.provider_id,
-      }));
-    await sendToUser(
-      bookingData.customer_id,
-      {
-        title: "Additional Payment Confirmed",
-        message: `Your additional payment of ${notifyCurrency} ${amountInCurrency.toFixed(2)} was successful.`,
-        data: {
-          type: "additional_payment_paid",
-          booking_id: bookingId,
-          charge_id: chargeId,
-        },
-        url: `/account-settings/bookings/${bookingId}`,
-      },
-      ["push"],
-      { appType: "customer" }
+    const { trackAdditionalChargePaidServer } = await import(
+      "@/lib/analytics/amplitude/track-additional-charge-paid-server"
     );
-
-    const { data: providerRow } = await supabase
-      .from("providers")
-      .select("user_id")
-      .eq("id", bookingData.provider_id)
-      .single();
-    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
-    if (providerUserId) {
-      await sendToUser(
-        providerUserId,
-        {
-          title: "Additional Payment Received",
-          message: `Additional payment received for booking ${bookingData.booking_number}.`,
-          data: {
-            type: "additional_payment_paid_provider",
-            booking_id: bookingId,
-            charge_id: chargeId,
-          },
-          url: `/provider/bookings/${bookingId}`,
-        },
-        ["push"],
-        { appType: "provider" }
-      );
-    }
-  } catch (notifError) {
-    console.error("Error sending additional charge success notifications:", notifError);
+    await trackAdditionalChargePaidServer({
+      reference,
+      bookingId,
+      chargeId,
+      amount: totalEconomicAmount,
+      currency: bookingData.currency,
+      customerId: bookingData.customer_id,
+      paymentMethod: "card",
+      paymentProvider: "paystack",
+    });
+  } catch (analyticsErr) {
+    console.error("[Amplitude] Failed to track additional_charge_paid:", analyticsErr);
   }
 }
 

@@ -135,8 +135,12 @@ describe("recordSuccessfulProviderSubscriptionRenewalFromInvoice", () => {
       providerId: "22222222-2222-4222-8222-222222222222",
     });
 
-    expect(subscriptionUpdates).toHaveLength(1);
+    // 1) renewal handler reactivates + extends expiry; 2) payment recorder stamps the billing period.
+    expect(subscriptionUpdates).toHaveLength(2);
     expect((subscriptionUpdates[0] as { status?: string }).status).toBe("active");
+    const periodUpdate = subscriptionUpdates[1] as { billing_period_start?: string; billing_period_end?: string };
+    expect(periodUpdate.billing_period_start).toBeTruthy();
+    expect(periodUpdate.billing_period_end).toBeTruthy();
 
     expect(paymentInserts).toHaveLength(1);
     const payRow = paymentInserts[0] as { reference?: string; net_amount?: number; status?: string };
@@ -145,10 +149,24 @@ describe("recordSuccessfulProviderSubscriptionRenewalFromInvoice", () => {
     expect(payRow.net_amount).toBe(98);
 
     expect(financeInserts).toHaveLength(1);
-    const finRow = financeInserts[0] as { tenant_id?: string; transaction_type?: string; net?: number };
+    const finRow = financeInserts[0] as {
+      tenant_id?: string;
+      transaction_type?: string;
+      amount?: number;
+      fees?: number;
+      net?: number;
+      metadata?: { recognition_basis?: string; term_start?: string; term_end?: string };
+    };
     expect(finRow.tenant_id).toBe("tenant-ledger");
     expect(finRow.transaction_type).toBe("provider_subscription_payment");
-    expect(finRow.net).toBe(98);
+    // Accrual basis: cash is posted as deferred revenue (net = 0); the
+    // recognize-period-revenue cron releases it ratably over the term.
+    expect(finRow.amount).toBe(100);
+    expect(finRow.fees).toBe(2);
+    expect(finRow.net).toBe(0);
+    expect(finRow.metadata?.recognition_basis).toBe("term");
+    expect(finRow.metadata?.term_start).toBeTruthy();
+    expect(finRow.metadata?.term_end).toBeTruthy();
   });
 
   it("skips inserts when payment_transactions already exists for invoice reference (idempotent)", async () => {

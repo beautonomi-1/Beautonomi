@@ -13,6 +13,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
 
 export type CreditReason =
   | "monthly_grant"
@@ -21,6 +23,132 @@ export type CreditReason =
   | "automation_send"
   | "admin_adjustment"
   | "refund";
+
+/**
+ * Debit reasons that represent the provider *consuming* credit (a service was
+ * rendered / budget was spent). Only these release deferred marketing revenue.
+ * `refund` debits are money going back to the provider, not consumption.
+ */
+const CONSUMPTION_REASONS: ReadonlySet<CreditReason> = new Set<CreditReason>([
+  "campaign_send",
+  "automation_send",
+  "admin_adjustment",
+]);
+
+export type RecognizeMarketingCreditConsumptionResult = {
+  recorded: boolean;
+  alreadyRecorded: boolean;
+  /** Purchased ZAR recognized (0 when the debit only consumed the free included grant). */
+  amountZar: number;
+};
+
+/**
+ * Release deferred marketing-credit revenue when PURCHASED credit is consumed.
+ *
+ * Accounting rule (Part C1): `recordMarketingCreditTopupPayment` posts the
+ * top-up as DR Cash / CR Deferred marketing credit (2830) with `net = 0` — it
+ * only ever defers *purchased* top-ups. The monthly included grant is free
+ * (no cash, no liability), so consuming it must not recognize revenue. We
+ * therefore recognize only the purchased portion of each debit
+ * (`consumedPurchasedZar`), posting `marketing_credit_recognition`
+ * (amount = net = purchased consumed; DR 2830 / CR Marketing revenue 3400 in
+ * the shadow GL per migration 863).
+ *
+ * Idempotent on the credit ledger idempotency key (metadata.idempotency_key).
+ * Never throws — a recognition failure must not undo a successful debit; the
+ * reconciliation drift job surfaces any deferred balance that never releases.
+ */
+export async function recognizeMarketingCreditConsumption(
+  supabase: SupabaseClient,
+  input: {
+    providerId: string;
+    idempotencyKey: string;
+    consumedPurchasedZar: number;
+    reason: CreditReason;
+    channel?: string | null;
+    campaignId?: string | null;
+    currency?: string | null;
+    tenantId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<RecognizeMarketingCreditConsumptionResult> {
+  const amountZar = Math.round((Number(input.consumedPurchasedZar) || 0) * 100) / 100;
+  if (amountZar <= 0 || !input.providerId || !input.idempotencyKey) {
+    return { recorded: false, alreadyRecorded: false, amountZar: 0 };
+  }
+
+  try {
+    const { data: existing } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("provider_id", input.providerId)
+      .eq("transaction_type", "marketing_credit_recognition")
+      .contains("metadata", { idempotency_key: input.idempotencyKey })
+      .maybeSingle();
+    if (existing) return { recorded: false, alreadyRecorded: true, amountZar };
+
+    const tenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: input.tenantId ?? null,
+      provider_id: input.providerId,
+    });
+    const currency = await resolveLedgerCurrency(supabase, { currency: input.currency, tenantId });
+
+    const { data: ledgerRow } = await supabase
+      .from("marketing_credit_ledger")
+      .select("id")
+      .eq("idempotency_key", input.idempotencyKey)
+      .maybeSingle();
+
+    const { error } = await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: input.providerId,
+      tenant_id: tenantId,
+      transaction_type: "marketing_credit_recognition",
+      amount: amountZar,
+      fees: 0,
+      commission: 0,
+      net: amountZar,
+      currency,
+      description: `Marketing credit consumed (${input.reason})`,
+      metadata: {
+        kind: "marketing_credit_recognition",
+        idempotency_key: input.idempotencyKey,
+        credit_ledger_id: (ledgerRow as { id?: string } | null)?.id ?? null,
+        reason: input.reason,
+        channel: input.channel ?? null,
+        campaign_id: input.campaignId ?? null,
+        recognition_basis: "consumption",
+        ...(input.metadata ?? {}),
+      },
+      created_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("[marketing_credit_recognition] insert failed:", error.message);
+      return { recorded: false, alreadyRecorded: false, amountZar };
+    }
+    return { recorded: true, alreadyRecorded: false, amountZar };
+  } catch (err) {
+    console.error("[marketing_credit_recognition] failed:", err);
+    return { recorded: false, alreadyRecorded: false, amountZar };
+  }
+}
+
+/**
+ * Purchased portion of a debit. Prefers the exact split returned by the
+ * `debit_marketing_credit` RPC (migration 870 adds `from_purchased`); falls
+ * back to the included-first draw-down rule against the pre-debit balance.
+ */
+function purchasedPortionOfDebit(
+  rpcData: unknown,
+  amountZar: number,
+  includedBefore: number | null,
+): number {
+  const obj = rpcData && typeof rpcData === "object" ? (rpcData as { from_purchased?: unknown }) : null;
+  const fromRpc = obj ? Number(obj.from_purchased) : NaN;
+  if (Number.isFinite(fromRpc) && fromRpc >= 0) return Math.min(fromRpc, amountZar);
+  if (includedBefore == null || !Number.isFinite(includedBefore)) return amountZar;
+  return Math.max(0, amountZar - Math.max(0, includedBefore));
+}
 
 export interface MarketingBalance {
   included_balance_zar: number;
@@ -206,6 +334,19 @@ export async function debitMarketingBalance(input: {
 }): Promise<CreditOpResult> {
   if (input.amountZar <= 0) return { ok: false, reason: "amount must be positive" };
   const supabase = getSupabaseAdmin();
+  const isConsumption = CONSUMPTION_REASONS.has(input.reason);
+
+  // Pre-read the included balance so we can split the debit into included vs
+  // purchased when the RPC predates migration 870 (no `from_purchased`).
+  let includedBefore: number | null = null;
+  if (isConsumption) {
+    try {
+      const bal = await getMarketingBalance(supabase, input.providerId);
+      includedBefore = bal.included_balance_zar;
+    } catch {
+      includedBefore = null;
+    }
+  }
 
   const rpc = await supabase.rpc("debit_marketing_credit", {
     p_provider_id: input.providerId,
@@ -220,12 +361,37 @@ export async function debitMarketingBalance(input: {
   });
   if (!rpc.error) {
     const parsed = parseCreditOpResult(rpc.data);
-    if (parsed) return parsed;
+    if (parsed) {
+      if (parsed.ok === true && isConsumption) {
+        await recognizeMarketingCreditConsumption(supabase, {
+          providerId: input.providerId,
+          idempotencyKey: input.idempotencyKey,
+          consumedPurchasedZar: purchasedPortionOfDebit(rpc.data, input.amountZar, includedBefore),
+          reason: input.reason,
+          channel: input.channel ?? null,
+          campaignId: input.campaignId ?? null,
+          metadata: { queue_row_id: input.queueRowId ?? null },
+        });
+      }
+      return parsed;
+    }
   } else if (!isMissingFunctionError(rpc.error)) {
     return { ok: false, reason: rpc.error.message };
   }
 
-  return debitMarketingBalanceFallback(input, supabase);
+  const fallback = await debitMarketingBalanceFallback(input, supabase);
+  if (fallback.ok === true && isConsumption) {
+    await recognizeMarketingCreditConsumption(supabase, {
+      providerId: input.providerId,
+      idempotencyKey: input.idempotencyKey,
+      consumedPurchasedZar: purchasedPortionOfDebit(null, input.amountZar, includedBefore),
+      reason: input.reason,
+      channel: input.channel ?? null,
+      campaignId: input.campaignId ?? null,
+      metadata: { queue_row_id: input.queueRowId ?? null },
+    });
+  }
+  return fallback;
 }
 
 async function debitMarketingBalanceFallback(

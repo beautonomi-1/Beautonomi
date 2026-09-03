@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "eslint-rules/**",
     // Vite-built admin SPA chunks copied for hosting; minified — not project source.
     "public/admin/**",
+    // Vercel Workflow compiled runtimes (generated; not project source).
+    ".well-known/**",
   ]),
   // Scripts and config: allow require() where common (Node/CommonJS).
   {

@@ -7,6 +7,7 @@
 
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { NextRequest } from "next/server";
 import {
   type NewGateFeatureKey,
   resolveNewGateFeatureEnabled,
@@ -34,6 +35,15 @@ import { isPastDueWithinGrace } from "@/lib/iap/apple/billing-active";
  */
 export const SUBSCRIPTION_ENTITLED_STATUSES = ["active", "trialing", "past_due"] as const;
 export const SUBSCRIPTION_PAST_DUE_GRACE_DAYS = 3;
+
+/**
+ * Request-aware Supabase client for feature-access checks.
+ * Always pass the route `request` so Bearer tokens (mobile) resolve; never call
+ * cookie-only `getSupabaseServer()` from a provider API route.
+ */
+export async function getFeatureAccessClient(request: NextRequest): Promise<SupabaseClient> {
+  return getSupabaseServer(request);
+}
 
 export interface MarketingFeatureAccess {
   enabled: boolean;

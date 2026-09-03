@@ -10,7 +10,7 @@ import {
 
 const MIGRATION_PATH = path.join(
   process.cwd(),
-  "../../supabase/migrations/823_provider_finance_summary_rpc.sql",
+  "../../supabase/migrations/868_commerce_memberships_gift_cards.sql",
 );
 
 function readMigrationSql(): string {
@@ -28,6 +28,7 @@ function simulateRpc(rows: ReadonlyArray<ProviderRevenueLedgerRow>) {
     rows.filter((r) => r.transaction_type === type).reduce((s, r) => s + netOf(r), 0);
 
   const serviceEarnings = sumType("provider_earnings");
+  const membershipEarnings = sumType("membership_provider_earnings");
   const tips = sumType("tip");
   const travelFees = sumType("travel_fee");
   const cancellationFees = sumType("cancellation_fee");
@@ -41,10 +42,11 @@ function simulateRpc(rows: ReadonlyArray<ProviderRevenueLedgerRow>) {
     .reduce((s, r) => s + Math.abs(netOf(r)), 0);
 
   const recognizedRevenue =
-    serviceEarnings + tips + travelFees + cancellationFees + walkInAdditionalCharges;
+    serviceEarnings + membershipEarnings + tips + travelFees + cancellationFees + walkInAdditionalCharges;
 
   return mapFinanceSummaryRpcRow({
     serviceEarnings,
+    membershipEarnings,
     tips,
     travelFees,
     cancellationFees,
@@ -74,6 +76,7 @@ describe("provider finance summary RPC parity", () => {
     const sql = readMigrationSql();
     for (const type of [
       "provider_earnings",
+      "membership_provider_earnings",
       "tip",
       "travel_fee",
       "cancellation_fee",

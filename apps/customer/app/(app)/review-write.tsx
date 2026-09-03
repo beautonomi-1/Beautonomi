@@ -7,6 +7,7 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { apiBookingReviewPath } from "@/lib/customer-api-paths";
+import { trackReviewSubmitted } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -191,7 +192,10 @@ export default function ReviewWriteScreen() {
           staff_rating: normalizedStaffRating,
         });
         if (res.error) Alert.alert(errTitle, res.error.message || rw("submitReviewError"));
-        else router.back();
+        else {
+          trackReviewSubmitted(providerSlugParam ?? "", rating, bookingId);
+          router.back();
+        }
       }
     } catch (e) {
       Alert.alert(errTitle, e instanceof Error ? e.message : rw("submitFailed"));

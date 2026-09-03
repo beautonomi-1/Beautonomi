@@ -17,10 +17,24 @@ export type SupportTicketContextFacts = {
   facts: Record<string, string | number | boolean | null>;
 };
 
+export function ticketOwnsSupportRecord(input: {
+  ticketUserId: string;
+  ticketProviderId?: string | null;
+  recordCustomerId?: string | null;
+  recordProviderId?: string | null;
+}): boolean {
+  if (input.recordCustomerId && input.recordCustomerId === input.ticketUserId) return true;
+  if (input.ticketProviderId && input.recordProviderId && input.recordProviderId === input.ticketProviderId) {
+    return true;
+  }
+  return false;
+}
+
 export async function fetchSupportTicketContext(
   supabase: SupabaseClient,
   ticket: {
     user_id: string;
+    provider_id?: string | null;
     support_context_type?: string | null;
     support_context_id?: string | null;
   },
@@ -38,7 +52,17 @@ export async function fetchSupportTicketContext(
         )
         .eq("id", id)
         .maybeSingle();
-      if (!booking || booking.customer_id !== ticket.user_id) return null;
+      if (
+        !booking ||
+        !ticketOwnsSupportRecord({
+          ticketUserId: ticket.user_id,
+          ticketProviderId: ticket.provider_id,
+          recordCustomerId: booking.customer_id,
+          recordProviderId: booking.provider_id,
+        })
+      ) {
+        return null;
+      }
 
       const { data: provider } = await supabase
         .from("providers")
@@ -78,11 +102,21 @@ export async function fetchSupportTicketContext(
       const { data: order } = await supabase
         .from("product_orders")
         .select(
-          "id, order_number, customer_id, status, fulfillment_type, total_amount, currency, payment_status, tracking_number, estimated_delivery_date, shipped_at, delivered_at",
+          "id, order_number, customer_id, provider_id, status, fulfillment_type, total_amount, currency, payment_status, tracking_number, estimated_delivery_date, shipped_at, delivered_at",
         )
         .eq("id", id)
         .maybeSingle();
-      if (!order || order.customer_id !== ticket.user_id) return null;
+      if (
+        !order ||
+        !ticketOwnsSupportRecord({
+          ticketUserId: ticket.user_id,
+          ticketProviderId: ticket.provider_id,
+          recordCustomerId: order.customer_id,
+          recordProviderId: order.provider_id,
+        })
+      ) {
+        return null;
+      }
       return {
         contextType: "product_order",
         facts: {
@@ -130,10 +164,20 @@ export async function fetchSupportTicketContext(
       if (!payment) return null;
       const { data: booking } = await supabase
         .from("bookings")
-        .select("customer_id, booking_number")
+        .select("customer_id, provider_id, booking_number")
         .eq("id", payment.booking_id)
         .maybeSingle();
-      if (!booking || booking.customer_id !== ticket.user_id) return null;
+      if (
+        !booking ||
+        !ticketOwnsSupportRecord({
+          ticketUserId: ticket.user_id,
+          ticketProviderId: ticket.provider_id,
+          recordCustomerId: booking.customer_id,
+          recordProviderId: booking.provider_id,
+        })
+      ) {
+        return null;
+      }
       return {
         contextType: "payment",
         facts: {

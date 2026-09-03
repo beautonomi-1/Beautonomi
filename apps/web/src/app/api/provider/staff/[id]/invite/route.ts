@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { sendStaffInvite } from "@/lib/provider/staff-invite";
+import { sendStaffInvite, STAFF_INVITE_EXPIRY_DAYS } from "@/lib/provider/staff-invite";
+import { recordStaffInvitationSent } from "@/lib/provider/staff-invitations";
+import { isProviderOverStaffCap } from "@/lib/provider/enforce-staff-cap-after-downgrade";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { enqueueNotification } from "@/lib/notifications/enqueue";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { z } from "zod";
@@ -10,6 +14,8 @@ import { z } from "zod";
 const inviteSchema = z.object({
   email: z.string().email("Invalid email address"),
   message: z.string().optional(),
+  /** Optional SMS channel (E.164). Skipped silently when Twilio is not configured. */
+  phone: z.string().min(6).max(32).optional().nullable(),
 });
 
 /**
@@ -48,13 +54,25 @@ export async function POST(
 
     const { data: staff, error: staffError } = await supabase
       .from("provider_staff")
-      .select("id, name, email, user_id")
+      .select("id, name, email, phone, user_id, is_active, deleted_at")
       .eq("id", id)
       .eq("provider_id", providerId)
+      .is("deleted_at", null)
       .single();
 
     if (staffError || !staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    // Plan downgrade over cap: no new invites while active staff exceed the limit.
+    const cap = await isProviderOverStaffCap(providerId);
+    if (cap.over) {
+      return errorResponse(
+        `Your plan allows ${cap.limit} active team members and you currently have ${cap.activeCount}. Deactivate team members or upgrade before sending invites.`,
+        "OVER_STAFF_CAP",
+        409,
+        { active_count: cap.activeCount, limit: cap.limit },
+      );
     }
 
     const { data: provider } = await supabase
@@ -85,6 +103,53 @@ export async function POST(
       customMessage: validationResult.data.message ?? null,
       recipientUserId: staff.user_id ?? null,
       recipientEmail: inviteEmail,
+    });
+
+    const admin = getSupabaseAdmin();
+    const invitePhone = (validationResult.data.phone ?? (staff as { phone?: string | null }).phone ?? "").trim() || null;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + STAFF_INVITE_EXPIRY_DAYS);
+
+    // Optional SMS channel: enqueue only when a phone is present; the queue
+    // sender skips (marks failed, non-fatal) when Twilio is not configured.
+    let smsQueued = false;
+    if (invitePhone && validationResult.data.phone) {
+      try {
+        const businessName = (provider as { business_name?: string | null } | null)?.business_name || "the team";
+        const smsResult = await enqueueNotification(
+          {
+            channel: "sms",
+            templateKey: "staff_invitation",
+            recipientUserId: staff.user_id ?? null,
+            tenantId: (provider as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+            payload: {
+              to: invitePhone,
+              body: `You've been invited to join ${businessName} on Beautonomi. Join: ${delivery.join_url}`,
+            },
+            dedupeKey: `staff_invite:${id}:${delivery.invite_token}:sms`,
+          },
+          admin,
+        );
+        smsQueued = smsResult.inserted;
+      } catch (smsErr) {
+        console.warn("[staff-invite] sms enqueue skipped:", smsErr);
+      }
+    }
+
+    // Resend = new pending row; previous pending rows for this staff are expired.
+    const channels: Array<"email" | "push" | "sms"> = [];
+    if (delivery.email.delivered) channels.push("email");
+    if (delivery.push.delivered) channels.push("push");
+    if (smsQueued) channels.push("sms");
+    await recordStaffInvitationSent(admin, {
+      providerId,
+      staffId: id,
+      email: inviteEmail,
+      phone: invitePhone,
+      token: delivery.invite_token,
+      invitedBy: user.id,
+      expiresAt,
+      channels,
     });
 
     void trackServer(EVENT_STAFF_INVITED, {
@@ -118,7 +183,9 @@ export async function POST(
       channels: {
         push: delivery.push.delivered,
         email: delivery.email.delivered,
+        sms: smsQueued,
       },
+      expires_at: expiresAt.toISOString(),
       delivery: {
         email: delivery.email,
         push: delivery.push,

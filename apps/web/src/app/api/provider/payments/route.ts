@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
@@ -78,6 +79,10 @@ export async function GET(request: NextRequest) {
     }
 
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_sales", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
 
     const supabaseAdmin = getSupabaseAdmin();
 

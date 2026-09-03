@@ -26,6 +26,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
 
 interface TimeBlock {
   id: string;
@@ -138,6 +139,7 @@ export function TimeBlocksContent() {
   const [endTime, setEndTime] = useState("10:00");
   const [isRecurring, setIsRecurring] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const { calendarScopeOwn, selfStaffId } = useCalendarScopeLock();
   // Single mutually-exclusive picker so date/start/end spinners can never stack.
   const [activePicker, setActivePicker] = useState<"date" | "start" | "end" | null>(null);
   const [typeSheetOpen, setTypeSheetOpen] = useState(false);
@@ -219,7 +221,7 @@ export function TimeBlocksContent() {
     setStartTime("09:00");
     setEndTime("10:00");
     setIsRecurring(false);
-    setSelectedStaffId(null);
+    setSelectedStaffId(calendarScopeOwn ? selfStaffId : null);
     setActivePicker(null);
     setAddOpen(true);
   };
@@ -717,7 +719,7 @@ export function TimeBlocksContent() {
           }}
         />
 
-        {activeStaff.length > 0 && (
+        {activeStaff.length > 0 && !calendarScopeOwn && (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Applies to</Text>
             <ScrollView

@@ -1,8 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { providerApi } from "@/lib/provider-portal/api";
 import {
   Users,
   DollarSign,
@@ -13,6 +15,7 @@ import {
   ChevronRight,
   Shield,
   Bell,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +32,27 @@ const items = [
 ];
 
 export default function TeamHubPage() {
+  const [overCapUntil, setOverCapUntil] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void providerApi.listTeamMembers().then((members) => {
+      if (cancelled) return;
+      const soonest = members
+        .map((m) => m.over_cap_grace_until)
+        .filter((v): v is string => !!v)
+        .map((v) => new Date(v).getTime())
+        .filter((t) => Number.isFinite(t) && t > Date.now())
+        .sort((a, b) => a - b)[0];
+      setOverCapUntil(soonest ?? null);
+    }).catch(() => {
+      if (!cancelled) setOverCapUntil(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div>
       <PageHeader
@@ -39,6 +63,17 @@ export default function TeamHubPage() {
           { label: "Team" },
         ]}
       />
+
+      {overCapUntil ? (
+        <Alert className="mt-4 border-amber-200 bg-amber-50">
+          <Info className="w-4 h-4 text-amber-700" />
+          <AlertDescription className="text-amber-900">
+            Your plan is over the staff cap. Some team members stay deactivated until{" "}
+            {new Date(overCapUntil).toLocaleDateString()}. Upgrade or keep the roster at the new
+            limit to reactivate them.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => {

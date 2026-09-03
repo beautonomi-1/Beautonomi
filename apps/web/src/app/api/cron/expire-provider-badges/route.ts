@@ -13,6 +13,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "expire-provider-badges";
+export const maxDuration = 120;
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,20 +25,22 @@ export async function GET(request: NextRequest) {
       return new Response(auth.error || "Unauthorized", { status: 401 });
     }
 
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.rpc("expire_provider_badges");
+    return await runLockedCronRoute(JOB_NAME, async () => {
+      const supabase = getSupabaseAdmin();
+      const { data, error } = await supabase.rpc("expire_provider_badges");
 
-    if (error) {
-      console.error("Error expiring provider badges:", error);
-      return handleApiError(error, "Failed to expire provider badges");
-    }
+      if (error) {
+        console.error("Error expiring provider badges:", error);
+        return handleApiError(error, "Failed to expire provider badges");
+      }
 
-    const reevaluated = typeof data === "number" ? data : 0;
-    if (reevaluated > 0) {
-      console.log(`expire-provider-badges: re-evaluated ${reevaluated} provider badge(s)`);
-    }
+      const reevaluated = typeof data === "number" ? data : 0;
+      if (reevaluated > 0) {
+        console.log(`expire-provider-badges: re-evaluated ${reevaluated} provider badge(s)`);
+      }
 
-    return successResponse({ providers_reevaluated: reevaluated });
+      return successResponse({ providers_reevaluated: reevaluated });
+    });
   } catch (error) {
     return handleApiError(error, "Cron: expire-provider-badges failed");
   }

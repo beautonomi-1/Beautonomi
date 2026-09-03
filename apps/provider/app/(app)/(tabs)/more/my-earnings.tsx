@@ -42,11 +42,17 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const currency = getTenantDefaultCurrency();
 
-  const { data, loading, error, refresh } = useApi<PayStub[] | { data?: PayStub[] }>(
-    "/api/provider/pay-runs/my-earnings"
-  );
+  const { data, loading, error, refresh } = useApi<
+    PayStub[] | { data?: PayStub[]; pay_stubs?: PayStub[]; live?: Record<string, { total: number; commission: number; tips: number }> }
+  >("/api/provider/pay-runs/my-earnings");
 
-  const payStubs: PayStub[] = Array.isArray(data) ? data : (data as { data?: PayStub[] })?.data ?? [];
+  const payStubs: PayStub[] = Array.isArray(data)
+    ? data
+    : (data as { pay_stubs?: PayStub[]; data?: PayStub[] })?.pay_stubs ??
+      (data as { data?: PayStub[] })?.data ??
+      [];
+
+  const live = !Array.isArray(data) ? (data as { live?: Record<string, { total: number; commission: number; tips: number }> })?.live : null;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -87,6 +93,19 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
     >
+        {live ? (
+          <View style={twStyle("rounded-2xl border border-teal-100 bg-teal-50/60 p-4 mb-4 mt-4")}>
+            <Text style={twStyle("text-sm font-semibold text-teal-900 mb-2")}>Live earnings</Text>
+            {(["today", "week", "month"] as const).map((period) => (
+              <View key={period} style={twStyle("flex-row justify-between py-1")}>
+                <Text style={twStyle("text-sm text-teal-800 capitalize")}>{period}</Text>
+                <Text style={twStyle("text-sm font-medium text-teal-900")}>
+                  {formatCurrency(Number(live[period]?.total ?? 0), currency)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {payStubs.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center mt-4")}>
             <Ionicons name="wallet-outline" size={48} color="#9ca3af" />

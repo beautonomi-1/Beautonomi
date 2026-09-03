@@ -24,6 +24,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
+import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
 
 interface StaffMember {
   id: string;
@@ -40,6 +41,9 @@ interface DayOff {
   team_member_name: string;
   date: string;
   reason?: string | null;
+  is_approved?: boolean;
+  time_off_id?: string | null;
+  time_off_status?: string | null;
 }
 
 /** Parse API `yyyy-MM-dd` in local calendar context (avoids UTC midnight shifts). */
@@ -55,6 +59,7 @@ export function DaysOffContent() {
   const [daysOffError, setDaysOffError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const { calendarScopeOwn, selfStaffId } = useCalendarScopeLock();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -66,8 +71,11 @@ export function DaysOffContent() {
   const [showPast, setShowPast] = useState(false);
 
   const { data: staff, loading: loadingStaff, error: staffError, refresh: refreshStaff } = useApi<StaffMember[]>("/api/provider/staff");
-  const { execute: postDayOff } = useApiMutation("post");
+  const { execute: postDayOff } = useApiMutation<{
+    overlapping_bookings?: Array<{ booking_number?: string | null }>;
+  }>("post");
   const { execute: deleteDayOff } = useApiMutation("delete");
+  const { execute: patchTimeOff } = useApiMutation("patch");
 
   const activeStaff = useMemo(
     () => (staff ?? []).filter((s) => s.is_active !== false),
@@ -75,12 +83,14 @@ export function DaysOffContent() {
   );
 
   const openAddDayOff = useCallback(() => {
-    setSelectedStaffIds(params.staffId ? [params.staffId] : []);
+    setSelectedStaffIds(
+      calendarScopeOwn && selfStaffId ? [selfStaffId] : params.staffId ? [params.staffId] : [],
+    );
     setSelectedDate(new Date());
     setSelectedEndDate(null);
     setReason("");
     setAddModalOpen(true);
-  }, [params.staffId]);
+  }, [params.staffId, calendarScopeOwn, selfStaffId]);
 
   const loadDaysOff = useCallback(async () => {
     if (!activeStaff.length) {
@@ -109,6 +119,9 @@ export function DaysOffContent() {
               team_member_name: member.name ?? "Staff",
               date: d.date,
               reason: d.reason ?? null,
+              is_approved: d.is_approved !== false,
+              time_off_id: d.time_off_id ?? null,
+              time_off_status: d.time_off_status ?? (d.is_approved === false ? "pending" : "approved"),
             }));
             all.push(...mapped);
           } catch {
@@ -172,16 +185,20 @@ export function DaysOffContent() {
     setSaving(true);
     try {
       const reasonTrim = reason.trim();
-      const tasks: Promise<{ ok: boolean; label: string }>[] = [];
+      const tasks: Promise<{ ok: boolean; label: string; overlap: number }>[] = [];
       for (const staffId of selectedStaffIds) {
         for (const dateStr of days) {
           tasks.push(
-            postDayOff(`/api/provider/staff/${staffId}/days-off`, {
-              date: dateStr,
-              reason: reasonTrim || undefined,
-              type: reasonTrim || undefined,
-            }).then((res) => ({
+            postDayOff(
+              `/api/provider/staff/${staffId}/days-off`,
+              {
+                date: dateStr,
+                reason: reasonTrim || undefined,
+                type: reasonTrim || undefined,
+              },
+            ).then((res) => ({
               ok: !res.error,
+              overlap: res.data?.overlapping_bookings?.length ?? 0,
               // Include date so duplicate errors are diagnosable.
               label: `${staffId}:${dateStr}`,
             })),
@@ -190,6 +207,7 @@ export function DaysOffContent() {
       }
       const results = await Promise.all(tasks);
       const failures = results.filter((r) => !r.ok);
+      const overlapCount = results.reduce((sum, r) => sum + (r.ok ? r.overlap : 0), 0);
       if (failures.length === results.length && results.length > 0) {
         Alert.alert(
           "Failed",
@@ -207,10 +225,41 @@ export function DaysOffContent() {
           "Partial success",
           `${results.length - failures.length} day(s) off created. ${failures.length} could not be created (possibly duplicates).`,
         );
+      } else if (overlapCount > 0) {
+        Alert.alert(
+          "Upcoming bookings",
+          `${overlapCount} upcoming booking${overlapCount === 1 ? "" : "s"} fall on this day off. Reassign or reschedule them.`,
+        );
       }
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleReviewTimeOff = (dayOff: DayOff, status: "approved" | "denied") => {
+    if (!dayOff.time_off_id) {
+      Alert.alert("Not ready", "This request is not ready to review yet. Pull to refresh.");
+      return;
+    }
+    Alert.alert(
+      status === "approved" ? "Approve time off" : "Deny time off",
+      `${status === "approved" ? "Approve" : "Deny"} ${dayOff.team_member_name}'s request for ${dayOff.date}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: status === "approved" ? "Approve" : "Deny",
+          style: status === "denied" ? "destructive" : "default",
+          onPress: async () => {
+            const { error } = await patchTimeOff(
+              `/api/provider/staff/${dayOff.team_member_id}/time-off/${dayOff.time_off_id}`,
+              { status },
+            );
+            if (error) Alert.alert("Error", error);
+            else void loadDaysOff();
+          },
+        },
+      ],
+    );
   };
 
   const handleRemoveDayOff = (dayOff: DayOff) => {
@@ -343,7 +392,29 @@ export function DaysOffContent() {
                     {isPast && (
                       <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>Past</Text>
                     )}
+                    {dayOff.time_off_status === "pending" || dayOff.is_approved === false ? (
+                      <Text style={twStyle("mt-0.5 text-xs font-medium text-amber-700")}>Pending approval</Text>
+                    ) : (
+                      <Text style={twStyle("mt-0.5 text-xs text-emerald-700")}>Approved</Text>
+                    )}
                   </View>
+                  {(dayOff.time_off_status === "pending" || dayOff.is_approved === false) &&
+                  dayOff.time_off_id ? (
+                    <View style={twStyle("mr-2")}>
+                      <TouchableOpacity
+                        onPress={() => handleReviewTimeOff(dayOff, "approved")}
+                        style={twStyle("mb-1 rounded-lg bg-emerald-50 px-2 py-1")}
+                      >
+                        <Text style={twStyle("text-xs font-medium text-emerald-800")}>Approve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleReviewTimeOff(dayOff, "denied")}
+                        style={twStyle("rounded-lg bg-red-50 px-2 py-1")}
+                      >
+                        <Text style={twStyle("text-xs font-medium text-red-700")}>Deny</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                   <TouchableOpacity
                     onPress={() => handleRemoveDayOff(dayOff)}
                     style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-red-50")}
@@ -365,7 +436,9 @@ export function DaysOffContent() {
 
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Team members</Text>
             <ScrollView style={twStyle("mb-4 max-h-40 rounded-xl border border-gray-200 bg-gray-50")} nestedScrollEnabled>
-              {activeStaff.map((member) => {
+              {activeStaff
+                .filter((member) => !calendarScopeOwn || member.id === selfStaffId)
+                .map((member) => {
                 const selected = selectedStaffIds.includes(member.id);
                 return (
                   <TouchableOpacity

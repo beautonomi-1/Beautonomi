@@ -132,6 +132,7 @@ describe("recordAdsBudgetOrderPayment", () => {
     expect(finance).toHaveLength(1);
     expect(finance[0].transaction_type).toBe("provider_ads_payment");
     expect(finance[0].amount).toBe(500);
+    expect(finance[0].net).toBe(0);
     expect(finance[0].metadata.ads_budget_order_id).toBe("order-1");
   });
 

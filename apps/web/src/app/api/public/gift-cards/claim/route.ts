@@ -5,6 +5,7 @@ import { verifyGiftCardClaimToken } from "@/lib/gift-cards/gift-card-claim-token
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { trackGiftCardRedeemedServer } from "@/lib/gift-cards/track-gift-card-events";
 
 /**
  * POST /api/public/gift-cards/claim
@@ -123,6 +124,15 @@ export async function POST(request: NextRequest) {
         },
       })
       .eq("id", giftCard.id);
+
+    // Server analytics (dedupes on gift card id + redemption type).
+    void trackGiftCardRedeemedServer({
+      giftCardId: giftCard.id,
+      userId: user.id,
+      amount: redeemAmount,
+      currency: giftCard.currency || userCurrency,
+      redemptionType: "wallet_claim_link",
+    }).catch(() => undefined);
 
     return successResponse({ claimed: true, gift_card_id: giftCard.id, amount: redeemAmount });
   } catch (error) {

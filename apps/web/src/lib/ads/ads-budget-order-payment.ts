@@ -18,6 +18,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { campaignNeedsModeration } from "@/lib/ads/campaign-needs-moderation";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 type AdsBudgetOrderRow = {
   id: string;
@@ -149,6 +151,18 @@ export async function recordAdsBudgetOrderPayment(params: {
     provider_id: providerId,
   });
 
+  const resolvedCurrency =
+    order.currency ||
+    (await (async () => {
+      if (!financeTenantId) return LAST_RESORT_CURRENCY;
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("default_currency")
+        .eq("id", financeTenantId)
+        .maybeSingle();
+      return (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY;
+    })());
+
   // 1) Mark the order paid.
   await supabase
     .from("ads_budget_orders")
@@ -163,14 +177,25 @@ export async function recordAdsBudgetOrderPayment(params: {
   // 2) Fund + activate the campaign (sets funded_at — the serve-time guard key).
   const { data: campaignData } = await supabase
     .from("ads_campaigns")
-    .select("billing_model, duration_days")
+    .select("billing_model, duration_days, targeting, bid_settings")
     .eq("id", campaignId)
     .single();
-  const campaignRow = campaignData as Pick<AdsCampaignRow, "billing_model" | "duration_days"> | null;
+  const campaignRow = campaignData as Pick<
+    AdsCampaignRow,
+    "billing_model" | "duration_days"
+  > & {
+    targeting?: Record<string, unknown> | null;
+    bid_settings?: Record<string, unknown> | null;
+  } | null;
+
+  const needsReview = campaignNeedsModeration(
+    campaignRow?.targeting ?? null,
+    campaignRow?.bid_settings ?? null,
+  );
 
   const campaignUpdate: Record<string, unknown> = {
     budget: amountMajor,
-    status: "active",
+    status: needsReview ? "pending_review" : "active",
     funded_at: nowIso,
     paid_order_id: orderId,
     start_at: nowIso,
@@ -180,6 +205,12 @@ export async function recordAdsBudgetOrderPayment(params: {
     const days = toNumber(campaignRow.duration_days) || 7;
     campaignUpdate.end_at = new Date(Date.now() + days * 86400000).toISOString();
   }
+
+  const termStart = nowIso;
+  const termEnd =
+    campaignRow?.billing_model === "time_based"
+      ? String(campaignUpdate.end_at ?? "")
+      : null;
 
   await supabase
     .from("ads_campaigns")
@@ -220,21 +251,27 @@ export async function recordAdsBudgetOrderPayment(params: {
     amount: amountMajor,
     fees: feesMajor,
     commission: 0,
-    net: netAmount,
+    net: 0,
+    currency: resolvedCurrency,
     description: billingLabel,
     metadata: {
       kind: "ads_budget_order",
       ads_budget_order_id: orderId,
       campaign_id: campaignId,
       payment_provider: paymentProvider,
+      recognition_basis: campaignRow?.billing_model === "time_based" ? "term" : "consumption",
+      term_start: termStart,
+      ...(termEnd ? { term_end: termEnd } : {}),
     },
     created_at: nowIso,
   });
 
   await notifyProviderSafe(providerId, {
-    type: "ads_payment_confirmed",
-    title: "Ad payment confirmed",
-    message: `${billingLabel} payment confirmed. Your campaign is funded.`,
+    type: needsReview ? "ads_pending_review" : "ads_payment_confirmed",
+    title: needsReview ? "Ad payment received — under review" : "Ad payment confirmed",
+    message: needsReview
+      ? `${billingLabel} payment confirmed. Your campaign is queued for review before it goes live.`
+      : `${billingLabel} payment confirmed. Your campaign is funded.`,
     data: { ads_budget_order_id: orderId, campaign_id: campaignId, amount: amountMajor },
     action_url: "/provider/settings/ads",
   });
