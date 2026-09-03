@@ -9,8 +9,9 @@ describe("Provider login signup CTA", () => {
     expect(src).toContain("goToSignup");
     expect(src).toContain("joinToken");
     expect(src).toContain("/(auth)/signup");
-    expect(src).toContain("Sign up for a new account");
-    expect(src).toContain("Don't have an account?");
+    expect(src).toContain('t("auth.signup")');
+    expect(src).toContain('t("auth.dontHaveAccount")');
+    expect(src).toContain('accessibilityRole="link"');
   });
 
   it("signup screen preserves joinToken through postLoginPath", () => {
