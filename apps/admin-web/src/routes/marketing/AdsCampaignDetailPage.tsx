@@ -30,6 +30,7 @@ type CampaignDetail = {
   start_at: string | null;
   end_at: string | null;
   targeting: Record<string, unknown> | null;
+  rejection_reason?: string | null;
   created_at: string;
   updated_at: string;
   provider: {
@@ -55,6 +56,8 @@ const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
   paused: "bg-amber-100 text-amber-800",
   ended: "bg-slate-100 text-slate-500",
+  pending_review: "bg-violet-100 text-violet-800",
+  rejected: "bg-red-100 text-red-800",
 };
 
 const MODEL_LABELS: Record<string, string> = {
@@ -73,7 +76,7 @@ export function AdsCampaignDetailPage() {
   const qc = useQueryClient();
   const { allowed, denied } = useSuperadminPage("Ads & Campaigns is superadmin-only.");
 
-  const [actionDialog, setActionDialog] = useState<"pause" | "resume" | "end" | null>(null);
+  const [actionDialog, setActionDialog] = useState<"pause" | "resume" | "end" | "approve" | "reject" | null>(null);
   const [actionReason, setActionReason] = useState("");
 
   const q = useQuery({
@@ -83,13 +86,22 @@ export function AdsCampaignDetailPage() {
   });
 
   const actionMutation = useMutation({
-    mutationFn: (payload: { status: string; reason?: string }) =>
+    mutationFn: (payload: { status: string; reason?: string; rejection_reason?: string }) =>
       adminApi.patchJson(`/api/admin/ads/campaigns/${encodeURIComponent(id)}`, payload),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.ads.all() });
       setActionDialog(null);
       setActionReason("");
-      const label = vars.status === "approved" ? "approved" : vars.status === "rejected" ? "rejected" : vars.status === "paused" ? "paused" : "updated";
+      const label =
+        vars.status === "rejected"
+          ? "rejected"
+          : vars.status === "paused"
+            ? "paused"
+            : vars.status === "ended"
+              ? "ended"
+              : vars.status === "active"
+                ? "approved"
+                : "updated";
       adminToast.success(`Campaign ${label}`);
     },
     onError: (e: Error) => adminToast.error(`Campaign action failed: ${e.message}`),
@@ -130,7 +142,13 @@ export function AdsCampaignDetailPage() {
     ? ((campaign.events_30d.clicks / campaign.events_30d.impressions) * 100).toFixed(1)
     : "0.0";
 
-  const actionStatusMap = { pause: "paused", resume: "active", end: "ended" } as const;
+  const actionStatusMap = {
+    pause: "paused",
+    resume: "active",
+    end: "ended",
+    approve: "active",
+    reject: "rejected",
+  } as const;
 
   return (
     <div className="space-y-6">
@@ -142,6 +160,24 @@ export function AdsCampaignDetailPage() {
             <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[campaign.status] ?? "bg-gray-100 text-gray-700"}`}>
               {campaign.status}
             </span>
+            {campaign.status === "pending_review" && (
+              <>
+                <button
+                  type="button"
+                  className="rounded border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800 hover:bg-green-100"
+                  onClick={() => setActionDialog("approve")}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100"
+                  onClick={() => setActionDialog("reject")}
+                >
+                  Reject
+                </button>
+              </>
+            )}
             {campaign.status === "active" && (
               <button
                 type="button"
@@ -160,7 +196,7 @@ export function AdsCampaignDetailPage() {
                 Resume
               </button>
             )}
-            {campaign.status !== "ended" && (
+            {campaign.status !== "ended" && campaign.status !== "rejected" && (
               <button
                 type="button"
                 className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800"
@@ -292,13 +328,27 @@ export function AdsCampaignDetailPage() {
       <AdminModal
         open={!!actionDialog}
         onClose={() => setActionDialog(null)}
-        title={actionDialog === "pause" ? "Pause Campaign" : actionDialog === "resume" ? "Resume Campaign" : "End Campaign"}
+        title={
+          actionDialog === "pause"
+            ? "Pause Campaign"
+            : actionDialog === "resume"
+              ? "Resume Campaign"
+              : actionDialog === "approve"
+                ? "Approve Campaign"
+                : actionDialog === "reject"
+                  ? "Reject Campaign"
+                  : "End Campaign"
+        }
         description={
           actionDialog === "pause"
             ? "This will stop the campaign from showing in sponsored slots."
             : actionDialog === "resume"
               ? "This will re-activate the campaign and resume ad delivery."
-              : "This will permanently end the campaign. It cannot be restarted."
+              : actionDialog === "approve"
+                ? "This will activate the campaign if it is funded."
+                : actionDialog === "reject"
+                  ? "This will reject the campaign and refund unused budget."
+                  : "This will permanently end the campaign. It cannot be restarted."
         }
         footer={
           <>
@@ -307,11 +357,15 @@ export function AdsCampaignDetailPage() {
             </button>
             <button
               type="button"
-              className={`rounded px-3 py-2 text-sm text-white disabled:opacity-50 ${actionDialog === "end" ? "bg-red-700 hover:bg-red-800" : "bg-gray-900 hover:bg-gray-800"}`}
-              disabled={actionMutation.isPending}
+              className={`rounded px-3 py-2 text-sm text-white disabled:opacity-50 ${actionDialog === "end" || actionDialog === "reject" ? "bg-red-700 hover:bg-red-800" : "bg-gray-900 hover:bg-gray-800"}`}
+              disabled={actionMutation.isPending || (actionDialog === "reject" && !actionReason.trim())}
               onClick={() => {
                 if (actionDialog) {
-                  actionMutation.mutate({ status: actionStatusMap[actionDialog], reason: actionReason || undefined });
+                  actionMutation.mutate({
+                    status: actionStatusMap[actionDialog],
+                    reason: actionReason || undefined,
+                    ...(actionDialog === "reject" ? { rejection_reason: actionReason } : {}),
+                  });
                 }
               }}
             >
@@ -321,7 +375,7 @@ export function AdsCampaignDetailPage() {
         }
       >
         <label className="block text-sm">
-          Reason (optional)
+          {actionDialog === "reject" ? "Rejection reason (required)" : "Reason (optional)"}
           <input
             type="text"
             value={actionReason}

@@ -31,6 +31,7 @@ import {
 } from "@/lib/buildSupportTicketsSearchParams";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSupportContextHref } from "@/lib/adminSupportContextHref";
 import { adminToast } from "@/lib/adminToast";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
@@ -60,6 +61,7 @@ interface SupportTicket {
   tags?: string[] | null;
   requester_type?: "customer" | "provider" | "admin" | null;
   support_context_type?: string | null;
+  support_context_id?: string | null;
   support_context_label?: string | null;
   csat_score?: number | null;
   sla_resolution_due_at?: string | null;
@@ -810,7 +812,7 @@ export function SupportTicketsPage() {
           <div className="flex flex-col gap-3 lg:flex-row">
             <input
               type="search"
-              placeholder="Search subject, ticket #, or description…"
+              placeholder="Search ticket #, booking no., subject, or description…"
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
               className="min-h-11 w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm"
@@ -1078,6 +1080,16 @@ export function SupportTicketsPage() {
                       <div className="max-w-[12rem] text-xs">
                         <p className="font-medium capitalize text-gray-800">{ticket.support_context_type.replace(/_/g, " ")}</p>
                         {ticket.support_context_label ? <p className="truncate text-gray-500">{ticket.support_context_label}</p> : null}
+                        {adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ? (
+                          <Link
+                            to={adminSpaTo(
+                              adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ?? "/",
+                            )}
+                            className="mt-1 inline-block font-medium text-gray-900 underline"
+                          >
+                            Open
+                          </Link>
+                        ) : null}
                       </div>
                     ) : (
                       <span className="text-gray-400">—</span>

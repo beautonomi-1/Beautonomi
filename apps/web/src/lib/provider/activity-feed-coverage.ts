@@ -21,6 +21,9 @@ export const PROVIDER_ACTIVITY_FEED_BOOKING_EVENT_TYPES = [
   "rescheduled",
   "confirmed",
   "service_started",
+  "provider_on_way",
+  "provider_arrived",
+  "additional_payment_paid",
 ] as const;
 
 export const PROVIDER_ACTIVITY_FEED_NEW_CLIENT_SOURCES = [
@@ -45,7 +48,6 @@ export const PROVIDER_ACTIVITY_FEED_EXCLUDED = {
     "provider_on_way",
     "provider_arrived",
     "otp_sent / otp_verified / qr_code_generated / qr_code_verified",
-    "payment_received (ledger earnings row is the canonical money event)",
     "service_completed (bookings.completed_at milestone is used instead)",
     "refunded / deleted / updated / additional_payment_* micro-events",
   ],

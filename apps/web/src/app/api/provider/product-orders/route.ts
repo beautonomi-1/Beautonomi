@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
         *,
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
+          fulfilment_status, fulfilled_qty,
           product_variant:product_variants(id, option_values)
         ),
         customer:users!product_orders_customer_id_fkey (

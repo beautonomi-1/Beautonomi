@@ -187,3 +187,21 @@ export function initSingular() {
     }
   }
 }
+
+export function setSingularCustomUserId(userId: string): void {
+  if (Platform.OS === "web") return;
+  try {
+    Singular.setCustomUserId?.(userId);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function unsetSingularCustomUserId(): void {
+  if (Platform.OS === "web") return;
+  try {
+    Singular.unsetCustomUserId?.();
+  } catch {
+    /* ignore */
+  }
+}

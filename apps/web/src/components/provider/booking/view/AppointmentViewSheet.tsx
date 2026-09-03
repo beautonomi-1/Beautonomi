@@ -38,10 +38,8 @@ import { BookingReceiptSection } from "./BookingReceiptSection";
 import { BookingRecurringBanner } from "./BookingRecurringBanner";
 import { BookingServicesSection } from "./BookingServicesSection";
 import { BookingPaymentSummarySection } from "./BookingPaymentSummarySection";
-import {
-  BookingCompletionSuccessDialog,
-  useShouldShowCompletionModal,
-} from "./BookingCompletionSuccessDialog";
+import { useShouldShowCompletionModal } from "./BookingCompletionSuccessDialog";
+import { PostCompletionSheet } from "../PostCompletionSheet";
 import { BookingCustomOfferBlock } from "./BookingCustomOfferBlock";
 import { BookingProductFulfillmentBlock } from "./BookingProductFulfillmentBlock";
 import { BookingCustomFieldsBlock } from "./BookingCustomFieldsBlock";
@@ -301,6 +299,28 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             <BookingCustomOfferBlock appointment={appt} />
             <BookingProductFulfillmentBlock bookingId={appt.id} />
 
+            {isAtHome ? (
+              <>
+                <BookingAtHomeJourneySection
+                  bookingId={appt.id}
+                  status={appt.status}
+                  currentStage={(raw?.current_stage as string | undefined) ?? appt.status}
+                  arrivalOtpVerified={raw?.arrival_otp_verified as boolean | undefined}
+                  qrCodeVerified={raw?.qr_code_verified as boolean | undefined}
+                  arrivalOtpPending={raw?.arrival_otp_pending as boolean | undefined}
+                  qrArrivalPending={raw?.qr_arrival_pending as boolean | undefined}
+                  onUpdated={refreshAfterPayment}
+                />
+                <BookingSectionCard>
+                  <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
+                    <ShieldAlert className="h-4 w-4" />
+                    Safety
+                  </BookingSectionLabel>
+                  <SafetyPanicButton bookingId={appt.id} variant="outline" size="sm" />
+                </BookingSectionCard>
+              </>
+            ) : null}
+
             {appt ? (
               <BookingStatusActions
                 appointment={appt}
@@ -315,7 +335,12 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               />
             ) : null}
 
-            <BookingServicesSection appointment={appt} />
+            <BookingServicesSection
+              appointment={appt}
+              bookingId={appt.id}
+              canReassign={canEditAppointments}
+              onReassigned={refreshAfterPayment}
+            />
             <BookingProductsSection appointment={appt} />
             <BookingTravelSection appointment={appt} />
             <BookingPaymentSummarySection appointment={appt} outstanding={outstanding} />
@@ -448,27 +473,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               </div>
             ) : null}
 
-            {isAtHome ? (
-              <>
-                <BookingAtHomeJourneySection
-                  bookingId={appt.id}
-                  status={appt.status}
-                  currentStage={(raw?.current_stage as string | undefined) ?? appt.status}
-                  arrivalOtpVerified={raw?.arrival_otp_verified as boolean | undefined}
-                  qrCodeVerified={raw?.qr_code_verified as boolean | undefined}
-                  arrivalOtpPending={raw?.arrival_otp_pending as boolean | undefined}
-                  qrArrivalPending={raw?.qr_arrival_pending as boolean | undefined}
-                  onUpdated={refreshAfterPayment}
-                />
-                <BookingSectionCard>
-                  <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
-                    <ShieldAlert className="h-4 w-4" />
-                    Safety
-                  </BookingSectionLabel>
-                  <SafetyPanicButton bookingId={appt.id} variant="outline" size="sm" />
-                </BookingSectionCard>
-              </>
-            ) : (
+            {isAtHome ? null : (
               <BookingSectionCard>
                 <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                   <ShieldAlert className="h-4 w-4" />
@@ -548,15 +553,13 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             onSuccess={() => void loadFullAppointment()}
           />
           <AuditLogSheet open={auditOpen} onOpenChange={setAuditOpen} bookingId={appt.id} />
-          <BookingCompletionSuccessDialog
-            bookingId={appt.id}
-            clientName={appt.client_name ?? ""}
+          <PostCompletionSheet
             open={completionModalOpen}
-            onOpenChange={setCompletionModalOpen}
-            canRate={canViewClientRatings}
-            onRateClient={() => {
-              document.getElementById("booking-client-rating")?.scrollIntoView({ behavior: "smooth" });
-            }}
+            bookingId={appt.id}
+            primaryServiceName={appt.service_name || "Appointment"}
+            primaryOfferingId={appt.service_id}
+            customerName={appt.client_name ?? "Client"}
+            onDismiss={() => setCompletionModalOpen(false)}
           />
         </>
       ) : null}

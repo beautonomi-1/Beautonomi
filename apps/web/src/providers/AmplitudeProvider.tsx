@@ -146,6 +146,9 @@ export function AmplitudeProvider({ children, portal }: AmplitudeProviderProps) 
     }).then((properties) => {
       if (!properties) return;
       amplitude.identify(user.id, properties);
+      if (properties.provider_id) {
+        amplitude.setGroup("provider", properties.provider_id);
+      }
     }).catch(() => {
       // Do not send partial identify; CDP traits must come from server API only.
       // Fail-soft: analytics should never interrupt user flow.

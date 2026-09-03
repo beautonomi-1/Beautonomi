@@ -5,6 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { assertCalendarScopeAllowsBooking } from "@/lib/auth/calendar-scope";
 import type { Booking } from "@/types/beautonomi";
 import {
   mapStatusToProvider,
@@ -220,6 +221,12 @@ export async function GET(
     if (!providerId) {
       console.warn("[GET /api/provider/bookings/[id]] Provider not found for user", user.id);
       return notFoundResponse("Provider not found");
+    }
+
+    // calendar_scope=own: 403 CALENDAR_SCOPE_FORBIDDEN unless the booking includes the caller's staff id.
+    if (!id.startsWith("group:")) {
+      const scopeGate = await assertCalendarScopeAllowsBooking(supabaseAdmin, user.id, providerId, id, request);
+      if (scopeGate.allowed === false) return scopeGate.response;
     }
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
@@ -566,6 +573,10 @@ export async function GET(
       custom_offer: bookingData.custom_offer || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       current_stage: (bookingData.current_stage ?? null) as BookingResponse["current_stage"],
+      estimated_arrival:
+        (bookingData as { estimated_arrival?: string | null }).estimated_arrival ?? null,
+      provider_eta_minutes:
+        (bookingData as { provider_eta_minutes?: number | null }).provider_eta_minutes ?? null,
       created_at: bookingData.created_at,
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
@@ -768,7 +779,8 @@ export async function PATCH(
     // Status is not required if we're updating other fields
     const { 
       scheduled_at, 
-      staff_id, 
+      staff_id,
+      booking_service_id,
       special_requests,
       // Additional editable fields for full Mangomint-style editing
       duration_minutes: _duration_minutes,
@@ -800,11 +812,12 @@ export async function PATCH(
       send_arrival_notification,
       referral_source_id,
       travel_buffer,
+      notify_customer,
     } = body;
     
     // Check if any updateable field is provided
     // Note: duration_minutes is stored in booking_services, not bookings table
-    const hasUpdates = status || scheduled_at || staff_id || special_requests !== undefined ||
+    const hasUpdates = status || scheduled_at || staff_id !== undefined || booking_service_id || special_requests !== undefined ||
         subtotal !== undefined || 
         total_amount !== undefined || tip_amount !== undefined ||
         discount_amount !== undefined || discount_code !== undefined || discount_reason !== undefined ||
@@ -823,6 +836,12 @@ export async function PATCH(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    // calendar_scope=own: 403 CALENDAR_SCOPE_FORBIDDEN unless the booking includes the caller's staff id.
+    {
+      const scopeGate = await assertCalendarScopeAllowsBooking(getSupabaseAdmin(), user.id, providerId, id, request);
+      if (scopeGate.allowed === false) return scopeGate.response;
     }
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
@@ -871,7 +890,7 @@ export async function PATCH(
       const clientExpectedVersion = (currentBooking as BookingRow).version || 0;
       if (version !== clientExpectedVersion) {
         return errorResponse(
-          "Booking was modified by another user. Please refresh and try again.",
+          "This booking changed, reload",
           "CONFLICT",
           409
         );
@@ -883,7 +902,7 @@ export async function PATCH(
       if (Math.abs(currentUpdatedAt - providedUpdatedAt) > 1000) {
         // More than 1 second difference indicates a conflict
         return errorResponse(
-          "Booking was modified by another user. Please refresh and try again.",
+          "This booking changed, reload",
           "CONFLICT",
           409
         );
@@ -893,6 +912,22 @@ export async function PATCH(
     // Slot conflict check when rescheduling (scheduled_at or services with new times)
     const isReschedule = scheduled_at != null || (Array.isArray(services) && services.some((s: { scheduled_start_at?: string | null }) => s.scheduled_start_at != null));
     if (isReschedule) {
+      const currentStage = String((currentBooking as BookingRow & { current_stage?: string | null }).current_stage ?? "").trim();
+      const ACTIVE_JOURNEY_STAGES = new Set(["provider_on_way", "provider_arrived", "service_started"]);
+      if (ACTIVE_JOURNEY_STAGES.has(currentStage)) {
+        return errorResponse(
+          "Cannot reschedule while the provider journey is active. Cancel or complete the visit first.",
+          "JOURNEY_ACTIVE",
+          400,
+        );
+      }
+      if (scheduled_at && new Date(scheduled_at).getTime() < Date.now() - 60_000) {
+        return errorResponse(
+          "Cannot reschedule to a time in the past.",
+          "INVALID_SCHEDULED_AT",
+          400,
+        );
+      }
       const currentStatusForReschedule = String((currentBooking as BookingRow).status ?? "");
       if (PROVIDER_PATCH_NON_RESCHEDULABLE_STATUSES.has(currentStatusForReschedule)) {
         return errorResponse(
@@ -1060,6 +1095,21 @@ export async function PATCH(
     // Update scheduled_at if provided (for reschedule)
     if (scheduled_at) {
       updateData.scheduled_at = scheduled_at;
+      const prevAt = (currentBooking as BookingRow).scheduled_at;
+      const locType = (currentBooking as BookingRow).location_type;
+      if (
+        locType === "at_home" &&
+        typeof prevAt === "string" &&
+        new Date(prevAt).toDateString() !== new Date(scheduled_at).toDateString()
+      ) {
+        updateData.current_stage = "confirmed";
+        updateData.arrival_otp = null;
+        updateData.arrival_otp_verified = false;
+        updateData.arrival_otp_expires_at = null;
+        updateData.qr_code_data = null;
+        updateData.qr_code_verified = false;
+        updateData.qr_code_expires_at = null;
+      }
     }
 
     // Update special_requests/notes if provided
@@ -1255,7 +1305,7 @@ export async function PATCH(
 
     if (!updatedRows || updatedRows.length === 0) {
       return errorResponse(
-        "Booking was modified by another user. Please refresh and try again.",
+        "This booking changed, reload",
         "CONFLICT",
         409
       );
@@ -1661,6 +1711,24 @@ export async function PATCH(
         ...(staff_id !== undefined ? { staffId: staff_id } : {}),
       });
       await refetchBookingAfterBookingServicesMutation();
+    } else if (staff_id !== undefined && typeof booking_service_id === "string" && booking_service_id) {
+      const { data: line, error: lineErr } = await supabaseAdminPatch
+        .from("booking_services")
+        .select("id")
+        .eq("id", booking_service_id)
+        .eq("booking_id", id)
+        .maybeSingle();
+      if (lineErr) throw lineErr;
+      if (!line) {
+        return errorResponse("Booking service line not found", "NOT_FOUND", 404);
+      }
+      const { error: lineStaffErr } = await supabaseAdminPatch
+        .from("booking_services")
+        .update({ staff_id })
+        .eq("id", booking_service_id)
+        .eq("booking_id", id);
+      if (lineStaffErr) throw lineStaffErr;
+      await refetchBookingAfterBookingServicesMutation();
     } else if (staff_id !== undefined) {
       await updateAllBookingServicesStaff(supabaseAdminPatch, id, staff_id);
       await refetchBookingAfterBookingServicesMutation();
@@ -1772,7 +1840,6 @@ export async function PATCH(
       try {
         const {
           sendCancellationNotification,
-          sendRescheduleNotification,
           sendBookingConfirmationNotification,
           sendServiceStartedNotification,
           sendServiceCompletedNotification,
@@ -1874,13 +1941,6 @@ export async function PATCH(
           // the single source for the confirmation push + in-app row; the legacy
           // inline block was removed to stop duplicate/US-locale notifications.
           await sendBookingConfirmationNotification(id);
-        } else if (scheduled_at && scheduled_at !== (currentBooking as BookingRow).scheduled_at) {
-          // Send reschedule notification
-          await sendRescheduleNotification(
-            id,
-            new Date((currentBooking as BookingRow).scheduled_at),
-            new Date(scheduled_at)
-          );
         } else if (dbStatus === "completed") {
           // Customer loyalty earn is handled by DB trigger on status -> completed.
 
@@ -1956,6 +2016,30 @@ export async function PATCH(
       }
     }
 
+    let rescheduleNotificationSent = false;
+    const shouldNotifyCustomer = notify_customer !== false;
+    const previousScheduledAt = (currentBooking as BookingRow).scheduled_at;
+    const didReschedule =
+      Boolean(scheduled_at) && scheduled_at !== previousScheduledAt;
+
+    if (didReschedule && shouldNotifyCustomer) {
+      try {
+        const { sendRescheduleNotification } = await import("@/lib/bookings/notifications");
+        await sendRescheduleNotification(
+          id,
+          new Date(String(previousScheduledAt)),
+          new Date(String(scheduled_at)),
+        );
+        rescheduleNotificationSent = true;
+        const { resetBookingReminderNotifications } = await import(
+          "@/lib/bookings/reset-booking-reminder-notifications"
+        );
+        await resetBookingReminderNotifications(supabaseAdminPatch, id);
+      } catch (rescheduleNotifErr) {
+        console.error("[provider PATCH] failed to send reschedule notification:", rescheduleNotifErr);
+      }
+    }
+
     // Create audit log entry for status change
     const eventTypeMap: Record<string, string> = {
       confirmed: "confirmed",
@@ -2019,7 +2103,7 @@ export async function PATCH(
         const bookingNumber = (updatedBooking as RefetchedBookingRow)?.ref_number || (currentBooking as BookingRow)?.ref_number || "";
         const previousStatusForNotif = (currentBooking as BookingRow)?.status;
         const newStatusForNotif = dbStatus || previousStatusForNotif;
-        const wasRescheduledForNotif = scheduled_at && scheduled_at !== (currentBooking as BookingRow)?.scheduled_at;
+        const wasRescheduledForNotif = didReschedule && rescheduleNotificationSent;
 
         // Skip statuses already handled by the dedicated wrapper block above so
         // customers never receive duplicate notifications.

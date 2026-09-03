@@ -28,9 +28,13 @@ import {
 } from "@/lib/notifications/onesignal";
 import { resolveOneSignalCredentials, type OneSignalAppType } from "@/lib/platform/secrets";
 import { enqueueNotification } from "@/lib/notifications/enqueue";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const JOB_NAME = "reconcile-push-delivery";
 
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
 /** Only inspect sends old enough for OneSignal to have finished processing. */
@@ -187,6 +191,14 @@ async function fetchViewStats(
 }
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

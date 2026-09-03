@@ -17,18 +17,20 @@
  *     revoke paid access by falling the provider back to the free plan, disable
  *     the Paystack subscription, and mark any order refunded.
  *
- * Accounting: provider_subscription_payment is posted with `amount = net`
- * (gross − fees) and shadow-ledgered DR Cash 1000 / CR Subscription revenue
- * 3100. The refund mirrors it (DR 3100 / CR 1000, migration 665) so a full
- * reversal nets the GL to zero.
+ * Accounting (Phase 11 accrual): provider_subscription_payment posts gross cash
+ * with `net = 0` (deferred revenue). Gateway fees sit in `fees`. Recognition
+ * rows (`subscription_recognition`) are inserted by the daily cron. Refunds
+ * debit deferred liability first (migration 665/863).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { buildProviderSubscriptionReceiptUrl } from "@/lib/receipts/receipt-download-token";
-import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getPlatformDefaultTaxRate } from "@/lib/platform-tax-settings";
+import { computeVatInclusiveBreakdown } from "@/lib/receipts/vat-inclusive-breakdown";
 import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
 
 export type RecordProviderSubscriptionPaymentResult = {
@@ -158,6 +160,118 @@ async function sendSubscriptionReceiptEmailSafe(params: {
   }
 }
 
+export type SubscriptionVatSource = "provider_subscription_payment" | "provider_subscription_refund";
+
+/**
+ * Post (idempotently, keyed on source payment + vat_source) the VAT `tax` leg
+ * for a subscription payment or its refund. Amount is signed: positive for a
+ * payment, negative for a refund. `net` is always 0 (a VAT leg is never
+ * revenue). Best-effort: a failure here never fails the money event, but it
+ * is logged so reconciliation can pick it up.
+ */
+export async function postSubscriptionVatLeg(
+  supabase: SupabaseClient,
+  params: {
+    providerId: string;
+    tenantId: string | null;
+    currency: string | null;
+    /** Absolute VAT portion in major units. */
+    amount: number;
+    ratePercent: number;
+    /** finance_transactions.id of the original provider_subscription_payment. */
+    sourcePaymentId: string;
+    reference: string | null;
+    vatSource: SubscriptionVatSource;
+    createdAtIso: string;
+  },
+): Promise<{ posted: boolean; alreadyPosted: boolean }> {
+  const absAmount = Math.round(Math.abs(Number(params.amount) || 0) * 100) / 100;
+  if (absAmount <= 0 || !params.sourcePaymentId) return { posted: false, alreadyPosted: false };
+  const signed = params.vatSource === "provider_subscription_refund" ? -absAmount : absAmount;
+
+  try {
+    const { data: existing } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("transaction_type", "tax")
+      .contains("metadata", { vat_source: params.vatSource, source_payment_id: params.sourcePaymentId })
+      .maybeSingle();
+    if (existing) return { posted: false, alreadyPosted: true };
+
+    const { error } = await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: params.providerId,
+      tenant_id: params.tenantId,
+      transaction_type: "tax",
+      amount: signed,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      currency: params.currency,
+      description:
+        params.vatSource === "provider_subscription_refund"
+          ? "VAT on provider subscription payment reversed"
+          : "VAT on provider subscription payment",
+      metadata: {
+        kind: "subscription_vat",
+        vat_source: params.vatSource,
+        source_payment_id: params.sourcePaymentId,
+        reference: params.reference,
+        vat_rate_percent: params.ratePercent,
+      },
+      created_at: params.createdAtIso,
+    });
+    if (error) {
+      console.error("[provider_subscription] VAT tax leg insert failed:", error.message);
+      return { posted: false, alreadyPosted: false };
+    }
+    return { posted: true, alreadyPosted: false };
+  } catch (err) {
+    console.error("[provider_subscription] VAT tax leg failed:", err);
+    return { posted: false, alreadyPosted: false };
+  }
+}
+
+/**
+ * Sum of `subscription_recognition` rows already posted against an original
+ * subscription payment (the daily recognize-period-revenue cron links each
+ * recognition row via metadata.source_payment_id). Used to split a refund
+ * into the deferred vs already-recognized components.
+ */
+export async function sumRecognizedForSubscriptionPayment(
+  supabase: SupabaseClient,
+  sourcePaymentId: string,
+): Promise<number> {
+  if (!sourcePaymentId) return 0;
+  try {
+    const { data } = await supabase
+      .from("finance_transactions")
+      .select("amount")
+      .eq("transaction_type", "subscription_recognition")
+      .contains("metadata", { source_payment_id: sourcePaymentId });
+    const rows = (data ?? []) as Array<{ amount?: number | string | null }>;
+    const total = rows.reduce((s, r) => s + toNumber(r.amount), 0);
+    return Math.round(Math.max(0, total) * 100) / 100;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Pure split of a refund into the part that reverses still-deferred revenue
+ * (2810) and the part that reverses already-recognized revenue (3100).
+ */
+export function splitSubscriptionRefundComponents(
+  reversalAmount: number,
+  recognizedSoFar: number,
+): { deferred_reversed: number; recognized_reversed: number } {
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const total = round(Math.max(0, toNumber(reversalAmount)));
+  // Round the recognized part first so the two components always sum to total.
+  const recognized = Math.min(total, round(Math.max(0, toNumber(recognizedSoFar))));
+  return { deferred_reversed: round(total - recognized), recognized_reversed: recognized };
+}
+
 /**
  * Idempotently record one recognized subscription payment. Returns
  * `alreadyRecorded: true` (without posting) when a payment_transactions row for
@@ -186,6 +300,9 @@ export async function recordProviderSubscriptionPayment(params: {
   tenantIdHint?: string | null;
   paymentProvider?: "paystack" | "apple";
   paymentMetadata?: Record<string, unknown>;
+  /** Billing term for recognition (defaults to monthly from paid-at). */
+  billingPeriod?: "monthly" | "yearly" | null;
+  currency?: string | null;
 }): Promise<RecordProviderSubscriptionPaymentResult> {
   const {
     supabase,
@@ -203,6 +320,8 @@ export async function recordProviderSubscriptionPayment(params: {
     tenantIdHint = null,
     paymentProvider = "paystack",
     paymentMetadata = {},
+    billingPeriod = "monthly",
+    currency: currencyHint = null,
   } = params;
 
   let resolvedFeesMajor = feesMajor;
@@ -256,6 +375,46 @@ export async function recordProviderSubscriptionPayment(params: {
   });
 
   const nowIso = new Date().toISOString();
+  const termStart = nowIso;
+  const termEnd = new Date(
+    Date.now() + (billingPeriod === "yearly" ? 365 : 30) * 86400000,
+  ).toISOString();
+
+  // Currency resolution is best-effort: a lookup failure must not block
+  // recording a payment that Paystack already captured.
+  let resolvedCurrency = currencyHint;
+  try {
+    if (!resolvedCurrency && planId) {
+      const { data: planRow } = await supabase
+        .from("subscription_plans")
+        .select("currency")
+        .eq("id", planId)
+        .maybeSingle();
+      resolvedCurrency = (planRow as { currency?: string | null } | null)?.currency ?? null;
+    }
+    if (!resolvedCurrency && financeTenantId) {
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("default_currency")
+        .eq("id", financeTenantId)
+        .maybeSingle();
+      resolvedCurrency = (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? null;
+    }
+  } catch (err) {
+    console.warn("[recordProviderSubscriptionPayment] currency lookup failed; using fallback", err);
+  }
+  resolvedCurrency = resolvedCurrency || LAST_RESORT_CURRENCY;
+
+  const vatRate = await getPlatformDefaultTaxRate();
+  const vatBreakdown = computeVatInclusiveBreakdown(amountMajor, vatRate);
+  const vatMetadata =
+    vatBreakdown.ratePercent > 0
+      ? {
+          vat_rate_percent: vatBreakdown.ratePercent,
+          vat_amount: vatBreakdown.vatAmount,
+          subtotal_excl_vat: vatBreakdown.subtotalExclVat,
+        }
+      : {};
 
   const { error: ptError } = await supabase.from("payment_transactions").insert({
     booking_id: null,
@@ -298,13 +457,11 @@ export async function recordProviderSubscriptionPayment(params: {
       provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "provider_subscription_payment",
-      // `amount` holds the GROSS the provider was charged (matches the
-      // ads/marketing-credit convention and the receipt shown to providers).
-      // `net` (gross − gateway fees) is what platform revenue recognition sums.
       amount: amountMajor,
       fees: resolvedFeesMajor,
       commission: 0,
-      net: netAmount,
+      net: 0,
+      currency: resolvedCurrency,
       description,
       metadata: {
         kind,
@@ -315,6 +472,11 @@ export async function recordProviderSubscriptionPayment(params: {
         invoice_code: invoiceCode,
         fee_source: paymentProvider === "paystack" ? "paystack" : "apple_commission",
         payment_provider: paymentProvider,
+        recognition_basis: "term",
+        term_start: termStart,
+        term_end: termEnd,
+        billing_period: billingPeriod,
+        ...vatMetadata,
         ...paymentMetadata,
       },
       created_at: nowIso,
@@ -323,6 +485,41 @@ export async function recordProviderSubscriptionPayment(params: {
     .single();
 
   const financeTransactionId = (financeRow as { id?: string } | null)?.id ?? null;
+
+  // VAT output-tax leg (Part C1/C2). The platform is the supplier of the
+  // subscription, so VAT is due when the platform's configured rate
+  // (getPlatformDefaultTaxRate — the platform's VAT-registration signal) is > 0.
+  // Posting rule, consistent with how 863 treats `tax` rows (amount = VAT,
+  // net = 0 → never counted as revenue by the aggregator): a separate `tax`
+  // finance row with metadata.vat_source = 'provider_subscription_payment'.
+  // The shadow GL (migration 870) reclasses it DR Subscription revenue 3100 /
+  // CR VAT payable 2100 so that once the term is fully recognized, revenue =
+  // gross − VAT and VAT payable = VAT; the cash leg is untouched (cash already
+  // includes VAT via the payment row). The aggregator excludes vat_source rows
+  // from booking `taxes_gross` and reports them as `subscription_vat`.
+  if (financeTransactionId && vatBreakdown.ratePercent > 0 && vatBreakdown.vatAmount > 0) {
+    await postSubscriptionVatLeg(supabase, {
+      providerId,
+      tenantId: financeTenantId,
+      currency: resolvedCurrency,
+      amount: vatBreakdown.vatAmount,
+      ratePercent: vatBreakdown.ratePercent,
+      sourcePaymentId: financeTransactionId,
+      reference,
+      vatSource: "provider_subscription_payment",
+      createdAtIso: nowIso,
+    });
+  }
+
+  await supabase
+    .from("provider_subscriptions")
+    .update({
+      billing_period_start: termStart,
+      billing_period_end: termEnd,
+      last_payment_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("provider_id", providerId);
 
   // Email the provider a receipt for every recognized charge (initial order,
   // authorization, and recurring renewal all flow through here exactly once).
@@ -371,33 +568,42 @@ export async function reverseProviderSubscriptionPayment(params: {
   const subscriptionCode = params.subscriptionCode ?? null;
 
   // 1) Locate the original recognized payment (finance_transactions row).
-  let original: { provider_id: string | null; net: number | null; amount: number | null } | null = null;
+  type OriginalPaymentRow = {
+    id?: string | null;
+    provider_id: string | null;
+    net: number | null;
+    amount: number | null;
+    currency?: string | null;
+    metadata?: Record<string, unknown> | null;
+  };
+  const ORIGINAL_COLUMNS = "id, provider_id, net, amount, currency, metadata";
+  let original: OriginalPaymentRow | null = null;
   if (reference) {
     const { data } = await supabase
       .from("finance_transactions")
-      .select("provider_id, net, amount")
+      .select(ORIGINAL_COLUMNS)
       .eq("transaction_type", "provider_subscription_payment")
       .contains("metadata", { reference })
       .maybeSingle();
-    original = (data as typeof original) ?? null;
+    original = (data as OriginalPaymentRow | null) ?? null;
   }
   if (!original && orderId) {
     const { data } = await supabase
       .from("finance_transactions")
-      .select("provider_id, net, amount")
+      .select(ORIGINAL_COLUMNS)
       .eq("transaction_type", "provider_subscription_payment")
       .contains("metadata", { provider_subscription_order_id: orderId })
       .maybeSingle();
-    original = (data as typeof original) ?? null;
+    original = (data as OriginalPaymentRow | null) ?? null;
   }
   if (!original && subscriptionCode) {
     const { data } = await supabase
       .from("finance_transactions")
-      .select("provider_id, net, amount")
+      .select(ORIGINAL_COLUMNS)
       .eq("transaction_type", "provider_subscription_payment")
       .contains("metadata", { subscription_code: subscriptionCode })
       .maybeSingle();
-    original = (data as typeof original) ?? null;
+    original = (data as OriginalPaymentRow | null) ?? null;
   }
 
   const providerId = String(original?.provider_id || params.providerIdHint || "").trim();
@@ -455,32 +661,74 @@ export async function reverseProviderSubscriptionPayment(params: {
 
   // 5) Ledger reversal — only if revenue had been recognized.
   let ledgerReversed = false;
-  const recognizedNet = original ? toNumber(original.net ?? original.amount) : 0;
-  if (recognizedNet > 0) {
+  const reversalAmount = original
+    ? toNumber(original.net) !== 0
+      ? toNumber(original.net)
+      : toNumber(original.amount)
+    : 0;
+  if (reversalAmount > 0) {
     const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
       tenant_id: subscription?.tenant_id ?? null,
       provider_id: resolvedProviderId,
     });
+
+    // Component split (Part C1): how much of the original deferred amount has
+    // the recognize-period-revenue cron already moved to revenue? The shadow GL
+    // (migration 870) reverses the deferred part against 2810 and the
+    // recognized part against Subscription revenue 3100, falling back to
+    // all-deferred when these fields are absent (pre-870 rows).
+    const originalId = typeof original?.id === "string" ? original.id : "";
+    const recognizedSoFar = originalId
+      ? await sumRecognizedForSubscriptionPayment(supabase, originalId)
+      : 0;
+    const split = splitSubscriptionRefundComponents(reversalAmount, recognizedSoFar);
+
     await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: resolvedProviderId,
       tenant_id: financeTenantId,
       transaction_type: "provider_subscription_refund",
-      amount: -recognizedNet,
+      amount: -reversalAmount,
       fees: 0,
       commission: 0,
-      net: -recognizedNet,
+      net: -reversalAmount,
+      currency: original?.currency ?? null,
       description: `Provider subscription payment reversed (${reason})`,
       metadata: {
         kind: "provider_subscription_refund",
         reference,
         provider_subscription_order_id: orderId,
         subscription_code: subscriptionCode,
+        source_payment_id: originalId || null,
+        deferred_reversed: split.deferred_reversed,
+        recognized_reversed: split.recognized_reversed,
         reason,
       },
       created_at: nowIso,
     });
     ledgerReversed = true;
+
+    // Reverse the VAT output-tax leg posted at payment time (if any).
+    const originalVat = toNumber(
+      (original?.metadata as { vat_amount?: number | string | null } | null | undefined)?.vat_amount,
+    );
+    const originalVatRate = toNumber(
+      (original?.metadata as { vat_rate_percent?: number | string | null } | null | undefined)
+        ?.vat_rate_percent,
+    );
+    if (originalId && originalVat > 0) {
+      await postSubscriptionVatLeg(supabase, {
+        providerId: resolvedProviderId,
+        tenantId: financeTenantId,
+        currency: original?.currency ?? null,
+        amount: originalVat,
+        ratePercent: originalVatRate,
+        sourcePaymentId: originalId,
+        reference,
+        vatSource: "provider_subscription_refund",
+        createdAtIso: nowIso,
+      });
+    }
   }
 
   // 6) Stop Paystack recurring billing (best effort).
@@ -526,6 +774,19 @@ export async function reverseProviderSubscriptionPayment(params: {
     data: { reference, provider_subscription_order_id: orderId, reason },
     action_url: "/provider/subscription",
   });
+
+  if (subscription?.id) {
+    void import("@/lib/integrations/slack/ops-triggers")
+      .then(({ slackNotifySubscriptionChurned }) =>
+        slackNotifySubscriptionChurned({
+          tenantId: subscription.tenant_id,
+          subscriptionId: subscription.id,
+          providerId: resolvedProviderId,
+          reason: "chargeback",
+        }),
+      )
+      .catch(() => undefined);
+  }
 
   return { reversed: true, alreadyReversed: false, ledgerReversed, providerId: resolvedProviderId };
 }

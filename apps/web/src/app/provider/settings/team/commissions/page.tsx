@@ -50,6 +50,14 @@ export default function CommissionsSettings() {
   const [_compensationType, setCompensationType] = useState<"commission" | "hourly" | "salary" | "mixed">("commission");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [shareCancellationFee, setShareCancellationFee] = useState(false);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [checklist, setChecklist] = useState<{
+    staff_with_commission_enabled: number;
+    staff_enabled_zero_rate: number;
+    services_with_staff_commission_disabled: number;
+    active_services: number;
+  } | null>(null);
 
   useEffect(() => {
     loadTeamMembers();
@@ -68,6 +76,23 @@ export default function CommissionsSettings() {
       setTeamMembers(members.filter((m) => m.is_active));
       if (members.length > 0 && !selectedMember) {
         setSelectedMember(members[0].id);
+      }
+      try {
+        const setup = await fetcher.get<{
+          data: {
+            staff_share_cancellation_fee?: boolean;
+            checklist?: {
+              staff_with_commission_enabled: number;
+              staff_enabled_zero_rate: number;
+              services_with_staff_commission_disabled: number;
+              active_services: number;
+            };
+          };
+        }>("/api/provider/settings/team/commissions?view=setup");
+        setShareCancellationFee(setup.data?.staff_share_cancellation_fee === true);
+        setChecklist(setup.data?.checklist ?? null);
+      } catch {
+        setChecklist(null);
       }
     } catch (error) {
       console.error("Failed to load team members:", error);
@@ -187,6 +212,65 @@ export default function CommissionsSettings() {
         </SectionCard>
       ) : (
         <div className="space-y-4 sm:space-y-6">
+          {checklist ? (
+            <SectionCard>
+              <p className="text-sm font-semibold text-gray-900 mb-2">Commission setup checklist</p>
+              <ul className="space-y-2 text-sm text-gray-700">
+                <li>
+                  {checklist.staff_with_commission_enabled > 0 ? "✓" : "○"} Enable commission on at least one staff
+                  member
+                  {checklist.staff_with_commission_enabled > 0
+                    ? ` (${checklist.staff_with_commission_enabled} enabled)`
+                    : ""}
+                </li>
+                <li>
+                  {checklist.staff_enabled_zero_rate === 0 ? "✓" : "○"} Set a service or product rate above 0 for
+                  enabled staff
+                  {checklist.staff_enabled_zero_rate > 0
+                    ? ` (${checklist.staff_enabled_zero_rate} still at 0%)`
+                    : ""}
+                </li>
+                <li>
+                  {checklist.services_with_staff_commission_disabled === 0 ? "✓" : "○"} Turn on staff commission on
+                  services
+                  {checklist.services_with_staff_commission_disabled > 0
+                    ? ` (${checklist.services_with_staff_commission_disabled} of ${checklist.active_services} services are off)`
+                    : ""}
+                </li>
+              </ul>
+              <div className="mt-4 flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                <Switch
+                  checked={shareCancellationFee}
+                  disabled={savingPolicy}
+                  onCheckedChange={async (checked) => {
+                    setSavingPolicy(true);
+                    try {
+                      await fetcher.patch("/api/provider/settings/team/commissions", {
+                        staff_share_cancellation_fee: checked,
+                      });
+                      setShareCancellationFee(checked);
+                      toast.success(
+                        checked
+                          ? "Staff will share cancellation fees"
+                          : "Cancellation fee share turned off",
+                      );
+                    } catch (error: unknown) {
+                      toast.error(error instanceof Error ? error.message : "Failed to update policy");
+                    } finally {
+                      setSavingPolicy(false);
+                    }
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <Label className="text-sm font-medium">Share cancellation fees with staff</Label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    When on, assigned staff receive a commission share of late-cancel and no-show fees.
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+          ) : null}
           {/* Team Member Selector */}
           <SectionCard>
             <div className="space-y-4">

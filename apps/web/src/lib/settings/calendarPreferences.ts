@@ -63,6 +63,9 @@ export interface MangomintCalendarPreferences {
   
   /** Show client phone on hover/click */
   showClientPhone: boolean;
+
+  /** Notify the customer when a booking is drag-rescheduled on the calendar */
+  notifyCustomerOnDrag: boolean;
 }
 
 /**
@@ -83,6 +86,7 @@ export const DEFAULT_PREFERENCES: MangomintCalendarPreferences = {
   compactMode: false,
   showPrices: false,
   showClientPhone: true,
+  notifyCustomerOnDrag: true,
 };
 
 // ============================================================================

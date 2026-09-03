@@ -5,6 +5,8 @@ import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd"
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_BOOKING_HOLD_CREATED } from "@/lib/analytics/amplitude/types";
 import { Button } from "@/components/ui/button";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -95,6 +97,7 @@ export default function OnlineBookingFlow({
 }: OnlineBookingFlowProps) {
   const router = useRouter();
   const { user } = useAuth();
+  const { track } = useAmplitude();
   const { bundle } = useConfigBundle();
   const tenantRegionCode = useMemo(
     () => bundle?.meta?.tenant_region?.code ?? "ZA",
@@ -449,6 +452,11 @@ export default function OnlineBookingFlow({
           if (expTrim) sessionStorage.setItem("beautonomi_hold_expires_at", expTrim);
           else sessionStorage.removeItem("beautonomi_hold_expires_at");
         } catch {}
+        track(EVENT_BOOKING_HOLD_CREATED, {
+          portal: "web",
+          provider_id: provider.id,
+          hold_id: id,
+        });
         if (user) {
           router.push(`/book/continue?hold_id=${id}`);
         } else {

@@ -4,7 +4,8 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
-import { sendStaffInvite } from "@/lib/provider/staff-invite";
+import { sendStaffInvite, STAFF_INVITE_EXPIRY_DAYS } from "@/lib/provider/staff-invite";
+import { recordStaffInvitationSent } from "@/lib/provider/staff-invitations";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
@@ -60,6 +61,7 @@ interface StaffMemberRow {
   mobile_ready?: boolean;
   commission_rate?: number | null;
   working_hours?: unknown;
+  over_cap_grace_until?: string | null;
   staff_locations?: StaffLocationItem[];
   users?: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null;
 }
@@ -160,10 +162,12 @@ export async function GET(request: NextRequest) {
         is_active,
         mobile_ready,
         commission_rate,
-        working_hours
+        working_hours,
+        over_cap_grace_until
       `
       )
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .is("deleted_at", null);
     
     if (staffIds && staffIds.length > 0) {
       staffQuery = staffQuery.in("id", staffIds);
@@ -180,13 +184,13 @@ export async function GET(request: NextRequest) {
     const serviceIdsByStaff = new Map<string, string[]>();
     if (idsForServiceAssignments.length > 0) {
       const { data: svcAssignRows } = await supabase
-        .from("staff_service_assignments")
-        .select("staff_id, service_id")
+        .from("staff_services")
+        .select("staff_id, offering_id")
         .in("staff_id", idsForServiceAssignments);
       for (const row of svcAssignRows ?? []) {
-        const r = row as { staff_id: string; service_id: string };
+        const r = row as { staff_id: string; offering_id: string };
         const arr = serviceIdsByStaff.get(r.staff_id) ?? [];
-        arr.push(r.service_id);
+        arr.push(r.offering_id);
         serviceIdsByStaff.set(r.staff_id, arr);
       }
     }
@@ -275,6 +279,7 @@ export async function GET(request: NextRequest) {
         primary_location_id: locations.find((l) => l.is_primary)?.location_id ?? null,
         service_ids: member.service_ids ?? [],
         working_hours: member.working_hours ?? null,
+        over_cap_grace_until: member.over_cap_grace_until ?? null,
       };
       const redacted = redactStaffRowForViewer(
         { ...row, user_id: member.user_id ?? null },
@@ -622,11 +627,14 @@ export async function POST(request: Request) {
 
     // Assign services if provided
     if (service_ids && service_ids.length > 0) {
-      await supabase.from("staff_service_assignments").delete().eq("staff_id", staffId);
-      await supabase.from("staff_service_assignments").insert(
-        service_ids.map((sid: string) => ({ staff_id: staffId, service_id: sid }))
+      await supabase.from("staff_services").delete().eq("staff_id", staffId);
+      await supabase.from("staff_services").insert(
+        service_ids.map((sid: string) => ({
+          staff_id: staffId,
+          offering_id: sid,
+          provider_id: providerId,
+        }))
       );
-      await supabase.from("provider_staff").update({ assigned_service_ids: service_ids }).eq("id", staffId);
     }
 
     // Optionally send invite (email via Resend + push when registered)
@@ -656,6 +664,21 @@ export async function POST(request: Request) {
           inviterName: inviter?.full_name ?? inviter?.email ?? null,
           recipientUserId: newStaff.user_id ?? null,
           recipientEmail: inviteRecipientEmail,
+        });
+        const inviteExpiresAt = new Date();
+        inviteExpiresAt.setDate(inviteExpiresAt.getDate() + STAFF_INVITE_EXPIRY_DAYS);
+        const inviteChannels: Array<"email" | "push" | "sms"> = [];
+        if (delivery.email.delivered) inviteChannels.push("email");
+        if (delivery.push.delivered) inviteChannels.push("push");
+        await recordStaffInvitationSent(getSupabaseAdmin(), {
+          providerId,
+          staffId,
+          email: inviteRecipientEmail,
+          phone: staffPhone ?? null,
+          token: delivery.invite_token,
+          invitedBy: user.id,
+          expiresAt: inviteExpiresAt,
+          channels: inviteChannels,
         });
         void trackServer(EVENT_STAFF_INVITED, {
           user_id: user.id,

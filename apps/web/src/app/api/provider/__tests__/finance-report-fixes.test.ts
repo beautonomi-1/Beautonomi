@@ -4,6 +4,11 @@ import { NextRequest } from "next/server";
 const mockRequireRoleInApi = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
+const mockRequireAnyPermission = vi.fn();
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requireAnyPermission: (...args: unknown[]) => mockRequireAnyPermission(...args),
+}));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -112,6 +117,7 @@ describe("PATCH /api/provider/finance/vat-reports/[id]/mark-remitted", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequireAnyPermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
   });
 
@@ -163,5 +169,20 @@ describe("PATCH /api/provider/finance/vat-reports/[id]/mark-remitted", () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: "new" }) });
     expect(res.status).toBe(200);
     expect(updateEq).toHaveBeenCalledWith("id", "rem-real");
+  });
+
+  it("rejects staff without manage_finance / edit_settings", async () => {
+    mockRequireAnyPermission.mockResolvedValue({
+      authorized: false,
+      response: new Response(JSON.stringify({ error: "Permission denied" }), { status: 403 }),
+    });
+    const { PATCH } = await import("../finance/vat-reports/[id]/mark-remitted/route");
+    const req = new NextRequest("http://localhost/api/provider/finance/vat-reports/new/mark-remitted", {
+      method: "PATCH",
+      body: JSON.stringify({ period_start: "2026-01-01", period_end: "2026-02-28" }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: "new" }) });
+    expect(res.status).toBe(403);
+    expect(mockRequireAnyPermission).toHaveBeenCalledWith(["manage_finance", "edit_settings"], req);
   });
 });

@@ -97,6 +97,8 @@ export default function ProductCheckoutPage() {
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [useWallet, setUseWallet] = useState(false);
+  const [promotionCode, setPromotionCode] = useState("");
+  const [giftCardCode, setGiftCardCode] = useState("");
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState({
     type: "fixed",
@@ -441,6 +443,10 @@ export default function ProductCheckoutPage() {
           collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
           payment_method: paymentMethod,
           use_wallet: paymentMethod === "paystack" ? useWallet : false,
+          ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
+          ...(giftCardCode.trim()
+            ? { gift_card: { code: giftCardCode.trim().toUpperCase() } }
+            : {}),
           idempotency_key: idempotencyKey,
         },
         {
@@ -591,6 +597,8 @@ export default function ProductCheckoutPage() {
     savedCards,
     useNewCard,
     selectedCardId,
+    promotionCode,
+    giftCardCode,
   ]);
 
   if (loading) {
@@ -783,6 +791,26 @@ export default function ProductCheckoutPage() {
               )}
             </div>
           )}
+
+          <div className="bg-white rounded-xl border p-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Promo & gift card</h3>
+            <div className="space-y-3">
+              <input
+                value={promotionCode}
+                onChange={(e) => setPromotionCode(e.target.value)}
+                placeholder="Promotion code"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                autoCapitalize="characters"
+              />
+              <input
+                value={giftCardCode}
+                onChange={(e) => setGiftCardCode(e.target.value)}
+                placeholder="Gift card code"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                autoCapitalize="characters"
+              />
+            </div>
+          </div>
 
           {/* Payment method */}
           <div className="bg-white rounded-xl border p-6">

@@ -5,8 +5,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
-import { providerPortalFetch } from "@/lib/http/fetcher";
 import { formatApiErrorMessage } from "@/lib/http/api-error";
+import { FetchError } from "@/lib/http/fetcher";
 import { AvailabilitySlotPicker } from "@/components/appointments/AvailabilitySlotPicker";
 import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -58,35 +58,19 @@ export function RescheduleSheet({
     }
     setSaving(true);
     try {
-      await providerApi.rescheduleAppointment(appointment.id, date, time);
-
-      if (notifyClient) {
-        const oldDate = appointment.scheduled_date;
-        const oldTime = appointment.scheduled_time;
-        const timeChanged = oldDate !== date || (oldTime ?? "").slice(0, 5) !== time.slice(0, 5);
-        if (timeChanged) {
-          try {
-            await providerPortalFetch(`/api/provider/bookings/${appointment.id}/notify-reschedule`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                old_date: oldDate,
-                old_time: oldTime,
-                new_date: date,
-                new_time: time,
-              }),
-            });
-          } catch {
-            toast.warning("Rescheduled, but client notification failed");
-          }
-        }
-      }
+      await providerApi.rescheduleAppointment(appointment.id, date, time, {
+        notify_customer: notifyClient,
+      });
 
       toast.success("Booking rescheduled");
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
-      toast.error(formatApiErrorMessage(error, "Failed to reschedule"));
+      toast.error(
+        error instanceof FetchError && error.status === 409
+          ? "This booking changed, reload"
+          : formatApiErrorMessage(error, "Failed to reschedule"),
+      );
     } finally {
       setSaving(false);
     }

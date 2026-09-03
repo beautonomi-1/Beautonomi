@@ -23,6 +23,7 @@ import {
 } from "@/lib/bookings/resolve-commission-base-for-booking-payment";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import {
@@ -651,6 +652,28 @@ export async function processPayment(
               reason: recordedPayment.reason,
               error: recordedPayment.error,
             }
+          );
+        }
+
+        const settlement = await recordPaystackBookingSettlement(supabaseAdmin, {
+          bookingId: booking.id,
+          reference: chargeData.reference ?? reference,
+          amountMajor,
+          feesSmallestOrMajor:
+            typeof (chargeData as { fees?: number }).fees === "number"
+              ? (chargeData as { fees?: number }).fees
+              : 0,
+          bookingPaymentId: recordedPayment.ok ? recordedPayment.bookingPaymentId : null,
+          isDeposit: isDepositPayment,
+          walletAmountApplied,
+          giftCardAmountApplied,
+          feeSource: "process_payment_saved_card",
+          metadata: { source: "process_payment_saved_card" },
+        });
+        if (!settlement.ok) {
+          console.error(
+            "[process-payment] ledger settlement failed after saved-card charge; reconcile cron will retry",
+            { bookingId: booking.id, reference: chargeData.reference ?? reference, settlement },
           );
         }
 
@@ -1330,4 +1353,12 @@ async function insertNoGatewayLedger(
         ]
       : []),
   ]);
+
+  if (postBookingLevelFees && v.tipAmount > 0) {
+    void import("@/lib/notifications/notify-staff-event")
+      .then(({ notifyStaffTipReceivedForBooking }) =>
+        notifyStaffTipReceivedForBooking(supabase, booking.id),
+      )
+      .catch(() => undefined);
+  }
 }

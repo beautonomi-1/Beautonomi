@@ -81,7 +81,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
       return;
     }
 
-    router.push("/signup?type=provider");
+    router.push("/provider/signup");
   };
 
   return (

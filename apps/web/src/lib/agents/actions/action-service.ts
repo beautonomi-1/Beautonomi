@@ -7,6 +7,17 @@ import {
 } from "@beautonomi/agent-policy";
 import { loadAgentEmergencyControls } from "../config-loader";
 import { slackNotifyAgentActionProposed } from "@/lib/integrations/slack/agent-triggers";
+import { isWorkflowFamilyEnabled } from "@/workflows/config";
+import { trackServer } from "@/lib/analytics/amplitude/server";
+
+// Event name constants live in the analytics taxonomy package (packages/analytics/src/events.ts);
+// string literals here avoid a cross-package edit. Fire-and-forget: analytics never blocks agents.
+const AMPLITUDE_AGENT_ACTION_PROPOSED = "agent_action_proposed";
+const AMPLITUDE_AGENT_ACTION_EXECUTED = "agent_action_executed";
+
+function emitAgentEvent(eventName: string, properties: Record<string, unknown>, insertId?: string): void {
+  void trackServer(eventName, properties, undefined, insertId ? { insertId } : undefined).catch(() => undefined);
+}
 
 export type ProposeActionInput = {
   tenantId: string;
@@ -82,6 +93,21 @@ export async function proposeAgentAction(input: ProposeActionInput) {
     reasoningSummary: input.reasoningSummary,
   });
 
+  emitAgentEvent(
+    AMPLITUDE_AGENT_ACTION_PROPOSED,
+    {
+      action_id: data.id,
+      tenant_id: input.tenantId,
+      agent_id: input.agentId,
+      action_type: input.actionType,
+      target_type: input.targetType,
+      risk_level: input.riskLevel,
+      workflow_run_id: input.workflowRunId ?? null,
+      prompt_version: input.promptVersion ?? null,
+    },
+    `agent_action:${data.id}:proposed`,
+  );
+
   return data;
 }
 
@@ -92,13 +118,42 @@ export async function proposeAgentAction(input: ProposeActionInput) {
  */
 export async function expireStaleProposals(): Promise<number> {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
+  const now = new Date().toISOString();
+
+  const { data: candidates } = await supabase
     .from("agent_actions")
-    .update({ status: "expired", updated_at: new Date().toISOString() })
+    .select("id, workflow_run_id")
     .in("status", ["proposed", "approval_pending"])
-    .lt("approval_expires_at", new Date().toISOString())
+    .lt("approval_expires_at", now);
+
+  if (!candidates?.length) return 0;
+
+  let skipRunIds = new Set<string>();
+  if (isWorkflowFamilyEnabled("agent")) {
+    const { data: runningRuns } = await supabase
+      .from("workflow_runs")
+      .select("run_id")
+      .eq("workflow", "support-triage")
+      .eq("status", "running");
+    skipRunIds = new Set((runningRuns ?? []).map((row: { run_id: string }) => row.run_id));
+  }
+
+  const expireIds = candidates
+    .filter((row: { id: string; workflow_run_id?: string | null }) => {
+      const runId = row.workflow_run_id ?? null;
+      return !(runId && skipRunIds.has(runId));
+    })
+    .map((row: { id: string }) => row.id);
+
+  if (!expireIds.length) return 0;
+
+  const { data: expired } = await supabase
+    .from("agent_actions")
+    .update({ status: "expired", updated_at: now })
+    .in("id", expireIds)
     .select("id");
-  return (data ?? []).length;
+
+  return (expired ?? []).length;
 }
 
 export async function acquireExecutionLease(actionId: string, workerId: string, expectedHash: string) {
@@ -173,6 +228,18 @@ export async function completeExecution(
       updated_at: new Date().toISOString(),
     })
     .eq("id", actionId);
+
+  emitAgentEvent(
+    AMPLITUDE_AGENT_ACTION_EXECUTED,
+    {
+      action_id: actionId,
+      status,
+      success: status === "executed",
+      retryable: opts?.retryable ?? null,
+      error: opts?.error ?? null,
+    },
+    `agent_action:${actionId}:${status}`,
+  );
 }
 
 export async function recordApproval(params: {

@@ -3,6 +3,8 @@ export interface ProductOrderSheetItem {
   product_name: string;
   quantity: number;
   total_price: number;
+  fulfilment_status?: string | null;
+  fulfilled_qty?: number | null;
   product_variant?: { option_values?: Record<string, string> } | null;
 }
 
@@ -14,6 +16,8 @@ export interface ProductOrderSheetOrder {
   tax_amount?: number;
   delivery_fee?: number;
   discount_amount?: number;
+  gift_card_amount?: number | null;
+  promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
   payment_status: string;

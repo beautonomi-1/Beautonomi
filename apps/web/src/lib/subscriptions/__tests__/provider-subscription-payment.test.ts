@@ -17,9 +17,19 @@ vi.mock("@/lib/subscriptions/ensure-provider-free-subscription", () => ({
   resolveCatalogPlanIdForProviderSubscription: vi.fn().mockResolvedValue("free-plan-1"),
 }));
 
+vi.mock("@/lib/regions/config", () => ({
+  getTenantRegionConfig: vi.fn().mockResolvedValue({ defaultCurrency: "ZAR" }),
+}));
+
+const platformTaxRate = { value: 0 };
+vi.mock("@/lib/platform-tax-settings", () => ({
+  getPlatformDefaultTaxRate: vi.fn(async () => platformTaxRate.value),
+}));
+
 import {
   recordProviderSubscriptionPayment,
   reverseProviderSubscriptionPayment,
+  splitSubscriptionRefundComponents,
 } from "../provider-subscription-payment";
 
 type Row = Record<string, any>;
@@ -57,6 +67,9 @@ function makeDb(initial: Record<string, Row[]>) {
         return { data: row, error: row ? null : { message: "not found" } };
       },
       maybeSingle: async () => ({ data: apply()[0] ?? null, error: null }),
+      // Awaiting a bare select chain returns the full filtered list.
+      then: (resolve: (value: unknown) => unknown, reject?: (r: unknown) => unknown) =>
+        Promise.resolve({ data: apply(), error: null }).then(resolve, reject),
       update: (payload: Row) => {
         const upd: Row = {
           eq: (k: string, v: unknown) => {
@@ -108,7 +121,52 @@ function makeDb(initial: Record<string, Row[]>) {
 }
 
 describe("recordProviderSubscriptionPayment", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    platformTaxRate.value = 0;
+  });
+
+  it("posts a separate VAT `tax` leg (amount = VAT portion, net 0) when the platform VAT rate is set", async () => {
+    platformTaxRate.value = 15;
+    const db = makeDb({ payment_transactions: [], finance_transactions: [] });
+
+    const result = await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-vat",
+      providerId: "prov-1",
+      amountMajor: 345,
+      feesMajor: 0,
+      kind: "subscription_renewal",
+    });
+
+    expect(result.recorded).toBe(true);
+    const finance = db.inserts.finance_transactions ?? [];
+    const payment = finance.find((r) => r.transaction_type === "provider_subscription_payment");
+    const tax = finance.filter((r) => r.transaction_type === "tax");
+    expect(payment.amount).toBe(345);
+    expect(payment.metadata.vat_amount).toBe(45);
+    expect(tax).toHaveLength(1);
+    expect(tax[0].amount).toBe(45);
+    expect(tax[0].net).toBe(0);
+    expect(tax[0].booking_id).toBeNull();
+    expect(tax[0].metadata.vat_source).toBe("provider_subscription_payment");
+    expect(tax[0].metadata.source_payment_id).toBe(result.financeTransactionId);
+    expect(tax[0].metadata.vat_rate_percent).toBe(15);
+  });
+
+  it("posts no VAT leg when the platform VAT rate is 0", async () => {
+    const db = makeDb({ payment_transactions: [], finance_transactions: [] });
+    await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-novat",
+      providerId: "prov-1",
+      amountMajor: 300,
+      feesMajor: 0,
+      kind: "subscription_renewal",
+    });
+    const finance = db.inserts.finance_transactions ?? [];
+    expect(finance.filter((r) => r.transaction_type === "tax")).toHaveLength(0);
+  });
 
   it("posts one payment_transactions + finance_transactions (net of fees) keyed on reference", async () => {
     const db = makeDb({ payment_transactions: [], finance_transactions: [] });
@@ -135,9 +193,10 @@ describe("recordProviderSubscriptionPayment", () => {
     // `amount` is the GROSS charged (matches ads/marketing convention + the
     // provider receipt); `net` is gross − gateway fees (revenue recognition).
     expect(finance[0].amount).toBe(300);
-    expect(finance[0].net).toBe(291);
+    expect(finance[0].net).toBe(0);
+    expect(finance[0].fees).toBe(9);
+    expect(finance[0].metadata.recognition_basis).toBe("term");
     expect(finance[0].metadata.reference).toBe("ref-1");
-    expect(finance[0].metadata.provider_subscription_order_id).toBe("order-1");
   });
 
   it("is idempotent — a duplicate reference does not double-post", async () => {
@@ -196,6 +255,136 @@ describe("reverseProviderSubscriptionPayment", () => {
       ],
     });
   }
+
+  it("reverses deferred payments using gross amount when net is zero", async () => {
+    const db = makeDb({
+      finance_transactions: [
+        {
+          id: "fin-1",
+          provider_id: "prov-1",
+          transaction_type: "provider_subscription_payment",
+          amount: 300,
+          net: 0,
+          metadata: { reference: "ref-1", provider_subscription_order_id: "order-1" },
+        },
+      ],
+      provider_subscriptions: [
+        {
+          id: "sub-1",
+          provider_id: "prov-1",
+          tenant_id: "tenant-1",
+          plan_id: "plan-growth",
+          status: "active",
+          paystack_subscription_code: "SUB_x",
+        },
+      ],
+      provider_subscription_orders: [
+        { id: "order-1", provider_id: "prov-1", status: "paid" },
+      ],
+    });
+
+    const result = await reverseProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reason: "paystack_refund",
+      reference: "ref-1",
+      orderId: "order-1",
+    });
+
+    expect(result.ledgerReversed).toBe(true);
+    const refunds = (db.inserts.finance_transactions ?? []).filter(
+      (r) => r.transaction_type === "provider_subscription_refund",
+    );
+    expect(refunds[0].amount).toBe(-300);
+  });
+
+  it("splits the refund into deferred vs already-recognized components and reverses the VAT leg", async () => {
+    const db = makeDb({
+      finance_transactions: [
+        {
+          id: "fin-1",
+          provider_id: "prov-1",
+          transaction_type: "provider_subscription_payment",
+          amount: 345,
+          net: 0,
+          currency: "ZAR",
+          metadata: {
+            reference: "ref-1",
+            provider_subscription_order_id: "order-1",
+            vat_amount: 45,
+            vat_rate_percent: 15,
+          },
+        },
+        {
+          id: "tax-1",
+          provider_id: "prov-1",
+          transaction_type: "tax",
+          amount: 45,
+          net: 0,
+          metadata: { vat_source: "provider_subscription_payment", source_payment_id: "fin-1" },
+        },
+        // Two daily recognition rows already moved 100 to revenue.
+        {
+          id: "rec-1",
+          provider_id: "prov-1",
+          transaction_type: "subscription_recognition",
+          amount: 60,
+          net: 60,
+          metadata: { source_payment_id: "fin-1" },
+        },
+        {
+          id: "rec-2",
+          provider_id: "prov-1",
+          transaction_type: "subscription_recognition",
+          amount: 40,
+          net: 40,
+          metadata: { source_payment_id: "fin-1" },
+        },
+        // Recognition for a different payment must not count.
+        {
+          id: "rec-other",
+          provider_id: "prov-1",
+          transaction_type: "subscription_recognition",
+          amount: 999,
+          net: 999,
+          metadata: { source_payment_id: "fin-other" },
+        },
+      ],
+      provider_subscriptions: [
+        { id: "sub-1", provider_id: "prov-1", tenant_id: "tenant-1", plan_id: "plan-growth", status: "active", paystack_subscription_code: null },
+      ],
+      provider_subscription_orders: [{ id: "order-1", provider_id: "prov-1", status: "paid" }],
+    });
+
+    const result = await reverseProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reason: "paystack_refund",
+      reference: "ref-1",
+      orderId: "order-1",
+    });
+
+    expect(result.ledgerReversed).toBe(true);
+    const inserted = db.inserts.finance_transactions ?? [];
+    const refund = inserted.find((r) => r.transaction_type === "provider_subscription_refund");
+    expect(refund.amount).toBe(-345);
+    expect(refund.currency).toBe("ZAR");
+    expect(refund.metadata.source_payment_id).toBe("fin-1");
+    expect(refund.metadata.recognized_reversed).toBe(100);
+    expect(refund.metadata.deferred_reversed).toBe(245);
+
+    const taxLegs = inserted.filter((r) => r.transaction_type === "tax");
+    expect(taxLegs).toHaveLength(1);
+    expect(taxLegs[0].amount).toBe(-45);
+    expect(taxLegs[0].net).toBe(0);
+    expect(taxLegs[0].metadata.vat_source).toBe("provider_subscription_refund");
+    expect(taxLegs[0].metadata.source_payment_id).toBe("fin-1");
+  });
+
+  it("splitSubscriptionRefundComponents clamps recognized to the reversal amount", () => {
+    expect(splitSubscriptionRefundComponents(300, 0)).toEqual({ deferred_reversed: 300, recognized_reversed: 0 });
+    expect(splitSubscriptionRefundComponents(300, 120.555)).toEqual({ deferred_reversed: 179.44, recognized_reversed: 120.56 });
+    expect(splitSubscriptionRefundComponents(300, 900)).toEqual({ deferred_reversed: 0, recognized_reversed: 300 });
+    expect(splitSubscriptionRefundComponents(0, 50)).toEqual({ deferred_reversed: 0, recognized_reversed: 0 });
+  });
 
   it("posts a full negative refund, falls to free, disables Paystack, marks order refunded", async () => {
     const db = paidState();

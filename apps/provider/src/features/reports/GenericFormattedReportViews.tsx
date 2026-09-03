@@ -91,8 +91,17 @@ const num = (v: unknown) => Number(v ?? 0);
 export function StaffCommissionReportView({ data }: { data: unknown }) {
   if (!isObj(data, "staffCommissions")) return <ReportPayloadView data={data} />;
   const rows = (data.staffCommissions as Array<Record<string, unknown>>) ?? [];
+  const zeroCommissionWarning =
+    typeof data.zeroCommissionServiceWarning === "string" ? data.zeroCommissionServiceWarning : null;
   return (
     <View style={twStyle("gap-5 pb-8")}>
+      {zeroCommissionWarning ? (
+        <View style={twStyle("rounded-2xl border border-amber-100 bg-amber-50/95 px-4 py-3")}>
+          <Text style={twStyle("text-sm leading-5 text-amber-950")}>
+            {zeroCommissionWarning} Enable staff commission on those services so earnings lines post.
+          </Text>
+        </View>
+      ) : null}
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <Metric label="Total commission" value={formatCurrency(num(data.totalCommission))} tone="emerald" />
         <Metric label="Revenue base" value={formatCurrency(num(data.totalRevenue))} tone="blue" />

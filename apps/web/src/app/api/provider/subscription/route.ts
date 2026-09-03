@@ -165,11 +165,28 @@ export async function GET(request: NextRequest) {
 
     const iosPurchaseEligible = await resolveIosPurchaseEligibility(supabase, providerId);
 
+    const scheduledPlanId = (subscription as { scheduled_plan_id?: string | null }).scheduled_plan_id ?? null;
+    let scheduled_plan: { id: string; name: string | null } | null = null;
+    if (scheduledPlanId) {
+      const { data: scheduledPlanRow } = await supabase
+        .from("subscription_plans")
+        .select("id, name")
+        .eq("id", scheduledPlanId)
+        .maybeSingle();
+      if (scheduledPlanRow) {
+        scheduled_plan = {
+          id: String((scheduledPlanRow as { id: string }).id),
+          name: (scheduledPlanRow as { name?: string | null }).name ?? null,
+        };
+      }
+    }
+
     return successResponse({
       ...(subscription as any),
       status: sub.status,
       latest_order: effectiveOrder,
       billing_issue: billingIssue,
+      scheduled_plan,
       ios_purchase_eligible: iosPurchaseEligible.eligible,
       ios_purchase_eligible_reason: iosPurchaseEligible.reason,
       billing_provider: iosPurchaseEligible.billing_provider,

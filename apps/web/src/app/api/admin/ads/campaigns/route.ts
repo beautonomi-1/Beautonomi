@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     let listQuery = admin.from("ads_campaigns").select(selectCols).order("updated_at", { ascending: false });
 
-    if (status && ["draft", "active", "paused", "ended"].includes(status)) {
+    if (status && ["draft", "active", "paused", "ended", "pending_review", "rejected"].includes(status)) {
       listQuery = listQuery.eq("status", status);
     }
 
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
     }
 
     let countQuery = admin.from("ads_campaigns").select("*", { count: "exact", head: true });
-    if (status && ["draft", "active", "paused", "ended"].includes(status)) {
+    if (status && ["draft", "active", "paused", "ended", "pending_review", "rejected"].includes(status)) {
       countQuery = countQuery.eq("status", status);
     }
     if (search) {

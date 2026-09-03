@@ -1,6 +1,133 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/event-keys";
 import { slackChatPostMessage } from "@/lib/integrations/slack/slack-api";
+import { sendResendEmail } from "@/lib/integrations/resend";
+
+/**
+ * Secondary alert channel: after N consecutive Slack delivery failures for the same
+ * dedupe key we email the ops list (`OPS_ALERT_EMAIL`, comma-separated) via Resend.
+ * Consecutive failures are tracked in-process and cross-checked against
+ * `slack_delivery_logs` so serverless instances agree.
+ */
+export const SLACK_EMAIL_FALLBACK_AFTER_FAILURES = 2;
+const EMAIL_FALLBACK_COOLDOWN_MS = 60 * 60 * 1000;
+
+const consecutiveFailures = new Map<string, number>();
+const lastFallbackEmailAt = new Map<string, number>();
+
+/** Test hook — clears in-process fallback counters. */
+export function __resetSlackFallbackStateForTests(): void {
+  consecutiveFailures.clear();
+  lastFallbackEmailAt.clear();
+}
+
+function fallbackKey(p: { tenantId: string; eventKey: string; dedupeKey: string }): string {
+  return `${p.tenantId}:${p.eventKey}:${p.dedupeKey}`;
+}
+
+function opsAlertRecipients(): string[] {
+  return (process.env.OPS_ALERT_EMAIL ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.includes("@"));
+}
+
+async function countConsecutiveDbFailures(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  p: { tenantId: string; eventKey: string; dedupeKey: string },
+): Promise<number> {
+  try {
+    const { data } = await supabase
+      .from("slack_delivery_logs")
+      .select("status")
+      .eq("tenant_id", p.tenantId)
+      .eq("event_key", p.eventKey)
+      .eq("dedupe_key", p.dedupeKey)
+      .in("status", ["sent", "failed"])
+      .order("created_at", { ascending: false })
+      .limit(SLACK_EMAIL_FALLBACK_AFTER_FAILURES);
+    let n = 0;
+    for (const row of (data ?? []) as Array<{ status: string }>) {
+      if (row.status !== "failed") break;
+      n += 1;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
+export async function maybeSendSlackFallbackEmail(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  p: {
+    tenantId: string;
+    environment: string;
+    eventKey: string;
+    dedupeKey: string;
+    title: string;
+    detailLines: string[];
+    actionUrl: string;
+    slackError: string;
+  },
+): Promise<boolean> {
+  const key = fallbackKey(p);
+  const inMemory = (consecutiveFailures.get(key) ?? 0) + 1;
+  consecutiveFailures.set(key, inMemory);
+  const fromDb = await countConsecutiveDbFailures(supabase, p);
+  const failures = Math.max(inMemory, fromDb);
+  if (failures < SLACK_EMAIL_FALLBACK_AFTER_FAILURES) return false;
+
+  const last = lastFallbackEmailAt.get(key) ?? 0;
+  if (Date.now() - last < EMAIL_FALLBACK_COOLDOWN_MS) return false;
+
+  const recipients = opsAlertRecipients();
+  if (recipients.length === 0) {
+    console.warn("[slack] delivery failed twice but OPS_ALERT_EMAIL is not set; no email fallback sent", {
+      eventKey: p.eventKey,
+      dedupeKey: p.dedupeKey,
+    });
+    return false;
+  }
+
+  const url = buildAdminDeepLink(p.actionUrl);
+  const text = [
+    `Slack delivery failed ${failures}x for ${p.eventKey} (${p.environment}).`,
+    `Last Slack error: ${p.slackError}`,
+    "",
+    p.title,
+    ...p.detailLines.filter(Boolean).map((l) => `- ${l}`),
+    "",
+    `Open in admin: ${url}`,
+  ].join("\n");
+  const html = `<p><strong>Slack delivery failed ${failures}x</strong> for <code>${escapeHtml(p.eventKey)}</code> (${escapeHtml(p.environment)}).<br/>Last Slack error: ${escapeHtml(p.slackError)}</p><p><strong>${escapeHtml(p.title)}</strong></p><ul>${p.detailLines
+    .filter(Boolean)
+    .map((l) => `<li>${escapeHtml(l)}</li>`)
+    .join("")}</ul><p><a href="${url}">Open in admin</a></p>`;
+
+  let sentAny = false;
+  for (const to of recipients) {
+    try {
+      await sendResendEmail({
+        supabase,
+        tenantId: p.tenantId === "platform" ? null : p.tenantId,
+        to,
+        subject: `[Beautonomi ops] Slack alert undelivered: ${p.title}`,
+        html,
+        text,
+        headers: { "X-Beautonomi-Slack-Event": p.eventKey },
+      });
+      sentAny = true;
+    } catch (err) {
+      console.error("[slack] email fallback send failed", { to, err });
+    }
+  }
+  if (sentAny) lastFallbackEmailAt.set(key, Date.now());
+  return sentAny;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+}
 
 /**
  * If an event has no Slack routing rule, try alternate keys so ops can map one channel
@@ -171,6 +298,7 @@ export async function tryNotifySlackEvent(params: {
   });
 
   if (!post.ok) {
+    const slackError = post.error || "chat.postMessage failed";
     await logDelivery(supabase, {
       tenantId: params.tenantId,
       environment: params.environment,
@@ -181,11 +309,22 @@ export async function tryNotifySlackEvent(params: {
       channelId: rule.channel_id,
       slackTs: null,
       status: "failed",
-      errorMessage: post.error || "chat.postMessage failed",
+      errorMessage: slackError,
+    });
+    await maybeSendSlackFallbackEmail(supabase, {
+      tenantId: params.tenantId,
+      environment: params.environment,
+      eventKey: params.eventKey,
+      dedupeKey: params.dedupeKey,
+      title: params.title,
+      detailLines: params.detailLines,
+      actionUrl: params.actionUrl,
+      slackError,
     });
     return;
   }
 
+  consecutiveFailures.delete(fallbackKey(params));
   await logDelivery(supabase, {
     tenantId: params.tenantId,
     environment: params.environment,

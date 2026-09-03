@@ -8,6 +8,7 @@ import {
   getProviderIdForUser,
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const invoiceLineItemSchema = z.object({
@@ -59,7 +60,9 @@ function currentYear() {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["view_sales", "process_payments"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

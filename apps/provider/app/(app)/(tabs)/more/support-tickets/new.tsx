@@ -17,6 +17,7 @@ import {
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
+import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId } from "@beautonomi/utils";
 
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking" },
@@ -30,12 +31,13 @@ const SUPPORT_CONTEXT_OPTIONS = [
 
 export default function NewSupportTicketScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ category?: string; booking_id?: string }>();
+  const params = useLocalSearchParams<{ category?: string; booking_id?: string; booking_number?: string }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
   const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
   const [supportContextLabel, setSupportContextLabel] = useState("");
+  const [supportContextId, setSupportContextId] = useState<string | null>(null);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,11 +49,24 @@ export default function NewSupportTicketScreen() {
       if (derived.priority) setPriority(derived.priority);
       if (derived.subject) setSubject(derived.subject);
     }
-    if (typeof params.booking_id === "string" && params.booking_id.trim()) {
-      setSupportContextType("booking");
-      setSupportContextLabel(params.booking_id.trim());
+    const prefill = resolveSupportTicketPrefillFromSearch({
+      bookingId: typeof params.booking_id === "string" ? params.booking_id : null,
+      bookingNumber: typeof params.booking_number === "string" ? params.booking_number : null,
+      category: preset || null,
+    });
+    if (prefill.supportContextType === "booking" || prefill.supportContextType === "product_order") {
+      setSupportContextType(prefill.supportContextType);
+      setSupportContextLabel(prefill.supportContextLabel);
+      setSupportContextId(prefill.supportContextId);
+      if (!preset) {
+        setSubject((current) =>
+          current.trim()
+            ? current
+            : `Help with booking ${prefill.supportContextLabel.split(" (")[0]}`,
+        );
+      }
     }
-  }, [params.category, params.booking_id]);
+  }, [params.category, params.booking_id, params.booking_number]);
 
   /**
    * §Provider-audit 2026-05: previously the Submit button silently stayed
@@ -101,6 +116,7 @@ export default function NewSupportTicketScreen() {
           category,
           priority,
           support_context_type: supportContextType,
+          support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
           support_context_label: supportContextLabel.trim() || null,
         }
       );

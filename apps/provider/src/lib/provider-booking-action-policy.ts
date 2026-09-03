@@ -340,7 +340,7 @@ export function mapProviderBookingActionError(error: string | null | undefined, 
     case "HOUSECALL_STAGE_REQUIRED":
       return error || "Complete the previous house-call step before starting service.";
     case "CONFLICT":
-      return "This booking was updated elsewhere. Refresh and try again.";
+      return "This booking changed, reload";
     case "SLOT_NOT_AVAILABLE":
       return error || "That time is no longer available. Choose another slot.";
     case "VALIDATION_ERROR":

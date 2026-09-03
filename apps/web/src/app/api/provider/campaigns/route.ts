@@ -10,6 +10,7 @@ import {
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { checkMarketingFeatureAccess, canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays, startOfDay } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
@@ -116,7 +117,9 @@ interface _Campaign {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
@@ -164,7 +167,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 

@@ -8,6 +8,7 @@ import { computeTicketAttentionFields } from "@/lib/support/support-ticket-atten
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
 import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { isUuidString } from "@beautonomi/utils";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -85,7 +86,16 @@ export async function GET(request: NextRequest) {
 
       if (q.length > 0) {
         const pattern = `%${q}%`;
-        query = query.or(`subject.ilike.${pattern},ticket_number.ilike.${pattern},description.ilike.${pattern}`);
+        const parts = [
+          `subject.ilike.${pattern}`,
+          `ticket_number.ilike.${pattern}`,
+          `description.ilike.${pattern}`,
+          `support_context_label.ilike.${pattern}`,
+        ];
+        if (isUuidString(q)) {
+          parts.push(`support_context_id.eq.${q}`);
+        }
+        query = query.or(parts.join(","));
       }
 
       if (slaOverdue) {

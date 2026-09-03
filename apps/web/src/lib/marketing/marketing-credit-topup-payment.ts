@@ -11,14 +11,14 @@
  * owns the *platform finance attribution*. Both are idempotent on the Paystack
  * reference so duplicate webhooks / verify-after-webhook are no-ops.
  *
- * Revenue is recognised at purchase (credits are a non-refundable prepaid
- * platform service, consistent with ads). Consumption at send time draws down
- * the balance only — no further finance rows. A reversal of the purchase
+ * Phase 11 accrual: posts deferred revenue (`net = 0` on the cash leg).
+ * Recognition rows are inserted when credits are consumed.
  * (refund/chargeback) posts `provider_marketing_credit_refund`.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export type RecordMarketingCreditTopupResult = {
   recorded: boolean;
@@ -68,6 +68,18 @@ export async function recordMarketingCreditTopupPayment(params: {
     provider_id: providerId,
   });
 
+  const resolvedCurrency =
+    params.currency ||
+    (await (async () => {
+      if (!financeTenantId) return LAST_RESORT_CURRENCY;
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("default_currency")
+        .eq("id", financeTenantId)
+        .maybeSingle();
+      return (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY;
+    })());
+
   await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
@@ -93,11 +105,13 @@ export async function recordMarketingCreditTopupPayment(params: {
     amount: amountMajor,
     fees: feesMajor,
     commission: 0,
-    net: netAmount,
+    net: 0,
+    currency: resolvedCurrency,
     description: "Marketing credit top-up (pre-pay)",
     metadata: {
       kind: "marketing_credit_topup",
       paystack_reference: reference,
+      recognition_basis: "consumption",
     },
     created_at: nowIso,
   });

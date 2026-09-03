@@ -5,6 +5,10 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { nextRecurringOccurrenceDate, isDateOnOrBeforeEnd } from "@/lib/recurring/next-due-date";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "process-recurring-bookings";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/process-recurring-bookings
@@ -19,6 +23,14 @@ import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking
  */
 const LOOKAHEAD_DAYS = 14;
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

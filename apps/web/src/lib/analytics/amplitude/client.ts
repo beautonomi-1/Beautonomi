@@ -40,6 +40,7 @@ export interface AmplitudeClient {
   track: (eventName: string, eventProperties?: Record<string, any>) => void;
   identify: (userId: string, userProperties?: Record<string, any>) => void;
   setUserProperties: (userProperties: Record<string, any>) => void;
+  setGroup: (groupType: string, groupName: string) => void;
   reset: () => void;
   isReady: () => boolean;
 }
@@ -122,14 +123,11 @@ function createClient(pipeline: PluginPipeline): AmplitudeClient {
   return {
     track: async (eventName: string, eventProperties?: Record<string, any>) => {
       try {
-        // Process event through pipeline
-        const processedEvent = await pipeline.execute({
+        // Process event through pipeline (ReliabilityPlugin delivers to Amplitude SDK)
+        await pipeline.execute({
           event_type: eventName,
           event_properties: eventProperties,
         });
-
-        // Track with Amplitude SDK
-        amplitude.track(processedEvent.event_type, processedEvent.event_properties);
       } catch (error) {
         console.error("[Amplitude] Error tracking event:", error);
       }
@@ -153,6 +151,14 @@ function createClient(pipeline: PluginPipeline): AmplitudeClient {
         amplitude.identify(identifyObj);
       } catch (error) {
         console.error("[Amplitude] Error setting user properties:", error);
+      }
+    },
+
+    setGroup: (groupType: string, groupName: string) => {
+      try {
+        amplitude.setGroup(groupType, groupName);
+      } catch (error) {
+        console.error("[Amplitude] Error setting group:", error);
       }
     },
 

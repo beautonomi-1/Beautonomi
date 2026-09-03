@@ -10,6 +10,7 @@ import {
   isStaffInviteTokenValid,
   loadStaffInviteRowByToken,
 } from "@/lib/provider/staff-invite";
+import { loadStaffInvitationByToken } from "@/lib/provider/staff-invitations";
 
 export const runtime = "nodejs";
 
@@ -36,18 +37,29 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = getSupabaseAdmin();
-    const row = await loadStaffInviteRowByToken(admin, token);
+    const [row, invitation] = await Promise.all([
+      loadStaffInviteRowByToken(admin, token),
+      loadStaffInvitationByToken(admin, token),
+    ]);
     if (!row) {
+      // Revoked invites have their 810 token cleared; surface that explicitly.
+      if (invitation?.status === "revoked") {
+        return errorResponse("This invite was revoked. Ask your manager to send a new one.", "INVITE_REVOKED", 410);
+      }
       return notFoundResponse("Invite not found or no longer valid");
     }
 
-    const valid = isStaffInviteTokenValid(row);
+    const revoked = invitation?.status === "revoked";
+    const deactivated = !row.is_active;
+    const valid = !revoked && isStaffInviteTokenValid(row);
     const alreadyAccepted = Boolean(row.invite_accepted_at);
 
     return successResponse({
-      valid: valid || alreadyAccepted,
+      valid: (valid || alreadyAccepted) && !revoked && !deactivated,
       already_accepted: alreadyAccepted,
-      expired: !valid && !alreadyAccepted,
+      expired: !valid && !alreadyAccepted && !revoked && !deactivated,
+      revoked,
+      deactivated,
       business_name: row.business_name,
       staff_name: row.name,
       email_hint: row.email ? maskEmail(row.email) : null,

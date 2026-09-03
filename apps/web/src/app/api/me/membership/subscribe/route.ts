@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireRoleInApi, handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { createMembershipPurchase } from "@/app/api/me/membership/_helpers/purchase-membership";
 
@@ -15,6 +16,7 @@ const schema = z.object({
   referrer_path: z.string().optional(),
   /** Optional: mobile app scheme return URL (e.g. `customer://membership-paystack`). When present,
    *  it is used as both the Paystack callback_url and to derive cancel_action with `?cancelled=1`. */
+  tender: z.enum(["paystack", "wallet"]).optional(),
   callback_url: z
     .string()
     .trim()
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("Validation failed", "VALIDATION_ERROR", 400, parsed.error.issues);
 
     const { membership_id: planId, provider_id: providerId } = parsed.data;
+    const authClient = parsed.data.tender === "wallet" ? await getSupabaseServer(request) : undefined;
 
     const result = await createMembershipPurchase({
       userId: user.id,
@@ -59,6 +62,8 @@ export async function POST(request: NextRequest) {
       expectedProviderId: providerId,
       tenantId,
       callbackUrl: parsed.data.callback_url ?? undefined,
+      tender: parsed.data.tender ?? "paystack",
+      authClient,
       attribution: {
         campaign_id: parsed.data.campaign_id,
         source: parsed.data.source ?? "customer_app_partner_profile",

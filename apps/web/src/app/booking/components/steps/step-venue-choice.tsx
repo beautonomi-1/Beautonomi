@@ -15,9 +15,9 @@ import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
-import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 import { useSavedAddresses } from "@/hooks/useSavedAddresses";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { useAtHomeAddressPrefill } from "@/hooks/use-at-home-address-prefill";
 import {
   Dialog,
   DialogContent,
@@ -90,7 +90,8 @@ export default function StepVenueChoice({
     coverage: string;
   }>>([]);
   const [showZonesInfo, setShowZonesInfo] = useState(false);
-  const [isGettingCurrentLocation, setIsGettingCurrentLocation] = useState(false);
+  const { state: prefillState, prefillFromCurrentLocation } = useAtHomeAddressPrefill();
+  const isGettingCurrentLocation = prefillState.status === "locating";
 
   // Load provider info to check mobile services availability
   useEffect(() => {
@@ -447,58 +448,29 @@ export default function StepVenueChoice({
   };
 
   const handleUseCurrentLocation = async () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
+    setZoneError(null);
+    const result = await prefillFromCurrentLocation();
+    if (!result) {
+      toast.error("Unable to get your location. Please enable location permissions or enter your address manually.");
       return;
     }
-
-    setZoneError(null);
-    setIsGettingCurrentLocation(true);
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const reverse = await fetcher.post<{ data: any | null }>(
-            "/api/mapbox/reverse-geocode",
-            { longitude, latitude }
-          );
-
-          if (reverse.data) {
-            const parsed = mapGeocodeFeatureToAddressParts(reverse.data, {
-              defaultCountryName: HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
-            });
-            await handleAddressInput({
-              ...parsed,
-              latitude,
-              longitude,
-              place_name:
-                reverse.data.place_name ||
-                `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`,
-            });
-          } else {
-            await handleAddressInput({
-              address_line1: "Current location",
-              city: "",
-              country: HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
-              latitude,
-              longitude,
-              place_name: `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
-            });
-          }
-          toast.success("Current location selected");
-        } catch {
-          toast.error("Unable to resolve your address from current location");
-        } finally {
-          setIsGettingCurrentLocation(false);
-        }
-      },
-      () => {
-        toast.error("Unable to get your location. Please enable location permissions.");
-        setIsGettingCurrentLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-    );
+    const { address, latitude, longitude } = result;
+    if (address.line1?.trim() || address.city?.trim()) {
+      await handleAddressInput({
+        address_line1: address.line1,
+        address_line2: address.line2,
+        city: address.city,
+        state: address.state,
+        country: address.country || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
+        postal_code: address.postal_code,
+        latitude,
+        longitude,
+        place_name: [address.line1, address.city, address.country].filter(Boolean).join(", "),
+      });
+      toast.success("Current location selected");
+    } else {
+      toast.error("Could not resolve street address. Enter it manually.");
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import {
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
+import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -64,6 +65,11 @@ export default function StaffReport() {
   const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
+  const { calendarScopeOwn, selfStaffId } = useCalendarScopeLock();
+
+  useEffect(() => {
+    if (calendarScopeOwn && selfStaffId) setSelectedStaff(selfStaffId);
+  }, [calendarScopeOwn, selfStaffId]);
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const staffReportUrl = appendReportLocation(`/api/provider/reports/staff?from=${from}&to=${to}`, selectedLocationId);
@@ -184,13 +190,18 @@ export default function StaffReport() {
           ) : null}
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row" }}>
+            {calendarScopeOwn ? null : (
             <TouchableOpacity
               style={[twStyle(`rounded-full px-4 py-2 ${!selectedStaff ? "bg-violet-700" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
               onPress={() => setSelectedStaff(null)}
             >
               <Text style={twStyle(`text-sm font-medium ${!selectedStaff ? "text-white" : "text-gray-600"}`)}>All staff</Text>
             </TouchableOpacity>
-            {data.staff.map((s) => {
+            )}
+            {(calendarScopeOwn && selfStaffId
+              ? data.staff.filter((s) => (s.id ?? s.name) === selfStaffId)
+              : data.staff
+            ).map((s) => {
               const key = s.id ?? s.name;
               const isSelected = selectedStaff === key;
               return (

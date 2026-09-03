@@ -68,7 +68,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.87",
+  version: "1.0.88",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -189,7 +189,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "280",
+    buildNumber: "281",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -197,9 +197,33 @@ const BASE_EXPO_CONFIG = {
         "Beautonomi Provider uses the camera for identity verification, profile photos, catalogue images, scanning QR codes, and scanning product barcodes.",
       NSMicrophoneUsageDescription:
         "Beautonomi Provider uses the microphone during identity verification to record your liveness video, and when you choose to record a video for posts, messages, or work documentation.",
+      // Required for MediaLibrary.saveToLibraryAsync (terminal poster). Keep as
+      // Info.plist only — the expo-media-library plugin also adds READ_MEDIA_*.
+      NSPhotoLibraryAddUsageDescription:
+        "Beautonomi Provider saves the terminal poster to your photo library when you choose Save.",
       // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
       // Must match plugin `scheme` and apps/customer `scheme` + package com.beautonomi.
       LSApplicationQueriesSchemes: ["customer"],
+      // Singular SKAdNetwork + commonly published partner IDs (Part G).
+      SKAdNetworkItems: [
+        { SKAdNetworkIdentifier: "22mmun2rn5.skadnetwork" },
+        { SKAdNetworkIdentifier: "cstr6suwn9.skadnetwork" },
+        { SKAdNetworkIdentifier: "v9wttpbfk9.skadnetwork" },
+        { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" },
+        { SKAdNetworkIdentifier: "4dzt52r2t5.skadnetwork" },
+        { SKAdNetworkIdentifier: "ludvb6z3bs.skadnetwork" },
+        { SKAdNetworkIdentifier: "hs6bdukanm.skadnetwork" },
+        { SKAdNetworkIdentifier: "kbd757ywx3.skadnetwork" },
+        { SKAdNetworkIdentifier: "9t245vhmpl.skadnetwork" },
+        { SKAdNetworkIdentifier: "prcb7njmu6.skadnetwork" },
+        { SKAdNetworkIdentifier: "yclnxrl5pm.skadnetwork" },
+        { SKAdNetworkIdentifier: "4468km3ulx.skadnetwork" },
+        { SKAdNetworkIdentifier: "2u9pt9hc89.skadnetwork" },
+        { SKAdNetworkIdentifier: "8s468mfl3y.skadnetwork" },
+        { SKAdNetworkIdentifier: "ppxm28t8ap.skadnetwork" },
+        { SKAdNetworkIdentifier: "4pfyvq9l8r.skadnetwork" },
+        { SKAdNetworkIdentifier: "v72qych5uu.skadnetwork" },
+      ],
       // Amplitude Guides & Surveys preview deep links (amp-xxxx://). Dedicated URL
       // type so it never collides with expo-router; handleEngagementURL consumes it.
       ...(amplitudeUrlScheme
@@ -240,7 +264,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 280,
+    versionCode: 281,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

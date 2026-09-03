@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import AuthGuard from "@/components/auth/auth-guard";
 import { toast } from "sonner";
@@ -33,6 +33,7 @@ import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
+import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId, supportPrefillNoun } from "@beautonomi/utils";
 
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking or appointment", hint: "Booking ID, date, provider, or service" },
@@ -47,13 +48,45 @@ const SUPPORT_CONTEXT_OPTIONS = [
 
 export default function SubmitTicketPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const bookingPrefill = useMemo(
+    () =>
+      resolveSupportTicketPrefillFromSearch({
+        bookingId: searchParams.get("booking_id"),
+        bookingNumber: searchParams.get("booking_number"),
+        orderId: searchParams.get("order_id"),
+        orderNumber: searchParams.get("order_number"),
+        giftCardId: searchParams.get("gift_card_id"),
+        giftCardCode: searchParams.get("gift_card_code"),
+        category: searchParams.get("category"),
+      }),
+    [searchParams],
+  );
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
   const [category, setCategory] = useState("");
   const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
   const [supportContextLabel, setSupportContextLabel] = useState("");
+  const [supportContextId, setSupportContextId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (bookingPrefill.supportContextType) {
+      setSupportContextType(bookingPrefill.supportContextType);
+      setSupportContextLabel(bookingPrefill.supportContextLabel);
+      setSupportContextId(bookingPrefill.supportContextId);
+      const kind = supportPrefillNoun(bookingPrefill.supportContextType);
+      setSubject((current) =>
+        current.trim()
+          ? current
+          : `Help with ${kind} ${bookingPrefill.supportContextLabel.split(" (")[0]}`,
+      );
+    }
+    if (bookingPrefill.category) {
+      setCategory(bookingPrefill.category);
+    }
+  }, [bookingPrefill]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +110,7 @@ export default function SubmitTicketPage() {
           priority,
           category,
           support_context_type: supportContextType,
+          support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
           support_context_label: supportContextLabel.trim() || null,
         }
       );

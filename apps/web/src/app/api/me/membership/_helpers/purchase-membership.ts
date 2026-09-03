@@ -1,9 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { recordMembershipPayment } from "@/lib/memberships/membership-payment";
 
 export type MembershipPurchaseAttribution = {
   source?: string;
@@ -31,6 +33,9 @@ type PurchaseMembershipInput = {
   /** Optional mobile-app return URL (e.g. `customer://membership-paystack`).
    *  When provided: used as the Paystack callback_url and cancel_action is derived from it. */
   callbackUrl?: string;
+  tender?: "paystack" | "wallet";
+  /** User-scoped client required for `wallet_debit_self`. */
+  authClient?: SupabaseClient;
 };
 
 function httpError(message: string, status: number, code: string) {
@@ -180,6 +185,59 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
       attribution,
     });
     return { order_id: order.id, reference: null, payment_url: null, status: "paid" };
+  }
+
+  if (input.tender === "wallet") {
+    if (!input.authClient) {
+      throw httpError("Wallet payment requires a signed-in session.", 401, "AUTH_REQUIRED");
+    }
+    const { data: debitResult, error: walletErr } = await (input.authClient.rpc as any)("wallet_debit_self", {
+      p_amount: amount,
+      p_description: `Membership ${planData.id}`,
+      p_reference_id: order.id,
+      p_reference_type: "membership_order",
+      p_tenant_id: input.tenantId,
+    });
+    if (walletErr || !debitResult) {
+      await (supabase.from("membership_orders") as any)
+        .update({ status: "failed", metadata: { ...orderMetadata, tender: "wallet" } })
+        .eq("id", order.id);
+      throw httpError(
+        walletErr?.message || "We could not debit your wallet. Please try again.",
+        400,
+        "WALLET_ERROR",
+      );
+    }
+
+    const reference = `wallet_membership_${order.id}`;
+    await activateFreeMembership({
+      userId: input.userId,
+      providerId: planData.provider_id,
+      planId: planData.id,
+      orderId: order.id,
+      attribution,
+    });
+    await recordMembershipPayment({
+      supabase,
+      reference,
+      orderId: order.id,
+      userId: input.userId,
+      providerId: planData.provider_id,
+      planId: planData.id,
+      grossAmount: amount,
+      feeAmount: 0,
+      kind: "membership_order",
+      tenantIdHint: input.tenantId,
+      paymentProvider: "wallet",
+    });
+    await (supabase.from("membership_orders") as any)
+      .update({
+        status: "paid",
+        paystack_reference: reference,
+        metadata: { ...orderMetadata, tender: "wallet" },
+      })
+      .eq("id", order.id);
+    return { order_id: order.id, reference, payment_url: null, status: "paid" };
   }
 
   const reference = generateTransactionReference("membership", order.id);

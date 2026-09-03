@@ -27,7 +27,15 @@ export type FinanceLedgerAggregate = {
   platform_commission_net: number;
   platform_take_net: number;
   tips_gross: number;
+  /** Booking-level VAT collected on behalf of providers (`tax` rows on bookings). */
   taxes_gross: number;
+  /**
+   * Platform output VAT on provider subscription payments, net of refunds:
+   * `tax` rows with metadata.vat_source in (provider_subscription_payment,
+   * provider_subscription_refund). Excluded from `taxes_gross` and booking GMV
+   * because it is the platform's own VAT liability, not customer booking tax.
+   */
+  subscription_vat: number;
   subscription_net: number;
   subscription_gateway_fees: number;
   subscription_gross: number;
@@ -58,7 +66,14 @@ export type FinanceLedgerAggregate = {
   promotion_discounts: number;
   /** Membership plan discount contra-revenue applied at checkout. */
   membership_discounts: number;
-  /** Loyalty tier discount contra-revenue applied at checkout. */
+  /**
+   * @deprecated Alias of `loyalty_redemptions`. The ledger never writes a
+   * `loyalty_discount` transaction_type (every writer — migrations 656/659/800/
+   * 803/817/818 and the app audit legs — posts `loyalty_redemption`), so this
+   * bucket is derived from `loyalty_redemption` rows. Kept for API compatibility
+   * (admin finance summary / FinanceOverviewPage); do NOT add it to
+   * `loyalty_redemptions` or the value is double counted.
+   */
   loyalty_discounts: number;
   /** Loyalty points redeemed as booking tender (contra-revenue). */
   loyalty_redemptions: number;
@@ -91,8 +106,11 @@ export type FinanceLedgerAggregate = {
    */
   other_gateway_fees: number;
   /**
-   * Paystack R3 transfer fee recorded on payout rows (fees column).
-   * Zero until Phase 4 payout-transfer-fee fix lands.
+   * Paystack transfer fees absorbed on payouts: the `fees` column of completed
+   * `payout` rows PLUS standalone `payout_transfer_fee` rows (posted for failed /
+   * reversed transfers, where Paystack still charges the fee). Additive — a
+   * completed payout carries its fee on the payout row; a failed one has no
+   * live payout row and a standalone fee row instead.
    */
   payout_transfer_fees: number;
   /** Gateway fees on terminal commerce ledger rows (sale/rental/bundle/promotion). */
@@ -101,12 +119,48 @@ export type FinanceLedgerAggregate = {
   membership_gateway_fees: number;
   /** Gross terminal commerce revenue from ledger terminal_* transaction types. */
   terminal_revenue_gross: number;
+  /** Expired gift card balance recognized as platform revenue (breakage). */
+  gift_card_breakage_revenue: number;
+  /** Card-machine cashback cash-out (till wash — not recognized revenue). */
+  cashback_total: number;
+  /** Membership liability released to provider payable (membership_recognition). */
+  membership_recognition_net: number;
 };
 
 type Row = Pick<
   FinanceLedgerRow,
   "transaction_type" | "amount" | "fees" | "net" | "commission" | "booking_id" | "product_order_id" | "refund_component"
->;
+> & {
+  /** Present when the caller selected `metadata` (e.g. payout reversal markers). */
+  metadata?: Record<string, unknown> | null;
+};
+
+/**
+ * A completed payout whose Paystack transfer was later reversed / failed keeps its
+ * `payout` row for the audit trail (transfer-events.ts two-phase revert) and is
+ * marked with `metadata.reversed_at`. Such rows must not count as money paid out,
+ * and their `fees` must not be summed (the standalone `payout_transfer_fee` row
+ * posted on failure already carries the cost).
+ */
+function isReversedPayoutRow(r: Row): boolean {
+  if (r.transaction_type !== "payout") return false;
+  const reversedAt = r.metadata?.reversed_at;
+  return typeof reversedAt === "string" && reversedAt.length > 0;
+}
+
+const SUBSCRIPTION_VAT_SOURCES = new Set(["provider_subscription_payment", "provider_subscription_refund"]);
+
+/** `tax` leg posted by provider-subscription-payment.ts (platform output VAT). */
+function isSubscriptionVatRow(r: Row): boolean {
+  if (r.transaction_type !== "tax") return false;
+  const source = r.metadata?.vat_source;
+  return typeof source === "string" && SUBSCRIPTION_VAT_SOURCES.has(source);
+}
+
+/** Booking `tax` rows only (excludes platform subscription VAT legs). */
+function isBookingTaxRow(r: Row): boolean {
+  return r.transaction_type === "tax" && !isSubscriptionVatRow(r);
+}
 
 function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "commission"): number {
   return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
@@ -157,7 +211,10 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const terminalRevenueGross = sum(tx, [...TERMINAL_COMMERCE_TYPES], "amount");
   const otherGatewayFees = sumFees(tx, ["gift_card_sale", "wallet_topup"]);
   const membershipGatewayFees = sumFees(tx, ["membership_sale"]);
-  const payoutTransferFees = sumFees(tx, ["payout"]);
+  const livePayoutRows = tx.filter((r) => r.transaction_type === "payout" && !isReversedPayoutRow(r));
+  const payoutTransferFees =
+    livePayoutRows.reduce((s, r) => s + Number(r.fees ?? 0), 0) +
+    sumFees(tx, ["payout_transfer_fee"]);
 
   const bookingPlatformFees = tx
     .filter((r) =>
@@ -215,10 +272,12 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const walletCollected = sum(tx, ["wallet_payment"], "amount");
   const giftCardCollected = sum(tx, ["gift_card_payment"], "amount");
+  const bookingTaxesGross = tx.filter(isBookingTaxRow).reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const subscriptionVat = tx.filter(isSubscriptionVatRow).reduce((s, r) => s + Number(r.amount ?? 0), 0);
   const bookingGmv =
     baseGmv +
     sum(tx, ["tip"], "amount") +
-    sum(tx, ["tax"], "amount") +
+    bookingTaxesGross +
     sum(tx, ["travel_fee"], "amount") +
     bookingPlatformFees;
   const additionalChargeGross =
@@ -230,14 +289,16 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const walkInAdditionalCharges = sum(tx, ["walk_in_additional_charge"], "net");
   const providerRecognizedRevenueGross =
     sum(tx, ["provider_earnings", "membership_provider_earnings"], "net") +
+    sum(tx, ["membership_recognition"], "net") +
     sum(tx, ["tip"], "net") +
     sum(tx, ["travel_fee"], "net") +
     cancellationFeesRetained +
     walkInAdditionalCharges;
   const promotionDiscounts = sum(tx, ["promotion_discount"], "amount");
   const membershipDiscounts = sum(tx, ["membership_discount"], "amount");
-  const loyaltyDiscounts = sum(tx, ["loyalty_discount"], "amount");
   const loyaltyRedemptions = sum(tx, ["loyalty_redemption"], "amount");
+  // `loyalty_discount` is a ghost type (never written); alias the legacy bucket.
+  const loyaltyDiscounts = loyaltyRedemptions;
   const walletTopupLedger = sum(tx, ["wallet_topup"], "amount");
   const giftCardLiabilityReductions = sum(tx, ["gift_card_liability_reduction"], "amount");
 
@@ -287,7 +348,10 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const marketingCreditGatewayFees = sumFees(tx, ["provider_marketing_credit_topup"]);
   const marketingCreditGross = marketingCreditNet + marketingCreditGatewayFees;
 
-  const payoutsPaidTotal = sum(tx, ["payout"], "net");
+  const payoutsPaidTotal = livePayoutRows.reduce((s, r) => s + Number(r.net ?? 0), 0);
+  const giftCardBreakageRevenue = sum(tx, ["gift_card_breakage"], "amount");
+  const cashbackTotal = sum(tx, ["cashback"], "amount");
+  const membershipRecognitionNet = sum(tx, ["membership_recognition"], "net");
 
   return {
     currency: detectedCurrency,
@@ -300,7 +364,8 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     platform_commission_net: platformCommissionNet,
     platform_take_net: platformTakeNet,
     tips_gross: sum(tx, ["tip"], "amount"),
-    taxes_gross: sum(tx, ["tax"], "amount"),
+    taxes_gross: bookingTaxesGross,
+    subscription_vat: subscriptionVat,
     subscription_net: subscriptionNet,
     subscription_gateway_fees: subscriptionGatewayFees,
     subscription_gross: subscriptionGross,
@@ -339,6 +404,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     payout_transfer_fees: payoutTransferFees,
     terminal_gateway_fees: terminalGatewayFees,
     terminal_revenue_gross: terminalRevenueGross,
+    gift_card_breakage_revenue: giftCardBreakageRevenue,
+    cashback_total: cashbackTotal,
+    membership_recognition_net: membershipRecognitionNet,
   };
 }
 
@@ -373,7 +441,8 @@ export function platformRevenueNetFromAggregate(a: FinanceLedgerAggregate): numb
     a.subscription_net +
     a.ads_net +
     a.marketing_credit_net +
-    a.service_fee_revenue
+    a.service_fee_revenue +
+    a.gift_card_breakage_revenue
   );
 }
 

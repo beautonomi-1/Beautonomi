@@ -9,6 +9,8 @@ import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-clien
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { PaymentLoadingHero } from "@/components/ui/payment-loading-hero";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_PAYMENT_SUCCESS } from "@/lib/analytics/amplitude/types";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -80,6 +82,8 @@ function postProviderCheckoutMessage(branch: ProviderPaymentBranch | null) {
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
+  const { track } = useAmplitude();
+  const paymentSuccessTracked = useRef(false);
   const bookingId = searchParams?.get("booking_id");
   const bookingNumber = searchParams?.get("booking_number");
   /** Paystack appends reference (or trxref) when redirecting after card payment */
@@ -157,6 +161,17 @@ function CheckoutSuccessContent() {
         }
         if (verifyResult.status === "success") {
           setVerifyStatus("success");
+          const isProviderPayment =
+            verifyType === "ads_budget_order" || verifyType === "provider_subscription_order";
+          if (!paymentSuccessTracked.current && !isProviderPayment) {
+            paymentSuccessTracked.current = true;
+            track(EVENT_PAYMENT_SUCCESS, {
+              portal: "web",
+              booking_id: bookingId ?? undefined,
+              transaction_id: ref,
+              payment_provider: "paystack",
+            });
+          }
         } else if (verifyResult.status === "failed") {
           setVerifyStatus("failed");
           setVerifyMessage(verifyResult.errorMessage ?? null);

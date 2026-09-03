@@ -200,6 +200,21 @@ export async function POST(
       console.error("Error sending notification:", notifError);
     }
 
+    void import("@/lib/integrations/slack/ops-triggers")
+      .then(({ slackNotifyHighValueRefund }) =>
+        slackNotifyHighValueRefund({
+          tenantId,
+          refundId,
+          bookingId: id,
+          amountMajor: amount,
+          currency: b.currency || lastResortCurrency,
+          stage: "processed",
+          actorUserId: user.id,
+          reason: reason || "Admin refund",
+        }),
+      )
+      .catch(() => undefined);
+
     return successResponse(refund);
   } catch (error) {
     return handleApiError(error, "Failed to process refund");

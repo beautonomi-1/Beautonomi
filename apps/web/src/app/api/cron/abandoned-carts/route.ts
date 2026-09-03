@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyCronRequest } from "@/lib/cron-auth";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const JOB_NAME = "abandoned-carts";
 
 /**
  * F27 — Abandoned cart reminder cron.
@@ -22,6 +26,14 @@ const REMINDER_INTERVAL_HOURS = 6;
 const REMINDER_COOLDOWN_HOURS = 24;
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ ok: false, error: auth.error ?? "unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json({ ok: false, error: auth.error ?? "unauthorized" }, { status: 401 });

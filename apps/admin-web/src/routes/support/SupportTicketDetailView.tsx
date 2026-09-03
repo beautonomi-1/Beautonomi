@@ -23,6 +23,7 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
 import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
+import { adminSupportContextActionLabel, adminSupportContextHref } from "@/lib/adminSupportContextHref";
 import { AlertTriangle, ArrowRight, Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
@@ -35,6 +36,7 @@ type TicketRow = Record<string, unknown> & {
   category?: string | null;
   requester_type?: string | null;
   support_context_type?: string | null;
+  support_context_id?: string | null;
   support_context_label?: string | null;
   priority?: string;
   status?: string;
@@ -576,6 +578,21 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                 Next in queue <ArrowRight className="h-4 w-4" aria-hidden />
               </button>
             )}
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+              onClick={() => {
+                const value = str(ticket.ticket_number);
+                if (!value) return;
+                void navigator.clipboard?.writeText(value).then(
+                  () => adminToast.success("Ticket number copied"),
+                  () => adminToast.error("Could not copy ticket number"),
+                );
+              }}
+            >
+              <Copy className="h-4 w-4" aria-hidden />
+              Copy ticket #
+            </button>
             <button
               type="button"
               className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
@@ -1241,6 +1258,37 @@ export function SupportTicketDetailView({ id, variant = "page" }: SupportTicketD
                     ? `${str(ticket.support_context_type).replace(/_/g, " ")}${ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}`
                     : "—"}
                 </dd>
+                {ticket.support_context_id ? (
+                  <dd className="mt-1 break-all font-mono text-xs text-gray-600">{ticket.support_context_id}</dd>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ? (
+                    <Link
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
+                      to={adminSpaTo(
+                        adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ?? "/",
+                      )}
+                    >
+                      {adminSupportContextActionLabel(ticket.support_context_type)}
+                      <ExternalLink className="h-4 w-4" aria-hidden />
+                    </Link>
+                  ) : null}
+                  {ticket.support_context_label ? (
+                    <button
+                      type="button"
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(str(ticket.support_context_label)).then(
+                          () => adminToast.success("Reference copied"),
+                          () => adminToast.error("Could not copy reference"),
+                        );
+                      }}
+                    >
+                      <Copy className="h-4 w-4" aria-hidden />
+                      Copy reference
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div>
                 <dt className="text-gray-500">Created</dt>

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "purge-audit-logs";
+export const maxDuration = 300;
 
 const BATCH_SIZE = 1000;
 const MAX_BATCHES = 50;
@@ -14,6 +18,14 @@ const MAX_BATCHES = 50;
  * The purge action itself is logged as an audit entry with permanent retention.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const { valid, error } = verifyCronRequest(request);
   if (!valid) {
     return NextResponse.json({ error }, { status: 401 });

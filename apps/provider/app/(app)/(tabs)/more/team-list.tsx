@@ -304,14 +304,31 @@ export default function TeamListScreen() {
     ) {
       payload.commission_rate = null;
     }
-    const { error } = await updateMember(`/api/provider/staff/${editingMember.id}`, payload);
-    if (error) {
-      Alert.alert("Error", error);
-    } else {
-      setEditSheetOpen(false);
-      setEditingMember(null);
-      refresh();
-    }
+    const apply = async (force?: boolean) => {
+      const { error, errorCode } = await updateMember(`/api/provider/staff/${editingMember.id}`, {
+        ...payload,
+        ...(force ? { force: true } : {}),
+      });
+      if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !force) {
+        Alert.alert(
+          "Upcoming bookings",
+          "This change affects upcoming bookings (removed services or locations). Save anyway?",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Save anyway", style: "destructive", onPress: () => void apply(true) },
+          ],
+        );
+        return;
+      }
+      if (error) {
+        Alert.alert("Error", error);
+      } else {
+        setEditSheetOpen(false);
+        setEditingMember(null);
+        refresh();
+      }
+    };
+    await apply();
   }
 
   function handleLongPress(member: StaffMember) {

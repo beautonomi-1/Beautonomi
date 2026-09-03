@@ -27,7 +27,7 @@ import {
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
-import { trackSignUp } from "@/lib/analytics";
+import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
@@ -38,6 +38,8 @@ import {
   persistProviderSignupSource,
 } from "@/features/auth/pending-signup-preferences";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
+import { useTranslation } from "@beautonomi/i18n";
+import { api } from "@/lib/api-client";
 
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
@@ -46,8 +48,14 @@ async function goToAppRoot(
   router: { replace: (href: string) => void },
   method: string,
   redirectPath?: string,
+  marketingConsent?: boolean,
 ) {
   await applyPendingSignupPreferences();
+  try {
+    await api.post("/api/auth/consent", { marketing_consent: marketingConsent === true });
+  } catch {
+    /* non-blocking */
+  }
   await supabase.auth.getSession();
   logLoginSuccessBreadcrumb(method);
   router.replace(redirectPath ?? "/");
@@ -67,6 +75,19 @@ function prefillPhoneFromE164(value: string | undefined) {
 }
 
 type SignupMode = "phone" | "email";
+
+function getPasswordStrength(pw: string): { score: number; labelKey: string; color: string } {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { score, labelKey: "auth.passwordWeak", color: "#EF4444" };
+  if (score <= 2) return { score, labelKey: "auth.passwordFair", color: "#F59E0B" };
+  if (score <= 3) return { score, labelKey: "auth.passwordGood", color: "#3B82F6" };
+  return { score, labelKey: "auth.passwordStrong", color: "#22C55E" };
+}
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -125,6 +146,8 @@ export default function SignupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const { t } = useTranslation();
   const [smsResendCooldown, setSmsResendCooldown] = useState(0);
   const [resendingSms, setResendingSms] = useState(false);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
@@ -140,6 +163,10 @@ export default function SignupScreen() {
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    trackSignUpStart();
+  }, []);
 
   useEffect(() => {
     if (smsResendCooldown <= 0) return;
@@ -285,7 +312,7 @@ export default function SignupScreen() {
       }
       trackSignUp("phone");
       await writeSignupPhoneHandoff(e164);
-      await goToAppRoot(router, "phone_otp_signup", postLoginPath);
+      await goToAppRoot(router, "phone_otp_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
     } finally {
@@ -342,7 +369,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup", postLoginPath);
+      await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Sign up failed. Please try again.");
     } finally {
@@ -362,7 +389,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup", postLoginPath);
+      await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
       setSignupOtpError(e instanceof Error ? e.message : "Verification failed.");
     } finally {
@@ -405,7 +432,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp(provider === "google" ? "email" : "email");
-      await goToAppRoot(router, `oauth_${provider}`, postLoginPath);
+      await goToAppRoot(router, `oauth_${provider}`, postLoginPath, marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "OAuth sign-up failed. Please try again.");
     } finally {
@@ -512,7 +539,7 @@ export default function SignupScreen() {
             </View>
 
             <Text style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }} accessibilityRole="header">
-              Create your account
+              {t("auth.createYourAccount")}
             </Text>
             <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 24 }}>
               Join Beautonomi for service pros — manage bookings, clients, and payments.
@@ -552,6 +579,32 @@ export default function SignupScreen() {
                   Privacy Policy
                 </Text>
                 .
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setMarketingConsent(!marketingConsent)}
+              style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16 }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: marketingConsent }}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  borderWidth: 2,
+                  borderColor: marketingConsent ? PRIMARY : "#9CA3AF",
+                  backgroundColor: marketingConsent ? PRIMARY : "#fff",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 2,
+                }}
+              >
+                {marketingConsent ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+              </View>
+              <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+                {t("auth.marketingConsent")}
               </Text>
             </TouchableOpacity>
 
@@ -657,31 +710,53 @@ export default function SignupScreen() {
               </>
             ) : auth.email_provider_enabled ? (
               <>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>Full name</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.fullName")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 16 }}>
                   <Ionicons name="person-outline" size={18} color="#9CA3AF" />
                   <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="Your full name" placeholderTextColor="#9CA3AF" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>Email</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.email")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 16 }}>
                   <Ionicons name="mail-outline" size={18} color="#9CA3AF" />
                   <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="you@example.com" placeholderTextColor="#9CA3AF" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} />
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>Password</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.password")}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 8 }}>
                   <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" />
                   <TextInput ref={passwordRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="At least 8 characters" placeholderTextColor="#9CA3AF" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} returnKeyType="next" onSubmitEditing={() => confirmRef.current?.focus()} />
                   <TouchableOpacity onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#6B7280" />
                   </TouchableOpacity>
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>Confirm password</Text>
+                {password.length > 0 ? (
+                  <View style={{ marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", gap: 4 }}>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <View
+                          key={i}
+                          style={{
+                            height: 4,
+                            flex: 1,
+                            borderRadius: 999,
+                            backgroundColor: i <= getPasswordStrength(password).score ? getPasswordStrength(password).color : "#E5E7EB",
+                          }}
+                        />
+                      ))}
+                    </View>
+                    <Text style={{ marginTop: 4, fontSize: 12, color: "#6B7280" }}>
+                      {t("auth.passwordStrength")}: {t(getPasswordStrength(password).labelKey)}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ marginBottom: 8 }} />
+                )}
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.confirmPassword")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 20 }}>
                   <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" />
                   <TextInput ref={confirmRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="Repeat password" placeholderTextColor="#9CA3AF" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} returnKeyType="done" onSubmitEditing={handleEmailSignup} />
                 </View>
                 <TouchableOpacity onPress={handleEmailSignup} disabled={loading} style={{ backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 16, alignItems: "center", opacity: loading ? 0.7 : 1, marginBottom: 16 }}>
-                  {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Create account</Text>}
+                  {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{t("auth.createAccount")}</Text>}
                 </TouchableOpacity>
               </>
             ) : null}
@@ -696,7 +771,7 @@ export default function SignupScreen() {
                 {socialAuth.google && (
                   <TouchableOpacity onPress={() => void handleSocialOAuth("google")} disabled={loading} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, marginBottom: 12, backgroundColor: "#fff" }}>
                     <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithGoogle")}</Text>
                   </TouchableOpacity>
                 )}
                 {socialAuth.apple && Platform.OS === "ios" ? (
@@ -704,7 +779,7 @@ export default function SignupScreen() {
                 ) : socialAuth.apple ? (
                   <TouchableOpacity onPress={() => void handleSocialOAuth("apple")} disabled={loading} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, marginBottom: 12, backgroundColor: "#fff" }}>
                     <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithApple")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </>
@@ -712,7 +787,7 @@ export default function SignupScreen() {
 
             <TouchableOpacity onPress={goToLogin} style={{ marginTop: 20, paddingVertical: 8 }} accessibilityRole="link">
               <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                Already have an account? <Text style={{ fontWeight: "700", color: PRIMARY }}>Log in</Text>
+                {t("auth.alreadyHaveAccount")} <Text style={{ fontWeight: "700", color: PRIMARY }}>{t("auth.login")}</Text>
               </Text>
             </TouchableOpacity>
           </View>

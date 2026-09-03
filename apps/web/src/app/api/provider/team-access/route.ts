@@ -7,7 +7,8 @@ import {
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { isProviderOwner, hasPermission, getStaffPermissions } from "@/lib/auth/permissions";
+import { resolveCalendarScope } from "@/lib/auth/calendar-scope";
 import {
   getProviderStaffIdForUser,
   getTeamRosterDetailLevel,
@@ -47,6 +48,12 @@ export async function GET(request: NextRequest) {
       isOwner ||
       (await hasPermission(user.id, "edit_settings", undefined, request));
 
+    const staffPermissions =
+      user.role === "superadmin" || isOwner
+        ? null
+        : await getStaffPermissions(user.id, undefined, request);
+    const calendar_scope = isOwner || user.role === "superadmin" ? "all" : resolveCalendarScope(staffPermissions);
+
     return successResponse({
       staff_id: staffId,
       is_business_owner: isOwner,
@@ -55,6 +62,7 @@ export async function GET(request: NextRequest) {
       can_view_team_roster_pii: canViewTeamFullRoster,
       can_process_payments,
       can_request_payouts,
+      calendar_scope,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load team access");

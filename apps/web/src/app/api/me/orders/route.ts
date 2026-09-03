@@ -29,6 +29,15 @@ import {
 } from "@/lib/http/idempotency";
 import { calculateProductDeliveryFee, distanceKmBetween } from "@/lib/orders/delivery-fee";
 import { percentOf, sumMoney } from "@beautonomi/utils";
+import { applyProductOrderPromotion } from "@/lib/ecommerce/product-order-promotion";
+import {
+  reserveProductOrderGiftCard,
+  voidProductOrderGiftCard,
+} from "@/lib/ecommerce/product-order-gift-card";
+import {
+  calculatePlatformFeeAmount,
+  getEffectivePlatformFeeConfig,
+} from "@/lib/platform-service-fee-settings";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),
@@ -38,6 +47,15 @@ const createOrderSchema = z.object({
   collection_location_id: z.string().uuid().optional(),
   payment_method: z.enum(["paystack", "cash", "yoco", "card_on_delivery", "wallet"]).optional(),
   use_wallet: z.boolean().optional(),
+  /** Promo code validated with the same rules as bookings (`validatePromoCode`). */
+  promotion_code: z.string().trim().min(1).max(64).optional(),
+  /** Gift card tender; `amount` defaults to "as much of the total as possible". */
+  gift_card: z
+    .object({
+      code: z.string().trim().min(1).max(64),
+      amount: z.number().positive().optional(),
+    })
+    .optional(),
   idempotency_key: z.string().uuid().optional(),
 });
 
@@ -149,14 +167,17 @@ export async function POST(request: NextRequest) {
 
     const { data: providerForTenant } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, customer_fee_config_id")
       .eq("id", parsed.provider_id)
       .maybeSingle();
-    const orderTenantId =
-      (providerForTenant as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const providerRow = providerForTenant as
+      | { tenant_id?: string | null; customer_fee_config_id?: string | null }
+      | null;
+    const orderTenantId = providerRow?.tenant_id ?? null;
     if (!orderTenantId || orderTenantId !== tenantId) {
       return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
     }
+    const providerCustomerFeeConfigId = providerRow?.customer_fee_config_id ?? null;
 
     const paymentMethod = parsed.payment_method ?? "paystack";
     const paymentFlags = await getPaymentFeatureFlagsForTenant(orderTenantId);
@@ -185,6 +206,18 @@ export async function POST(request: NextRequest) {
           400
         );
       }
+    }
+    const giftCardInput = parsed.gift_card ?? null;
+    let orderCurrency = "ZAR";
+    if (giftCardInput) {
+      const { isGiftCardsEnabledForTenant } = await import("@/lib/subscriptions/entitlements");
+      const giftEnabled = await isGiftCardsEnabledForTenant(orderTenantId);
+      if (!giftEnabled) {
+        return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 400);
+      }
+      const { getTenantRegionConfig } = await import("@/lib/regions/config");
+      const region = await getTenantRegionConfig(orderTenantId);
+      orderCurrency = region?.defaultCurrency ?? orderCurrency;
     }
 
     // Get cart items for this provider (include product_variant when present)
@@ -346,10 +379,35 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Promotion code (same rules as bookings) — discount applies to the product subtotal.
+    let promotionId: string | null = null;
+    let promotionCode: string | null = null;
+    let promotionDiscount = 0;
+    if (parsed.promotion_code) {
+      const promo = await applyProductOrderPromotion(supabase as any, {
+        code: parsed.promotion_code,
+        subtotal,
+        providerId: parsed.provider_id,
+        locationId: parsed.collection_location_id ?? null,
+      });
+      if (promo.ok === false) {
+        return errorResponse(promo.message, "PROMO_INVALID", 400);
+      }
+      promotionId = promo.promotionId;
+      promotionCode = promo.code;
+      promotionDiscount = Math.min(promo.discountAmount, subtotal);
+    }
+    const discountedSubtotal = Math.max(0, Math.round((subtotal - promotionDiscount) * 100) / 100);
+
     // Calculate platform fee for online orders
     let platformFee = 0;
     const isOnline = !["cash", "yoco", "paycloud", "card_on_delivery"].includes(parsed.payment_method ?? "paystack");
-    if (isOnline) {
+    if (isOnline && providerCustomerFeeConfigId) {
+      // Provider-level customer fee override (`providers.customer_fee_config_id`), same
+      // resolver bookings use; falls back to platform payouts settings internally.
+      const feeConfig = await getEffectivePlatformFeeConfig(parsed.provider_id, discountedSubtotal);
+      platformFee = calculatePlatformFeeAmount(feeConfig, discountedSubtotal);
+    } else if (isOnline) {
       const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
         supabase,
         table: "platform_settings",
@@ -364,7 +422,7 @@ export async function POST(request: NextRequest) {
         const feeType = (payouts.platform_service_fee_type as string) || "fixed";
         if (feeType === "percentage") {
           const pct = Number(payouts.platform_service_fee_percentage) || 0;
-          platformFee = percentOf(subtotal, pct);
+          platformFee = percentOf(discountedSubtotal, pct);
         } else {
           platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         }
@@ -373,21 +431,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const totalAmount = sumMoney(subtotal, taxAmount, deliveryFee, platformFee);
+    const totalAmount = sumMoney(discountedSubtotal, taxAmount, deliveryFee, platformFee);
+
+    // Gift card is applied first (reserved after the order row exists), then wallet,
+    // then card for whatever remains — same tender order as bookings.
+    let giftCardAmountPlanned = 0;
+    if (giftCardInput && totalAmount > 0) {
+      const requested = giftCardInput.amount != null ? Number(giftCardInput.amount) : totalAmount;
+      giftCardAmountPlanned = Math.max(0, Math.min(Math.round(requested * 100) / 100, totalAmount));
+    }
+    const amountAfterGift = Math.max(0, Math.round((totalAmount - giftCardAmountPlanned) * 100) / 100);
 
     // Determine wallet amount to apply (debit happens after order is created so we have order id)
     let walletAmountApplied = 0;
     const useWallet = parsed.use_wallet === true;
-    if (useWallet && totalAmount > 0) {
+    if (useWallet && amountAfterGift > 0) {
       const { data: walletRow } = await (supabase.from("user_wallets") as any)
         .select("id, balance, currency")
         .eq("user_id", user.id)
         .maybeSingle();
       const balance = Number((walletRow as any)?.balance ?? 0);
-      if (balance > 0) walletAmountApplied = Math.min(balance, totalAmount);
+      if (balance > 0) walletAmountApplied = Math.min(balance, amountAfterGift);
     }
-    const amountAfterWallet = Math.max(0, totalAmount - walletAmountApplied);
-    const paidWithWalletOnly = amountAfterWallet <= 0 && walletAmountApplied > 0;
+    const amountAfterWallet = Math.max(
+      0,
+      Math.round((amountAfterGift - walletAmountApplied) * 100) / 100,
+    );
+    /** Fully settled in-process by wallet and/or gift card (no gateway leg). */
+    const paidWithWalletOnly =
+      amountAfterWallet <= 0 && (walletAmountApplied > 0 || giftCardAmountPlanned > 0);
     const deferCartClearForPaystack =
       paymentMethod === "paystack" && !paidWithWalletOnly && amountAfterWallet > 0;
 
@@ -414,9 +486,18 @@ export async function POST(request: NextRequest) {
         delivery_fee_type: deliveryFeeType,
         delivery_distance_km: deliveryDistanceKm,
         platform_fee: platformFee.toFixed(2),
+        discount_amount: promotionDiscount.toFixed(2),
+        promotion_id: promotionId,
+        promotion_code: promotionCode,
+        promotion_discount_amount: promotionDiscount.toFixed(2),
+        gift_card_amount: giftCardAmountPlanned.toFixed(2),
         total_amount: totalAmount.toFixed(2),
         wallet_amount: walletAmountApplied.toFixed(2),
-        payment_method: paidWithWalletOnly ? "wallet" : (parsed.payment_method ?? "paystack"),
+        payment_method: paidWithWalletOnly
+          ? walletAmountApplied > 0
+            ? "wallet"
+            : "gift_card"
+          : (parsed.payment_method ?? "paystack"),
         payment_status: "pending",
         order_source: "online",
       })
@@ -424,6 +505,28 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (orderErr) throw orderErr;
+
+    // Reserve the gift card against the order (balance is held; captured when paid,
+    // voided on every failure path). Uses the caller's session — the RPC checks ownership.
+    let giftCardIdApplied: string | null = null;
+    if (giftCardAmountPlanned > 0 && giftCardInput) {
+      const reserved = await reserveProductOrderGiftCard(supabase as any, {
+        code: giftCardInput.code,
+        amount: giftCardAmountPlanned,
+        productOrderId: order.id,
+        currency: orderCurrency,
+      });
+      if (reserved.ok === false) {
+        await (supabase.from("product_orders") as any).delete().eq("id", order.id);
+        return errorResponse(reserved.message, "GIFT_CARD_INVALID", 400);
+      }
+      giftCardIdApplied = reserved.giftCardId;
+      if (giftCardIdApplied) {
+        await (supabase.from("product_orders") as any)
+          .update({ gift_card_id: giftCardIdApplied })
+          .eq("id", order.id);
+      }
+    }
 
     // Debit wallet after order exists (so we can attach order id to transaction).
     // §Wallet-debit (audit 2026-06): Supabase RPCs return `{ data, error }` and
@@ -444,6 +547,9 @@ export async function POST(request: NextRequest) {
       );
 
       if (walletErr || !debitResult) {
+        if (giftCardAmountPlanned > 0) {
+          await voidProductOrderGiftCard(adminSupabase as any, order.id);
+        }
         await (supabase.from("product_orders") as any).delete().eq("id", order.id);
         return errorResponse(
           walletErr?.message || "We could not debit your wallet. Please try again.",
@@ -459,6 +565,7 @@ export async function POST(request: NextRequest) {
       provider_id: parsed.provider_id,
       tenant_id: orderTenantId,
       wallet_amount: walletAmountApplied,
+      gift_card_amount: giftCardAmountPlanned,
       currency: (order as { currency?: string | null }).currency ?? "ZAR",
     };
 
@@ -528,16 +635,35 @@ export async function POST(request: NextRequest) {
       }
       stockFullyApplied = true;
 
+      try {
+        const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
+        await logSaleStockMovements(adminSupabase as any, {
+          providerId: parsed.provider_id,
+          referenceId: order.id as string,
+          actorUserId: user.id,
+          lines: appliedStock.map((line) => ({
+            productId: line.product_id,
+            productVariantId: line.product_variant_id,
+            quantity: line.quantity,
+          })),
+        });
+      } catch (stockLogErr) {
+        console.error("[me/orders] stock movement log failed:", stockLogErr);
+      }
+
       let paymentRecordResult: Awaited<ReturnType<typeof recordProductOrderPayment>> | null = null;
       if (paidWithWalletOnly) {
+        const settledByWallet = walletAmountApplied > 0;
         paymentRecordResult = await recordProductOrderPayment({
           supabase: adminSupabase as any,
           productOrderId: order.id,
-          reference: `wallet_product_order_${order.id}`,
+          reference: settledByWallet
+            ? `wallet_product_order_${order.id}`
+            : `gift_card_product_order_${order.id}`,
           amountMajor: totalAmount,
           feesMajor: 0,
           source: "wallet_checkout",
-          provider: "wallet",
+          provider: settledByWallet ? "wallet" : "gift_card",
         });
         paymentSettled = true;
       }
@@ -577,8 +703,16 @@ export async function POST(request: NextRequest) {
       }
 
       const responsePayload = {
-        order: { ...order, items: orderItems, payment_status: paidWithWalletOnly ? "paid" : "pending" },
+        order: {
+          ...order,
+          gift_card_id: giftCardIdApplied,
+          items: orderItems,
+          payment_status: paidWithWalletOnly ? "paid" : "pending",
+        },
         paid_with_wallet: paidWithWalletOnly,
+        wallet_amount: walletAmountApplied,
+        gift_card_amount: giftCardAmountPlanned,
+        promotion_discount: promotionDiscount,
         amount_due: amountAfterWallet,
       };
 
@@ -603,10 +737,14 @@ export async function POST(request: NextRequest) {
         const settledPayload = {
           order: {
             ...order,
+            gift_card_id: giftCardIdApplied,
             items: orderItems,
             payment_status: "paid" as const,
           },
           paid_with_wallet: true,
+          wallet_amount: walletAmountApplied,
+          gift_card_amount: giftCardAmountPlanned,
+          promotion_discount: promotionDiscount,
           amount_due: 0,
         };
         if (idempotencyKey) {

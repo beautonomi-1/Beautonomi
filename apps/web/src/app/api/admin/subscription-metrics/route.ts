@@ -302,7 +302,23 @@ export async function GET(request: NextRequest) {
       yearly: yearlyCount,
     };
 
-    // 11. Realized subscription cash from ledger (initial Paystack checkouts + renewals that write
+    // 11b. Recognized MRR from accrual (`subscription_recognition` rows this month).
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const { data: recognitionRows } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("net, amount")
+      .eq("transaction_type", "subscription_recognition")
+      .eq("tenant_id", tenantId)
+      .gte("created_at", monthStart.toISOString());
+    let recognizedMrr = 0;
+    for (const row of recognitionRows ?? []) {
+      const v = Number((row as { net?: number; amount?: number }).net ?? (row as { amount?: number }).amount ?? 0);
+      if (Number.isFinite(v)) recognizedMrr += v;
+    }
+
+    // 11. Realized subscription cash from ledger
     // `finance_transactions` with `provider_subscription_payment`). MRR above is catalog-based;
     // this is actual collected net (post-fees) for the selected tenant and optional date range.
     let realizedSubscriptionRevenue = 0;
@@ -335,6 +351,8 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       mrr: Math.round(mrr * 100) / 100,
+      catalog_mrr: Math.round(mrr * 100) / 100,
+      recognized_mrr: Math.round(recognizedMrr * 100) / 100,
       arr: Math.round(arr * 100) / 100,
       total_subscriptions: totalSubscriptions,
       active_subscriptions: activeCount + trialingCount,

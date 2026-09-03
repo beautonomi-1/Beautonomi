@@ -208,8 +208,8 @@ export async function POST(request: NextRequest) {
     // assignment for human approval in the Agentic Console.
     after(async () => {
       try {
-        const { runSupportTriageWorkflow } = await import("@/lib/agents/workflows/support-agent");
-        await runSupportTriageWorkflow({ ticketId: ticket.id });
+        const { startSupportTriageForTicket } = await import("@/workflows/start-support-triage");
+        await startSupportTriageForTicket(ticket.id);
       } catch (triageErr) {
         console.error("Support triage workflow failed:", triageErr);
       }

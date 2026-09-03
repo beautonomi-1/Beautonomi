@@ -14,7 +14,7 @@ import { webCookiePolicyUrl, webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/l
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
-import { trackSignUp } from "@/lib/analytics";
+import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
 import { useTranslation, supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
 import { changeLanguage } from "@/lib/i18n";
 import * as Localization from "expo-localization";
@@ -117,6 +117,9 @@ function parseRefFromUrl(url: string): string | null {
 
 export default function SignupScreen() {
   useScreenTracking("Signup");
+  useEffect(() => {
+    trackSignUpStart("email");
+  }, []);
   const { t } = useTranslation();
   const as = useCallback((key: string) => t(`customer.mobile.screens.authSignup.${key}`), [t]);
   const { signUpWithEmail, signInWithOAuth, verifySignupEmailOtp, resendSignupConfirmationEmail } = useAuth();
@@ -168,6 +171,7 @@ export default function SignupScreen() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [referralCode, setReferralCode] = useState<string | null>(params.ref?.trim() ?? null);
   const [manualReferralCode, setManualReferralCode] = useState("");
@@ -189,6 +193,7 @@ export default function SignupScreen() {
     signupSource: string | null;
     preferredLanguage: string;
     referralCode: string | null;
+    marketingConsent: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -311,6 +316,11 @@ export default function SignupScreen() {
       }
       await AsyncStorage.removeItem(REFERRAL_REF_KEY);
     }
+    try {
+      await api.post("/api/auth/consent", { marketing_consent: pending.marketingConsent === true });
+    } catch {
+      // Non-blocking
+    }
     pendingProfileRef.current = null;
   }
 
@@ -350,6 +360,7 @@ export default function SignupScreen() {
         signupSource,
         preferredLanguage,
         referralCode: resolveSignupReferralCode(referralCode, manualReferralCode),
+        marketingConsent,
       };
 
       if (result.requiresConfirmation) {
@@ -790,6 +801,32 @@ export default function SignupScreen() {
           </Text>
         </TouchableOpacity>
         {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -8, marginBottom: 12 }}>{errors.terms}</Text> : null}
+
+        <TouchableOpacity
+          onPress={() => setMarketingConsent(!marketingConsent)}
+          style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16 }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: marketingConsent }}
+        >
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              borderWidth: 2,
+              borderColor: marketingConsent ? PRIMARY : "#9CA3AF",
+              backgroundColor: marketingConsent ? PRIMARY : "#fff",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 1,
+            }}
+          >
+            {marketingConsent ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          </View>
+          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+            {t("auth.marketingConsent")}
+          </Text>
+        </TouchableOpacity>
 
         {hasSocialAuth && (
           <>

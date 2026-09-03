@@ -5,6 +5,7 @@ import { recordApproval } from "@/lib/agents/actions/action-service";
 import { getAgentApprovalPolicy } from "@/lib/agents/actions/approval-policy";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { resumeAgentApprovalHook } from "@/workflows/resume-agent-approval-hook";
 
 /**
  * Approve an agent action. Approval requirements (role, count, maker-checker)
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       .select("status")
       .eq("id", id)
       .maybeSingle();
+
+    if ((updated as { status?: string } | null)?.status === "approved") {
+      await resumeAgentApprovalHook(id, "approve");
+    }
 
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({

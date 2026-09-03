@@ -396,6 +396,20 @@ describe("aggregateFinanceLedgerRows — admin finance scenarios", () => {
     expect(platformRevenueNetFromAggregate(agg)).toBe(200);
   });
 
+  it("§P14-5: gift_card_breakage and cashback buckets are tracked separately", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ transaction_type: "gift_card_breakage", amount: 75, net: 75 }),
+      row({ transaction_type: "cashback", amount: 20, net: 20 }),
+      row({ transaction_type: "membership_recognition", amount: 40, net: 40 }),
+    ];
+
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.gift_card_breakage_revenue).toBe(75);
+    expect(agg.cashback_total).toBe(20);
+    expect(agg.membership_recognition_net).toBe(40);
+    expect(platformRevenueNetFromAggregate(agg)).toBe(75);
+  });
+
   it("includes terminal commerce gateway fees in gatewayFeesTotalFromAggregate", () => {
     const rows: FinanceLedgerRow[] = [
       row({ transaction_type: "payment", amount: 100, fees: 2.5, net: 10, commission: 10 }),

@@ -116,7 +116,7 @@ export async function loadPublicCalendarParityBookings(
 
   const { data: timeOffRows, error: timeOffError } = await admin
     .from("staff_time_off")
-    .select("staff_id")
+    .select("staff_id, status")
     .eq("provider_id", providerId)
     .lte("start_date", date)
     .gte("end_date", date)
@@ -124,6 +124,10 @@ export async function loadPublicCalendarParityBookings(
 
   if (!timeOffError && timeOffRows?.length) {
     for (const row of timeOffRows) {
+      // Only approved time off blocks availability (pending/denied requests do
+      // not). Legacy rows without a status are treated as approved.
+      const status = (row as { status?: string | null }).status;
+      if (status != null && status !== "approved") continue;
       if (row.staff_id) {
         out.push(
           syntheticBooking({

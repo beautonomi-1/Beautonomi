@@ -20,6 +20,7 @@ interface CommissionData {
   totalCommission: number;
   totalRevenue: number;
   averageCommissionRate: number;
+  zeroCommissionServiceWarning?: string | null;
   staffCommissions: Array<{
     staffId: string;
     staffName: string;
@@ -140,6 +141,12 @@ export default function CommissionReport() {
           onDateRangeChange={setDateRange}
           onReset={handleReset}
         />
+
+        {data.zeroCommissionServiceWarning ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {data.zeroCommissionServiceWarning} Enable staff commission on those services so earnings lines post.
+          </div>
+        ) : null}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

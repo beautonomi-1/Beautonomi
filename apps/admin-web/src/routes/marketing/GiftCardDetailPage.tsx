@@ -18,6 +18,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSupportTicketsSearchHref } from "@/lib/adminSupportContextHref";
 import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 import { useEffect, useState } from "react";
@@ -30,6 +31,8 @@ type Gc = Record<string, unknown> & {
   currency?: string;
   is_active?: boolean;
   expires_at?: string | null;
+  voided_at?: string | null;
+  metadata?: Record<string, unknown> | null;
   redemptions?: unknown[];
 };
 
@@ -101,6 +104,9 @@ export function GiftCardDetailPage() {
 
   const redemptions = Array.isArray(card.redemptions) ? card.redemptions : [];
   const err = patch.error instanceof Error ? patch.error.message : null;
+  const meta =
+    card.metadata && typeof card.metadata === "object" ? (card.metadata as Record<string, unknown>) : {};
+  const ticketSearch = String(card.code ?? id);
 
   return (
     <div className="space-y-6">
@@ -110,6 +116,41 @@ export function GiftCardDetailPage() {
         </Link>
       </p>
       <AdminPageHeader title={`Gift card ${card.code ?? id}`} description="PATCH /api/admin/gift-cards/[id]" />
+      <p className="flex flex-wrap items-center gap-2 font-mono text-xs text-gray-600">
+        <span className="select-all break-all">{id}</span>
+        <button
+          type="button"
+          className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          onClick={() => {
+            void navigator.clipboard?.writeText(id).then(
+              () => adminToast.success("Gift card ID copied"),
+              () => adminToast.error("Could not copy gift card ID"),
+            );
+          }}
+        >
+          Copy ID
+        </button>
+        {card.code ? (
+          <button
+            type="button"
+            className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => {
+              void navigator.clipboard?.writeText(String(card.code)).then(
+                () => adminToast.success("Gift card code copied"),
+                () => adminToast.error("Could not copy gift card code"),
+              );
+            }}
+          >
+            Copy code
+          </button>
+        ) : null}
+        <Link
+          to={adminSpaTo(adminSupportTicketsSearchHref(ticketSearch))}
+          className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Related tickets
+        </Link>
+      </p>
       {showGiftDisabledBanner ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           The <code className="rounded bg-amber-100 px-1">gift_cards</code> feature flag is off for this market.
@@ -130,6 +171,24 @@ export function GiftCardDetailPage() {
             <dt className="text-gray-500">Active</dt>
             <dd>{card.is_active ? "yes" : "no"}</dd>
           </div>
+          {meta.recipient_email ? (
+            <div>
+              <dt className="text-gray-500">Recipient email</dt>
+              <dd className="break-all font-medium">{String(meta.recipient_email)}</dd>
+            </div>
+          ) : null}
+          {meta.order_id ? (
+            <div>
+              <dt className="text-gray-500">Purchase order id</dt>
+              <dd className="break-all font-mono text-xs">{String(meta.order_id)}</dd>
+            </div>
+          ) : null}
+          {card.voided_at ? (
+            <div>
+              <dt className="text-gray-500">Voided</dt>
+              <dd>{String(card.voided_at)}</dd>
+            </div>
+          ) : null}
         </dl>
       </AdminPanel>
       <AdminPanel>
@@ -204,8 +263,17 @@ export function GiftCardDetailPage() {
                       {String(row.amount ?? row.redeemed_amount ?? "—")}
                       {row.currency ? ` ${String(row.currency)}` : ""}
                     </AdminTd>
-                    <AdminTd className="font-mono text-xs text-gray-500">
-                      {String(row.booking_id ?? row.order_id ?? "—").slice(0, 16)}
+                    <AdminTd className="text-xs">
+                      {row.booking_id ? (
+                        <Link
+                          to={adminSpaTo(`/admin/bookings/${String(row.booking_id)}`)}
+                          className="text-gray-900 underline"
+                        >
+                          {String(row.booking_number ?? row.booking_id)}
+                        </Link>
+                      ) : (
+                        <span className="font-mono text-gray-500">{String(row.order_id ?? "—")}</span>
+                      )}
                     </AdminTd>
                     <AdminTd className="text-xs text-gray-500">
                       {String(row.redeemed_at ?? row.created_at ?? "—").slice(0, 16).replace("T", " ")}

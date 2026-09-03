@@ -119,13 +119,16 @@ export async function GET(request: NextRequest) {
         last_payment_at,
         renewal_failure_count,
         past_due_since,
+        paused_until,
+        scheduled_plan_id,
+        scheduled_change_at,
         metadata,
         plan:membership_plans(id, name, description, price_monthly, currency, discount_percent),
         provider:providers(id, business_name, slug, tenant_id)
       `
       )
       .eq("user_id", user.id)
-      .in("status", ["active", "past_due"])
+      .in("status", ["active", "past_due", "paused"])
       .order("expires_at", { ascending: false, nullsFirst: false });
 
     const provider_memberships: {
@@ -146,6 +149,11 @@ export async function GET(request: NextRequest) {
       next_billing_at: string | null;
       last_payment_at: string | null;
       past_due_since: string | null;
+      paused: boolean;
+      paused_until: string | null;
+      scheduled_plan_id: string | null;
+      scheduled_plan_name: string | null;
+      scheduled_change_at: string | null;
       renewal_payment_method_missing?: boolean;
       card: { last4: string; brand: string; exp: string } | null;
     }[] = [];
@@ -211,6 +219,11 @@ export async function GET(request: NextRequest) {
             next_billing_at: row.next_billing_at ?? null,
             last_payment_at: row.last_payment_at ?? null,
             past_due_since: row.past_due_since ?? null,
+            paused: rowStatus === "paused",
+            paused_until: row.paused_until ?? null,
+            scheduled_plan_id: row.scheduled_plan_id ?? null,
+            scheduled_plan_name: null,
+            scheduled_change_at: row.scheduled_change_at ?? null,
             renewal_payment_method_missing:
               (row.metadata as { renewal_payment_method_missing?: boolean } | null)
                 ?.renewal_payment_method_missing === true,
@@ -225,6 +238,31 @@ export async function GET(request: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .in("id", staleUserMembershipIds);
+      }
+
+      const scheduledIds = [
+        ...new Set(
+          provider_memberships
+            .map((m) => m.scheduled_plan_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      ];
+      if (scheduledIds.length > 0) {
+        const { data: scheduledPlans } = await supabase
+          .from("membership_plans")
+          .select("id, name")
+          .in("id", scheduledIds);
+        const nameById = new Map(
+          ((scheduledPlans ?? []) as Array<{ id: string; name?: string | null }>).map((p) => [
+            p.id,
+            (p.name || "Plan").trim(),
+          ]),
+        );
+        for (const membership of provider_memberships) {
+          if (membership.scheduled_plan_id) {
+            membership.scheduled_plan_name = nameById.get(membership.scheduled_plan_id) ?? null;
+          }
+        }
       }
     }
 

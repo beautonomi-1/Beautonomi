@@ -457,6 +457,308 @@ export function slackNotifySelfServiceAccountDeletionSucceeded(params: {
 }
 
 /** Self-service account deletion failed after verification (purge or auth delete). */
+/** Payment gateway webhook rejected — invalid HMAC/signature (persisted to webhook_events). */
+export function slackNotifyWebhookSignatureRejected(params: {
+  source: "paystack" | "stripe" | "flutterwave";
+  eventId: string;
+  errorMessage: string;
+  attemptCount?: number;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.PAYMENTS_WEBHOOK_SIGNATURE_REJECTED,
+    dedupeKey: `webhook-sig:${params.source}:${params.eventId}`,
+    entityType: "webhook_event",
+    entityId: params.eventId,
+    title: "Payment webhook signature rejected",
+    detailLines: [
+      `Source: ${params.source}`,
+      params.attemptCount != null ? `Attempts: ${params.attemptCount}` : null,
+      `Error: ${params.errorMessage.slice(0, 300)}`,
+      "Action: verify webhook secret, WAF headers, and gateway dashboard",
+    ].filter(Boolean) as string[],
+    actionUrl: "/control-plane",
+  }).catch((err) => {
+    console.error("[slack] webhook signature rejected notify error", err);
+  });
+}
+
+/**
+ * Vercel cron job failed (top-level handler catch or `withCronLock` failure path).
+ * Deduped per job per hour (`cron:<job>:failed:<YYYY-MM-DDTHH>`).
+ */
+export function slackNotifyWorkflowFailed(params: {
+  workflow: string;
+  error: string;
+  runId?: string | null;
+  domainType?: string | null;
+  domainId?: string | null;
+  tenantId?: string | null;
+}) {
+  const hourKey = new Date().toISOString().slice(0, 13);
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.OPS_WORKFLOW_FAILED,
+    dedupeKey: `workflow:${params.workflow}:failed:${params.runId ?? params.domainId ?? hourKey}`,
+    entityType: "workflow_run",
+    entityId: params.runId ?? params.workflow,
+    title: "Workflow run failed",
+    detailLines: [
+      `Workflow: ${params.workflow}`,
+      params.domainType && params.domainId ? `Domain: ${params.domainType}/${params.domainId}` : null,
+      params.runId ? `Run: ${params.runId}` : null,
+      `Error: ${params.error.slice(0, 300)}`,
+      "Action: Admin → Workflow runs; inspect the Vercel run trace",
+    ].filter(Boolean) as string[],
+    actionUrl: "/workflow-runs",
+  }).catch((err) => {
+    console.error("[slack] workflow failed notify error", err);
+  });
+}
+
+export function slackNotifyCronJobFailed(params: {
+  cronJob: string;
+  error: string;
+  tenantId?: string | null;
+  runId?: number | null;
+}) {
+  const hourKey = new Date().toISOString().slice(0, 13);
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.OPS_CRON_FAILED,
+    dedupeKey: `cron:${params.cronJob}:failed:${hourKey}`,
+    entityType: "cron_job",
+    entityId: params.cronJob,
+    title: "Cron job failed",
+    detailLines: [
+      `Job: ${params.cronJob}`,
+      params.runId != null ? `Run: cron_runs #${params.runId}` : null,
+      `Error: ${params.error.slice(0, 300)}`,
+      "Action: Admin → Cron runs; check Vercel cron logs and retry if needed",
+    ].filter(Boolean) as string[],
+    actionUrl: "/cron-runs",
+  }).catch((err) => {
+    console.error("[slack] cron job failed notify error", err);
+  });
+}
+
+/**
+ * A customer/provider payment attempt failed at the gateway (charge.failed,
+ * payment_intent.payment_failed, saved-card charge declined, …).
+ * Dedupe: one alert per reference (or per booking/order when no reference).
+ *
+ * Call sites (wired by the payments owner): Paystack `processFailedPayment`
+ * (_handlers/charge-success.ts), Stripe `payment_intent.payment_failed` branch,
+ * `/api/payments/charge-saved-card` decline path.
+ */
+export function slackNotifyPaymentFailed(params: {
+  tenantId?: string | null;
+  source: "paystack" | "stripe" | "flutterwave" | "saved_card" | "terminal";
+  reference?: string | null;
+  bookingId?: string | null;
+  orderId?: string | null;
+  amountMajor?: number | null;
+  currency?: string | null;
+  reason?: string | null;
+  customerEmail?: string | null;
+}) {
+  const entityId = params.reference ?? params.bookingId ?? params.orderId ?? "unknown";
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_PAYMENT_FAILED,
+    dedupeKey: `payment:${params.source}:${entityId}:failed`,
+    entityType: params.bookingId ? "booking" : params.orderId ? "order" : "payment",
+    entityId,
+    title: "Payment failed",
+    detailLines: [
+      `Gateway: ${params.source}`,
+      params.reference ? `Reference: ${params.reference}` : null,
+      params.bookingId ? `Booking ${params.bookingId.slice(0, 8)}…` : null,
+      params.orderId ? `Order ${params.orderId.slice(0, 8)}…` : null,
+      params.amountMajor != null
+        ? `Amount: ${params.amountMajor.toFixed(2)}${params.currency ? ` ${params.currency}` : ""}`
+        : null,
+      params.reason ? `Reason: ${params.reason.slice(0, 200)}` : null,
+      params.customerEmail ? `Customer: ${params.customerEmail}` : null,
+      "Action: Admin → Webhooks → Inbound for the raw event; follow up with the customer if the booking is pending",
+    ].filter(Boolean) as string[],
+    actionUrl: params.bookingId ? `/bookings/${params.bookingId}` : "/webhooks/inbound",
+  }).catch((err) => {
+    console.error("[slack] payment failed notify error", err);
+  });
+}
+
+export const DEFAULT_HIGH_VALUE_REFUND_THRESHOLD_MAJOR = 5000;
+
+/**
+ * Reads `platform_settings.settings.finance.high_value_refund_threshold` (major units),
+ * defaulting to R5000. Best-effort: any read error returns the default.
+ */
+export async function resolveHighValueRefundThreshold(tenantId?: string | null): Promise<number> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    let query = supabase
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    query = tenantId ? query.eq("tenant_id", tenantId) : query.is("tenant_id", null);
+    let { data } = await query.maybeSingle();
+    if (!data && tenantId) {
+      const fallback = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .is("tenant_id", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      data = fallback.data;
+    }
+    const settings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+    const finance = (settings.finance as Record<string, unknown> | undefined) ?? {};
+    const raw = Number(finance.high_value_refund_threshold);
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_HIGH_VALUE_REFUND_THRESHOLD_MAJOR;
+  } catch {
+    return DEFAULT_HIGH_VALUE_REFUND_THRESHOLD_MAJOR;
+  }
+}
+
+/**
+ * A refund at or above the configured threshold was requested/approved/processed.
+ * No-op when below threshold. Dedupe: one alert per refund per stage.
+ *
+ * Call sites: admin refund approve/process routes (wired here where owned),
+ * Paystack `refund.processed` handler (_handlers/refund-events.ts), Stripe `charge.refunded`.
+ */
+export async function slackNotifyHighValueRefund(params: {
+  tenantId?: string | null;
+  refundId: string;
+  bookingId?: string | null;
+  amountMajor: number;
+  currency?: string | null;
+  stage: "requested" | "approved" | "processed";
+  actorUserId?: string | null;
+  reason?: string | null;
+  thresholdMajor?: number;
+}): Promise<{ notified: boolean; thresholdMajor: number }> {
+  const thresholdMajor =
+    params.thresholdMajor ?? (await resolveHighValueRefundThreshold(params.tenantId ?? null));
+  if (!Number.isFinite(params.amountMajor) || params.amountMajor < thresholdMajor) {
+    return { notified: false, thresholdMajor };
+  }
+  await tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_HIGH_VALUE,
+    dedupeKey: `refund:${params.refundId}:high_value:${params.stage}`,
+    entityType: "booking_refund",
+    entityId: params.refundId,
+    title: `High-value refund ${params.stage}`,
+    detailLines: [
+      `Amount: ${params.amountMajor.toFixed(2)}${params.currency ? ` ${params.currency}` : ""} (threshold ${thresholdMajor.toFixed(0)})`,
+      params.bookingId ? `Booking ${params.bookingId.slice(0, 8)}…` : null,
+      params.actorUserId ? `By: ${params.actorUserId.slice(0, 8)}…` : null,
+      params.reason ? `Reason: ${params.reason.slice(0, 200)}` : null,
+      "Action: Admin → Refunds — confirm second approver reviewed",
+    ].filter(Boolean) as string[],
+    actionUrl: "/refunds",
+  }).catch((err) => {
+    console.error("[slack] high value refund notify error", err);
+  });
+  return { notified: true, thresholdMajor };
+}
+
+/**
+ * A provider subscription churned (cancelled and expired, dunning exhausted, or
+ * downgraded to free after failed retries). Dedupe: one alert per subscription per reason.
+ *
+ * Call sites: crons `expire-cancelled-subscriptions`, `retry-subscription-payments`
+ * (stop condition), and `reverseProviderSubscriptionPayment` chargeback path.
+ */
+export function slackNotifySubscriptionChurned(params: {
+  tenantId?: string | null;
+  subscriptionId: string;
+  providerId?: string | null;
+  providerName?: string | null;
+  planName?: string | null;
+  reason: "cancelled_expired" | "dunning_exhausted" | "chargeback" | "downgraded" | "other";
+  mrrMajor?: number | null;
+  currency?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.SUBSCRIPTION_CHURNED,
+    dedupeKey: `subscription:${params.subscriptionId}:churned:${params.reason}`,
+    entityType: "provider_subscription",
+    entityId: params.subscriptionId,
+    title: "Provider subscription churned",
+    detailLines: [
+      params.providerName ? `Provider: ${params.providerName}` : params.providerId ? `Provider ${params.providerId.slice(0, 8)}…` : null,
+      params.planName ? `Plan: ${params.planName}` : null,
+      `Reason: ${params.reason.replace(/_/g, " ")}`,
+      params.mrrMajor != null
+        ? `MRR lost: ${params.mrrMajor.toFixed(2)}${params.currency ? ` ${params.currency}` : ""}`
+        : null,
+      "Action: Admin → Provider Subscriptions — consider win-back outreach",
+    ].filter(Boolean) as string[],
+    actionUrl: params.providerId ? `/providers/${params.providerId}` : "/provider-subscriptions",
+  }).catch((err) => {
+    console.error("[slack] subscription churned notify error", err);
+  });
+}
+
+/**
+ * Fleet-wide unrecognized online payments (completed booking_payments without a
+ * finance_transactions.payment row) exceeded zero after the reconcile sweep.
+ * Dedupe: one alert per day per tenant.
+ *
+ * Call site: cron `reconcile-online-charge-ledger` after `reconcileOnlineChargeLedger`
+ * returns (`needsReview.length + errors.length > 0`), and the Ledger Health API when
+ * an admin loads it with a non-zero count (already wired here).
+ */
+export function slackNotifyUnrecognizedPayments(params: {
+  tenantId?: string | null;
+  count: number;
+  amountMajor?: number | null;
+  currency?: string | null;
+  needsReview?: number;
+  errors?: number;
+  source?: string;
+}) {
+  if (params.count <= 0) return;
+  const dayKey = new Date().toISOString().slice(0, 10);
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_UNRECOGNIZED_PAYMENTS,
+    dedupeKey: `unrecognized_payments:${params.tenantId ?? "platform"}:${dayKey}`,
+    entityType: "ledger_health",
+    entityId: params.tenantId ?? "platform",
+    title: "Unrecognized online payments need ledger repair",
+    detailLines: [
+      `Count: ${params.count}`,
+      params.amountMajor != null
+        ? `Amount: ${params.amountMajor.toFixed(2)}${params.currency ? ` ${params.currency}` : ""}`
+        : null,
+      params.needsReview != null ? `Needs review: ${params.needsReview}` : null,
+      params.errors != null ? `Errors: ${params.errors}` : null,
+      params.source ? `Source: ${params.source}` : null,
+      "Action: Admin → Finance → Ledger Repair (propose → superadmin approve)",
+    ].filter(Boolean) as string[],
+    actionUrl: "/finance/ledger-repair",
+  }).catch((err) => {
+    console.error("[slack] unrecognized payments notify error", err);
+  });
+}
+
 export function slackNotifySelfServiceAccountDeletionFailed(params: {
   tenantId: string;
   userId: string;

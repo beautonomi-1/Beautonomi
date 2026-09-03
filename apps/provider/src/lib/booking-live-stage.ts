@@ -22,7 +22,9 @@ export function formatBookingEtaLabel(estimatedArrival: string | null | undefine
   if (!estimatedArrival) return null;
   const eta = new Date(estimatedArrival);
   if (!Number.isFinite(eta.getTime())) return null;
-  const mins = Math.max(0, Math.round((eta.getTime() - Date.now()) / 60000));
+  const remainingMs = eta.getTime() - Date.now();
+  const mins = Math.round(remainingMs / 60000);
+  if (remainingMs < 0) return "Running a little late";
   if (mins <= 0) return "Arriving now";
   if (mins === 1) return "ETA ~1 min";
   return `ETA ~${mins} min`;

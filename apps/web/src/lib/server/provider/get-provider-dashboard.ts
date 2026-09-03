@@ -50,6 +50,12 @@ import {
 } from "@/lib/server/provider/dashboard-comparison-periods";
 import { getDashboardRecognizedRevenueBounds } from "@/lib/server/provider/dashboard-revenue-period-bounds";
 import { buildDashboardPeriodBreakdown } from "@/lib/server/provider/build-dashboard-period-breakdown";
+import { countUnrecognizedPaymentsToday } from "@/lib/server/provider/count-unrecognized-payments-today";
+import {
+  getProviderDashboardSnapshotCached,
+  isDashboardSnapshotRpcEnabled,
+  type DashboardSnapshot,
+} from "@/lib/server/provider/dashboard-snapshot-rpc";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
@@ -176,10 +182,47 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       new Date(businessNow.getFullYear(), businessNow.getMonth(), 0, 23, 59, 59, 999),
       providerTz,
     );
+    const todayEndLocal = new Date(startOfTodayLocal);
+    todayEndLocal.setDate(startOfTodayLocal.getDate() + 1);
+    const todayEnd = fromBusinessTime(todayEndLocal, providerTz);
+    const startOfNextWeekLocal = new Date(startOfWeekLocal);
+    startOfNextWeekLocal.setDate(startOfWeekLocal.getDate() + 7);
+    const startOfNextWeek = fromBusinessTime(startOfNextWeekLocal, providerTz);
+    const startOfNextMonth = fromBusinessTime(
+      new Date(businessNow.getFullYear(), businessNow.getMonth() + 1, 1, 0, 0, 0, 0),
+      providerTz,
+    );
+
+    // Part M: `DASHBOARD_SNAPSHOT_RPC=1` moves the lifetime status tiles, schedule
+    // counts and recognized-revenue windows into Postgres (provider_dashboard_snapshot,
+    // migration 877; 30s cache). When the RPC answers, the bookings scan below is
+    // narrowed to the current period (only period_breakdown still needs per-row
+    // channel/status mix) instead of paging up to MAX_DASHBOARD_BOOKINGS rows.
+    // Any RPC failure silently falls back to the Node path.
+    const snapshotPromise: Promise<DashboardSnapshot | null> = isDashboardSnapshotRpcEnabled()
+      ? getProviderDashboardSnapshotCached(supabaseAdmin as any, {
+          providerId,
+          locationId,
+          timezone: providerTz,
+        })
+          .then((result) => {
+            if (result.ok === false) {
+              console.warn("[dashboard_snapshot_rpc] falling back to Node path:", result.error);
+              return null;
+            }
+            return result.snapshot;
+          })
+          .catch((err: unknown) => {
+            console.warn("[dashboard_snapshot_rpc] falling back to Node path:", err);
+            return null;
+          })
+      : Promise.resolve(null);
+    const periodBookingsFrom = new Date(Math.min(startOfWeek.getTime(), startOfMonth.getTime()));
+    const periodBookingsTo = new Date(Math.max(startOfNextWeek.getTime(), startOfNextMonth.getTime()));
 
     // Load status, created_at, scheduled_at, and location_type in parallel with finance data.
     // Paginate bookings so high-volume providers are not silently capped at PostgREST max_rows.
-    const fetchDashboardBookingsPage = async (from: number, to: number) => {
+    const fetchDashboardBookingsPage = async (from: number, to: number, periodOnly: boolean) => {
       let q = supabaseAdmin
         .from("bookings")
         .select("id, status, created_at, scheduled_at, location_id, location_type, booking_source")
@@ -189,6 +232,11 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         .order("scheduled_at", { ascending: false })
         .order("id", { ascending: false })
         .range(from, to);
+      if (periodOnly) {
+        q = q
+          .gte("scheduled_at", periodBookingsFrom.toISOString())
+          .lt("scheduled_at", periodBookingsTo.toISOString());
+      }
       if (locationId) {
         q = q.or(dashboardBookingLocationOrFilter(locationId));
       }
@@ -207,16 +255,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // If location filter is provided, we'll need to filter finance transactions
     // by joining with bookings. For performance, we'll do this in memory after fetching.
     // The ledger is fully paginated (not capped) so lifetime totals never undercount.
-    const [allBookings, ledgerRows] = await Promise.all([
-      fetchAllPaged(async (from, to) => {
-        const { data, error } = await fetchDashboardBookingsPage(from, to);
-        return { data, error };
-      }, MAX_DASHBOARD_BOOKINGS).then((rows) => rows.slice(0, MAX_DASHBOARD_BOOKINGS)),
+    const [{ snapshot, allBookings }, ledgerRows] = await Promise.all([
+      snapshotPromise.then(async (snapshot) => {
+        const periodOnly = snapshot !== null;
+        const rows = await fetchAllPaged(async (from, to) => {
+          const { data, error } = await fetchDashboardBookingsPage(from, to, periodOnly);
+          return { data, error };
+        }, MAX_DASHBOARD_BOOKINGS);
+        return { snapshot, allBookings: rows.slice(0, MAX_DASHBOARD_BOOKINGS) };
+      }),
       fetchAllLedgerPages(financeQuery as any, MAX_FINANCE_TRANSACTIONS),
     ]);
 
-    const totalBookings = allBookings.length;
-    const bookingsTruncated = allBookings.length >= MAX_DASHBOARD_BOOKINGS;
+    const totalBookings = snapshot ? snapshot.bookings.total_bookings : allBookings.length;
+    const bookingsTruncated = snapshot ? false : allBookings.length >= MAX_DASHBOARD_BOOKINGS;
     
     // Debug: Log booking statuses to help diagnose issues
     if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === "1") {
@@ -252,8 +304,31 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let atSalonCancelled = 0;
     let atHomeNoShow = 0;
     let atSalonNoShow = 0;
-    
-    for (const booking of allBookings) {
+
+    if (snapshot) {
+      const c = snapshot.bookings;
+      activeBookings = c.active_bookings;
+      confirmedBookings = c.confirmed_bookings;
+      completedBookings = c.completed_bookings;
+      cancelledBookings = c.cancelled_bookings;
+      noShowBookings = c.no_show_bookings;
+      pendingBookings = c.pending_bookings;
+      atHomeBookings = c.at_home_bookings;
+      atSalonBookings = c.at_salon_bookings;
+      atHomeCompleted = c.at_home_completed;
+      atSalonCompleted = c.at_salon_completed;
+      atHomeConfirmed = c.at_home_confirmed;
+      atSalonConfirmed = c.at_salon_confirmed;
+      atHomePending = c.at_home_pending;
+      atSalonPending = c.at_salon_pending;
+      atHomeCancelled = c.at_home_cancelled;
+      atSalonCancelled = c.at_salon_cancelled;
+      atHomeNoShow = c.at_home_no_show;
+      atSalonNoShow = c.at_salon_no_show;
+    }
+
+    // Node path (snapshot === null): allBookings holds the full lifetime set.
+    for (const booking of snapshot ? [] : allBookings) {
       const status = String(booking.status || "");
       const isAtHome = booking.location_type === "at_home";
       const isAtSalon = booking.location_type === "at_salon";
@@ -307,17 +382,6 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let appointmentsPriorWeek = 0;
     let appointmentsPriorMonth = 0;
 
-    const todayEndLocal = new Date(startOfTodayLocal);
-    todayEndLocal.setDate(startOfTodayLocal.getDate() + 1);
-    const todayEnd = fromBusinessTime(todayEndLocal, providerTz);
-    const startOfNextWeekLocal = new Date(startOfWeekLocal);
-    startOfNextWeekLocal.setDate(startOfWeekLocal.getDate() + 7);
-    const startOfNextWeek = fromBusinessTime(startOfNextWeekLocal, providerTz);
-    const startOfNextMonth = fromBusinessTime(
-      new Date(businessNow.getFullYear(), businessNow.getMonth() + 1, 1, 0, 0, 0, 0),
-      providerTz,
-    );
-
     const todayYmdForBounds = formatDateYmd(businessNow, providerTz);
     const weekStartYmdForBounds = formatDateYmd(startOfWeekLocal, providerTz);
     const yesterdayYmd = addDaysToYmd(todayYmdForBounds, -1);
@@ -338,7 +402,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const startOfPriorMonthMtd = priorMonthMtdComparison.start;
     const endOfPriorMonthMtd = priorMonthMtdComparison.end;
 
-    for (const booking of allBookings) {
+    if (snapshot) {
+      upcomingBookingsToday = snapshot.schedule.today;
+      bookingsScheduledThisWeek = snapshot.schedule.this_week;
+      bookingsScheduledThisMonth = snapshot.schedule.this_month;
+      appointmentsYesterday = snapshot.schedule.yesterday;
+      appointmentsPriorWeek = snapshot.schedule.prior_week;
+      appointmentsPriorMonth = snapshot.schedule.prior_month;
+    }
+
+    for (const booking of snapshot ? [] : allBookings) {
       const scheduledDate = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
       const status = String(booking.status || "");
 
@@ -501,10 +574,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const sumRecognizedRevenue = (start?: Date, end?: Date) =>
       recognizedRevenueInRange(ledgerRowsForRange, { start, end });
 
-    const revenueToday = sumRecognizedRevenue(startOfToday, revenuePeriodEnds.endOfToday);
-    const revenueThisWeek = sumRecognizedRevenue(startOfWeek, revenuePeriodEnds.endOfWeek);
-    const revenueThisMonth = sumRecognizedRevenue(startOfMonth, revenuePeriodEnds.endOfMonth);
-    const revenueLastMonth = sumRecognizedRevenue(startOfLastMonth, endOfLastMonth);
+    // Snapshot RPC (when enabled) sums the FULL ledger in Postgres; the Node path is
+    // bounded by MAX_FINANCE_TRANSACTIONS.
+    const revenueToday = snapshot
+      ? snapshot.revenue.today
+      : sumRecognizedRevenue(startOfToday, revenuePeriodEnds.endOfToday);
+    const revenueThisWeek = snapshot
+      ? snapshot.revenue.this_week
+      : sumRecognizedRevenue(startOfWeek, revenuePeriodEnds.endOfWeek);
+    const revenueThisMonth = snapshot
+      ? snapshot.revenue.this_month
+      : sumRecognizedRevenue(startOfMonth, revenuePeriodEnds.endOfMonth);
+    const revenueLastMonth = snapshot
+      ? snapshot.revenue.last_month
+      : sumRecognizedRevenue(startOfLastMonth, endOfLastMonth);
 
     const todayYmd = formatDateYmd(businessNow, providerTz);
     const weekStartYmd = formatDateYmd(startOfWeekLocal, providerTz);
@@ -526,9 +609,15 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         ? Math.round(((revenueThisMonth - revenueLastMonth) / Math.abs(revenueLastMonth)) * 100)
         : 0;
 
-    const revenueYesterday = sumRecognizedRevenue(startOfYesterday, endOfYesterday);
-    const revenuePriorWeek = sumRecognizedRevenue(startOfPriorWeek, endOfPriorWeek);
-    const revenuePriorMonthMtd = sumRecognizedRevenue(startOfPriorMonthMtd, endOfPriorMonthMtd);
+    const revenueYesterday = snapshot
+      ? snapshot.revenue.yesterday
+      : sumRecognizedRevenue(startOfYesterday, endOfYesterday);
+    const revenuePriorWeek = snapshot
+      ? snapshot.revenue.prior_week
+      : sumRecognizedRevenue(startOfPriorWeek, endOfPriorWeek);
+    const revenuePriorMonthMtd = snapshot
+      ? snapshot.revenue.prior_month
+      : sumRecognizedRevenue(startOfPriorMonthMtd, endOfPriorMonthMtd);
 
     const { period_breakdown, period_comparison } = buildDashboardPeriodBreakdown({
       parsedRows,
@@ -689,6 +778,14 @@ export async function getProviderDashboardResponse(request: NextRequest) {
           booking_limit_message: string | null;
         }
       | null = null;
+
+    // Truth guard for the money card: completed online-gateway payments today
+    // that have no ledger `payment` row yet (Part A reconcile cron will post them).
+    const unrecognizedPaymentsToday = await countUnrecognizedPaymentsToday(
+      supabaseAdmin,
+      providerId,
+      providerTz,
+    );
 
     if (includeInsights) {
       const chartStartYmd = addDaysToYmd(todayYmd, -6);
@@ -921,6 +1018,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       metrics_time_basis: "lifetime_all_time",
       earnings_mix_time_basis:
         "All-time ledger totals. Revenue chips use recognition date in your business timezone.",
+      unrecognized_payments_today: unrecognizedPaymentsToday,
       raw_payout_balance: rawBalance,
       has_negative_payout_balance: hasNegativeBalance,
       balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,

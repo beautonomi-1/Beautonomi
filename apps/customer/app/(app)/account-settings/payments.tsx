@@ -159,6 +159,15 @@ export default function PaymentsScreen() {
     );
   };
 
+  const resendGiftCard = async (id: string) => {
+    const res = await api.post(`/api/me/gift-cards/${id}/resend`, {});
+    if (res.error) {
+      Alert.alert(t("common.error"), res.error.message ?? "Failed to resend gift card");
+    } else {
+      Alert.alert("Sent", "Gift card resent to the recipient.");
+    }
+  };
+
   const removeMethod = async (id: string) => {
     Alert.alert(
       t("customer.paymentsScreen.removeCardTitle"),
@@ -455,6 +464,17 @@ export default function PaymentsScreen() {
                       })
                     }
                     onRemove={() => removeGiftCard(g.id)}
+                    onResend={g.can_resend ? () => void resendGiftCard(g.id) : undefined}
+                    onContactSupport={() =>
+                      router.push({
+                        pathname: "/(app)/(tabs)/support-tickets/new",
+                        params: {
+                          gift_card_id: g.id,
+                          ...(g.code ? { gift_card_code: String(g.code) } : {}),
+                          category: "payment_gift_card",
+                        },
+                      })
+                    }
                   />
                 ))}
           </View>

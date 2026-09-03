@@ -473,6 +473,13 @@ async function backfillMissingCustomOfferFinance(
       console.warn(
         `[finalizeCustomOfferPayment] backfilled missing finance ledger for booking ${bookingId} (offer ${offerId})`,
       );
+      if (tipAmount > 0) {
+        void import("@/lib/notifications/notify-staff-event")
+          .then(({ notifyStaffTipReceivedForBooking }) =>
+            notifyStaffTipReceivedForBooking(adminSupabase, bookingId),
+          )
+          .catch(() => undefined);
+      }
     }
   } catch (err) {
     console.error(
@@ -1240,6 +1247,12 @@ export async function finalizeCustomOfferPayment(
           `[finalizeCustomOfferPayment] finance_transactions extras insert failed for booking ${booking.id}:`,
           extraFtErr,
         );
+      } else if (postBookingLevelFees && tipForCommission > 0) {
+        void import("@/lib/notifications/notify-staff-event")
+          .then(({ notifyStaffTipReceivedForBooking }) =>
+            notifyStaffTipReceivedForBooking(adminSupabase, booking.id),
+          )
+          .catch(() => undefined);
       }
     } catch (extraFtCoreErr) {
       console.error(

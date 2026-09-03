@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "reset-whatsapp-counters";
+export const maxDuration = 60;
 
 /**
  * GET /api/cron/reset-whatsapp-counters
@@ -9,6 +13,14 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * Resets daily_send_count when the last reset was >24h ago.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const { valid, error } = verifyCronRequest(request);
   if (!valid) {
     return NextResponse.json({ error }, { status: 401 });

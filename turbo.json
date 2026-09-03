@@ -64,7 +64,7 @@
     "web#build": {
       "dependsOn": ["^build", "admin-web#build"],
       "inputs": ["$TURBO_DEFAULT$", "../admin-web/dist/**"],
-      "outputs": [".next/**", "!.next/cache/**", "public/admin/**"]
+      "outputs": [".next/**", "!.next/cache/**", "public/admin/**", "src/app/.well-known/workflow/**"]
     }
   }
 }

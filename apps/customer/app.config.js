@@ -73,7 +73,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.87",
+  version: "1.0.88",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -88,10 +88,13 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "280",
+    buildNumber: "281",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
+        "Beautonomi can add your appointment to your calendar when you choose Save to calendar.",
+      // iOS 17+ requires this in addition to NSCalendarsUsageDescription.
+      NSCalendarsFullAccessUsageDescription:
         "Beautonomi can add your appointment to your calendar when you choose Save to calendar.",
       NSCameraUsageDescription:
         "Beautonomi uses the camera for identity verification and profile photos.",
@@ -102,6 +105,26 @@ const BASE_EXPO_CONFIG = {
       // (iOS blocks undeclared schemes). Must match plugin `scheme` and
       // apps/provider `scheme` + android.package com.beautonomi.partner.
       LSApplicationQueriesSchemes: ["provider"],
+      // Singular SKAdNetwork + commonly published partner IDs (Part G).
+      SKAdNetworkItems: [
+        { SKAdNetworkIdentifier: "22mmun2rn5.skadnetwork" },
+        { SKAdNetworkIdentifier: "cstr6suwn9.skadnetwork" },
+        { SKAdNetworkIdentifier: "v9wttpbfk9.skadnetwork" },
+        { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" },
+        { SKAdNetworkIdentifier: "4dzt52r2t5.skadnetwork" },
+        { SKAdNetworkIdentifier: "ludvb6z3bs.skadnetwork" },
+        { SKAdNetworkIdentifier: "hs6bdukanm.skadnetwork" },
+        { SKAdNetworkIdentifier: "kbd757ywx3.skadnetwork" },
+        { SKAdNetworkIdentifier: "9t245vhmpl.skadnetwork" },
+        { SKAdNetworkIdentifier: "prcb7njmu6.skadnetwork" },
+        { SKAdNetworkIdentifier: "yclnxrl5pm.skadnetwork" },
+        { SKAdNetworkIdentifier: "4468km3ulx.skadnetwork" },
+        { SKAdNetworkIdentifier: "2u9pt9hc89.skadnetwork" },
+        { SKAdNetworkIdentifier: "8s468mfl3y.skadnetwork" },
+        { SKAdNetworkIdentifier: "ppxm28t8ap.skadnetwork" },
+        { SKAdNetworkIdentifier: "4pfyvq9l8r.skadnetwork" },
+        { SKAdNetworkIdentifier: "v72qych5uu.skadnetwork" },
+      ],
       // Amplitude Guides & Surveys preview deep links (amp-xxxx://). Dedicated URL
       // type so it never collides with expo-router; handleEngagementURL consumes it.
       ...(amplitudeUrlScheme
@@ -143,7 +166,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 280,
+    versionCode: 281,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

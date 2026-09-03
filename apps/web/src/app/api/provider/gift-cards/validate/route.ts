@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { checkGiftCardValidateRateLimit } from "@/lib/rate-limit/gift-card-validate";
 
 /**
  * GET /api/provider/gift-cards/validate
@@ -61,6 +62,15 @@ export async function GET(request: NextRequest) {
 
     if (!code || !code.trim()) {
       return errorResponse("Gift card code is required", "VALIDATION_ERROR", 400);
+    }
+
+    const rateLimit = await checkGiftCardValidateRateLimit(request, permissionCheck.user.id);
+    if (!rateLimit.allowed) {
+      return errorResponse(
+        "Too many validation attempts. Please try again later.",
+        "RATE_LIMITED",
+        429,
+      );
     }
 
     const giftCardCode = code.trim().toUpperCase();

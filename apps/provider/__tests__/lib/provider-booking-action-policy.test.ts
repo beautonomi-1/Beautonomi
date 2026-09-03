@@ -62,7 +62,7 @@ describe("buildProviderBookingActionModel", () => {
   });
 
   it("maps structured backend errors into provider-facing copy", () => {
-    expect(mapProviderBookingActionError("raw", "CONFLICT")).toMatch(/updated elsewhere/);
+    expect(mapProviderBookingActionError("raw", "CONFLICT")).toBe("This booking changed, reload");
     expect(mapProviderBookingActionError(null, "VERIFICATION_NOT_COMPLETE")).toMatch(/PIN or QR/);
   });
 });

@@ -17,6 +17,7 @@ import type { SearchResult, Category, PublicProviderCard } from "@/types/api";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { captureError } from "@/lib/sentry";
+import { trackSearch } from "@/lib/analytics";
 
 type Suggestion = {
   type: "service" | "provider" | "category";
@@ -112,6 +113,7 @@ export default function SearchScreen() {
         } else {
           const data = res.data as SearchResult;
           setResults(data || { providers: [], total: 0, page: 1, limit: 20, has_more: false });
+          trackSearch(query.trim(), category || undefined, data?.total ?? data?.providers?.length ?? 0);
         }
       } catch (e) {
         setError(getApiErrorMessage(e, t("customer.searchScreen.searchFailed")));

@@ -12,12 +12,18 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import type { PermissionRequestContext } from "@/lib/auth/permissions";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import {
+  findFutureBookingsForStaff,
+  futureBookingsConflictResponse,
+} from "@/lib/provider/find-future-bookings-for-staff";
+import {
   getTeamRosterDetailLevel,
   getProviderStaffIdForUser,
   redactStaffRowForViewer,
 } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 import { syncPortalRoleAfterWorkplaceChange } from "@/lib/auth/effective-provider-role";
+import { reassignStaffWorkload } from "@/lib/provider/reassign-staff-workload";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const updateStaffSchema = z.object({
   name: z.string().optional(),
@@ -30,7 +36,35 @@ const updateStaffSchema = z.object({
   commission_rate: z.number().min(0).max(100).optional().nullable(),
   location_ids: z.array(z.string().uuid()).optional(),
   service_ids: z.array(z.string().uuid()).optional(),
+  /** Staff id or "any": move future bookings before deactivating. */
+  reassign_to: z.string().min(1).optional().nullable(),
+  /** Proceed despite future bookings (they stay assigned to the inactive staff). */
+  force: z.boolean().optional(),
 });
+
+function staffAuditEntry(
+  request: NextRequest,
+  user: { id: string; role?: string },
+  action: string,
+  staffId: string,
+  providerId: string,
+  extra: { before?: Record<string, unknown> | null; after?: Record<string, unknown> | null; metadata?: Record<string, unknown> } = {},
+) {
+  return writeAuditLog({
+    actor_user_id: user.id,
+    actor_role: user.role ?? null,
+    action,
+    entity_type: "provider_staff",
+    entity_id: staffId,
+    module: "staff",
+    risk_level: "medium",
+    retention_tier: "access",
+    before_json: extra.before ?? null,
+    after_json: extra.after ?? null,
+    metadata: { provider_id: providerId, ...(extra.metadata ?? {}) },
+    ...extractRequestMeta(request),
+  });
+}
 
 /** Staff may update their own row without manage_team (name/phone/avatar/mobile only). */
 const selfEditStaffSchema = z.object({
@@ -122,6 +156,7 @@ async function fetchStaffDetailForApi(
     )
     .eq("id", staffId)
     .eq("provider_id", providerId)
+    .is("deleted_at", null)
     .single();
 
   if (error || !row) return null;
@@ -175,10 +210,10 @@ async function fetchStaffDetailForApi(
   }
 
   const { data: svcRows } = await supabase
-    .from("staff_service_assignments")
-    .select("service_id")
+    .from("staff_services")
+    .select("offering_id")
     .eq("staff_id", staffId);
-  const service_ids = (svcRows ?? []).map((x: { service_id: string }) => x.service_id);
+  const service_ids = (svcRows ?? []).map((x: { offering_id: string }) => x.offering_id);
 
   const apiRole = mapDbRoleToApi(r.role);
 
@@ -299,6 +334,7 @@ export async function PATCH(
       .select("id, role, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
+      .is("deleted_at", null)
       .single();
 
     if (existingErr || !existingRow) {
@@ -361,6 +397,38 @@ export async function PATCH(
       }
     }
 
+    const forceProceed = d.force === true || d.reassign_to != null;
+    if (!forceProceed && d.is_active === false) {
+      const conflicts = await findFutureBookingsForStaff(supabase, providerId, id);
+      if (conflicts.length > 0) {
+        return errorResponse(
+          futureBookingsConflictResponse(conflicts).message,
+          "FUTURE_BOOKINGS_CONFLICT",
+          409,
+          futureBookingsConflictResponse(conflicts),
+        );
+      }
+    }
+
+    let reassignedBookingIds: string[] = [];
+    if (d.is_active === false && d.reassign_to) {
+      const reassign = await reassignStaffWorkload(supabase, {
+        providerId,
+        fromStaffId: id,
+        reassignTo: d.reassign_to,
+        actorUserId: user.id,
+      });
+      if (reassign.ok === false) {
+        return errorResponse(reassign.message, reassign.code, 400);
+      }
+      reassignedBookingIds = reassign.bookingIds;
+    }
+
+    if (d.is_active === false) {
+      // Manual deactivation clears any over-cap grace marker.
+      updateData.over_cap_grace_until = null;
+    }
+
     if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase.from("provider_staff").update(updateData).eq("id", id);
       if (updateError) {
@@ -372,8 +440,45 @@ export async function PATCH(
       await syncPortalRoleAfterWorkplaceChange(existing.user_id);
     }
 
+    if (d.is_active === false) {
+      void staffAuditEntry(request, user, "staff.deactivated", id, providerId, {
+        before: { is_active: true },
+        after: { is_active: false },
+        metadata: {
+          reassign_to: d.reassign_to ?? null,
+          force: d.force === true,
+          reassigned_booking_ids: reassignedBookingIds.slice(0, 100),
+        },
+      });
+    } else if (d.is_active === true) {
+      void staffAuditEntry(request, user, "staff.reactivated", id, providerId, {
+        before: { is_active: false },
+        after: { is_active: true },
+      });
+    }
+
+    if (updateData.role !== undefined && updateData.role !== existing.role) {
+      void staffAuditEntry(request, user, "staff.role_changed", id, providerId, {
+        before: { role: existing.role },
+        after: { role: updateData.role },
+      });
+    }
+
     if (replaceLocations) {
       const locIds = d.location_ids ?? [];
+      if (!forceProceed) {
+        const locConflicts = await findFutureBookingsForStaff(supabase, providerId, id, {
+          notAtLocationIds: locIds,
+        });
+        if (locConflicts.length > 0) {
+          return errorResponse(
+            `${locConflicts.length} future booking(s) are at a location being removed. Reassign or reschedule them, or pass force to proceed.`,
+            "FUTURE_BOOKINGS_CONFLICT",
+            409,
+            futureBookingsConflictResponse(locConflicts),
+          );
+        }
+      }
       await supabase.from("provider_staff_locations").delete().eq("staff_id", id);
       if (locIds.length > 0) {
         const { data: locs } = await supabase
@@ -397,14 +502,40 @@ export async function PATCH(
 
     if (replaceServices) {
       const sids = d.service_ids ?? [];
-      await supabase.from("staff_service_assignments").delete().eq("staff_id", id);
+      if (!forceProceed && sids.length >= 0) {
+        const { data: currentServices } = await supabase
+          .from("staff_services")
+          .select("offering_id")
+          .eq("staff_id", id);
+        const nextSet = new Set(sids);
+        const removed = (currentServices ?? [])
+          .map((r: { offering_id: string }) => r.offering_id)
+          .filter((oid) => !nextSet.has(oid));
+        if (removed.length > 0) {
+          const conflicts = await findFutureBookingsForStaff(supabase, providerId, id, {
+            serviceIds: removed,
+          });
+          if (conflicts.length > 0) {
+            return errorResponse(
+              futureBookingsConflictResponse(conflicts).message,
+              "FUTURE_BOOKINGS_CONFLICT",
+              409,
+              futureBookingsConflictResponse(conflicts),
+            );
+          }
+        }
+      }
+      // staff_services is the only eligibility source; the legacy
+      // provider_staff.assigned_service_ids array is no longer written (872).
+      await supabase.from("staff_services").delete().eq("staff_id", id);
       if (sids.length > 0) {
-        await supabase.from("staff_service_assignments").insert(
-          sids.map((sid: string) => ({ staff_id: id, service_id: sid })),
+        await supabase.from("staff_services").insert(
+          sids.map((sid: string) => ({
+            staff_id: id,
+            offering_id: sid,
+            provider_id: providerId,
+          })),
         );
-        await supabase.from("provider_staff").update({ assigned_service_ids: sids }).eq("id", id);
-      } else {
-        await supabase.from("provider_staff").update({ assigned_service_ids: [] }).eq("id", id);
       }
     }
 
@@ -433,6 +564,21 @@ export async function DELETE(
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
+    // `reassign_to` / `force` come from the query string or an optional JSON body.
+    const url = new URL(request.url);
+    let body: Record<string, unknown> = {};
+    try {
+      const text = await request.text();
+      if (text) body = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      body = {};
+    }
+    const reassignTo =
+      (typeof body.reassign_to === "string" && body.reassign_to) ||
+      url.searchParams.get("reassign_to") ||
+      null;
+    const force = body.force === true || url.searchParams.get("force") === "true";
+
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -440,16 +586,17 @@ export async function DELETE(
 
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id, role, user_id")
+      .select("id, role, user_id, name, is_active")
       .eq("id", id)
       .eq("provider_id", providerId)
+      .is("deleted_at", null)
       .single();
 
     if (existingErr || !existingRow) {
       return notFoundResponse("Staff member not found");
     }
 
-    const existing = existingRow as { id: string; role: string; user_id?: string | null };
+    const existing = existingRow as { id: string; role: string; user_id?: string | null; name?: string | null; is_active?: boolean | null };
     const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner") {
@@ -466,7 +613,47 @@ export async function DELETE(
       }
     }
 
-    const { error: deleteError } = await supabase.from("provider_staff").delete().eq("id", id);
+    // Future bookings guard: 409 with the list unless reassigning or forcing.
+    if (!reassignTo && !force) {
+      const conflicts = await findFutureBookingsForStaff(supabase, providerId, id);
+      if (conflicts.length > 0) {
+        return errorResponse(
+          futureBookingsConflictResponse(conflicts).message,
+          "FUTURE_BOOKINGS_CONFLICT",
+          409,
+          futureBookingsConflictResponse(conflicts),
+        );
+      }
+    }
+
+    let reassignedBookingIds: string[] = [];
+    let reassignedTo: string | null = null;
+    if (reassignTo) {
+      const reassign = await reassignStaffWorkload(supabase, {
+        providerId,
+        fromStaffId: id,
+        reassignTo,
+        actorUserId: user.id,
+      });
+      if (reassign.ok === false) {
+        return errorResponse(reassign.message, reassign.code, 400);
+      }
+      reassignedBookingIds = reassign.bookingIds;
+      reassignedTo = reassign.toStaffId;
+    }
+
+    // Soft delete: FKs on money/time tables are RESTRICT (872), so nothing is wiped.
+    const { error: deleteError } = await supabase
+      .from("provider_staff")
+      .update({
+        deleted_at: new Date().toISOString(),
+        is_active: false,
+        over_cap_grace_until: null,
+        invite_token: null,
+        invite_token_expires_at: null,
+      })
+      .eq("id", id)
+      .is("deleted_at", null);
 
     if (deleteError) {
       throw deleteError;
@@ -476,7 +663,22 @@ export async function DELETE(
       await syncPortalRoleAfterWorkplaceChange(existing.user_id);
     }
 
-    return successResponse({ success: true });
+    void staffAuditEntry(request, user, "staff.removed", id, providerId, {
+      before: { is_active: existing.is_active ?? true, deleted_at: null, role: existing.role },
+      after: { is_active: false, deleted_at: "now", role: existing.role },
+      metadata: {
+        staff_name: existing.name ?? null,
+        reassign_to: reassignedTo,
+        force,
+        reassigned_booking_ids: reassignedBookingIds.slice(0, 100),
+      },
+    });
+
+    return successResponse({
+      success: true,
+      reassigned_to: reassignedTo,
+      reassigned_booking_count: reassignedBookingIds.length,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to delete staff member");
   }

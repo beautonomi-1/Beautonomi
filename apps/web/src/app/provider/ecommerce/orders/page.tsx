@@ -20,9 +20,15 @@ import {
 import Link from "next/link";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useProviderBookingMobileShell } from "@/components/provider/booking/hooks/useProviderBookingMobileShell";
 import { openProductOrderView } from "@/stores/appointment-sidebar-store";
+import {
+  isValidLineTransition,
+  LINE_FULFILMENT_STATUSES,
+  normalizeLineStatus,
+} from "@/lib/ecommerce/product-order-line-fulfilment";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -38,6 +44,8 @@ interface ProductOrder {
   tax_amount?: number;
   delivery_fee?: number;
   discount_amount?: number;
+  gift_card_amount?: number | null;
+  promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
   payment_status: string;
@@ -53,6 +61,7 @@ interface ProductOrder {
     product_name: string;
     quantity: number;
     total_price: number;
+    fulfilment_status?: string | null;
     product_variant?: { option_values?: Record<string, string> } | null;
   }[];
 }
@@ -118,7 +127,7 @@ export default function ProviderProductOrdersPage() {
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
   const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
-  const { selectedLocationId } = useProviderPortal();
+  const { selectedLocationId, provider } = useProviderPortal();
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const mobileBookingShell = useProviderBookingMobileShell();
@@ -187,6 +196,43 @@ export default function ProviderProductOrdersPage() {
     const id = setTimeout(() => fetchOrders(), 0);
     return () => clearTimeout(id);
   }, [fetchOrders]);
+
+  const ordersRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const providerId = provider?.id;
+    const supabase = getSupabaseClient();
+    if (!providerId || !supabase) return;
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`provider-product-orders:${providerId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "product_orders",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          () => {
+            if (ordersRefreshDebounceRef.current) clearTimeout(ordersRefreshDebounceRef.current);
+            ordersRefreshDebounceRef.current = setTimeout(() => {
+              clearFetcherCache();
+              fetchOrders().catch(() => undefined);
+            }, 500);
+          },
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal: pull-to-refresh still works
+    }
+
+    return () => {
+      if (ordersRefreshDebounceRef.current) clearTimeout(ordersRefreshDebounceRef.current);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [provider?.id, fetchOrders]);
 
   useEffect(() => {
     if (!focusOrderId) {
@@ -278,6 +324,21 @@ export default function ProviderProductOrdersPage() {
       }
     }
     await submitStatusUpdate(orderId, newStatus);
+  };
+
+  const handleLineFulfilment = async (orderId: string, itemId: string, fulfilmentStatus: string) => {
+    setUpdating(`${orderId}:${itemId}`);
+    setError("");
+    try {
+      await fetcher.patch(`/api/provider/product-orders/${orderId}/items/${itemId}`, {
+        fulfilment_status: fulfilmentStatus,
+      });
+      clearFetcherCache();
+      await fetchOrders();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update line");
+    }
+    setUpdating(null);
   };
 
   const submitStatusUpdate = async (
@@ -477,7 +538,13 @@ export default function ProviderProductOrdersPage() {
                         {o.customer?.email && <span className="text-gray-400">({o.customer.email})</span>}
                       </p>
                       <div className="mt-2 space-y-1">
-                        {o.items?.map((item) => (
+                        {o.items?.map((item) => {
+                          const from = normalizeLineStatus(item.fulfilment_status);
+                          const lineLocked =
+                            updating === `${o.id}:${item.id}` ||
+                            o.status === "cancelled" ||
+                            o.status === "refunded";
+                          return (
                           <div key={item.id} className="flex items-center gap-2 text-sm text-gray-600">
                             <span className="text-gray-400">{item.quantity}x</span>
                             <span>
@@ -487,8 +554,24 @@ export default function ProviderProductOrdersPage() {
                               )}
                             </span>
                             <span className="text-gray-400">{formatMoney(Number(item.total_price))}</span>
+                            <select
+                              value={from}
+                              disabled={lineLocked || from === "delivered" || from === "cancelled"}
+                              onChange={(e) => void handleLineFulfilment(o.id, item.id, e.target.value)}
+                              aria-label={`Fulfilment for ${item.product_name}`}
+                              className="ml-auto rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 disabled:opacity-50"
+                            >
+                              {LINE_FULFILMENT_STATUSES.filter(
+                                (status) => status === from || isValidLineTransition(from, status),
+                              ).map((status) => (
+                                <option key={status} value={status}>
+                                  {status.replace(/_/g, " ")}
+                                </option>
+                              ))}
+                            </select>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {o.tracking_number && (
                         <p className="text-xs text-blue-600 mt-2">Tracking: {o.tracking_number}</p>
@@ -501,6 +584,10 @@ export default function ProviderProductOrdersPage() {
                         {taxAmount > 0 && <p>Tax/VAT: {formatMoney(taxAmount)}</p>}
                         {deliveryFee > 0 && <p>Delivery: {formatMoney(deliveryFee)}</p>}
                         {discountAmount > 0 && <p>Discount: -{formatMoney(discountAmount)}</p>}
+                        {Number(o.gift_card_amount ?? 0) > 0 && (
+                          <p>Gift card: -{formatMoney(Number(o.gift_card_amount))}</p>
+                        )}
+                        {o.promotion_code ? <p>Promotion: {o.promotion_code}</p> : null}
                         {platformFee > 0 && <p>Platform fee: -{formatMoney(platformFee)}</p>}
                         <p className="font-medium text-gray-700">
                           {isAppointmentOrder

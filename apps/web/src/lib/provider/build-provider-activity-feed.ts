@@ -204,6 +204,49 @@ export function mapBookingServiceStartedActivity(
   };
 }
 
+export function mapPaymentReceivedActivity(
+  row: BookingFetchRow,
+  payment: { id: string; amount?: number | null; created_at: string },
+): ProviderActivityFeedItem {
+  const id = String(row.id ?? "");
+  const clientName = bookingClientName(row);
+  const amount = Number(payment.amount ?? 0);
+  return {
+    id: `payment-received-${payment.id}`,
+    type: "payment_received",
+    description: `Payment received${bookingRefLabel(row)} · ${clientName}${
+      Number.isFinite(amount) && amount > 0 ? ` · ${amount.toFixed(2)}` : ""
+    }`,
+    created_at: payment.created_at,
+    data: { booking_id: id, client_name: clientName, amount },
+  };
+}
+
+export function mapJourneyEventActivity(
+  row: BookingFetchRow,
+  event: { id: string; event_type: string; created_at: string },
+): ProviderActivityFeedItem {
+  const id = String(row.id ?? "");
+  const clientName = bookingClientName(row);
+  const label =
+    event.event_type === "provider_on_way"
+      ? "Provider en route"
+      : event.event_type === "provider_arrived"
+        ? "Provider arrived"
+        : "Additional charge paid";
+  const type =
+    event.event_type === "additional_payment_paid"
+      ? "additional_charge_paid"
+      : event.event_type;
+  return {
+    id: `booking-event-${event.id}`,
+    type,
+    description: `${label}${bookingRefLabel(row)} · ${clientName}`,
+    created_at: event.created_at,
+    data: { booking_id: id, client_name: clientName },
+  };
+}
+
 type ProviderClientFetchRow = {
   id: string;
   created_at: string;
@@ -457,6 +500,17 @@ export async function buildProviderActivityFeed(
     .order("created_at", { ascending: false })
     .limit(perStreamLimit);
 
+  const bookingPaymentsQuery = supabaseAdmin
+    .from("booking_payments")
+    .select(
+      `id, booking_id, amount, created_at, bookings!inner(${bookingSelect})`,
+    )
+    .eq("bookings.provider_id", providerId)
+    .eq("status", "completed")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(perStreamLimit);
+
   const [
     { data: createdBookingRows },
     { data: completedBookingRows },
@@ -466,6 +520,7 @@ export async function buildProviderActivityFeed(
     { data: ledgerRaw },
     { data: productOrdersRaw },
     { data: newClientRows },
+    { data: bookingPaymentRows },
   ] = await Promise.all([
     createdBookingsQuery,
     completedBookingsQuery,
@@ -475,6 +530,7 @@ export async function buildProviderActivityFeed(
     ledgerQuery,
     productOrdersQuery,
     newClientsQuery,
+    bookingPaymentsQuery,
   ]);
 
   let productOrderRows = (productOrdersRaw ?? []) as Array<{
@@ -573,12 +629,59 @@ export async function buildProviderActivityFeed(
       activities.push(
         mapBookingServiceStartedActivity(booking, { id: event.id, created_at: event.created_at }),
       );
+      continue;
+    }
+    if (
+      event.event_type === "provider_on_way" ||
+      event.event_type === "provider_arrived" ||
+      event.event_type === "additional_payment_paid"
+    ) {
+      activities.push(
+        mapJourneyEventActivity(booking, {
+          id: event.id,
+          event_type: event.event_type,
+          created_at: event.created_at,
+        }),
+      );
     }
   }
 
   for (const row of (newClientRows ?? []) as ProviderClientFetchRow[]) {
     const item = mapNewClientActivity(row);
     if (item) activities.push(item);
+  }
+
+  const paymentRows = (bookingPaymentRows ?? []) as Array<{
+    id: string;
+    booking_id: string;
+    amount?: number | null;
+    created_at: string;
+    bookings: BookingFetchRow | BookingFetchRow[] | null;
+  }>;
+  const paymentIds = paymentRows.map((row) => row.id).filter(Boolean);
+  const postedPaymentIds = new Set<string>();
+  if (paymentIds.length > 0) {
+    const { data: postedPayments } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("source_payment_id")
+      .eq("provider_id", providerId)
+      .eq("transaction_type", "payment")
+      .in("source_payment_id", paymentIds);
+    for (const row of postedPayments ?? []) {
+      if (row.source_payment_id) postedPaymentIds.add(String(row.source_payment_id));
+    }
+  }
+  for (const payment of paymentRows) {
+    if (postedPaymentIds.has(payment.id)) continue;
+    const booking = Array.isArray(payment.bookings) ? payment.bookings[0] ?? null : payment.bookings;
+    if (!booking || !bookingMatchesDashboardLocation(locationId, booking)) continue;
+    activities.push(
+      mapPaymentReceivedActivity(booking, {
+        id: payment.id,
+        amount: payment.amount,
+        created_at: payment.created_at,
+      }),
+    );
   }
 
   ledgerRows.forEach((p) => {
@@ -622,7 +725,7 @@ export async function buildProviderActivityFeed(
     product_orders:
       "Paid walk-in and provider-collected online orders by paid_at. Platform-checkout online orders appear once as ledger earnings (not duplicated here). Appointment add-on mirrors are excluded.",
     bookings:
-      "Milestones: new appointments (created_at), completions (completed_at), cancellations (cancelled_at), no-shows (updated_at). Booking events: reschedules, confirmations, and service started (in-progress). A booking can appear more than once across milestones.",
+      "Milestones: new appointments (created_at), completions (completed_at), cancellations (cancelled_at), no-shows (updated_at). Booking events: reschedules, confirmations, and service started (in-progress). Completed booking_payments appear as payment_received when no finance_transactions.payment row exists yet for that source_payment_id. A booking can appear more than once across milestones.",
     clients:
       "Provider-saved or imported CRM clients (manual, import, sale, product order, conversation). Auto-created booking CRM rows are excluded to avoid duplicating appointment events.",
     ledger:

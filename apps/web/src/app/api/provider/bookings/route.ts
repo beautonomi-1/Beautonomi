@@ -10,6 +10,7 @@ import {
   normalizePhoneToE164,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getCalendarScopeForUser, filterBookingsByCalendarScope } from "@/lib/auth/calendar-scope";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import type { Booking } from "@/types/beautonomi";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
@@ -131,6 +132,22 @@ async function handleGetProviderBookings(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { scope: calendarScope, staffId: scopeStaffId } = await getCalendarScopeForUser(user.id, request);
+    // Server-side calendar_scope=own: keep only bookings where the caller is the
+    // booking-level staff or appears on any booking_services line.
+    type ScopedBookingShape = {
+      staff_id?: string | null;
+      booking_services?: Array<{ staff_id?: string | null }> | null;
+    };
+    const applyCalendarScope = <T,>(rows: T[]): T[] => {
+      if (calendarScope === "all" || !scopeStaffId) return rows;
+      return rows.filter((row) => {
+        const shaped = row as unknown as ScopedBookingShape;
+        if (shaped.staff_id === scopeStaffId) return true;
+        return filterBookingsByCalendarScope([shaped], calendarScope, scopeStaffId).length > 0;
+      });
+    };
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
@@ -138,7 +155,8 @@ async function handleGetProviderBookings(request: NextRequest) {
     const cacheKey = createBookingsReadCacheKey(providerId, new URL(request.url).search);
     const cachedList = getCachedProviderBookingsList(cacheKey);
     if (cachedList) {
-      const cachedResponse = successResponse(cachedList as Booking[]);
+      const scopedCached = applyCalendarScope(cachedList as Booking[]);
+      const cachedResponse = successResponse(scopedCached as Booking[]);
       cachedResponse.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
       return cachedResponse;
     }
@@ -514,6 +532,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         updated_at: booking.updated_at,
         // Include current_stage for Mangomint-style status/color (client_arrived → WAITING, etc.)
         current_stage: booking.current_stage || null,
+        estimated_arrival: (booking as { estimated_arrival?: string | null }).estimated_arrival ?? null,
+        provider_eta_minutes:
+          (booking as { provider_eta_minutes?: number | null }).provider_eta_minutes ?? null,
         arrival_otp_pending: Boolean((booking as any).arrival_otp_pending),
         qr_arrival_pending: Boolean((booking as any).qr_arrival_pending),
         arrival_otp_verified: Boolean((booking as any).arrival_otp_verified),
@@ -624,7 +645,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         ? supabaseAdmin
             .from("bookings")
             .select(
-              "id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, additional_charges(amount,status)"
+              "id, group_booking_id, staff_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, booking_services(staff_id), additional_charges(amount,status)"
             )
             .eq("provider_id", providerId)
             .in("group_booking_id", groupIds)
@@ -771,8 +792,25 @@ async function handleGetProviderBookings(request: NextRequest) {
                 : "pending";
       const staffName = group.staff_id ? (groupStaffName.get(group.staff_id) ?? null) : null;
       const loc = group.location_id ? (groupLocation.get(group.location_id) ?? null) : null;
+      const childRows = (groupChildBookingsRes.data ?? []).filter(
+        (child: { group_booking_id?: string | null }) => child.group_booking_id === group.id,
+      );
+      const childServiceStaff = childRows.flatMap(
+        (child: {
+          staff_id?: string | null;
+          booking_services?: Array<{ staff_id?: string | null }> | null;
+        }) => [
+          ...(child.staff_id ? [{ staff_id: child.staff_id }] : []),
+          ...((child.booking_services ?? []).map((line) => ({ staff_id: line.staff_id ?? null }))),
+        ],
+      );
       return {
         id: `group:${group.id}`,
+        staff_id: group.staff_id || null,
+        booking_services: [
+          ...(group.staff_id ? [{ staff_id: group.staff_id }] : []),
+          ...childServiceStaff,
+        ],
         group_booking_id: group.id,
         booking_number: group.ref_number || group.id,
         customer_id: null,
@@ -879,9 +917,11 @@ async function handleGetProviderBookings(request: NextRequest) {
       return ascending ? aTime - bTime : bTime - aTime;
     });
 
+    const scopedBookings = applyCalendarScope(mergedBookings);
+
     setCachedProviderBookingsList(cacheKey, mergedBookings as unknown as Booking[]);
 
-    const response = successResponse(mergedBookings as unknown as Booking[]);
+    const response = successResponse(scopedBookings as unknown as Booking[]);
 
     // Add cache headers for faster subsequent requests (5 seconds)
     response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");

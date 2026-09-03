@@ -24,9 +24,9 @@ import {
   Star,
   Link2,
   CreditCard,
-  Camera,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { Booking, AdditionalCharge } from "@/types/beautonomi";
@@ -73,17 +73,9 @@ import {
   manualCardCollectOptionLabel,
   MANUAL_CARD_METHOD_HELPER,
 } from "@beautonomi/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Trophy } from "lucide-react";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
-import RateCustomerModal from "@/components/reviews/rate-customer-modal";
+import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
+import { EtaPicker } from "@/components/provider/booking/EtaPicker";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
@@ -190,6 +182,7 @@ export default function ProviderBookingDetail() {
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [isRescheduling, setIsRescheduling] = useState(false);
+  const [notifyCustomerOnReschedule, setNotifyCustomerOnReschedule] = useState(true);
 
   // Mark paid state
   const [showMarkPaid, setShowMarkPaid] = useState(false);
@@ -250,6 +243,10 @@ export default function ProviderBookingDetail() {
 
   // At-home journey / arrival
   const [isStartingJourney, setIsStartingJourney] = useState(false);
+  const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
+  const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
+  const [isUpdatingEta, setIsUpdatingEta] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [isMarkingArrived, setIsMarkingArrived] = useState(false);
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
@@ -267,7 +264,7 @@ export default function ProviderBookingDetail() {
 
   // Post-completion modal: once per booking when opening a completed booking
   const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
-  const [showRateCustomerFromModal, setShowRateCustomerFromModal] = useState(false);
+  const completionSeenRef = useRef(false);
 
   const loadBooking = useCallback(async () => {
     try {
@@ -309,6 +306,11 @@ export default function ProviderBookingDetail() {
     loadBooking();
     loadAdditionalCharges();
   }, [loadBooking, loadAdditionalCharges]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(tick);
+  }, []);
 
   useEffect(() => {
     yocoBookingSaleIdRef.current = yocoBookingSaleId;
@@ -380,6 +382,7 @@ export default function ProviderBookingDetail() {
   useEffect(() => {
     if (!bookingId || typeof bookingId !== "string" || !booking?.id || booking.status !== "completed") return;
     if (typeof window === "undefined") return;
+    if (completionSeenRef.current) return;
     try {
       const key = PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingId;
       const seen = window.localStorage.getItem(key);
@@ -396,6 +399,7 @@ export default function ProviderBookingDetail() {
   }, [booking?.arrival_otp_verified, booking?.qr_code_verified]);
 
   const dismissProviderCompletionModal = (markSeen: boolean) => {
+    completionSeenRef.current = true;
     setShowProviderCompletionModal(false);
     if (markSeen && bookingId && typeof bookingId === "string" && typeof window !== "undefined") {
       try {
@@ -461,8 +465,8 @@ export default function ProviderBookingDetail() {
       );
       
       if (response.conflict) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
         return;
       }
       
@@ -471,8 +475,8 @@ export default function ProviderBookingDetail() {
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         const msg = error instanceof Error ? error.message : "Failed to update booking status";
         toast.error(msg);
@@ -495,8 +499,8 @@ export default function ProviderBookingDetail() {
         }
       );
       if (response.conflict) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
         return;
       }
       setBooking({ ...booking, status: "no_show" as Booking["status"], ...response.booking });
@@ -505,8 +509,8 @@ export default function ProviderBookingDetail() {
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         const msg = error instanceof Error ? error.message : "Failed to mark no-show";
         toast.error(msg);
@@ -539,8 +543,8 @@ export default function ProviderBookingDetail() {
         }
       );
       if (response.conflict) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
         return;
       }
       setBooking({ ...booking, status: "cancelled" as Booking["status"], ...response.booking });
@@ -550,8 +554,8 @@ export default function ProviderBookingDetail() {
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         const msg = error instanceof Error ? error.message : "Failed to cancel booking";
         toast.error(msg);
@@ -615,13 +619,15 @@ export default function ProviderBookingDetail() {
       await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
         scheduled_at: `${rescheduleDate}T${rescheduleTime}:00`,
         version: booking.version,
+        notify_customer: notifyCustomerOnReschedule,
       });
       toast.success("Booking rescheduled");
       setShowReschedule(false);
       loadBooking();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("This booking was modified. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         toast.error("Failed to reschedule");
       }
@@ -1184,21 +1190,41 @@ export default function ProviderBookingDetail() {
     }
   };
 
-  const handleStartJourney = async (etaMinutes?: number) => {
+  const handleStartJourney = async (etaMinutes?: number | null) => {
     try {
       setIsStartingJourney(true);
-      const estimated_arrival = etaMinutes
-        ? new Date(Date.now() + etaMinutes * 60 * 1000).toISOString()
-        : undefined;
-      await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, {
-        ...(estimated_arrival && { estimated_arrival }),
-      });
-      toast.success(estimated_arrival ? `Journey started. ETA ${etaMinutes} min.` : "Journey started.");
+      const payload =
+        etaMinutes != null && etaMinutes > 0 ? { eta_minutes: etaMinutes } : {};
+      await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
+      toast.success(
+        etaMinutes != null && etaMinutes > 0
+          ? `Journey started. ETA ${etaMinutes} min.`
+          : "Journey started.",
+      );
       loadBooking();
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to start journey");
     } finally {
       setIsStartingJourney(false);
+    }
+  };
+
+  const handleUpdateEta = async (etaMinutes: number | null) => {
+    if (etaMinutes == null || etaMinutes < 1) {
+      toast.error("Choose an ETA between 1 and 240 minutes");
+      return;
+    }
+    try {
+      setIsUpdatingEta(true);
+      await fetcher.patch(`/api/provider/bookings/${bookingId}/eta`, {
+        eta_minutes: etaMinutes,
+      });
+      toast.success(`ETA updated to ${etaMinutes} min`);
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to update ETA");
+    } finally {
+      setIsUpdatingEta(false);
     }
   };
 
@@ -1439,6 +1465,9 @@ export default function ProviderBookingDetail() {
     canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = isAtHome && b.current_stage === "provider_on_way";
   const isArrived = isAtHome && b.current_stage === "provider_arrived";
+  const estimatedArrivalMs = b.estimated_arrival ? new Date(b.estimated_arrival).getTime() : NaN;
+  const isRunningLate =
+    isEnRoute && Number.isFinite(estimatedArrivalMs) && estimatedArrivalMs < nowMs;
   const arrivalVerified =
     b.arrival_otp_verified === true || b.qr_code_verified === true;
   const arrivalOtpPending = b.arrival_otp_pending === true;
@@ -1484,6 +1513,9 @@ export default function ProviderBookingDetail() {
     canProcessPayments &&
     outstanding > 0 &&
     (bookingLifecycleStatus === "completed" || isStarted);
+  const markPaidPrimary =
+    outstanding > 0 &&
+    (b.current_stage === "service_completed" || bookingLifecycleStatus === "completed");
   const canRefund =
     canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
@@ -1586,7 +1618,7 @@ export default function ProviderBookingDetail() {
       toast.error("You do not have permission for this action");
       return;
     }
-    if (action.id === "start_journey") return void handleStartJourney();
+    if (action.id === "start_journey") return void handleStartJourney(journeyEtaMinutes);
     if (action.id === "mark_arrived") return void handleMarkArrived();
     if (action.id === "start_service") return void handleStatusChange("started");
     if (action.id === "complete_service") return void handleStatusChange("completed");
@@ -1627,7 +1659,7 @@ export default function ProviderBookingDetail() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-semibold mb-2">
-              Booking #{booking.booking_number}
+              {booking.booking_number ? `Booking #${booking.booking_number}` : "Booking"}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -1688,8 +1720,18 @@ export default function ProviderBookingDetail() {
           </div>
         </div>
 
+        <BookingReferencePanel
+          bookingId={bookingId}
+          bookingNumber={booking.booking_number}
+          status={booking.status}
+          paymentStatus={booking.payment_status}
+          outstandingBalance={(booking as { outstanding_balance?: number }).outstanding_balance}
+          audience="provider"
+          supportPath="/provider/support-tickets/new"
+        />
+
         {booking.status === "cancelled" && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
             <h3 className="text-sm font-semibold text-red-800 mb-1">Booking Cancelled</h3>
             {(booking as any).cancellation_reason && (
               <p className="text-sm text-red-700">
@@ -1883,30 +1925,60 @@ export default function ProviderBookingDetail() {
             <HouseCallExcellenceNote />
             <div className="space-y-4">
               {canStartJourney && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Notify the customer you&apos;re on the way (optional ETA):</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      onClick={() => handleStartJourney()}
-                      disabled={isStartingJourney}
-                      variant="outline"
-                      className="min-h-[44px]"
-                    >
-                      <Navigation className="w-4 h-4 mr-2" />
-                      Start journey (no ETA)
-                    </Button>
-                    {[15, 30, 45].map((mins) => (
-                      <Button
-                        key={mins}
-                        onClick={() => handleStartJourney(mins)}
-                        disabled={isStartingJourney}
-                        className="min-h-[44px] bg-primary hover:bg-primary-hover"
-                      >
-                        <Navigation className="w-4 h-4 mr-2" />
-                        ETA {mins} min
-                      </Button>
-                    ))}
-                  </div>
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Notify the customer you&apos;re on the way. Pick an ETA or choose Not sure.
+                  </p>
+                  <EtaPicker
+                    value={journeyEtaMinutes}
+                    onChange={setJourneyEtaMinutes}
+                    disabled={isStartingJourney}
+                  />
+                  <Button
+                    onClick={() => handleStartJourney(journeyEtaMinutes)}
+                    disabled={isStartingJourney}
+                    className="min-h-[44px] bg-primary hover:bg-primary-hover"
+                  >
+                    <Navigation className="w-4 h-4 mr-2" />
+                    {isStartingJourney
+                      ? "Starting…"
+                      : journeyEtaMinutes == null
+                        ? "Start journey (no ETA)"
+                        : `Start journey · ${journeyEtaMinutes} min`}
+                  </Button>
+                </div>
+              )}
+              {isEnRoute && !isArrived && (
+                <div className="space-y-3">
+                  {isRunningLate ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      You&apos;re past the estimated arrival. Update your ETA so the client knows you&apos;re running a little late.
+                    </div>
+                  ) : b.estimated_arrival ? (
+                    <p className="text-sm text-gray-600">
+                      Estimated arrival{" "}
+                      {new Date(b.estimated_arrival).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-600">En route. Add an ETA if you have one.</p>
+                  )}
+                  <EtaPicker
+                    value={updateEtaMinutes}
+                    onChange={setUpdateEtaMinutes}
+                    disabled={isUpdatingEta}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleUpdateEta(updateEtaMinutes)}
+                    disabled={isUpdatingEta || updateEtaMinutes == null}
+                    className="min-h-[44px]"
+                  >
+                    {isUpdatingEta ? "Updating ETA…" : "Update ETA"}
+                  </Button>
                 </div>
               )}
               {canMarkArrived && (
@@ -2716,7 +2788,12 @@ export default function ProviderBookingDetail() {
             <Button
               onClick={() => setShowMarkPaid(true)}
               disabled={isUpdating}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 min-h-[44px]"
+              variant={markPaidPrimary ? "default" : "outline"}
+              className={
+                markPaidPrimary
+                  ? "flex-1 bg-emerald-600 hover:bg-emerald-700 min-h-[44px]"
+                  : "flex-1 min-h-[44px]"
+              }
             >
               <DollarSign className="w-4 h-4 mr-2" />
               Mark as Paid
@@ -2945,6 +3022,14 @@ export default function ProviderBookingDetail() {
                 <label className="text-sm font-medium mb-1 block">Time</label>
                 <Input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={notifyCustomerOnReschedule}
+                  onChange={(e) => setNotifyCustomerOnReschedule(e.target.checked)}
+                />
+                Notify client
+              </label>
               <div className="flex gap-3">
                 <Button onClick={handleReschedule} disabled={isRescheduling} className="flex-1">
                   {isRescheduling ? "Rescheduling..." : "Confirm Reschedule"}
@@ -3370,100 +3455,17 @@ export default function ProviderBookingDetail() {
           </div>
         )}
 
-        {/* Post-completion modal: points, post-your-work, rate client, reviews tip (only when booking loaded) */}
-        {booking && (
-        <Dialog open={showProviderCompletionModal} onOpenChange={(open) => !open && dismissProviderCompletionModal(true)}>
-          <DialogContent className="sm:max-w-md" hideClose={false}>
-            <DialogHeader>
-              <div className="flex justify-center mb-3">
-                <div className="rounded-full bg-primary/10 p-4">
-                  <Trophy className="h-10 w-10 text-primary" aria-hidden />
-                </div>
-              </div>
-              <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
-              <DialogDescription className="text-center space-y-2">
-                {(() => {
-                  const raw = booking.provider_points_earned;
-                  const pointsNum = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
-                  return pointsNum > 0 ? (
-                  <span className="block font-medium text-primary">
-                    You earned {pointsNum} points. They’ve been added to your balance.
-                  </span>
-                ) : (
-                  <span className="block text-muted-foreground text-sm">
-                    You earn points for each completed booking—keep going to unlock badges.
-                  </span>
-                );
-                })()}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left">
-              <div className="flex items-center gap-2 mb-1">
-                <Camera className="h-4 w-4 text-primary" aria-hidden />
-                <span className="text-sm font-semibold text-gray-900">Show off your work</span>
-              </div>
-              <p className="text-xs text-gray-600 mb-3 leading-5">
-                Post a photo to Explore to reach new clients and grow your portfolio. Earn bonus reward points for
-                every post.
-              </p>
-              <Button
-                onClick={() => {
-                  dismissProviderCompletionModal(true);
-                  const primaryOfferingId = booking.services?.[0]?.offering_id;
-                  const primaryServiceName = booking.services?.[0]?.offering_name || "Appointment";
-                  const qs = new URLSearchParams({
-                    caption: `Fresh ${primaryServiceName} \u2728`,
-                    addToGallery: "1",
-                    ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
-                    ...(bookingId ? { bookingId: String(bookingId) } : {}),
-                  }).toString();
-                  router.push(`/provider/explore/new?${qs}`);
-                }}
-                className="w-full"
-              >
-                <Camera className="h-4 w-4 mr-2" aria-hidden />
-                Add a photo of your work
-              </Button>
-              <p className="text-[11px] text-gray-400 text-center mt-2">
-                Make sure your client is happy to be featured.
-              </p>
-            </div>
-            <p className="text-sm text-muted-foreground text-center mt-4">
-              Your client can leave a review. Reviews help you get more bookings and earn extra points.
-            </p>
-            <DialogFooter className="flex-col-reverse gap-2 sm:flex-col mt-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  dismissProviderCompletionModal(true);
-                  setShowRateCustomerFromModal(true);
-                }}
-                className="w-full"
-              >
-                Rate this client
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => dismissProviderCompletionModal(true)}
-                className="w-full"
-              >
-                Maybe later
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        )}
-
-        {/* Rate customer modal (opened from completion modal or from button below) */}
-        {(booking?.status === "completed" || booking?.status === "no_show") && bookingId && (
-          <RateCustomerModal
-            open={showRateCustomerFromModal}
-            onOpenChange={setShowRateCustomerFromModal}
+        {booking && bookingId ? (
+          <PostCompletionSheet
+            open={showProviderCompletionModal}
             bookingId={String(bookingId)}
+            providerPointsEarned={booking.provider_points_earned}
+            primaryServiceName={booking.services?.[0]?.offering_name || "Appointment"}
+            primaryOfferingId={booking.services?.[0]?.offering_id}
             customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : "Client"}
-            onSuccess={() => setShowRateCustomerFromModal(false)}
+            onDismiss={dismissProviderCompletionModal}
           />
-        )}
+        ) : null}
 
         {bookingId ? (
           <ArrivalQrScanDialog

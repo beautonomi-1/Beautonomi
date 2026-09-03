@@ -1,9 +1,8 @@
 /**
  * Reliability Plugin
  * Implements retry logic, offline queue, and event batching.
- * On flush, events are re-submitted to the Amplitude SDK with
- * exponential backoff (up to 3 retries). Events older than 7 days
- * are discarded automatically.
+ * Online events are sent once via amplitude.track(); offline events are
+ * queued in localStorage and flushed when connectivity returns.
  */
 
 import * as amplitude from "@amplitude/analytics-browser";
@@ -17,17 +16,30 @@ const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1000; // 1 second base for exponential backoff
 const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+function isOffline(): boolean {
+  return typeof navigator !== "undefined" && !navigator.onLine;
+}
+
 export class ReliabilityPlugin implements AmplitudePlugin {
   name = "reliability";
   private context: PluginContext;
   private queue: AmplitudeEvent[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
   private isFlushing = false;
+  private onlineListener: (() => void) | null = null;
 
   constructor(context: PluginContext) {
     this.context = context;
     this.loadQueue();
     this.startFlushTimer();
+    if (typeof window !== "undefined") {
+      this.onlineListener = () => {
+        if (this.queue.length > 0) {
+          void this.flushQueue();
+        }
+      };
+      window.addEventListener("online", this.onlineListener);
+    }
   }
 
   execute(event: AmplitudeEvent): AmplitudeEvent {
@@ -45,15 +57,16 @@ export class ReliabilityPlugin implements AmplitudePlugin {
       event.time = Date.now();
     }
 
-    // Add to queue for batching
-    this.queue.push(event);
-    this.saveQueue();
-
-    // Flush if batch is full
-    if (this.queue.length >= MAX_BATCH_SIZE) {
-      this.flushQueue();
+    if (isOffline()) {
+      this.queue.push(event);
+      this.saveQueue();
+      if (this.queue.length >= MAX_BATCH_SIZE) {
+        void this.flushQueue();
+      }
+      return event;
     }
 
+    void this.submitWithRetry(event);
     return event;
   }
 
@@ -95,13 +108,13 @@ export class ReliabilityPlugin implements AmplitudePlugin {
 
     this.flushTimer = setInterval(() => {
       if (this.queue.length > 0) {
-        this.flushQueue();
+        void this.flushQueue();
       }
     }, FLUSH_INTERVAL);
   }
 
   private async flushQueue() {
-    if (this.queue.length === 0 || this.isFlushing) return;
+    if (this.queue.length === 0 || this.isFlushing || isOffline()) return;
     this.isFlushing = true;
 
     try {
@@ -174,6 +187,10 @@ export class ReliabilityPlugin implements AmplitudePlugin {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
+    }
+    if (this.onlineListener && typeof window !== "undefined") {
+      window.removeEventListener("online", this.onlineListener);
+      this.onlineListener = null;
     }
     // Persist any remaining events before teardown
     this.saveQueue();

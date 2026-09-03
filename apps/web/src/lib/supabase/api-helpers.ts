@@ -32,10 +32,27 @@ export interface ApiError {
 }
 
 export const ADMIN_MFA_REQUIRED_CODE = "MFA_REQUIRED";
+export const ADMIN_SESSION_EXPIRED_CODE = "SESSION_EXPIRED";
+
+/**
+ * Roles that must satisfy MFA when `two_factor.required_for_admins` is on and no
+ * explicit `required_roles` list is stored. Superadmin + finance by default (Part L).
+ */
+export const DEFAULT_MFA_REQUIRED_ADMIN_ROLES = ["superadmin", "admin_finance"] as const;
+/** Default admin session TTL (minutes) when `security.admin_session_max_age` is unset. 0 = disabled. */
+export const DEFAULT_ADMIN_SESSION_MAX_AGE_MINUTES = 720;
 
 type AdminTwoFactorPolicy = {
   enabled: boolean;
   required_for_admins: boolean;
+  /** Empty list = every admin role. */
+  required_roles: string[];
+};
+
+type AdminSecurityPolicy = {
+  two_factor: AdminTwoFactorPolicy;
+  /** Minutes since the session's authentication time after which admin APIs return 401 SESSION_EXPIRED. 0 disables. */
+  admin_session_max_age_minutes: number;
 };
 
 type SupabaseMfaApi = {
@@ -286,7 +303,8 @@ async function assertAdminUserActive(userId: string): Promise<void> {
   }
 }
 
-async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
+/** Reads `platform_settings.settings.security` once per call (two_factor + admin_session_max_age). */
+async function getAdminSecurityPolicy(): Promise<AdminSecurityPolicy> {
   const supabase = getSupabaseAdmin();
   const { data: row } = await supabase
     .from("platform_settings")
@@ -298,12 +316,163 @@ async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
 
   const settings = (row as { settings?: Record<string, unknown> } | null)?.settings ?? {};
   const security = (settings.security as Record<string, unknown> | undefined) ?? {};
-  const twoFactor = (security.two_factor as { enabled?: unknown; required_for_admins?: unknown } | undefined) ?? {};
+  const twoFactor =
+    (security.two_factor as
+      | { enabled?: unknown; required_for_admins?: unknown; required_roles?: unknown }
+      | undefined) ?? {};
+
+  const requiredRoles = Array.isArray(twoFactor.required_roles)
+    ? (twoFactor.required_roles as unknown[]).filter((r): r is string => typeof r === "string")
+    : [...DEFAULT_MFA_REQUIRED_ADMIN_ROLES];
+
+  const rawMaxAge = security.admin_session_max_age;
+  const maxAge =
+    typeof rawMaxAge === "number" && Number.isFinite(rawMaxAge) && rawMaxAge >= 0
+      ? Math.floor(rawMaxAge)
+      : DEFAULT_ADMIN_SESSION_MAX_AGE_MINUTES;
 
   return {
-    enabled: twoFactor.enabled === true,
-    required_for_admins: twoFactor.required_for_admins === true,
+    two_factor: {
+      enabled: twoFactor.enabled === true,
+      // Default flipped to true (Part L): when 2FA is enabled, superadmin + admin_finance must use it.
+      required_for_admins: twoFactor.required_for_admins !== false,
+      required_roles: requiredRoles,
+    },
+    admin_session_max_age_minutes: maxAge,
   };
+}
+
+async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
+  return (await getAdminSecurityPolicy()).two_factor;
+}
+
+function adminSessionExpiredError(message = "Admin session expired. Sign in again.") {
+  return Object.assign(new Error(message), {
+    status: 401,
+    code: ADMIN_SESSION_EXPIRED_CODE,
+  });
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Authentication time (epoch seconds) of the session behind `token`.
+ * Prefers the newest `amr[].timestamp` (set at sign-in / MFA, stable across
+ * refreshes), falling back to `iat`. Returns null when undeterminable.
+ */
+export function resolveSessionAuthTimeSeconds(token: string | null | undefined): number | null {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  const amr = Array.isArray(payload.amr) ? (payload.amr as Array<{ timestamp?: unknown }>) : [];
+  const stamps = amr
+    .map((a) => (typeof a?.timestamp === "number" ? a.timestamp : NaN))
+    .filter((n) => Number.isFinite(n));
+  if (stamps.length > 0) return Math.max(...stamps);
+  return typeof payload.iat === "number" ? payload.iat : null;
+}
+
+async function resolveRequestAccessToken(request: NextRequest | Request): Promise<string | null> {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  try {
+    const supabase = await getSupabaseServer(request);
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enforce `security.admin_session_max_age` (minutes) on /api/admin requests.
+ * Compares now against the session's auth time (JWT `amr` timestamp, else `iat`).
+ * Throws 401 `SESSION_EXPIRED` when older. Disabled when the setting is 0.
+ */
+export async function requireAdminSessionFreshIfRequired(
+  request?: NextRequest | Request,
+  userRole?: UserRole | string | null,
+  policyOverride?: AdminSecurityPolicy,
+): Promise<void> {
+  if (!request || !isAdminApiRequest(request)) return;
+  if (userRole && !(ALL_ADMIN_ROLES as readonly string[]).includes(String(userRole))) return;
+
+  const policy = policyOverride ?? (await getAdminSecurityPolicy());
+  const maxAgeMinutes = policy.admin_session_max_age_minutes;
+  if (!maxAgeMinutes || maxAgeMinutes <= 0) return;
+
+  const token = await resolveRequestAccessToken(request);
+  const authTime = resolveSessionAuthTimeSeconds(token);
+  if (authTime === null) {
+    if (!token) return;
+    await auditAdminAccessDenied(request, userRole, "admin.access.session_expired", "session_auth_time_unknown", {});
+    throw adminSessionExpiredError();
+  }
+
+  const ageSeconds = Math.floor(Date.now() / 1000) - authTime;
+  if (ageSeconds > maxAgeMinutes * 60) {
+    await auditAdminAccessDenied(request, userRole, "admin.access.session_expired", "session_max_age_exceeded", {
+      age_minutes: Math.floor(ageSeconds / 60),
+      max_age_minutes: maxAgeMinutes,
+    });
+    throw adminSessionExpiredError();
+  }
+}
+
+/** Session TTL + MFA with a single platform_settings read. */
+async function enforceAdminSessionPolicies(
+  request: NextRequest | Request,
+  userRole?: UserRole | string | null,
+): Promise<void> {
+  const policy = await getAdminSecurityPolicy();
+  await requireAdminSessionFreshIfRequired(request, userRole, policy);
+  await requireAdminMfaIfRequired(request, userRole, policy.two_factor);
+}
+
+async function auditAdminAccessDenied(
+  request: NextRequest | Request,
+  userRole: UserRole | string | null | undefined,
+  action: string,
+  reason: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { writeAuditLog, extractRequestMeta } = await import("@/lib/audit/audit");
+    let route: string | null = null;
+    try {
+      route = new URL(request.url).pathname;
+    } catch {
+      route = null;
+    }
+    const meta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: null,
+      actor_role: userRole ? String(userRole) : null,
+      action,
+      entity_type: "admin_session",
+      module: "users_trust",
+      risk_level: "medium",
+      status: "failed",
+      reason,
+      metadata: { route, ...(extra ?? {}) },
+      ip_address: meta.ip_address,
+      user_agent: meta.user_agent,
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -362,13 +531,16 @@ async function auditAdminMfaDenied(
  */
 export async function requireAdminMfaIfRequired(
   request?: NextRequest | Request,
-  userRole?: UserRole | string | null
+  userRole?: UserRole | string | null,
+  policyOverride?: AdminTwoFactorPolicy,
 ): Promise<void> {
   if (!request || !isAdminApiRequest(request)) return;
   if (userRole && !(ALL_ADMIN_ROLES as readonly string[]).includes(String(userRole))) return;
 
-  const policy = await getAdminTwoFactorPolicy();
-  const mfaRequired = policy.enabled && policy.required_for_admins;
+  const policy = policyOverride ?? (await getAdminTwoFactorPolicy());
+  const roleInScope =
+    policy.required_roles.length === 0 || !userRole || policy.required_roles.includes(String(userRole));
+  const mfaRequired = policy.enabled && policy.required_for_admins && roleInScope;
   if (!mfaRequired) return;
 
   const supabase = await getSupabaseServer(request);
@@ -405,7 +577,7 @@ export async function requireRoleInApi(
       // role list for this caller — guarantees we never widen permissions.
       if (cacheMatches) {
         if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
-          await requireAdminMfaIfRequired(request, cached.user?.role);
+          await enforceAdminSessionPolicies(request, cached.user?.role);
         }
         return cached;
       }
@@ -415,7 +587,7 @@ export async function requireRoleInApi(
   const result = await requireRoleInApiImpl(roles, request);
   if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
     await assertAdminUserActive(result.user.id);
-    await requireAdminMfaIfRequired(request, result.user?.role);
+    await enforceAdminSessionPolicies(request, result.user?.role);
   }
   if (request) REQUIRE_ROLE_CACHE.set(request, result);
   return result;

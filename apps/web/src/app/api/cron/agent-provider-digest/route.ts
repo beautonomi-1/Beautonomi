@@ -4,8 +4,11 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { runProviderDigestSweepForTenant } from "@/lib/agents/workflows/provider-ops";
 import { slackNotifyAgentRunFailed } from "@/lib/integrations/slack/agent-triggers";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const maxDuration = 300;
+
+const JOB_NAME = "agent-provider-digest";
 
 /**
  * Weekly provider digest proposals (Monday morning). Each active provider
@@ -13,6 +16,14 @@ export const maxDuration = 300;
  * an admin approves and the executor delivers it via push + email.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

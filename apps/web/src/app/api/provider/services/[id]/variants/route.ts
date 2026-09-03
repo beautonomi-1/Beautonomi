@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
@@ -78,7 +79,9 @@ export async function POST(
   try {
     const { id: serviceId } = await params;
 
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);

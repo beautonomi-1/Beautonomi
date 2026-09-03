@@ -128,6 +128,7 @@ export default function MembershipSubscribersScreen() {
   const subscribers = useMemo(() => rawData?.subscribers ?? [], [rawData]);
   const { execute: patchSub, loading: patchLoading } = useApiMutation("patch");
   const { execute: postWinBack, loading: winBackLoading } = useApiMutation<{ sent?: boolean }>("post");
+  const { execute: postExtend, loading: extendLoading } = useApiMutation("post");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -214,29 +215,35 @@ export default function MembershipSubscribersScreen() {
 
   const onSaveExpiry = useCallback(async () => {
     if (!manageRow) return;
-    let expiresAt: string | null = null;
-    if (extendIso.trim()) {
-      const parsed = new Date(extendIso.trim());
-      if (!Number.isFinite(parsed.getTime())) {
-        Alert.alert("Invalid date", "Enter a valid date / time.");
-        return;
-      }
-      expiresAt = parsed.toISOString();
-    } else {
-      expiresAt = null;
+    if (!extendIso.trim()) {
+      Alert.alert("Invalid date", "Pick a new end date to extend this membership.");
+      return;
     }
-    const { error } = await patchSub(
-      `/api/provider/membership-subscriptions/${manageRow.subscription.id}`,
-      { expires_at: expiresAt },
+    const parsed = new Date(extendIso.trim());
+    if (!Number.isFinite(parsed.getTime())) {
+      Alert.alert("Invalid date", "Enter a valid date / time.");
+      return;
+    }
+    const current = manageRow.subscription.expires_at
+      ? new Date(manageRow.subscription.expires_at)
+      : new Date();
+    const days = Math.max(1, Math.round((parsed.getTime() - current.getTime()) / (24 * 60 * 60 * 1000)));
+    if (days > 365) {
+      Alert.alert("Too far", "Extend by at most 365 days at a time.");
+      return;
+    }
+    const { error } = await postExtend(
+      `/api/provider/membership-subscriptions/${manageRow.subscription.id}/extend`,
+      { days, note: "Manual extend from members list" },
     );
     if (error) {
-      Alert.alert("Error", getApiErrorMessage(error, "Could not update"));
+      Alert.alert("Error", getApiErrorMessage(error, "Could not extend membership"));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     closeManage();
     await refresh();
-  }, [manageRow, extendIso, patchSub, closeManage, refresh]);
+  }, [manageRow, extendIso, postExtend, closeManage, refresh]);
 
   const subtitle =
     planId && planNameParam
@@ -393,7 +400,7 @@ export default function MembershipSubscribersScreen() {
             <ActionButton
               label="Save expiry"
               onPress={onSaveExpiry}
-              loading={patchLoading}
+              loading={extendLoading || patchLoading}
               fullWidth
             />
 

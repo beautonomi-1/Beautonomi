@@ -12,6 +12,9 @@ export type GiftCardLike = {
   balance?: number | null;
   currency?: string | null;
   expires_at?: string | null;
+  deliver_at?: string | null;
+  delivered_at?: string | null;
+  can_resend?: boolean;
 };
 
 function maskCode(code: string): string {
@@ -32,11 +35,15 @@ export function GiftCardRow({
   fallbackCurrency,
   onRedeemToWallet,
   onRemove,
+  onResend,
+  onContactSupport,
 }: {
   card: GiftCardLike;
   fallbackCurrency: string;
   onRedeemToWallet?: (card: GiftCardLike) => void;
   onRemove?: (card: GiftCardLike) => void;
+  onResend?: (card: GiftCardLike) => void;
+  onContactSupport?: (card: GiftCardLike) => void;
 }) {
   const { t } = useTranslation();
   const [revealed, setRevealed] = useState(false);
@@ -143,6 +150,11 @@ export function GiftCardRow({
           {t("customer.paymentsScreen.expiresSuffix", { date: expiry })}
         </Text>
       ) : null}
+      {card.deliver_at && !card.delivered_at ? (
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
+          Sends {formatExpiry(card.deliver_at)}
+        </Text>
+      ) : null}
 
       {code ? (
         <View style={{ flexDirection: "row", marginTop: 12, gap: 8 }}>
@@ -201,6 +213,29 @@ export function GiftCardRow({
             </Text>
           </TouchableOpacity>
 
+          {isRedeemable && card.can_resend && onResend ? (
+            <TouchableOpacity
+              onPress={() => onResend(card)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: 10,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Resend gift card"
+            >
+              <Ionicons name="send-outline" size={16} color={Colors.gray[700]} />
+              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                Resend
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           {isRedeemable && onRedeemToWallet ? (
             <TouchableOpacity
               onPress={() => onRedeemToWallet(card)}
@@ -246,6 +281,25 @@ export function GiftCardRow({
             </TouchableOpacity>
           ) : null}
         </View>
+      ) : null}
+
+      {onContactSupport ? (
+        <TouchableOpacity
+          onPress={() => onContactSupport(card)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: 12,
+            alignSelf: "flex-start",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Contact support about this gift card"
+        >
+          <Ionicons name="help-circle-outline" size={16} color={Colors.gray[600]} />
+          <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+            Contact support
+          </Text>
+        </TouchableOpacity>
       ) : null}
     </View>
   );

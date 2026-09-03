@@ -15,6 +15,8 @@ export type PermissionRequestContext = NextRequest | Request | undefined;
 
 export interface StaffPermissions {
   view_calendar?: boolean;
+  /** own = only assigned bookings; all = full team calendar (server-enforced). */
+  calendar_scope?: "own" | "all";
   create_appointments?: boolean;
   edit_appointments?: boolean;
   cancel_appointments?: boolean;
@@ -23,6 +25,8 @@ export interface StaffPermissions {
   create_sales?: boolean;
   process_payments?: boolean;
   view_reports?: boolean;
+  manage_finance?: boolean;
+  manage_marketing?: boolean;
   view_services?: boolean;
   edit_services?: boolean;
   view_products?: boolean;
@@ -41,6 +45,8 @@ export interface StaffPermissions {
   /** Client ratings / staff-initiated client ratings (API routes use these keys) */
   rate_clients?: boolean;
   view_client_ratings?: boolean;
+  /** Staff self-service earnings (My earnings). */
+  view_own_earnings?: boolean;
 }
 
 /**
@@ -184,6 +190,7 @@ function getDefaultPermissionsForRole(role: string): StaffPermissions {
 export function getAllPermissions(): StaffPermissions {
   return {
     view_calendar: true,
+    calendar_scope: "all",
     create_appointments: true,
     edit_appointments: true,
     cancel_appointments: true,
@@ -192,6 +199,8 @@ export function getAllPermissions(): StaffPermissions {
     create_sales: true,
     process_payments: true,
     view_reports: true,
+    manage_finance: true,
+    manage_marketing: true,
     view_services: true,
     edit_services: true,
     view_products: true,
@@ -209,11 +218,13 @@ export function getAllPermissions(): StaffPermissions {
     create_explore_posts: true,
     rate_clients: true,
     view_client_ratings: true,
+    view_own_earnings: true,
   };
 }
 
 const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   view_calendar: ["view_bookings", "manage_bookings"],
+  calendar_scope: [],
   create_appointments: [],
   edit_appointments: ["manage_bookings"],
   cancel_appointments: ["manage_bookings"],
@@ -222,6 +233,8 @@ const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   create_sales: ["process_sales"],
   process_payments: ["process_sales", "view_finances"],
   view_reports: ["view_finances"],
+  manage_finance: ["view_finances", "edit_settings"],
+  manage_marketing: [],
   view_services: [],
   edit_services: [],
   view_products: ["manage_products"],
@@ -239,6 +252,7 @@ const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   create_explore_posts: [],
   rate_clients: [],
   view_client_ratings: [],
+  view_own_earnings: [],
 };
 
 function parseStoredPermissions(permissions: unknown): {
@@ -279,9 +293,17 @@ export function normalizeStaffPermissions(
   const normalized: StaffPermissions = {};
   const all = getAllPermissions();
   for (const key of Object.keys(all) as Array<keyof StaffPermissions>) {
+    if (key === "calendar_scope") {
+      const raw = source.calendar_scope;
+      normalized.calendar_scope = raw === "all" ? "all" : raw === "own" ? "own" : undefined;
+      continue;
+    }
     if (source[key] === true || LEGACY_PERMISSION_ALIASES[key]?.some((legacy) => source[legacy] === true)) {
       normalized[key] = true;
     }
+  }
+  if (!normalized.calendar_scope && normalized.view_calendar) {
+    normalized.calendar_scope = normalized.manage_team || normalized.edit_settings ? "all" : "own";
   }
   return normalized;
 }

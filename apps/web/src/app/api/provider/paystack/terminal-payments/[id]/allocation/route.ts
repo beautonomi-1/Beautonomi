@@ -3,13 +3,10 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
-import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import {
-  applyPosProductStockDecrements,
-  validatePosProductStock,
-} from "@/lib/provider-sales/pos-product-stock";
+import { applyPosProductStockDecrements, validatePosProductStock } from "@/lib/provider-sales/pos-product-stock";
 import {
   errorResponse,
   getProviderIdForUser,
@@ -158,39 +155,20 @@ export async function POST(
         );
       }
 
-      // Write the `payment` finance_transactions row with the real gateway fee.
-      // The DB trigger (migration 662) skips Paystack provider rows; terminal
-      // booking allocations must therefore write the ledger row directly here.
-      // We write a minimal payment row: amount = allocated, fees = gateway fee,
-      // commission = 0 (terminal = provider-collected — platform earns no commission),
-      // net = 0 (fees absorbed; commission is zero). Full booking-level ledger
-      // rows (provider_earnings, platform_fee, etc.) are written by the charge-success
-      // webhook for online payments; for terminal allocations they are deferred to
-      // a future settlement step. This row is the minimum needed to record the gateway
-      // cost against the correct booking so finance reports are accurate.
-      if (recorded.inserted) {
-        try {
-          const terminalFinanceTenantId = await resolveTenantIdForFinanceLedger(admin as any, {
-            tenant_id: (booking as { tenant_id?: string | null }).tenant_id ?? null,
-            provider_id: providerId,
-          });
-          const gatewayFee = Number(payment.gateway_fee_amount ?? 0);
-          await (admin.from("finance_transactions") as any).insert({
-            booking_id: body.entity_id,
-            provider_id: providerId,
-            tenant_id: terminalFinanceTenantId,
-            transaction_type: "payment",
-            amount: requestedAmount,
-            fees: gatewayFee,
-            commission: 0,
-            net: 0,
-            description: `Payment for booking via Paystack Terminal. Ref: ${payment.paystack_reference}`,
-            created_at: new Date().toISOString(),
-          });
-        } catch (finErr) {
-          // Best-effort: ledger write failure must not block the allocation
-          console.error("[terminal-allocation] finance_transactions write failed:", finErr);
-        }
+      const gatewayFee = Number(payment.gateway_fee_amount ?? 0);
+      const settlement = await recordPaystackBookingSettlement(admin as any, {
+        bookingId: body.entity_id,
+        reference: payment.paystack_reference,
+        amountMajor: requestedAmount,
+        feesSmallestOrMajor: gatewayFee,
+        feesAlreadyMajor: true,
+        bookingPaymentId: recorded.bookingPaymentId,
+        commissionMode: "provider_collected",
+        feeSource: "paystack_terminal_allocation",
+        metadata: { source: "paystack_virtual_terminal_allocation" },
+      });
+      if (!settlement.ok) {
+        console.error("[terminal-allocation] finance ledger settlement failed:", settlement);
       }
 
       await (admin.from("booking_payments") as any)
@@ -336,6 +314,94 @@ export async function POST(
         .eq("provider_id", providerId);
       if (saleUpdateError) throw saleUpdateError;
       if (becomingCompleted) await applyPosProductStockDecrements(admin as any, itemsForStock);
+    }
+
+    if (body.entity_type === "group_booking") {
+      const { data: groupRow } = await (admin.from("group_bookings") as any)
+        .select("id, provider_id")
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (!groupRow) {
+        return errorResponse("Group booking target not found for this provider.", "TARGET_NOT_FOUND", 404);
+      }
+
+      const { data: groupBooking } = await admin
+        .from("bookings")
+        .select("id, tenant_id, created_at")
+        .eq("group_booking_id", body.entity_id)
+        .eq("provider_id", providerId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!groupBooking) {
+        return errorResponse(
+          "No booking is linked to this group booking yet.",
+          "TARGET_NOT_FOUND",
+          404,
+        );
+      }
+
+      const recorded = await recordBookingPaystackPayment(admin as any, {
+        bookingId: (groupBooking as { id: string }).id,
+        tenantId: (groupBooking as { tenant_id?: string | null }).tenant_id ?? null,
+        reference: payment.paystack_reference,
+        transactionId: payment.paystack_transaction_id ?? null,
+        amountMajor: requestedAmount,
+        source: "paystack_virtual_terminal_allocation",
+        notes: `Group booking payment received via Paystack Terminal. Ref: ${payment.paystack_reference}`,
+      });
+      if (recorded.ok === false) {
+        const recordedError = "error" in recorded ? recorded.error : undefined;
+        return errorResponse(
+          "Could not record the Paystack Terminal group booking payment.",
+          "LEDGER_RECORDING_FAILED",
+          500,
+          recordedError,
+        );
+      }
+
+      const gatewayFeeGroup = Number(payment.gateway_fee_amount ?? 0);
+      const settlementGroup = await recordPaystackBookingSettlement(admin as any, {
+        bookingId: (groupBooking as { id: string }).id,
+        reference: payment.paystack_reference,
+        amountMajor: requestedAmount,
+        feesSmallestOrMajor: gatewayFeeGroup,
+        feesAlreadyMajor: true,
+        bookingPaymentId: recorded.bookingPaymentId,
+        commissionMode: "provider_collected",
+        feeSource: "paystack_terminal_allocation",
+        metadata: { source: "paystack_virtual_terminal_allocation" },
+      });
+      if (settlementGroup.ok === false) {
+        console.error("[terminal-allocation] group booking ledger settlement failed:", settlementGroup);
+      }
+
+      await (admin.from("booking_payments") as any)
+        .update({ payment_method: "paystack_terminal" })
+        .eq("payment_provider", "paystack")
+        .eq("payment_provider_id", payment.paystack_reference);
+      await syncBookingAfterPaystackSuccess(admin as any, (groupBooking as { id: string }).id);
+    }
+
+    if (body.entity_type === "invoice") {
+      const { data: invoice } = await (admin.from("provider_invoices") as any)
+        .select("id, provider_id, total_amount, amount_paid")
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (!invoice) {
+        return errorResponse("Invoice target not found for this provider.", "TARGET_NOT_FOUND", 404);
+      }
+      const { error: invoicePayError } = await (admin.from("provider_invoice_payments") as any).insert({
+        invoice_id: body.entity_id,
+        amount: requestedAmount,
+        payment_date: now.slice(0, 10),
+        payment_reference: payment.paystack_reference,
+        status: "completed",
+        created_by: user.id,
+      });
+      if (invoicePayError) throw invoicePayError;
     }
 
     const { data: allocation, error: allocationError } = await (admin

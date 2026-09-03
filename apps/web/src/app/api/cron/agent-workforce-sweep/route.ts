@@ -10,8 +10,11 @@ import { runRefundBriefingSweepForTenant } from "@/lib/agents/workflows/refund-p
 import { expireStaleProposals } from "@/lib/agents/actions/action-service";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { slackNotifyAgentRunFailed } from "@/lib/integrations/slack/agent-triggers";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const maxDuration = 300;
+
+const JOB_NAME = "agent-workforce-sweep";
 
 /**
  * Agent workforce sweep — generates human-reviewable proposals for pending
@@ -20,6 +23,14 @@ export const maxDuration = 300;
  * execute everything from the Agentic Console.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return Response.json({ error: auth.error ?? "Unauthorized" }, { status: 401 });

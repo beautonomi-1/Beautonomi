@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Animated,
   Platform,
+  Modal,
 } from "react-native";
 import {
   bookingLifecycleStatus,
@@ -54,7 +55,11 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { SegmentTabs } from "@/components/ui/SegmentTabs";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BookingScheduleCard } from "@/components/bookings/BookingScheduleCard";
-import { mapProviderBookingActionError } from "@/lib/provider-booking-action-policy";
+import { EtaPicker } from "@/components/bookings/EtaPicker";
+import {
+  mapProviderBookingActionError,
+  type ProviderBookingAction,
+} from "@/lib/provider-booking-action-policy";
 import { useBusinessToday } from "@/hooks/useBusinessToday";
 import {
   appendBookingsQueryParts,
@@ -331,6 +336,12 @@ export default function BookingsListScreen() {
   const [selectedDate, setSelectedDate] = useState(() => startOfBusinessDayLocalDate(providerTimezone));
   const [stripAnchorDate, setStripAnchorDate] = useState(() => startOfBusinessDayLocalDate(providerTimezone));
   const [showJumpDatePicker, setShowJumpDatePicker] = useState(false);
+  const [journeyPrompt, setJourneyPrompt] = useState<{
+    bookingId: string;
+    action: ProviderBookingAction;
+    successMessage: string;
+  } | null>(null);
+  const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(null);
   const prevBusinessTodayKeyRef = useRef(businessTodayKey);
   const userPickedDateRef = useRef(false);
 
@@ -1006,7 +1017,12 @@ export default function BookingsListScreen() {
   }, [stripBookingsMerged, selectedDateKey, timeBlocks, closedDateKeys, selectedDate, providerTimezone, businessTodayKey]);
 
   const handleApplyStatus = useCallback(
-    async (bookingId: string, action: import("@/lib/provider-booking-action-policy").ProviderBookingAction, successMessage: string) => {
+    async (bookingId: string, action: ProviderBookingAction, successMessage: string) => {
+      if (action.id === "start_journey") {
+        setJourneyEtaMinutes(null);
+        setJourneyPrompt({ bookingId, action, successMessage });
+        return;
+      }
       const r = await applyStatus(bookingId, action);
       if (r.error) {
         setToast({ message: mapProviderBookingActionError(r.error, r.errorCode), type: "error" });
@@ -1018,6 +1034,26 @@ export default function BookingsListScreen() {
     },
     [applyStatus],
   );
+
+  const confirmStartJourney = useCallback(async () => {
+    if (!journeyPrompt) return;
+    const { bookingId, action, successMessage } = journeyPrompt;
+    setJourneyPrompt(null);
+    const r = await applyStatus(bookingId, {
+      ...action,
+      payload: {
+        ...(action.payload ?? {}),
+        ...(journeyEtaMinutes != null ? { eta_minutes: journeyEtaMinutes } : {}),
+      },
+    });
+    if (r.error) {
+      setToast({ message: mapProviderBookingActionError(r.error, r.errorCode), type: "error" });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else {
+      setToast({ message: successMessage, type: "success" });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [applyStatus, journeyEtaMinutes, journeyPrompt]);
 
   /** Server-backed stats (provider TZ + ledger); independent of paginated list window. */
   const statsSnapshot = useMemo(
@@ -2028,6 +2064,43 @@ export default function BookingsListScreen() {
           {toast?.message ?? ""}
         </Text>
       </AnimatedRe.View>
+
+      <Modal
+        visible={journeyPrompt != null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setJourneyPrompt(null)}
+      >
+        <View style={twStyle("flex-1 justify-end bg-black/40")}>
+          <View style={twStyle("bg-white rounded-t-3xl px-4 pt-5 pb-8")}>
+            <Text style={twStyle("text-lg font-semibold text-gray-900 mb-1")}>Start journey</Text>
+            <Text style={twStyle("text-sm text-gray-500 mb-4")}>
+              Add an ETA so the client can see when you expect to arrive. You can also start without one.
+            </Text>
+            <EtaPicker value={journeyEtaMinutes} onChange={setJourneyEtaMinutes} />
+            <TouchableOpacity
+              onPress={() => void confirmStartJourney()}
+              style={twStyle("mt-4 rounded-xl bg-primary py-3 items-center")}
+              accessibilityRole="button"
+              accessibilityLabel={
+                journeyEtaMinutes == null ? "Start journey (no ETA)" : "Start journey"
+              }
+            >
+              <Text style={twStyle("text-white font-semibold")}>
+                {journeyEtaMinutes == null ? "Start journey (no ETA)" : "Start journey"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setJourneyPrompt(null)}
+              style={twStyle("mt-2 rounded-xl py-3 items-center")}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={twStyle("text-gray-600 font-medium")}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }

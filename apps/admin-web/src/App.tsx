@@ -150,6 +150,9 @@ export default function App() {
           <Route path="provider-subscriptions" element={<P.ProviderSubscriptionsPage />} />
           <Route path="subscription-revenue" element={<P.SubscriptionMetricsPage />} />
           <Route path="wallet-reconciliation" element={<P.WalletReconciliationPage />} />
+          <Route path="reconciliation-exceptions" element={<P.ReconciliationExceptionsPage />} />
+          <Route path="ledger-repair" element={<P.LedgerRepairPage />} />
+          <Route path="ledger-health" element={<P.LedgerHealthPage />} />
           <Route path="paystack-terminal" element={<P.PaystackTerminalOperationsPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
           <Route path="pricing-plans" element={<Navigate to="../plans" replace />} />
@@ -170,6 +173,9 @@ export default function App() {
           <Route path="webhooks" element={<P.WebhooksEndpointsPage />} />
           <Route path="api-keys" element={<P.ApiKeysListPage />} />
           <Route path="integrations/amplitude" element={<P.AmplitudeConfigPage />} />
+          <Route path="integrations/flutterwave" element={<P.FlutterwaveIntegrationPage />} />
+          <Route path="integrations/singular" element={<P.SingularIntegrationPage />} />
+          <Route path="integrations/onesignal" element={<P.OneSignalIntegrationPage />} />
           <Route path="integrations/slack" element={<P.SlackIntegrationPage />} />
           <Route path="integrations/calls" element={<P.CallsIntegrationPage />} />
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
@@ -205,6 +211,9 @@ export default function App() {
           <Route path="whatsapp-content-templates" element={<P.WhatsAppContentTemplatesPage />} />
           <Route path="marketing-pricebook" element={<P.MarketingPricebookPage />} />
           <Route path="system-health" element={<P.SystemHealthPage />} />
+          <Route path="cron-runs" element={<P.CronRunsPage />} />
+          <Route path="workflow-runs" element={<P.WorkflowRunsPage />} />
+          <Route path="webhooks/inbound" element={<P.InboundWebhooksPage />} />
           <Route path="monitoring" element={<P.MonitoringHealthPage />} />
           <Route path="security" element={<P.SecurityPolicyPage />} />
           <Route path="service-zones/:id" element={<P.ServiceZoneDetailPage />} />

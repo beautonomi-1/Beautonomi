@@ -29,7 +29,7 @@ const WhyBeautonomiHero = ({ content }: WhyBeautonomiHeroProps) => {
     content?.hero_description?.content ||
     "Bookings, payments, clients and growth — beautifully connected in one place. Spend less time on admin and more time doing what you love.";
   const ctaButtonText = content?.cta_button_text?.content || "Get started free";
-  const ctaUrl = content?.cta_url?.content || "/signup?type=provider";
+  const ctaUrl = content?.cta_url?.content || "/provider/signup";
   const secondaryCtaText = content?.hero_secondary_cta_text?.content || "Explore the platform";
   const secondaryCtaUrl = content?.hero_secondary_cta_url?.content || "/explore";
   const trustText =

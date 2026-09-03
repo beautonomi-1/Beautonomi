@@ -32,8 +32,11 @@ export default function PartnerMemberships({
   const [plans, setPlans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBuying, setIsBuying] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletCurrency, setWalletCurrency] = useState("ZAR");
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
+  const [activeMembershipStatus, setActiveMembershipStatus] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
 
@@ -58,20 +61,42 @@ export default function PartnerMemberships({
   useEffect(() => {
     if (!user || authLoading || !providerId) {
       setActivePlanId(null);
+      setActiveMembershipStatus(null);
+      setWalletBalance(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
         const res = await fetcher.get<{
-          data?: { provider_memberships?: { plan_id: string; provider_id: string }[] };
+          data?: { provider_memberships?: { plan_id: string; provider_id: string; status?: string }[] };
         }>("/api/me/membership", { staleTimeMs: 0 });
         if (cancelled) return;
         const rows = res?.data?.provider_memberships ?? [];
-        const mine = rows.find((r) => r.provider_id === providerId);
+        const mine = rows.find(
+          (r) =>
+            r.provider_id === providerId &&
+            (r.status === "active" || r.status === "past_due" || r.status === "paused"),
+        );
         setActivePlanId(mine?.plan_id ?? null);
+        setActiveMembershipStatus(mine?.status ?? null);
       } catch {
-        if (!cancelled) setActivePlanId(null);
+        if (!cancelled) {
+          setActivePlanId(null);
+          setActiveMembershipStatus(null);
+        }
+      }
+      try {
+        const wallet = await fetcher.get<{ data?: { wallet?: { balance?: number; currency?: string } } }>(
+          "/api/me/wallet",
+          { staleTimeMs: 0 },
+        );
+        if (cancelled) return;
+        const w = wallet.data?.wallet;
+        setWalletBalance(Number(w?.balance ?? 0));
+        if (w?.currency) setWalletCurrency(w.currency);
+      } catch {
+        if (!cancelled) setWalletBalance(null);
       }
     })();
     return () => {
@@ -79,7 +104,7 @@ export default function PartnerMemberships({
     };
   }, [user, authLoading, providerId]);
 
-  const buy = async (planId: string) => {
+  const buy = async (planId: string, tender: "paystack" | "wallet" = "paystack") => {
     if (authLoading) return;
     if (!user) {
       setIsLoginModalOpen(true);
@@ -88,8 +113,9 @@ export default function PartnerMemberships({
 
     try {
       setIsBuying(planId);
-      const res = await fetcher.post<{ data: { payment_url: string }; error: null }>(`/api/me/memberships/purchase`, {
+      const res = await fetcher.post<{ data: { payment_url: string; status?: string }; error: null }>(`/api/me/memberships/purchase`, {
         plan_id: planId,
+        tender,
         source: "partner_profile_memberships",
         campaign_id: searchParams.get("campaign_id") || undefined,
         utm_source: searchParams.get("utm_source") || undefined,
@@ -102,7 +128,8 @@ export default function PartnerMemberships({
         window.location.href = url;
         return;
       }
-      toast.success("Membership activated.");
+      toast.success(tender === "wallet" ? "Membership paid from your wallet." : "Membership activated.");
+      setActivePlanId(planId);
     } catch (e) {
       toast.error(e instanceof FetchError ? e.message : "Failed to start membership purchase");
     } finally {
@@ -140,13 +167,15 @@ export default function PartnerMemberships({
                 </p>
               )}
               {activePlanId === p.id && (
-                <p className="text-xs text-green-600 mt-3 font-medium">
-                  ✓ Active — auto-renews monthly
+                <p className={`text-xs mt-3 font-medium ${activeMembershipStatus === "paused" ? "text-slate-600" : "text-green-600"}`}>
+                  {activeMembershipStatus === "paused"
+                    ? "Paused — manage in account"
+                    : "✓ Active — auto-renews monthly"}
                 </p>
               )}
               <Button
                 className="mt-3 w-full bg-gray-900 text-white"
-                onClick={() => buy(p.id)}
+                onClick={() => void buy(p.id, "paystack")}
                 disabled={authLoading || isBuying === p.id || activePlanId === p.id}
               >
                 {authLoading
@@ -154,9 +183,23 @@ export default function PartnerMemberships({
                   : isBuying === p.id
                     ? "Redirecting..."
                     : activePlanId === p.id
-                      ? "Your current plan"
+                      ? activeMembershipStatus === "paused"
+                        ? "Paused — manage in account"
+                        : "Your current plan"
                       : "Subscribe"}
               </Button>
+              {activePlanId !== p.id &&
+              walletBalance != null &&
+              walletBalance >= Number(p.price_monthly ?? p.price ?? 0) ? (
+                <Button
+                  variant="outline"
+                  className="mt-2 w-full"
+                  onClick={() => void buy(p.id, "wallet")}
+                  disabled={authLoading || isBuying === p.id}
+                >
+                  Pay with wallet ({walletCurrency} {safeMoney(walletBalance)})
+                </Button>
+              ) : null}
             </div>
           ))}
         </div>

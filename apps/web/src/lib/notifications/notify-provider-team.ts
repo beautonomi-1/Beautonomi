@@ -72,6 +72,29 @@ export async function getProviderTeamUserIds(providerId: string): Promise<string
   return [...ids];
 }
 
+/**
+ * Distinct app user IDs for specific `provider_staff` rows (active, linked login only).
+ * Used to target booking notifications at the assigned staff instead of the whole team.
+ */
+export async function getProviderStaffUserIds(providerId: string, staffIds: string[]): Promise<string[]> {
+  const ids = [...new Set(staffIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  const admin = getSupabaseAdmin();
+  const { data: staffRows } = await admin
+    .from("provider_staff")
+    .select("user_id")
+    .eq("provider_id", providerId)
+    .eq("is_active", true)
+    .in("id", ids)
+    .not("user_id", "is", null);
+  const out = new Set<string>();
+  for (const s of staffRows ?? []) {
+    const uid = (s as { user_id?: string | null }).user_id;
+    if (uid) out.add(uid);
+  }
+  return [...out];
+}
+
 export type ProviderTeamNotificationRow = {
   type: string;
   title: string;

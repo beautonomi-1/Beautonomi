@@ -9,6 +9,7 @@ import {
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/users/[id]/warn
@@ -57,19 +58,22 @@ export async function POST(
       }
     }
 
-    // Record the warning as an internal admin note
-    try {
-      await supabase.from("admin_audit_log").insert({
-        admin_id: admin.id,
-        action: "user_warning_issued",
-        target_type: "user",
-        target_id: userId,
-        metadata: { reason, send_notification: sendNotification },
-        tenant_id: tenantId,
-      });
-    } catch {
-      // audit log is best-effort
-    }
+    // Record the warning in the unified audit log (best-effort; writeAuditLog never throws)
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "user_warning_issued",
+      entity_type: "user",
+      entity_id: userId,
+      module: "users_trust",
+      risk_level: "medium",
+      retention_tier: "operational",
+      status: "succeeded",
+      metadata: { reason, send_notification: sendNotification, tenant_id: tenantId },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       user_id: userId,

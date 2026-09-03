@@ -25,6 +25,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 const APPLE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
 const APPLE_BILLED_MESSAGE =
@@ -76,6 +78,9 @@ interface ProviderSubscription {
     status?: "pending" | "paid" | "failed" | string | null;
     failure_reason?: string | null;
   } | null;
+  scheduled_plan_id?: string | null;
+  scheduled_change_at?: string | null;
+  scheduled_plan?: { id: string; name: string | null } | null;
   billing_issue?: {
     type: "past_due" | "sync_pending" | "payment_failed" | "payment_pending" | string;
     message: string;
@@ -181,6 +186,7 @@ function billingActionLabel(
 }
 
 export default function SubscriptionPage() {
+  const { provider } = useProviderPortal();
   const router = useRouter();
   const [subscription, setSubscription] = useState<ProviderSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -368,6 +374,30 @@ export default function SubscriptionPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!provider?.id) return;
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) return;
+    const channel = supabaseClient
+      .channel(`provider-subscription:${provider.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "provider_subscriptions",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        () => {
+          void loadData();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [provider?.id]);
+
   // Paid plans open the review dialog first; free plans activate immediately.
   const handleUpgrade = async (planId: string) => {
     if (isAppleBilled(subscription)) {
@@ -405,6 +435,8 @@ export default function SubscriptionPage() {
           requires_payment?: boolean;
           is_free?: boolean;
           subscription_id?: string;
+          scheduled?: boolean;
+          changes_on?: string;
         };
       }>("/api/provider/subscription/upgrade", {
         plan_id: plan.plan_id,
@@ -412,6 +444,16 @@ export default function SubscriptionPage() {
       });
 
       const data = (res as any).data;
+
+      if (data.scheduled) {
+        const when = data.changes_on ? new Date(data.changes_on).toLocaleDateString() : "period end";
+        toast.success(`Plan change scheduled. Changes on ${when}.`);
+        setShowUpgradeDialog(false);
+        setReviewPlan(null);
+        setReviewSubmitting(false);
+        loadData();
+        return;
+      }
 
       // Free tier - subscription created directly
       if (data.is_free) {
@@ -784,6 +826,14 @@ export default function SubscriptionPage() {
                             Past Due
                           </Badge>
                         )}
+                        {subscription.scheduled_plan_id && subscription.scheduled_change_at ? (
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                            Changes on {new Date(subscription.scheduled_change_at).toLocaleDateString()}
+                            {subscription.scheduled_plan?.name
+                              ? ` → ${subscription.scheduled_plan.name}`
+                              : ""}
+                          </Badge>
+                        ) : null}
                         {isAppleBilled(subscription) ? (
                           <Badge variant="secondary" className="bg-violet-100 text-violet-800">
                             App Store

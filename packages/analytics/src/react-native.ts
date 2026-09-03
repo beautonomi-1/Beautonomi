@@ -78,8 +78,11 @@ function getCachedEventAttribution(): Record<string, string> {
 export interface AnalyticsClient {
   track: (eventType: string, eventProperties?: Record<string, unknown>) => void;
   identify: (userId: string, userProperties?: Record<string, unknown>) => void;
+  setGroup: (groupType: string, groupName: string) => void;
   screen: (screenName: string) => void;
   reset: () => void;
+  /** Force-send queued events (call on AppState background so short sessions are not lost). */
+  flush: () => void;
 }
 
 /**
@@ -229,6 +232,12 @@ function createClient(): AnalyticsClient {
         bootEngagement(userId);
       } catch {}
     },
+    setGroup: (groupType: string, groupName: string) => {
+      if (!isInitialized) return;
+      try {
+        amplitude.setGroup(groupType, groupName);
+      } catch {}
+    },
     screen: (screenName: string) => {
       if (!isInitialized) return;
       try {
@@ -244,6 +253,12 @@ function createClient(): AnalyticsClient {
         amplitude.reset();
       } catch {}
       lastBootedEngagementUserId = null;
+    },
+    flush: () => {
+      if (!isInitialized) return;
+      try {
+        void amplitude.flush();
+      } catch {}
     },
   };
 }

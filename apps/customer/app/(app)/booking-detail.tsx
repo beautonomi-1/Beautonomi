@@ -18,6 +18,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
 import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
+import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { formatBookingLiveStageLabel } from "@/lib/booking-live-stage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { Skeleton } from "@/components/Skeleton";
@@ -27,6 +28,7 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { downloadPdf } from "@/lib/pdf-file";
 import { shareCustomerBookingReceipt } from "@/lib/share-receipt";
+import { trackAdditionalChargePaid, trackBookingCancelled } from "@/lib/analytics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
@@ -445,12 +447,40 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     if (!id) return;
 
-    // focus=additional_charge without a specific charge_id: nothing to fetch,
-    // resolve immediately so the receipt tab UI (spinner / unavailable block) settles.
-    if (!chargeIdParam) {
-      if (focusParam === "additional_charge") {
+    // focus=additional_charge: always fetch charges API so stale booking payloads
+    // do not show "Payment request unavailable" before we have fresh data.
+    if (focusParam === "additional_charge" && !chargeIdParam) {
+      if (chargeFetchAttemptedRef.current) return;
+      chargeFetchAttemptedRef.current = true;
+      setChargeFocusFetchStatus("loading");
+
+      const safetyTimer = setTimeout(() => {
         setChargeFocusFetchStatus("done");
-      }
+      }, 8000);
+
+      void api
+        .get<{ charges?: any[]; data?: { charges?: any[] } }>(
+          `/api/me/bookings/${encodeURIComponent(id)}/additional-charges`,
+        )
+        .then((res) => {
+          const raw = res.data as { charges?: any[]; data?: { charges?: any[] } } | null | undefined;
+          const rows = raw?.data?.charges ?? raw?.charges ?? [];
+          if (Array.isArray(rows) && rows.length > 0) {
+            mergeAdditionalCharges(rows);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          clearTimeout(safetyTimer);
+          setChargeFocusFetchStatus("done");
+        });
+
+      return () => {
+        clearTimeout(safetyTimer);
+      };
+    }
+
+    if (!chargeIdParam) {
       return;
     }
 
@@ -839,6 +869,7 @@ export default function BookingDetailScreen() {
         }
       } else {
         haptic.success();
+        trackBookingCancelled(cancelBookingId, reason.trim() || undefined);
         load();
       }
     } catch (e) {
@@ -1291,7 +1322,9 @@ export default function BookingDetailScreen() {
   const services = booking.services ?? booking.booking_services ?? [];
   const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
   const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
-  const bookingRef = booking.booking_number || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
+  const bookingNumberFull =
+    typeof booking.booking_number === "string" ? booking.booking_number.trim() : "";
+  const bookingRef = bookingNumberFull || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
   const isAtHome = booking.location_type === "at_home";
@@ -1555,6 +1588,7 @@ export default function BookingDetailScreen() {
       }
       if (res.data?.fully_settled) {
         haptic.success();
+        trackAdditionalChargePaid(id, chargeId, chargeAmount);
         await load();
         return;
       }
@@ -1617,6 +1651,7 @@ export default function BookingDetailScreen() {
 
       if (chargePaid) {
         haptic.success();
+        trackAdditionalChargePaid(id, chargeId, chargeAmount);
         await load();
       } else {
         Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
@@ -1706,6 +1741,14 @@ export default function BookingDetailScreen() {
 
       if (chargePaid) {
         haptic.success();
+        const chargeRow = ((booking.additional_charges ?? []) as Array<{ id?: string; amount?: number }>).find(
+          (c) => c.id === chargeId,
+        );
+        trackAdditionalChargePaid(
+          id,
+          chargeId,
+          Number((chargeRow as { amount?: number } | undefined)?.amount ?? 0),
+        );
         Alert.alert("Payment Successful", "Your additional charge was paid with your saved card.");
       } else {
         Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
@@ -1917,11 +1960,28 @@ export default function BookingDetailScreen() {
     <>
       <Stack.Screen
         options={{
-          title: bookingRef ? `Booking #${bookingRef}` : "Booking Details",
+          title: bookingNumberFull ? `Booking #${bookingNumberFull}` : "Booking",
           headerBackTitle: "Back",
         }}
       />
       <ScrollView ref={scrollViewRef} style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
+        <BookingReferencePanel
+          bookingId={String(booking.id)}
+          bookingNumber={bookingNumberFull || null}
+          status={_effectiveStatus}
+          paymentStatus={booking.payment_status}
+          outstandingBalance={typeof _bookingOutstanding === "number" ? _bookingOutstanding : outstandingForPay}
+          onContactSupport={(category) => {
+            router.push({
+              pathname: "/(app)/(tabs)/support-tickets/new",
+              params: {
+                booking_id: String(booking.id),
+                ...(bookingNumberFull ? { booking_number: bookingNumberFull } : {}),
+                category,
+              },
+            });
+          }}
+        />
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
           <View
@@ -2243,19 +2303,35 @@ export default function BookingDetailScreen() {
               </View>
             ) : null}
             {/* ETA (at-home, when provider en route and backend provides it) */}
-            {isAtHome && isProviderEnRoute && estimatedArrival && (() => {
+            {isAtHome && isProviderEnRoute && (() => {
               const eta = getCustomerEtaUiParts((booking as { estimated_arrival?: string }).estimated_arrival);
-              if (!eta.show) return null;
               return (
-                <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 16 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#1E3A8A" }}>Estimated arrival</Text>
-                  <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
-                    {eta.timeLabel}
-                    {" · "}
-                    {eta.minutesLabel}
+                <View style={{
+                  marginBottom: 16,
+                  borderRadius: 16,
+                  backgroundColor: eta.isLate ? "#FFFBEB" : "#EFF6FF",
+                  borderWidth: 1,
+                  borderColor: eta.isLate ? "#FCD34D" : "#BFDBFE",
+                  padding: 16,
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: eta.isLate ? "#92400E" : "#1E3A8A" }}>
+                    {eta.isLate ? "Running a little late" : eta.show ? "Estimated arrival" : "Provider en route"}
                   </Text>
-                  <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 6 }}>
-                    We refresh this as your provider moves.
+                  {eta.show ? (
+                    <Text style={{ fontSize: 16, color: eta.isLate ? "#B45309" : "#1E40AF", marginTop: 2 }}>
+                      {eta.timeLabel}
+                      {" · "}
+                      {eta.minutesLabel}
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
+                      Arrival time will appear when your provider shares an ETA.
+                    </Text>
+                  )}
+                  <Text style={{ fontSize: 12, color: eta.isLate ? "#D97706" : "#3B82F6", marginTop: 6 }}>
+                    {eta.isLate
+                      ? "Your provider is on the way and will update their arrival time."
+                      : "We refresh this as your provider moves."}
                   </Text>
                 </View>
               );

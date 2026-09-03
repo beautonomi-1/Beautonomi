@@ -16,6 +16,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import type { Database } from './database.types';
+import { REMEMBER_ME_COOKIE, REMEMBER_ME_MAX_AGE_SECONDS } from '@/lib/auth/remember-me';
 
 /** Create Supabase client from Bearer token (for mobile/Expo API calls) */
 export async function createSupabaseClientFromToken(accessToken: string) {
@@ -56,7 +57,10 @@ export async function createSupabaseClientFromToken(accessToken: string) {
   return client;
 }
 
-export async function getSupabaseServer(req?: { headers: { get: (n: string) => string | null } }) {
+export async function getSupabaseServer(
+  req?: { headers: { get: (n: string) => string | null } },
+  options?: { cookieMaxAgeSeconds?: number },
+) {
   if (req) {
     const authHeader = req.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -80,6 +84,11 @@ export async function getSupabaseServer(req?: { headers: { get: (n: string) => s
     );
   }
 
+  const remember = cookieStore.get(REMEMBER_ME_COOKIE)?.value === "1";
+  const cookieMaxAge =
+    options?.cookieMaxAgeSeconds ??
+    (remember ? REMEMBER_ME_MAX_AGE_SECONDS : undefined);
+
   return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -87,8 +96,11 @@ export async function getSupabaseServer(req?: { headers: { get: (n: string) => s
       },
       setAll(cookiesToSet) {
         try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+          cookiesToSet.forEach(({ name, value, options: cookieOptions }) =>
+            cookieStore.set(name, value, {
+              ...cookieOptions,
+              ...(cookieMaxAge != null ? { maxAge: cookieMaxAge } : {}),
+            }),
           );
         } catch {
           // The `setAll` method was called from a Server Component.

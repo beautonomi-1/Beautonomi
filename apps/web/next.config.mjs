@@ -1,5 +1,16 @@
+import { createRequire } from 'node:module';
 import withBundleAnalyzer from '@next/bundle-analyzer';
 import { withSentryConfig } from '@sentry/nextjs';
+
+const require = createRequire(import.meta.url);
+
+/** @type {(config: import('next').NextConfig) => import('next').NextConfig} */
+let withWorkflow = (config) => config;
+try {
+  ({ withWorkflow } = require('workflow/next'));
+} catch {
+  // workflow SDK not installed — see apps/web/src/workflows/ and WORKFLOWS_ENABLED
+}
 
 const analyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -335,8 +346,12 @@ const nextConfig = {
           },
         ],
       },
+      // Auth-sensitive public routes (holds, gift-card balance lookups, ads event ingestion)
+      // must never be shared-cached: excluded via negative lookahead below and pinned to
+      // no-store explicitly. Route handlers ALSO set no-store (belt and braces; see
+      // launch-readiness-regression.test.ts "public cache rule excludes auth-sensitive routes").
       {
-        source: '/api/public/:path*',
+        source: '/api/public/:path((?!booking-holds|gift-cards|ads/).*)',
         headers: [
           {
             key: 'Cache-Control',
@@ -344,16 +359,31 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: '/api/public/:scope(booking-holds|gift-cards|ads)/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, no-cache, must-revalidate' },
+          { key: 'Vary', value: 'Authorization, Cookie' },
+        ],
+      },
+      {
+        source: '/api/public/booking-holds',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, no-cache, must-revalidate' },
+          { key: 'Vary', value: 'Authorization, Cookie' },
+        ],
+      },
     ];
   },
 };
 
 const configWithAnalyzer = analyzer(nextConfig);
+const configWithWorkflow = withWorkflow(configWithAnalyzer);
 
 /** When unset, source maps / release upload are skipped — keep the webpack plugin quiet (avoids CI noise). */
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 
-export default withSentryConfig(configWithAnalyzer, {
+export default withSentryConfig(configWithWorkflow, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: sentryAuthToken,

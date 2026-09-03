@@ -11,7 +11,7 @@ export async function resolveProductOrderPaystackAmount(
   userId: string,
 ): Promise<ResolvePaystackAmountResult> {
   const { data: po, error } = await (supabase.from("product_orders") as any)
-    .select("id, customer_id, payment_status, payment_method, total_amount, wallet_amount")
+    .select("id, customer_id, payment_status, payment_method, total_amount, wallet_amount, gift_card_amount")
     .eq("id", productOrderId)
     .maybeSingle();
 
@@ -32,7 +32,9 @@ export async function resolveProductOrderPaystackAmount(
 
   const total = Number(po.total_amount ?? 0);
   const wallet = Number(po.wallet_amount ?? 0);
-  const dueMajor = Math.max(0, total - wallet);
+  // Gift card reserved at checkout (879) reduces the card amount like wallet does.
+  const giftCard = Number(po.gift_card_amount ?? 0);
+  const dueMajor = Math.max(0, total - wallet - giftCard);
   const amountSmallestUnit = convertToSmallestUnit(dueMajor);
 
   if (dueMajor > 0 && amountSmallestUnit < 100) {

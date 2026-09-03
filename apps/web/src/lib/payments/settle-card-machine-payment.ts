@@ -240,6 +240,20 @@ async function settleCardMachineCashback(
   }
 }
 
+async function notifyCardMachineAdditionalChargePaid(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  chargeId: string,
+): Promise<void> {
+  try {
+    const { notifyAdditionalChargePaid } = await import(
+      "@/lib/notifications/notify-additional-charge-paid"
+    );
+    await notifyAdditionalChargePaid(admin, chargeId);
+  } catch (notifErr) {
+    console.warn("[settle-card-machine] additional charge notify failed:", notifErr);
+  }
+}
+
 async function settleUnpaidAdditionalCharges(
   paymentProvider: CardMachinePaymentProvider,
   bookingId: string,
@@ -267,6 +281,7 @@ async function settleUnpaidAdditionalCharges(
     if (error) {
       throw new Error(error.message || `Failed to settle additional charge ${charge.id}`);
     }
+    await notifyCardMachineAdditionalChargePaid(admin, charge.id);
   }
 }
 
@@ -656,6 +671,8 @@ async function settleAdditionalChargePayment(
   });
 
   if (error) throw new Error(error.message || "Failed to settle additional charge");
+
+  await notifyCardMachineAdditionalChargePaid(admin, charge.id);
 
   await settleExtrasAfterBase(supabase, input, {
     bookingId: charge.booking_id,

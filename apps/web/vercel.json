@@ -11,31 +11,34 @@
   "regions": ["fra1"],
   "crons": [
     { "path": "/api/cron/sync-paystack-terminal-payments", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/reconcile-online-charge-ledger", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/identity-verification-reconcile", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/sync-paycloud-payments", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/send-reminders", "schedule": "0 * * * *" },
     { "path": "/api/cron/expire-booking-holds", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/expire-pending-payment-bookings", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/expire-stale-pending-bookings", "schedule": "0 * * * *" },
     { "path": "/api/cron/expire-pending-payment-orders", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/expire-on-demand-requests", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/expire-on-demand-requests", "schedule": "5 2 * * *" },
     { "path": "/api/cron/expire-custom-requests", "schedule": "15 2 * * *" },
-    { "path": "/api/cron/execute-automations", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/execute-automations", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/process-recurring-bookings", "schedule": "0 0 * * *" },
     { "path": "/api/cron/check-low-stock", "schedule": "0 8 * * *" },
     { "path": "/api/cron/ranking-recompute", "schedule": "0 4 * * *" },
     { "path": "/api/cron/inactivity-retention", "schedule": "0 10 * * *" },
     { "path": "/api/cron/expire-message-attachments", "schedule": "30 3 * * *" },
     { "path": "/api/cron/expire-ads-campaigns", "schedule": "0 */2 * * *" },
-    { "path": "/api/cron/expire-cancelled-subscriptions", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/expire-cancelled-subscriptions", "schedule": "10 2 * * *" },
+    { "path": "/api/cron/retry-subscription-payments", "schedule": "30 3 * * *" },
     { "path": "/api/cron/expire-provider-badges", "schedule": "45 2 * * *" },
     { "path": "/api/cron/subscription-reminders", "schedule": "0 7 * * *" },
     { "path": "/api/cron/provider-stall-check", "schedule": "0 */4 * * *" },
-    { "path": "/api/cron/purge-audit-logs", "schedule": "0 2 * * 0" },
-    { "path": "/api/cron/purge-compliance-snapshots", "schedule": "30 2 * * 0" },
+    { "path": "/api/cron/purge-audit-logs", "schedule": "25 2 * * 0" },
+    { "path": "/api/cron/purge-compliance-snapshots", "schedule": "35 2 * * 0" },
     { "path": "/api/cron/process-account-deletions", "schedule": "15 3 * * *" },
     { "path": "/api/cron/prune-webhook-events", "schedule": "30 2 * * *" },
     { "path": "/api/cron/abandoned-carts", "schedule": "0 */6 * * *" },
-    { "path": "/api/cron/refresh-provider-analytics", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/refresh-provider-analytics", "schedule": "0 * * * *" },
     { "path": "/api/cron/refresh-reports", "schedule": "15 * * * *" },
     { "path": "/api/cron/process-whatsapp-queue", "schedule": "*/2 * * * *" },
     { "path": "/api/cron/reset-whatsapp-counters", "schedule": "0 * * * *" },
@@ -46,7 +49,10 @@
     { "path": "/api/cron/dispatch-scheduled-campaigns", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/reconcile-push-delivery", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/prune-idempotency-keys", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/auto-fee-reconciliation", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/auto-fee-reconciliation", "schedule": "20 2 * * *" },
+    { "path": "/api/cron/recognize-period-revenue", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/recognize-gift-card-breakage", "schedule": "0 4 1 * *" },
+    { "path": "/api/cron/gift-card-expiry-reminders", "schedule": "20 8 * * *" },
     { "path": "/api/cron/reconciliation-gate", "schedule": "0 5 * * *" },
     { "path": "/api/cron/slack-operational-alerts", "schedule": "15 * * * *" },
     { "path": "/api/cron/process-membership-renewals", "schedule": "0 6 * * *" },
@@ -59,7 +65,9 @@
     { "path": "/api/cron/agent-ops-sentinel", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/agent-workforce-sweep", "schedule": "*/30 * * * *" },
     { "path": "/api/cron/agent-provider-ops", "schedule": "30 5 * * *" },
-    { "path": "/api/cron/agent-provider-digest", "schedule": "0 6 * * 1" }
+    { "path": "/api/cron/agent-provider-digest", "schedule": "0 6 * * 1" },
+    { "path": "/api/cron/purge-notification-delivery-queue", "schedule": "10 3 * * *" },
+    { "path": "/api/cron/purge-ads-events", "schedule": "20 3 * * *" }
   ],
   "headers": [
     {
@@ -69,9 +77,23 @@
       ]
     },
     {
-      "source": "/api/public/(.*)",
+      "source": "/api/public/:path((?!booking-holds|gift-cards|ads/).*)",
       "headers": [
         { "key": "Cache-Control", "value": "s-maxage=30, stale-while-revalidate=300" }
+      ]
+    },
+    {
+      "source": "/api/public/:scope(booking-holds|gift-cards|ads)/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate" },
+        { "key": "Vary", "value": "Authorization, Cookie" }
+      ]
+    },
+    {
+      "source": "/api/public/booking-holds",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate" },
+        { "key": "Vary", "value": "Authorization, Cookie" }
       ]
     }
   ]

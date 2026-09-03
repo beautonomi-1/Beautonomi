@@ -11,6 +11,7 @@ import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/Sele
 import { api } from "@/lib/api-client";
 import { useLocation } from "@/hooks/useLocation";
 import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
+import { useAtHomeAddressPrefill } from "@/hooks/useAtHomeAddressPrefill";
 import { AddressPicker } from "@/components/AddressPicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -625,6 +626,9 @@ export default function BookScreen() {
     error: savedAddressesError,
     reload: reloadSavedAddresses,
   } = useAddresses(!!user);
+  const { state: atHomePrefillState, tryAutoPrefill, prefillFromCurrentLocation } = useAtHomeAddressPrefill({
+    defaultCountry: getDeviceRegionCountryIso(),
+  });
 
   const validSteps: Step[] = ["service", "venue", "staff", "date", "time", "addons"];
   const initialStep: Step = stepParam && validSteps.includes(stepParam as Step) ? (stepParam as Step) : "venue";
@@ -660,6 +664,47 @@ export default function BookScreen() {
     house_call_instructions: "",
   });
   const [atHomeCoords, setAtHomeCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  /** Auto reverse-geocode GPS into address fields when at-home is selected (guests + users without saved addresses). */
+  useEffect(() => {
+    if (locationType !== "at_home") return;
+    if (atHomeAddress.line1.trim() || atHomeAddress.city.trim()) return;
+    if (user && savedAddresses.length > 0) return;
+    if (hasValidServiceCoordinates(primaryAddress)) return;
+    void tryAutoPrefill(true, atHomeAddress).then((result) => {
+      if (!result) return;
+      setAtHomeAddress((prev) => ({
+        ...prev,
+        line1: result.address.line1 || prev.line1,
+        line2: result.address.line2 ?? prev.line2,
+        city: result.address.city || prev.city,
+        country: result.address.country || prev.country,
+        postal_code: result.address.postal_code ?? prev.postal_code,
+      }));
+      setAtHomeCoords({ latitude: result.latitude, longitude: result.longitude });
+    });
+  }, [locationType, user, savedAddresses.length, primaryAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUseCurrentLocationForAtHome = useCallback(async () => {
+    haptic.light();
+    const result = await prefillFromCurrentLocation();
+    if (!result) {
+      if (atHomePrefillState.status === "error") {
+        Alert.alert(t("common.error"), atHomePrefillState.message);
+      }
+      return;
+    }
+    setAtHomeAddress((prev) => ({
+      ...prev,
+      line1: result.address.line1 || prev.line1,
+      line2: result.address.line2 ?? prev.line2,
+      city: result.address.city || prev.city,
+      country: result.address.country || prev.country,
+      postal_code: result.address.postal_code ?? prev.postal_code,
+    }));
+    setAtHomeCoords({ latitude: result.latitude, longitude: result.longitude });
+  }, [prefillFromCurrentLocation, atHomePrefillState, t]);
+
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
   const [travelFeePreview, setTravelFeePreview] = useState<TravelFeePreview>({ status: "idle" });
   const [selectedVariant, setSelectedVariant] = useState<{
@@ -2986,14 +3031,31 @@ export default function BookScreen() {
                       </View>
                     )}
                     {(!user || (!savedAddressesLoading && savedAddresses.length === 0)) && (
-                      <TouchableOpacity
-                        onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
-                        style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, marginBottom: 4, marginTop: 10 }}
-                      >
-                        <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.searchAddress")}</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10, marginBottom: 4 }}>
+                        <TouchableOpacity
+                          onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
+                          style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
+                        >
+                          <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.searchAddress")}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => void handleUseCurrentLocationForAtHome()}
+                          disabled={atHomePrefillState.status === "locating"}
+                          style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
+                        >
+                          {atHomePrefillState.status === "locating" ? (
+                            <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                          ) : (
+                            <Ionicons name="navigate-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                          )}
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>{t("booking.useCurrentLocation")}</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
+                    {atHomePrefillState.status === "error" ? (
+                      <Text style={{ fontSize: 12, color: "#B45309", marginTop: 4 }}>{atHomePrefillState.message}</Text>
+                    ) : null}
                     <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 10 }}>{t("booking.orEnterManually")}</Text>
                     <TextInput
                       placeholder={t("booking.streetAddress")}

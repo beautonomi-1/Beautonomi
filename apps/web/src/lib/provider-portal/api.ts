@@ -103,7 +103,7 @@ export interface ProviderApi {
   updateAppointment(id: string, data: Partial<Appointment>): Promise<Appointment>;
   deleteAppointment(id: string): Promise<void>;
   // At-home appointment status updates
-  startJourney(appointmentId: string, estimatedArrival?: string): Promise<Appointment>;
+  startJourney(appointmentId: string, etaMinutes?: number | null): Promise<Appointment>;
   markArrived(appointmentId: string, latitude?: number, longitude?: number): Promise<{ appointment: Appointment; otp: string | null; qr_code?: any }>;
   startService(appointmentId: string): Promise<Appointment>;
   completeService(appointmentId: string): Promise<Appointment>;
@@ -340,7 +340,12 @@ export interface ProviderApi {
   listRescheduleRequests(filters?: FilterParams): Promise<RescheduleRequest[]>;
   approveRescheduleRequest(requestId: string): Promise<void>;
   rejectRescheduleRequest(requestId: string, reason?: string): Promise<void>;
-  rescheduleAppointment(appointmentId: string, newDate: string, newTime: string): Promise<Appointment>;
+  rescheduleAppointment(
+    appointmentId: string,
+    newDate: string,
+    newTime: string,
+    options?: { notify_customer?: boolean },
+  ): Promise<Appointment>;
 
   // Print
   getAppointmentPrintData(appointmentId: string): Promise<any>;
@@ -944,6 +949,7 @@ export class ProviderApiClient implements ProviderApi {
       location_landmarks: address.location_landmarks ?? booking.location_landmarks ?? null,
       house_call_instructions: booking.house_call_instructions ?? null,
       current_stage: booking.current_stage,
+      estimated_arrival: booking.estimated_arrival ?? null,
       travel_fee: booking.travel_fee || 0,
       payment_status: booking.payment_status,
       tip_amount: booking.tip_amount || 0,
@@ -1178,6 +1184,9 @@ export class ProviderApiClient implements ProviderApi {
         const hh = (m?.[1] ?? "9").padStart(2, "0");
         const mm = (m?.[2] ?? "00").padStart(2, "0");
         updateData.scheduled_at = buildZonedIsoForWallClock(date, `${hh}:${mm}`, providerTimezone);
+      }
+      if ((data as any).notify_customer === false) {
+        updateData.notify_customer = false;
       }
       
       // Notes/special requests - always send if provided (even if empty string)
@@ -1455,6 +1464,7 @@ export class ProviderApiClient implements ProviderApi {
           ? "pending"
           : ((booking as { payment_status?: string }).payment_status as string | undefined),
         current_stage: (booking as { current_stage?: string }).current_stage,
+        estimated_arrival: (booking as { estimated_arrival?: string | null }).estimated_arrival ?? null,
         booking_id: isGroupAppointment ? id : String((booking as { id?: unknown }).id ?? ""),
         travel_fee: Number((booking as { travel_fee?: unknown }).travel_fee) || 0,
         // Services array for detailed view
@@ -2379,6 +2389,7 @@ export class ProviderApiClient implements ProviderApi {
         role: member.role === "provider_owner" ? "owner" : member.role === "provider_manager" ? "manager" : "employee",
         is_active: member.is_active ?? true,
         working_hours: member.working_hours ?? null,
+        over_cap_grace_until: member.over_cap_grace_until ?? null,
       }));
 
       return teamMembers;
@@ -4733,17 +4744,27 @@ export class ProviderApiClient implements ProviderApi {
     await fetcher.patch(`/api/provider/reschedule-requests/${requestId}`, { status: "rejected" });
   }
 
-  async rescheduleAppointment(appointmentId: string, newDate: string, newTime: string): Promise<Appointment> {
-    return this.updateAppointment(appointmentId, { scheduled_date: newDate, scheduled_time: newTime });
+  async rescheduleAppointment(
+    appointmentId: string,
+    newDate: string,
+    newTime: string,
+    options?: { notify_customer?: boolean },
+  ): Promise<Appointment> {
+    return this.updateAppointment(appointmentId, {
+      scheduled_date: newDate,
+      scheduled_time: newTime,
+      ...(options?.notify_customer === false ? { notify_customer: false } : {}),
+    } as Partial<Appointment>);
   }
 
   // At-home appointment status updates
-  async startJourney(appointmentId: string, estimatedArrival?: string): Promise<Appointment> {
+  async startJourney(appointmentId: string, etaMinutes?: number | null): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
+      const payload = etaMinutes != null ? { eta_minutes: etaMinutes } : {};
       const response = await fetcher.post<{ data: { booking?: any; group_booking?: any } }>(
         `/api/provider/bookings/${appointmentId}/start-journey`,
-        { estimated_arrival: estimatedArrival }
+        payload
       );
       return this.transformBookingToAppointment(
         response.data.booking ?? response.data.group_booking,
@@ -4857,6 +4878,7 @@ export class ProviderApiClient implements ProviderApi {
       address_longitude: booking.address_longitude,
       travel_fee: booking.travel_fee,
       current_stage: booking.current_stage,
+      estimated_arrival: booking.estimated_arrival,
       arrival_otp: booking.arrival_otp,
       arrival_otp_expires_at: booking.arrival_otp_expires_at,
       arrival_otp_verified: booking.arrival_otp_verified,

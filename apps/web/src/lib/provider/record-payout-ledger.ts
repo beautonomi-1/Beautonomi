@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { logger } from "@/lib/utils/logger";
 import { expectedGatewayFee } from "@/lib/payments/expected-gateway-fee";
+import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
 
 /**
  * Insert a finance_transactions row of type 'payout' when a payout is completed.
@@ -29,6 +30,8 @@ export async function recordPayoutLedger(
     /** Paystack transfer fee in major currency units (e.g. Rands). When not
      *  provided, falls back to expectedGatewayFee from config (R3 for ZA). */
     transferFeeMajor?: number;
+    /** payouts.currency when known; otherwise resolved from the provider tenant. */
+    currency?: string | null;
   }
 ): Promise<void> {
   const amount = Number(payout.net_amount ?? payout.amount ?? 0);
@@ -67,6 +70,10 @@ export async function recordPayoutLedger(
         tenant_id: null,
         provider_id: payout.provider_id,
       });
+      const currency = await resolveLedgerCurrency(supabase, {
+        currency: payout.currency ?? null,
+        tenantId,
+      });
 
       const { error } = await (supabase.from("finance_transactions") as any)
         .insert({
@@ -78,6 +85,7 @@ export async function recordPayoutLedger(
           fees: transferFee,
           commission: 0,
           net: amount,
+          currency,
           description: `Payout ${payout.payout_number || payout.id}`,
           created_at: new Date().toISOString(),
         });
@@ -127,6 +135,7 @@ export async function recordFailedPayoutTransferFee(
     provider_id: string;
     amount: number;
     payout_number?: string;
+    currency?: string | null;
   },
 ): Promise<void> {
   let transferFee = 0;
@@ -147,6 +156,10 @@ export async function recordFailedPayoutTransferFee(
       tenant_id: null,
       provider_id: payout.provider_id,
     });
+    const currency = await resolveLedgerCurrency(supabase, {
+      currency: payout.currency ?? null,
+      tenantId,
+    });
 
     await (supabase.from("finance_transactions") as any).insert({
       tenant_id: tenantId,
@@ -157,6 +170,7 @@ export async function recordFailedPayoutTransferFee(
       fees: transferFee,
       commission: 0,
       net: 0,
+      currency,
       description: `Paystack transfer fee (failed payout ${payout.payout_number || payout.id})`,
       created_at: new Date().toISOString(),
     });

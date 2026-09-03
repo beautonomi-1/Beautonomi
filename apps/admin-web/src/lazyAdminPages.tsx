@@ -171,6 +171,33 @@ export const GiftCardDetailPage = lazy(() =>
 export const SystemHealthPage = lazy(() =>
   import("@/routes/ops/SystemHealthPage").then((m) => ({ default: m.SystemHealthPage }))
 );
+export const CronRunsPage = lazy(() =>
+  import("@/routes/ops/CronRunsPage").then((m) => ({ default: m.CronRunsPage }))
+);
+export const WorkflowRunsPage = lazy(() =>
+  import("@/routes/ops/WorkflowRunsPage").then((m) => ({ default: m.WorkflowRunsPage }))
+);
+export const InboundWebhooksPage = lazy(() =>
+  import("@/routes/ops/InboundWebhooksPage").then((m) => ({ default: m.InboundWebhooksPage }))
+);
+export const ReconciliationExceptionsPage = lazy(() =>
+  import("@/routes/finance/ReconciliationExceptionsPage").then((m) => ({ default: m.ReconciliationExceptionsPage }))
+);
+export const LedgerRepairPage = lazy(() =>
+  import("@/routes/finance/LedgerRepairPage").then((m) => ({ default: m.LedgerRepairPage }))
+);
+export const LedgerHealthPage = lazy(() =>
+  import("@/routes/finance/LedgerHealthPage").then((m) => ({ default: m.LedgerHealthPage }))
+);
+export const FlutterwaveIntegrationPage = lazy(() =>
+  import("@/routes/integrations/FlutterwaveIntegrationPage").then((m) => ({ default: m.FlutterwaveIntegrationPage }))
+);
+export const SingularIntegrationPage = lazy(() =>
+  import("@/routes/integrations/SingularIntegrationPage").then((m) => ({ default: m.SingularIntegrationPage }))
+);
+export const OneSignalIntegrationPage = lazy(() =>
+  import("@/routes/integrations/OneSignalIntegrationPage").then((m) => ({ default: m.OneSignalIntegrationPage }))
+);
 export const MonitoringHealthPage = lazy(() =>
   import("@/routes/ops/MonitoringHealthPage").then((m) => ({ default: m.MonitoringHealthPage }))
 );

@@ -22,7 +22,7 @@ interface VersionConflictDialogProps {
 export function VersionConflictDialog({
   open,
   onOpenChange,
-  message = "This booking was updated elsewhere. Reload the latest version before saving your changes.",
+  message = "This booking changed, reload",
   onReload,
   onDismiss,
 }: VersionConflictDialogProps) {

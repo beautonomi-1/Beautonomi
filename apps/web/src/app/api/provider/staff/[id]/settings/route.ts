@@ -10,6 +10,7 @@ import {
   forbiddenResponse,
 } from "@/lib/supabase/api-helpers";
 import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 /**
@@ -187,15 +188,19 @@ export async function PATCH(
       return notFoundResponse("Staff member not found");
     }
 
-    const isOwnerOrSuper =
-      user.role === "provider_owner" || user.role === "superadmin";
     const isSelfStaff =
       user.role === "provider_staff" &&
       existingStaff.user_id != null &&
       existingStaff.user_id === user.id;
-
+    let isOwnerOrSuper =
+      user.role === "provider_owner" || user.role === "superadmin";
     if (!isOwnerOrSuper && !isSelfStaff) {
-      return errorResponse("Forbidden", "FORBIDDEN", 403);
+      // Managers with manage_team may edit other members' settings.
+      const manage = await requirePermission("manage_team", request);
+      if (!manage.authorized) {
+        return errorResponse("Forbidden", "FORBIDDEN", 403);
+      }
+      isOwnerOrSuper = true;
     }
 
     // Map camelCase to snake_case for database

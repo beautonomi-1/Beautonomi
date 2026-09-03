@@ -148,8 +148,8 @@ export async function POST(request: NextRequest) {
     // drafts a first reply, and proposes assignment — all human-approved.
     after(async () => {
       try {
-        const { runSupportTriageWorkflow } = await import("@/lib/agents/workflows/support-agent");
-        await runSupportTriageWorkflow({ ticketId: ticket.id });
+        const { startSupportTriageForTicket } = await import("@/workflows/start-support-triage");
+        await startSupportTriageForTicket(ticket.id);
       } catch (triageErr) {
         console.error("Support triage workflow failed:", triageErr);
       }

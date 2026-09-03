@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Appointment } from "@/lib/provider-portal/types";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { mapProviderBookingActionError } from "@beautonomi/provider-booking";
+import { getCustomerEtaUiParts } from "@beautonomi/utils";
 import {
   buildProviderBookingActionModel,
   type ProviderBookingAction,
@@ -22,6 +23,7 @@ import {
   BookingCompleteConfirmDialog,
   type BookingCompleteConfirmReason,
 } from "./BookingCompleteConfirmDialog";
+import { EtaPicker } from "../EtaPicker";
 
 interface BookingStatusActionsProps {
   appointment: Appointment;
@@ -54,6 +56,15 @@ export function BookingStatusActions({
   const [completeConfirmReason, setCompleteConfirmReason] =
     useState<BookingCompleteConfirmReason>("checklist");
   const [completeConfirmMessage, setCompleteConfirmMessage] = useState("");
+  const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
+  const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
+  const [isUpdatingEta, setIsUpdatingEta] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const canEdit = isOwner || hasPermission("edit_appointments");
   const canCancel = isOwner || hasPermission("cancel_appointments") || canEdit;
@@ -167,7 +178,9 @@ export function BookingStatusActions({
         }
 
         if (action.id === "start_journey") {
-          await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, {});
+          const payload =
+            journeyEtaMinutes != null ? { eta_minutes: journeyEtaMinutes } : {};
+          await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
           toast.success("Journey started");
           onUpdated?.();
           return;
@@ -216,12 +229,42 @@ export function BookingStatusActions({
         setBusy(null);
       }
     },
-    [appointment.id, beginCompleteService, onUpdated, version, canCancel, canEdit],
+    [appointment.id, beginCompleteService, journeyEtaMinutes, onUpdated, version, canCancel, canEdit],
   );
 
   const visibleActions = model.actions.filter(actionAllowed);
   const primary = model.primaryAction && actionAllowed(model.primaryAction) ? model.primaryAction : null;
   const secondary = visibleActions.filter((a) => a.id !== primary?.id);
+  const currentStage = typeof raw.current_stage === "string" ? raw.current_stage : undefined;
+  const estimatedArrival =
+    appointment.estimated_arrival ??
+    (typeof raw.estimated_arrival === "string" ? raw.estimated_arrival : null);
+  const etaParts = getCustomerEtaUiParts(estimatedArrival);
+  const isEnRoute = currentStage === "provider_on_way";
+  const isLate = isEnRoute && etaParts.isLate;
+  void nowMs;
+
+  const handleUpdateEta = async () => {
+    setIsUpdatingEta(true);
+    setError(null);
+    try {
+      await fetcher.patch(`/api/provider/bookings/${appointment.id}/eta`, {
+        eta_minutes: updateEtaMinutes,
+      });
+      toast.success("ETA updated");
+      onUpdated?.();
+    } catch (err) {
+      const fetchErr = err instanceof FetchError ? err : null;
+      const msg = mapProviderBookingActionError(
+        err instanceof Error ? err.message : "Failed to update ETA",
+        fetchErr?.code,
+      );
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsUpdatingEta(false);
+    }
+  };
 
   if (!canEdit && !canCancel) {
     return (
@@ -245,6 +288,41 @@ export function BookingStatusActions({
         ) : null}
 
         {error ? <BookingErrorBanner message={error} onDismiss={() => setError(null)} className="mb-3" /> : null}
+
+        {appointment.location_type === "at_home" &&
+        model.primaryAction?.id === "start_journey" ? (
+          <EtaPicker
+            value={journeyEtaMinutes}
+            onChange={setJourneyEtaMinutes}
+            disabled={busy != null}
+            className="mb-3"
+          />
+        ) : null}
+
+        {appointment.location_type === "at_home" && isEnRoute ? (
+          <div className="mb-3 space-y-2">
+            {isLate ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                You&apos;re past the estimated arrival. Update your ETA so the client knows you&apos;re
+                running a little late.
+              </p>
+            ) : null}
+            <EtaPicker
+              value={updateEtaMinutes}
+              onChange={setUpdateEtaMinutes}
+              disabled={isUpdatingEta || busy != null}
+            />
+            <BookingActionButton
+              size="sm"
+              fullWidth={false}
+              variant="outline"
+              disabled={isUpdatingEta || busy != null || updateEtaMinutes == null}
+              onClick={() => void handleUpdateEta()}
+            >
+              {isUpdatingEta ? "Updating ETA…" : "Update ETA"}
+            </BookingActionButton>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           {primary ? (

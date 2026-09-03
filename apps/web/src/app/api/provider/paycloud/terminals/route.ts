@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { resolveSingleActivePaycloudMerchant } from "@/lib/payments/paycloud-merchant-helpers";
 import {
   requirePaycloudPlatformEnabledForProvider,
@@ -20,7 +21,9 @@ const createTerminalSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {

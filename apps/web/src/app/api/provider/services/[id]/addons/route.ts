@@ -3,6 +3,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, getProviderIdForUser, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
@@ -105,7 +106,11 @@ export async function POST(
 ) {
   try {
     const { id: serviceId } = await params;
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

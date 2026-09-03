@@ -6,13 +6,14 @@ export function getCustomerEtaUiParts(estimatedArrivalIso: string | null | undef
   show: boolean;
   timeLabel: string | null;
   minutesLabel: string;
+  isLate: boolean;
 } {
   if (!estimatedArrivalIso || typeof estimatedArrivalIso !== "string") {
-    return { show: false, timeLabel: null, minutesLabel: "" };
+    return { show: false, timeLabel: null, minutesLabel: "", isLate: false };
   }
   const d = new Date(estimatedArrivalIso);
   if (!Number.isFinite(d.getTime())) {
-    return { show: false, timeLabel: null, minutesLabel: "" };
+    return { show: false, timeLabel: null, minutesLabel: "", isLate: false };
   }
   const ms = d.getTime() - Date.now();
   const minutes = Math.ceil(ms / 60000);
@@ -21,8 +22,11 @@ export function getCustomerEtaUiParts(estimatedArrivalIso: string | null | undef
     minute: "2-digit",
     hour12: true,
   });
-  if (minutes <= 1) {
-    return { show: true, timeLabel, minutesLabel: "Arriving soon" };
+  if (ms < 0) {
+    return { show: true, timeLabel, minutesLabel: "Running a little late", isLate: true };
   }
-  return { show: true, timeLabel, minutesLabel: `~${minutes} min` };
+  if (minutes <= 1) {
+    return { show: true, timeLabel, minutesLabel: "Arriving soon", isLate: false };
+  }
+  return { show: true, timeLabel, minutesLabel: `~${minutes} min`, isLate: false };
 }

@@ -40,6 +40,7 @@ export interface ProviderRevenueLedgerRow {
  */
 export const RECOGNIZED_REVENUE_TYPES = [
   "provider_earnings",
+  "membership_provider_earnings",
   "tip",
   "travel_fee",
   "cancellation_fee",
@@ -151,11 +152,12 @@ export function providerNetAfterRefunds(rows: ReadonlyArray<ProviderRevenueLedge
 /** Itemized recognized-revenue breakdown that always reconciles to the totals above. */
 export interface ProviderRevenueBreakdown {
   serviceEarnings: number;
+  membershipEarnings: number;
   tips: number;
   travelFees: number;
   cancellationFees: number;
   walkInAdditionalCharges: number;
-  /** Sum of the five components above (== recognizedRevenue). */
+  /** Sum of the six components above (== recognizedRevenue). */
   recognizedRevenue: number;
   /** Positive provider refund clawback. */
   refundDeduction: number;
@@ -168,6 +170,7 @@ export function computeProviderRevenueBreakdown(
   rows: ReadonlyArray<ProviderRevenueLedgerRow>,
 ): ProviderRevenueBreakdown {
   let serviceEarnings = 0;
+  let membershipEarnings = 0;
   let tips = 0;
   let travelFees = 0;
   let cancellationFees = 0;
@@ -178,6 +181,9 @@ export function computeProviderRevenueBreakdown(
     switch (r.transaction_type) {
       case "provider_earnings":
         serviceEarnings += rowNet(r);
+        break;
+      case "membership_provider_earnings":
+        membershipEarnings += rowNet(r);
         break;
       case "tip":
         tips += rowNet(r);
@@ -201,9 +207,11 @@ export function computeProviderRevenueBreakdown(
     }
   }
 
-  const recognized = serviceEarnings + tips + travelFees + cancellationFees + walkInAdditionalCharges;
+  const recognized =
+    serviceEarnings + membershipEarnings + tips + travelFees + cancellationFees + walkInAdditionalCharges;
   return {
     serviceEarnings,
+    membershipEarnings,
     tips,
     travelFees,
     cancellationFees,
@@ -233,11 +241,16 @@ export function isPlatformAdditionalChargeProviderEarnings(row: DashboardEarning
  * double-count. Includes platform-settled add-ons (provider_earnings) and walk-in
  * add-ons (`walk_in_additional_charge`).
  */
+export function isMembershipProviderEarningsRow(row: DashboardEarningsMixRow): boolean {
+  return row.transaction_type === "membership_provider_earnings";
+}
+
 export function isMembershipProviderEarnings(row: DashboardEarningsMixRow): boolean {
   return (
-    row.transaction_type === "provider_earnings" &&
-    !row.booking_id &&
-    !row.product_order_id
+    isMembershipProviderEarningsRow(row) ||
+    (row.transaction_type === "provider_earnings" &&
+      !row.booking_id &&
+      !row.product_order_id)
   );
 }
 
@@ -255,7 +268,7 @@ export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarning
       walkInAdditionalChargeEarnings += net;
       continue;
     }
-    if (r.transaction_type !== "provider_earnings") continue;
+    if (r.transaction_type !== "provider_earnings" && r.transaction_type !== "membership_provider_earnings") continue;
     if (r.product_order_id) {
       productOrderEarningsTotal += net;
       continue;
@@ -271,7 +284,9 @@ export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarning
       membershipEarningsTotal += net;
       continue;
     }
-    otherEarningsTotal += net;
+    if (r.transaction_type === "provider_earnings") {
+      otherEarningsTotal += net;
+    }
   }
 
   const additionalChargeEarningsTotal =

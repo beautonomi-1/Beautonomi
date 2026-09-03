@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const date = searchParams.get('date');
     const startTime = searchParams.get('startTime');
     const endTime = searchParams.get('endTime');
-    const serviceId = searchParams.get('serviceId');
+    const serviceId = searchParams.get("serviceId") ?? searchParams.get("offering_id");
     const locationId = searchParams.get('locationId');
 
     const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
         *,
         staff_services!left(service_id, offering_id),
         staff_schedules!left(day_of_week, start_time, end_time, is_working),
-        staff_time_off!left(start_date, end_date, reason),
+        staff_time_off!left(start_date, end_date, reason, status),
         provider_staff_locations!left(location_id)
       `)
       .eq("provider_id", providerId)
@@ -123,6 +123,8 @@ export async function GET(request: NextRequest) {
       // 3. Check if on time off (if date provided)
       if (date) {
         const isOnTimeOff = (member as any).staff_time_off?.some((timeOff: any) => {
+          // Only approved time off (legacy rows without status count as approved).
+          if (timeOff.status != null && timeOff.status !== "approved") return false;
           return date >= timeOff.start_date && date <= timeOff.end_date;
         });
         if (isOnTimeOff) return false;

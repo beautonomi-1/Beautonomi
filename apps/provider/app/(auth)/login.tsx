@@ -44,6 +44,7 @@ import {
   isAppReviewDemoEmail,
   isAppReviewDemoPhone,
 } from "@/lib/auth/app-review-demo";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRIMARY = Colors.primary;
 
@@ -76,6 +77,7 @@ export default function LoginScreen() {
     return token ? `/join?token=${encodeURIComponent(token)}` : undefined;
   }, [params.joinToken]);
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
+  const { t } = useTranslation();
   const {
     signInWithOtp,
     verifyOtp,
@@ -746,7 +748,7 @@ export default function LoginScreen() {
           style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          Welcome
+          {t("auth.welcome")}
         </Text>
         <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
           Sign in or create an account · Beautonomi for service pros
@@ -1166,7 +1168,7 @@ export default function LoginScreen() {
             {(isSignup || !emailOtpMode) && (
               <>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-                  Password
+                  {t("auth.password")}
                 </Text>
                 <View
                   style={{
@@ -1293,7 +1295,7 @@ export default function LoginScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Send email verification code"
                 >
-                  {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Send code</Text>}
+                  {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{t("auth.sendCode")}</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -1329,7 +1331,7 @@ export default function LoginScreen() {
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
-                    {isSignup ? "Sign up" : "Sign In"}
+                    {isSignup ? t("auth.signup") : t("auth.login")}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1350,8 +1352,8 @@ export default function LoginScreen() {
               accessibilityRole="button"
             >
               <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                {isSignup ? "Already have an account? " : "Don't have an account? "}
-                <Text style={{ fontWeight: "700", color: PRIMARY }}>{isSignup ? "Sign in" : "Sign up"}</Text>
+                {isSignup ? `${t("auth.alreadyHaveAccount")} ` : `${t("auth.dontHaveAccount")} `}
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{isSignup ? t("auth.login") : t("auth.signup")}</Text>
               </Text>
             </TouchableOpacity>
 
@@ -1364,8 +1366,8 @@ export default function LoginScreen() {
                   accessibilityLabel="Forgot password? Reset it"
                 >
                   <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                    Forgot your password?{" "}
-                    <Text style={{ fontWeight: "700", color: PRIMARY }}>Reset it</Text>
+                    {t("auth.forgotPassword")}{" "}
+                    <Text style={{ fontWeight: "700", color: PRIMARY }}>{t("auth.resetPassword")}</Text>
                   </Text>
                 </TouchableOpacity>
                 {auth.email_provider_enabled && (
@@ -1457,10 +1459,10 @@ export default function LoginScreen() {
                   backgroundColor: "#fff",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Continue with Google"
+                accessibilityLabel={t("auth.continueWithGoogle")}
               >
                 <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithGoogle")}</Text>
               </TouchableOpacity>
             )}
 
@@ -1485,10 +1487,10 @@ export default function LoginScreen() {
                   backgroundColor: "#fff",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Continue with Apple"
+                accessibilityLabel={t("auth.continueWithApple")}
               >
                 <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithApple")}</Text>
               </TouchableOpacity>
             ) : null}
           </>
@@ -1496,10 +1498,10 @@ export default function LoginScreen() {
 
         {showPhoneLoginBlock && !otpSent ? (
           <View style={{ marginTop: 20 }}>
-            <TouchableOpacity onPress={goToSignup} accessibilityRole="link" accessibilityLabel="Sign up for a new account">
+            <TouchableOpacity onPress={goToSignup} accessibilityRole="link" accessibilityLabel={t("auth.signup")}>
               <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                Don&apos;t have an account?{" "}
-                <Text style={{ fontWeight: "700", color: PRIMARY }}>Sign up</Text>
+                {t("auth.dontHaveAccount")}{" "}
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{t("auth.signup")}</Text>
               </Text>
             </TouchableOpacity>
           </View>

@@ -41,6 +41,7 @@ export async function GET(
         *,
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
+          fulfilment_status, fulfilled_qty, fulfilment_updated_at,
           product_variant:product_variants (id, option_values)
         ),
         provider:providers (

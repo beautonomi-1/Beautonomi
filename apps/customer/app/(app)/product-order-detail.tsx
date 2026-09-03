@@ -30,7 +30,8 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, getProductOrderSupportPrompt } from "@beautonomi/utils";
+import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -144,6 +145,7 @@ export default function ProductOrderDetailScreen() {
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const paystackHostedCheckout = useInAppPaystackCheckout();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
@@ -217,6 +219,11 @@ export default function ProductOrderDetailScreen() {
   }
 
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
+  const canSelfCancel =
+    !isCancelled &&
+    !order.shipped_at &&
+    !order.delivered_at &&
+    ["pending", "confirmed", "processing"].includes(order.status);
   const statusTimeline = getStatusTimeline((order as { fulfillment_type?: string }).fulfillment_type);
   const currentIdx = getTimelineIndex(order.status, (order as { fulfillment_type?: string }).fulfillment_type);
   const fb = getTenantDefaultCurrency();
@@ -360,6 +367,42 @@ export default function ProductOrderDetailScreen() {
           text receipt from the already-fetched order so customers can
           AirDrop / email / message it like a booking receipt.
         */}
+        {canSelfCancel ? (
+          <TouchableOpacity
+            onPress={() => {
+              Alert.alert(
+                "Cancel order",
+                "Cancel this order? In-stock items will be restocked and paid tenders refunded.",
+                [
+                  { text: "Keep order", style: "cancel" },
+                  {
+                    text: "Cancel order",
+                    style: "destructive",
+                    onPress: () => {
+                      void (async () => {
+                        setCancelling(true);
+                        const res = await api.patch(`/api/me/orders/${order.id}/cancel`, {});
+                        setCancelling(false);
+                        if (res.error) {
+                          Alert.alert("Cancel order", res.error.message || "Could not cancel this order.");
+                          return;
+                        }
+                        const next = await fetchOrderDetail(order.id);
+                        if (next.data) setOrder(next.data);
+                      })();
+                    },
+                  },
+                ],
+              );
+            }}
+            disabled={cancelling}
+            style={{ padding: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel order"
+          >
+            <Ionicons name="close-circle-outline" size={22} color="#B91C1C" />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={() => {
             void shareCustomerOrderReceipt(order.id, order.order_number).catch((e) =>
@@ -402,6 +445,95 @@ export default function ProductOrderDetailScreen() {
           ...constraint,
         }}
       >
+        {(() => {
+          const prompt = getProductOrderSupportPrompt({
+            status: order.status,
+            paymentStatus: order.payment_status,
+          });
+          const urgent = prompt.prominence === "urgent";
+          return (
+            <View
+              style={{
+                marginBottom: 12,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: urgent ? "#FCD34D" : "#E5E7EB",
+                backgroundColor: urgent ? "#FFFBEB" : "#fff",
+                padding: 14,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#6B7280", textTransform: "uppercase" }}>
+                Order ID
+              </Text>
+              <Text
+                selectable
+                style={{
+                  marginTop: 4,
+                  fontSize: 13,
+                  color: "#111827",
+                  fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+                }}
+              >
+                {order.id}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  onPress={() => void Clipboard.setStringAsync(order.order_number || order.id)}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                    backgroundColor: "#fff",
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy order number"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Copy number</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void Clipboard.setStringAsync(order.id)}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                    backgroundColor: "#fff",
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy order ID"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Copy ID</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/(tabs)/support-tickets/new",
+                      params: {
+                        order_id: order.id,
+                        ...(order.order_number ? { order_number: order.order_number } : {}),
+                        category: prompt.category,
+                      },
+                    })
+                  }
+                  style={{
+                    borderRadius: 10,
+                    backgroundColor: urgent ? "#92400E" : Colors.primary,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Contact support"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>Contact support</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ marginTop: 8, fontSize: 12, color: urgent ? "#92400E" : "#6B7280" }}>{prompt.body}</Text>
+            </View>
+          );
+        })()}
         {/* Status timeline */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
@@ -847,6 +979,18 @@ export default function ProductOrderDetailScreen() {
               <Text style={{ fontSize: 14, color: "#059669" }}>{fmt(walletAmt)}</Text>
             </View>
           )}
+          {Number(order.gift_card_amount ?? 0) > 0 && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>Paid from gift card</Text>
+              <Text style={{ fontSize: 14, color: "#059669" }}>{fmt(Number(order.gift_card_amount))}</Text>
+            </View>
+          )}
+          {order.promotion_code ? (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>Promotion</Text>
+              <Text style={{ fontSize: 14, color: "#059669" }}>{order.promotion_code}</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Calculated total</Text>
             <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>

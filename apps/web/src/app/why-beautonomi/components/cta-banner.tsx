@@ -25,7 +25,7 @@ export default function CTABanner({ content }: CTABannerProps) {
     content?.cta_banner_description?.content ||
     "Join Beautonomi today and discover why thousands of beauty professionals choose us to run their day.";
   const ctaButtonText = content?.cta_banner_button_text?.content || "Get started free";
-  const ctaUrl = content?.cta_banner_url?.content || "/signup?type=provider";
+  const ctaUrl = content?.cta_banner_url?.content || "/provider/signup";
   const bannerImage = content?.cta_banner_image?.content;
 
   let points: string[] = ["Free to get started", "Set up in minutes", "Cancel anytime"];

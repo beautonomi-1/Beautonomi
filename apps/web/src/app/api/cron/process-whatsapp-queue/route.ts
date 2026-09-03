@@ -4,6 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveSessionMessagingBearer, sendTextMessage } from "@/lib/whatsapp/wasender-client";
 import { incrementBulkBatchCount } from "@/lib/whatsapp/increment-bulk-batch-count";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "process-whatsapp-queue";
+export const maxDuration = 300;
 
 const MAX_PER_INVOCATION = 10;
 
@@ -18,6 +22,15 @@ function sleep(ms: number) {
  * Enforces session-level daily/hourly limits, pacing, and auto-pause on consecutive failures.
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
+  // Runs every 2 minutes; reclaim a dead run quickly so the queue never stalls.
+  return runLockedCronRoute(JOB_NAME, () => runJob(request), { staleAfterMinutes: 6 });
+}
+
+async function runJob(request: NextRequest) {
   const { valid, error } = verifyCronRequest(request);
   if (!valid) {
     return NextResponse.json({ error }, { status: 401 });

@@ -43,8 +43,15 @@ import { toast } from "sonner";
 import { SyncIndicator } from "@/components/provider/SyncIndicator";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
 import { BulkBookingActions } from "@/components/provider/BulkBookingActions";
-import { PostForRewardNudge } from "@/components/provider/PostForRewardNudge";
-import { ProviderClientRatingDialog } from "@/components/provider-portal/ProviderClientRatingDialog";
+import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
+import { EtaPicker } from "@/components/provider/booking/EtaPicker";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AppointmentStatusBadge } from "@/components/provider-portal/AppointmentStatusBadge";
 import { Money } from "@/components/provider-portal/Money";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
@@ -183,14 +190,14 @@ export function BookingsClient({
   const [selectedBookings, setSelectedBookings] = useState<Set<string>>(new Set());
   const [conflictError, setConflictError] = useState<string | null>(null);
 
-  // Rating / nudge
-  const [pendingRatingBooking, setPendingRatingBooking] = useState<{
+  const [pendingCompletion, setPendingCompletion] = useState<{
     id: string;
     customer_name: string;
-    location_id: string | null;
-    location_name?: string | null;
+    service_name: string;
+    offering_id?: string;
   } | null>(null);
-  const [showPostNudge, setShowPostNudge] = useState(false);
+  const [journeyDialog, setJourneyDialog] = useState<{ id: string; version?: number } | null>(null);
+  const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
 
   // Yoco
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
@@ -349,11 +356,12 @@ export function BookingsClient({
         toast.success("Service completed");
         loadBookings();
         if (booking) {
-          setPendingRatingBooking({
+          const firstService = (booking.services as { offering_name?: string; service_name?: string; offering_id?: string }[] | undefined)?.[0];
+          setPendingCompletion({
             id: booking.id,
             customer_name: booking.customer_name ?? "Customer",
-            location_id: booking.location_id ?? null,
-            location_name: booking.location_name ?? null,
+            service_name: firstService?.offering_name || firstService?.service_name || "Appointment",
+            offering_id: firstService?.offering_id,
           });
         }
         return;
@@ -367,7 +375,8 @@ export function BookingsClient({
       }
 
       if (newStatus === "start_journey") {
-        await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, {});
+        const payload = journeyEtaMinutes != null ? { eta_minutes: journeyEtaMinutes } : {};
+        await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
         toast.success("Journey started");
         loadBookings();
         return;
@@ -386,8 +395,8 @@ export function BookingsClient({
       );
 
       if (response.conflict) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
         return;
       }
 
@@ -395,8 +404,8 @@ export function BookingsClient({
       loadBookings();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("This booking was modified by another user. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         toast.error(err instanceof Error ? err.message : "Failed to update booking status");
       }
@@ -412,8 +421,8 @@ export function BookingsClient({
       loadBookings();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("Some bookings were modified. Please refresh and try again.");
-        toast.error("Conflict detected. Please refresh and try again.");
+        setConflictError("This booking changed, reload");
+        toast.error("This booking changed, reload");
       } else {
         toast.error(`Failed to ${action} bookings`);
       }
@@ -471,7 +480,8 @@ export function BookingsClient({
     }
     void runWithPendingAction(booking.id, async () => {
       if (action.id === "start_journey") {
-        await handleStatusChange(booking.id, "start_journey", booking.version);
+        setJourneyEtaMinutes(15);
+        setJourneyDialog({ id: booking.id, version: booking.version });
         return;
       }
       if (action.id === "mark_arrived") {
@@ -1476,23 +1486,40 @@ export function BookingsClient({
           </>
         )}
 
-        {/* Rating dialog after completion */}
-        {pendingRatingBooking && (
-          <ProviderClientRatingDialog
-            open={!!pendingRatingBooking}
-            onOpenChange={(open) => !open && setPendingRatingBooking(null)}
-            bookingId={pendingRatingBooking.id}
-            customerName={pendingRatingBooking.customer_name}
-            locationId={pendingRatingBooking.location_id}
-            locationName={pendingRatingBooking.location_name ?? undefined}
-            requireRating
-            onRatingSubmitted={() => {
-              setPendingRatingBooking(null);
-              setShowPostNudge(true);
-            }}
+        <Dialog open={journeyDialog != null} onOpenChange={(open) => !open && setJourneyDialog(null)}>
+          <DialogContent className="rounded-2xl max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Start journey</DialogTitle>
+            </DialogHeader>
+            <EtaPicker value={journeyEtaMinutes} onChange={setJourneyEtaMinutes} />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setJourneyDialog(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!journeyDialog) return;
+                  const target = journeyDialog;
+                  setJourneyDialog(null);
+                  void handleStatusChange(target.id, "start_journey", target.version);
+                }}
+              >
+                Start journey
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {pendingCompletion ? (
+          <PostCompletionSheet
+            open
+            bookingId={pendingCompletion.id}
+            primaryServiceName={pendingCompletion.service_name}
+            primaryOfferingId={pendingCompletion.offering_id}
+            customerName={pendingCompletion.customer_name}
+            onDismiss={() => setPendingCompletion(null)}
           />
-        )}
-        <PostForRewardNudge open={showPostNudge} onOpenChange={setShowPostNudge} />
+        ) : null}
 
         {paycloudBooking && (
           <PayCloudPaymentDialog

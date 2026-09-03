@@ -106,4 +106,15 @@ describe("booking payment and lifecycle display", () => {
     expect(payment.label).toBe("Deposit paid");
     expect(payment.isDepositPaid).toBe(true);
   });
+
+  it("labels a failed charge as payment failed, not pending", () => {
+    const payment = getBookingPaymentDisplay({
+      paymentStatus: "failed",
+      outstandingBalance: 250,
+    });
+
+    expect(payment.label).toBe("Payment failed");
+    expect(payment.tone).toBe("danger");
+    expect(payment.isPaymentSettled).toBe(false);
+  });
 });

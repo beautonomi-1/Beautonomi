@@ -9,8 +9,12 @@ import {
   stripStorageBackedAttachmentsForPersistence,
 } from "@/lib/messaging/message-attachments";
 
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
 const PAGE = 200;
 const MAX_PAGES = 40;
+const JOB_NAME = "expire-message-attachments";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/expire-message-attachments
@@ -19,6 +23,14 @@ const MAX_PAGES = 40;
  * with expired placeholders (offers / custom_request payloads are preserved).
  */
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return new Response(auth.error || "Unauthorized", { status: 401 });
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
     if (!auth.valid) {

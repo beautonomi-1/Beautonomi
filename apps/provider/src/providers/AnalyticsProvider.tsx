@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { InteractionManager, Linking } from "react-native";
+import { AppState, InteractionManager, Linking } from "react-native";
 import { fetchAmplitudeConfig } from "@beautonomi/analytics";
 import {
   initAnalytics,
@@ -11,7 +11,11 @@ import {
 } from "@/lib/analytics-rn";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
-import { setAnalyticsInstance } from "@/lib/analytics";
+import { setAnalyticsInstance, trackAppOpen, trackDeepLinkOpened } from "@/lib/analytics";
+import { setSingularCustomUserId, unsetSingularCustomUserId } from "@/lib/singular";
+
+/** Process-lifetime guard: `app_open{cold_start:true}` fires once per JS runtime. */
+let coldStartTracked = false;
 import { useAuth } from "./AuthProvider";
 import { attBootstrapPromise } from "@/lib/tracking/request-att-before-tracking";
 
@@ -86,6 +90,12 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
               logEvent: client.track,
               identify: client.identify,
             });
+            if (!coldStartTracked) {
+              coldStartTracked = true;
+              const initialUrl = await Linking.getInitialURL().catch(() => null);
+              trackAppOpen(true, initialUrl ? "deep_link" : "direct");
+              if (initialUrl) trackDeepLinkOpened(initialUrl, "cold_start");
+            }
           } else {
             setAnalyticsInstance(null);
           }
@@ -107,6 +117,11 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
                 return;
               }
               client.identify(user.id, res.data as Record<string, unknown>);
+              const providerId = (res.data as { provider_id?: unknown }).provider_id;
+              if (typeof providerId === "string" && providerId) {
+                client.setGroup("provider", providerId);
+              }
+              setSingularCustomUserId(user.id);
             } catch (e) {
               console.error("[Analytics] Identify request failed:", e);
             }
@@ -132,6 +147,12 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       deferredHandle?.cancel?.();
+      try {
+        clientRef.current?.reset();
+      } catch {
+        /* ignore */
+      }
+      unsetSingularCustomUserId();
       resetAnalyticsModule();
       clientRef.current = null;
       setAnalyticsInstance(null);
@@ -157,6 +178,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     const subscription = Linking.addEventListener("url", async ({ url }) => {
       await attBootstrapPromise;
       await captureMarketingAttributionFromUrl(url);
+      trackDeepLinkOpened(url, "warm");
       const handled = await handleEngagementURL(url);
       if (handled) return;
     });
@@ -164,6 +186,24 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       subscription.remove();
     };
+  }, []);
+
+  // Reliability: flush the queue when the app backgrounds and emit a warm `app_open` on resume.
+  useEffect(() => {
+    let previous = AppState.currentState;
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "background" || next === "inactive") {
+        try {
+          clientRef.current?.flush?.();
+        } catch {
+          /* ignore */
+        }
+      } else if (next === "active" && previous !== "active" && clientRef.current) {
+        trackAppOpen(false, "direct");
+      }
+      previous = next;
+    });
+    return () => sub.remove();
   }, []);
 
   return <>{children}</>;

@@ -2,7 +2,7 @@
  * Native Team Totals – daily and weekly performance for staff.
  * Full parity with web: date/week navigation, staff filter, stats cards, table.
  */
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { twStyle } from "@/lib/twStyle";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { resolveReportTimezone } from "@/lib/reportDateRanges";
 import { formatCurrency } from "@/lib/format";
+import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
 
 /**
  * Calendar anchor (local noon) for the provider-timezone civil date of `instant`.
@@ -66,6 +67,11 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
     startOfWeek(tzCalendarAnchor(new Date(), tz), { weekStartsOn: 1 }),
   );
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>("all");
+  const { calendarScopeOwn, selfStaffId } = useCalendarScopeLock();
+
+  useEffect(() => {
+    if (calendarScopeOwn && selfStaffId) setSelectedMemberId(selfStaffId);
+  }, [calendarScopeOwn, selfStaffId]);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
@@ -202,7 +208,7 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
         </View>
 
         {/* Staff filter */}
-        {staffList.length > 0 && (
+        {staffList.length > 0 && !calendarScopeOwn && (
           <View style={twStyle("mb-4")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Staff</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>

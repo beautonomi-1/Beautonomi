@@ -362,8 +362,11 @@ jobs:
       - name: Run multi-tenant audits (strict tenant hints)
         run: pnpm audit:multi-tenant:strict
 
-      - name: Verify cron schedule (all 38 handlers exist)
+      - name: Verify cron schedule (handlers, orphans, syntax)
         run: pnpm verify:cron-schedule
+
+      - name: Workflow directive static check
+        run: pnpm --filter web exec vitest run src/workflows/__tests__/directives.test.ts
 
       - name: RLS harness (static + optional live Supabase)
         run: pnpm --filter web exec vitest run src/lib/security/__tests__/rls-harness.test.ts

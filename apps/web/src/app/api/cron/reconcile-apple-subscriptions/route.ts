@@ -4,6 +4,10 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { loadAppleIapConfig } from "@/lib/iap/apple/config";
 import { reconcileStaleAppleSubscriptions } from "@/lib/iap/apple/reconcile-subscriptions";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+
+const JOB_NAME = "reconcile-apple-subscriptions";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/reconcile-apple-subscriptions
@@ -16,14 +20,16 @@ export async function GET(request: NextRequest) {
       return new Response(JSON.stringify({ error: auth.error }), { status: 401 });
     }
 
-    const supabase = getSupabaseAdmin();
-    const config = await loadAppleIapConfig(supabase);
-    if (!config) {
-      return successResponse({ reconciled: 0, skipped: "Apple IAP not configured" });
-    }
+    return await runLockedCronRoute(JOB_NAME, async () => {
+      const supabase = getSupabaseAdmin();
+      const config = await loadAppleIapConfig(supabase);
+      if (!config) {
+        return successResponse({ reconciled: 0, skipped: "Apple IAP not configured" });
+      }
 
-    const result = await reconcileStaleAppleSubscriptions({ supabase, config });
-    return successResponse(result);
+      const result = await reconcileStaleAppleSubscriptions({ supabase, config });
+      return successResponse(result);
+    });
   } catch (error) {
     return handleApiError(error);
   }

@@ -135,4 +135,16 @@ describe("computeBookingsStats", () => {
       expect(stats.timezone).toBeTruthy();
     }
   });
+
+  it("returns zeroed stats when calendar-scoped staff has no matching bookings", async () => {
+    const admin = makeAdmin({ count: 9 });
+    const { computeBookingsStats } = await import("@/lib/server/provider/bookings-stats");
+    const stats = await computeBookingsStats(admin, "provider-1", "all", null, "staff-1");
+
+    expect(stats.appointment_count).toBe(0);
+    expect(stats.booked_gmv).toBe(0);
+    expect(stats.recognized_revenue).toBe(0);
+    expect(stats.pending_count).toBe(0);
+    expect(stats.confirmed_count).toBe(0);
+  });
 });

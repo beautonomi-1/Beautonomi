@@ -28,6 +28,11 @@ import {
   type ProductOrderSheetOrder,
 } from "@/lib/provider-booking/product-order-sheet-utils";
 import {
+  isValidLineTransition,
+  LINE_FULFILMENT_STATUSES,
+  normalizeLineStatus,
+} from "@/lib/ecommerce/product-order-line-fulfilment";
+import {
   BookingBottomSheet,
   BookingActionButton,
   BookingSectionCard,
@@ -163,6 +168,24 @@ export function ProductOrderViewSheet({
     await patchOrder({ status: newStatus });
   };
 
+  const handleLineFulfilment = async (itemId: string, fulfilmentStatus: string) => {
+    if (!order) return;
+    setBusy(true);
+    try {
+      await fetcher.patch(`/api/provider/product-orders/${order.id}/items/${itemId}`, {
+        fulfilment_status: fulfilmentStatus,
+      });
+      clearFetcherCache();
+      await load();
+      onUpdated?.();
+      toast.success("Line updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update this line");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitTracking = async () => {
     if (!order || !pendingShipStatus) return;
     const urlTrim = trackingUrl.trim();
@@ -287,27 +310,58 @@ export function ProductOrderViewSheet({
 
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2">Items</BookingSectionLabel>
-              <ul className="space-y-2 text-sm">
-                {order.items?.map((item) => (
-                  <li key={item.id} className="flex justify-between gap-2">
-                    <span>
-                      {item.quantity}× {item.product_name}
-                      {item.product_variant?.option_values &&
-                      Object.keys(item.product_variant.option_values).length > 0
-                        ? ` · ${Object.values(item.product_variant.option_values).join(", ")}`
-                        : ""}
-                    </span>
-                    <span className="font-medium shrink-0">
-                      {formatMoney(Number(item.total_price))}
-                    </span>
-                  </li>
-                ))}
+              <ul className="space-y-3 text-sm">
+                {order.items?.map((item) => {
+                  const from = normalizeLineStatus(item.fulfilment_status);
+                  const lineLocked =
+                    busy || order.status === "cancelled" || order.status === "refunded";
+                  return (
+                    <li key={item.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                      <span>
+                        {item.quantity}× {item.product_name}
+                        {item.product_variant?.option_values &&
+                        Object.keys(item.product_variant.option_values).length > 0
+                          ? ` · ${Object.values(item.product_variant.option_values).join(", ")}`
+                          : ""}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <select
+                          value={from}
+                          disabled={lineLocked || from === "delivered" || from === "cancelled"}
+                          onChange={(e) => void handleLineFulfilment(item.id, e.target.value)}
+                          aria-label={`Fulfilment for ${item.product_name}`}
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 disabled:opacity-50"
+                        >
+                          {LINE_FULFILMENT_STATUSES.filter(
+                            (status) => status === from || isValidLineTransition(from, status),
+                          ).map((status) => (
+                            <option key={status} value={status}>
+                              {status.replace(/_/g, " ")}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="font-medium">
+                          {formatMoney(Number(item.total_price))}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </BookingSectionCard>
 
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2">Totals</BookingSectionLabel>
               <BookingSummaryRow label="Total" value={formatMoney(totalAmount)} emphasize />
+              {Number(order.gift_card_amount ?? 0) > 0 ? (
+                <BookingSummaryRow
+                  label="Paid from gift card"
+                  value={formatMoney(Number(order.gift_card_amount))}
+                />
+              ) : null}
+              {order.promotion_code ? (
+                <BookingSummaryRow label="Promotion" value={order.promotion_code} />
+              ) : null}
               {!isAppointmentOrder ? (
                 <BookingSummaryRow label="Your earnings" value={formatMoney(providerEarnings)} />
               ) : (

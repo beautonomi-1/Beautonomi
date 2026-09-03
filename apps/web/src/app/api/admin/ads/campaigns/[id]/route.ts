@@ -10,10 +10,13 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireSuperadminPlatform } from "@/lib/admin/require-superadmin-platform";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { notifyAdsCampaignEvent } from "@/lib/ads/notify-ads-campaign-event";
+import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 
 const patchSchema = z.object({
-  status: z.enum(["paused", "ended", "active"]),
+  status: z.enum(["paused", "ended", "active", "rejected"]),
   reason: z.string().max(500).optional(),
+  rejection_reason: z.string().max(1000).optional(),
 });
 
 /**
@@ -132,12 +135,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!parsed.success) {
       return errorResponse("Invalid input", "VALIDATION_ERROR", 400, parsed.error.issues);
     }
-    const { status, reason } = parsed.data;
+    const { status, reason, rejection_reason } = parsed.data;
 
     const admin = getSupabaseAdmin();
     const { data: existing, error: fetchErr } = await admin
       .from("ads_campaigns")
-      .select("id, status")
+      .select("id, status, provider_id, paid_order_id, funded_at, budget, spent, billing_model")
       .eq("id", id)
       .maybeSingle();
 
@@ -147,25 +150,104 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const prev = String((existing as { status: string }).status);
+    const ex = existing as {
+      status: string;
+      provider_id: string;
+      paid_order_id?: string | null;
+      funded_at?: string | null;
+      budget?: number | null;
+      spent?: number | null;
+    };
+
+    if (status === "rejected") {
+      if (prev !== "pending_review") {
+        return errorResponse("Only pending_review campaigns can be rejected", "INVALID_STATE", 400);
+      }
+      if (ex.paid_order_id) {
+        await reverseAdsBudgetOrderPayment({
+          supabase: admin,
+          orderId: String(ex.paid_order_id),
+          finalOrderStatus: "refunded",
+          reason: rejection_reason || reason || "moderation_rejected",
+        });
+      }
+      const { data: updated, error: updErr } = await admin
+        .from("ads_campaigns")
+        .update({
+          status: "rejected",
+          rejection_reason: rejection_reason || reason || null,
+          funded_at: null,
+          paid_order_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single();
+      if (updErr || !updated) {
+        return handleApiError(updErr ?? new Error("Update failed"), "Failed to reject campaign");
+      }
+      await notifyAdsCampaignEvent({
+        supabase: admin,
+        providerId: ex.provider_id,
+        campaignId: id,
+        event: "rejected",
+        reason: rejection_reason || reason || undefined,
+      });
+      await writeAuditLog({
+        actor_user_id: auth.user.id,
+        actor_role: auth.user.role ?? "superadmin",
+        action: "admin.ads.campaign.reject",
+        entity_type: "ads_campaign",
+        entity_id: id,
+        metadata: { previous_status: prev, rejection_reason: rejection_reason || reason },
+      });
+      return successResponse(updated);
+    }
+
     if (prev === "ended" && status !== "active") {
       return errorResponse("Campaign is already ended", "INVALID_STATE", 400);
     }
     if (status === "paused" && prev === "paused") {
       return errorResponse("Campaign is already paused", "INVALID_STATE", 400);
     }
-    if (status === "active" && prev === "ended") {
-      return errorResponse("Cannot resume an ended campaign. Ask the provider to create a new one.", "INVALID_STATE", 400);
-    }
-    if (status === "active" && prev !== "paused" && prev !== "draft") {
+    if (status === "active" && prev === "pending_review") {
+      if (!ex.funded_at) {
+        return errorResponse("Campaign is not funded", "INVALID_STATE", 400);
+      }
+    } else if (status === "active" && prev === "paused") {
+      // resume guard below
+    } else if (status === "active" && prev !== "paused" && prev !== "draft" && prev !== "pending_review") {
       return errorResponse(`Cannot set status to active from ${prev}`, "INVALID_STATE", 400);
     }
 
+    if (status === "active" && (prev === "paused" || prev === "pending_review")) {
+      const budget = Number(ex.budget ?? 0);
+      const spent = Number(ex.spent ?? 0);
+      if (!ex.funded_at || budget <= 0 || budget - spent <= 0) {
+        return errorResponse(
+          "Cannot resume: campaign must be funded with remaining budget.",
+          "INVALID_STATE",
+          400,
+        );
+      }
+    }
+
+    if (status === "active" && prev === "ended") {
+      return errorResponse("Cannot resume an ended campaign. Ask the provider to create a new one.", "INVALID_STATE", 400);
+    }
+    if (status === "active" && prev !== "paused" && prev !== "draft" && prev !== "pending_review") {
+      return errorResponse(`Cannot set status to active from ${prev}`, "INVALID_STATE", 400);
+    }
+
+    // `rejected` is handled (and returned) above; only pause/end/activate reach here.
+    const updatePayload: Record<string, unknown> = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
     const { data: updated, error: updErr } = await admin
       .from("ads_campaigns")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();
@@ -174,17 +256,50 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return handleApiError(updErr ?? new Error("Update failed"), "Failed to update campaign");
     }
 
+    const providerId = ex.provider_id;
+    if (status === "paused") {
+      await notifyAdsCampaignEvent({
+        supabase: admin,
+        providerId,
+        campaignId: id,
+        event: "paused_by_admin",
+        reason: reason ?? undefined,
+      });
+    } else if (status === "ended") {
+      await notifyAdsCampaignEvent({
+        supabase: admin,
+        providerId,
+        campaignId: id,
+        event: "campaign_ended",
+        reason: reason ?? "admin_ended",
+      });
+      const { refundUnusedAdsBudget } = await import("@/lib/ads/refund-unused-ads-budget");
+      await refundUnusedAdsBudget({
+        supabase: admin,
+        campaignId: id,
+        providerId,
+        reason: reason ?? "admin_ended",
+      }).catch(() => undefined);
+    } else if (status === "active" && prev === "pending_review") {
+      await notifyAdsCampaignEvent({
+        supabase: admin,
+        providerId,
+        campaignId: id,
+        event: "approved",
+      });
+    }
+
     await writeAuditLog({
       actor_user_id: auth.user.id,
       actor_role: auth.user.role ?? "superadmin",
-      action: "admin.ads.campaign.moderate",
+      action: `admin.ads.campaign.${status}`,
       entity_type: "ads_campaign",
       entity_id: id,
-      metadata: { previous_status: prev, new_status: status, reason: reason ?? null },
+      metadata: { previous_status: prev, reason: reason ?? null },
     });
 
-    return successResponse({ campaign: updated });
+    return successResponse(updated);
   } catch (error) {
-    return handleApiError(error as Error, "Failed to moderate ads campaign");
+    return handleApiError(error as Error, "Failed to update campaign");
   }
 }

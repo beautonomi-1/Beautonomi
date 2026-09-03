@@ -25,6 +25,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics"
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
+import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { useTranslation } from "@beautonomi/i18n";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
@@ -448,7 +449,7 @@ export default function BookingDetailPage() {
           items={[
             { label: "Account", href: "/account-settings" },
             { label: "Bookings", href: "/account-settings/bookings" },
-            { label: `Booking #${booking.booking_number}` }
+            { label: booking.booking_number ? `Booking #${booking.booking_number}` : "Booking" }
           ]} 
         />
       )}
@@ -496,7 +497,7 @@ export default function BookingDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-semibold mb-2 text-gray-900">
-            Booking #{booking.booking_number}
+            {booking.booking_number ? `Booking #${booking.booking_number}` : "Booking"}
           </h1>
           <span
             className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
@@ -515,6 +516,16 @@ export default function BookingDetailPage() {
           </span>
         </div>
       </div>
+
+      <BookingReferencePanel
+        bookingId={bookingId}
+        bookingNumber={booking.booking_number}
+        status={_detailEffectiveStatus}
+        paymentStatus={booking.payment_status}
+        outstandingBalance={booking.outstanding_balance}
+        audience="customer"
+        supportPath="/help/submit-ticket"
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
         {/* Booking Details */}

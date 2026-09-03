@@ -36,6 +36,7 @@ import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { holdGridDurationMinutesFromSnapshot } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { assertPublicSlotBookable } from "@/lib/provider-booking/assert-public-slot-bookable";
+import { withNoStore } from "@/lib/http/no-store";
 
 const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
 
@@ -154,7 +155,10 @@ async function findActiveHoldOverlapsForScope(args: HoldOverlapScopeArgs): Promi
   return (data as HoldOverlapResult) ?? [];
 }
 
-export async function POST(request: NextRequest) {
+/** Hold creation is per-session; responses are `Cache-Control: no-store` (never edge-cached). */
+export const POST = withNoStore(handlePost);
+
+async function handlePost(request: NextRequest) {
   return withRouteMetrics(
     request,
     "/api/public/booking-holds",

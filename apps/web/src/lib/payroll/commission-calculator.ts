@@ -40,7 +40,7 @@ export async function calculateStaffCommission(
   const { data: staff, error: staffError } = await supabaseAdmin
     .from("provider_staff")
     .select(
-      "id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate"
+      "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate"
     )
     .eq("id", staffId)
     .eq("provider_id", providerId)
@@ -90,9 +90,8 @@ export async function calculateStaffCommission(
   if (locationId) {
     bookingsQuery = bookingsQuery.eq("location_id", locationId);
   }
-  const { data: bookings } = await bookingsQuery;
-
-  if (!bookings) return result;
+  const { data: bookingsData } = await bookingsQuery;
+  const bookings = bookingsData ?? [];
 
   // Get offering_ids for team_member_commission_enabled check
   const offeringIds = new Set<string>();
@@ -198,7 +197,71 @@ export async function calculateStaffCommission(
     }
   }
 
-  // 6. Sales table (standalone product sales with staff_id)
+  // 6. Walk-in product_orders (POS adapter + native walk-in) + legacy sales
+  const walkInLines: Array<{ product_id: string | null; realizedNet: number }> = [];
+  {
+    const staffUserId = (staff as { user_id?: string | null }).user_id ?? null;
+    const staffMatchers = [staffId, staffUserId].filter(Boolean) as string[];
+    let walkInQuery = supabaseAdmin
+      .from("product_orders")
+      .select("id, staff_id, subtotal, discount_amount, total_amount, tax_amount, paid_at, collection_location_id")
+      .eq("provider_id", providerId)
+      .eq("order_source", "walk_in")
+      .eq("payment_status", "paid")
+      .in("staff_id", staffMatchers)
+      .gte("paid_at", fromDate.toISOString())
+      .lte("paid_at", toDate.toISOString());
+    if (locationId) {
+      walkInQuery = walkInQuery.eq("collection_location_id", locationId);
+    }
+    const { data: walkInOrders } = await walkInQuery;
+    if (walkInOrders && walkInOrders.length > 0) {
+      const orderIds = walkInOrders.map((o: { id: string }) => o.id);
+      const { data: walkInItems } = await supabaseAdmin
+        .from("product_order_items")
+        .select("order_id, product_id, total_price")
+        .in("order_id", orderIds);
+      const extraProductIds = [
+        ...new Set((walkInItems || []).map((item: { product_id?: string | null }) => item.product_id).filter(Boolean)),
+      ] as string[];
+      if (extraProductIds.length > 0) {
+        const missing = extraProductIds.filter((id) => !productMap.has(id));
+        if (missing.length > 0) {
+          const { data: products } = await supabaseAdmin
+            .from("products")
+            .select("id, team_member_commission_enabled, commission_rate_override")
+            .in("id", missing);
+          for (const p of products || []) {
+            productMap.set((p as { id: string }).id, p);
+          }
+        }
+      }
+      const itemsByOrder = new Map<string, Array<{ product_id?: string | null; total_price?: number | string | null }>>();
+      for (const item of walkInItems || []) {
+        const list = itemsByOrder.get((item as { order_id: string }).order_id) ?? [];
+        list.push(item);
+        itemsByOrder.set((item as { order_id: string }).order_id, list);
+      }
+      for (const order of walkInOrders) {
+        const subtotal = Number((order as { subtotal?: number | string | null }).subtotal || 0);
+        const discount = Number((order as { discount_amount?: number | string | null }).discount_amount || 0);
+        const factor = subtotal > 0 ? Math.max(0, subtotal - discount) / subtotal : 1;
+        for (const item of itemsByOrder.get((order as { id: string }).id) || []) {
+          const product = item.product_id ? productMap.get(item.product_id) : undefined;
+          if (product?.team_member_commission_enabled === false) continue;
+          const realizedNet = Number(item.total_price || 0) * factor;
+          walkInLines.push({ product_id: item.product_id ?? null, realizedNet });
+          result.productRevenue += realizedNet;
+          const prodRate =
+            product?.commission_rate_override != null ? product.commission_rate_override : baseProductRate;
+          result.productCommission +=
+            percentOf(realizedNet, staff.commission_enabled !== false ? prodRate : 0);
+        }
+      }
+    }
+  }
+
+  // 7. Sales table (standalone product sales with staff_id)
   let salesQuery = supabaseAdmin
     .from("sales")
     .select("id, staff_id, total_amount, sale_date")
@@ -288,6 +351,14 @@ export async function calculateStaffCommission(
   for (const item of saleItems || []) {
     const price = Number((item as any).total_price || 0);
     result.productCommission += percentOf(price, staff.commission_enabled !== false ? effectiveProductRate : 0);
+  }
+
+  for (const line of walkInLines) {
+    const product = line.product_id ? productMap.get(line.product_id) : undefined;
+    if (product?.team_member_commission_enabled === false) continue;
+    const rate =
+      product?.commission_rate_override != null ? product.commission_rate_override : effectiveProductRate;
+    result.productCommission += percentOf(line.realizedNet, staff.commission_enabled !== false ? rate : 0);
   }
 
   result.totalCommission = sumMoney(result.serviceCommission, result.productCommission);

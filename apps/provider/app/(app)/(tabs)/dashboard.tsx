@@ -60,6 +60,7 @@ interface DashboardMetrics {
   balance_owed_to_platform?: number;
   pending_payments_amount: number;
   pending_payments_count?: number;
+  unrecognized_payments_today?: number;
   completion_rate: number;
   no_show_rate: number;
   average_rating: number;
@@ -714,6 +715,25 @@ export default function DashboardScreen() {
           },
           scheduleRefresh,
         )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "finance_transactions",
+            filter: `provider_id=eq.${provider.id}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "additional_charges",
+          },
+          scheduleRefresh,
+        )
         .subscribe();
     } catch {
       // Non-fatal: dashboard still refreshes on focus / pull.
@@ -920,6 +940,28 @@ export default function DashboardScreen() {
       )}
 
       <DashboardSetupCard />
+
+      {(m?.unrecognized_payments_today ?? 0) > 0 ? (
+        <View
+          style={{
+            backgroundColor: "#fffbeb",
+            borderColor: "#fde68a",
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 16,
+          }}
+          accessibilityRole="text"
+          accessibilityLabel={`${m?.unrecognized_payments_today} payments still being reconciled today`}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+            <Ionicons name="time-outline" size={18} color="#d97706" style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: "#92400e" }}>
+              Some payments are still being reconciled ({m?.unrecognized_payments_today} today). Earnings may update shortly.
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       {bookingEligibility &&
         !bookingEligibility.can_accept_online_bookings &&

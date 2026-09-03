@@ -102,15 +102,18 @@ describe("permissions + Supabase request context", () => {
 
     const perms = await getStaffPermissions("staff-user", undefined, req);
 
+    // Tightened employee pack: own calendar + edit own bookings + own earnings.
     expect(perms.view_calendar).toBe(true);
-    expect(perms.create_appointments).toBe(true);
+    expect(perms.calendar_scope).toBe("own");
+    expect(perms.edit_appointments).toBe(true);
+    expect(perms.view_own_earnings).toBe(true);
+    expect(perms.create_appointments).toBe(false);
+    expect(perms.cancel_appointments).toBe(false);
+    expect(perms.process_payments).toBe(false);
+    expect(perms.create_sales).toBe(false);
+    expect(perms.view_team).toBe(false);
     expect(perms.manage_team).toBe(false);
     expect(perms.edit_settings).toBe(false);
-    expect(perms.process_payments).toBe(true);
-    expect(perms.edit_appointments).toBe(true);
-    expect(perms.create_sales).toBe(true);
-    expect(perms.edit_clients).toBe(true);
-    expect(perms.view_team).toBe(true);
   });
 
   it("getStaffPermissions respects explicit revocations", async () => {

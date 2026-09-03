@@ -195,9 +195,71 @@ interface ProviderStaffRow {
   bio: string | null;
   is_active: boolean;
   commission_percentage: number | null;
+  /** 866: per-staff commission config (rate %, enabled flags). */
+  commission_rate: number | null;
+  service_commission_rate: number | null;
+  commission_enabled: boolean | null;
+  tips_enabled: boolean | null;
+  /** JSON permission pack; includes `calendar_scope: "own" | "all"` (866). */
   permissions: Json | null;
+  /** 497: soft delete — rows are never hard-deleted (FKs are RESTRICT since 872). */
+  deleted_at: Timestamp | null;
+  /** 872: set when auto-deactivated by a plan downgrade over the staff cap. */
+  over_cap_grace_until: Timestamp | null;
+  /** 810: legacy invite columns kept for shipped mobile builds; staff_invitations is canonical. */
+  invite_token: UUID | null;
+  invite_token_expires_at: Timestamp | null;
+  invite_sent_at: Timestamp | null;
+  invite_accepted_at: Timestamp | null;
   created_at: Timestamp;
   updated_at: Timestamp;
+}
+
+/** 872: first-class staff invite lifecycle. */
+export type StaffInvitationStatus = "pending" | "accepted" | "revoked" | "expired";
+
+export interface StaffInvitationsRow {
+  id: UUID;
+  provider_id: UUID;
+  staff_id: UUID | null;
+  email: string;
+  phone: string | null;
+  /** sha256 hex of the raw invite token (raw token only lives in the join link). */
+  token_hash: string;
+  status: StaffInvitationStatus;
+  channels: string[];
+  invited_by: UUID | null;
+  expires_at: Timestamp;
+  accepted_at: Timestamp | null;
+  revoked_at: Timestamp | null;
+  revoked_by: UUID | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+/** 866/872: per-line staff earnings derived from finance_transactions. */
+export type StaffEarningsLineKind = "commission" | "tip" | "cancellation_fee_share" | "reversal" | "adjustment";
+export type StaffEarningsRateSource = "staff" | "offering_override" | "tier" | "backfill" | "reassign" | "manual";
+
+interface StaffEarningsLinesRow {
+  id: UUID;
+  booking_id: UUID | null;
+  booking_service_id: UUID | null;
+  staff_id: UUID;
+  provider_id: UUID;
+  tenant_id: UUID | null;
+  source_finance_transaction_id: UUID;
+  kind: StaffEarningsLineKind;
+  base_amount: number;
+  rate: number;
+  amount: number;
+  rate_source: StaffEarningsRateSource;
+  backfilled: boolean;
+  /** 872: shown in My earnings for reversal/adjustment lines. */
+  reason: string | null;
+  metadata: Json;
+  created_by: UUID | null;
+  created_at: Timestamp;
 }
 
 interface ProviderRolesRow {
@@ -478,6 +540,8 @@ export interface Database {
       notification_templates: TableDefinition<NotificationTemplatesRow, InsertOf<NotificationTemplatesRow>, UpdateOf<NotificationTemplatesRow>>;
       gift_cards: TableDefinition<GiftCardsRow, InsertOf<GiftCardsRow>, UpdateOf<GiftCardsRow>>;
       staff_services: TableDefinition<StaffServicesRow, InsertOf<StaffServicesRow>, UpdateOf<StaffServicesRow>>;
+      staff_invitations: TableDefinition<StaffInvitationsRow, InsertOf<StaffInvitationsRow>, UpdateOf<StaffInvitationsRow>>;
+      staff_earnings_lines: TableDefinition<StaffEarningsLinesRow, InsertOf<StaffEarningsLinesRow>, UpdateOf<StaffEarningsLinesRow>>;
       [key: string]: TableDefinition<any, any, any>;
     };
     Views: {

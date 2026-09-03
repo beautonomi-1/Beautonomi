@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 
 function deadlineDateAfterPeriodEnd(periodEndYmd: string): string {
   const ymd = periodEndYmd.slice(0, 10);
@@ -25,7 +26,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["manage_finance", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     

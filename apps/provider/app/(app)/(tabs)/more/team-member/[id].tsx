@@ -368,6 +368,25 @@ export default function TeamMemberDetailScreen() {
   const handleToggleActive = useCallback(() => {
     if (!member || !canManageTeam) return;
     const newActive = !member.is_active;
+    const apply = async (reassignTo?: string) => {
+      const { error: err, errorCode } = await updateStaff(`/api/provider/staff/${id}`, {
+        is_active: newActive,
+        ...(reassignTo ? { reassign_to: reassignTo } : {}),
+      });
+      if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && newActive === false && !reassignTo) {
+        Alert.alert(
+          "Upcoming bookings",
+          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and deactivate?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Reassign and deactivate", style: "destructive", onPress: () => void apply("any") },
+          ],
+        );
+        return;
+      }
+      if (err) Alert.alert("Error", err);
+      else refresh();
+    };
     Alert.alert(
       newActive ? "Activate member" : "Deactivate member",
       newActive
@@ -378,11 +397,7 @@ export default function TeamMemberDetailScreen() {
         {
           text: newActive ? "Activate" : "Deactivate",
           style: newActive ? "default" : "destructive",
-          onPress: async () => {
-            const { error: err } = await updateStaff(`/api/provider/staff/${id}`, { is_active: newActive });
-            if (err) Alert.alert("Error", err);
-            else refresh();
-          },
+          onPress: () => void apply(),
         },
       ]
     );
@@ -390,6 +405,25 @@ export default function TeamMemberDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!member || !canManageTeam) return;
+    const apply = async (reassignTo?: string) => {
+      const path = reassignTo
+        ? `/api/provider/staff/${id}?reassign_to=${encodeURIComponent(reassignTo)}`
+        : `/api/provider/staff/${id}`;
+      const { error: err, errorCode } = await deleteStaff(path, {});
+      if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !reassignTo) {
+        Alert.alert(
+          "Upcoming bookings",
+          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and remove?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Reassign and remove", style: "destructive", onPress: () => void apply("any") },
+          ],
+        );
+        return;
+      }
+      if (err) Alert.alert("Error", err);
+      else router.back();
+    };
     Alert.alert(
       "Remove team member",
       `Remove ${member.name} from your team? This cannot be undone.`,
@@ -398,14 +432,7 @@ export default function TeamMemberDetailScreen() {
         {
           text: "Remove",
           style: "destructive",
-          onPress: async () => {
-            const { error: err } = await deleteStaff(`/api/provider/staff/${id}`, {});
-            if (err) {
-              Alert.alert("Error", err);
-            } else {
-              router.back();
-            }
-          },
+          onPress: () => void apply(),
         },
       ]
     );
@@ -445,6 +472,26 @@ export default function TeamMemberDetailScreen() {
     }
     Alert.alert("Invite sent", `Invitation sent to ${member.email}.`);
   }, [id, member?.email, canManageTeam]);
+
+  const handleRevokeInvite = useCallback(() => {
+    if (!id || !canManageTeam) return;
+    Alert.alert("Revoke invite", `Revoke the pending invite for ${member?.name ?? "this team member"}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Revoke",
+        style: "destructive",
+        onPress: async () => {
+          const res = await api.post(`/api/provider/staff/${id}/invite/revoke`, {});
+          if (res.error) {
+            Alert.alert("Error", res.error.message ?? "Failed to revoke invite");
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Invite revoked", "The pending invite is no longer valid.");
+        },
+      },
+    ]);
+  }, [id, member?.name, canManageTeam]);
 
   const handleResetPassword = useCallback(async () => {
     if (!id || !canManageTeam) return;
@@ -602,6 +649,19 @@ export default function TeamMemberDetailScreen() {
               <Ionicons name="mail-outline" size={18} color="#374151" />
               <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")}>
                 Send invite
+              </Text>
+            </TouchableOpacity>
+            <View style={twStyle("mx-2 h-px bg-gray-100")} />
+            <TouchableOpacity
+              style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
+              onPress={handleRevokeInvite}
+              disabled={actionBusy}
+              accessibilityLabel="Revoke team invite"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close-circle-outline" size={18} color="#b91c1c" />
+              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-red-700")}>
+                Revoke invite
               </Text>
             </TouchableOpacity>
             <View style={twStyle("mx-2 h-px bg-gray-100")} />

@@ -29,9 +29,13 @@ import { settleBookingFinanceById } from "@/lib/bookings/settle-booking-cancella
 import { sendCancellationNotification } from "@/lib/bookings/notifications";
 import { matchWaitlistOnCancellation } from "@/lib/waitlist/matching";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const JOB_NAME = "expire-stale-pending-bookings";
 
 /** Hours a booking request may sit unconfirmed past its appointment time before it auto-expires. */
 const DEFAULT_TTL_HOURS = 24;
@@ -139,6 +143,17 @@ async function cancelStalePendingBooking(
 }
 
 export async function GET(request: NextRequest) {
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: auth.error ?? "unauthorized" },
+      { status: 401 },
+    );
+  }
+  return runLockedCronRoute(JOB_NAME, () => runJob(request));
+}
+
+async function runJob(request: NextRequest) {
   const auth = verifyCronRequest(request);
   if (!auth.valid) {
     return NextResponse.json(

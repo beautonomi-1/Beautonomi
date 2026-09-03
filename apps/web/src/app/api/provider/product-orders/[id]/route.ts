@@ -12,6 +12,7 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
+  restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import {
   dispatchProductOrderStatusNotification,
@@ -85,6 +86,7 @@ export async function GET(
         *,
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
+          fulfilment_status, fulfilled_qty, fulfilment_updated_at,
           product_variant:product_variants(id, option_values)
         ),
         customer:users!product_orders_customer_id_fkey (
@@ -241,35 +243,17 @@ export async function PATCH(
     if (parsed.estimated_delivery_date)
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
 
-    // On cancellation, restore stock (variant or product-level)
+    // On cancellation/refund, restore stock (variant or product-level) and write
+    // `stock_movements` audit rows (type cancel / return, reference = order id).
     if (parsed.status === "cancelled" || parsed.status === "refunded") {
-      const { data: items } = await (supabase.from("product_order_items") as any)
-        .select("product_id, product_variant_id, quantity")
-        .eq("order_id", id);
-
-      if (items) {
-        for (const item of items) {
-          if (item.product_variant_id) {
-            try {
-              await (supabase.rpc as any)("increment_product_variant_stock", {
-                p_variant_id: item.product_variant_id,
-                p_quantity: item.quantity,
-              });
-            } catch {
-              /* best effort */
-            }
-          } else {
-            try {
-              await supabase.rpc("increment_product_stock" as any, {
-                p_product_id: item.product_id,
-                p_quantity: item.quantity,
-              });
-            } catch {
-              /* best effort */
-            }
-          }
-        }
-      }
+      await restockProductOrderLineItems(supabase, id, {
+        movementType: parsed.status === "refunded" ? "return" : "cancel",
+        actorUserId: user.id,
+        reason:
+          parsed.status === "refunded"
+            ? parsed.refund_reason ?? "Order refunded"
+            : parsed.cancellation_reason ?? "Order cancelled by provider",
+      });
     }
 
     const { data: updated, error: updateErr } = await (supabase.from("product_orders") as any)

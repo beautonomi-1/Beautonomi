@@ -4,11 +4,17 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { getProviderStaffIdForUser } from "@/lib/auth/provider-team-roster-access";
+import {
+  findFutureBookingsForStaff,
+  futureBookingsConflictResponse,
+} from "@/lib/provider/find-future-bookings-for-staff";
 import { z } from "zod";
 
 const updateStaffLocationsSchema = z.object({
   location_ids: z.array(z.string().uuid()).min(1, "At least one location is required"),
   primary_location_id: z.string().uuid().optional(),
+  /** Proceed even when future bookings exist at a removed location. */
+  force: z.boolean().optional(),
 });
 
 /**
@@ -152,6 +158,21 @@ export async function PUT(
         "VALIDATION_ERROR",
         400
       );
+    }
+
+    // Guard: future bookings at locations this staff member will no longer work at.
+    if (validationResult.data.force !== true) {
+      const conflicts = await findFutureBookingsForStaff(supabase, providerId, staffId, {
+        notAtLocationIds: location_ids,
+      });
+      if (conflicts.length > 0) {
+        return errorResponse(
+          `${conflicts.length} future booking(s) are at a location being removed. Reassign or reschedule them, or pass force to proceed.`,
+          "FUTURE_BOOKINGS_CONFLICT",
+          409,
+          futureBookingsConflictResponse(conflicts),
+        );
+      }
     }
 
     // Delete existing assignments

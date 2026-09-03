@@ -1,18 +1,13 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { enforcePeriodLock } from "@/lib/finance/period-lock";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { manualAdjustmentSchema, postManualFinanceAdjustment } from "@/lib/finance/post-manual-adjustment";
 
-const createAdjustmentSchema = z.object({
-  amount: z.number(),
-  description: z.string().min(3),
-  effective_at: z.string().datetime().optional(),
-  adjustment_code: z.string().min(2).max(64).optional(),
-});
+const createAdjustmentSchema = manualAdjustmentSchema;
 
 /**
  * GET /api/admin/finance/adjustments
@@ -43,7 +38,12 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/finance/adjustments
- * Creates a controlled manual adjustment entry in finance ledger.
+ * Creates a controlled manual adjustment entry in the finance ledger.
+ *
+ * Maker-checker: only a superadmin posts directly (period-lock enforced).
+ * Any other finance admin gets a `ledger_repair_proposals` row (status
+ * `proposed`, 202) that a *different* superadmin must approve via
+ * POST /api/admin/finance/ledger-repair/[id]/approve.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +52,9 @@ export async function POST(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const payload = createAdjustmentSchema.safeParse(await request.json());
     if (!payload.success) {
-      return errorResponse("Invalid adjustment payload", "VALIDATION_ERROR", 400);
+      return errorResponse("Invalid adjustment payload", "VALIDATION_ERROR", 400, {
+        issues: payload.error.issues,
+      });
     }
 
     const effectiveAt = payload.data.effective_at ?? new Date().toISOString();
@@ -62,35 +64,64 @@ export async function POST(request: NextRequest) {
     const amount = Number(payload.data.amount);
     const description = payload.data.description.trim();
     const adjustmentCode = payload.data.adjustment_code?.trim() || "MANUAL_ADJUSTMENT";
-
-    const { data, error } = await supabase
-      .from("finance_transactions")
-      .insert({
-        tenant_id: tenantId,
-        transaction_type: "manual_adjustment",
-        amount,
-        net: amount,
-        fees: 0,
-        commission: 0,
-        description,
-        created_at: effectiveAt,
-        metadata: {
-          adjustment_code: adjustmentCode,
-          created_by: user.id,
-          source: "admin_finance_adjustment",
-        },
-      })
-      .select("id, amount, net, description, created_at, metadata")
-      .single();
-    if (error) throw error;
-
     const reqMeta = extractRequestMeta(request);
+
+    if ((user.role as string) !== "superadmin") {
+      const { data: proposal, error: proposalError } = await supabase
+        .from("ledger_repair_proposals")
+        .insert({
+          tenant_id: tenantId,
+          kind: "adjustment",
+          payload: { ...payload.data, description, effective_at: effectiveAt, adjustment_code: adjustmentCode },
+          proposed_by: user.id,
+          status: "proposed",
+          note: "Proposed from Finance → Adjustments",
+        })
+        .select("*")
+        .single();
+      if (proposalError) throw proposalError;
+
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role,
+        action: "finance.ledger_repair.propose",
+        entity_type: "ledger_repair_proposal",
+        entity_id: (proposal as { id: string }).id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "succeeded",
+        metadata: { kind: "adjustment", amount, description, effective_at: effectiveAt, adjustment_code: adjustmentCode },
+        ip_address: reqMeta.ip_address,
+        user_agent: reqMeta.user_agent,
+      });
+
+      return successResponse(
+        {
+          adjustment: null,
+          proposal,
+          message: "Adjustment queued for superadmin approval (maker-checker).",
+        },
+        202,
+      );
+    }
+
+    const posted = await postManualFinanceAdjustment(supabase, {
+      tenantId,
+      input: { ...payload.data, description, effective_at: effectiveAt, adjustment_code: adjustmentCode },
+      createdBy: user.id,
+      source: "admin_finance_adjustment",
+    });
+    if (posted.ok === false) {
+      throw posted.error instanceof Error ? posted.error : new Error(posted.reason);
+    }
+
     await writeAuditLog({
       actor_user_id: user.id,
       actor_role: user.role ?? "superadmin",
       action: "finance.adjustment.create",
       entity_type: "finance_transaction",
-      entity_id: data.id,
+      entity_id: posted.adjustment.id,
       module: "finance",
       risk_level: "high",
       retention_tier: "financial",
@@ -99,12 +130,13 @@ export async function POST(request: NextRequest) {
         description,
         effective_at: effectiveAt,
         adjustment_code: adjustmentCode,
+        direct_post: true,
       },
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
     });
 
-    return successResponse({ adjustment: data });
+    return successResponse({ adjustment: posted.adjustment, proposal: null });
   } catch (error) {
     return handleApiError(error, "Failed to create finance adjustment");
   }

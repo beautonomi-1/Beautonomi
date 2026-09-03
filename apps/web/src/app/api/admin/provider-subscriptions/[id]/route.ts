@@ -13,6 +13,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getMergedSubscriptionPlanIdsForTenant } from "@/lib/subscription/admin-merged-plan-ids";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { computeTrialEndsAt, DEFAULT_PROVIDER_TRIAL_DAYS } from "@/lib/subscriptions/trial";
 
 const patchSchema = z.object({
   plan_id: z.string().uuid().optional(),
@@ -21,6 +22,7 @@ const patchSchema = z.object({
     .optional(),
   billing_period: z.enum(["monthly", "yearly"]).optional().nullable(),
   auto_renew: z.boolean().optional(),
+  trial_days: z.number().int().min(1).max(90).optional(),
 });
 
 type PlanRow = {
@@ -70,7 +72,7 @@ export async function PATCH(
       return errorResponse("Invalid body", "VALIDATION_ERROR", 400, parsed.error.issues);
     }
 
-    const { plan_id, status, billing_period, auto_renew } = parsed.data;
+    const { plan_id, status, billing_period, auto_renew, trial_days } = parsed.data;
     if (
       plan_id === undefined &&
       status === undefined &&
@@ -219,6 +221,12 @@ export async function PATCH(
       }
     } else if (status !== undefined && status !== "active") {
       update.status = status;
+      if (status === "trialing") {
+        update.trial_ends_at = computeTrialEndsAt(
+          new Date(),
+          trial_days ?? DEFAULT_PROVIDER_TRIAL_DAYS,
+        );
+      }
     }
 
     if (planChanging) {

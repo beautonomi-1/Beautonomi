@@ -31,8 +31,8 @@ jobs:
           DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_DEVELOP }}
         run: |
           if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::warning::Secret VERCEL_DEPLOY_HOOK_DEVELOP is not set. Create a Deploy Hook for branch develop in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
-            exit 0
+            echo "::error::Secret VERCEL_DEPLOY_HOOK_DEVELOP is not set. Create a Deploy Hook for branch develop in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 1
           fi
           echo "Triggering Vercel Preview deploy for develop..."
           curl -fsS -X POST "$DEPLOY_HOOK_URL"
@@ -49,9 +49,58 @@ jobs:
           DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_MAIN }}
         run: |
           if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::warning::Secret VERCEL_DEPLOY_HOOK_MAIN is not set. Create a Deploy Hook for branch main in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
-            exit 0
+            echo "::error::Secret VERCEL_DEPLOY_HOOK_MAIN is not set. Create a Deploy Hook for branch main in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 1
           fi
           echo "Triggering Vercel Production deploy for main..."
           curl -fsS -X POST "$DEPLOY_HOOK_URL"
           echo "Deploy hook accepted."
+
+      - name: Post-deploy smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.VERCEL_PRODUCTION_URL || secrets.VERCEL_PRODUCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SLACK_DEPLOY_WEBHOOK: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SMOKE_BASE_URL:-}" ]; then
+            echo "::warning::VERCEL_PRODUCTION_URL is not set; skipping HTTP smoke. Add the production origin as a repo variable."
+            exit 0
+          fi
+          BASE="${SMOKE_BASE_URL%/}"
+          fail=0
+          smoke() {
+            local path="$1"
+            local extra="${2:-}"
+            echo "GET $BASE$path"
+            if ! curl -fsS -o /tmp/smoke-body -w "%{http_code}" $extra "$BASE$path" > /tmp/smoke-code; then
+              echo "::error::Smoke failed: $path"
+              fail=1
+              return
+            fi
+            code=$(cat /tmp/smoke-code)
+            if [ "$code" -lt 200 ] || [ "$code" -ge 400 ]; then
+              echo "::error::Smoke $path returned $code"
+              fail=1
+            fi
+          }
+          smoke /api/health
+          smoke /api/csrf
+          if [ -n "${CRON_SECRET:-}" ]; then
+            smoke /api/cron/recognize-period-revenue "-H Authorization: Bearer $CRON_SECRET"
+          else
+            echo "::warning::CRON_SECRET unset; skipped cron smoke"
+          fi
+          if [ "$fail" -ne 0 ]; then
+            if [ -n "${SLACK_DEPLOY_WEBHOOK:-}" ]; then
+              curl -fsS -X POST -H 'Content-type: application/json' \
+                --data "{\"text\":\"ops.deploy.failed smoke on ${{ github.sha }}\"}" \
+                "$SLACK_DEPLOY_WEBHOOK" || true
+            fi
+            exit 1
+          fi
+          if [ -n "${SLACK_DEPLOY_WEBHOOK:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"ops.deploy.completed ${{ github.sha }}\"}" \
+              "$SLACK_DEPLOY_WEBHOOK" || true
+          fi

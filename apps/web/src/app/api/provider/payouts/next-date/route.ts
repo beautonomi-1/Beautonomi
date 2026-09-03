@@ -3,6 +3,7 @@ import { addDays, addMonths, startOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireOwnerOrEditSettings } from "@/lib/auth/requirePermission";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import {
   addOneDayYmd,
@@ -20,7 +21,9 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireOwnerOrEditSettings(request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);

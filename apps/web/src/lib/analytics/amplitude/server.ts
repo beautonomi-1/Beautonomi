@@ -58,14 +58,22 @@ async function getCachedConfig(): Promise<AmplitudeServerConfig | null> {
 /**
  * Track event server-side using Amplitude HTTP API
  */
+export type TrackServerOptions = {
+  apiKey?: string;
+  ingestionEndpoint?: string;
+  /** Amplitude dedup key — use `{payment_reference}:{event_type}` for money events. */
+  insertId?: string;
+  revenue?: number;
+  revenueType?: string;
+  productId?: string;
+  quantity?: number;
+};
+
 export async function trackServer(
   eventName: string,
   properties?: Record<string, any>,
   userId?: string,
-  options?: {
-    apiKey?: string;
-    ingestionEndpoint?: string;
-  }
+  options?: TrackServerOptions,
 ): Promise<void> {
   try {
     const config = await getCachedConfig();
@@ -78,15 +86,18 @@ export async function trackServer(
       return;
     }
 
-    // Build event payload
     const event: AmplitudeEvent = {
       event_type: eventName,
       user_id: userId,
       event_properties: properties,
       time: Date.now(),
+      ...(options?.insertId ? { insert_id: options.insertId } : {}),
+      ...(options?.revenue != null ? { revenue: options.revenue } : {}),
+      ...(options?.revenueType ? { revenueType: options.revenueType } : {}),
+      ...(options?.productId ? { productId: options.productId } : {}),
+      ...(options?.quantity != null ? { quantity: options.quantity } : {}),
     };
 
-    // Send to Amplitude
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -108,7 +119,7 @@ export async function trackServer(
     }
 
     const data: AmplitudeResponse = await response.json();
-    
+
     if (data.code !== 200) {
       console.error("[Amplitude Server] Amplitude API error:", data);
     }
@@ -143,7 +154,6 @@ export async function trackBatch(
       return;
     }
 
-    // Build events payload
     const amplitudeEvents: AmplitudeEvent[] = events.map(({ eventName, properties, userId }) => ({
       event_type: eventName,
       user_id: userId,
@@ -151,7 +161,6 @@ export async function trackBatch(
       time: Date.now(),
     }));
 
-    // Send to Amplitude
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -173,7 +182,7 @@ export async function trackBatch(
     }
 
     const data: AmplitudeResponse = await response.json();
-    
+
     if (data.code !== 200) {
       console.error("[Amplitude Server] Amplitude API error:", data);
     }

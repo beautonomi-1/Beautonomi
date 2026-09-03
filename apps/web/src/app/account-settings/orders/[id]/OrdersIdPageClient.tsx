@@ -15,6 +15,8 @@ import {
 } from "@/lib/ecommerce/product-return-eligibility";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
+import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
 
 interface ProductOrder {
   id: string;
@@ -28,6 +30,8 @@ interface ProductOrder {
   discount_amount?: number;
   platform_fee?: number | null;
   wallet_amount?: number | null;
+  gift_card_amount?: number | null;
+  promotion_code?: string | null;
   total_amount: number;
   payment_status?: string | null;
   payment_method?: string | null;
@@ -131,6 +135,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -213,6 +218,10 @@ export default function OrderDetailPage() {
 
   const idx = timelineIndex(order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
+  const orderSupport = getProductOrderSupportPrompt({
+    status: order.status,
+    paymentStatus: order.payment_status,
+  });
   const sym = (order.currency && String(order.currency).trim()) || tenantCurrency;
   const walletAmount = Number(order.wallet_amount ?? 0);
   const platformFee = Number(order.platform_fee ?? 0);
@@ -221,6 +230,31 @@ export default function OrderDetailPage() {
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
     onlineAmountDue > 0;
+  const canSelfCancel =
+    !isCancelled &&
+    !order.shipped_at &&
+    !order.delivered_at &&
+    ["pending", "confirmed", "processing"].includes(order.status);
+
+  const handleCancelOrder = async () => {
+    if (!canSelfCancel || cancelling) return;
+    if (!confirm("Cancel this order? In-stock items will be restocked and paid tenders refunded.")) return;
+    setCancelling(true);
+    setErrorMsg(null);
+    try {
+      await fetcher.patch(`/api/me/orders/${order.id}/cancel`, {});
+      toast.success("Order cancelled");
+      const json = await fetcher.get<{ data: { order: ProductOrder } | null }>(
+        `/api/me/orders/${order.id}`,
+        { staleTimeMs: 0 },
+      );
+      if (json.data?.order) setOrder(json.data.order);
+    } catch (e) {
+      setErrorMsg(e instanceof FetchError ? e.message : "Could not cancel this order.");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handlePayOnline = async () => {
     if (!canPayOnline || paying) return;
@@ -284,8 +318,19 @@ export default function OrderDetailPage() {
             <span className="text-sm text-gray-400">
               {new Date(order.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
             </span>
+            <p className="mt-1 break-all font-mono text-xs text-gray-500 select-all">{order.id}</p>
           </div>
           <div className="flex items-center gap-2">
+            {canSelfCancel ? (
+              <button
+                type="button"
+                onClick={() => void handleCancelOrder()}
+                disabled={cancelling}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                {cancelling ? "Cancelling…" : "Cancel order"}
+              </button>
+            ) : null}
             <ShareReceiptButton kind="customer-order" subjectId={order.id} label="Share receipt" />
             <a
               href={`/api/me/orders/${order.id}/receipt/pdf`}
@@ -298,6 +343,58 @@ export default function OrderDetailPage() {
             </svg>
             Download receipt
           </a>
+          </div>
+        </div>
+        <div
+          className={`mb-4 rounded-2xl border p-4 ${
+            orderSupport.prominence === "urgent"
+              ? "border-amber-200 bg-amber-50"
+              : "border-gray-200 bg-white"
+          }`}
+        >
+          <p className={`text-sm font-semibold ${orderSupport.prominence === "urgent" ? "text-amber-950" : "text-gray-900"}`}>
+            {orderSupport.title}
+          </p>
+          <p className={`mt-1 text-sm ${orderSupport.prominence === "urgent" ? "text-amber-900" : "text-gray-600"}`}>
+            {orderSupport.body}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              onClick={() => {
+                void copyTextToClipboard(order.order_number).then((ok) =>
+                  ok ? toast.success("Order number copied") : toast.error("Could not copy"),
+                );
+              }}
+            >
+              Copy number
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              onClick={() => {
+                void copyTextToClipboard(order.id).then((ok) =>
+                  ok ? toast.success("Order ID copied") : toast.error("Could not copy"),
+                );
+              }}
+            >
+              Copy ID
+            </button>
+            <Link
+              href={`/help/submit-ticket${supportTicketQuery({
+                orderId: order.id,
+                orderNumber: order.order_number,
+                category: orderSupport.category,
+              })}`}
+              className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium ${
+                orderSupport.prominence === "urgent"
+                  ? "bg-amber-800 text-white hover:bg-amber-900"
+                  : "bg-gray-900 text-white hover:bg-gray-800"
+              }`}
+            >
+              Contact support
+            </Link>
           </div>
         </div>
         {errorMsg && (
@@ -590,6 +687,18 @@ export default function OrderDetailPage() {
             {walletAmount > 0 && (
               <div className="flex justify-between text-emerald-700"><span>Paid from wallet</span><span>{sym} {walletAmount.toFixed(2)}</span></div>
             )}
+            {Number(order.gift_card_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>Paid from gift card</span>
+                <span>{sym} {Number(order.gift_card_amount).toFixed(2)}</span>
+              </div>
+            )}
+            {order.promotion_code ? (
+              <div className="flex justify-between text-emerald-700">
+                <span>Promotion</span>
+                <span>{order.promotion_code}</span>
+              </div>
+            ) : null}
             {order.payment_status && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Payment status</span>

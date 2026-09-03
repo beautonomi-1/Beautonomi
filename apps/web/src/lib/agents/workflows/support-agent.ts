@@ -18,6 +18,7 @@ import { proposeAgentAction } from "../actions/action-service";
 import { resolveSupportTicketTenantId } from "../support-ticket-tenant";
 import { fetchSupportTicketContext, type SupportTicketContextFacts } from "../support-context";
 import { callAgentLlm, parseLlmJson } from "../llm";
+import { redactPromptObject, redactPromptText } from "@/lib/ai/redact-prompt-pii";
 import { hashPayload } from "@beautonomi/agent-policy";
 
 export type SupportTriageClassification = {
@@ -116,7 +117,16 @@ async function classifyAndDraftWithLlm(ticket: {
   ticketNumber: string;
   customerName: string | null;
   context?: SupportTicketContextFacts | null;
+  /** agent_runs.id — lets callAgentLlm write agent_steps + roll tokens/cost onto the run. */
+  agentRunId?: string;
 }): Promise<{ classification: SupportTriageClassification; replyDraft: string } | null> {
+  // Prompt-level PII redaction: emails, phone numbers, card/ID numbers in the ticket
+  // text and the verified-context capsule never reach the model. Heuristic
+  // classification below still runs on the raw text (it is keyword based).
+  const redactedSubject = redactPromptText(ticket.subject);
+  const redactedMessage = redactPromptText(ticket.description.slice(0, 4000));
+  const redactedContext = ticket.context ? redactPromptObject(ticket.context) : null;
+
   const llm = await callAgentLlm({
     system: [
       "You are the support triage agent for Beautonomi, a beauty-services marketplace (bookings, payments, gift cards, memberships).",
@@ -129,16 +139,19 @@ async function classifyAndDraftWithLlm(ticket: {
       "Return ONLY JSON matching the schema.",
     ].join("\n"),
     user: JSON.stringify({
-      subject: ticket.subject,
-      message: ticket.description.slice(0, 4000),
+      subject: redactedSubject,
+      message: redactedMessage,
       customer_priority: ticket.priority ?? "medium",
       customer_category: ticket.category ?? null,
       ticket_number: ticket.ticketNumber,
       customer_first_name: ticket.customerName,
-      verified_context: ticket.context ?? null,
+      verified_context: redactedContext,
     }),
     schema: LLM_TRIAGE_SCHEMA,
     maxTokens: 900,
+    runId: ticket.agentRunId,
+    promptVersion: "support-triage:v1",
+    featureKey: "agent.support-triage",
   });
 
   if (!llm.configured || llm.success !== true) return null;
@@ -199,6 +212,189 @@ async function pickLeastLoadedAssignee(): Promise<string | null> {
   return [...load.entries()].sort((a, b) => a[1] - b[1])[0][0];
 }
 
+function isDuplicateProposal(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  const message = String((err as { message?: string } | null)?.message ?? err ?? "");
+  return code === "23505" || /duplicate|unique/i.test(message);
+}
+
+export type SupportTriageProposal = {
+  type: string;
+  actionId: string | null;
+  skipped?: string;
+  approvalExpiresAt?: string | null;
+};
+
+/**
+ * Classify a ticket and propose reply/assign actions. Shared by legacy triage and workflow steps.
+ */
+export async function classifyAndProposeForTicket(params: {
+  ticketId: string;
+  workflowRunId: string;
+  agentRunId?: string;
+  tenantId: string;
+  agentId: string;
+  agentVersion: string;
+  shadowMode: boolean;
+}): Promise<{
+  classification: SupportTriageClassification;
+  proposals: SupportTriageProposal[];
+  shadowMode: boolean;
+  agentRunId: string;
+}> {
+  const supabase = getSupabaseAdmin();
+  const agentRunId = params.agentRunId ?? randomUUID();
+  const { data: ticket } = await supabase
+    .from("support_tickets")
+    .select(
+      "id, ticket_number, subject, description, status, priority, category, provider_id, user_id, assigned_to, requester_type, support_context_type, support_context_id",
+    )
+    .eq("id", params.ticketId)
+    .maybeSingle();
+  if (!ticket) {
+    throw new Error("ticket_not_found");
+  }
+
+  const { data: customer } = await supabase
+    .from("users")
+    .select("full_name")
+    .eq("id", ticket.user_id)
+    .maybeSingle();
+  const customerName =
+    (customer as { full_name?: string | null } | null)?.full_name?.trim().split(/\s+/)[0] ?? null;
+
+  await supabase.from("agent_runs").insert({
+    id: agentRunId,
+    tenant_id: params.tenantId,
+    agent_id: params.agentId,
+    agent_version: params.agentVersion,
+    workflow_type: "support-triage",
+    workflow_run_id: params.workflowRunId,
+    trigger_kind: "event",
+    status: "running",
+    shadow_mode: params.shadowMode,
+  });
+
+  const context = await fetchSupportTicketContext(supabase, ticket).catch(() => null);
+
+  const ticketInput = {
+    subject: String(ticket.subject ?? ""),
+    description: String(ticket.description ?? ""),
+    priority: ticket.priority as string | null,
+    category: ticket.category as string | null,
+    ticketNumber: String(ticket.ticket_number ?? ticket.id),
+    customerName,
+    context,
+  };
+
+  let classification: SupportTriageClassification;
+  let replyDraft: string;
+  const llmResult = await classifyAndDraftWithLlm({ ...ticketInput, agentRunId }).catch(() => null);
+  if (llmResult) {
+    classification = llmResult.classification;
+    replyDraft = llmResult.replyDraft;
+  } else {
+    classification = classifySupportTicketHeuristically(ticketInput);
+    replyDraft = buildFallbackReplyDraft({
+      customerName,
+      ticketNumber: ticketInput.ticketNumber,
+      subject: ticketInput.subject,
+      needsHuman: classification.needsHuman,
+    });
+  }
+
+  const proposals: SupportTriageProposal[] = [];
+
+  try {
+    const replyPayload = {
+      ticketId: ticket.id,
+      draftReply: replyDraft,
+      classification,
+      needsHuman: classification.needsHuman,
+      escalationReasons: classification.escalationReasons,
+      verifiedContext: context,
+    };
+    const action = await proposeAgentAction({
+      tenantId: params.tenantId,
+      agentId: params.agentId,
+      workflowRunId: params.workflowRunId,
+      actionType: "support.reply",
+      targetType: "support_ticket",
+      targetId: String(ticket.id),
+      proposedPayload: replyPayload,
+      reasoningSummary: classification.needsHuman
+        ? `Escalation required (${classification.escalationReasons.join(", ")}). Draft acknowledges human review; approve to send.`
+        : `Routine ${classification.category} ticket (${classification.urgency}). Approve to send the drafted first reply.`,
+      riskLevel: 1,
+      policyVersion: params.agentVersion,
+      promptVersion: classification.source,
+      idempotencyKey: `support-reply:${ticket.id}:${hashPayload(replyPayload).slice(0, 16)}`,
+    });
+    proposals.push({
+      type: "support.reply",
+      actionId: action.id,
+      approvalExpiresAt: (action as { approval_expires_at?: string | null }).approval_expires_at ?? null,
+    });
+  } catch (err) {
+    proposals.push({
+      type: "support.reply",
+      actionId: null,
+      skipped: isDuplicateProposal(err) ? "open_proposal_exists" : `error:${String(err).slice(0, 120)}`,
+    });
+  }
+
+  if (!ticket.assigned_to) {
+    const assignee = await pickLeastLoadedAssignee();
+    if (assignee) {
+      try {
+        const assignPayload = {
+          ticketId: ticket.id,
+          assigneeUserId: assignee,
+          escalated: classification.needsHuman,
+          rationale: classification.needsHuman
+            ? `Escalation (${classification.escalationReasons.join(", ")}) — route to a human immediately.`
+            : "Least-loaded support staffer.",
+        };
+        const action = await proposeAgentAction({
+          tenantId: params.tenantId,
+          agentId: params.agentId,
+          workflowRunId: params.workflowRunId,
+          actionType: "support.assign",
+          targetType: "support_ticket",
+          targetId: String(ticket.id),
+          proposedPayload: assignPayload,
+          reasoningSummary: assignPayload.rationale,
+          riskLevel: 1,
+          policyVersion: params.agentVersion,
+          idempotencyKey: `support-assign:${ticket.id}:${assignee}`,
+        });
+        proposals.push({
+          type: "support.assign",
+          actionId: action.id,
+          approvalExpiresAt: (action as { approval_expires_at?: string | null }).approval_expires_at ?? null,
+        });
+      } catch (err) {
+        proposals.push({
+          type: "support.assign",
+          actionId: null,
+          skipped: isDuplicateProposal(err) ? "open_proposal_exists" : `error:${String(err).slice(0, 120)}`,
+        });
+      }
+    }
+  }
+
+  await supabase
+    .from("agent_runs")
+    .update({
+      status: "completed",
+      ended_at: new Date().toISOString(),
+      escalation_count: classification.needsHuman ? 1 : 0,
+    })
+    .eq("id", agentRunId);
+
+  return { classification, proposals, shadowMode: params.shadowMode, agentRunId };
+}
+
 export async function runSupportTriageWorkflow(params: {
   ticketId: string;
   /** Optional — resolved from the ticket's provider (or ZA default) when omitted. */
@@ -238,144 +434,21 @@ export async function runSupportTriageWorkflow(params: {
   const tenantId = params.tenantId ?? (await resolveSupportTicketTenantId(supabase, ticket));
   if (!tenantId) return { skipped: true, reason: "tenant_unresolved" };
 
-  const { data: customer } = await supabase
-    .from("users")
-    .select("full_name")
-    .eq("id", ticket.user_id)
-    .maybeSingle();
-  const customerName =
-    (customer as { full_name?: string | null } | null)?.full_name?.trim().split(/\s+/)[0] ?? null;
-
   const runId = randomUUID();
-  await supabase.from("agent_runs").insert({
-    id: runId,
-    tenant_id: tenantId,
-    agent_id: def.id,
-    agent_version: def.active_version,
-    workflow_type: "support-triage",
-    workflow_run_id: runId,
-    trigger_kind: "event",
-    status: "running",
-    shadow_mode: agentModule.shadowMode,
+  const triage = await classifyAndProposeForTicket({
+    ticketId: params.ticketId,
+    workflowRunId: runId,
+    agentRunId: runId,
+    tenantId,
+    agentId: def.id,
+    agentVersion: def.active_version,
+    shadowMode: agentModule.shadowMode,
   });
 
-  const context = await fetchSupportTicketContext(supabase, ticket).catch(() => null);
-
-  const ticketInput = {
-    subject: String(ticket.subject ?? ""),
-    description: String(ticket.description ?? ""),
-    priority: ticket.priority as string | null,
-    category: ticket.category as string | null,
-    ticketNumber: String(ticket.ticket_number ?? ticket.id),
-    customerName,
-    context,
+  return {
+    runId,
+    classification: triage.classification,
+    proposals: triage.proposals,
+    shadowMode: triage.shadowMode,
   };
-
-  let classification: SupportTriageClassification;
-  let replyDraft: string;
-  const llmResult = await classifyAndDraftWithLlm(ticketInput).catch(() => null);
-  if (llmResult) {
-    classification = llmResult.classification;
-    replyDraft = llmResult.replyDraft;
-  } else {
-    classification = classifySupportTicketHeuristically(ticketInput);
-    replyDraft = buildFallbackReplyDraft({
-      customerName,
-      ticketNumber: ticketInput.ticketNumber,
-      subject: ticketInput.subject,
-      needsHuman: classification.needsHuman,
-    });
-  }
-
-  const proposals: Array<{ type: string; actionId: string | null; skipped?: string }> = [];
-
-  // 1. Reply draft — human approval required before it reaches the customer.
-  try {
-    const replyPayload = {
-      ticketId: ticket.id,
-      draftReply: replyDraft,
-      classification,
-      needsHuman: classification.needsHuman,
-      escalationReasons: classification.escalationReasons,
-      // Shown to the approver so they can verify every fact the draft cites.
-      verifiedContext: context,
-    };
-    const action = await proposeAgentAction({
-      tenantId,
-      agentId: def.id,
-      workflowRunId: runId,
-      actionType: "support.reply",
-      targetType: "support_ticket",
-      targetId: String(ticket.id),
-      proposedPayload: replyPayload,
-      reasoningSummary: classification.needsHuman
-        ? `Escalation required (${classification.escalationReasons.join(", ")}). Draft acknowledges human review; approve to send.`
-        : `Routine ${classification.category} ticket (${classification.urgency}). Approve to send the drafted first reply.`,
-      riskLevel: 1,
-      policyVersion: def.active_version,
-      promptVersion: classification.source,
-      idempotencyKey: `support-reply:${ticket.id}:${hashPayload(replyPayload).slice(0, 16)}`,
-    });
-    proposals.push({ type: "support.reply", actionId: action.id });
-  } catch (err) {
-    proposals.push({
-      type: "support.reply",
-      actionId: null,
-      skipped: isDuplicateProposal(err) ? "open_proposal_exists" : `error:${String(err).slice(0, 120)}`,
-    });
-  }
-
-  // 2. Assignment — propose the least-loaded support staffer if unassigned.
-  if (!ticket.assigned_to) {
-    const assignee = await pickLeastLoadedAssignee();
-    if (assignee) {
-      try {
-        const assignPayload = {
-          ticketId: ticket.id,
-          assigneeUserId: assignee,
-          escalated: classification.needsHuman,
-          rationale: classification.needsHuman
-            ? `Escalation (${classification.escalationReasons.join(", ")}) — route to a human immediately.`
-            : "Least-loaded support staffer.",
-        };
-        const action = await proposeAgentAction({
-          tenantId,
-          agentId: def.id,
-          workflowRunId: runId,
-          actionType: "support.assign",
-          targetType: "support_ticket",
-          targetId: String(ticket.id),
-          proposedPayload: assignPayload,
-          reasoningSummary: assignPayload.rationale,
-          riskLevel: 1,
-          policyVersion: def.active_version,
-          idempotencyKey: `support-assign:${ticket.id}:${assignee}`,
-        });
-        proposals.push({ type: "support.assign", actionId: action.id });
-      } catch (err) {
-        proposals.push({
-          type: "support.assign",
-          actionId: null,
-          skipped: isDuplicateProposal(err) ? "open_proposal_exists" : `error:${String(err).slice(0, 120)}`,
-        });
-      }
-    }
-  }
-
-  await supabase
-    .from("agent_runs")
-    .update({
-      status: "completed",
-      ended_at: new Date().toISOString(),
-      escalation_count: classification.needsHuman ? 1 : 0,
-    })
-    .eq("id", runId);
-
-  return { runId, classification, proposals, shadowMode: agentModule.shadowMode };
-}
-
-function isDuplicateProposal(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code;
-  const message = String((err as { message?: string } | null)?.message ?? err ?? "");
-  return code === "23505" || /duplicate|unique/i.test(message);
 }

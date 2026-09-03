@@ -23,10 +23,7 @@ import {
   signInWithOAuth,
   resendVerificationEmail,
   buildEmailConfirmationRedirectUrl,
-  sendEmailSignInOtp,
-  verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import {
@@ -46,6 +43,11 @@ import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
+import { MarketingConsentCheckbox } from "@/components/auth/MarketingConsentCheckbox";
+import { AccountLinkOffer } from "@/components/auth/AccountLinkOffer";
+import { sendAuthOtp, verifyAuthOtp, lookupAccountLinkMethods } from "@/lib/auth/auth-otp-client";
+import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
+import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -142,6 +144,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [passwordSignupOtpCode, setPasswordSignupOtpCode] = useState("");
   const [isVerifyingPasswordSignupOtp, setIsVerifyingPasswordSignupOtp] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [accountLinkOffer, setAccountLinkOffer] = useState<"google" | "email" | "apple" | "phone" | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState(() => {
     if (typeof navigator !== "undefined" && navigator.language) {
@@ -174,6 +178,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
       sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
     }).catch(() => {});
+    const pendingConsent = sessionStorage.getItem(PENDING_MARKETING_CONSENT_KEY);
+    if (pendingConsent === "1" || pendingConsent === "0") {
+      void submitMarketingConsent(pendingConsent === "1");
+    }
   }, [user?.id]);
 
   useEffect(() => {
@@ -321,6 +329,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           // Non-blocking
         }
         await attachReferralIfPresent(referralCode, manualReferralCode);
+        await submitMarketingConsent(marketingConsent);
         await new Promise(resolve => setTimeout(resolve, 300));
 
         if (redirectContext === "provider") {
@@ -347,6 +356,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               // Non-blocking
             }
             await attachReferralIfPresent(referralCode, manualReferralCode);
+            await submitMarketingConsent(marketingConsent);
             await new Promise(resolve => setTimeout(resolve, 300));
 
             if (redirectContext === "provider") {
@@ -365,6 +375,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           if (typeof window !== "undefined") {
             if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
             sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
+            sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
           }
           setPassword("");
           setShowPasswordField(false);
@@ -402,7 +413,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       ) {
         try {
           await fetcher.post("/api/auth/claim/start", { email: trimmedEmail });
-          setError("We found bookings under this email. Check your inbox to claim your account.");
+          const link = await lookupAccountLinkMethods(trimmedEmail);
+          setAccountLinkOffer(link.offer);
+          setError(
+            link.offer
+              ? "This email is already registered. Sign in with the method below."
+              : "We found bookings under this email. Check your inbox to claim your account.",
+          );
           toast.success("Check your email to claim your account.");
         } catch {
           setError(errorMessage);
@@ -469,7 +486,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setIsVerifyingPasswordSignupOtp(true);
     setError(null);
     try {
-      await verifySignupEmailOtp(trimmedEmail, token);
+      await verifyAuthOtp({ email: trimmedEmail, token, type: "signup" });
       toast.success("Email verified — welcome to Beautonomi!");
       setAwaitingEmailVerification(false);
       setShowResendVerification(false);
@@ -495,6 +512,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       // Non-blocking
     }
     await attachReferralIfPresent(referralCode, manualReferralCode);
+    await submitMarketingConsent(marketingConsent);
     if (opts?.verifiedPhoneE164) {
       writeSignupPhoneHandoff(opts.verifiedPhoneE164);
     }
@@ -524,13 +542,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
     setIsLoading(true);
     try {
-      const supabase = getSupabaseClient();
       const normalized = normalizeSupabaseAuthPhone(trimmed);
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: normalized,
-        options: { channel: "sms", shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ phone: normalized });
       setSentPhoneE164Signup(normalized);
       setSignupPhoneOtpSent(true);
       setSignupPhoneOtpCode("");
@@ -550,12 +563,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setSignupPhoneResending(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: sentPhoneE164Signup,
-        options: { channel: "sms", shouldCreateUser: true },
-      });
-      if (error) throw error;
+      await sendAuthOtp({ phone: sentPhoneE164Signup });
       setSignupPhoneOtpCode("");
       setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
@@ -573,8 +581,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setSignupEmailResending(true);
     setError(null);
     try {
-      const { error } = await sendEmailSignInOtp(sentEmailSignupOtp);
-      if (error) throw error;
+      await sendAuthOtp({ email: sentEmailSignupOtp });
       setSignupEmailOtpCode("");
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
@@ -593,13 +600,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.verifyOtp({
-        phone: sentPhoneE164Signup,
-        token,
-        type: "sms",
-      });
-      if (error) throw error;
+      await verifyAuthOtp({ phone: sentPhoneE164Signup, token, type: "sms" });
       toast.success("Account ready!");
       await finishOtpSignupSession({ verifiedPhoneE164: sentPhoneE164Signup });
     } catch (e: unknown) {
@@ -626,8 +627,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
     setIsLoading(true);
     try {
-      const { error } = await sendEmailSignInOtp(trimmedEmail);
-      if (error) throw error;
+      await sendAuthOtp({ email: trimmedEmail });
       setSentEmailSignupOtp(trimmedEmail);
       setSignupEmailOtpSent(true);
       setSignupEmailOtpCode("");
@@ -648,13 +648,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.verifyOtp({
-        email: sentEmailSignupOtp,
-        token,
-        type: "email",
-      });
-      if (error) throw error;
+      await verifyAuthOtp({ email: sentEmailSignupOtp, token, type: "email" });
       toast.success("Account ready!");
       await finishOtpSignupSession();
     } catch (e: unknown) {
@@ -675,6 +669,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
     setIsLoading(true);
     setError(null);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
+    }
 
     try {
       // Route OAuth through the dedicated /auth/callback handler so the server can
@@ -804,6 +801,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               .
             </label>
           </div>
+          <MarketingConsentCheckbox
+            id="signup-marketing-unified"
+            checked={marketingConsent}
+            onCheckedChange={setMarketingConsent}
+          />
 
           {socialAuth.google && (
             <Button
@@ -1150,6 +1152,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   .
                 </label>
               </div>
+              <MarketingConsentCheckbox
+                id="signup-marketing-email-otp"
+                checked={marketingConsent}
+                onCheckedChange={setMarketingConsent}
+              />
               <p className="text-xs text-gray-500 mb-4">
                 We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to your inbox (not a magic link).
               </p>
@@ -1361,6 +1368,22 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   .
                 </label>
               </div>
+              <MarketingConsentCheckbox
+                id="signup-marketing-password"
+                checked={marketingConsent}
+                onCheckedChange={setMarketingConsent}
+              />
+              <AccountLinkOffer
+                offer={accountLinkOffer}
+                disabled={isLoading}
+                onGoogle={() => void handleSocialOAuth("google")}
+                onEmailCode={() => {
+                  setShowEmailForm(true);
+                  setSignupEmailMode("otp");
+                  setAccountLinkOffer(null);
+                  setError(null);
+                }}
+              />
               <Button 
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
                 onClick={handleEmailAuth}

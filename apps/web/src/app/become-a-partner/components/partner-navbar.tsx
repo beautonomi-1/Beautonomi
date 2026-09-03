@@ -57,7 +57,7 @@ export default function PartnerNavbar() {
       }
       return;
     }
-    router.push("/signup?type=provider");
+    router.push("/provider/signup");
   };
 
   return (

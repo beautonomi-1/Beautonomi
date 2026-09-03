@@ -13,8 +13,10 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 import { fetchFrankfurterRate } from "@/lib/fx/frankfurter-reference-rate";
+import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
-
+const JOB_NAME = "fx-reference-rates";
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
 
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   }
 
-
+  return runLockedCronRoute(JOB_NAME, async () => {
 
   const pairs: Array<[string, string]> = [
 
@@ -82,5 +84,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, results });
 
+  });
 }
 

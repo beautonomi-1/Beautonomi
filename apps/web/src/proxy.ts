@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { csrfCheck, setCsrfCookie } from '@/lib/csrf';
+import { csrfCheck, requestHasAuthSessionCookie, setCsrfCookie } from '@/lib/csrf';
 import { maybeMarketGeoRedirect } from '@/lib/seo/maybe-market-geo-redirect';
 import { isProviderOnboardingRouteAllowed } from '@/lib/provider/onboarding-route-allowlist';
 import {
@@ -9,6 +9,7 @@ import {
   CSP_NONCE_HEADER,
   generateCspNonce,
 } from '@/lib/security/csp-nonce';
+import { enforceAdminIpAllowlist, isAdminScopedPath } from '@/lib/security/admin-ip-allowlist';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -118,9 +119,7 @@ function isAdminSpaBundledAsset(pathname: string): boolean {
 
 /** Lightweight edge check: Supabase SSR stores session in cookies containing `auth-token`. */
 function hasSupabaseAuthSessionCookie(request: NextRequest): boolean {
-  return request.cookies.getAll().some(
-    (cookie) => cookie.name.includes('auth-token') && Boolean(cookie.value?.length),
-  );
+  return requestHasAuthSessionCookie(request);
 }
 
 /** Admin UI (all roles, including superadmin) and admin APIs must not be indexed. */
@@ -201,10 +200,22 @@ export async function proxy(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // Vercel Workflow internal control plane — must not pass auth/CSRF middleware.
+    if (pathname.startsWith('/.well-known/workflow/')) {
+      return NextResponse.next();
+    }
+
     // Digital Asset Links / AASA: Google & Apple fetch `https://<apex>/.well-known/...` — must be 200, no redirect.
     if (pathname.startsWith('/.well-known/')) {
       return NextResponse.next();
     }
+
+    // Admin IP allowlist (platform_settings.security.admin_ip_allowlist); no-op when empty.
+    if (isAdminScopedPath(pathname)) {
+      const ipDenied = await enforceAdminIpAllowlist(request);
+      if (ipDenied) return ipDenied;
+    }
+
     const host = normalizeHost(request.headers.get('host'));
     const adminHost = primaryAdminHost();
     if (
@@ -300,7 +311,15 @@ export async function proxy(request: NextRequest) {
         pathname !== "/api/me/retention/sync-on-login"
       ) {
         const csrfError = csrfCheck(request);
-        if (csrfError) return csrfError;
+        if (csrfError) {
+          if (origin && isAllowedOrigin(origin)) {
+            const headers = corsHeaders(origin);
+            Object.entries(headers).forEach(([key, value]) => {
+              csrfError.headers.set(key, value);
+            });
+          }
+          return csrfError;
+        }
       }
 
       const response = NextResponse.next();
@@ -682,6 +701,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/:path*',
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|\\.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)',
   ],
 };

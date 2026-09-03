@@ -283,4 +283,12 @@ export async function recordCollectibleSettlementLedger(
       });
     }
   }
+
+  if (tipAmount > 0) {
+    void import("@/lib/notifications/notify-staff-event")
+      .then(({ notifyStaffTipReceivedForBooking }) =>
+        notifyStaffTipReceivedForBooking(admin, bookingId),
+      )
+      .catch(() => undefined);
+  }
 }

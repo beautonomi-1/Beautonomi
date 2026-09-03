@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { supportTicketQuery } from "@beautonomi/utils";
 
 interface GiftCardMetadata {
   recipient_email?: string;
@@ -28,6 +29,9 @@ interface GiftCard {
   is_active: boolean;
   expires_at: string | null;
   created_at: string;
+  deliver_at?: string | null;
+  delivered_at?: string | null;
+  can_resend?: boolean;
   metadata?: GiftCardMetadata | null;
 }
 
@@ -99,6 +103,7 @@ function GiftCardsSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +163,18 @@ function GiftCardsSection() {
     } else {
       toast.error("Couldn't copy automatically — long-press the code to copy it");
       setRevealedIds((prev) => new Set(prev).add(card.id));
+    }
+  };
+
+  const handleResend = async (card: GiftCard) => {
+    setResendingId(card.id);
+    try {
+      await fetcher.post(`/api/me/gift-cards/${card.id}/resend`, {});
+      toast.success("Gift card resent to the recipient");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to resend gift card");
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -348,6 +365,26 @@ function GiftCardsSection() {
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
+                    {card.can_resend && usable ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleResend(card)}
+                        disabled={resendingId === card.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors"
+                      >
+                        {resendingId === card.id ? "Resending…" : "Resend"}
+                      </button>
+                    ) : null}
+                    <Link
+                      href={`/help/submit-ticket${supportTicketQuery({
+                        giftCardId: card.id,
+                        giftCardCode: card.code,
+                        category: "payment_gift_card",
+                      })}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors"
+                    >
+                      Contact support
+                    </Link>
                   </div>
                 </div>
 
@@ -362,6 +399,19 @@ function GiftCardsSection() {
                       })}
                     </span>
                   )}
+                  {card.deliver_at && !card.delivered_at ? (
+                    <span>
+                      Sends{" "}
+                      {new Date(card.deliver_at).toLocaleString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  ) : null}
+                  {card.delivered_at ? <span>Delivered</span> : null}
                   {meta.sender_name && <span>From {meta.sender_name}</span>}
                   {meta.recipient_name && <span>For {meta.recipient_name}</span>}
                 </div>

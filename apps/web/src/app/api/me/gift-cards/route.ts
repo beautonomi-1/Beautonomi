@@ -101,7 +101,59 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return successResponse({ gift_cards: giftCards || [] });
+    // Wallet visibility: surface the order's delivery schedule alongside each card so
+    // the wallet can show "sends on <date>" / "delivered" without another round trip.
+    // `expires_at`, `balance`, `is_active` are columns on gift_cards (select("*")).
+    const orderIdByCard = new Map<string, string>();
+    for (const o of orders || []) {
+      if (o.gift_card_id && o.id) orderIdByCard.set(o.gift_card_id as string, o.id as string);
+    }
+    for (const c of giftCards || []) {
+      const metaOrderId = (c as { metadata?: Record<string, unknown> }).metadata?.order_id;
+      if (typeof metaOrderId === "string" && !orderIdByCard.has(c.id as string)) {
+        orderIdByCard.set(c.id as string, metaOrderId);
+      }
+    }
+    const orderIds = Array.from(new Set(orderIdByCard.values()));
+    const deliveryByOrder = new Map<
+      string,
+      { deliver_at: string | null; delivered_at: string | null; delivery_channel: string | null }
+    >();
+    if (orderIds.length > 0) {
+      try {
+        const { data: orderRows } = await supabaseAdmin
+          .from("gift_card_orders")
+          .select("id, deliver_at, delivered_at, delivery_channel")
+          .in("id", orderIds);
+        for (const row of (orderRows || []) as Array<Record<string, unknown>>) {
+          deliveryByOrder.set(row.id as string, {
+            deliver_at: (row.deliver_at as string | null) ?? null,
+            delivered_at: (row.delivered_at as string | null) ?? null,
+            delivery_channel: (row.delivery_channel as string | null) ?? null,
+          });
+        }
+      } catch (deliveryLookupError) {
+        // Delivery schedule is decorative for the wallet; never fail the list over it.
+        console.warn("[me/gift-cards] delivery lookup failed", deliveryLookupError);
+      }
+    }
+
+    const enriched = (giftCards || []).map((card) => {
+      const orderId = orderIdByCard.get(card.id as string);
+      const delivery = orderId ? deliveryByOrder.get(orderId) : undefined;
+      return {
+        ...card,
+        expires_at: (card as { expires_at?: string | null }).expires_at ?? null,
+        balance: Number((card as { balance?: number | string | null }).balance ?? 0),
+        is_active: (card as { is_active?: boolean | null }).is_active ?? false,
+        deliver_at: delivery?.deliver_at ?? null,
+        delivered_at: delivery?.delivered_at ?? null,
+        delivery_channel: delivery?.delivery_channel ?? null,
+        can_resend: Boolean(orderId),
+      };
+    });
+
+    return successResponse({ gift_cards: enriched });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch gift cards");
   }

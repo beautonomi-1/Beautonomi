@@ -69,10 +69,26 @@ const SHADOW_LEDGER_ALLOWLIST = [
   // 704: marketing credit topup revenue + purchase reversal.
   "provider_marketing_credit_topup",
   "provider_marketing_credit_refund",
+  // 730/863: deferred revenue recognition rows.
+  "subscription_recognition",
+  "ads_recognition",
+  "marketing_credit_recognition",
   // 731/734: membership provider earnings (DR 2600 membership liability / CR 2000 payable).
   "membership_provider_earnings",
+  // 732: expired gift card breakage.
+  "gift_card_breakage",
   // 734: standalone Paystack transfer fee for failed/reversed payouts (DR 4000 gateway / CR 1000 cash).
   "payout_transfer_fee",
+  // 809: card-machine cashback wash (not tips payable).
+  "cashback",
+  // 762: terminal commerce revenue types.
+  "terminal_sale",
+  "terminal_rental",
+  "terminal_bundle_alloc",
+  "terminal_promotion",
+  "membership_recognition",
+  // 880: unspent gift-card order refund (DR 2400 / CR cash).
+  "gift_card_refund",
 ] as const;
 
 /**
@@ -96,9 +112,24 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
     "payout_transfer_fee",
   ],
   "804_gl_shadow_refund_components.sql": ["membership_discount"],
+  "809_yoco_settle_parity_and_cashback_ledger.sql": ["cashback"],
+  "730_deferred_revenue_recognition.sql": [
+    "subscription_recognition",
+    "ads_recognition",
+    "marketing_credit_recognition",
+  ],
+  "732_gift_card_breakage.sql": ["gift_card_breakage"],
+  "762_terminal_commerce_gl_posting.sql": [
+    "terminal_sale",
+    "terminal_rental",
+    "terminal_bundle_alloc",
+    "terminal_promotion",
+  ],
+  "863_accrual_recognition_ledger_consistency.sql": ["membership_recognition"],
+  "880_memberships_gift_cards_followups.sql": ["gift_card_refund"],
 };
 
-const LIVE_SHADOW_FUNCTION_MIGRATION = "804_gl_shadow_refund_components.sql";
+const LIVE_SHADOW_FUNCTION_MIGRATION = "870_ledger_consistency_followups.sql";
 
 /**
  * Types that are allowed to appear in code but deliberately skipped by
@@ -169,7 +200,7 @@ function isFinanceTransactionsInsert(context: string[]): boolean {
 const WEB_SRC = path.resolve(__dirname, "..", "..", "..");
 
 describe("Reconciliation drift (Wave 5.3)", () => {
-  it("live shadow function migration includes membership_discount handler", () => {
+  it("live shadow function migration includes refund_component-aware refund handler", () => {
     const migrationsDir = path.resolve(
       __dirname,
       "..",
@@ -187,6 +218,27 @@ describe("Reconciliation drift (Wave 5.3)", () => {
     );
     expect(liveSql).toContain("'membership_discount'");
     expect(liveSql).toContain("refund_component");
+    expect(liveSql).toContain("'cashback'");
+    expect(liveSql).toContain("'subscription_recognition'");
+    expect(liveSql).toContain("9999");
+  });
+
+  it("posting-map stays documentation-only and balanced; SQL allowlist covers TS fixture types", () => {
+    const { postBookingPayment, isBalanced } = require("../posting-map") as typeof import("../posting-map");
+    const entry = postBookingPayment({
+      paymentId: "map-agree",
+      gross: 100,
+      platformFee: 10,
+      gatewayFee: 2,
+      taxAmount: 5,
+      tipAmount: 8,
+    });
+    expect(isBalanced(entry)).toBe(true);
+    const migrationsDir = path.resolve(__dirname, "..", "..", "..", "..", "..", "..", "supabase", "migrations");
+    const liveSql = fs.readFileSync(path.join(migrationsDir, LIVE_SHADOW_FUNCTION_MIGRATION), "utf8");
+    for (const t of ["payment", "tip", "tax", "payout_transfer_fee", "gift_card_breakage", "cashback"]) {
+      expect(liveSql.includes(`'${t}'`), `870 should mention '${t}'`).toBe(true);
+    }
   });
 
   it("migration 510 (+ later allowlist migrations) and test data agree on allowlist", () => {

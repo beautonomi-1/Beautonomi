@@ -94,6 +94,49 @@ export async function GET(request: NextRequest) {
       tiers: tiersByStaff[member.id] || [],
     }));
 
+    const view = searchParams.get("view");
+    if (view === "setup") {
+      const [{ data: staffFull }, { data: offerings }, { data: settings }] = await Promise.all([
+        supabase
+          .from("provider_staff")
+          .select("id, name, commission_enabled, service_commission_rate, product_commission_rate")
+          .eq("provider_id", providerId)
+          .eq("is_active", true)
+          .is("deleted_at", null),
+        supabase
+          .from("offerings")
+          .select("id, team_member_commission_enabled")
+          .eq("provider_id", providerId)
+          .eq("is_active", true)
+          .is("parent_service_id", null),
+        supabase
+          .from("provider_settings")
+          .select("staff_share_cancellation_fee")
+          .eq("provider_id", providerId)
+          .maybeSingle(),
+      ]);
+      const enabledStaff = (staffFull ?? []).filter((s: { commission_enabled?: boolean | null }) => s.commission_enabled === true);
+      const zeroRateStaff = enabledStaff.filter((s: { service_commission_rate?: number | null; product_commission_rate?: number | null }) => {
+        const serviceRate = Number(s.service_commission_rate ?? 0);
+        const productRate = Number(s.product_commission_rate ?? 0);
+        return serviceRate <= 0 && productRate <= 0;
+      });
+      const disabledServices = (offerings ?? []).filter(
+        (o: { team_member_commission_enabled?: boolean | null }) => o.team_member_commission_enabled === false,
+      );
+      return successResponse({
+        staff: result,
+        staff_share_cancellation_fee:
+          (settings as { staff_share_cancellation_fee?: boolean | null } | null)?.staff_share_cancellation_fee === true,
+        checklist: {
+          staff_with_commission_enabled: enabledStaff.length,
+          staff_enabled_zero_rate: zeroRateStaff.length,
+          services_with_staff_commission_disabled: disabledServices.length,
+          active_services: (offerings ?? []).length,
+        },
+      });
+    }
+
     return successResponse(result);
   } catch (error) {
     return handleApiError(error, "Failed to load commission settings");
@@ -124,7 +167,29 @@ export async function PATCH(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { staffId, commissionPercentage, tiers } = body;
+    const { staffId, commissionPercentage, tiers, staff_share_cancellation_fee } = body;
+
+    if (staff_share_cancellation_fee !== undefined && !staffId) {
+      const enabled = staff_share_cancellation_fee === true;
+      const { data: existing } = await supabase
+        .from("provider_settings")
+        .select("id")
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (existing) {
+        const { error: updateErr } = await supabase
+          .from("provider_settings")
+          .update({ staff_share_cancellation_fee: enabled })
+          .eq("provider_id", providerId);
+        if (updateErr) throw updateErr;
+      } else {
+        const { error: insertErr } = await supabase
+          .from("provider_settings")
+          .insert({ provider_id: providerId, staff_share_cancellation_fee: enabled });
+        if (insertErr) throw insertErr;
+      }
+      return successResponse({ staff_share_cancellation_fee: enabled });
+    }
 
     if (!staffId) {
       return handleApiError(

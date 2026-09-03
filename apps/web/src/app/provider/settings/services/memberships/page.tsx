@@ -50,6 +50,14 @@ export default function MembershipsSettings() {
     is_active: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subscribers, setSubscribers] = useState<
+    Array<{
+      subscription: { id: string; status: string; expires_at: string | null };
+      user: { full_name: string | null; email: string | null };
+      plan: { name: string };
+    }>
+  >([]);
+  const [extendingId, setExtendingId] = useState<string | null>(null);
 
   const loadPlans = async () => {
     try {
@@ -68,9 +76,47 @@ export default function MembershipsSettings() {
     }
   };
 
+  const loadSubscribers = async () => {
+    try {
+      const res = await fetcher.get<{
+        data: {
+          subscribers: Array<{
+            subscription: { id: string; status: string; expires_at: string | null };
+            user: { full_name: string | null; email: string | null };
+            plan: { name: string };
+          }>;
+        };
+      }>("/api/provider/membership-subscribers?status=all");
+      setSubscribers(res.data.subscribers || []);
+    } catch {
+      setSubscribers([]);
+    }
+  };
+
   useEffect(() => {
-    loadPlans();
+    void loadPlans();
+    void loadSubscribers();
   }, []);
+
+  const extendSubscription = async (id: string) => {
+    const daysRaw = window.prompt("Extend this membership by how many days? (1–365)", "30");
+    if (!daysRaw) return;
+    const days = Number(daysRaw);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      toast.error("Enter a whole number of days between 1 and 365");
+      return;
+    }
+    setExtendingId(id);
+    try {
+      await fetcher.post(`/api/provider/membership-subscriptions/${id}/extend`, { days });
+      toast.success(`Extended by ${days} day${days === 1 ? "" : "s"}`);
+      await loadSubscribers();
+    } catch (error) {
+      toast.error(error instanceof FetchError ? error.message : "Failed to extend membership");
+    } finally {
+      setExtendingId(null);
+    }
+  };
 
   const handleCreate = () => {
     setEditingPlan(null);
@@ -261,6 +307,43 @@ export default function MembershipsSettings() {
                   >
                     <Trash2 className="w-3 h-3 mr-1" />
                     Delete
+                  </Button>
+                </div>
+              </SectionCard>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold mb-3">Subscribers</h2>
+        {subscribers.length === 0 ? (
+          <SectionCard>
+            <p className="text-sm text-gray-600">No members yet.</p>
+          </SectionCard>
+        ) : (
+          <div className="space-y-2">
+            {subscribers.map((row) => (
+              <SectionCard key={row.subscription.id} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {row.user.full_name || row.user.email || "Member"}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {row.plan.name} · {row.subscription.status}
+                      {row.subscription.expires_at
+                        ? ` · expires ${new Date(row.subscription.expires_at).toLocaleDateString()}`
+                        : ""}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={extendingId === row.subscription.id}
+                    onClick={() => void extendSubscription(row.subscription.id)}
+                  >
+                    {extendingId === row.subscription.id ? "Extending…" : "Extend period"}
                   </Button>
                 </div>
               </SectionCard>

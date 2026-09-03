@@ -287,6 +287,20 @@ export const adminQueryKeys = {
   giftCards: (q: string) => [...adminQueryKeys.root, "gift-cards", q] as const,
 
   systemHealth: (q: string) => [...adminQueryKeys.root, "system-health", q] as const,
+  cronRuns: (status: string, job: string) =>
+    [...adminQueryKeys.root, "cron-runs", status, job] as const,
+  workflowRuns: (status: string, workflow: string) =>
+    [...adminQueryKeys.root, "workflow-runs", status, workflow] as const,
+
+  reconciliationExceptions: (status: string, source: string, assigned: string) =>
+    [...adminQueryKeys.root, "reconciliation-exceptions", status, source, assigned] as const,
+
+  ledgerRepair: (status: string) => [...adminQueryKeys.root, "ledger-repair", status] as const,
+
+  ledgerHealth: (days: string) => [...adminQueryKeys.root, "ledger-health", days] as const,
+
+  inboundWebhooks: (source: string, status: string, sigOnly: boolean, q: string) =>
+    [...adminQueryKeys.root, "inbound-webhooks", source, status, sigOnly, q] as const,
 
   monitoringHealth: (hours: string) => [...adminQueryKeys.root, "monitoring-health", hours] as const,
 

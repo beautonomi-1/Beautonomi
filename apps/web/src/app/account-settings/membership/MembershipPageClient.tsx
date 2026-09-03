@@ -38,8 +38,30 @@ type ProviderMembership = {
   next_billing_at: string | null;
   last_payment_at: string | null;
   past_due_since: string | null;
+  paused_until: string | null;
+  scheduled_plan_id: string | null;
+  scheduled_plan_name?: string | null;
+  scheduled_change_at: string | null;
   renewal_payment_method_missing?: boolean;
   card: { last4: string; brand: string; exp: string } | null;
+};
+
+type SalonPlanOption = {
+  id: string;
+  name: string;
+  price_monthly?: number;
+  price?: number;
+  currency?: string;
+  discount_percent?: number;
+};
+
+type UsageRow = {
+  id: string;
+  booking_number?: string | null;
+  scheduled_at?: string | null;
+  status?: string | null;
+  membership_discount_amount: number;
+  currency: string;
 };
 
 type PlatformMembership = {
@@ -104,6 +126,17 @@ export default function MembershipPageClient() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [updatingCard, setUpdatingCard] = useState(false);
+  const [pausingId, setPausingId] = useState<string | null>(null);
+  const [planSheetOpen, setPlanSheetOpen] = useState(false);
+  const [planTarget, setPlanTarget] = useState<ProviderMembership | null>(null);
+  const [salonPlans, setSalonPlans] = useState<SalonPlanOption[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [schedulingPlan, setSchedulingPlan] = useState(false);
+  const [usageSheetOpen, setUsageSheetOpen] = useState(false);
+  const [usageTarget, setUsageTarget] = useState<ProviderMembership | null>(null);
+  const [usageRows, setUsageRows] = useState<UsageRow[]>([]);
+  const [usageTotal, setUsageTotal] = useState(0);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -241,6 +274,117 @@ export default function MembershipPageClient() {
     }
   };
 
+  const pauseOrResume = async (membership: ProviderMembership) => {
+    const paused = membership.status === "paused";
+    if (
+      !paused &&
+      !confirm(`Pause your ${membership.plan_name} membership with ${membership.provider_name}? Auto-renew will turn off.`)
+    ) {
+      return;
+    }
+    setPausingId(membership.id);
+    try {
+      if (paused) {
+        const res = await fetcher.post<{ data: { resumed?: boolean; status?: string; message?: string } }>(
+          "/api/me/membership/resume",
+          { provider_membership_id: membership.id },
+        );
+        toast.success(res.data?.resumed ? "Membership resumed" : res.data?.message ?? "Updated");
+      } else {
+        const res = await fetcher.post<{ data: { paused?: boolean; message?: string } }>(
+          "/api/me/membership/pause",
+          { provider_membership_id: membership.id },
+        );
+        toast.success(res.data?.paused ? "Membership paused" : res.data?.message ?? "Updated");
+      }
+      await load();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to update membership");
+    } finally {
+      setPausingId(null);
+    }
+  };
+
+  const openChangePlan = async (membership: ProviderMembership) => {
+    if (membership.auto_renew !== true) {
+      toast.error("Turn on auto-renew first. The new plan applies at the next renewal.");
+      return;
+    }
+    if (!membership.provider_slug) {
+      toast.error("This provider has no public profile, so other plans cannot be loaded.");
+      return;
+    }
+    setPlanTarget(membership);
+    setPlanSheetOpen(true);
+    setLoadingPlans(true);
+    try {
+      const res = await fetcher.get<{ data?: { plans?: SalonPlanOption[] } }>(
+        `/api/public/providers/${membership.provider_slug}/membership-plans`,
+      );
+      setSalonPlans(res.data?.plans ?? []);
+    } catch {
+      toast.error("Could not load plans");
+      setSalonPlans([]);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  const schedulePlanChange = async (planId: string) => {
+    if (!planTarget) return;
+    setSchedulingPlan(true);
+    try {
+      const res = await fetcher.post<{
+        data: {
+          scheduled?: boolean;
+          cleared?: boolean;
+          scheduled_plan_name?: string | null;
+          scheduled_change_at?: string | null;
+        };
+      }>("/api/me/membership/change-plan", {
+        provider_membership_id: planTarget.id,
+        plan_id: planId,
+      });
+      if (res.data?.cleared) {
+        toast.success("Scheduled plan change cleared");
+      } else if (res.data?.scheduled) {
+        toast.success(
+          `Plan change scheduled${res.data.scheduled_change_at ? ` for ${formatDateSafe(res.data.scheduled_change_at)}` : ""}`,
+        );
+      } else {
+        toast.success("Updated");
+      }
+      setPlanSheetOpen(false);
+      setPlanTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to schedule plan change");
+    } finally {
+      setSchedulingPlan(false);
+    }
+  };
+
+  const openUsage = async (membership: ProviderMembership) => {
+    setUsageTarget(membership);
+    setUsageSheetOpen(true);
+    setLoadingUsage(true);
+    try {
+      const res = await fetcher.get<{
+        data: { bookings?: UsageRow[]; discount_total?: number };
+      }>(`/api/me/membership/usage?provider_membership_id=${encodeURIComponent(membership.id)}`, {
+        cache: "no-store",
+      });
+      setUsageRows(res.data?.bookings ?? []);
+      setUsageTotal(Number(res.data?.discount_total ?? 0));
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to load usage");
+      setUsageRows([]);
+      setUsageTotal(0);
+    } finally {
+      setLoadingUsage(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -345,14 +489,27 @@ export default function MembershipPageClient() {
           </div>
           {providerMemberships.map((pm) => {
             const isPastDue = pm.status === "past_due";
-            const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue;
+            const isPaused = pm.status === "paused";
+            const needsRenewalCard = pm.renewal_payment_method_missing === true && !isPastDue && !isPaused;
             return (
               <Card
                 key={pm.id}
                 className={isPastDue || needsRenewalCard ? "border-amber-300 shadow-sm" : undefined}
               >
                 <CardContent className="space-y-4 pt-6">
-                  {isPastDue ? (
+                  {isPaused ? (
+                    <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" />
+                      <div>
+                        <p className="font-semibold">Paused</p>
+                        <p className="mt-1">
+                          Auto-renew is off
+                          {pm.paused_until ? ` until ${formatDateSafe(pm.paused_until)}` : ""}.
+                          Resume anytime to keep your benefits.
+                        </p>
+                      </div>
+                    </div>
+                  ) : isPastDue ? (
                     <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
                       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
                       <div>
@@ -389,6 +546,12 @@ export default function MembershipPageClient() {
                         <Badge variant="secondary" className="bg-pink-100 text-pink-800">
                           {pm.discount_percent}% off services
                         </Badge>
+                      ) : null}
+                      {pm.scheduled_plan_id ? (
+                        <span>
+                          Changes to {pm.scheduled_plan_name ?? "the selected plan"}{" "}
+                          {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : "at period end"}
+                        </span>
                       ) : null}
                       {pm.auto_renew && pm.next_billing_at ? (
                         <span>Renews {formatDateSafe(pm.next_billing_at)}</span>
@@ -435,6 +598,24 @@ export default function MembershipPageClient() {
                       >
                         Billing history
                       </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void openUsage(pm)}>
+                      Usage
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void openChangePlan(pm)}>
+                      Change plan
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void pauseOrResume(pm)}
+                      disabled={pausingId === pm.id}
+                    >
+                      {pausingId === pm.id
+                        ? "Saving…"
+                        : isPaused
+                          ? "Resume"
+                          : "Pause"}
                     </Button>
                     {pm.provider_slug ? (
                       <Button variant="ghost" size="sm" asChild>
@@ -520,6 +701,92 @@ export default function MembershipPageClient() {
           </div>
           <SheetFooter>
             <Button variant="ghost" onClick={() => setCardSheetOpen(false)}>
+              Close
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={planSheetOpen} onOpenChange={setPlanSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Change plan</SheetTitle>
+            <SheetDescription>
+              Takes effect at the end of the current period. Same plan clears a pending change.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="my-4 space-y-2">
+            {loadingPlans ? (
+              <p className="text-sm text-gray-500">Loading plans…</p>
+            ) : salonPlans.length === 0 ? (
+              <p className="text-sm text-gray-600">No other plans available.</p>
+            ) : (
+              salonPlans.map((plan) => {
+                const current = plan.id === planTarget?.plan_id;
+                const pending = plan.id === planTarget?.scheduled_plan_id;
+                return (
+                  <Button
+                    key={plan.id}
+                    variant={current ? "default" : "outline"}
+                    className="h-auto w-full justify-start py-3"
+                    disabled={schedulingPlan}
+                    onClick={() => void schedulePlanChange(plan.id)}
+                  >
+                    <span className="text-left">
+                      <span className="block font-medium">{plan.name}</span>
+                      <span className="block text-xs text-gray-500">
+                        {formatMoney(Number(plan.price_monthly ?? plan.price ?? 0), plan.currency ?? planTarget?.currency ?? "ZAR")}
+                        /month
+                        {current ? " · current" : ""}
+                        {pending ? " · scheduled" : ""}
+                      </span>
+                    </span>
+                  </Button>
+                );
+              })
+            )}
+          </div>
+          <SheetFooter>
+            <Button variant="ghost" onClick={() => setPlanSheetOpen(false)}>
+              Close
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={usageSheetOpen} onOpenChange={setUsageSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Membership usage</SheetTitle>
+            <SheetDescription>
+              Bookings where your {usageTarget?.plan_name ?? "membership"} discount applied.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="my-4 space-y-2">
+            {loadingUsage ? (
+              <p className="text-sm text-gray-500">Loading usage…</p>
+            ) : usageRows.length === 0 ? (
+              <p className="text-sm text-gray-600">No discounted bookings yet.</p>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-gray-800">
+                  Total saved: {formatMoney(usageTotal, usageTarget?.currency ?? "ZAR")}
+                </p>
+                {usageRows.map((row) => (
+                  <div key={row.id} className="rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                    <p className="font-medium text-gray-900">
+                      {row.booking_number ?? row.id.slice(0, 8)}
+                    </p>
+                    <p className="text-gray-600">
+                      {formatDateSafe(row.scheduled_at)} · {formatMoney(row.membership_discount_amount, row.currency)}
+                    </p>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <SheetFooter>
+            <Button variant="ghost" onClick={() => setUsageSheetOpen(false)}>
               Close
             </Button>
           </SheetFooter>

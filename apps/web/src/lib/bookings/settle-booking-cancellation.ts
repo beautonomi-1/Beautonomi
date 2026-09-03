@@ -7,6 +7,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
+import { postCancellationFeeShareLines } from "@/lib/payroll/cancellation-fee-share";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import {
   computeInPersonRefundableCap,
@@ -183,6 +185,8 @@ export async function insertCancellationFeeLedgerIdempotent(
     tenantId?: string | null;
     amount: number;
     description: string;
+    /** Booking currency; falls back to the tenant default (migration 870 trigger mirrors this). */
+    currency?: string | null;
   },
 ): Promise<boolean> {
   if (params.amount <= 0) return false;
@@ -200,23 +204,46 @@ export async function insertCancellationFeeLedgerIdempotent(
     tenant_id: params.tenantId ?? null,
     provider_id: params.providerId,
   });
-
-  const { error } = await admin.from("finance_transactions").insert({
-    tenant_id: financeTenantId,
-    booking_id: params.bookingId,
-    provider_id: params.providerId,
-    transaction_type: "cancellation_fee",
-    amount: params.amount,
-    fees: 0,
-    commission: 0,
-    net: params.amount,
-    description: params.description,
-    created_at: new Date().toISOString(),
+  const currency = await resolveLedgerCurrency(admin, {
+    currency: params.currency ?? null,
+    tenantId: financeTenantId,
   });
+
+  const { data: inserted, error } = await admin
+    .from("finance_transactions")
+    .insert({
+      tenant_id: financeTenantId,
+      booking_id: params.bookingId,
+      provider_id: params.providerId,
+      transaction_type: "cancellation_fee",
+      amount: params.amount,
+      fees: 0,
+      commission: 0,
+      net: params.amount,
+      currency,
+      description: params.description,
+      created_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
 
   if (error) {
     console.error("[settleBookingCancellation] cancellation_fee insert failed:", error);
     return false;
+  }
+
+  if (inserted?.id) {
+    try {
+      await postCancellationFeeShareLines(admin, {
+        providerId: params.providerId,
+        bookingId: params.bookingId,
+        financeTransactionId: inserted.id,
+        providerEarningsAmount: params.amount,
+        tenantId: financeTenantId,
+      });
+    } catch (shareErr) {
+      console.error("[settleBookingCancellation] cancellation fee share failed:", shareErr);
+    }
   }
   return true;
 }
@@ -461,6 +488,7 @@ export async function settleBookingCancellation(
     tenantId: booking.tenant_id,
     amount: cancellationFeeApplied,
     description: feeDescription,
+    currency: params.currency,
   });
 
   const loyaltyReason =

@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
 import { X, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, Smartphone, Mail } from "lucide-react";
@@ -61,6 +62,12 @@ import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-p
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
+import { MarketingConsentCheckbox } from "@/components/auth/MarketingConsentCheckbox";
+import { PasskeyComingSoonButton } from "@/components/auth/PasskeyComingSoonButton";
+import { AccountLinkOffer } from "@/components/auth/AccountLinkOffer";
+import { submitMarketingConsent } from "@/lib/auth/submit-marketing-consent";
+import { lookupAccountLinkMethods } from "@/lib/auth/auth-otp-client";
+import { PENDING_MARKETING_CONSENT_KEY } from "@/lib/auth/persist-marketing-consent";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -198,6 +205,9 @@ export default function LoginModal({
     return "en";
   });
   const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [accountLinkOffer, setAccountLinkOffer] = useState<"google" | "email" | "apple" | "phone" | null>(null);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
     google: true,
     apple: true,
@@ -243,17 +253,22 @@ export default function LoginModal({
     if (!user?.id || typeof window === "undefined") return;
     const pendingSource = sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY);
     const pendingLang = sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY);
-    if (!pendingSource && !pendingLang) return;
-    const payload: { signup_source?: string; preferred_language?: string } = {};
-    if (pendingSource) payload.signup_source = pendingSource;
-    if (pendingLang) payload.preferred_language = pendingLang;
-    fetcher
-      .patch("/api/me/profile", payload)
-      .then(() => {
-        sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
-        sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
-      })
-      .catch(() => {});
+    const pendingConsent = sessionStorage.getItem(PENDING_MARKETING_CONSENT_KEY);
+    if (pendingSource || pendingLang) {
+      const payload: { signup_source?: string; preferred_language?: string } = {};
+      if (pendingSource) payload.signup_source = pendingSource;
+      if (pendingLang) payload.preferred_language = pendingLang;
+      fetcher
+        .patch("/api/me/profile", payload)
+        .then(() => {
+          sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
+          sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
+        })
+        .catch(() => {});
+    }
+    if (pendingConsent === "1" || pendingConsent === "0") {
+      void submitMarketingConsent(pendingConsent === "1");
+    }
   }, [user?.id]);
 
   // Reset form when modal opens/closes
@@ -446,6 +461,7 @@ export default function LoginModal({
           } catch {
             // Non-blocking
           }
+          await submitMarketingConsent(marketingConsent);
 
           // Small delay to ensure auth context is updated
           await new Promise((resolve) => setTimeout(resolve, 300));
@@ -514,6 +530,7 @@ export default function LoginModal({
             if (typeof window !== "undefined") {
               if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
               sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
+              sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
             }
             setPassword("");
             setShowPasswordField(false);
@@ -533,7 +550,11 @@ export default function LoginModal({
         }
       } else {
         // Sign in existing user
-        const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
+        const loginResult = await signInAuth({
+          email: trimmedEmail,
+          password: trimmedPassword,
+          rememberMe,
+        });
 
         // Clear any errors on successful sign in
         setError(null);
@@ -664,8 +685,12 @@ export default function LoginModal({
       ) {
         try {
           await fetcher.post("/api/auth/claim/start", { email: trimmedEmail });
+          const link = await lookupAccountLinkMethods(trimmedEmail);
+          setAccountLinkOffer(link.offer);
           setError(
-            "An account with this email already exists. If a provider booked for you, check your inbox for a link to claim your account — otherwise log in instead."
+            link.offer
+              ? "This email is already registered. Sign in with the method below."
+              : "An account with this email already exists. If a provider booked for you, check your inbox for a link to claim your account — otherwise log in instead."
           );
           setShowResendVerification(false);
           toast.success("Check your email to claim your account.");
@@ -1107,6 +1132,9 @@ export default function LoginModal({
             ? "/provider/onboarding"
             : "/";
       const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
+      }
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
       toast.info(provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...");
@@ -1952,6 +1980,35 @@ export default function LoginModal({
                       </div>
                     </>
                   )}
+                  {isSignup ? (
+                    <MarketingConsentCheckbox
+                      id="login-modal-marketing"
+                      checked={marketingConsent}
+                      onCheckedChange={setMarketingConsent}
+                    />
+                  ) : (
+                    <div className="mb-4 flex items-center gap-2">
+                      <Checkbox
+                        id="login-modal-remember"
+                        checked={rememberMe}
+                        onCheckedChange={(c) => setRememberMe(c === true)}
+                      />
+                      <label htmlFor="login-modal-remember" className="text-xs text-gray-600 cursor-pointer">
+                        Remember me for 30 days
+                      </label>
+                    </div>
+                  )}
+                  <AccountLinkOffer
+                    offer={accountLinkOffer}
+                    disabled={isLoading}
+                    onGoogle={() => void handleSocialOAuth("google")}
+                    onEmailCode={() => {
+                      setEmailOtpMode(true);
+                      setIsSignup(false);
+                      setAccountLinkOffer(null);
+                    }}
+                  />
+                  <PasskeyComingSoonButton />
                   <Button
                     className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                     onClick={handleEmailAuth}

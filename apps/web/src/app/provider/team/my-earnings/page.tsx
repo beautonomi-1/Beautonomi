@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
+type LiveTotals = { total: number; commission: number; tips: number };
+
 interface PayStub {
   pay_run_id: string;
   pay_period_start: string;
@@ -32,6 +34,7 @@ interface PayStub {
 export default function MyEarningsPage() {
   const { format: fmtMoney } = useProviderMoneyFormat();
   const [payStubs, setPayStubs] = useState<PayStub[]>([]);
+  const [live, setLive] = useState<Record<string, LiveTotals> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -42,8 +45,15 @@ export default function MyEarningsPage() {
   const loadEarnings = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: PayStub[] }>("/api/provider/pay-runs/my-earnings");
-      setPayStubs((response as any)?.data ?? []);
+      const response = await fetcher.get<{
+        data?: {
+          pay_stubs?: PayStub[];
+          live?: Record<string, LiveTotals>;
+        };
+      }>("/api/provider/pay-runs/my-earnings");
+      const payload = response.data;
+      setPayStubs(Array.isArray(payload?.pay_stubs) ? payload.pay_stubs : []);
+      setLive(payload?.live ?? null);
     } catch (err) {
       console.error("Failed to load earnings:", err);
       toast.error("Failed to load earnings");
@@ -81,6 +91,24 @@ export default function MyEarningsPage() {
           { label: "My Earnings" },
         ]}
       />
+
+      {live ? (
+        <SectionCard className="p-4">
+          <p className="text-sm font-semibold text-gray-900 mb-3">Live earnings</p>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            {(["today", "week", "month"] as const).map((key) => (
+              <div key={key}>
+                <p className="text-xs uppercase text-gray-500">{key}</p>
+                <p className="font-medium">{fmtMoney(Number(live[key]?.total ?? 0))}</p>
+                <p className="text-xs text-gray-500">
+                  Commission {fmtMoney(Number(live[key]?.commission ?? 0))} · Tips{" "}
+                  {fmtMoney(Number(live[key]?.tips ?? 0))}
+                </p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      ) : null}
 
       {payStubs.length === 0 ? (
         <SectionCard className="p-8 text-center">

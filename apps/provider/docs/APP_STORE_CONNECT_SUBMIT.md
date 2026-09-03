@@ -1,4 +1,4 @@
-# Provider iOS — App Store Connect submission checklist (v1.0.87)
+# Provider iOS — App Store Connect submission checklist (v1.0.88)
 
 Use this checklist when resubmitting **Beautonomi Provider** (`com.beautonomi.partner`) after App Review rejection. Complete every item before clicking **Submit for Review**.
 
@@ -73,7 +73,7 @@ Create **13 products** matching [`Products.storekit`](../Products.storekit):
 
 **Attach to version:**
 
-1. Open the **1.0.87** version page
+1. Open the **1.0.88** version page
 2. **In-App Purchases and Subscriptions** → add all 13 products
 3. Submit IAPs **with** the new binary (first-time IAPs cannot be submitted alone)
 
@@ -124,7 +124,7 @@ If not tracking on iOS, update label to **No tracking** and remove Device ID tra
 
 ## 6. Build & submit
 
-**Build 1.0.87:** run production iOS build after merge (see commands below).
+**Build 1.0.88:** run production iOS build after merge (see commands below).
 
 ```bash
 cd apps/provider
@@ -132,7 +132,7 @@ eas build --profile production --platform ios
 eas submit --profile production --platform ios --latest
 ```
 
-On the version page: select build **1.0.87 (280)**, attach all IAPs, paste Review Notes below, **Submit for Review**.
+On the version page: select build **1.0.88 (281)**, attach all IAPs, paste Review Notes below, **Submit for Review**.
 
 ---
 

@@ -9,7 +9,6 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
-import { trackServer } from "@/lib/analytics/amplitude/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -234,15 +233,6 @@ export async function GET(request: NextRequest) {
           .select("order_number, customer_id")
           .eq("id", productOrderId)
           .maybeSingle();
-
-        // Track payment via Amplitude
-        trackServer("product_order_paid", {
-          order_id: productOrderId,
-          order_number: po?.order_number,
-          amount: data.data.amount / 100,
-          payment_method: "paystack",
-          currency: paidCurrency,
-        }, po?.customer_id).catch(() => {});
 
         return successResponse({
           status: "success",

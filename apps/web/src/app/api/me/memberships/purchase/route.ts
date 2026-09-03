@@ -13,6 +13,7 @@ const schema = z.object({
   utm_medium: z.string().optional(),
   utm_campaign: z.string().optional(),
   referrer_path: z.string().optional(),
+  tender: z.enum(["paystack", "wallet"]).optional(),
 });
 
 /**
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
       userEmail: user.email,
       planId: parsed.data.plan_id,
       tenantId,
+      tender: parsed.data.tender ?? "paystack",
+      authClient: parsed.data.tender === "wallet" ? supabase : undefined,
       attribution: {
         campaign_id: parsed.data.campaign_id,
         source: parsed.data.source ?? "partner_profile_memberships",

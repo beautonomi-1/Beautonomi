@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TeamMemberCreateEditDialog } from "./components/TeamMemberCreateEditDialog";
 import { toast } from "sonner";
+import { FetchError } from "@/lib/http/fetcher";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
@@ -150,16 +151,46 @@ export default function ProviderTeamMembers() {
     toast.success(wasUpdate ? "Team member updated" : "Team member created");
   };
 
-  const handleDelete = async (member: TeamMember) => {
+  const handleDelete = async (member: TeamMember, reassignTo?: string) => {
     if (!canManageTeam) return;
-    if (!confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)) return;
+    if (
+      !reassignTo &&
+      !confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)
+    ) {
+      return;
+    }
     try {
-      await providerApi.deleteTeamMember(member.id);
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const qs = reassignTo ? `?reassign_to=${encodeURIComponent(reassignTo)}` : "";
+      await fetcher.delete(`/api/provider/staff/${member.id}${qs}`);
       toast.success(`${member.name} has been deleted`);
       loadMembers();
     } catch (error) {
+      const fetchErr = error as FetchError;
+      if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
+        const proceed = confirm(
+          `${member.name} has upcoming bookings. Reassign those bookings to any available staff and delete?`,
+        );
+        if (proceed) {
+          await handleDelete(member, "any");
+          return;
+        }
+      }
       console.error("Failed to delete member:", error);
-      toast.error("Failed to delete member");
+      toast.error(fetchErr?.message || "Failed to delete member");
+    }
+  };
+
+  const handleRevokeInvite = async (member: TeamMember) => {
+    if (!canManageTeam) return;
+    if (!confirm(`Revoke the pending invite for ${member.name}?`)) return;
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      await fetcher.post(`/api/provider/staff/${member.id}/invite/revoke`, {});
+      toast.success(`Invite revoked for ${member.name}`);
+      loadMembers();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to revoke invite");
     }
   };
 
@@ -232,6 +263,34 @@ export default function ProviderTeamMembers() {
             : undefined
         }
       />
+      {members.some((m) => {
+        const until = m.over_cap_grace_until;
+        return !!until && Number.isFinite(new Date(until).getTime()) && new Date(until).getTime() > Date.now();
+      }) ? (
+        <Alert className="border-amber-200 bg-amber-50">
+          <Info className="w-4 h-4 text-amber-700" />
+          <AlertDescription className="text-amber-900">
+            Your plan is over the staff cap. Some team members were deactivated and stay in a grace window
+            until {members
+              .map((m) => m.over_cap_grace_until)
+              .filter((v): v is string => !!v)
+              .map((v) => new Date(v).getTime())
+              .filter((t) => t > Date.now())
+              .sort((a, b) => a - b)[0]
+              ? new Date(
+                  Math.min(
+                    ...members
+                      .map((m) => m.over_cap_grace_until)
+                      .filter((v): v is string => !!v)
+                      .map((v) => new Date(v).getTime())
+                      .filter((t) => t > Date.now()),
+                  ),
+                ).toLocaleDateString()
+              : "the grace period ends"}
+            . Upgrade or keep the roster at the new limit to reactivate them.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {teamAccessLoaded && !canManageTeam ? (
         <Alert className="border-amber-200 bg-amber-50">
           <Info className="w-4 h-4 text-amber-700" />
@@ -452,6 +511,10 @@ export default function ProviderTeamMembers() {
                               <Mail className="w-4 h-4 mr-2" />
                               Resend invite
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleRevokeInvite(member)} className="cursor-pointer">
+                              <Mail className="w-4 h-4 mr-2" />
+                              Revoke invite
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleResetPassword(member)} className="cursor-pointer">
                               <KeyRound className="w-4 h-4 mr-2" />
                               Reset Password
@@ -522,6 +585,10 @@ export default function ProviderTeamMembers() {
                         <DropdownMenuItem onClick={() => handleResendInvite(member)}>
                           <Mail className="w-4 h-4 mr-2" />
                           Resend invite
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void handleRevokeInvite(member)}>
+                          <Mail className="w-4 h-4 mr-2" />
+                          Revoke invite
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleResetPassword(member)}>
                           <KeyRound className="w-4 h-4 mr-2" />

@@ -35,6 +35,8 @@ import { handleError, withRetry, getErrorMessage } from "@/lib/provider-portal/e
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatCurrency, cn } from "@/lib/utils";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 import type { ProviderDashboardStats } from "./provider-dashboard-stats";
 import { buildPayoutBalanceCardView } from "./payout-balance-card";
 import { DashboardInsightsPanel } from "./DashboardInsightsPanel";
@@ -266,6 +268,54 @@ export function DashboardClient({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [provider, loadDashboardFresh]);
+
+  const dashboardRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedDashboardRefresh = useCallback(() => {
+    if (dashboardRefreshDebounceRef.current) clearTimeout(dashboardRefreshDebounceRef.current);
+    dashboardRefreshDebounceRef.current = setTimeout(() => {
+      loadDashboardFresh(false).catch(() => {});
+    }, 500);
+  }, [loadDashboardFresh]);
+  useEffect(() => () => {
+    if (dashboardRefreshDebounceRef.current) clearTimeout(dashboardRefreshDebounceRef.current);
+  }, []);
+
+  const supabaseClient = getSupabaseClient();
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_updated", debouncedDashboardRefresh);
+
+  useEffect(() => {
+    if (!provider?.id || !supabaseClient) return;
+    let channel: ReturnType<typeof supabaseClient.channel> | null = null;
+    try {
+      channel = supabaseClient
+        .channel(`dashboard-finance:${provider.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "finance_transactions",
+            filter: `provider_id=eq.${provider.id}`,
+          },
+          debouncedDashboardRefresh,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "additional_charges",
+          },
+          debouncedDashboardRefresh,
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal
+    }
+    return () => {
+      if (channel) void supabaseClient.removeChannel(channel);
+    };
+  }, [provider?.id, supabaseClient, debouncedDashboardRefresh]);
 
   useEffect(() => {
     if (hasPrefetchedRoutesRef.current) return;
@@ -580,6 +630,11 @@ export function DashboardClient({
           <p className="text-xl sm:text-2xl font-semibold">
             {formatCurrency(stats.revenue_today, tenantCurrency)}
           </p>
+          {(stats.unrecognized_payments_today ?? 0) > 0 ? (
+            <p className="text-xs text-amber-700 mt-1">
+              Some payments are still being reconciled ({stats.unrecognized_payments_today} today).
+            </p>
+          ) : null}
           <p className="text-xs text-gray-500 mt-1">Recognized when paid (ledger date)</p>
         </div>
         <div 
@@ -605,7 +660,7 @@ export function DashboardClient({
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-green-700">Your Earnings</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
-              <span className="text-sm text-gray-600">Service Earnings</span>
+              <span className="text-sm text-gray-600">Service Earnings (all time)</span>
               <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.service_earnings_total ?? 0, tenantCurrency)}</span>
             </div>
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/ecommerce/orders")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/ecommerce/orders"); }}>

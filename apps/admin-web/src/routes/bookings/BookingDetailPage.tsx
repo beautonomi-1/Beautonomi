@@ -18,6 +18,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSupportTicketsSearchHref } from "@/lib/adminSupportContextHref";
 import {
   REFUND_REASON_PRESETS,
   computeBookingAvailableRefund,
@@ -416,12 +417,47 @@ export function BookingDetailPage() {
             ← Bookings
           </Link>
           <AdminPageHeader
-            title={`Booking #${booking.booking_number}`}
+            title={booking.booking_number ? `Booking #${booking.booking_number}` : "Booking"}
             description={new Date(booking.scheduled_at).toLocaleString(undefined, {
               dateStyle: "full",
               timeStyle: "short",
             })}
           />
+          <p className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs text-gray-600">
+            <span className="select-all break-all">{booking.id}</span>
+            <button
+              type="button"
+              className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => {
+                void navigator.clipboard?.writeText(booking.id).then(
+                  () => adminToast.success("Booking ID copied"),
+                  () => adminToast.error("Could not copy booking ID"),
+                );
+              }}
+            >
+              Copy ID
+            </button>
+            {booking.booking_number ? (
+              <button
+                type="button"
+                className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(booking.booking_number).then(
+                    () => adminToast.success("Booking number copied"),
+                    () => adminToast.error("Could not copy booking number"),
+                  );
+                }}
+              >
+                Copy number
+              </button>
+            ) : null}
+            <Link
+              to={adminSpaTo(adminSupportTicketsSearchHref(booking.booking_number || booking.id))}
+              className="rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Related tickets
+            </Link>
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {!isEditing ? (

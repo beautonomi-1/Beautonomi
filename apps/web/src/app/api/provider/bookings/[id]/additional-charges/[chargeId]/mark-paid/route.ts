@@ -9,6 +9,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { notifyAdditionalChargePaid } from "@/lib/notifications/notify-additional-charge-paid";
 
 /**
  * POST /api/provider/bookings/[id]/additional-charges/[chargeId]/mark-paid
@@ -189,45 +190,8 @@ export async function POST(
         created_by: user.id,
       });
 
-    // Notify customer
     try {
-      const { insertNotification } = await import("@/lib/notifications/insert-notification");
-      await insertNotification({
-        user_id: booking.customer_id,
-        type: "additional_charge_paid",
-        title: "Additional Charge Paid",
-        message: `Your additional charge of ${currency} ${chargeAmount.toFixed(2)} has been paid and confirmed.`,
-        data: {
-          booking_id: bookingId,
-          charge_id: chargeId,
-          amount: chargeAmount,
-          payment_method,
-        },
-        action_url: `/account-settings/bookings/${bookingId}`,
-      });
-
-      // Send push notification
-      try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-        await sendTemplateNotification(
-          "payment_successful",
-          [booking.customer_id],
-          {
-            amount: `${currency} ${chargeAmount.toFixed(2)}`,
-            booking_number: bookingRef,
-            payment_method: payment_method,
-            transaction_id: stableReference,
-            booking_id: bookingId,
-            charge_description: charge.description,
-          },
-          ["push", "email"],
-          // In-app bell row inserted manually above; skip template auto-insert.
-          { appType: "customer", skipInApp: true }
-        );
-      } catch (pushError) {
-        console.warn("OneSignal push notification failed:", pushError);
-      }
+      await notifyAdditionalChargePaid(supabaseAdmin, chargeId);
     } catch (notifError) {
       console.warn("Failed to create payment notification:", notifError);
     }

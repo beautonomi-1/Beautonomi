@@ -38,6 +38,9 @@ interface SecuritySettings {
     auto_delete_inactive_accounts?: boolean;
     inactive_threshold_days?: number;
   };
+  admin_ip_allowlist?: string[];
+  /** Minutes. 0 = disabled. */
+  admin_session_max_age?: number;
   // stats (read-only from a different endpoint shape)
   session_stats?: Record<string, unknown>;
   recent_events?: unknown[];
@@ -118,6 +121,14 @@ export function SecurityPolicyPage() {
     setDirty(true);
   }
 
+  function updateTop<K extends keyof SecuritySettings>(field: K, value: SecuritySettings[K]) {
+    setDraft((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setDirty(true);
+  }
+
   const saveMut = useMutation({
     mutationFn: (body: Partial<SecuritySettings>) =>
       adminApi.patchJson("/api/admin/security", body),
@@ -189,6 +200,8 @@ export function SecurityPolicyPage() {
                   two_factor: draft.two_factor,
                   rate_limiting: draft.rate_limiting,
                   data_retention: draft.data_retention,
+                  admin_ip_allowlist: draft.admin_ip_allowlist ?? [],
+                  admin_session_max_age: draft.admin_session_max_age ?? 0,
                 });
               }}
               className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${dirty ? "bg-gray-900 hover:bg-gray-800" : "bg-gray-300 cursor-default"} disabled:opacity-50`}
@@ -346,6 +359,42 @@ export function SecurityPolicyPage() {
           />
           <NumberInput label="Inactive account threshold (days)" value={dr.inactive_threshold_days} min={90} max={3650} onChange={(v) => update("data_retention", "inactive_threshold_days", v)} />
         </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="mb-4 text-sm font-semibold text-gray-900">Admin IP allowlist</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          One IPv4, IPv6, or CIDR per line. Empty list allows every IP. Your current IP must be included or the save is rejected.
+        </p>
+        <textarea
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:border-gray-500 focus:outline-none"
+          rows={5}
+          value={(draft?.admin_ip_allowlist ?? []).join("\n")}
+          onChange={(e) =>
+            updateTop(
+              "admin_ip_allowlist",
+              e.target.value
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean),
+            )
+          }
+          placeholder={"203.0.113.10\n10.0.0.0/8"}
+        />
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="mb-4 text-sm font-semibold text-gray-900">Admin session TTL</h2>
+        <NumberInput
+          label="Max session age (minutes, 0 = disabled)"
+          value={draft?.admin_session_max_age}
+          min={0}
+          max={10080}
+          onChange={(v) => updateTop("admin_session_max_age", v)}
+        />
+        <p className="mt-2 text-xs text-gray-500">
+          After this many minutes from sign-in, admin APIs return 401 SESSION_EXPIRED. Default is 720 (12 hours) when unset.
+        </p>
       </AdminPanel>
 
       {/* Recent security events */}

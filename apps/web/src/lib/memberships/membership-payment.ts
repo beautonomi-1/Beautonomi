@@ -32,6 +32,8 @@ export type RecordMembershipPaymentParams = {
   /** "membership_order" for initial purchase, "membership_renewal" for cron charges. */
   kind: "membership_order" | "membership_renewal";
   tenantIdHint?: string | null;
+  /** Payment rail. Defaults to Paystack (webhook / saved-card). Wallet purchases use "wallet". */
+  paymentProvider?: "paystack" | "wallet";
 };
 
 export type RecordMembershipPaymentResult = {
@@ -55,6 +57,7 @@ export async function recordMembershipPayment(
     feeAmount,
     kind,
     tenantIdHint = null,
+    paymentProvider = "paystack",
   } = params;
 
   const netAmount = Math.max(0, grossAmount - feeAmount);
@@ -69,7 +72,7 @@ export async function recordMembershipPayment(
   const { data: existingTx } = await supabase
     .from("payment_transactions")
     .select("id, status")
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", reference)
     .maybeSingle();
 
@@ -105,7 +108,7 @@ export async function recordMembershipPayment(
     fees: feeAmount,
     net_amount: netAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "charge",
     metadata: {
       kind,
