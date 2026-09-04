@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"] as const;
 
@@ -20,17 +22,20 @@ async function fetchAllNetRows(
   types: string[],
   range?: LedgerRange
 ): Promise<{ net: number | null; amount: number | null }[]> {
-  let q = db
-    .from("finance_transactions")
-    .select("net, amount")
-    .eq("provider_id", providerId)
-    .in("transaction_type", types);
-  if (range) {
-    q = q.gte("created_at", range.from.toISOString()).lte("created_at", range.to.toISOString());
-  }
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as { net: number | null; amount: number | null }[];
+  return fetchAllPaged(async (from, to) => {
+    let q = db
+      .from("finance_transactions")
+      .select("id, net, amount")
+      .eq("provider_id", providerId)
+      .in("transaction_type", types)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+    if (range) {
+      q = q.gte("created_at", range.from.toISOString()).lte("created_at", range.to.toISOString());
+    }
+    const { data, error } = await q.range(from, to);
+    return { data, error };
+  }, MAX_FINANCE_TRANSACTIONS);
 }
 
 /** Sum of `net` (fallback `amount`) for given types — use for tips, expenses, cancellation_fee. */
@@ -66,33 +71,35 @@ export async function sumRefundsLikeFinance(
   range?: LedgerRange
 ): Promise<number> {
   const [refundRows, negEarnings] = await Promise.all([
-    (async () => {
+    fetchAllPaged<{ net: number | null; amount: number | null; refund_component: string | null }>(async (from, to) => {
       let q = db
         .from("finance_transactions")
-        .select("net, amount, refund_component")
+        .select("id, net, amount, refund_component")
         .eq("provider_id", providerId)
-        .eq("transaction_type", "refund");
+        .eq("transaction_type", "refund")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
       if (range) {
         q = q.gte("created_at", range.from.toISOString()).lte("created_at", range.to.toISOString());
       }
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as { net: number | null; amount: number | null; refund_component: string | null }[];
-    })(),
-    (async () => {
+      const { data, error } = await q.range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS),
+    fetchAllPaged<{ net: number | null }>(async (from, to) => {
       let q = db
         .from("finance_transactions")
-        .select("net")
+        .select("id, net")
         .eq("provider_id", providerId)
         .eq("transaction_type", "provider_earnings")
-        .lt("net", 0);
+        .lt("net", 0)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
       if (range) {
         q = q.gte("created_at", range.from.toISOString()).lte("created_at", range.to.toISOString());
       }
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as { net: number | null }[];
-    })(),
+      const { data, error } = await q.range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS),
   ]);
   // Only provider-affecting refund components reduce provider earnings; platform
   // fee/commission, tax, discount contras and wallet/gift tender legs are excluded.

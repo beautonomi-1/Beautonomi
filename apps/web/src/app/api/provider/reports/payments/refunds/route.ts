@@ -9,7 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
@@ -18,8 +18,9 @@ import {
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
-const PAGE_SIZE = 1000;
+export const maxDuration = 60;
 
 type LedgerRefundRow = {
   id: string;
@@ -40,9 +41,7 @@ async function fetchFinanceLedgerSlice(
   fromIso: string,
   toIso: string,
 ): Promise<LedgerRefundRow[]> {
-  const out: LedgerRefundRow[] = [];
-  let offset = 0;
-  for (;;) {
+  return fetchAllPaged<LedgerRefundRow>(async (from, to) => {
     const { data, error } = await supabaseAdmin
       .from("finance_transactions")
       .select(
@@ -53,15 +52,10 @@ async function fetchFinanceLedgerSlice(
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .order("created_at", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (error) throw error;
-    const chunk = (data ?? []) as LedgerRefundRow[];
-    out.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-  return out;
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data: data as LedgerRefundRow[] | null, error };
+  }, MAX_FINANCE_TRANSACTIONS);
 }
 
 function normalizeRefundDisplayMethod(provider: string | null | undefined, method: string | null | undefined): string {

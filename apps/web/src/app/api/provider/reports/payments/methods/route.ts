@@ -12,6 +12,8 @@ import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/repor
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { buildProviderPaymentMethodsReport } from "@/lib/reports/build-payment-methods-report";
 
+export const maxDuration = 60;
+
 /**
  * GET /api/provider/reports/payments/methods
  *

@@ -15,6 +15,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
 
+export const maxDuration = 60;
+
 function csvCell(value: unknown): string {
   if (value == null) return "";
   return `"${String(value).replace(/"/g, '""')}"`;
