@@ -90,7 +90,7 @@ async function computeCompletedGroupBookingStats(
       net?: number;
       booking_id?: string | null;
     }> = [];
-    for (const slice of chunkIds(uniqueBookingIds)) {
+    for (const slice of chunkIds(uniqueBookingIds, 150)) {
       const ledgerQuery = admin
         .from("finance_transactions")
         .select("transaction_type, amount, net, booking_id")
