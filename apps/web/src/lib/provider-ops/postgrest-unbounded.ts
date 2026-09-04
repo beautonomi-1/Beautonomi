@@ -5,6 +5,16 @@
 
 const PAGE_SIZE = 1000;
 
+/** PostgREST 416 when `.range()` starts at or past the last row (exact page-size multiples). */
+export function isPostgrestRangeUnsatisfiable(error: unknown): boolean {
+  if (error == null) return false;
+  if (typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  if (code === "PGRST103" || code === "416") return true;
+  const message = String((error as { message?: unknown }).message ?? "");
+  return /range not satisfiable/i.test(message);
+}
+
 /**
  * Default safety bound: effectively unbounded so existing callers keep paging the full
  * result set. Pass an explicit `maxRows` to stop early (mirrors
@@ -27,7 +37,10 @@ export async function fetchAllPaged<T>(
   while (from < maxRows) {
     const to = Math.min(from + PAGE_SIZE, maxRows) - 1;
     const { data, error } = await fetchPage(from, to);
-    if (error) throw error;
+    if (error) {
+      if (isPostgrestRangeUnsatisfiable(error)) break;
+      throw error;
+    }
     const chunk = data ?? [];
     out.push(...chunk);
     if (chunk.length < to - from + 1) break;

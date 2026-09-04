@@ -14,6 +14,8 @@ import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-component
 import { providerNetAfterRefunds } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
+export const maxDuration = 60;
+
 type FinanceRowFull = {
   transaction_type: string;
   amount: number;

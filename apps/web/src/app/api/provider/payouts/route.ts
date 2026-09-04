@@ -15,6 +15,8 @@ import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-triggers";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 
+export const maxDuration = 60;
+
 /**
  * GET /api/provider/payouts
  *

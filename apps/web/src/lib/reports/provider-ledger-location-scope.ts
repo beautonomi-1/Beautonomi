@@ -87,7 +87,9 @@ export async function resolveLedgerLocationScope<T extends LocationLinkedLedgerR
   const allowedBookingIds = new Set<string>();
   const allowedOrderIds = new Set<string>();
 
+  let bookingLookupFailed = false;
   if (bookingIds.length > 0) {
+    bookingLookupFailed = true;
     for (const filter of dashboardBookingLocationOrFilterFallbacks(locationId)) {
       const matched = new Set<string>();
       let filterFailed = false;
@@ -105,9 +107,16 @@ export async function resolveLedgerLocationScope<T extends LocationLinkedLedgerR
         for (const row of data ?? []) matched.add((row as { id: string }).id);
       }
       if (!filterFailed) {
+        bookingLookupFailed = false;
         for (const id of matched) allowedBookingIds.add(id);
         break;
       }
+    }
+    // All PostgREST location filters failed — keep booking-linked rows visible
+    // rather than zeroing earnings/ledger for the selected branch.
+    if (bookingLookupFailed) {
+      console.warn("[ledger-location-scope] booking location filters failed; leaving booking rows unscoped");
+      for (const id of bookingIds) allowedBookingIds.add(id);
     }
   }
 
