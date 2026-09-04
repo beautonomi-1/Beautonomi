@@ -22,6 +22,8 @@ type Row = Record<string, unknown>;
 
 class FakeQuery {
   private filters: Array<{ op: string; key: string; value: unknown }> = [];
+  private rangeFrom: number | null = null;
+  private rangeTo: number | null = null;
 
   constructor(private readonly table: string, private readonly db: Record<string, Row[]>) {}
 
@@ -55,6 +57,11 @@ class FakeQuery {
   order() {
     return this;
   }
+  range(from: number, to: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
+    return this;
+  }
   maybeSingle() {
     const rows = this.evalRows();
     return Promise.resolve({ data: rows[0] ?? null, error: null });
@@ -65,7 +72,7 @@ class FakeQuery {
   }
 
   private evalRows(): Row[] {
-    return (this.db[this.table] ?? []).filter((row) =>
+    let rows = (this.db[this.table] ?? []).filter((row) =>
       this.filters.every((f) => {
         const v = row[f.key];
         switch (f.op) {
@@ -86,6 +93,10 @@ class FakeQuery {
         }
       }),
     );
+    if (this.rangeFrom != null && this.rangeTo != null) {
+      rows = rows.slice(this.rangeFrom, this.rangeTo + 1);
+    }
+    return rows;
   }
 
   then<TResult1, TResult2 = never>(
