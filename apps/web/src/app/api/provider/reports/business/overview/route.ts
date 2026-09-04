@@ -29,6 +29,8 @@ import {
 import { computeGrowthPercent } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export const maxDuration = 60;
+
 /** Recognized-revenue + refund rows for one window, location-filtered, summarized via the canonical module. */
 async function recognizedBreakdownForWindow(
   supabaseAdmin: SupabaseClient,

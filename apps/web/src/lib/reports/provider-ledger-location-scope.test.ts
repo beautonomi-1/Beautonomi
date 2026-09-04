@@ -106,6 +106,40 @@ describe("provider ledger location scope", () => {
     expect(filterLedgerRowsByScope(rows, scope).map((r) => r.id)).toEqual(["earning"]);
   });
 
+  it("keeps booking-linked rows when every location filter is rejected", async () => {
+    const rows = [{ id: "earning", booking_id: "booking-1", product_order_id: null }];
+    const table = vi.fn((name: string) => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        or: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: () =>
+          Promise.resolve({
+            data: name === "provider_locations" ? { id: "location-1" } : null,
+          }),
+        in: () =>
+          Promise.resolve(
+            name === "bookings"
+              ? { data: null, error: { code: "42703" } }
+              : { data: [] },
+          ),
+      };
+      return chain;
+    });
+
+    const scope = await resolveLedgerLocationScope(
+      { from: table } as never,
+      "provider-1",
+      rows,
+      "location-1",
+    );
+
+    expect(scope.allowedBookingIds.has("booking-1")).toBe(true);
+    expect(filterLedgerRowsByScope(rows, scope).map((r) => r.id)).toEqual(["earning"]);
+  });
+
   it("excludes unattributed payout rows when unattributedRows is exclude", async () => {
     const scope = {
       scopedByLocation: true,

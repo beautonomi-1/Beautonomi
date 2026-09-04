@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchAllPaged, chunkIds, fetchInIdChunks, unwrapEmbedded } from "../postgrest-unbounded";
+import {
+  fetchAllPaged,
+  chunkIds,
+  fetchInIdChunks,
+  unwrapEmbedded,
+  isPostgrestRangeUnsatisfiable,
+} from "../postgrest-unbounded";
 
 const PAGE_SIZE = 1000;
 
@@ -58,6 +64,30 @@ describe("fetchAllPaged", () => {
   it("propagates fetch errors", async () => {
     const fetchPage = vi.fn(async () => ({ data: null, error: new Error("boom") }));
     await expect(fetchAllPaged(fetchPage)).rejects.toThrow("boom");
+  });
+
+  it("treats PostgREST PGRST103 as end of pages instead of throwing", async () => {
+    const fetchPage = vi.fn(async (from: number) => {
+      if (from === 0) {
+        return {
+          data: Array.from({ length: PAGE_SIZE }, (_, i) => ({ id: i })),
+          error: null as unknown,
+        };
+      }
+      return { data: null, error: { code: "PGRST103", message: "Requested range not satisfiable" } };
+    });
+    await expect(fetchAllPaged(fetchPage)).resolves.toHaveLength(PAGE_SIZE);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isPostgrestRangeUnsatisfiable", () => {
+  it("recognizes PGRST103, HTTP 416, and range message text", () => {
+    expect(isPostgrestRangeUnsatisfiable({ code: "PGRST103" })).toBe(true);
+    expect(isPostgrestRangeUnsatisfiable({ code: "416" })).toBe(true);
+    expect(isPostgrestRangeUnsatisfiable({ message: "Requested range not satisfiable" })).toBe(true);
+    expect(isPostgrestRangeUnsatisfiable({ code: "42703" })).toBe(false);
+    expect(isPostgrestRangeUnsatisfiable(null)).toBe(false);
   });
 });
 

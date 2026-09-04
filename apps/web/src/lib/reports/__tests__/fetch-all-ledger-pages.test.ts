@@ -37,4 +37,18 @@ describe("fetchAllLedgerPages", () => {
     const query = { range: vi.fn(async () => ({ data: null, error: new Error("boom") })) };
     await expect(fetchAllLedgerPages(query)).rejects.toThrow("boom");
   });
+
+  it("keeps the last full page when the next range is PGRST103", async () => {
+    const range = vi.fn(async (from: number) => {
+      if (from === 0) {
+        return {
+          data: Array.from({ length: LEDGER_PAGE_SIZE }, (_, i) => ({ id: i })),
+          error: null,
+        };
+      }
+      return { data: null, error: { code: "PGRST103", message: "Requested range not satisfiable" } };
+    });
+    await expect(fetchAllLedgerPages({ range }, 50_000)).resolves.toHaveLength(LEDGER_PAGE_SIZE);
+    expect(range).toHaveBeenCalledTimes(2);
+  });
 });

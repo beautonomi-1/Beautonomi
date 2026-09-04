@@ -19,6 +19,9 @@ import {
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+
+export const maxDuration = 60;
+
 const BATCH = 200;
 
 /**

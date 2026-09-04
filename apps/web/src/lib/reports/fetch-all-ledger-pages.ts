@@ -1,3 +1,4 @@
+import { isPostgrestRangeUnsatisfiable } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 export const LEDGER_PAGE_SIZE = 1000;
@@ -22,7 +23,10 @@ export async function fetchAllLedgerPages<T = any>(
   for (let from = 0; from < maxRows; from += LEDGER_PAGE_SIZE) {
     const to = Math.min(from + LEDGER_PAGE_SIZE, maxRows) - 1;
     const { data, error } = await query.range(from, to);
-    if (error) throw error;
+    if (error) {
+      if (isPostgrestRangeUnsatisfiable(error)) break;
+      throw error;
+    }
     const page = (data || []) as T[];
     rows.push(...page);
     if (page.length < LEDGER_PAGE_SIZE) break;

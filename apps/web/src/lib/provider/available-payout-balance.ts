@@ -55,6 +55,22 @@ export type PayoutBalanceBreakdown = {
   /** Final withdrawable amount (floored at 0). */
   availableBalance: number;
 };
+
+export const EMPTY_PAYOUT_BALANCE = {
+  availableBalance: 0,
+  pendingPayoutsSum: 0,
+  rawBalance: 0,
+  hasNegativeBalance: false,
+  breakdown: {
+    recognizedPayoutableEarnings: 0,
+    onHold: 0,
+    excludedProviderCollected: 0,
+    completedPayouts: 0,
+    pendingPayouts: 0,
+    availableBalance: 0,
+  } satisfies PayoutBalanceBreakdown,
+};
+
 export const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
   "paystack",
   "stripe",
@@ -115,6 +131,7 @@ export async function getAvailablePayoutBalance(
         .gte("created_at", allTime)
         .lte("created_at", nowIso)
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .range(from, to);
       return { data, error };
     }, MAX_FINANCE_TRANSACTIONS);

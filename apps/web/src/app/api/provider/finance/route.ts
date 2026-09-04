@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
-import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { getAvailablePayoutBalance, EMPTY_PAYOUT_BALANCE } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -17,9 +17,8 @@ import {
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
 import { dashboardBookingLocationOrFilterFallbacks } from "@/lib/server/provider/dashboard-booking-location-filter";
-import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
-import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
   computeProviderRevenueBreakdown,
   filterRowsByCreatedAtRange,
@@ -30,7 +29,9 @@ import {
   fetchProviderFinanceSummaryRpc,
   shadowCompareFinanceSummary,
 } from "@/lib/reports/provider-finance-summary-rpc";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
+export const maxDuration = 60;
 
 /**
  * GET /api/provider/finance
@@ -116,17 +117,20 @@ export async function GET(request: NextRequest) {
     // capping totals for any provider that had >200 rows — producing understated numbers
     // on the finance page, mobile transactions hub, and payouts screen. Keep the limit
     // only on the rendered transaction list (below).
-    const financeQuery = db
-      .from("finance_transactions")
-      .select(
-        "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency, refund_component",
-      )
-      .eq("provider_id", providerId)
-      .gte("created_at", ledgerFetchStartIso)
-      .lte("created_at", nowIso)
-      .order("created_at", { ascending: false });
-
-    let rows = await fetchAllLedgerPages(financeQuery);
+    let rows = await fetchAllPaged(async (from, to) => {
+      const { data, error } = await db
+        .from("finance_transactions")
+        .select(
+          "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency, refund_component",
+        )
+        .eq("provider_id", providerId)
+        .gte("created_at", ledgerFetchStartIso)
+        .lte("created_at", nowIso)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
     
     // Fetch booking/order information for transactions that have source records.
     // This is needed to check booking_source/payment_provider and to apply location filters.
@@ -422,14 +426,24 @@ export async function GET(request: NextRequest) {
     const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
 
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance, breakdown: payoutBreakdown } = await getAvailablePayoutBalance(
-      db,
-      providerId,
-      {
+    let availableBalance = EMPTY_PAYOUT_BALANCE.availableBalance;
+    let pendingPayoutsSum = EMPTY_PAYOUT_BALANCE.pendingPayoutsSum;
+    let rawBalance = EMPTY_PAYOUT_BALANCE.rawBalance;
+    let hasNegativeBalance = EMPTY_PAYOUT_BALANCE.hasNegativeBalance;
+    let payoutBreakdown = EMPTY_PAYOUT_BALANCE.breakdown;
+    try {
+      const payout = await getAvailablePayoutBalance(db, providerId, {
         holdDays,
         tenantId: providerTenantId,
-      },
-    );
+      });
+      availableBalance = payout.availableBalance;
+      pendingPayoutsSum = payout.pendingPayoutsSum;
+      rawBalance = payout.rawBalance;
+      hasNegativeBalance = payout.hasNegativeBalance;
+      payoutBreakdown = payout.breakdown;
+    } catch (payoutError) {
+      console.warn("[finance] payout balance failed; returning ledger totals without withdrawable balance:", payoutError);
+    }
 
     const ledgerCurrencies = [
       ...new Set(rows.map((r: any) => (r.currency as string | null) || lastResortCurrency).filter(Boolean)),
