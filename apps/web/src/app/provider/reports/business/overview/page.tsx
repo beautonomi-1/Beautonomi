@@ -100,6 +100,7 @@ export default function BusinessOverviewReport() {
 
       const response = await fetcher.get<{ data: BusinessOverviewData }>(
         `/api/provider/reports/business/overview?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

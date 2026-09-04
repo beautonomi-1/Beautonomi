@@ -99,7 +99,8 @@ export default function PaymentSummaryReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: PaymentSummaryData }>(
-        `/api/provider/reports/payments/summary?${params.toString()}`
+        `/api/provider/reports/payments/summary?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

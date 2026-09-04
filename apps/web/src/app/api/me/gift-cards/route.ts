@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+
+const METADATA_OR_CHUNK = 40;
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,15 +35,12 @@ export async function GET(request: NextRequest) {
     if (paidOrderIds.length > 0) {
       // Use the admin client because `gift_cards.metadata.order_id` is buyer-owned
       // metadata that RLS does not currently expose to the purchaser.
-      const orFilter = paidOrderIds
-        .map((id) => `metadata->>order_id.eq.${id}`)
-        .join(",");
-      const { data: bulkCards } = await supabaseAdmin
-        .from("gift_cards")
-        .select("id")
-        .or(orFilter);
-      for (const c of bulkCards || []) {
-        if (c?.id) giftCardIds.add(c.id as string);
+      for (const slice of chunkIds(paidOrderIds, METADATA_OR_CHUNK)) {
+        const orFilter = slice.map((id) => `metadata->>order_id.eq.${id}`).join(",");
+        const { data: bulkCards } = await supabaseAdmin.from("gift_cards").select("id").or(orFilter);
+        for (const c of bulkCards || []) {
+          if (c?.id) giftCardIds.add(c.id as string);
+        }
       }
     }
 
@@ -56,18 +56,14 @@ export async function GET(request: NextRequest) {
 
     // 3) Admin-created gift cards assigned to this user's email (metadata.recipient_email)
     if (user.email) {
-      const { data: allActive } = await supabaseAdmin
+      const emailLower = user.email.trim().toLowerCase();
+      const { data: assigned } = await supabaseAdmin
         .from("gift_cards")
         .select("id, metadata")
         .eq("is_active", true)
-        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-
-      const emailLower = user.email.trim().toLowerCase();
-      for (const c of allActive || []) {
-        const recipient = (c.metadata as Record<string, any>)?.recipient_email;
-        if (typeof recipient === "string" && recipient.toLowerCase() === emailLower) {
-          giftCardIds.add(c.id);
-        }
+        .ilike("metadata->>recipient_email", emailLower);
+      for (const c of assigned || []) {
+        if (c?.id) giftCardIds.add(c.id as string);
       }
     }
 
@@ -93,13 +89,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Admin client to keep visibility of buyer-issued bulk siblings consistent with 1b.
-    const { data: giftCards, error } = await supabaseAdmin
-      .from("gift_cards")
-      .select("*")
-      .in("id", ids)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
+    const giftCards = await fetchInIdChunks<Record<string, unknown>>(ids, (slice) =>
+      supabaseAdmin.from("gift_cards").select("*").in("id", slice).order("created_at", { ascending: false }),
+      { throwOnError: true },
+    );
+    giftCards.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
 
     // Wallet visibility: surface the order's delivery schedule alongside each card so
     // the wallet can show "sends on <date>" / "delivered" without another round trip.
@@ -121,11 +115,13 @@ export async function GET(request: NextRequest) {
     >();
     if (orderIds.length > 0) {
       try {
-        const { data: orderRows } = await supabaseAdmin
-          .from("gift_card_orders")
-          .select("id, deliver_at, delivered_at, delivery_channel")
-          .in("id", orderIds);
-        for (const row of (orderRows || []) as Array<Record<string, unknown>>) {
+        const orderRows = await fetchInIdChunks<Record<string, unknown>>(orderIds, (slice) =>
+          supabaseAdmin
+            .from("gift_card_orders")
+            .select("id, deliver_at, delivered_at, delivery_channel")
+            .in("id", slice),
+        );
+        for (const row of orderRows) {
           deliveryByOrder.set(row.id as string, {
             deliver_at: (row.deliver_at as string | null) ?? null,
             delivered_at: (row.delivered_at as string | null) ?? null,

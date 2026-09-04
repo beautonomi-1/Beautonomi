@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPayoutRefundComponent } from "@/lib/ledger/refund-components";
+import { chunkIds, fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+
+const PAYOUT_IN_CHUNK = 150;
 
 export type GetAvailablePayoutBalanceOptions = {
   /** Earnings created before (now - holdDays) are available. Default 0 = all available. */
@@ -91,48 +95,64 @@ export async function getAvailablePayoutBalance(
   // provider_subscription_payment / provider_ads_payment are intentionally NOT queried:
   // they are charged to the provider's card (Paystack) and must not also be netted out of
   // the payout balance (see the function doc — that would double-charge the provider).
-  const { data: ledgerRows, error: ledgerError } = await supabase
-    .from("finance_transactions")
-    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, metadata")
-    .eq("provider_id", providerId)
-    .in("transaction_type", [
-      "provider_earnings",
-      "membership_provider_earnings",
-      "payout",
-      "refund",
-      "cancellation_fee",
-      "tip",
-      "travel_fee",
-      "service_fee",
-    ])
-    .gte("created_at", allTime)
-    .lte("created_at", nowIso)
-    .order("created_at", { ascending: false });
-
-  if (ledgerError) throw ledgerError;
-  const rows = ledgerRows || [];
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    rows = await fetchAllPaged(async (from, to) => {
+      const { data, error } = await supabase
+        .from("finance_transactions")
+        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, metadata")
+        .eq("provider_id", providerId)
+        .in("transaction_type", [
+          "provider_earnings",
+          "membership_provider_earnings",
+          "payout",
+          "refund",
+          "cancellation_fee",
+          "tip",
+          "travel_fee",
+          "service_fee",
+        ])
+        .gte("created_at", allTime)
+        .lte("created_at", nowIso)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
+  } catch (ledgerError) {
+    const message =
+      ledgerError instanceof Error
+        ? ledgerError.message
+        : typeof (ledgerError as { message?: unknown }).message === "string"
+          ? (ledgerError as { message: string }).message
+          : "Failed to load payout ledger";
+    throw new Error(message);
+  }
 
   const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
   let bookingMap: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }> = {};
 
   if (bookingIds.length > 0) {
-    let bookingPaymentsQuery = supabase
-      .from("booking_payments")
-      .select("booking_id, payment_provider")
-      .in("booking_id", bookingIds)
-      .eq("status", "completed")
-      .order("created_at", { ascending: false });
+    const bookingPayments: Array<{ booking_id?: string; payment_provider?: string | null }> = [];
     const tid = options?.tenantId;
-    if (typeof tid === "string" && tid.trim()) {
-      bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", tid.trim());
+    for (const slice of chunkIds(bookingIds, PAYOUT_IN_CHUNK)) {
+      let bookingPaymentsQuery = supabase
+        .from("booking_payments")
+        .select("booking_id, payment_provider")
+        .in("booking_id", slice)
+        .eq("status", "completed")
+        .order("created_at", { ascending: false });
+      if (typeof tid === "string" && tid.trim()) {
+        bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", tid.trim());
+      }
+      const { data } = await bookingPaymentsQuery;
+      bookingPayments.push(...(data ?? []));
     }
-    const { data: bookingPayments } = await bookingPaymentsQuery;
 
     bookingMap = bookingIds.reduce((acc: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }>, bid: string) => {
-      const payments = (bookingPayments ?? []).filter((p: any) => p.booking_id === bid);
+      const payments = bookingPayments.filter((p) => p.booking_id === bid);
       acc[bid] = {
         hasAnyCompletedPayment: payments.length > 0,
-        hasPlatformHeldPayment: payments.some((p: any) =>
+        hasPlatformHeldPayment: payments.some((p) =>
           isPlatformHeldPaymentProvider(p.payment_provider),
         ),
       };
@@ -177,17 +197,22 @@ export async function getAvailablePayoutBalance(
   ];
   let sourcePaymentProviderMap: Record<string, string> = {};
   if (sourcePaymentIds.length > 0) {
-    let sourcePaymentsQuery = supabase
-      .from("booking_payments")
-      .select("id, payment_provider")
-      .in("id", sourcePaymentIds);
     const tid = options?.tenantId;
-    if (typeof tid === "string" && tid.trim()) {
-      sourcePaymentsQuery = sourcePaymentsQuery.eq("tenant_id", tid.trim());
+    const sourcePayments: Array<{ id?: string; payment_provider?: string | null }> = [];
+    for (const slice of chunkIds(sourcePaymentIds, PAYOUT_IN_CHUNK)) {
+      let sourcePaymentsQuery = supabase
+        .from("booking_payments")
+        .select("id, payment_provider")
+        .in("id", slice);
+      if (typeof tid === "string" && tid.trim()) {
+        sourcePaymentsQuery = sourcePaymentsQuery.eq("tenant_id", tid.trim());
+      }
+      const { data } = await sourcePaymentsQuery;
+      sourcePayments.push(...(data ?? []));
     }
-    const { data: sourcePayments } = await sourcePaymentsQuery;
-    sourcePaymentProviderMap = (sourcePayments ?? []).reduce(
-      (acc: Record<string, string>, p: any) => {
+    sourcePaymentProviderMap = sourcePayments.reduce(
+      (acc: Record<string, string>, p) => {
+        if (!p.id) return acc;
         acc[p.id] = String(p.payment_provider || "").toLowerCase();
         return acc;
       },

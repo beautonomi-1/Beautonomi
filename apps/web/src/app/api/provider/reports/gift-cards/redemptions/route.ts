@@ -10,6 +10,7 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * GET /api/provider/reports/gift-cards/redemptions
@@ -36,52 +37,64 @@ export async function GET(request: NextRequest) {
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, gift_card_id, gift_card_amount, scheduled_at")
-      .eq("provider_id", providerId)
-      .not("gift_card_id", "is", null)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
-
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-
-    const { data: bookingsWithGiftCards, error: bookingsError } = await bookingsQuery;
-
-    if (bookingsError) {
-      if (
-        bookingsError.message.includes("bookings") ||
-        bookingsError.message.includes("relation") ||
-        bookingsError.message.includes("does not exist")
-      ) {
+    let bookingsWithGiftCards: Array<{ id: string }> = [];
+    try {
+      bookingsWithGiftCards = await fetchAllPaged<{ id: string }>(async (from, to) => {
+        let bookingsQuery = supabaseAdmin
+          .from("bookings")
+          .select("id, gift_card_id, gift_card_amount, scheduled_at")
+          .eq("provider_id", providerId)
+          .not("gift_card_id", "is", null)
+          .gte("scheduled_at", fromDate.toISOString())
+          .lte("scheduled_at", toDate.toISOString());
+        if (locationId) {
+          bookingsQuery = bookingsQuery.eq("location_id", locationId);
+        }
+        const { data, error } = await bookingsQuery
+          .order("scheduled_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 20_000);
+    } catch (bookingsError) {
+      const msg =
+        bookingsError && typeof bookingsError === "object" && "message" in bookingsError
+          ? String((bookingsError as { message?: unknown }).message ?? "")
+          : "";
+      if (msg.includes("bookings") || msg.includes("relation") || msg.includes("does not exist")) {
         return successResponse(emptyRedemptions(reportContext.timezone, fromYmd, toYmd));
       }
       throw bookingsError;
     }
 
-    const bookingIds = bookingsWithGiftCards?.map((b) => b.id) || [];
+    const bookingIds = bookingsWithGiftCards.map((b) => b.id);
     if (bookingIds.length === 0) {
       return successResponse(emptyRedemptions(reportContext.timezone, fromYmd, toYmd));
     }
 
-    let redemptionsQuery = supabaseAdmin
-      .from("gift_card_redemptions")
-      .select("id, gift_card_id, booking_id, amount, currency, status, captured_at")
-      .eq("status", "captured")
-      .not("captured_at", "is", null)
-      .gte("captured_at", fromDate.toISOString())
-      .lte("captured_at", toDate.toISOString())
-      .in("booking_id", bookingIds);
-
-    const { data: redemptions, error: redemptionsError } = await redemptionsQuery;
-
-    if (redemptionsError) {
+    let redemptions: Array<Record<string, unknown>> = [];
+    try {
+      redemptions = await fetchInIdChunks<Record<string, unknown>>(
+        bookingIds,
+        (slice) =>
+          supabaseAdmin
+            .from("gift_card_redemptions")
+            .select("id, gift_card_id, booking_id, amount, currency, status, captured_at")
+            .eq("status", "captured")
+            .not("captured_at", "is", null)
+            .gte("captured_at", fromDate.toISOString())
+            .lte("captured_at", toDate.toISOString())
+            .in("booking_id", slice),
+        { throwOnError: true },
+      );
+    } catch (redemptionsError) {
+      const msg =
+        redemptionsError && typeof redemptionsError === "object" && "message" in redemptionsError
+          ? String((redemptionsError as { message?: unknown }).message ?? "")
+          : "";
       if (
-        redemptionsError.message.includes("gift_card_redemptions") ||
-        redemptionsError.message.includes("relation") ||
-        redemptionsError.message.includes("does not exist")
+        msg.includes("gift_card_redemptions") ||
+        msg.includes("relation") ||
+        msg.includes("does not exist")
       ) {
         return successResponse(emptyRedemptions(reportContext.timezone, fromYmd, toYmd));
       }

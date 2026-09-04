@@ -372,6 +372,26 @@ export default function ProductCheckoutPage() {
     });
   };
 
+  const pollWebProductOrderPaid = async (orderId: string, attempts = 8) => {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await fetcher.get<{ data?: { order?: { payment_status?: string } } }>(
+          `/api/me/orders/${orderId}`,
+          { staleTimeMs: 0 },
+        );
+        if (String(res?.data?.order?.payment_status ?? "").toLowerCase() === "paid") {
+          return true;
+        }
+      } catch {
+        // Keep polling — webhook/reconcile may still be writing.
+      }
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+    return false;
+  };
+
   const recoverRecentWebOrder = async (
     forProviderId: string,
   ): Promise<{ id: string; order_number: string; paid_with_wallet?: boolean; amount_due?: number } | null> => {
@@ -518,13 +538,18 @@ export default function ProductCheckoutPage() {
               product_order_id: order.id,
               type: "product_order",
             },
-          });
+          }, { timeoutMs: 120_000 });
           const txStatus =
             chargeRes?.data?.status ??
             chargeRes?.data?.transaction?.status ??
             chargeRes?.status ??
             "";
           if (String(txStatus).toLowerCase() !== "success") {
+            const paidAnyway = await pollWebProductOrderPaid(order.id);
+            if (paidAnyway) {
+              router.push("/account-settings/orders");
+              return;
+            }
             setPageError(
               `Your order #${order.order_number} was created. Complete payment from My Orders — the card charge did not finish yet.`,
             );
@@ -533,6 +558,11 @@ export default function ProductCheckoutPage() {
           router.push("/account-settings/orders");
           return;
         } catch (chargeErr) {
+          const paidAnyway = await pollWebProductOrderPaid(order.id);
+          if (paidAnyway) {
+            router.push("/account-settings/orders");
+            return;
+          }
           const msg =
             chargeErr instanceof FetchError
               ? chargeErr.message
@@ -557,7 +587,7 @@ export default function ProductCheckoutPage() {
           type: "product_order",
           cancel_action: cancelledPath,
         },
-      });
+      }, { timeoutMs: 120_000 });
 
       if (payRes?.data?.authorization_url) {
         window.location.href = payRes.data.authorization_url;

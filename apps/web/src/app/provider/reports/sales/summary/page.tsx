@@ -75,7 +75,8 @@ export default function SalesSummaryReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: SalesSummaryData }>(
-        `/api/provider/reports/sales/summary?${params.toString()}`
+        `/api/provider/reports/sales/summary?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

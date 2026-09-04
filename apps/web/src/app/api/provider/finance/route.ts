@@ -16,7 +16,8 @@ import {
   getProviderReportContext,
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { dashboardBookingLocationOrFilterFallbacks } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
@@ -135,44 +136,54 @@ export async function GET(request: NextRequest) {
     let productOrderMap: Record<string, { report_location_id: string | null; collection_location_id: string | null; fulfillment_type: string | null; order_source: string | null; payment_method: string | null }> = {};
     
     if (bookingIds.length > 0) {
-      // Fetch bookings
-      const { data: bookings } = await db
-        .from("bookings")
-        .select("id, booking_source, location_id")
-        .in("id", bookingIds);
-      
-      // Fetch payment provider from booking_payments (to check if walk-in paid via Paystack)
-      let bookingPaymentsQuery = db
-        .from("booking_payments")
-        .select("booking_id, payment_provider")
-        .in("booking_id", bookingIds)
-        .eq("status", "completed")
-        .order("created_at", { ascending: false });
+      const bookings = await fetchInIdChunks<{
+        id: string;
+        booking_source?: string | null;
+        location_id?: string | null;
+      }>(bookingIds, (slice) =>
+        db.from("bookings").select("id, booking_source, location_id").in("id", slice),
+      );
+
+      const bookingPayments: Array<{ booking_id?: string; payment_provider?: string | null }> = [];
       const providerTenantForBp = (prow as { tenant_id?: string | null } | null)?.tenant_id;
-      if (providerTenantForBp) {
-        bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", providerTenantForBp);
+      for (const slice of chunkIds(bookingIds, 150)) {
+        let bookingPaymentsQuery = db
+          .from("booking_payments")
+          .select("booking_id, payment_provider")
+          .in("booking_id", slice)
+          .eq("status", "completed")
+          .order("created_at", { ascending: false });
+        if (providerTenantForBp) {
+          bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", providerTenantForBp);
+        }
+        const { data } = await bookingPaymentsQuery;
+        bookingPayments.push(...(data ?? []));
       }
-      const { data: bookingPayments } = await bookingPaymentsQuery;
-      
-      if (bookings) {
-        bookingMap = bookings.reduce((acc: any, b: any) => {
-          // Find the most recent payment for this booking
-          const payment = bookingPayments?.find((p: any) => p.booking_id === b.id);
-          acc[b.id] = {
-            booking_source: b.booking_source || null,
-            location_id: b.location_id || null,
-            payment_provider: payment?.payment_provider || null,
-          };
-          return acc;
-        }, {});
-      }
+
+      bookingMap = bookings.reduce((acc: typeof bookingMap, b) => {
+        const payment = bookingPayments.find((p) => p.booking_id === b.id);
+        acc[b.id] = {
+          booking_source: b.booking_source || null,
+          location_id: b.location_id || null,
+          payment_provider: payment?.payment_provider || null,
+        };
+        return acc;
+      }, {});
     }
 
     if (productOrderIds.length > 0) {
-      const { data: productOrders } = await db
-        .from("product_orders")
-        .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
-        .in("id", productOrderIds);
+      const productOrders = await fetchInIdChunks<{
+        id: string;
+        collection_location_id?: string | null;
+        fulfillment_type?: string | null;
+        order_source?: string | null;
+        payment_method?: string | null;
+      }>(productOrderIds, (slice) =>
+        db
+          .from("product_orders")
+          .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
+          .in("id", slice),
+      );
       const primaryLocationId = await getProviderPrimaryReportLocationId(db, providerId);
 
       if (productOrders) {
@@ -434,16 +445,46 @@ export async function GET(request: NextRequest) {
       let membership = 0;
       let loyalty = 0;
       let promo = 0;
-      for (let off = 0; ; off += 1000) {
+      const locationFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [];
+      let locationFilter: string | null | undefined = locationId ? undefined : null;
+
+      const buildDiscountQuery = (orFilter: string | null) => {
         let bq = db
           .from("bookings")
           .select("membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
           .eq("provider_id", providerId);
-        if (locationId) bq = bq.or(dashboardBookingLocationOrFilter(locationId));
+        if (orFilter) bq = bq.or(orFilter);
         if (fromIsoIn && toIsoIn) {
           bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
         }
-        const { data: dchunk, error: derr } = await bq.range(off, off + 999);
+        return bq;
+      };
+
+      for (let off = 0; ; off += 1000) {
+        let dchunk: unknown[] | null = null;
+        let derr: unknown = null;
+        if (locationFilter === undefined) {
+          for (const filter of locationFilters) {
+            const result = await buildDiscountQuery(filter).range(off, off + 999);
+            if (!result.error) {
+              locationFilter = filter;
+              dchunk = result.data;
+              derr = null;
+              break;
+            }
+            derr = result.error;
+          }
+          if (locationFilter === undefined) {
+            const result = await buildDiscountQuery(null).range(off, off + 999);
+            locationFilter = null;
+            dchunk = result.data;
+            derr = result.error;
+          }
+        } else {
+          const result = await buildDiscountQuery(locationFilter).range(off, off + 999);
+          dchunk = result.data;
+          derr = result.error;
+        }
         if (derr) {
           console.warn("[finance] booking discount aggregate:", derr);
           break;

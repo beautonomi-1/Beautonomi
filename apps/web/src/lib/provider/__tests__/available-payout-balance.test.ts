@@ -37,6 +37,10 @@ class Query {
     return this;
   }
 
+  range() {
+    return this;
+  }
+
   then<TResult1 = { data: Row[]; error: null }, TResult2 = never>(
     onfulfilled?: ((value: { data: Row[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -342,6 +346,36 @@ describe("getAvailablePayoutBalance", () => {
     // 100 earnings (fail-open) - 50 reserved (pending + processing).
     expect(result.rawBalance).toBe(50);
     expect(result.availableBalance).toBe(50);
+  });
+
+  it("excludes provider-collected cash across more booking ids than one PostgREST IN clause", async () => {
+    const bookingCount = 151;
+    const finance_transactions = Array.from({ length: bookingCount }, (_, i) => ({
+      provider_id: providerId,
+      transaction_type: "provider_earnings",
+      amount: 10,
+      net: 10,
+      booking_id: `cash-${i}`,
+      created_at: "2026-01-01T00:00:00.000Z",
+    }));
+    const booking_payments = Array.from({ length: bookingCount }, (_, i) => ({
+      booking_id: `cash-${i}`,
+      payment_provider: "cash",
+      status: "completed",
+    }));
+
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions,
+        bookings: [],
+        booking_payments,
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.breakdown.excludedProviderCollected).toBe(1510);
+    expect(result.availableBalance).toBe(0);
   });
 
   it("returns a reconciliation breakdown that bridges recognized earnings to available balance", async () => {

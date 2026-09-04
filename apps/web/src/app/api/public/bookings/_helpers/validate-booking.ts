@@ -25,6 +25,7 @@ import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 function atHomeAdjustmentForOffering(
   offeringsList: Array<{
@@ -472,14 +473,18 @@ export async function validateBooking(
   if (offeringIds.length === 0) {
     return errorResponse("Please select at least one service.", "VALIDATION_ERROR", 400);
   }
-  const { data: offerings, error: offeringsError } = await supabase
-    .from("offerings")
-    .select(
-      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, master_service_id, parent_service_id"
-    )
-    .in("id", offeringIds);
-
-  if (offeringsError) {
+  let offerings: any[] = [];
+  try {
+    offerings = await fetchInIdChunks(offeringIds, (slice) =>
+      supabase
+        .from("offerings")
+        .select(
+          "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, master_service_id, parent_service_id"
+        )
+        .in("id", slice),
+      { throwOnError: true },
+    );
+  } catch (offeringsError) {
     return handleApiError(
       offeringsError,
       "We couldn't validate the selected services. Please try again.",
@@ -656,13 +661,15 @@ export async function validateBooking(
     });
     const uniqueStaff = [...new Set(dbStaffByLine.values())];
     if (uniqueStaff.length > 0) {
-      const { data: psRows } = await supabaseAdmin
-        .from("provider_staff")
-        .select("id")
-        .eq("provider_id", draft.provider_id)
-        .eq("is_active", true)
-        .in("id", uniqueStaff);
-      const activeStaff = new Set((psRows || []).map((r: { id: string }) => r.id));
+      const psRows = await fetchInIdChunks<{ id: string }>(uniqueStaff, (slice) =>
+        supabaseAdmin
+          .from("provider_staff")
+          .select("id")
+          .eq("provider_id", draft.provider_id)
+          .eq("is_active", true)
+          .in("id", slice),
+      );
+      const activeStaff = new Set(psRows.map((r) => r.id));
       for (const id of uniqueStaff) {
         if (!activeStaff.has(id)) {
           return handleApiError(
@@ -695,12 +702,12 @@ export async function validateBooking(
       }
     }
     const offeringIdsForStaff = [...new Set(draft.services.map((s) => s.offering_id))];
-    const { data: oStaffRows } = await supabaseAdmin
-      .from("offering_staff")
-      .select("offering_id, staff_id")
-      .in("offering_id", offeringIdsForStaff);
+    const oStaffRows = await fetchInIdChunks<{ offering_id: string; staff_id: string }>(
+      offeringIdsForStaff,
+      (slice) => supabaseAdmin.from("offering_staff").select("offering_id, staff_id").in("offering_id", slice),
+    );
     const staffAllowedByOffering = new Map<string, Set<string>>();
-    for (const row of oStaffRows || []) {
+    for (const row of oStaffRows) {
       const oid = (row as { offering_id: string }).offering_id;
       const sid = (row as { staff_id: string }).staff_id;
       if (!staffAllowedByOffering.has(oid)) staffAllowedByOffering.set(oid, new Set());
@@ -739,13 +746,18 @@ export async function validateBooking(
   const addonIds = draft.addons || [];
   const addonById = new Map<string, any>();
   if (addonIds.length > 0) {
-    const { data: addons, error: addonsError } = await supabase
-      .from("offerings")
-      .select(
-        "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, master_service_id"
-      )
-      .in("id", addonIds);
-    if (addonsError) {
+    let addons: any[] = [];
+    try {
+      addons = await fetchInIdChunks(addonIds, (slice) =>
+        supabase
+          .from("offerings")
+          .select(
+            "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, master_service_id"
+          )
+          .in("id", slice),
+        { throwOnError: true },
+      );
+    } catch (addonsError) {
       return handleApiError(
         addonsError,
         "We couldn't validate the selected add-ons. Please try again.",
@@ -804,17 +816,18 @@ export async function validateBooking(
     }
     // Branch: at_salon with location_id — addon must be available at that location
     if (draft.location_type === "at_salon" && draft.location_id) {
-      const { data: addonLocs } = await supabase
-        .from("addon_locations")
-        .select("addon_id")
-        .in("addon_id", addonIds);
-      const addonsWithRestriction = new Set((addonLocs ?? []).map((r: any) => r.addon_id));
-      const { data: atLocation } = await supabase
-        .from("addon_locations")
-        .select("addon_id")
-        .in("addon_id", addonIds)
-        .eq("location_id", draft.location_id);
-      const addonIdsAtLocation = new Set((atLocation ?? []).map((r: any) => r.addon_id));
+      const addonLocs = await fetchInIdChunks<{ addon_id: string }>(addonIds, (slice) =>
+        supabase.from("addon_locations").select("addon_id").in("addon_id", slice),
+      );
+      const addonsWithRestriction = new Set(addonLocs.map((r) => r.addon_id));
+      const atLocation = await fetchInIdChunks<{ addon_id: string }>(addonIds, (slice) =>
+        supabase
+          .from("addon_locations")
+          .select("addon_id")
+          .in("addon_id", slice)
+          .eq("location_id", draft.location_id),
+      );
+      const addonIdsAtLocation = new Set(atLocation.map((r) => r.addon_id));
       for (const id of addonIds) {
         if (addonsWithRestriction.has(id) && !addonIdsAtLocation.has(id)) {
           return handleApiError(
@@ -855,14 +868,18 @@ export async function validateBooking(
       })
       .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    const { data: productRows, error: productsError } = await supabase
-      .from("products")
-      .select(
-        "id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants"
-      )
-      .in("id", productIds);
-
-    if (productsError) {
+    let productRows: any[] = [];
+    try {
+      productRows = await fetchInIdChunks(productIds, (slice) =>
+        supabase
+          .from("products")
+          .select(
+            "id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants"
+          )
+          .in("id", slice),
+        { throwOnError: true },
+      );
+    } catch (productsError) {
       return handleApiError(
         productsError,
         "We couldn't validate the selected products. Please try again.",
@@ -871,14 +888,16 @@ export async function validateBooking(
       );
     }
 
-    for (const p of productRows || []) productById.set(p.id, p);
+    for (const p of productRows) productById.set(p.id, p);
 
     if (variantIds.length > 0) {
-      const { data: variantRows, error: variantError } = await supabase
-        .from("product_variants")
-        .select("id, product_id, retail_price, quantity")
-        .in("id", variantIds);
-      if (variantError) {
+      let variantRows: any[] = [];
+      try {
+        variantRows = await fetchInIdChunks(variantIds, (slice) =>
+          supabase.from("product_variants").select("id, product_id, retail_price, quantity").in("id", slice),
+          { throwOnError: true },
+        );
+      } catch (variantError) {
         return handleApiError(
           variantError,
           "We couldn't validate the selected product options. Please try again.",
@@ -886,7 +905,7 @@ export async function validateBooking(
           503,
         );
       }
-      for (const v of variantRows || []) variantById.set(v.id, v);
+      for (const v of variantRows) variantById.set(v.id, v);
     }
 
     for (const product of products) {

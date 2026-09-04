@@ -135,7 +135,7 @@ export function DashboardClient({
       const response = await withRetry(
         () => fetcher.get<{ data: ProviderDashboardStats }>(
           url,
-          { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS, staleTimeMs: 0 }
+          { timeoutMs: Math.max(PROVIDER_BOOTSTRAP_TIMEOUT_MS, 60_000), staleTimeMs: 0 }
         ),
         {
           maxRetries: 1,

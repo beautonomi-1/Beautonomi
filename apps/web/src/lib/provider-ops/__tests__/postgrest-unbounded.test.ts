@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchAllPaged, chunkIds, unwrapEmbedded } from "../postgrest-unbounded";
+import { fetchAllPaged, chunkIds, fetchInIdChunks, unwrapEmbedded } from "../postgrest-unbounded";
 
 const PAGE_SIZE = 1000;
 
@@ -67,6 +67,33 @@ describe("chunkIds", () => {
   });
   it("returns no chunks for an empty list", () => {
     expect(chunkIds([], 10)).toEqual([]);
+  });
+});
+
+describe("fetchInIdChunks", () => {
+  it("fetches each id slice and concatenates rows", async () => {
+    const seen: string[][] = [];
+    const rows = await fetchInIdChunks(
+      ["a", "b", "c"],
+      async (slice) => {
+        seen.push(slice);
+        return { data: slice.map((id) => ({ id })) };
+      },
+      { chunkSize: 2 },
+    );
+    expect(seen).toEqual([["a", "b"], ["c"]]);
+    expect(rows).toEqual([{ id: "a" }, { id: "b" }, { id: "c" }]);
+  });
+
+  it("skips a failed chunk unless throwOnError is set", async () => {
+    await expect(
+      fetchInIdChunks(["a"], async () => ({ data: null, error: new Error("boom") })),
+    ).resolves.toEqual([]);
+    await expect(
+      fetchInIdChunks(["a"], async () => ({ data: null, error: new Error("boom") }), {
+        throwOnError: true,
+      }),
+    ).rejects.toThrow("boom");
   });
 });
 

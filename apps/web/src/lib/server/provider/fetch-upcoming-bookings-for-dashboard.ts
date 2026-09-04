@@ -3,7 +3,10 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysToYmd, dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
 import { mapStatusToProvider, type BookingStatus } from "@/lib/utils/booking-status";
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  dashboardBookingLocationOrFilterFallbacks,
+  dashboardGroupBookingLocationOrFilter,
+} from "@/lib/server/provider/dashboard-booking-location-filter";
 
 /** DB statuses that qualify as "upcoming" on the provider dashboard. */
 export const UPCOMING_BOOKING_DB_STATUSES = [
@@ -183,38 +186,50 @@ export async function fetchUpcomingBookingsForDashboard(
     )
   `;
 
-  let bookingsQuery = supabaseAdmin
-    .from("bookings")
-    .select(bookingSelect)
-    .eq("provider_id", providerId)
-    .is("group_booking_id", null)
-    .in("status", [...UPCOMING_BOOKING_DB_STATUSES])
-    .gte("scheduled_at", rangeStartIso)
-    .lte("scheduled_at", toIso)
-    .order("scheduled_at", { ascending: true })
-    .limit(80);
+  const buildBookingsQuery = (orFilter: string | null) => {
+    let q = supabaseAdmin
+      .from("bookings")
+      .select(bookingSelect)
+      .eq("provider_id", providerId)
+      .is("group_booking_id", null)
+      .in("status", [...UPCOMING_BOOKING_DB_STATUSES])
+      .gte("scheduled_at", rangeStartIso)
+      .lte("scheduled_at", toIso)
+      .order("scheduled_at", { ascending: true })
+      .limit(80);
+    if (orFilter) q = q.or(orFilter);
+    return q;
+  };
 
-  if (locationId) {
-    bookingsQuery = bookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
+  const buildGroupQuery = (orFilter: string | null) => {
+    let q = supabaseAdmin
+      .from("group_bookings")
+      .select(
+        "id, ref_number, status, scheduled_at, total_price, location_type, location_id, title, service_name, duration_minutes, booking_participants(participant_name, participant_phone, is_primary_contact, service_name)",
+      )
+      .eq("provider_id", providerId)
+      .in("status", UPCOMING_GROUP_STATUSES)
+      .gte("scheduled_at", rangeStartIso)
+      .lte("scheduled_at", toIso)
+      .order("scheduled_at", { ascending: true })
+      .limit(40);
+    if (orFilter) q = q.or(orFilter);
+    return q;
+  };
+
+  const groupFilter = locationId ? dashboardGroupBookingLocationOrFilter(locationId) : null;
+  const bookingFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [null];
+
+  let bookingRows: unknown[] | null = null;
+  for (const filter of bookingFilters) {
+    const result = await buildBookingsQuery(filter);
+    if (!result.error) {
+      bookingRows = result.data;
+      break;
+    }
   }
 
-  let groupQuery = supabaseAdmin
-    .from("group_bookings")
-    .select(
-      "id, ref_number, status, scheduled_at, total_price, location_type, location_id, title, service_name, duration_minutes, booking_participants(participant_name, participant_phone, is_primary_contact, service_name)",
-    )
-    .eq("provider_id", providerId)
-    .in("status", UPCOMING_GROUP_STATUSES)
-    .gte("scheduled_at", rangeStartIso)
-    .lte("scheduled_at", toIso)
-    .order("scheduled_at", { ascending: true })
-    .limit(40);
-
-  if (locationId) {
-    groupQuery = groupQuery.or(dashboardBookingLocationOrFilter(locationId));
-  }
-
-  const [{ data: bookingRows }, { data: groupRows }] = await Promise.all([bookingsQuery, groupQuery]);
+  const { data: groupRows } = await buildGroupQuery(groupFilter);
 
   const merged: DashboardUpcomingBooking[] = [
     ...((bookingRows ?? []) as Record<string, unknown>[]).map(mapBookingRow),

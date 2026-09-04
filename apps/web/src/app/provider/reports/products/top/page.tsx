@@ -71,7 +71,8 @@ export default function TopProductsReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: TopProductsData }>(
-        `/api/provider/reports/products/top?${params.toString()}`
+        `/api/provider/reports/products/top?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

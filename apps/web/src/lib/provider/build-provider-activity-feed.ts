@@ -18,6 +18,7 @@ import {
   bookingMatchesDashboardLocation,
   dashboardBookingLocationOrFilter,
 } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /** Default per-stream fetch cap multiplier (parallel streams merge before slice). */
 export const ACTIVITY_FEED_FETCH_MULTIPLIER = 4;
@@ -661,13 +662,17 @@ export async function buildProviderActivityFeed(
   const paymentIds = paymentRows.map((row) => row.id).filter(Boolean);
   const postedPaymentIds = new Set<string>();
   if (paymentIds.length > 0) {
-    const { data: postedPayments } = await supabaseAdmin
-      .from("finance_transactions")
-      .select("source_payment_id")
-      .eq("provider_id", providerId)
-      .eq("transaction_type", "payment")
-      .in("source_payment_id", paymentIds);
-    for (const row of postedPayments ?? []) {
+    const postedPayments = await fetchInIdChunks<{ source_payment_id?: string | null }>(
+      paymentIds,
+      (slice) =>
+        supabaseAdmin
+          .from("finance_transactions")
+          .select("source_payment_id")
+          .eq("provider_id", providerId)
+          .eq("transaction_type", "payment")
+          .in("source_payment_id", slice),
+    );
+    for (const row of postedPayments) {
       if (row.source_payment_id) postedPaymentIds.add(String(row.source_payment_id));
     }
   }

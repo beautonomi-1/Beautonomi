@@ -66,7 +66,8 @@ export default function GiftCardSalesReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: GiftCardSalesData }>(
-        `/api/provider/reports/gift-cards/sales?${params.toString()}`
+        `/api/provider/reports/gift-cards/sales?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

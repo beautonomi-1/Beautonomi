@@ -468,6 +468,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let productOrderFulfillmentFailed = false;
     if (
       productOrderIdFromMeta &&
       chargeResult.data?.reference &&
@@ -486,6 +487,7 @@ export async function POST(request: NextRequest) {
           provider: "paystack",
         });
         if (!payRecord.ok) {
+          productOrderFulfillmentFailed = true;
           console.error(
             "[charge-saved-card] product order payment not recorded (order may be non-payable)",
             { productOrderId: productOrderIdFromMeta, reference: chargeData.reference },
@@ -515,6 +517,7 @@ export async function POST(request: NextRequest) {
           });
         }
       } catch (poErr) {
+        productOrderFulfillmentFailed = true;
         console.error("[charge-saved-card] Failed to record product order payment:", poErr);
       }
     }
@@ -704,6 +707,20 @@ export async function POST(request: NextRequest) {
       message: chargeResult.message,
       currency,
     };
+    if (productOrderFulfillmentFailed) {
+      const failMessage =
+        "Payment was received but the order is not marked paid yet. Complete it from My Orders.";
+      if (idempotencyKey) {
+        await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+          status: 409,
+          body: {
+            data: null,
+            error: { message: failMessage, code: "ORDER_PAYMENT_NOT_RECORDED" },
+          },
+        });
+      }
+      return errorResponse(failMessage, "ORDER_PAYMENT_NOT_RECORDED", 409);
+    }
     if (idempotencyKey) {
       await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
         status: 200,

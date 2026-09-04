@@ -38,6 +38,7 @@ import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-pa
 import { RECOGNIZED_REVENUE_TYPES, recognizedRevenue } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 async function computeCompletedGroupBookingStats(
   admin: ReturnType<typeof getSupabaseAdmin>,
@@ -72,29 +73,37 @@ async function computeCompletedGroupBookingStats(
   const uniqueBookingIds = [...bookingIds];
   let participantBookedGross = 0;
   if (uniqueBookingIds.length > 0) {
-    const { data: bookingRows } = await admin
-      .from("bookings")
-      .select("id, total_amount")
-      .in("id", uniqueBookingIds);
-    participantBookedGross = (bookingRows ?? []).reduce(
-      (sum, b) => sum + Number((b as { total_amount?: number | null }).total_amount ?? 0),
+    const bookingRows = await fetchInIdChunks<{ total_amount?: number | null }>(uniqueBookingIds, (slice) =>
+      admin.from("bookings").select("id, total_amount").in("id", slice),
+    );
+    participantBookedGross = bookingRows.reduce(
+      (sum, b) => sum + Number(b.total_amount ?? 0),
       0,
     );
   }
 
   let recognizedEarnings = 0;
   if (uniqueBookingIds.length > 0) {
-    const ledgerQuery = admin
-      .from("finance_transactions")
-      .select("transaction_type, amount, net, booking_id")
-      .eq("provider_id", providerId)
-      .in("booking_id", uniqueBookingIds)
-      .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES])
-      .order("created_at", { ascending: true });
-    const ledgerRows = await fetchAllLedgerPages(
-      ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
-      MAX_FINANCE_TRANSACTIONS,
-    );
+    const ledgerRows: Array<{
+      transaction_type?: string;
+      amount?: number;
+      net?: number;
+      booking_id?: string | null;
+    }> = [];
+    for (const slice of chunkIds(uniqueBookingIds)) {
+      const ledgerQuery = admin
+        .from("finance_transactions")
+        .select("transaction_type, amount, net, booking_id")
+        .eq("provider_id", providerId)
+        .in("booking_id", slice)
+        .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES])
+        .order("created_at", { ascending: true });
+      const page = await fetchAllLedgerPages(
+        ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
+        MAX_FINANCE_TRANSACTIONS,
+      );
+      ledgerRows.push(...page);
+    }
     recognizedEarnings = recognizedRevenue(ledgerRows);
   }
 
@@ -226,17 +235,19 @@ export async function GET(request: NextRequest) {
             .filter(Boolean)
         ),
       ];
-      const participantPaymentsRes =
+      const participantPayments =
         participantBookingIds.length > 0
-          ? await admin
-              .from("bookings")
-              .select(
-                "id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)"
-              )
-              .in("id", participantBookingIds)
-          : { data: [] as any[] };
+          ? await fetchInIdChunks<any>(participantBookingIds, (slice) =>
+              admin
+                .from("bookings")
+                .select(
+                  "id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)"
+                )
+                .in("id", slice),
+            )
+          : [];
       const participantPaymentByBookingId = new Map(
-        (participantPaymentsRes.data ?? []).map((booking: any) => {
+        participantPayments.map((booking: any) => {
           const paidAfterRefunds = Math.max(
             0,
             Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)
@@ -279,7 +290,7 @@ export async function GET(request: NextRequest) {
         })
       );
       const participantBookingTotalById = new Map(
-        (participantPaymentsRes.data ?? []).map((booking: any) => [
+        participantPayments.map((booking: any) => [
           booking.id,
           Number(booking.total_amount ?? 0) || 0,
         ])
@@ -288,13 +299,15 @@ export async function GET(request: NextRequest) {
       const groupIds = raw.map((r: any) => r.id).filter(Boolean);
       const childBookingsByGroupId = new Map<string, any[]>();
       if (groupIds.length > 0) {
-        const { data: childBookingsForRollup } = await admin
-          .from("bookings")
-          .select(
-            "id, group_booking_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, additional_charges(amount,status)",
-          )
-          .in("group_booking_id", groupIds);
-        for (const child of childBookingsForRollup ?? []) {
+        const childBookingsForRollup = await fetchInIdChunks<any>(groupIds, (slice) =>
+          admin
+            .from("bookings")
+            .select(
+              "id, group_booking_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, additional_charges(amount,status)",
+            )
+            .in("group_booking_id", slice),
+        );
+        for (const child of childBookingsForRollup) {
           const gid = (child as { group_booking_id?: string | null }).group_booking_id;
           if (!gid) continue;
           const bucket = childBookingsByGroupId.get(gid) ?? [];
