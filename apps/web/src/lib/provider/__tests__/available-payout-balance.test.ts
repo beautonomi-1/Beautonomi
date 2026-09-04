@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAvailablePayoutBalance } from "../available-payout-balance";
+import { getAvailablePayoutBalance, roundMoney2 } from "../available-payout-balance";
 
 type Row = Record<string, unknown>;
 
@@ -69,6 +69,14 @@ function mockSupabase(rowsByTable: Record<string, Row[]>) {
 }
 
 const providerId = "provider-1";
+
+describe("roundMoney2", () => {
+  it("rounds half-cents the same way payout request validation does", () => {
+    expect(roundMoney2(100.105)).toBe(100.11);
+    expect(roundMoney2(85)).toBe(85);
+    expect(roundMoney2(10.1 + 0.2)).toBe(10.3);
+  });
+});
 
 describe("getAvailablePayoutBalance", () => {
   it("includes platform-held Paystack earnings and provider pass-throughs, excluding platform fees, then subtracts payout reservations", async () => {
@@ -419,5 +427,22 @@ describe("getAvailablePayoutBalance", () => {
     // recognized 260 - onHold 60 - completed 30 - pending 25 = 145.
     expect(result.rawBalance).toBe(145);
     expect(result.availableBalance).toBe(145);
+  });
+
+  it("reserves pending payouts by net_amount so the request RPC and UI stay aligned", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          { provider_id: providerId, transaction_type: "provider_earnings", amount: 200, net: 200, booking_id: "b1", created_at: "2026-01-01T00:00:00.000Z" },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [{ provider_id: providerId, amount: 80, net_amount: 50, status: "pending" }],
+      }),
+      providerId,
+    );
+
+    expect(result.pendingPayoutsSum).toBe(50);
+    expect(result.availableBalance).toBe(150);
   });
 });

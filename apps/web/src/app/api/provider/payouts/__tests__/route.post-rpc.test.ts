@@ -38,6 +38,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/provider/available-payout-balance", () => ({
   getAvailablePayoutBalance: vi.fn(),
+  roundMoney2: (n: number) => Math.round((n + Number.EPSILON) * 100) / 100,
 }));
 
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
@@ -231,5 +232,33 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error.code).toBe("INSUFFICIENT_BALANCE");
+  });
+
+  it("accepts a request equal to the displayed available balance", async () => {
+    const payoutRow = {
+      id: "payout-2",
+      provider_id: PROVIDER_ID,
+      amount: 500,
+      net_amount: 500,
+      status: "pending",
+      created_at: "2026-06-11T00:00:00.000Z",
+    };
+    const adminMock = buildAdminMock({ data: [payoutRow], error: null });
+    await setupMocks(adminMock);
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost:3000/api/provider/payouts",
+        body: { amount: 500 },
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+    const [fnName, args] = adminMock.rpc.mock.calls[0];
+    expect(fnName).toBe("insert_payout_request_guarded");
+    expect(args.p_payout.amount).toBe(500);
+    expect(args.p_max_available_before_reserve).toBe(700);
   });
 });

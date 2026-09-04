@@ -82,6 +82,11 @@ export const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
 function isPlatformHeldPaymentProvider(provider: string | null | undefined): boolean {
   return PLATFORM_HELD_PAYMENT_PROVIDERS.has(String(provider || "").toLowerCase());
 }
+
+/** 2dp so finance UI, POST /api/provider/payouts, and the guarded RPC never disagree on cents. */
+export function roundMoney2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
 export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
@@ -324,26 +329,36 @@ export async function getAvailablePayoutBalance(
     onlineEarnings += earnings;
   }
 
-  const { data: pendingRows } = await supabase
-    .from("payouts")
-    .select("amount")
-    .eq("provider_id", providerId)
-    .in("status", ["pending", "processing"]);
+  const pendingRows = await fetchAllPaged<{ amount?: number | null; net_amount?: number | null }>(
+    async (from, to) => {
+      const { data, error } = await supabase
+        .from("payouts")
+        .select("id, amount, net_amount")
+        .eq("provider_id", providerId)
+        .in("status", ["pending", "processing"])
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    },
+  );
 
-  const pendingPayoutsSum = (pendingRows || []).reduce((s, p: any) => s + Number(p.amount || 0), 0);
+  // Match insert_payout_request_guarded, which reserves SUM(net_amount).
+  const pendingPayoutsSum = pendingRows.reduce(
+    (s, p) => s + Number(p.net_amount ?? p.amount ?? 0),
+    0,
+  );
   const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum;
-  /** 2dp so UI and POST /api/provider/payouts validation never disagree on fractional cents */
-  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const rawBalance = round2(rawAvailable);
+  const rawBalance = roundMoney2(rawAvailable);
   const availableBalance = Math.max(0, rawBalance);
   const hasNegativeBalance = rawBalance < -0.01;
-  const roundedPending = round2(pendingPayoutsSum);
+  const roundedPending = roundMoney2(pendingPayoutsSum);
 
   const breakdown: PayoutBalanceBreakdown = {
-    recognizedPayoutableEarnings: round2(onlineEarnings + onHoldAmount),
-    onHold: round2(onHoldAmount),
-    excludedProviderCollected: round2(excludedProviderCollectedAmount),
-    completedPayouts: round2(completedPayouts),
+    recognizedPayoutableEarnings: roundMoney2(onlineEarnings + onHoldAmount),
+    onHold: roundMoney2(onHoldAmount),
+    excludedProviderCollected: roundMoney2(excludedProviderCollectedAmount),
+    completedPayouts: roundMoney2(completedPayouts),
     pendingPayouts: roundedPending,
     availableBalance,
   };
