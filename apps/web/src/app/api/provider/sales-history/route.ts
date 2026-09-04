@@ -14,6 +14,8 @@ import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
+export const maxDuration = 60;
+
 function parseSource(raw: string | null): SalesHistorySource | "all" {
   if (raw === "booking" || raw === "product_order" || raw === "pos") return raw;
   return "all";

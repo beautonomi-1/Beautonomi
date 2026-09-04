@@ -11,7 +11,7 @@ import {
 import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
-import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 export type SalesHistorySource = "booking" | "product_order" | "pos";
 
@@ -83,7 +83,6 @@ const LEDGER_TYPES = [
   "refund",
 ] as const;
 
-const PAGE = 1000;
 export const SALES_HISTORY_MAX_LEDGER_ROWS = 40_000;
 const MAX_POS_ROWS = 8_000;
 
@@ -152,55 +151,44 @@ async function fetchLedgerAggregates(
 ): Promise<{ booking: Map<string, LedgerAgg>; order: Map<string, LedgerAgg>; hit_cap: boolean }> {
   const booking = new Map<string, LedgerAgg>();
   const order = new Map<string, LedgerAgg>();
-  let offset = 0;
-  let hit_cap = false;
 
-  for (;;) {
+  const rows = await fetchAllPaged(async (from, to) => {
     const { data, error } = await db
       .from("finance_transactions")
-      .select("booking_id, product_order_id, transaction_type, amount, net, commission, created_at, refund_component")
+      .select("id, booking_id, product_order_id, transaction_type, amount, net, commission, created_at, refund_component")
       .eq("provider_id", providerId)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .in("transaction_type", [...LEDGER_TYPES])
       .or("booking_id.not.is.null,product_order_id.not.is.null")
       .order("created_at", { ascending: false })
-      .range(offset, offset + PAGE - 1);
+      .order("id", { ascending: false })
+      .range(from, to);
+    return { data, error };
+  }, SALES_HISTORY_MAX_LEDGER_ROWS);
 
-    if (error) throw error;
-    const rows = data ?? [];
-    if (rows.length === 0) break;
-
-    for (const r of rows as any[]) {
-      const bid = r.booking_id as string | null;
-      const oid = r.product_order_id as string | null;
-      if (bid) {
-        let a = booking.get(bid);
-        if (!a) {
-          a = emptyAgg();
-          booking.set(bid, a);
-        }
-        bumpAgg(a, r);
+  for (const r of rows as any[]) {
+    const bid = r.booking_id as string | null;
+    const oid = r.product_order_id as string | null;
+    if (bid) {
+      let a = booking.get(bid);
+      if (!a) {
+        a = emptyAgg();
+        booking.set(bid, a);
       }
-      if (oid) {
-        let a = order.get(oid);
-        if (!a) {
-          a = emptyAgg();
-          order.set(oid, a);
-        }
-        bumpAgg(a, r);
-      }
+      bumpAgg(a, r);
     }
-
-    offset += PAGE;
-    if (rows.length < PAGE) break;
-    if (offset >= SALES_HISTORY_MAX_LEDGER_ROWS) {
-      hit_cap = true;
-      break;
+    if (oid) {
+      let a = order.get(oid);
+      if (!a) {
+        a = emptyAgg();
+        order.set(oid, a);
+      }
+      bumpAgg(a, r);
     }
   }
 
-  return { booking, order, hit_cap };
+  return { booking, order, hit_cap: rows.length >= SALES_HISTORY_MAX_LEDGER_ROWS };
 }
 
 function bookingSubtype(b: {

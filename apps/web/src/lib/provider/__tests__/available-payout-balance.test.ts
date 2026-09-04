@@ -5,6 +5,8 @@ type Row = Record<string, unknown>;
 
 class Query {
   private filters: Array<{ op: "eq" | "in"; key: string; value: unknown }> = [];
+  private rangeFrom?: number;
+  private rangeTo?: number;
 
   constructor(
     private readonly table: string,
@@ -37,7 +39,9 @@ class Query {
     return this;
   }
 
-  range() {
+  range(from?: number, to?: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
     return this;
   }
 
@@ -46,13 +50,16 @@ class Query {
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ) {
     try {
-      const data = (this.rowsByTable[this.table] ?? []).filter((row) =>
+      let data = (this.rowsByTable[this.table] ?? []).filter((row) =>
         this.filters.every((filter) => {
           if (filter.op === "eq") return row[filter.key] === filter.value;
           if (filter.op === "in") return (filter.value as unknown[]).includes(row[filter.key]);
           return true;
         }),
       );
+      if (this.rangeFrom != null && this.rangeTo != null) {
+        data = data.slice(this.rangeFrom, this.rangeTo + 1);
+      }
       return Promise.resolve({ data, error: null }).then(onfulfilled, onrejected);
     } catch (error) {
       return Promise.reject(error).then(onfulfilled, onrejected);
@@ -444,5 +451,67 @@ describe("getAvailablePayoutBalance", () => {
 
     expect(result.pendingPayoutsSum).toBe(50);
     expect(result.availableBalance).toBe(150);
+  });
+
+  it("keeps withdrawable balance when the next ledger page is PostgREST PGRST103", async () => {
+    const page = Array.from({ length: 1000 }, (_, i) => ({
+      id: `e-${i}`,
+      transaction_type: "provider_earnings",
+      amount: 1,
+      net: 1,
+      booking_id: "b1",
+      created_at: "2026-01-01T00:00:00.000Z",
+      source_payment_id: null,
+    }));
+    let financeRangeCalls = 0;
+    const db = {
+      from(table: string) {
+        if (table === "finance_transactions") {
+          const chain: Record<string, unknown> = {};
+          const self = () => chain;
+          chain.select = self;
+          chain.eq = self;
+          chain.in = self;
+          chain.gte = self;
+          chain.lte = self;
+          chain.order = self;
+          chain.range = (from: number) => {
+            financeRangeCalls += 1;
+            if (from === 0) return Promise.resolve({ data: page, error: null });
+            return Promise.resolve({
+              data: null,
+              error: { code: "PGRST103", message: "Requested range not satisfiable" },
+            });
+          };
+          return chain;
+        }
+        if (table === "booking_payments") {
+          const chain: Record<string, unknown> = {};
+          const self = () => chain;
+          chain.select = self;
+          chain.in = self;
+          chain.eq = self;
+          chain.order = () =>
+            Promise.resolve({
+              data: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+              error: null,
+            });
+          return chain;
+        }
+        if (table === "payouts") {
+          const chain: Record<string, unknown> = {};
+          const self = () => chain;
+          chain.select = self;
+          chain.eq = self;
+          chain.in = () => Promise.resolve({ data: [], error: null });
+          return chain;
+        }
+        throw new Error(`Unexpected table ${table}`);
+      },
+    };
+
+    const result = await getAvailablePayoutBalance(db as never, providerId);
+    expect(financeRangeCalls).toBe(2);
+    expect(result.availableBalance).toBe(1000);
   });
 });

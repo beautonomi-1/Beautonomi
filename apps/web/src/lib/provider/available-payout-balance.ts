@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPayoutRefundComponent } from "@/lib/ledger/refund-components";
-import { chunkIds, fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, fetchAllPaged, isPostgrestRangeUnsatisfiable } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 const PAYOUT_IN_CHUNK = 150;
@@ -121,7 +121,7 @@ export async function getAvailablePayoutBalance(
     rows = await fetchAllPaged(async (from, to) => {
       const { data, error } = await supabase
         .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, metadata")
+        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, reversed_at:metadata->>reversed_at")
         .eq("provider_id", providerId)
         .in("transaction_type", [
           "provider_earnings",
@@ -259,8 +259,13 @@ export async function getAvailablePayoutBalance(
       // A payout whose transfer later failed/reversed keeps its ledger row for the
       // audit trail but is marked metadata.reversed_at (transfer-events.ts). The
       // money never left, so it must not reduce the withdrawable balance.
-      const reversedAt = row.metadata?.reversed_at;
-      if (typeof reversedAt === "string" && reversedAt.length > 0) continue;
+      const reversedAt =
+        typeof row.reversed_at === "string"
+          ? row.reversed_at
+          : typeof row.metadata?.reversed_at === "string"
+            ? row.metadata.reversed_at
+            : "";
+      if (reversedAt.length > 0) continue;
       // recordPayoutLedger writes amount === net === net_amount, so these agree
       // today. Prefer `net` (falling back to amount) for consistency with every
       // other branch and to stay correct if a payout ledger row ever carries fees
@@ -329,22 +334,17 @@ export async function getAvailablePayoutBalance(
     onlineEarnings += earnings;
   }
 
-  const pendingRows = await fetchAllPaged<{ amount?: number | null; net_amount?: number | null }>(
-    async (from, to) => {
-      const { data, error } = await supabase
-        .from("payouts")
-        .select("id, amount, net_amount")
-        .eq("provider_id", providerId)
-        .in("status", ["pending", "processing"])
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
-      return { data, error };
-    },
-  );
+  const { data: pendingRows, error: pendingError } = await supabase
+    .from("payouts")
+    .select("amount, net_amount")
+    .eq("provider_id", providerId)
+    .in("status", ["pending", "processing"]);
+  if (pendingError) {
+    if (!isPostgrestRangeUnsatisfiable(pendingError)) throw pendingError;
+  }
 
   // Match insert_payout_request_guarded, which reserves SUM(net_amount).
-  const pendingPayoutsSum = pendingRows.reduce(
+  const pendingPayoutsSum = (pendingRows ?? []).reduce(
     (s, p) => s + Number(p.net_amount ?? p.amount ?? 0),
     0,
   );
