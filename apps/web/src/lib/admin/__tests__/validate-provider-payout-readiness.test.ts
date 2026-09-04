@@ -45,6 +45,10 @@ class Query {
     return this;
   }
 
+  range() {
+    return this;
+  }
+
   limit(count: number) {
     this.limitCount = count;
     return this;
