@@ -306,9 +306,9 @@ describe("getAvailablePayoutBalance", () => {
         finance_transactions: [
           { provider_id: providerId, transaction_type: "provider_earnings", amount: 100, net: 100, booking_id: "b1", created_at: "2026-01-01T00:00:00.000Z" },
           // Live payout: subtracted.
-          { provider_id: providerId, transaction_type: "payout", amount: 30, net: 30, created_at: "2026-01-02T00:00:00.000Z", metadata: {} },
+          { id: "payout-live", provider_id: providerId, transaction_type: "payout", amount: 30, net: 30, created_at: "2026-01-02T00:00:00.000Z", metadata: {} },
           // Reversed payout: audit row retained, must NOT be subtracted.
-          { provider_id: providerId, transaction_type: "payout", amount: 50, net: 50, created_at: "2026-01-03T00:00:00.000Z", metadata: { reversed_at: "2026-01-04T00:00:00.000Z" } },
+          { id: "payout-reversed", provider_id: providerId, transaction_type: "payout", amount: 50, net: 50, created_at: "2026-01-03T00:00:00.000Z", metadata: { reversed_at: "2026-01-04T00:00:00.000Z" } },
         ],
         bookings: [{ id: "b1", booking_source: "online" }],
         booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],

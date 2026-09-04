@@ -83,6 +83,42 @@ function isPlatformHeldPaymentProvider(provider: string | null | undefined): boo
   return PLATFORM_HELD_PAYMENT_PROVIDERS.has(String(provider || "").toLowerCase());
 }
 
+function payoutReversedAt(row: { reversed_at?: unknown; metadata?: { reversed_at?: unknown } | null }): string {
+  if (typeof row.reversed_at === "string") return row.reversed_at;
+  if (typeof row.metadata?.reversed_at === "string") return row.metadata.reversed_at;
+  return "";
+}
+
+async function loadReversedPayoutIds(
+  supabase: SupabaseClient,
+  providerId: string,
+  payoutIds: string[],
+): Promise<Set<string>> {
+  const reversed = new Set<string>();
+  if (payoutIds.length === 0) return reversed;
+  try {
+    for (const slice of chunkIds(payoutIds, PAYOUT_IN_CHUNK)) {
+      const { data, error } = await supabase
+        .from("finance_transactions")
+        .select("id, metadata")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "payout")
+        .in("id", slice);
+      if (error) continue;
+      for (const row of data ?? []) {
+        const id = typeof (row as { id?: unknown }).id === "string" ? (row as { id: string }).id : "";
+        if (!id) continue;
+        if (payoutReversedAt(row as { metadata?: { reversed_at?: unknown } | null }).length > 0) {
+          reversed.add(id);
+        }
+      }
+    }
+  } catch {
+    // Fail open: a missing reversal list must not zero the whole withdrawable balance.
+  }
+  return reversed;
+}
+
 /** 2dp so finance UI, POST /api/provider/payouts, and the guarded RPC never disagree on cents. */
 export function roundMoney2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -121,7 +157,7 @@ export async function getAvailablePayoutBalance(
     rows = await fetchAllPaged(async (from, to) => {
       const { data, error } = await supabase
         .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, reversed_at:metadata->>reversed_at")
+        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id")
         .eq("provider_id", providerId)
         .in("transaction_type", [
           "provider_earnings",
@@ -149,6 +185,15 @@ export async function getAvailablePayoutBalance(
           : "Failed to load payout ledger";
     throw new Error(message);
   }
+
+  const payoutIds = [
+    ...new Set(
+      rows
+        .filter((r: any) => r.transaction_type === "payout" && typeof r.id === "string")
+        .map((r: any) => r.id as string),
+    ),
+  ];
+  const reversedPayoutIds = await loadReversedPayoutIds(supabase, providerId, payoutIds);
 
   const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
   let bookingMap: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }> = {};
@@ -259,13 +304,8 @@ export async function getAvailablePayoutBalance(
       // A payout whose transfer later failed/reversed keeps its ledger row for the
       // audit trail but is marked metadata.reversed_at (transfer-events.ts). The
       // money never left, so it must not reduce the withdrawable balance.
-      const reversedAt =
-        typeof row.reversed_at === "string"
-          ? row.reversed_at
-          : typeof row.metadata?.reversed_at === "string"
-            ? row.metadata.reversed_at
-            : "";
-      if (reversedAt.length > 0) continue;
+      const reversedAt = payoutReversedAt(row);
+      if (reversedAt.length > 0 || (typeof row.id === "string" && reversedPayoutIds.has(row.id))) continue;
       // recordPayoutLedger writes amount === net === net_amount, so these agree
       // today. Prefer `net` (falling back to amount) for consistency with every
       // other branch and to stay correct if a payout ledger row ever carries fees

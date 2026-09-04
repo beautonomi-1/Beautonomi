@@ -160,7 +160,6 @@ async function fetchLedgerAggregates(
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .in("transaction_type", [...LEDGER_TYPES])
-      .or("booking_id.not.is.null,product_order_id.not.is.null")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to);
@@ -331,10 +330,22 @@ export async function queryProviderSalesHistory(
   const { fromIso, toIso, usesDefaultRange } = resolveSalesHistoryIsoRange(timezone, dateFromYmd, dateToYmd);
   const q = (searchTerm || "").trim().toLowerCase();
 
-  const { booking: bookingAggs, order: orderAggs, hit_cap } =
-    source === "pos"
-      ? { booking: new Map<string, LedgerAgg>(), order: new Map<string, LedgerAgg>(), hit_cap: false }
-      : await fetchLedgerAggregates(db, providerId, fromIso, toIso);
+  let bookingAggs = new Map<string, LedgerAgg>();
+  let orderAggs = new Map<string, LedgerAgg>();
+  let hit_cap = false;
+  if (source !== "pos") {
+    try {
+      const ledger = await fetchLedgerAggregates(db, providerId, fromIso, toIso);
+      bookingAggs = ledger.booking;
+      orderAggs = ledger.order;
+      hit_cap = ledger.hit_cap;
+    } catch (ledgerError) {
+      console.warn("sales-history ledger aggregates:", ledgerError);
+      if (source === "booking" || source === "product_order") {
+        throw ledgerError;
+      }
+    }
+  }
 
   const primaryLocationId = await getProviderPrimaryReportLocationId(db, providerId);
   const index: SalesHistoryIndexEntry[] = [];
@@ -358,7 +369,6 @@ export async function queryProviderSalesHistory(
           )
           .eq("provider_id", providerId)
           .in("id", slice),
-        { throwOnError: true },
       );
 
       const customerIds = [...new Set(bookings.map((b: any) => b.customer_id).filter(Boolean))] as string[];
@@ -415,7 +425,6 @@ export async function queryProviderSalesHistory(
           )
           .eq("provider_id", providerId)
           .in("id", slice),
-        { throwOnError: true },
       );
 
       const customerIds = [...new Set(orders.map((o: any) => o.customer_id).filter(Boolean))] as string[];
@@ -451,103 +460,112 @@ export async function queryProviderSalesHistory(
       }
     }
 
-    const walkInOrders = await fetchAllPaged(async (from, to) => {
-      const { data, error } = await db
-        .from("product_orders")
-        .select(
-          "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
-        )
-        .eq("provider_id", providerId)
-        .eq("payment_status", "paid")
-        .gte("paid_at", fromIso)
-        .lte("paid_at", toIso)
-        .or(providerCollectedRetailOrdersOrFilter())
-        .order("paid_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
-      return { data, error };
-    });
-
-    let walkInList = walkInOrders as Array<{
-      id: string;
-      order_number?: string | null;
-      customer_id?: string | null;
-      customer_name?: string | null;
-      total_amount?: number | string | null;
-      paid_at?: string | null;
-      updated_at?: string | null;
-      created_at?: string | null;
-    }>;
-
-    if (locationId) {
-      walkInList = await filterProductOrdersForLocation(db, providerId, walkInList, locationId);
-    }
-
-    for (const row of walkInList) {
-      if (orderAggs.has(row.id)) continue;
-      const customerName =
-        row.customer_name || "Walk-in";
-      const ref = row.order_number || row.id;
-      if (
-        q &&
-        !String(ref).toLowerCase().includes(q) &&
-        !customerName.toLowerCase().includes(q)
-      ) {
-        continue;
-      }
-      const gross = Number(row.total_amount ?? 0);
-      extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
-      index.push({
-        id: row.id,
-        source: "product_order",
-        sort_date: row.paid_at || row.updated_at || row.created_at || fromIso,
+    try {
+      const walkInOrders = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await db
+          .from("product_orders")
+          .select(
+            "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+          )
+          .eq("provider_id", providerId)
+          .eq("payment_status", "paid")
+          .gte("paid_at", fromIso)
+          .lte("paid_at", toIso)
+          .or(providerCollectedRetailOrdersOrFilter())
+          .order("paid_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        return { data, error };
       });
+
+      let walkInList = walkInOrders as Array<{
+        id: string;
+        order_number?: string | null;
+        customer_id?: string | null;
+        customer_name?: string | null;
+        total_amount?: number | string | null;
+        paid_at?: string | null;
+        updated_at?: string | null;
+        created_at?: string | null;
+      }>;
+
+      if (locationId) {
+        walkInList = await filterProductOrdersForLocation(db, providerId, walkInList, locationId);
+      }
+
+      for (const row of walkInList) {
+        if (orderAggs.has(row.id)) continue;
+        const customerName =
+          row.customer_name || "Walk-in";
+        const ref = row.order_number || row.id;
+        if (
+          q &&
+          !String(ref).toLowerCase().includes(q) &&
+          !customerName.toLowerCase().includes(q)
+        ) {
+          continue;
+        }
+        const gross = Number(row.total_amount ?? 0);
+        extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
+        index.push({
+          id: row.id,
+          source: "product_order",
+          sort_date: row.paid_at || row.updated_at || row.created_at || fromIso,
+        });
+      }
+    } catch (walkInError) {
+      console.warn("sales-history walk-in orders:", walkInError);
     }
   }
 
   if (source === "all" || source === "pos") {
-    const sales = await fetchAllPaged(async (from, to) => {
-      const { data, error } = await db
-        .from("sales")
-        .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id")
-        .eq("provider_id", providerId)
-        .gte("sale_date", fromIso)
-        .lte("sale_date", toIso)
-        .order("sale_date", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
-      return { data, error };
-    }, MAX_POS_ROWS);
+    try {
+      const sales = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await db
+          .from("sales")
+          .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id")
+          .eq("provider_id", providerId)
+          .gte("sale_date", fromIso)
+          .lte("sale_date", toIso)
+          .order("sale_date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        return { data, error };
+      }, MAX_POS_ROWS);
 
-    const customerIds = [...new Set((sales ?? []).map((s: any) => s.customer_id).filter(Boolean))] as string[];
-    const customerMap = new Map<string, string>();
-    if (customerIds.length > 0) {
-      const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>(customerIds, (slice) =>
-        db.from("users").select("id, full_name").in("id", slice),
-      );
-      for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
-    }
-
-    for (const s of sales ?? []) {
-      const row = s as any;
-      const reportLoc = row.location_id ?? (locationId ? primaryLocationId : null);
-      if (locationId && reportLoc !== locationId) continue;
-      const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : null;
-      const ref = row.ref_number || row.sale_number || row.id;
-      if (
-        q &&
-        !String(ref).toLowerCase().includes(q) &&
-        !(customerName && customerName.toLowerCase().includes(q))
-      ) {
-        continue;
+      const customerIds = [...new Set((sales ?? []).map((s: any) => s.customer_id).filter(Boolean))] as string[];
+      const customerMap = new Map<string, string>();
+      if (customerIds.length > 0) {
+        const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>(customerIds, (slice) =>
+          db.from("users").select("id, full_name").in("id", slice),
+        );
+        for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
       }
-      const gross = Number(row.total_amount ?? 0);
-      extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
-      index.push({
-        id: row.id,
-        source: "pos",
-        sort_date: row.sale_date,
-      });
+
+      for (const s of sales ?? []) {
+        const row = s as any;
+        const reportLoc = row.location_id ?? (locationId ? primaryLocationId : null);
+        if (locationId && reportLoc !== locationId) continue;
+        const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : null;
+        const ref = row.ref_number || row.sale_number || row.id;
+        if (
+          q &&
+          !String(ref).toLowerCase().includes(q) &&
+          !(customerName && customerName.toLowerCase().includes(q))
+        ) {
+          continue;
+        }
+        const gross = Number(row.total_amount ?? 0);
+        extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
+        index.push({
+          id: row.id,
+          source: "pos",
+          sort_date: row.sale_date,
+        });
+      }
+    } catch (posError) {
+      console.warn("sales-history POS sales:", posError);
+      if (source === "pos") throw posError;
     }
   }
 
@@ -608,7 +626,6 @@ async function materializeSalesHistoryRows(args: {
         )
         .eq("provider_id", providerId)
         .in("id", slice),
-      { throwOnError: true },
     );
     for (const b of bookings) bookingMap.set(String(b.id), b);
   }
@@ -623,7 +640,6 @@ async function materializeSalesHistoryRows(args: {
         )
         .eq("provider_id", providerId)
         .in("id", slice),
-      { throwOnError: true },
     );
     for (const o of orders) orderMap.set(String(o.id), o);
   }
@@ -638,7 +654,6 @@ async function materializeSalesHistoryRows(args: {
         )
         .eq("provider_id", providerId)
         .in("id", slice),
-      { throwOnError: true },
     );
     for (const s of sales) posMap.set(String(s.id), s);
   }
