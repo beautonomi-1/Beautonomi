@@ -749,9 +749,18 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       return q;
     };
 
-    const unpaidBookings = await withDashboardFallback("unpaid_bookings", [] as unknown[], async () => {
+    type UnpaidBookingRow = {
+      total_amount?: number | null;
+      total_paid?: number | null;
+      total_refunded?: number | null;
+      wallet_amount?: number | null;
+      gift_card_amount?: number | null;
+      payment_status?: string | null;
+    };
+
+    const unpaidBookings = await withDashboardFallback("unpaid_bookings", [] as UnpaidBookingRow[], async () => {
       const loadUnpaid = async (orFilter: string | null) =>
-        fetchAllPaged(async (from, to) => {
+        fetchAllPaged<UnpaidBookingRow>(async (from, to) => {
           const { data, error } = await buildUnpaidQuery(orFilter)
             .order("created_at", { ascending: true })
             .range(from, to);

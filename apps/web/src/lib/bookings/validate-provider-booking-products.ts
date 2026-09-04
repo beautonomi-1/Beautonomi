@@ -32,6 +32,26 @@ export type ValidateProviderBookingProductsOptions = {
   existingReservedQuantities?: Map<string, number>;
 };
 
+type ProductCatalogRow = {
+  id: string;
+  provider_id?: string;
+  name?: string;
+  retail_price?: number | null;
+  currency?: string | null;
+  is_active?: boolean;
+  retail_sales_enabled?: boolean;
+  track_stock_quantity?: boolean;
+  quantity?: number | null;
+  has_variants?: boolean;
+};
+
+type ProductVariantRow = {
+  id: string;
+  product_id?: string;
+  retail_price?: number | null;
+  quantity?: number | null;
+};
+
 function productLineKey(productId: string, variantId?: string | null): string {
   return `${productId}:${variantId ?? ""}`;
 }
@@ -56,9 +76,9 @@ export async function validateProviderBookingProducts(
     .map((product) => product.productVariantId ?? product.product_variant_id ?? null)
     .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
 
-  let productRows: any[] = [];
+  let productRows: ProductCatalogRow[] = [];
   try {
-    productRows = await fetchInIdChunks([...new Set(productIds)], (slice) =>
+    productRows = await fetchInIdChunks<ProductCatalogRow>([...new Set(productIds)], (slice) =>
       supabase
         .from("products")
         .select("id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants")
@@ -76,13 +96,13 @@ export async function validateProviderBookingProducts(
     };
   }
 
-  const productById = new Map<string, any>();
+  const productById = new Map<string, ProductCatalogRow>();
   for (const product of productRows) productById.set(product.id, product);
 
-  const variantById = new Map<string, any>();
+  const variantById = new Map<string, ProductVariantRow>();
   if (variantIds.length > 0) {
     try {
-      const variantRows = await fetchInIdChunks([...new Set(variantIds)], (slice) =>
+      const variantRows = await fetchInIdChunks<ProductVariantRow>([...new Set(variantIds)], (slice) =>
         supabase.from("product_variants").select("id, product_id, retail_price, quantity").in("id", slice),
         { throwOnError: true },
       );

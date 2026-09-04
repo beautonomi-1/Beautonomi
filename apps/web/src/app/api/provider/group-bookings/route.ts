@@ -35,7 +35,11 @@ import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
-import { RECOGNIZED_REVENUE_TYPES, recognizedRevenue } from "@/lib/reports/provider-revenue-semantics";
+import {
+  RECOGNIZED_REVENUE_TYPES,
+  recognizedRevenue,
+  type ProviderRevenueLedgerRow,
+} from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
@@ -84,12 +88,7 @@ async function computeCompletedGroupBookingStats(
 
   let recognizedEarnings = 0;
   if (uniqueBookingIds.length > 0) {
-    const ledgerRows: Array<{
-      transaction_type?: string;
-      amount?: number;
-      net?: number;
-      booking_id?: string | null;
-    }> = [];
+    const ledgerRows: ProviderRevenueLedgerRow[] = [];
     for (const slice of chunkIds(uniqueBookingIds, 150)) {
       const ledgerQuery = admin
         .from("finance_transactions")
@@ -98,7 +97,7 @@ async function computeCompletedGroupBookingStats(
         .in("booking_id", slice)
         .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES])
         .order("created_at", { ascending: true });
-      const page = await fetchAllLedgerPages(
+      const page = await fetchAllLedgerPages<ProviderRevenueLedgerRow>(
         ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
         MAX_FINANCE_TRANSACTIONS,
       );
