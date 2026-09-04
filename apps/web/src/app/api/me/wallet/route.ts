@@ -5,6 +5,9 @@ import { requireRoleInApi, successResponse, handleApiError, getOffsetPaginationP
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+
+const WALLET_LEDGER_RECONCILE_MAX = 100_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,16 +52,22 @@ export async function GET(request: NextRequest) {
     const storedBalance = Math.round(Number(wallet.balance || 0) * 100) / 100;
     const walletForResponse = { ...wallet, balance: storedBalance };
 
-    const { data: ledgerRows, error: ledgerError, count: ledgerCount } = await supabaseAdmin
-      .from("wallet_transactions")
-      .select("type, amount", { count: "exact" })
-      .eq("wallet_id", wallet.id)
-      .range(0, 9999);
-
-    const ledgerComplete =
-      !ledgerError &&
-      Array.isArray(ledgerRows) &&
-      (ledgerCount == null || ledgerRows.length >= ledgerCount);
+    let ledgerRows: Array<{ type?: string; amount?: number }> = [];
+    let ledgerComplete = false;
+    try {
+      ledgerRows = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await supabaseAdmin
+          .from("wallet_transactions")
+          .select("type, amount")
+          .eq("wallet_id", wallet.id)
+          .order("created_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, WALLET_LEDGER_RECONCILE_MAX);
+      ledgerComplete = ledgerRows.length < WALLET_LEDGER_RECONCILE_MAX;
+    } catch (ledgerError) {
+      console.warn(`Wallet ledger reconcile failed for user ${user.id}:`, ledgerError);
+    }
 
     if (ledgerComplete) {
       let creditSum = 0;
@@ -88,11 +97,6 @@ export async function GET(request: NextRequest) {
           Object.assign(walletForResponse, reconciledWallet);
         }
       }
-    } else if (ledgerError) {
-      console.warn(
-        `Wallet ledger read failed for user ${user.id}; skipping self-heal:`,
-        ledgerError.message,
-      );
     }
 
     const { data: txs, error: txError, count: txCount } = await supabaseAdmin

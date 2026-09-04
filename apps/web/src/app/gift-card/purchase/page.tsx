@@ -168,7 +168,7 @@ export default function GiftCardPurchasePage() {
         utm_source: searchParams.get("utm_source") || undefined,
         utm_medium: searchParams.get("utm_medium") || undefined,
         utm_campaign: searchParams.get("utm_campaign") || undefined,
-      });
+      }, { timeoutMs: 120_000 });
       const url = res?.data?.payment_url;
       if (url) {
         window.location.href = url;

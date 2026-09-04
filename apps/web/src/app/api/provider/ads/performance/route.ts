@@ -11,6 +11,9 @@ import {
   filterRangeMsFromParams,
   timeBasedAttributedSpend,
 } from "@/lib/ads/ad-performance-spend";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+
+const ADS_EVENTS_MAX = 50_000;
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -48,14 +51,17 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    let eventsQuery = supabase
-      .from("ads_events")
-      .select("id, campaign_id, event_type, created_at, attribution, idempotency_key")
-      .eq("provider_id", providerId);
-    if (startDate) eventsQuery = eventsQuery.gte("created_at", startDate);
-    if (endDate) eventsQuery = eventsQuery.lte("created_at", endDate);
-    if (campaignId) eventsQuery = eventsQuery.eq("campaign_id", campaignId);
-    const { data: events } = await eventsQuery.order("created_at", { ascending: false });
+    const events = await fetchAllPaged(async (from, to) => {
+      let eventsQuery = supabase
+        .from("ads_events")
+        .select("id, campaign_id, event_type, created_at, attribution, idempotency_key")
+        .eq("provider_id", providerId)
+        .order("created_at", { ascending: false });
+      if (startDate) eventsQuery = eventsQuery.gte("created_at", startDate);
+      if (endDate) eventsQuery = eventsQuery.lte("created_at", endDate);
+      if (campaignId) eventsQuery = eventsQuery.eq("campaign_id", campaignId);
+      return eventsQuery.range(from, to);
+    }, ADS_EVENTS_MAX);
 
     const impressions = (events ?? []).filter((e: any) => e.event_type === "impression").length;
     const clicks = (events ?? []).filter((e: any) => e.event_type === "click").length;

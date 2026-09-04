@@ -18,7 +18,9 @@ import {
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import {
   RECOGNIZED_REVENUE_TYPES,
   computeProviderRevenueBreakdown,
@@ -35,14 +37,18 @@ async function recognizedBreakdownForWindow(
   start: Date,
   end: Date,
 ): Promise<{ breakdown: ProviderRevenueBreakdown; attribution: LedgerLocationAttributionSummary }> {
-  const { data } = await supabaseAdmin
+  const financeQuery = supabaseAdmin
     .from("finance_transactions")
     .select("transaction_type, net, amount, booking_id, product_order_id, refund_component")
     .eq("provider_id", providerId)
     .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES, "refund"])
     .gte("created_at", start.toISOString())
-    .lte("created_at", end.toISOString());
-  let rows = (data ?? []) as Array<{
+    .lte("created_at", end.toISOString())
+    .order("created_at", { ascending: true });
+  let rows = (await fetchAllLedgerPages(
+    financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+    MAX_FINANCE_TRANSACTIONS,
+  )) as Array<{
     transaction_type: string;
     net?: number | null;
     amount?: number | null;
@@ -101,22 +107,31 @@ export async function GET(request: NextRequest) {
     const fromDate = new Date(fromIso);
     const toDate = new Date(toIso);
 
-    // Get bookings
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, total_amount, scheduled_at, status, customer_id, location_id")
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
-    
-    // Filter by location if provided
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-    
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
-
-    if (bookingsError) {
+    let bookings: Array<{
+      id: string;
+      total_amount?: number | null;
+      scheduled_at?: string | null;
+      status?: string | null;
+      customer_id?: string | null;
+      location_id?: string | null;
+    }> = [];
+    try {
+      bookings = await fetchAllPaged(async (from, to) => {
+        let bookingsQuery = supabaseAdmin
+          .from("bookings")
+          .select("id, total_amount, scheduled_at, status, customer_id, location_id")
+          .eq("provider_id", providerId)
+          .gte("scheduled_at", fromDate.toISOString())
+          .lte("scheduled_at", toDate.toISOString());
+        if (locationId) {
+          bookingsQuery = bookingsQuery.eq("location_id", locationId);
+        }
+        const { data, error } = await bookingsQuery
+          .order("scheduled_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 20_000);
+    } catch {
       return handleApiError(
         new Error("Failed to fetch bookings"),
         "BOOKINGS_FETCH_ERROR",
@@ -130,20 +145,21 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("provider_id", providerId);
 
-    const bookingIds = bookings?.map((b) => b.id) || [];
+    const bookingIds = bookings.map((b) => b.id);
 
-    // Get payment counts from booking_payments for stats
-    let paymentsCountQuery = supabaseAdmin
-      .from("booking_payments")
-      .select("id, status", { count: "exact" })
-      .gte("created_at", fromDate.toISOString())
-      .lte("created_at", toDate.toISOString());
-    if (bookingIds.length > 0) {
-      paymentsCountQuery = paymentsCountQuery.in("booking_id", bookingIds);
-    } else {
-      paymentsCountQuery = paymentsCountQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
-    }
-    const { data: payments } = await paymentsCountQuery;
+    const payments =
+      bookingIds.length > 0
+        ? await fetchInIdChunks<{ id: string; status?: string | null }>(
+            bookingIds,
+            (slice) =>
+              supabaseAdmin
+                .from("booking_payments")
+                .select("id, status")
+                .gte("created_at", fromDate.toISOString())
+                .lte("created_at", toDate.toISOString())
+                .in("booking_id", slice),
+          )
+        : [];
 
     const periodStart = fromDate;
     const periodEnd = toDate;
@@ -183,28 +199,33 @@ export async function GET(request: NextRequest) {
     const totalRefunded = breakdown.refundDeduction;
     const netRevenue = breakdown.netAfterRefunds;
 
-    const totalBookings = bookings?.length || 0;
-    const completedBookings = bookings?.filter((b) => b.status === "completed").length || 0;
-    const cancelledBookings = bookings?.filter((b) => b.status === "cancelled").length || 0;
-    const noShows = bookings?.filter((b) => b.status === "no_show").length || 0;
+    const totalBookings = bookings.length;
+    const completedBookings = bookings.filter((b) => b.status === "completed").length;
+    const cancelledBookings = bookings.filter((b) => b.status === "cancelled").length;
+    const noShows = bookings.filter((b) => b.status === "no_show").length;
 
-    const uniqueClients = new Set(bookings?.map((b) => b.customer_id).filter(Boolean)).size;
+    const uniqueClients = new Set(bookings.map((b) => b.customer_id).filter(Boolean)).size;
 
-    let priorCustomersQuery = supabaseAdmin
-      .from("bookings")
-      .select("customer_id")
-      .eq("provider_id", providerId)
-      .lt("scheduled_at", fromDate.toISOString())
-      .not("customer_id", "is", null);
-    if (locationId) priorCustomersQuery = priorCustomersQuery.eq("location_id", locationId);
-    const { data: priorCustomerRows } = await priorCustomersQuery;
+    const priorCustomerRows = await fetchAllPaged<{ customer_id?: string | null }>(async (from, to) => {
+      let priorCustomersQuery = supabaseAdmin
+        .from("bookings")
+        .select("customer_id")
+        .eq("provider_id", providerId)
+        .lt("scheduled_at", fromDate.toISOString())
+        .not("customer_id", "is", null);
+      if (locationId) priorCustomersQuery = priorCustomersQuery.eq("location_id", locationId);
+      const { data, error } = await priorCustomersQuery
+        .order("scheduled_at", { ascending: true })
+        .range(from, to);
+      return { data, error };
+    }, 20_000);
     const customersBeforePeriod = new Set(
       (priorCustomerRows ?? [])
         .map((r) => (r as { customer_id?: string | null }).customer_id)
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     );
     const bookingCountPerCustomer = new Map<string, number>();
-    for (const b of bookings ?? []) {
+    for (const b of bookings) {
       const cid = b.customer_id;
       if (!cid) continue;
       bookingCountPerCustomer.set(cid, (bookingCountPerCustomer.get(cid) ?? 0) + 1);
@@ -221,8 +242,10 @@ export async function GET(request: NextRequest) {
 
     const totalStaff = staff?.length || 0;
 
-    const totalPayments = payments?.length || 0;
-    const successfulPayments = payments?.filter((p: any) => p.status === "completed" || p.status === "succeeded").length || 0;
+    const totalPayments = payments.length;
+    const successfulPayments = payments.filter(
+      (p) => p.status === "completed" || p.status === "succeeded",
+    ).length;
 
     const bookingsWithEarnings = revenueByBooking.size;
     const averageBookingValue = bookingsWithEarnings > 0 ? ledgerEarningsFromBookings / bookingsWithEarnings : 0;

@@ -66,7 +66,8 @@ export default function GiftCardRedemptionsReport() {
       appendLocation(params);
 
       const response = await fetcher.get<{ data: GiftCardRedemptionsData }>(
-        `/api/provider/reports/gift-cards/redemptions?${params.toString()}`
+        `/api/provider/reports/gift-cards/redemptions?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

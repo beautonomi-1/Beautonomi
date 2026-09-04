@@ -67,6 +67,21 @@ function hidesChain(rows: Array<{ gift_card_id: string }>) {
   };
 }
 
+function deliveryOrdersChain(
+  rows: Array<{
+    id: string;
+    deliver_at?: string | null;
+    delivered_at?: string | null;
+    delivery_channel?: string | null;
+  }> = [],
+) {
+  return {
+    select: vi.fn(() => ({
+      in: vi.fn().mockResolvedValue({ data: rows, error: null }),
+    })),
+  };
+}
+
 describe("GET /api/me/gift-cards", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,6 +109,7 @@ describe("GET /api/me/gift-cards", () => {
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === "user_gift_card_hides") return hidesChain([]);
+        if (table === "gift_card_orders") return deliveryOrdersChain([]);
         if (table !== "gift_cards") throw new Error(`Unexpected admin table ${table}`);
         return {
           select: vi.fn((cols: string) => {
@@ -110,10 +126,10 @@ describe("GET /api/me/gift-cards", () => {
               };
             }
             if (cols === "id, metadata") {
-              // recipient_email scan
+              // recipient_email lookup (indexed, not a global scan)
               return {
                 eq: vi.fn(() => ({
-                  or: vi.fn().mockResolvedValue({ data: [], error: null }),
+                  ilike: vi.fn().mockResolvedValue({ data: [], error: null }),
                 })),
               };
             }
@@ -165,6 +181,7 @@ describe("GET /api/me/gift-cards", () => {
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === "user_gift_card_hides") return hidesChain([]);
+        if (table === "gift_card_orders") return deliveryOrdersChain([]);
         return {
           select: vi.fn((cols: string) => {
             if (cols === "id") {
@@ -172,7 +189,7 @@ describe("GET /api/me/gift-cards", () => {
             }
             if (cols === "id, metadata") {
               return {
-                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+                eq: vi.fn(() => ({ ilike: vi.fn().mockResolvedValue({ data: [], error: null }) })),
               };
             }
             if (cols === "*") {
@@ -214,7 +231,7 @@ describe("GET /api/me/gift-cards", () => {
         if (table === "user_gift_card_hides") return hidesChain([]);
         return {
           select: vi.fn(() => ({
-            eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+            eq: vi.fn(() => ({ ilike: vi.fn().mockResolvedValue({ data: [], error: null }) })),
           })),
         };
       }),
@@ -266,7 +283,7 @@ describe("GET /api/me/gift-cards", () => {
             }
             if (cols === "id, metadata") {
               return {
-                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+                eq: vi.fn(() => ({ ilike: vi.fn().mockResolvedValue({ data: [], error: null }) })),
               };
             }
             if (cols === "*") {
@@ -329,6 +346,7 @@ describe("GET /api/me/gift-cards", () => {
           // card-2 is hidden by this user
           return hidesChain([{ gift_card_id: "card-2" }]);
         }
+        if (table === "gift_card_orders") return deliveryOrdersChain([]);
         return {
           select: vi.fn((cols: string) => {
             if (cols === "id") {
@@ -336,7 +354,7 @@ describe("GET /api/me/gift-cards", () => {
             }
             if (cols === "id, metadata") {
               return {
-                eq: vi.fn(() => ({ or: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+                eq: vi.fn(() => ({ ilike: vi.fn().mockResolvedValue({ data: [], error: null }) })),
               };
             }
             if (cols === "*") {

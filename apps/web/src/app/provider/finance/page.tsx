@@ -244,7 +244,7 @@ export default function ProviderFinance() {
 
       const response = await fetcher.get<{
         data: { earnings: EarningsData; transactions: Transaction[] } | null;
-      }>(url, { staleTimeMs: 0 });
+      }>(url, { staleTimeMs: 0, timeoutMs: 120_000 });
       const payload = response.data;
       if (!payload?.earnings) {
         throw new Error("Invalid finance response");

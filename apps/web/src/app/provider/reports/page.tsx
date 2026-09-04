@@ -166,7 +166,8 @@ export default function ReportsPage() {
       // Get stats from business overview endpoint (more accurate than dashboard)
       type BusinessOverviewData = { totalRevenue?: number; totalBookings?: number; uniqueClients?: number; revenueGrowth?: number };
       const response = await fetcher.get<{ data: BusinessOverviewData }>(
-        addLocationIdToUrl("/api/provider/reports/business/overview?period=month", selectedLocationId)
+        addLocationIdToUrl("/api/provider/reports/business/overview?period=month", selectedLocationId),
+        { timeoutMs: 120_000 },
       );
       const overviewData = response.data ?? {};
       setQuickStats({
@@ -179,7 +180,10 @@ export default function ReportsPage() {
       console.error("Error loading quick stats:", err);
       try {
         type FinanceData = { earnings?: { total_earnings?: number; growth_percentage?: number } };
-        const financeResponse = await fetcher.get<{ data?: FinanceData }>("/api/provider/finance?range=month");
+        const financeResponse = await fetcher.get<{ data?: FinanceData }>(
+          "/api/provider/finance?range=month",
+          { timeoutMs: 120_000 },
+        );
         const financeData = financeResponse.data?.earnings;
         setQuickStats({
           totalRevenue: financeData?.total_earnings || 0,

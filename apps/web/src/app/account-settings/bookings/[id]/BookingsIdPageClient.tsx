@@ -334,7 +334,7 @@ export default function BookingDetailPage() {
       const res = await fetcher.post<{
         data: { authorization_url?: string };
         error: null;
-      }>(`/api/me/bookings/${bookingId}/pay-remaining`, {}, { timeoutMs: 45000 });
+      }>(`/api/me/bookings/${bookingId}/pay-remaining`, {}, { timeoutMs: 120_000 });
       const url = res?.data?.authorization_url;
       if (url) {
         window.location.href = url;

@@ -65,7 +65,8 @@ export default function OccupancyReportPage() {
       const params = new URLSearchParams({ from, to });
       appendLocation(params);
       const response = await fetcher.get<{ data: OccupancyResponse }>(
-        `/api/provider/reports/occupancy?${params.toString()}`
+        `/api/provider/reports/occupancy?${params.toString()}`,
+        { timeoutMs: 120_000 },
       );
       setData(response.data);
     } catch (err) {

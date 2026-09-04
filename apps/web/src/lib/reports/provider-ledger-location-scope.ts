@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
+import { dashboardBookingLocationOrFilterFallbacks } from "@/lib/server/provider/dashboard-booking-location-filter";
+
+const LOCATION_SCOPE_IN_CHUNK = 150;
 
 export type UnattributedLedgerRowPolicy = "include" | "exclude";
 
@@ -85,27 +88,43 @@ export async function resolveLedgerLocationScope<T extends LocationLinkedLedgerR
   const allowedOrderIds = new Set<string>();
 
   if (bookingIds.length > 0) {
-    const { data } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("provider_id", providerId)
-      .or(dashboardBookingLocationOrFilter(locationId))
-      .in("id", bookingIds);
-    for (const row of data ?? []) allowedBookingIds.add((row as { id: string }).id);
+    for (const filter of dashboardBookingLocationOrFilterFallbacks(locationId)) {
+      const matched = new Set<string>();
+      let filterFailed = false;
+      for (const slice of chunkIds(bookingIds, LOCATION_SCOPE_IN_CHUNK)) {
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("provider_id", providerId)
+          .or(filter)
+          .in("id", slice);
+        if (error) {
+          filterFailed = true;
+          break;
+        }
+        for (const row of data ?? []) matched.add((row as { id: string }).id);
+      }
+      if (!filterFailed) {
+        for (const id of matched) allowedBookingIds.add(id);
+        break;
+      }
+    }
   }
 
   const primaryLocationId = await getProviderPrimaryReportLocationId(supabase, providerId);
 
   if (productOrderIds.length > 0) {
-    const { data } = await supabase
-      .from("product_orders")
-      .select("id, fulfillment_type, collection_location_id")
-      .eq("provider_id", providerId)
-      .in("id", productOrderIds);
-    for (const row of data ?? []) {
-      const order = row as LocationLinkedProductOrderRow;
-      if (productOrderReportLocationId(order, primaryLocationId) === locationId) {
-        allowedOrderIds.add(order.id);
+    for (const slice of chunkIds(productOrderIds, LOCATION_SCOPE_IN_CHUNK)) {
+      const { data } = await supabase
+        .from("product_orders")
+        .select("id, fulfillment_type, collection_location_id")
+        .eq("provider_id", providerId)
+        .in("id", slice);
+      for (const row of data ?? []) {
+        const order = row as LocationLinkedProductOrderRow;
+        if (productOrderReportLocationId(order, primaryLocationId) === locationId) {
+          allowedOrderIds.add(order.id);
+        }
       }
     }
   }

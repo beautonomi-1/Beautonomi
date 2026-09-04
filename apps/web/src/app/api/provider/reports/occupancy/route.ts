@@ -12,6 +12,7 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { dateRangeBoundsUtc, getDayInTz } from "@/lib/dates/provider-tz";
 import { eachReportDateKey, getProviderReportContext, reportDateKey } from "@/lib/reports/provider-report-utils";
 import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 const MAX_DAYS = 31;
 
@@ -218,18 +219,19 @@ export async function GET(request: NextRequest) {
       return total;
     };
 
-    const { data: bookingsInRange, error: bookError } = await supabaseAdmin
-      .from("bookings")
-      .select("id, scheduled_at, location_id")
-      .eq("provider_id", providerId)
-      .in("status", INCLUDED_BOOKING_STATUSES as unknown as string[])
-      .gte("scheduled_at", fromIso)
-      .lte("scheduled_at", toIso);
-
-    if (bookError) throw bookError;
-
     type BookingRow = { id: string; scheduled_at?: string; location_id?: string };
-    const bookingRows = (bookingsInRange ?? []) as BookingRow[];
+    const bookingRows = await fetchAllPaged<BookingRow>(async (from, to) => {
+      const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id, scheduled_at, location_id")
+        .eq("provider_id", providerId)
+        .in("status", INCLUDED_BOOKING_STATUSES as unknown as string[])
+        .gte("scheduled_at", fromIso)
+        .lte("scheduled_at", toIso)
+        .order("scheduled_at", { ascending: true })
+        .range(from, to);
+      return { data, error };
+    }, 20_000);
     const bookingIds = bookingRows.filter((b) => !locationId || b.location_id === locationId).map((b) => b.id);
     const bookingDateById = new Map<string, string>();
     bookingRows.forEach((b) => {
@@ -238,11 +240,19 @@ export async function GET(request: NextRequest) {
 
     const bookedByStaffDate = new Map<string, number>();
     if (bookingIds.length > 0) {
-      const { data: services, error: bsError } = await supabaseAdmin
-        .from("booking_services")
-        .select("booking_id, staff_id, duration_minutes")
-        .in("booking_id", bookingIds);
-      if (bsError) throw bsError;
+      const services = await fetchInIdChunks<{
+        booking_id: string;
+        staff_id?: string;
+        duration_minutes?: number;
+      }>(
+        bookingIds,
+        (slice) =>
+          supabaseAdmin
+            .from("booking_services")
+            .select("booking_id, staff_id, duration_minutes")
+            .in("booking_id", slice),
+        { throwOnError: true },
+      );
       type BookingServiceRow = { booking_id: string; staff_id?: string; duration_minutes?: number };
       for (const bs of (services ?? []) as BookingServiceRow[]) {
         const sid = bs.staff_id;

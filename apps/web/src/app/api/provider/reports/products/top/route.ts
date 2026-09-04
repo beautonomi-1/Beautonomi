@@ -15,6 +15,7 @@ import {
   type LocationLinkedProductOrderRow,
 } from "@/lib/reports/provider-report-utils";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /** Orders query shape — ids preserved through location filter */
 type ProductOrderTopRow = LocationLinkedProductOrderRow & { id: string };
@@ -58,41 +59,55 @@ export async function GET(request: NextRequest) {
 
     const locationId = searchParams.get("location_id") || undefined;
 
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, scheduled_at")
-      .eq("provider_id", providerId)
-      .in("status", ["completed", "confirmed", "in_progress", "checked_in"])
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
+    const [bookings, ordersRaw] = await Promise.all([
+      fetchAllPaged<{ id: string; scheduled_at?: string }>(async (from, to) => {
+        let bookingsQuery = supabaseAdmin
+          .from("bookings")
+          .select("id, scheduled_at")
+          .eq("provider_id", providerId)
+          .in("status", ["completed", "confirmed", "in_progress", "checked_in"])
+          .gte("scheduled_at", fromDate.toISOString())
+          .lte("scheduled_at", toDate.toISOString());
+        if (locationId) {
+          bookingsQuery = bookingsQuery.eq("location_id", locationId);
+        }
+        const { data, error } = await bookingsQuery
+          .order("scheduled_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 20_000),
+      fetchAllPaged<ProductOrderTopRow>(async (from, to) => {
+        const { data, error } = await supabaseAdmin
+          .from("product_orders")
+          .select("id, created_at, fulfillment_type, collection_location_id")
+          .eq("provider_id", providerId)
+          .eq("payment_status", "paid")
+          .or("order_source.is.null,order_source.neq.appointment")
+          .gte("created_at", fromDate.toISOString())
+          .lte("created_at", toDate.toISOString())
+          .order("created_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 20_000),
+    ]);
 
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-
-    let ordersQuery = supabaseAdmin
-      .from("product_orders")
-      .select("id, created_at, fulfillment_type, collection_location_id")
-      .eq("provider_id", providerId)
-      .eq("payment_status", "paid")
-      .or("order_source.is.null,order_source.neq.appointment")
-      .gte("created_at", fromDate.toISOString())
-      .lte("created_at", toDate.toISOString());
-
-    const [bookingsResult, ordersResult] = await Promise.all([bookingsQuery, ordersQuery]);
-
-    const { data: bookings } = bookingsResult;
-    const { data: ordersRaw } = ordersResult;
-    const bookingIds = bookings?.map((b) => b.id) || [];
+    const bookingIds = bookings.map((b) => b.id);
     const orders = await filterProductOrdersForLocation<ProductOrderTopRow>(
       supabaseAdmin,
       providerId,
-      (ordersRaw || []) as ProductOrderTopRow[],
+      ordersRaw,
       locationId,
     );
-    const orderIds = orders.map((s) => s.id) || [];
+    const orderIds = orders.map((s) => s.id);
 
-    let bookingProductsQuery = supabaseAdmin.from("booking_products").select(`
+    let bookingProducts: Array<Record<string, unknown>> = [];
+    let bookingProductsError: { message?: string } | null = null;
+    if (bookingIds.length > 0) {
+      try {
+        bookingProducts = await fetchInIdChunks<Record<string, unknown>>(
+          bookingIds,
+          (slice) =>
+            supabaseAdmin.from("booking_products").select(`
         id,
         product_id,
         quantity,
@@ -104,32 +119,38 @@ export async function GET(request: NextRequest) {
           category,
           retail_price
         )
-      `);
-
-    if (bookingIds.length > 0) {
-      bookingProductsQuery = bookingProductsQuery.in("booking_id", bookingIds);
-    } else {
-      bookingProductsQuery = bookingProductsQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
+      `).in("booking_id", slice),
+          { throwOnError: true },
+        );
+      } catch (err) {
+        bookingProductsError = err as { message?: string };
+      }
     }
 
-    const { data: bookingProducts, error: bookingProductsError } = await bookingProductsQuery;
-
-    let orderItemsQuery = supabaseAdmin.from("product_order_items").select(`
+    let orderItems: Array<Record<string, unknown>> = [];
+    let orderItemsError: unknown = null;
+    if (orderIds.length > 0) {
+      try {
+        orderItems = await fetchInIdChunks<Record<string, unknown>>(
+          orderIds,
+          (slice) =>
+            supabaseAdmin
+              .from("product_order_items")
+              .select(`
         id,
         product_id,
         product_name,
         quantity,
         unit_price,
         total_price
-      `);
-
-    if (orderIds.length > 0) {
-      orderItemsQuery = orderItemsQuery.in("order_id", orderIds);
-    } else {
-      orderItemsQuery = orderItemsQuery.eq("order_id", "00000000-0000-0000-0000-000000000000");
+      `)
+              .in("order_id", slice),
+          { throwOnError: true },
+        );
+      } catch (err) {
+        orderItemsError = err;
+      }
     }
-
-    const { data: orderItems, error: orderItemsError } = await orderItemsQuery;
 
     const orderItemProductIds = new Set<string>();
     orderItems?.forEach((item: { product_id?: string }) => {
@@ -138,12 +159,16 @@ export async function GET(request: NextRequest) {
 
     const orderItemProductMap = new Map<string, { name: string; category: string; retail_price: number }>();
     if (orderItemProductIds.size > 0) {
-      const { data: productsData } = await supabaseAdmin
-        .from("products")
-        .select("id, name, category, retail_price")
-        .in("id", Array.from(orderItemProductIds));
+      const productsData = await fetchInIdChunks<{
+        id: string;
+        name?: string;
+        category?: string;
+        retail_price?: unknown;
+      }>(Array.from(orderItemProductIds), (slice) =>
+        supabaseAdmin.from("products").select("id, name, category, retail_price").in("id", slice),
+      );
 
-      productsData?.forEach((p: { id: string; name?: string; category?: string; retail_price?: unknown }) => {
+      productsData.forEach((p) => {
         orderItemProductMap.set(p.id, {
           name: p.name || "Unknown",
           category: p.category || "Uncategorized",

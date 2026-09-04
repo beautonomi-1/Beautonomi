@@ -12,6 +12,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { providerNetAfterRefunds } from "@/lib/reports/provider-revenue-semantics";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 type FinanceRowFull = {
   transaction_type: string;
@@ -125,23 +126,26 @@ export async function GET(request: NextRequest) {
     const locationId = searchParams.get("location_id") || undefined;
 
     // ── 1. Bookings in period (for payment_status + wallet_amount aggregates) ──
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select(
-        "id, total_amount, total_paid, wallet_amount, payment_status, payment_provider, currency, scheduled_at"
-      )
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .not("status", "eq", "cancelled");
+    const bookings = await fetchAllPaged(async (from, to) => {
+      let bookingsQuery = supabaseAdmin
+        .from("bookings")
+        .select(
+          "id, total_amount, total_paid, wallet_amount, payment_status, payment_provider, currency, scheduled_at"
+        )
+        .eq("provider_id", providerId)
+        .gte("scheduled_at", fromDate.toISOString())
+        .lte("scheduled_at", toDate.toISOString())
+        .not("status", "eq", "cancelled");
+      if (locationId) {
+        bookingsQuery = bookingsQuery.eq("location_id", locationId);
+      }
+      const { data, error } = await bookingsQuery
+        .order("scheduled_at", { ascending: true })
+        .range(from, to);
+      return { data, error };
+    }, 20_000);
 
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-
-    const { data: bookings } = await bookingsQuery;
-
-    const bookingIds = (bookings ?? []).map((b) => b.id);
+    const bookingIds = bookings.map((b) => b.id);
 
     // ── 2. Finance transactions settled in the period (authoritative ledger) ──
     const financeQuery = supabaseAdmin
@@ -169,12 +173,13 @@ export async function GET(request: NextRequest) {
     // ── 3. Payment transactions (gateway + no-gateway settlements) ──
     let paymentTxRows: Array<{ provider: string; amount: number; net_amount: number; status: string; booking_id: string | null; metadata: Record<string, unknown> | null }> = [];
     if (bookingIdsForPt.length > 0) {
-      const { data: pt } = await supabaseAdmin
-        .from("payment_transactions")
-        .select("provider, amount, net_amount, status, booking_id, metadata")
-        .in("booking_id", bookingIdsForPt)
-        .eq("status", "success");
-      paymentTxRows = (pt ?? []) as typeof paymentTxRows;
+      paymentTxRows = await fetchInIdChunks(bookingIdsForPt, (slice) =>
+        supabaseAdmin
+          .from("payment_transactions")
+          .select("provider, amount, net_amount, status, booking_id, metadata")
+          .in("booking_id", slice)
+          .eq("status", "success"),
+      );
     }
 
     const bookingIdsWithGatewayCardCapture = new Set<string>();
@@ -331,41 +336,47 @@ export async function GET(request: NextRequest) {
     let cashStylePaymentsWithoutLedgerCount = 0;
     let cashStylePaymentsWithoutLedgerAmount = 0;
     {
-      let bpQuery = supabaseAdmin
-        .from("booking_payments")
-        .select("booking_id, amount, payment_method")
-        .eq("status", "completed")
-        .gte("created_at", fromDate.toISOString())
-        .lte("created_at", toDate.toISOString())
-        .in("payment_method", ["cash", "other"]);
-      if (providerTenantId) {
-        bpQuery = bpQuery.eq("tenant_id", providerTenantId);
-      }
-      const { data: bpOffline } = await bpQuery;
-      const bpList = (bpOffline ?? []) as Array<{ booking_id: string; amount?: number }>;
+      const bpList = await fetchAllPaged<{ booking_id: string; amount?: number }>(async (from, to) => {
+        let bpQuery = supabaseAdmin
+          .from("booking_payments")
+          .select("booking_id, amount, payment_method")
+          .eq("status", "completed")
+          .gte("created_at", fromDate.toISOString())
+          .lte("created_at", toDate.toISOString())
+          .in("payment_method", ["cash", "other"]);
+        if (providerTenantId) {
+          bpQuery = bpQuery.eq("tenant_id", providerTenantId);
+        }
+        const { data, error } = await bpQuery.order("created_at", { ascending: true }).range(from, to);
+        return { data, error };
+      }, 20_000);
       const candidateIds = [...new Set(bpList.map((r) => r.booking_id))];
       if (candidateIds.length > 0) {
-        let bq = supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .eq("provider_id", providerId)
-          .in("id", candidateIds);
-        if (locationId) {
-          bq = bq.eq("location_id", locationId);
-        }
-        const { data: allowedBookings } = await bq;
-        const allowed = new Set((allowedBookings ?? []).map((b: { id: string }) => b.id));
+        const allowedBookings = await fetchInIdChunks<{ id: string }>(candidateIds, (slice) => {
+          let bq = supabaseAdmin
+            .from("bookings")
+            .select("id")
+            .eq("provider_id", providerId)
+            .in("id", slice);
+          if (locationId) {
+            bq = bq.eq("location_id", locationId);
+          }
+          return bq;
+        });
+        const allowed = new Set(allowedBookings.map((b) => b.id));
         const scopedBp = bpList.filter((r) => allowed.has(r.booking_id));
         const scopedBookingIds = [...new Set(scopedBp.map((r) => r.booking_id))];
         if (scopedBookingIds.length > 0) {
-          const { data: ftPay } = await supabaseAdmin
-            .from("finance_transactions")
-            .select("booking_id")
-            .eq("provider_id", providerId)
-            .eq("transaction_type", "payment")
-            .in("booking_id", scopedBookingIds);
+          const ftPay = await fetchInIdChunks<{ booking_id: string | null }>(scopedBookingIds, (slice) =>
+            supabaseAdmin
+              .from("finance_transactions")
+              .select("booking_id")
+              .eq("provider_id", providerId)
+              .eq("transaction_type", "payment")
+              .in("booking_id", slice),
+          );
           const withLedger = new Set(
-            (ftPay ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean) as string[],
+            ftPay.map((r) => r.booking_id).filter(Boolean) as string[],
           );
           for (const row of scopedBp) {
             if (!withLedger.has(row.booking_id)) {

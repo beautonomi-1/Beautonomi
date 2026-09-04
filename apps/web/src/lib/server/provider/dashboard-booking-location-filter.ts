@@ -1,3 +1,13 @@
+const DASHBOARD_LOCATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ignore malformed `location_id` query values so they cannot 500 the dashboard. */
+export function normalizeDashboardLocationId(locationId: string | null | undefined): string | null {
+  if (typeof locationId !== "string") return null;
+  const trimmed = locationId.trim();
+  return DASHBOARD_LOCATION_ID.test(trimmed) ? trimmed : null;
+}
+
 /**
  * When a branch is selected, include bookings at that branch, at-home house calls
  * without a branch, and provider walk-in appointments that have no location_id.
@@ -8,6 +18,22 @@ export function dashboardBookingLocationOrFilter(locationId: string): string {
     `and(location_id.is.null,location_type.eq.at_home)`,
     `and(location_id.is.null,booking_source.eq.walk_in)`,
   ].join(",");
+}
+
+/**
+ * Progressive PostgREST OR filters for dashboard booking queries.
+ * The preferred filter uses `booking_source`; if that column/filter is rejected
+ * (42703), callers retry the next candidate instead of failing the whole page.
+ */
+export function dashboardBookingLocationOrFilterFallbacks(locationId: string): string[] {
+  return [
+    dashboardBookingLocationOrFilter(locationId),
+    [
+      `location_id.eq.${locationId}`,
+      `and(location_id.is.null,location_type.eq.at_home)`,
+    ].join(","),
+    `location_id.eq.${locationId}`,
+  ];
 }
 
 /**

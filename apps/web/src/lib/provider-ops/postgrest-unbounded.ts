@@ -36,6 +36,8 @@ export async function fetchAllPaged<T>(
   return out;
 }
 
+export const POSTGREST_IN_CHUNK = 150;
+
 /** Split large `.in("col", ids)` lists — very large IN clauses can fail or misbehave. */
 export function chunkIds<T>(ids: T[], size: number): T[][] {
   if (ids.length === 0) return [];
@@ -44,6 +46,25 @@ export function chunkIds<T>(ids: T[], size: number): T[][] {
     chunks.push(ids.slice(i, i + size));
   }
   return chunks;
+}
+
+/** Fetch rows by id in PostgREST-safe chunks. */
+export async function fetchInIdChunks<T>(
+  ids: string[],
+  fetchChunk: (slice: string[]) => PromiseLike<{ data: T[] | null; error?: unknown }>,
+  options?: { chunkSize?: number; throwOnError?: boolean },
+): Promise<T[]> {
+  const throwOnError = options?.throwOnError === true;
+  const out: T[] = [];
+  for (const slice of chunkIds(ids, options?.chunkSize ?? POSTGREST_IN_CHUNK)) {
+    const { data, error } = await fetchChunk(slice);
+    if (error) {
+      if (throwOnError) throw error;
+      continue;
+    }
+    out.push(...((data ?? []) as T[]));
+  }
+  return out;
 }
 
 /** PostgREST may return embedded many-to-one rows as object or single-element array depending on typings. */

@@ -24,6 +24,7 @@ import {
   type SaleHistoryRow,
 } from "@/lib/provider-sales/map-walk-in-order-to-sale";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -114,10 +115,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build query (simplified to avoid nested join issues)
-    let salesQuery = supabaseAdmin
-      .from('sales')
-      .select(`
+    const applySalesListFilters = (query: any) => {
+      let salesQuery = query.eq("provider_id", providerId).order("sale_date", { ascending: false });
+      if (locationId) salesQuery = salesQuery.eq("location_id", locationId);
+      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+        const d0 = dateFrom.slice(0, 10);
+        salesQuery = salesQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
+      }
+      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+        const d1 = dateTo.slice(0, 10);
+        salesQuery = salesQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
+      }
+      if (searchTerm) {
+        const clauses = [
+          `ref_number.ilike.%${searchTerm}%`,
+          `sale_number.ilike.%${searchTerm}%`,
+        ];
+        if (customerIdsMatchingSearch.length > 0) {
+          clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+        }
+        salesQuery = salesQuery.or(clauses.join(","));
+      }
+      return salesQuery;
+    };
+
+    let sales: any[] = [];
+    try {
+      sales = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await applySalesListFilters(
+          supabaseAdmin.from("sales").select(`
         id,
         sale_number,
         ref_number,
@@ -133,74 +159,52 @@ export async function GET(request: NextRequest) {
         customer_id,
         staff_id,
         location_id
-      `, { count: 'exact' })
-      .eq('provider_id', providerId)
-      .order('sale_date', { ascending: false });
-
-    // Apply location filter
-    if (locationId) {
-      salesQuery = salesQuery.eq('location_id', locationId);
-    }
-    
-    // Apply date filters (YYYY-MM-DD = provider wall calendar day)
-    if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
-      const d0 = dateFrom.slice(0, 10);
-      salesQuery = salesQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
-    }
-    if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
-      const d1 = dateTo.slice(0, 10);
-      salesQuery = salesQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
-    }
-
-    // Apply search at DB level so pagination/count/totals match the visible list.
-    if (searchTerm) {
-      const clauses = [
-        `ref_number.ilike.%${searchTerm}%`,
-        `sale_number.ilike.%${searchTerm}%`,
-      ];
-      if (customerIdsMatchingSearch.length > 0) {
-        clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
-      }
-      salesQuery = salesQuery.or(clauses.join(","));
-    }
-
-    const { data: sales, error: salesError } = await salesQuery;
-
-    if (salesError) {
+      `),
+        ).range(from, to);
+        return { data, error };
+      }, 5_000);
+    } catch (salesError) {
       console.error("Error fetching sales:", salesError);
       throw salesError;
     }
 
-    let walkInQuery = supabaseAdmin
-      .from("product_orders")
-      .select(
-        "id, order_number, created_at, paid_at, subtotal, tax_amount, total_amount, payment_method, payment_status, customer_id, customer_name, staff_id, collection_location_id, legacy_sale_id",
-      )
-      .eq("provider_id", providerId)
-      .eq("order_source", "walk_in")
-      .order("created_at", { ascending: false });
-
-    if (locationId) {
-      walkInQuery = walkInQuery.eq("collection_location_id", locationId);
-    }
-    if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
-      const d0 = dateFrom.slice(0, 10);
-      walkInQuery = walkInQuery.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
-    }
-    if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
-      const d1 = dateTo.slice(0, 10);
-      walkInQuery = walkInQuery.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
-    }
-    if (searchTerm) {
-      const walkClauses = [`order_number.ilike.%${searchTerm}%`, `customer_name.ilike.%${searchTerm}%`];
-      if (customerIdsMatchingSearch.length > 0) {
-        walkClauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+    const applyWalkInFilters = (query: any) => {
+      let walkInQuery = query
+        .eq("provider_id", providerId)
+        .eq("order_source", "walk_in")
+        .order("created_at", { ascending: false });
+      if (locationId) walkInQuery = walkInQuery.eq("collection_location_id", locationId);
+      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+        const d0 = dateFrom.slice(0, 10);
+        walkInQuery = walkInQuery.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
       }
-      walkInQuery = walkInQuery.or(walkClauses.join(","));
-    }
+      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+        const d1 = dateTo.slice(0, 10);
+        walkInQuery = walkInQuery.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
+      }
+      if (searchTerm) {
+        const walkClauses = [`order_number.ilike.%${searchTerm}%`, `customer_name.ilike.%${searchTerm}%`];
+        if (customerIdsMatchingSearch.length > 0) {
+          walkClauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+        }
+        walkInQuery = walkInQuery.or(walkClauses.join(","));
+      }
+      return walkInQuery;
+    };
 
-    const { data: walkInOrders, error: walkInError } = await walkInQuery;
-    if (walkInError) {
+    let walkInOrders: any[] = [];
+    try {
+      walkInOrders = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await applyWalkInFilters(
+          supabaseAdmin
+            .from("product_orders")
+            .select(
+              "id, order_number, created_at, paid_at, subtotal, tax_amount, total_amount, payment_method, payment_status, customer_id, customer_name, staff_id, collection_location_id, legacy_sale_id",
+            ),
+        ).range(from, to);
+        return { data, error };
+      }, 5_000);
+    } catch (walkInError) {
       console.error("Error fetching walk-in product orders:", walkInError);
       throw walkInError;
     }
@@ -211,39 +215,40 @@ export async function GET(request: NextRequest) {
     let periodTotalAmount = 0;
     let totalPartial = false;
     try {
-      let totalsQuery = supabaseAdmin
-        .from("sales")
-        .select("total_amount")
-        .eq("provider_id", providerId);
-      if (locationId) totalsQuery = totalsQuery.eq("location_id", locationId);
-      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
-        const d0 = dateFrom.slice(0, 10);
-        totalsQuery = totalsQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
-      }
-      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
-        const d1 = dateTo.slice(0, 10);
-        totalsQuery = totalsQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
-      }
-      if (searchTerm) {
-        const clauses = [
-          `ref_number.ilike.%${searchTerm}%`,
-          `sale_number.ilike.%${searchTerm}%`,
-        ];
-        if (customerIdsMatchingSearch.length > 0) {
-          clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+      const totalsRows = await fetchAllPaged<{ total_amount?: number | null }>(async (from, to) => {
+        let totalsQuery = supabaseAdmin
+          .from("sales")
+          .select("total_amount")
+          .eq("provider_id", providerId);
+        if (locationId) totalsQuery = totalsQuery.eq("location_id", locationId);
+        if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+          const d0 = dateFrom.slice(0, 10);
+          totalsQuery = totalsQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
         }
-        totalsQuery = totalsQuery.or(clauses.join(","));
-      }
-      const { data: totalsRows, error: totalsError } = await totalsQuery;
-      if (totalsError) {
-        console.error("Sales total aggregate failed:", totalsError);
-        totalPartial = true;
-      } else {
-        periodTotalAmount = (totalsRows ?? []).reduce(
-          (s: number, r: { total_amount?: number | null }) => s + Number(r.total_amount ?? 0),
-          0
-        );
-      }
+        if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+          const d1 = dateTo.slice(0, 10);
+          totalsQuery = totalsQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
+        }
+        if (searchTerm) {
+          const clauses = [
+            `ref_number.ilike.%${searchTerm}%`,
+            `sale_number.ilike.%${searchTerm}%`,
+          ];
+          if (customerIdsMatchingSearch.length > 0) {
+            clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+          }
+          totalsQuery = totalsQuery.or(clauses.join(","));
+        }
+        const { data, error } = await totalsQuery
+          .order("created_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 50_000);
+      periodTotalAmount = totalsRows.reduce(
+        (s, r) => s + Number(r.total_amount ?? 0),
+        0
+      );
+      if (totalsRows.length >= 50_000) totalPartial = true;
     } catch (err) {
       console.error("Sales total aggregate failed:", err);
       totalPartial = true;
@@ -272,21 +277,16 @@ export async function GET(request: NextRequest) {
     // Fetch customers
     const customerMap = new Map<string, { full_name: string; email: string }>();
     if (customerIds.size > 0) {
-      const { data: customers, error: customerError } = await supabaseAdmin
-        .from('users')
-        .select('id, full_name, email')
-        .in('id', Array.from(customerIds));
-
-      if (customerError) {
-        console.warn("Error fetching customers:", customerError);
-      } else {
-        customers?.forEach((customer: any) => {
-          customerMap.set(customer.id, {
-            full_name: customer.full_name || "Unknown",
-            email: customer.email || "",
-          });
+      const customers = await fetchInIdChunks<{ id: string; full_name?: string | null; email?: string | null }>(
+        Array.from(customerIds),
+        (slice) => supabaseAdmin.from("users").select("id, full_name, email").in("id", slice),
+      );
+      customers.forEach((customer) => {
+        customerMap.set(customer.id, {
+          full_name: customer.full_name || "Unknown",
+          email: customer.email || "",
         });
-      }
+      });
     }
 
     // Fetch staff (walk-in orders store either provider_staff.id or user.id)
@@ -342,13 +342,12 @@ export async function GET(request: NextRequest) {
     const itemsMap = new Map();
     
     if (saleIds.length > 0) {
-      const { data: items } = await supabaseAdmin
-        .from('sale_items')
-        .select('*')
-        .in('sale_id', saleIds);
+      const items = await fetchInIdChunks<any>(saleIds, (slice) =>
+        supabaseAdmin.from("sale_items").select("*").in("sale_id", slice),
+      );
 
       // Group items by sale_id
-      (items || []).forEach((item: any) => {
+      items.forEach((item: any) => {
         if (!itemsMap.has(item.sale_id)) {
           itemsMap.set(item.sale_id, []);
         }
@@ -397,11 +396,22 @@ export async function GET(request: NextRequest) {
       total_price?: number | string | null;
     }>>();
     if (walkInIds.length > 0) {
-      const { data: walkInItems } = await supabaseAdmin
-        .from("product_order_items")
-        .select("id, order_id, product_id, product_variant_id, product_name, quantity, unit_price, total_price")
-        .in("order_id", walkInIds);
-      (walkInItems || []).forEach((item: {
+      const walkInItems = await fetchInIdChunks<{
+        id: string;
+        order_id: string;
+        product_id?: string | null;
+        product_variant_id?: string | null;
+        product_name?: string | null;
+        quantity?: number | null;
+        unit_price?: number | string | null;
+        total_price?: number | string | null;
+      }>(walkInIds, (slice) =>
+        supabaseAdmin
+          .from("product_order_items")
+          .select("id, order_id, product_id, product_variant_id, product_name, quantity, unit_price, total_price")
+          .in("order_id", slice),
+      );
+      walkInItems.forEach((item: {
         id: string;
         order_id: string;
         product_id?: string | null;

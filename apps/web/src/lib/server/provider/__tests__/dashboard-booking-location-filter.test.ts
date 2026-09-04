@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   bookingMatchesDashboardLocation,
   dashboardBookingLocationOrFilter,
+  dashboardBookingLocationOrFilterFallbacks,
   dashboardGroupBookingLocationOrFilter,
   groupMatchesDashboardLocation,
+  normalizeDashboardLocationId,
 } from "../dashboard-booking-location-filter";
 
 describe("bookingMatchesDashboardLocation", () => {
@@ -47,12 +49,29 @@ describe("dashboard location OR filters", () => {
     expect(filter).toContain("booking_source.eq.walk_in");
   });
 
+  it("falls back to filters that omit booking_source", () => {
+    const fallbacks = dashboardBookingLocationOrFilterFallbacks("loc-1");
+    expect(fallbacks[0]).toContain("booking_source.eq.walk_in");
+    expect(fallbacks[1]).not.toContain("booking_source");
+    expect(fallbacks[1]).toContain("location_type.eq.at_home");
+    expect(fallbacks[2]).toBe("location_id.eq.loc-1");
+  });
+
   it("group_bookings filter omits booking_source (column does not exist)", () => {
     const filter = dashboardGroupBookingLocationOrFilter("loc-1");
     expect(filter).toContain("location_id.eq.loc-1");
     expect(filter).toContain("location_type.eq.at_home");
     expect(filter).toContain("location_id.is.null");
     expect(filter).not.toContain("booking_source");
+  });
+
+  it("normalizeDashboardLocationId keeps UUIDs and drops junk", () => {
+    expect(normalizeDashboardLocationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")).toBe(
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    expect(normalizeDashboardLocationId(" not-a-uuid ")).toBeNull();
+    expect(normalizeDashboardLocationId("")).toBeNull();
+    expect(normalizeDashboardLocationId(null)).toBeNull();
   });
 
   it("groupMatchesDashboardLocation includes legacy groups with null location_id", () => {

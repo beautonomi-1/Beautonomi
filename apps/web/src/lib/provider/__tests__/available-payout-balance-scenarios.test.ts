@@ -56,6 +56,10 @@ class Query {
     return this;
   }
 
+  range() {
+    return this;
+  }
+
   then<TResult1 = { data: Row[]; error: null }, TResult2 = never>(
     onfulfilled?: ((value: { data: Row[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,

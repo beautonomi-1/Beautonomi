@@ -1,3 +1,5 @@
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+
 export type ProviderBookingProductInput = {
   productId?: string | null;
   product_id?: string | null;
@@ -54,35 +56,47 @@ export async function validateProviderBookingProducts(
     .map((product) => product.productVariantId ?? product.product_variant_id ?? null)
     .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
 
-  const { data: productRows, error: productsError } = await supabase
-    .from("products")
-    .select("id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants")
-    .in("id", [...new Set(productIds)]);
-  if (productsError) {
+  let productRows: any[] = [];
+  try {
+    productRows = await fetchInIdChunks([...new Set(productIds)], (slice) =>
+      supabase
+        .from("products")
+        .select("id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants")
+        .in("id", slice),
+      { throwOnError: true },
+    );
+  } catch (productsError) {
     return {
       ok: false,
-      message: productsError.message || "We couldn't validate selected products. Please try again.",
+      message:
+        productsError instanceof Error
+          ? productsError.message
+          : "We couldn't validate selected products. Please try again.",
       code: "PRODUCT_VALIDATION_FAILED",
     };
   }
 
   const productById = new Map<string, any>();
-  for (const product of productRows ?? []) productById.set(product.id, product);
+  for (const product of productRows) productById.set(product.id, product);
 
   const variantById = new Map<string, any>();
   if (variantIds.length > 0) {
-    const { data: variantRows, error: variantsError } = await supabase
-      .from("product_variants")
-      .select("id, product_id, retail_price, quantity")
-      .in("id", [...new Set(variantIds)]);
-    if (variantsError) {
+    try {
+      const variantRows = await fetchInIdChunks([...new Set(variantIds)], (slice) =>
+        supabase.from("product_variants").select("id, product_id, retail_price, quantity").in("id", slice),
+        { throwOnError: true },
+      );
+      for (const variant of variantRows) variantById.set(variant.id, variant);
+    } catch (variantsError) {
       return {
         ok: false,
-        message: variantsError.message || "We couldn't validate selected product options. Please try again.",
+        message:
+          variantsError instanceof Error
+            ? variantsError.message
+            : "We couldn't validate selected product options. Please try again.",
         code: "PRODUCT_VALIDATION_FAILED",
       };
     }
-    for (const variant of variantRows ?? []) variantById.set(variant.id, variant);
   }
 
   const validated: ValidatedProviderBookingProduct[] = [];

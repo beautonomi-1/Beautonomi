@@ -123,7 +123,7 @@ export default function PayAdditionalChargePage() {
       }>(`/api/me/bookings/${bookingId}/additional-charges/${chargeId}/pay`, {
         use_wallet: useWallet,
         ...(giftCardCode.trim() ? { gift_card_code: giftCardCode.trim().toUpperCase() } : {}),
-      });
+      }, { timeoutMs: 120_000 });
 
       const payload = response.data;
       if (payload?.fully_settled) {

@@ -11,6 +11,7 @@ import {
 import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 export type SalesHistorySource = "booking" | "product_order" | "pos";
 
@@ -361,23 +362,27 @@ export async function queryProviderSalesHistory(
   if (source === "all" || source === "booking") {
     const bookingIds = [...bookingAggs.keys()];
     if (bookingIds.length > 0) {
-      const { data: bookings, error: bErr } = await db
-        .from("bookings")
-        .select(
-          "id, booking_number, customer_id, guest_name, total_amount, location_id, location_type, booking_source, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
-        )
-        .eq("provider_id", providerId)
-        .in("id", bookingIds);
-      if (bErr) throw bErr;
+      const bookings = await fetchInIdChunks<Record<string, unknown>>(bookingIds, (slice) =>
+        db
+          .from("bookings")
+          .select(
+            "id, booking_number, customer_id, guest_name, total_amount, location_id, location_type, booking_source, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
+          )
+          .eq("provider_id", providerId)
+          .in("id", slice),
+        { throwOnError: true },
+      );
 
-      const customerIds = [...new Set((bookings ?? []).map((b: any) => b.customer_id).filter(Boolean))] as string[];
+      const customerIds = [...new Set(bookings.map((b: any) => b.customer_id).filter(Boolean))] as string[];
       const customerMap = new Map<string, string>();
       if (customerIds.length > 0) {
-        const { data: users } = await db.from("users").select("id, full_name").in("id", customerIds);
-        for (const u of users ?? []) customerMap.set((u as any).id, String((u as any).full_name || ""));
+        const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>(customerIds, (slice) =>
+          db.from("users").select("id, full_name").in("id", slice),
+        );
+        for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
       }
 
-      for (const b of bookings ?? []) {
+      for (const b of bookings) {
         const row = b as any;
         if (
           locationId &&
@@ -414,20 +419,24 @@ export async function queryProviderSalesHistory(
   if (source === "all" || source === "product_order") {
     const orderIds = [...orderAggs.keys()];
     if (orderIds.length > 0) {
-      const { data: orders, error: oErr } = await db
-        .from("product_orders")
-        .select(
-          "id, order_number, customer_id, total_amount, fulfillment_type, collection_location_id, created_at, updated_at",
-        )
-        .eq("provider_id", providerId)
-        .in("id", orderIds);
-      if (oErr) throw oErr;
+      const orders = await fetchInIdChunks<Record<string, unknown>>(orderIds, (slice) =>
+        db
+          .from("product_orders")
+          .select(
+            "id, order_number, customer_id, total_amount, fulfillment_type, collection_location_id, created_at, updated_at",
+          )
+          .eq("provider_id", providerId)
+          .in("id", slice),
+        { throwOnError: true },
+      );
 
-      const customerIds = [...new Set((orders ?? []).map((o: any) => o.customer_id).filter(Boolean))] as string[];
+      const customerIds = [...new Set(orders.map((o: any) => o.customer_id).filter(Boolean))] as string[];
       const customerMap = new Map<string, string>();
       if (customerIds.length > 0) {
-        const { data: users } = await db.from("users").select("id, full_name").in("id", customerIds);
-        for (const u of users ?? []) customerMap.set((u as any).id, String((u as any).full_name || ""));
+        const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>(customerIds, (slice) =>
+          db.from("users").select("id, full_name").in("id", slice),
+        );
+        for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
       }
 
       for (const o of orders ?? []) {
@@ -521,8 +530,10 @@ export async function queryProviderSalesHistory(
     const customerIds = [...new Set((sales ?? []).map((s: any) => s.customer_id).filter(Boolean))] as string[];
     const customerMap = new Map<string, string>();
     if (customerIds.length > 0) {
-      const { data: users } = await db.from("users").select("id, full_name").in("id", customerIds);
-      for (const u of users ?? []) customerMap.set((u as any).id, String((u as any).full_name || ""));
+      const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>(customerIds, (slice) =>
+        db.from("users").select("id, full_name").in("id", slice),
+      );
+      for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
     }
 
     for (const s of sales ?? []) {
@@ -597,41 +608,47 @@ async function materializeSalesHistoryRows(args: {
 
   const bookingMap = new Map<string, any>();
   if (bookingIds.length > 0) {
-    const { data: bookings, error } = await db
-      .from("bookings")
-      .select(
-        "id, booking_number, customer_id, guest_name, total_amount, currency, payment_status, location_id, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
-      )
-      .eq("provider_id", providerId)
-      .in("id", bookingIds);
-    if (error) throw error;
-    for (const b of bookings ?? []) bookingMap.set((b as any).id, b);
+    const bookings = await fetchInIdChunks<Record<string, unknown>>(bookingIds, (slice) =>
+      db
+        .from("bookings")
+        .select(
+          "id, booking_number, customer_id, guest_name, total_amount, currency, payment_status, location_id, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
+        )
+        .eq("provider_id", providerId)
+        .in("id", slice),
+      { throwOnError: true },
+    );
+    for (const b of bookings) bookingMap.set(String(b.id), b);
   }
 
   const orderMap = new Map<string, any>();
   if (orderIds.length > 0) {
-    const { data: orders, error } = await db
-      .from("product_orders")
-      .select(
-        "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
-      )
-      .eq("provider_id", providerId)
-      .in("id", orderIds);
-    if (error) throw error;
-    for (const o of orders ?? []) orderMap.set((o as any).id, o);
+    const orders = await fetchInIdChunks<Record<string, unknown>>(orderIds, (slice) =>
+      db
+        .from("product_orders")
+        .select(
+          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+        )
+        .eq("provider_id", providerId)
+        .in("id", slice),
+      { throwOnError: true },
+    );
+    for (const o of orders) orderMap.set(String(o.id), o);
   }
 
   const posMap = new Map<string, any>();
   if (posIds.length > 0) {
-    const { data: sales, error } = await db
-      .from("sales")
-      .select(
-        "id, sale_number, ref_number, sale_date, total_amount, subtotal, tax_amount, payment_status, customer_id, location_id, currency",
-      )
-      .eq("provider_id", providerId)
-      .in("id", posIds);
-    if (error) throw error;
-    for (const s of sales ?? []) posMap.set((s as any).id, s);
+    const sales = await fetchInIdChunks<Record<string, unknown>>(posIds, (slice) =>
+      db
+        .from("sales")
+        .select(
+          "id, sale_number, ref_number, sale_date, total_amount, subtotal, tax_amount, payment_status, customer_id, location_id, currency",
+        )
+        .eq("provider_id", providerId)
+        .in("id", slice),
+      { throwOnError: true },
+    );
+    for (const s of sales) posMap.set(String(s.id), s);
   }
 
   const customerIds = new Set<string>();
@@ -641,8 +658,10 @@ async function materializeSalesHistoryRows(args: {
 
   const customerMap = new Map<string, string>();
   if (customerIds.size > 0) {
-    const { data: users } = await db.from("users").select("id, full_name").in("id", [...customerIds]);
-    for (const u of users ?? []) customerMap.set((u as any).id, String((u as any).full_name || ""));
+    const users = await fetchInIdChunks<{ id: string; full_name?: string | null }>([...customerIds], (slice) =>
+      db.from("users").select("id, full_name").in("id", slice),
+    );
+    for (const u of users) customerMap.set(u.id, String(u.full_name || ""));
   }
 
   const rows: SalesHistoryRow[] = [];

@@ -26,7 +26,10 @@ import {
   recognizedRevenue,
   recognizedRevenueInRange,
 } from "@/lib/reports/provider-revenue-semantics";
-import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  dashboardBookingLocationOrFilterFallbacks,
+  normalizeDashboardLocationId,
+} from "@/lib/server/provider/dashboard-booking-location-filter";
 import { getProviderRetailTakingsSummary } from "@/lib/reports/provider-retail-takings";
 import {
   fetchUpcomingBookingsForDashboard,
@@ -62,6 +65,33 @@ const MAX_DASHBOARD_CACHE_ENTRIES = 400;
 /** Safety bound for dashboard booking status / schedule aggregates (paginated, not a silent 5k cap). */
 const MAX_DASHBOARD_BOOKINGS = 50_000;
 const dashboardResponseCache = new Map<string, { expiresAt: number; data: any }>();
+
+const EMPTY_RETAIL_TAKINGS = {
+  today: { amount: 0, count: 0 },
+  this_week: { amount: 0, count: 0 },
+  this_month: { amount: 0, count: 0 },
+  lifetime: { amount: 0, count: 0 },
+};
+
+const EMPTY_PAYOUT_BALANCE = {
+  availableBalance: 0,
+  pendingPayoutsSum: 0,
+  rawBalance: 0,
+  hasNegativeBalance: false,
+};
+
+async function withDashboardFallback<T>(
+  label: string,
+  fallback: T,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[dashboard] ${label} failed:`, err);
+    return fallback;
+  }
+}
 
 const PENDING_BOOKING_STATUSES = new Set(["pending", "pending_payment"]);
 const CONFIRMED_BOOKING_STATUSES = new Set(["confirmed", "waiting", "checked_in"]);
@@ -109,7 +139,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     // Get location_id from query params if provided
     const { searchParams } = new URL(request.url);
-    const locationId = searchParams.get('location_id');
+    const locationId = normalizeDashboardLocationId(searchParams.get('location_id'));
     const includeInsights = searchParams.get("include") === "insights";
 
     // Use service role client for all queries to avoid RLS infinite recursion
@@ -222,25 +252,45 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     // Load status, created_at, scheduled_at, and location_type in parallel with finance data.
     // Paginate bookings so high-volume providers are not silently capped at PostgREST max_rows.
+    const locationFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [];
+    let locationFilterIndex = 0;
+
     const fetchDashboardBookingsPage = async (from: number, to: number, periodOnly: boolean) => {
-      let q = supabaseAdmin
-        .from("bookings")
-        .select("id, status, created_at, scheduled_at, location_id, location_type, booking_source")
-        .eq("provider_id", providerId)
-        // `scheduled_at` is nullable and non-unique; add `id` as a stable tiebreaker so
-        // ties don't shift across page boundaries (skip/dupe rows in status tiles).
-        .order("scheduled_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
-      if (periodOnly) {
-        q = q
-          .gte("scheduled_at", periodBookingsFrom.toISOString())
-          .lt("scheduled_at", periodBookingsTo.toISOString());
+      const build = (orFilter: string | null) => {
+        let q = supabaseAdmin
+          .from("bookings")
+          .select("id, status, created_at, scheduled_at, location_id, location_type, booking_source")
+          .eq("provider_id", providerId)
+          // `scheduled_at` is nullable and non-unique; add `id` as a stable tiebreaker so
+          // ties don't shift across page boundaries (skip/dupe rows in status tiles).
+          .order("scheduled_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        if (periodOnly) {
+          q = q
+            .gte("scheduled_at", periodBookingsFrom.toISOString())
+            .lt("scheduled_at", periodBookingsTo.toISOString());
+        }
+        if (orFilter) {
+          q = q.or(orFilter);
+        }
+        return q;
+      };
+
+      if (!locationId) {
+        return build(null);
       }
-      if (locationId) {
-        q = q.or(dashboardBookingLocationOrFilter(locationId));
+
+      for (let i = locationFilterIndex; i < locationFilters.length; i += 1) {
+        const result = await build(locationFilters[i]);
+        if (!result.error) {
+          locationFilterIndex = i;
+          return result;
+        }
+        console.warn("[dashboard] booking location filter failed, retrying simpler filter:", result.error);
       }
-      return q;
+      console.warn("[dashboard] all booking location filters failed, loading unscoped bookings");
+      return build(null);
     };
 
     // For finance transactions, we need to filter by location through bookings
@@ -264,7 +314,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         }, MAX_DASHBOARD_BOOKINGS);
         return { snapshot, allBookings: rows.slice(0, MAX_DASHBOARD_BOOKINGS) };
       }),
-      fetchAllLedgerPages(financeQuery as any, MAX_FINANCE_TRANSACTIONS),
+      withDashboardFallback("ledger", [] as Awaited<ReturnType<typeof fetchAllLedgerPages>>, () =>
+        fetchAllLedgerPages(financeQuery as any, MAX_FINANCE_TRANSACTIONS),
+      ),
     ]);
 
     const totalBookings = snapshot ? snapshot.bookings.total_bookings : allBookings.length;
@@ -445,7 +497,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // Revenue streams from finance ledger (already loaded in parallel above)
     let rows = ledgerRows || [];
     if (locationId && rows.length > 0) {
-      rows = await filterLedgerRowsForLocation(supabaseAdmin as any, providerId, rows as any, locationId);
+      rows = await withDashboardFallback("ledger_location_filter", rows, () =>
+        filterLedgerRowsForLocation(supabaseAdmin as any, providerId, rows as any, locationId),
+      );
     }
     
     // Optimize: Pre-filter and pre-parse dates for faster processing
@@ -595,14 +649,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       new Date(businessNow.getFullYear(), businessNow.getMonth(), 1),
       "yyyy-MM-dd",
     );
-    const retailTakings = await getProviderRetailTakingsSummary(supabaseAdmin, {
-      providerId,
-      timezone: providerTz,
-      todayYmd,
-      weekStartYmd,
-      monthStartYmd,
-      locationId,
-    });
+    const retailTakings = await withDashboardFallback("retail_takings", EMPTY_RETAIL_TAKINGS, () =>
+      getProviderRetailTakingsSummary(supabaseAdmin, {
+        providerId,
+        timezone: providerTz,
+        todayYmd,
+        weekStartYmd,
+        monthStartYmd,
+        locationId,
+      }),
+    );
 
     const revenueGrowth =
       revenueLastMonth !== 0
@@ -657,39 +713,61 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // apply hold-days and exclude direct walk-in earnings that are not held by platform.
     const providerTenantId =
       (providerData as { tenant_id?: string | null } | null)?.tenant_id ?? null;
-    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
-      supabase: supabaseAdmin as any,
-      table: "platform_settings",
-      tenantId: providerTenantId,
-      select: "settings",
-      apply: (q) => q.eq("is_active", true),
-      orderBy: { column: "updated_at", ascending: false },
-    });
+    const scopedSettings = await withDashboardFallback(
+      "payout_settings",
+      { data: null, source: "none" as const },
+      () =>
+        fetchScopedSingle<Record<string, unknown>>({
+          supabase: supabaseAdmin as any,
+          table: "platform_settings",
+          tenantId: providerTenantId ?? "",
+          select: "settings",
+          apply: (q) => q.eq("is_active", true),
+          orderBy: { column: "updated_at", ascending: false },
+        }),
+    );
     const payoutSettings = ((scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)
       ?.payouts ?? {};
     const holdDays = Number(payoutSettings.payout_hold_days ?? 0);
-    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
-      supabaseAdmin as any,
-      providerId,
-      {
-        holdDays,
-        tenantId: providerTenantId,
-      },
-    );
+    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance } =
+      await withDashboardFallback("payout_balance", EMPTY_PAYOUT_BALANCE, () =>
+        getAvailablePayoutBalance(supabaseAdmin as any, providerId, {
+          holdDays,
+          tenantId: providerTenantId,
+        }),
+      );
     
     // Calculate pending payments (unpaid bookings)
-    let unpaidBookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
-      .eq("provider_id", providerId)
-      .in("payment_status", ["pending", "partially_paid"])
-      .not("status", "in", "(cancelled,no_show)");
-    
-    if (locationId) {
-      unpaidBookingsQuery = unpaidBookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
-    }
-    
-    const { data: unpaidBookings } = await unpaidBookingsQuery;
+    const buildUnpaidQuery = (orFilter: string | null) => {
+      let q = supabaseAdmin
+        .from("bookings")
+        .select("total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
+        .eq("provider_id", providerId)
+        .in("payment_status", ["pending", "partially_paid"])
+        .not("status", "in", "(cancelled,no_show)");
+      if (orFilter) q = q.or(orFilter);
+      return q;
+    };
+
+    const unpaidBookings = await withDashboardFallback("unpaid_bookings", [] as unknown[], async () => {
+      const loadUnpaid = async (orFilter: string | null) =>
+        fetchAllPaged(async (from, to) => {
+          const { data, error } = await buildUnpaidQuery(orFilter)
+            .order("created_at", { ascending: true })
+            .range(from, to);
+          return { data, error };
+        }, 20_000);
+
+      if (!locationId) return loadUnpaid(null);
+      for (const filter of locationFilters) {
+        try {
+          return await loadUnpaid(filter);
+        } catch (err) {
+          console.warn("[dashboard] unpaid bookings location filter failed, retrying simpler filter:", err);
+        }
+      }
+      return loadUnpaid(null);
+    });
 
     const pendingPaymentsAmount =
       unpaidBookings?.reduce((sum, b) => {
@@ -788,6 +866,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     );
 
     if (includeInsights) {
+      try {
       const chartStartYmd = addDaysToYmd(todayYmd, -6);
       const chartBounds = dateRangeBoundsUtc(chartStartYmd, todayYmd, providerTz);
       const revenueByDay = new Map<string, number>();
@@ -883,6 +962,11 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             : null,
         },
       };
+      } catch (insightsErr) {
+        console.warn("[dashboard] insights failed:", insightsErr);
+        insights = null;
+        bookingEligibility = null;
+      }
     }
     
     // Calculate performance metrics
@@ -890,68 +974,86 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const completionRate = terminalBookings > 0 ? (completedBookings / terminalBookings) * 100 : 0;
     const noShowRate = terminalBookings > 0 ? (noShowBookings / terminalBookings) * 100 : 0;
 
-    const healSignalsInitial = await fetchProviderGamificationHealSignals(supabaseAdmin, providerId);
-    const { data: pointsRowPeek } = await supabaseAdmin
-      .from("provider_points")
-      .select("id")
-      .eq("provider_id", providerId)
-      .maybeSingle();
-    await syncProviderGamification(supabaseAdmin, providerId, {
-      ...healSignalsInitial,
-      hasProviderPointsRow: !!pointsRowPeek,
-    });
+    const gamification = await withDashboardFallback(
+      "gamification",
+      {
+        total_points: 0,
+        lifetime_points: 0,
+        current_tier_points: 0,
+        current_badge: null,
+        badge_earned_at: null,
+        badge_expires_at: null,
+        milestones: [],
+        recent_transactions: [],
+        progress_to_next_badge: null,
+      },
+      async () => {
+        const healSignalsInitial = await fetchProviderGamificationHealSignals(supabaseAdmin, providerId);
+        const { data: pointsRowPeek } = await supabaseAdmin
+          .from("provider_points")
+          .select("id")
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        await syncProviderGamification(supabaseAdmin, providerId, {
+          ...healSignalsInitial,
+          hasProviderPointsRow: !!pointsRowPeek,
+        });
 
-    const { data: gamificationData } = await supabaseAdmin
-      .from('provider_points')
-      .select(PROVIDER_POINTS_SELECT)
-      .eq('provider_id', providerId)
-      .maybeSingle();
+        const { data: gamificationData } = await supabaseAdmin
+          .from("provider_points")
+          .select(PROVIDER_POINTS_SELECT)
+          .eq("provider_id", providerId)
+          .maybeSingle();
 
-    const { data: milestones } = await supabaseAdmin
-      .from('provider_milestones')
-      .select('milestone_type, achieved_at')
-      .eq('provider_id', providerId)
-      .order('achieved_at', { ascending: false })
-      .limit(10);
+        const { data: milestones } = await supabaseAdmin
+          .from("provider_milestones")
+          .select("milestone_type, achieved_at")
+          .eq("provider_id", providerId)
+          .order("achieved_at", { ascending: false })
+          .limit(10);
 
-    const { data: recentTransactions } = await supabaseAdmin
-      .from('provider_point_transactions')
-      .select('points, source, description, created_at')
-      .eq('provider_id', providerId)
-      .order('created_at', { ascending: false })
-      .limit(10);
+        const { data: recentTransactions } = await supabaseAdmin
+          .from("provider_point_transactions")
+          .select("points, source, description, created_at")
+          .eq("provider_id", providerId)
+          .order("created_at", { ascending: false })
+          .limit(10);
 
-    const { data: allBadges } = await supabaseAdmin
-      .from('provider_badges')
-      .select('id, name, slug, tier, color, requirements, benefits, description, icon_url')
-      .eq('is_active', true)
-      .order('tier', { ascending: true });
+        const { data: allBadges } = await supabaseAdmin
+          .from("provider_badges")
+          .select("id, name, slug, tier, color, requirements, benefits, description, icon_url")
+          .eq("is_active", true)
+          .order("tier", { ascending: true });
 
-    const badge = resolveJoinedBadge(gamificationData?.provider_badges);
-    const currentPoints = gamificationData?.total_points ?? 0;
-    const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
+        const badge = resolveJoinedBadge(gamificationData?.provider_badges);
+        const currentPoints = gamificationData?.total_points ?? 0;
+        const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
 
-    const gamification = {
-      total_points: currentPoints,
-      lifetime_points: gamificationData?.lifetime_points ?? 0,
-      current_tier_points: gamificationData?.current_tier_points ?? 0,
-      current_badge: badge ? {
-        id: badge.id,
-        name: badge.name,
-        slug: badge.slug,
-        description: badge.description,
-        icon_url: badge.icon_url,
-        tier: badge.tier,
-        color: badge.color,
-        requirements: badge.requirements,
-        benefits: badge.benefits,
-      } : null,
-      badge_earned_at: gamificationData?.badge_earned_at ?? null,
-      badge_expires_at: gamificationData?.badge_expires_at ?? null,
-      milestones: milestones || [],
-      recent_transactions: recentTransactions || [],
-      progress_to_next_badge: progressToNextBadge,
-    };
+        return {
+          total_points: currentPoints,
+          lifetime_points: gamificationData?.lifetime_points ?? 0,
+          current_tier_points: gamificationData?.current_tier_points ?? 0,
+          current_badge: badge
+            ? {
+                id: badge.id,
+                name: badge.name,
+                slug: badge.slug,
+                description: badge.description,
+                icon_url: badge.icon_url,
+                tier: badge.tier,
+                color: badge.color,
+                requirements: badge.requirements,
+                benefits: badge.benefits,
+              }
+            : null,
+          badge_earned_at: gamificationData?.badge_earned_at ?? null,
+          badge_expires_at: gamificationData?.badge_expires_at ?? null,
+          milestones: milestones || [],
+          recent_transactions: recentTransactions || [],
+          progress_to_next_badge: progressToNextBadge,
+        };
+      },
+    );
 
     const payload = {
       // Booking counts

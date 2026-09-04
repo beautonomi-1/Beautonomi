@@ -9,6 +9,7 @@ import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { endOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * GET /api/provider/finance/vat-reports
@@ -134,11 +135,19 @@ export async function GET(request: NextRequest) {
     const allBookingIds = [...new Set(allVatTx.map((t: any) => t.booking_id).filter(Boolean))] as string[];
     const bookingMap = new Map<string, any>();
     if (allBookingIds.length > 0) {
-      const { data: bookingData } = await supabase
-        .from("bookings")
-        .select("id, booking_number, scheduled_at, total_amount, tax_amount")
-        .in("id", allBookingIds);
-      for (const b of bookingData || []) bookingMap.set(b.id, b);
+      const bookingData = await fetchInIdChunks<{
+        id: string;
+        booking_number?: string;
+        scheduled_at?: string;
+        total_amount?: number;
+        tax_amount?: number;
+      }>(allBookingIds, (slice) =>
+        supabase
+          .from("bookings")
+          .select("id, booking_number, scheduled_at, total_amount, tax_amount")
+          .in("id", slice),
+      );
+      for (const b of bookingData) bookingMap.set(b.id, b);
     }
 
     // Index reminders by period_start (take most recent per period).

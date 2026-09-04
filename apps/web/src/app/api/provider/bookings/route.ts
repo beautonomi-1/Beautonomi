@@ -31,6 +31,7 @@ import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import {
   createBookingsReadCacheKey,
@@ -642,13 +643,15 @@ async function handleGetProviderBookings(request: NextRequest) {
             .in("id", groupLocationIds)
         : Promise.resolve({ data: [] as any[] }),
       groupIds.length
-        ? supabaseAdmin
-            .from("bookings")
-            .select(
-              "id, group_booking_id, staff_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, booking_services(staff_id), additional_charges(amount,status)"
-            )
-            .eq("provider_id", providerId)
-            .in("group_booking_id", groupIds)
+        ? fetchInIdChunks<any>(groupIds, (slice) =>
+            supabaseAdmin
+              .from("bookings")
+              .select(
+                "id, group_booking_id, staff_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, booking_services(staff_id), additional_charges(amount,status)"
+              )
+              .eq("provider_id", providerId)
+              .in("group_booking_id", slice),
+          ).then((data) => ({ data }))
         : Promise.resolve({ data: [] as any[] }),
     ]);
     const groupStaffName = new Map((groupStaffRes.data ?? []).map((s: any) => [s.id, s.name]));

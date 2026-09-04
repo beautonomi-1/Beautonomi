@@ -9,6 +9,7 @@ import {
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays, subMonths } from "date-fns";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * GET /api/provider/reports/gift-cards
@@ -42,71 +43,102 @@ export async function GET(request: NextRequest) {
     else if (period === "today") fromDate = subDays(toDate, 0);
     else fromDate = subMonths(toDate, 1);
 
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, gift_card_id, gift_card_amount, scheduled_at")
-      .eq("provider_id", providerId)
-      .not("gift_card_id", "is", null);
-
-    if (period !== "all") {
-      bookingsQuery = bookingsQuery
-        .gte("scheduled_at", fromDate.toISOString())
-        .lte("scheduled_at", toDate.toISOString());
-    }
-    if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
-
-    const { data: bookingsWithGiftCards, error: bookingsError } = await bookingsQuery;
-
-    if (bookingsError) {
-      if (
-        bookingsError.message.includes("relation") ||
-        bookingsError.message.includes("does not exist")
-      ) {
+    let bookingsWithGiftCards: Array<{ id: string }> = [];
+    try {
+      bookingsWithGiftCards = await fetchAllPaged<{ id: string }>(async (from, to) => {
+        let bookingsQuery = supabaseAdmin
+          .from("bookings")
+          .select("id, gift_card_id, gift_card_amount, scheduled_at")
+          .eq("provider_id", providerId)
+          .not("gift_card_id", "is", null);
+        if (period !== "all") {
+          bookingsQuery = bookingsQuery
+            .gte("scheduled_at", fromDate.toISOString())
+            .lte("scheduled_at", toDate.toISOString());
+        }
+        if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
+        const { data, error } = await bookingsQuery
+          .order("scheduled_at", { ascending: true })
+          .range(from, to);
+        return { data, error };
+      }, 20_000);
+    } catch (bookingsError) {
+      const msg =
+        bookingsError && typeof bookingsError === "object" && "message" in bookingsError
+          ? String((bookingsError as { message?: unknown }).message ?? "")
+          : "";
+      if (msg.includes("relation") || msg.includes("does not exist")) {
         return successResponse(emptyCombined());
       }
       throw bookingsError;
     }
 
-    const bookingIds = (bookingsWithGiftCards || []).map((b: { id: string }) => b.id);
+    const bookingIds = bookingsWithGiftCards.map((b) => b.id);
     if (bookingIds.length === 0) {
       return successResponse(emptyCombined());
     }
 
-    let redemptionsQuery = supabaseAdmin
-      .from("gift_card_redemptions")
-      .select("id, gift_card_id, booking_id, amount, captured_at")
-      .eq("status", "captured")
-      .not("captured_at", "is", null)
-      .gte("captured_at", fromDate.toISOString())
-      .lte("captured_at", toDate.toISOString())
-      .in("booking_id", bookingIds);
-
-    const { data: redemptions, error: redErr } = await redemptionsQuery;
-
-    if (redErr) {
-      if (redErr.message.includes("gift_card_redemptions") || redErr.message.includes("relation")) {
+    let redemptionsList: Array<{
+      id?: string;
+      gift_card_id?: string;
+      amount?: number | null;
+      captured_at?: string | null;
+    }> = [];
+    try {
+      redemptionsList = await fetchInIdChunks(
+        bookingIds,
+        (slice) =>
+          supabaseAdmin
+            .from("gift_card_redemptions")
+            .select("id, gift_card_id, booking_id, amount, captured_at")
+            .eq("status", "captured")
+            .not("captured_at", "is", null)
+            .gte("captured_at", fromDate.toISOString())
+            .lte("captured_at", toDate.toISOString())
+            .in("booking_id", slice),
+        { throwOnError: true },
+      );
+    } catch (redErr) {
+      const msg =
+        redErr && typeof redErr === "object" && "message" in redErr
+          ? String((redErr as { message?: unknown }).message ?? "")
+          : "";
+      if (msg.includes("gift_card_redemptions") || msg.includes("relation")) {
         return successResponse(emptyCombined());
       }
       throw redErr;
     }
-
-    const redemptionsList = redemptions || [];
     const total_redeemed = redemptionsList.length;
     const total_revenue = redemptionsList.reduce((s, r) => s + Number(r.amount || 0), 0);
     const avg_value = total_redeemed > 0 ? total_revenue / total_redeemed : 0;
 
-    const giftCardIds = [...new Set(redemptionsList.map((r: { gift_card_id: string }) => r.gift_card_id))];
-    const { data: giftCards } =
+    const giftCardIds = [
+      ...new Set(
+        redemptionsList
+          .map((r) => r.gift_card_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const giftCards =
       giftCardIds.length > 0
-        ? await supabaseAdmin
-            .from("gift_cards")
-            .select("id, code, initial_balance, balance, expires_at, created_at")
-            .in("id", giftCardIds)
-        : { data: [] };
-    const giftCardMap = new Map((giftCards || []).map((g: { id: string }) => [g.id, g]));
+        ? await fetchInIdChunks<{
+            id: string;
+            code?: string;
+            initial_balance?: unknown;
+            balance?: unknown;
+            expires_at?: string | null;
+            created_at?: string;
+          }>(giftCardIds, (slice) =>
+            supabaseAdmin
+              .from("gift_cards")
+              .select("id, code, initial_balance, balance, expires_at, created_at")
+              .in("id", slice),
+          )
+        : [];
+    const giftCardMap = new Map(giftCards.map((g) => [g.id, g]));
 
-    const cards = redemptionsList.slice(0, 100).map((r: Record<string, unknown>) => {
-      const gc = giftCardMap.get(r.gift_card_id as string) as
+    const cards = redemptionsList.slice(0, 100).map((r) => {
+      const gc = giftCardMap.get(r.gift_card_id ?? "") as
         | { code?: string; initial_balance?: unknown; expires_at?: string | null; created_at?: string }
         | undefined;
       const amt = Number(r.amount ?? gc?.initial_balance ?? 0);

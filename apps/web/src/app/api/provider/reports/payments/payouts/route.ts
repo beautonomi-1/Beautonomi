@@ -9,7 +9,8 @@ import {
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
@@ -87,13 +88,15 @@ export async function GET(request: NextRequest) {
     const productOrderIds = [...revenueByProductOrder.keys()];
     let productOrders: Array<{ id: string; total_amount?: number; created_at?: string }> = [];
     if (productOrderIds.length > 0) {
-      let oq = supabaseAdmin
-        .from("product_orders")
-        .select("id, total_amount, created_at")
-        .eq("provider_id", providerId)
-        .in("id", productOrderIds);
-      const { data: orderRows } = await oq;
-      productOrders = (orderRows ?? []) as typeof productOrders;
+      for (let i = 0; i < productOrderIds.length; i += BATCH) {
+        const slice = productOrderIds.slice(i, i + BATCH);
+        const { data: orderRows } = await supabaseAdmin
+          .from("product_orders")
+          .select("id, total_amount, created_at")
+          .eq("provider_id", providerId)
+          .in("id", slice);
+        productOrders.push(...((orderRows ?? []) as typeof productOrders));
+      }
     }
 
     const feeQuery = supabaseAdmin
@@ -102,17 +105,21 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .in("transaction_type", ["platform_fee", "service_fee", "refund"])
       .gte("created_at", fromDate.toISOString())
-      .lte("created_at", toDate.toISOString());
+      .lte("created_at", toDate.toISOString())
+      .order("created_at", { ascending: true });
 
-    const { data: rawFeeRows } = await feeQuery;
+    const rawFeeRows = await fetchAllLedgerPages(
+      feeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+      MAX_FINANCE_TRANSACTIONS,
+    );
     const feeLocationAttribution = summarizeLedgerLocationAttribution(
-      (rawFeeRows ?? []) as Array<{ booking_id: string | null; product_order_id: string | null }>,
+      rawFeeRows as Array<{ booking_id: string | null; product_order_id: string | null }>,
       locationId,
     );
     const feeRows = await filterLedgerRowsForLocation(
       supabaseAdmin,
       providerId,
-      (rawFeeRows ?? []) as Array<{
+      rawFeeRows as Array<{
         booking_id: string | null;
         product_order_id: string | null;
         transaction_type: string;
