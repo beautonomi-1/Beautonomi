@@ -16,6 +16,10 @@ import {
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
 import { enrichProviderLedgerRowsForUi } from "@/lib/provider/enrich-provider-ledger-rows";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+
+export const maxDuration = 60;
 
 const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 
@@ -69,9 +73,7 @@ export async function POST(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
-    const txnsRaw: any[] = [];
-    const pageSize = 1000;
-    for (let from = 0; ; from += pageSize) {
+    const txnsRaw = await fetchAllPaged(async (from, to) => {
       const { data, error } = await supabaseAdmin
         .from("finance_transactions")
         .select(
@@ -81,11 +83,10 @@ export async function POST(request: NextRequest) {
         .gte("created_at", providerTransactionsPeriodStart(period, reportContext.timezone).toISOString())
         .in("transaction_type", VISIBLE_TYPES_LIST)
         .order("created_at", { ascending: false })
-        .range(from, from + pageSize - 1);
-      if (error) throw error;
-      txnsRaw.push(...(data ?? []));
-      if (!data || data.length < pageSize) break;
-    }
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
 
     const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txnsRaw ?? [], locationId, {
       unattributedRows: "include",

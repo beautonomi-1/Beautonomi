@@ -6,6 +6,10 @@ import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+
+export const maxDuration = 60;
 
 function csvEscape(value: any): string {
   const s = String(value ?? "");
@@ -85,9 +89,7 @@ export async function GET(request: NextRequest) {
       description?: string | null;
     };
 
-    const data: LedgerRow[] = [];
-    const pageSize = 1000;
-    for (let from = 0; ; from += pageSize) {
+    const data = await fetchAllPaged<LedgerRow>(async (from, to) => {
       const { data: page, error } = await db
         .from("finance_transactions")
         .select(
@@ -97,11 +99,10 @@ export async function GET(request: NextRequest) {
         .gte("created_at", startIso)
         .lte("created_at", endIso)
         .order("created_at", { ascending: false })
-        .range(from, from + pageSize - 1);
-      if (error) throw error;
-      data.push(...((page ?? []) as LedgerRow[]));
-      if (!page || page.length < pageSize) break;
-    }
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data: page as LedgerRow[] | null, error };
+    }, MAX_FINANCE_TRANSACTIONS);
 
     const scopedData = locationId
       ? await filterLedgerRowsForLocation(db, providerId, data, locationId, {

@@ -9,7 +9,10 @@ import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { endOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+
+export const maxDuration = 60;
 
 /**
  * GET /api/provider/finance/vat-reports
@@ -112,14 +115,20 @@ export async function GET(request: NextRequest) {
     const { fromIso: yearFromIso } = dateRangeBoundsUtc(yearStart, yearStart, providerTimezone);
     const { toIso: yearToIso } = dateRangeBoundsUtc(yearEnd, yearEnd, providerTimezone);
 
-    const [vatTxResult, remindersResult] = await Promise.all([
-      supabase
-        .from("finance_transactions")
-        .select("id, amount, net, created_at, booking_id, description")
-        .eq("provider_id", providerId)
-        .eq("transaction_type", "tax")
-        .gte("created_at", yearFromIso)
-        .lte("created_at", yearToIso),
+    const [allVatTx, remindersResult] = await Promise.all([
+      fetchAllPaged(async (from, to) => {
+        const { data, error } = await supabase
+          .from("finance_transactions")
+          .select("id, amount, net, created_at, booking_id, description")
+          .eq("provider_id", providerId)
+          .eq("transaction_type", "tax")
+          .gte("created_at", yearFromIso)
+          .lte("created_at", yearToIso)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        return { data, error };
+      }, MAX_FINANCE_TRANSACTIONS),
       supabase
         .from("vat_remittance_reminders")
         .select("id, sent_at, days_before_deadline, remitted_to_sars, remitted_at, period_start, period_end")
@@ -128,8 +137,6 @@ export async function GET(request: NextRequest) {
         .lte("period_start", yearEnd)
         .order("sent_at", { ascending: false }),
     ]);
-
-    const allVatTx: any[] = vatTxResult.data || [];
 
     // Batch-fetch all booking details referenced across the year's transactions.
     const allBookingIds = [...new Set(allVatTx.map((t: any) => t.booking_id).filter(Boolean))] as string[];
@@ -166,17 +173,6 @@ export async function GET(request: NextRequest) {
         const d = new Date(t.created_at);
         return d >= periodFrom && d <= periodTo;
       });
-
-      if (vatTxResult.error) {
-        console.error(`Error fetching VAT for period ${period.period_label}:`, vatTxResult.error);
-        return {
-          ...period,
-          vat_collected: 0,
-          transaction_count: 0,
-          transactions: [],
-          error: vatTxResult.error.message,
-        };
-      }
 
       const vatCollected = vatTransactions.reduce(
         (sum: number, t: any) => {
