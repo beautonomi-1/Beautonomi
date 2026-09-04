@@ -451,21 +451,24 @@ export async function queryProviderSalesHistory(
       }
     }
 
-    let walkInQuery = db
-      .from("product_orders")
-      .select(
-        "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
-      )
-      .eq("provider_id", providerId)
-      .eq("payment_status", "paid")
-      .gte("paid_at", fromIso)
-      .lte("paid_at", toIso)
-      .or(providerCollectedRetailOrdersOrFilter());
+    const walkInOrders = await fetchAllPaged(async (from, to) => {
+      const { data, error } = await db
+        .from("product_orders")
+        .select(
+          "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+        )
+        .eq("provider_id", providerId)
+        .eq("payment_status", "paid")
+        .gte("paid_at", fromIso)
+        .lte("paid_at", toIso)
+        .or(providerCollectedRetailOrdersOrFilter())
+        .order("paid_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    });
 
-    const { data: walkInOrders, error: walkInErr } = await walkInQuery;
-    if (walkInErr) throw walkInErr;
-
-    let walkInList = (walkInOrders ?? []) as Array<{
+    let walkInList = walkInOrders as Array<{
       id: string;
       order_number?: string | null;
       customer_id?: string | null;
@@ -503,17 +506,18 @@ export async function queryProviderSalesHistory(
   }
 
   if (source === "all" || source === "pos") {
-    let posQuery = db
-      .from("sales")
-      .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id")
-      .eq("provider_id", providerId)
-      .gte("sale_date", fromIso)
-      .lte("sale_date", toIso)
-      .order("sale_date", { ascending: false })
-      .limit(MAX_POS_ROWS);
-
-    const { data: sales, error: sErr } = await posQuery;
-    if (sErr) throw sErr;
+    const sales = await fetchAllPaged(async (from, to) => {
+      const { data, error } = await db
+        .from("sales")
+        .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id")
+        .eq("provider_id", providerId)
+        .gte("sale_date", fromIso)
+        .lte("sale_date", toIso)
+        .order("sale_date", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    }, MAX_POS_ROWS);
 
     const customerIds = [...new Set((sales ?? []).map((s: any) => s.customer_id).filter(Boolean))] as string[];
     const customerMap = new Map<string, string>();

@@ -13,8 +13,7 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
-
-const PAGE_SIZE = 1000;
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
 type BookingLite = { customer_id: string | null; scheduled_at: string };
 
@@ -25,27 +24,19 @@ async function fetchCompletedBookings(
   fromIso: string,
   toIso: string,
 ): Promise<BookingLite[]> {
-  const out: BookingLite[] = [];
-  let offset = 0;
-  for (;;) {
+  return fetchAllPaged<BookingLite>(async (from, to) => {
     let q = supabaseAdmin
       .from("bookings")
-      .select("customer_id, scheduled_at")
+      .select("id, customer_id, scheduled_at")
       .eq("provider_id", providerId)
       .eq("status", "completed")
       .gte("scheduled_at", fromIso)
       .lte("scheduled_at", toIso)
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
+      .order("id", { ascending: true });
     if (locationId) q = q.eq("location_id", locationId);
-    const { data, error } = await q;
-    if (error) throw error;
-    const chunk = (data ?? []) as BookingLite[];
-    out.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-  return out;
+    const { data, error } = await q.range(from, to);
+    return { data: data as BookingLite[] | null, error };
+  });
 }
 
 export type ClientRetentionPeriodRow = {

@@ -7,8 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { manualCardReportLabel } from "@beautonomi/utils";
 import { normalizeRecordedPaymentMethod } from "@/lib/reports/recorded-takings";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
-const PT_PAGE = 1000;
 const ID_CHUNK = 150;
 
 export function isGatewayCardCaptureProvider(provider: string | null | undefined): boolean {
@@ -183,24 +183,29 @@ export async function buildProviderPaymentMethodsReport(
   };
 
   /** ---------- Successful payment_transactions in settlement window ---------- */
-  let offset = 0;
   const scopedPtBookingIds = new Set<string>();
   const ptMethodKeysByBooking = new Map<string, Set<string>>();
 
-  for (;;) {
-    const { data: ptPage, error: ptErr } = await supabase
+  const ptPage = await fetchAllPaged<{
+    id?: string;
+    provider: string;
+    amount?: number;
+    booking_id: string | null;
+  }>(async (from, to) => {
+    const { data, error } = await supabase
       .from("payment_transactions")
-      .select("provider, amount, booking_id, created_at")
+      .select("id, provider, amount, booking_id, created_at")
       .eq("status", "success")
       .gte("created_at", rangeStartIso)
       .lte("created_at", rangeEndIso)
       .order("created_at", { ascending: true })
-      .range(offset, offset + PT_PAGE - 1);
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
 
-    if (ptErr) throw ptErr;
-    const rows = (ptPage ?? []) as Array<{ provider: string; amount?: number; booking_id: string | null }>;
-    if (rows.length === 0) break;
-
+  {
+    const rows = ptPage;
     const bookingIds = rows.map((r) => r.booking_id).filter((id): id is string => Boolean(id));
     const bookingScope = await fetchBookingsForProvider(supabase, providerId, bookingIds, locationId);
 
@@ -218,9 +223,6 @@ export async function buildProviderPaymentMethodsReport(
       b.ptCount += 1;
       b.ptAmount += Number(pt.amount ?? 0);
     }
-
-    offset += PT_PAGE;
-    if (rows.length < PT_PAGE) break;
   }
 
   /** ---------- booking_payments (till / manual) completed in window ----------
@@ -331,32 +333,26 @@ export async function buildProviderPaymentMethodsReport(
   }
 
   /** ---------- Failed capture attempts (same settlement window; attributed when booking is in scope) ---------- */
-  let failOffset = 0;
   let failedTotalInRange = 0;
   let failedAttributed = 0;
 
-  for (;;) {
-    const { data: failPage, error: failErr } = await supabase
+  const frows = await fetchAllPaged<{ booking_id: string | null }>(async (from, to) => {
+    const { data, error } = await supabase
       .from("payment_transactions")
-      .select("booking_id, provider, amount, created_at")
+      .select("id, booking_id, provider, amount, created_at")
       .eq("status", "failed")
       .gte("created_at", rangeStartIso)
       .lte("created_at", rangeEndIso)
       .order("created_at", { ascending: true })
-      .range(failOffset, failOffset + PT_PAGE - 1);
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
 
-    if (failErr) throw failErr;
-    const frows = (failPage ?? []) as Array<{ booking_id: string | null }>;
-    if (frows.length === 0) break;
-
-    failedTotalInRange += frows.length;
-    const fbIds = frows.map((r) => r.booking_id).filter((id): id is string => Boolean(id));
-    const failScope = await fetchBookingsForProvider(supabase, providerId, fbIds, locationId);
-    failedAttributed += frows.filter((r) => r.booking_id && failScope.has(r.booking_id)).length;
-
-    failOffset += PT_PAGE;
-    if (frows.length < PT_PAGE) break;
-  }
+  failedTotalInRange += frows.length;
+  const fbIds = frows.map((r) => r.booking_id).filter((id): id is string => Boolean(id));
+  const failScope = await fetchBookingsForProvider(supabase, providerId, fbIds, locationId);
+  failedAttributed += frows.filter((r) => r.booking_id && failScope.has(r.booking_id)).length;
 
   /** ---------- Final rows ---------- */
   const grandTotal = [...bucketMap.values()].reduce(

@@ -13,8 +13,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { sumLedgerEarningsByCustomer } from "@/lib/reports/client-ledger-metrics";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
-const PAGE_SIZE = 1000;
 const REVIEW_IN_CHUNK = 500;
 
 export type ClientSummaryTopClient = {
@@ -63,24 +63,16 @@ async function fetchAllBookingsForScope(
   providerId: string,
   locationId: string | undefined,
 ): Promise<BookingRow[]> {
-  const out: BookingRow[] = [];
-  let offset = 0;
-  for (;;) {
+  return fetchAllPaged<BookingRow>(async (from, to) => {
     let q = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, scheduled_at, total_amount, status")
       .eq("provider_id", providerId)
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
+      .order("id", { ascending: true });
     if (locationId) q = q.eq("location_id", locationId);
-    const { data, error } = await q;
-    if (error) throw error;
-    const chunk = (data ?? []) as BookingRow[];
-    out.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-  return out;
+    const { data, error } = await q.range(from, to);
+    return { data: data as BookingRow[] | null, error };
+  });
 }
 
 function inScheduledWindow(scheduledAt: string, fromIso: string, toIso: string): boolean {

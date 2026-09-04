@@ -17,7 +17,7 @@ import {
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
 import { dashboardBookingLocationOrFilterFallbacks } from "@/lib/server/provider/dashboard-booking-location-filter";
-import { chunkIds, fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, fetchAllPaged, fetchInIdChunks, isPostgrestRangeUnsatisfiable } from "@/lib/provider-ops/postgrest-unbounded";
 import { resolveProviderFinanceRangeBounds } from "@/lib/dates/provider-finance-range";
 import {
   computeProviderRevenueBreakdown,
@@ -462,13 +462,14 @@ export async function GET(request: NextRequest) {
       let loyalty = 0;
       let promo = 0;
       const locationFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [];
-      let locationFilter: string | null | undefined = locationId ? undefined : null;
 
       const buildDiscountQuery = (orFilter: string | null) => {
         let bq = db
           .from("bookings")
-          .select("membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
-          .eq("provider_id", providerId);
+          .select("id, membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
+          .eq("provider_id", providerId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true });
         if (orFilter) bq = bq.or(orFilter);
         if (fromIsoIn && toIsoIn) {
           bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
@@ -476,42 +477,35 @@ export async function GET(request: NextRequest) {
         return bq;
       };
 
-      for (let off = 0; ; off += 1000) {
-        let dchunk: unknown[] | null = null;
-        let derr: unknown = null;
-        if (locationFilter === undefined) {
-          for (const filter of locationFilters) {
-            const result = await buildDiscountQuery(filter).range(off, off + 999);
-            if (!result.error) {
-              locationFilter = filter;
-              dchunk = result.data;
-              derr = null;
-              break;
-            }
-            derr = result.error;
+      let resolvedLocationFilter: string | null = null;
+      if (locationId) {
+        let chosen: string | null | undefined;
+        for (const filter of locationFilters) {
+          const probe = await buildDiscountQuery(filter).range(0, 0);
+          if (!probe.error || isPostgrestRangeUnsatisfiable(probe.error)) {
+            chosen = filter;
+            break;
           }
-          if (locationFilter === undefined) {
-            const result = await buildDiscountQuery(null).range(off, off + 999);
-            locationFilter = null;
-            dchunk = result.data;
-            derr = result.error;
+        }
+        if (chosen === undefined) {
+          const probe = await buildDiscountQuery(null).range(0, 0);
+          if (probe.error && !isPostgrestRangeUnsatisfiable(probe.error)) {
+            console.warn("[finance] booking discount aggregate:", probe.error);
+            return { membership_discounts_applied: 0, loyalty_discounts_applied: 0, promo_discounts_applied: 0 };
           }
-        } else {
-          const result = await buildDiscountQuery(locationFilter).range(off, off + 999);
-          dchunk = result.data;
-          derr = result.error;
+          chosen = null;
         }
-        if (derr) {
-          console.warn("[finance] booking discount aggregate:", derr);
-          break;
-        }
-        const chunk = dchunk ?? [];
-        for (const r of chunk as any[]) {
-          membership += Number(r.membership_discount_amount ?? 0);
-          loyalty += Number(r.loyalty_discount_amount ?? 0);
-          promo += Number(r.promotion_discount_amount ?? 0);
-        }
-        if (chunk.length < 1000) break;
+        resolvedLocationFilter = chosen;
+      }
+
+      const rows = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await buildDiscountQuery(resolvedLocationFilter).range(from, to);
+        return { data, error };
+      });
+      for (const r of rows as any[]) {
+        membership += Number(r.membership_discount_amount ?? 0);
+        loyalty += Number(r.loyalty_discount_amount ?? 0);
+        promo += Number(r.promotion_discount_amount ?? 0);
       }
       return { membership_discounts_applied: membership, loyalty_discounts_applied: loyalty, promo_discounts_applied: promo };
     };

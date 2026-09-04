@@ -10,6 +10,7 @@ import {
 } from "@/lib/dates/provider-tz";
 import { RECOGNIZED_REVENUE_TYPES, recognizedRevenueInRange } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
 import {
@@ -40,7 +41,6 @@ export type BookingsStatsResult = {
 };
 
 const TERMINAL_STATUSES = new Set(["cancelled", "canceled", "no_show"]);
-const GMV_PAGE_SIZE = 1000;
 
 /** Valid `booking_status` enum values — do not pass portal aliases like `started` or `canceled`. */
 const BOOKING_STATUS = {
@@ -166,9 +166,7 @@ async function fetchPagedIds(
     range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
   },
 ): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = [];
-  let offset = 0;
-  while (true) {
+  return fetchAllPaged(async (from, to) => {
     const built = apply(
       supabaseAdmin.from(table).select(columns) as unknown as {
         eq: (col: string, value: unknown) => any;
@@ -176,14 +174,9 @@ async function fetchPagedIds(
         range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
       },
     );
-    const { data, error } = await built.range(offset, offset + GMV_PAGE_SIZE - 1);
-    if (error) throw error;
-    const page = (data ?? []) as Record<string, unknown>[];
-    rows.push(...page);
-    if (page.length < GMV_PAGE_SIZE) break;
-    offset += GMV_PAGE_SIZE;
-  }
-  return rows;
+    const { data, error } = await built.range(from, to);
+    return { data: (data ?? null) as Record<string, unknown>[] | null, error };
+  });
 }
 
 /**
@@ -336,16 +329,14 @@ async function sumBookedGmv(
     return 0;
   }
   let total = 0;
-  let offset = 0;
-
-  while (true) {
+  const bookingRows = await fetchAllPaged<{ total_amount?: number; status?: string }>(async (from, to) => {
     let q = supabaseAdmin
       .from("bookings")
-      .select("total_amount, status")
+      .select("id, total_amount, status")
       .eq("provider_id", providerId)
       .is("group_booking_id", null)
       .order("scheduled_at", { ascending: true })
-      .range(offset, offset + GMV_PAGE_SIZE - 1);
+      .order("id", { ascending: true });
     if (staffScope) {
       q = q.in(
         "id",
@@ -355,42 +346,35 @@ async function sumBookedGmv(
     if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
     if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
     if (locationId) q = q.or(dashboardBookingLocationOrFilter(locationId));
-    const { data, error } = await q;
-    if (error) throw error;
-    const rows = data ?? [];
-    for (const row of rows) {
-      const status = String((row as { status?: string }).status ?? "").toLowerCase();
-      if (TERMINAL_STATUSES.has(status)) continue;
-      total += Number((row as { total_amount?: number }).total_amount ?? 0);
-    }
-    if (rows.length < GMV_PAGE_SIZE) break;
-    offset += GMV_PAGE_SIZE;
+    const { data, error } = await q.range(from, to);
+    return { data, error };
+  });
+  for (const row of bookingRows) {
+    const status = String(row.status ?? "").toLowerCase();
+    if (TERMINAL_STATUSES.has(status)) continue;
+    total += Number(row.total_amount ?? 0);
   }
 
-  offset = 0;
-  while (true) {
+  const groupRows = await fetchAllPaged<{ total_price?: number; status?: string }>(async (from, to) => {
     let q = supabaseAdmin
       .from("group_bookings")
-      .select("total_price, status")
+      .select("id, total_price, status")
       .eq("provider_id", providerId)
       .order("scheduled_at", { ascending: true })
-      .range(offset, offset + GMV_PAGE_SIZE - 1);
+      .order("id", { ascending: true });
     if (staffScope) {
       q = q.in("id", staffScope.groupIds.length > 0 ? staffScope.groupIds : [EMPTY_UUID]);
     }
     if (window.scheduledFromIso) q = q.gte("scheduled_at", window.scheduledFromIso);
     if (window.scheduledToIso) q = q.lte("scheduled_at", window.scheduledToIso);
     if (locationId) q = q.or(dashboardGroupBookingLocationOrFilter(locationId));
-    const { data, error } = await q;
-    if (error) throw error;
-    const rows = data ?? [];
-    for (const row of rows) {
-      const status = String((row as { status?: string }).status ?? "").toLowerCase();
-      if (TERMINAL_STATUSES.has(status)) continue;
-      total += Number((row as { total_price?: number }).total_price ?? 0);
-    }
-    if (rows.length < GMV_PAGE_SIZE) break;
-    offset += GMV_PAGE_SIZE;
+    const { data, error } = await q.range(from, to);
+    return { data, error };
+  });
+  for (const row of groupRows) {
+    const status = String(row.status ?? "").toLowerCase();
+    if (TERMINAL_STATUSES.has(status)) continue;
+    total += Number(row.total_price ?? 0);
   }
 
   return total;

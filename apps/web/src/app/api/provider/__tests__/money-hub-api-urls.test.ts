@@ -99,7 +99,9 @@ function makeFinanceTxnChain(rows: typeof BANTU_LEDGER_ROWS) {
   chain.gte = vi.fn(() => chain);
   chain.in = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
-  chain.range = vi.fn(() => Promise.resolve({ data: rows, error: null }));
+  chain.range = vi.fn((from: number, to: number) =>
+    Promise.resolve({ data: rows.slice(from, to + 1), error: null }),
+  );
   return chain;
 }
 
