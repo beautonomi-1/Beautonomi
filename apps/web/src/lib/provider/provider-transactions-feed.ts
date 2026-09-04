@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
 import { enrichProviderLedgerRowsForUi } from "@/lib/provider/enrich-provider-ledger-rows";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 import {
   mapFinanceLedgerRowToProviderUi,
   providerTransactionsPeriodStart,
@@ -15,7 +16,6 @@ import {
   type ProviderTxnUiType,
 } from "@/lib/provider/provider-ledger-transaction-view";
 
-const LEDGER_PAGE_SIZE = 1000;
 export const PROVIDER_TRANSACTIONS_MAX_LEDGER_SCAN = 50_000;
 export const PROVIDER_TRANSACTIONS_MAX_LIST_LIMIT = 500;
 
@@ -86,36 +86,25 @@ async function scanVisibleLedgerRows(
   providerId: string,
   fromDate: Date,
 ): Promise<{ rows: LedgerScanRow[]; truncatedLedger: boolean }> {
-  const pageRaw: LedgerScanRow[] = [];
-  let offset = 0;
-  let truncatedLedger = false;
-
-  while (offset < PROVIDER_TRANSACTIONS_MAX_LEDGER_SCAN) {
-    const { data: chunk, error: pageError } = await db
+  const pageRaw = await fetchAllPaged<LedgerScanRow>(async (from, to) => {
+    const { data, error } = await db
       .from("finance_transactions")
       .select(
-        "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency, source_payment_id",
+        "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, refund_component, currency, source_payment_id",
       )
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .in("transaction_type", VISIBLE_TYPES_LIST)
       .order("created_at", { ascending: false })
-      .range(offset, offset + LEDGER_PAGE_SIZE - 1);
+      .order("id", { ascending: false })
+      .range(from, to);
+    return { data: data as LedgerScanRow[] | null, error };
+  }, PROVIDER_TRANSACTIONS_MAX_LEDGER_SCAN);
 
-    if (pageError) throw pageError;
-
-    const page = (chunk ?? []) as LedgerScanRow[];
-    if (page.length === 0) break;
-    pageRaw.push(...page);
-
-    if (page.length < LEDGER_PAGE_SIZE) break;
-    offset += LEDGER_PAGE_SIZE;
-    if (offset >= PROVIDER_TRANSACTIONS_MAX_LEDGER_SCAN) {
-      truncatedLedger = true;
-    }
-  }
-
-  return { rows: pageRaw, truncatedLedger };
+  return {
+    rows: pageRaw,
+    truncatedLedger: pageRaw.length >= PROVIDER_TRANSACTIONS_MAX_LEDGER_SCAN,
+  };
 }
 
 export async function buildProviderTransactionsFeed(params: ProviderTransactionsFeedParams) {

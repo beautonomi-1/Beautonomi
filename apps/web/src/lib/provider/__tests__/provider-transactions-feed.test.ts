@@ -127,4 +127,82 @@ describe("buildProviderTransactionsFeed", () => {
     expect(enrichBatchSize).toBe(2);
     expect(result.summary.row_count).toBe(5);
   });
+
+  it("treats an exact-page PostgREST range as end of ledger instead of failing the feed", async () => {
+    const ledgerRows = Array.from({ length: 1000 }, (_, i) => ({
+      id: `row-${i}`,
+      transaction_type: "provider_earnings",
+      amount: 10,
+      net: 10,
+      created_at: "2026-07-01T12:00:00.000Z",
+      description: `Booking ${i}`,
+      booking_id: `booking-${i}`,
+      product_order_id: null,
+      refund_component: null,
+      currency: "ZAR",
+      source_payment_id: null,
+    }));
+
+    let rangeCalls = 0;
+    const db = {
+      from: (table: string) => {
+        if (table === "finance_transactions") {
+          const chain: Record<string, unknown> = {};
+          chain.select = () => chain;
+          chain.eq = () => chain;
+          chain.gte = () => chain;
+          chain.in = () => chain;
+          chain.order = () => chain;
+          chain.range = (from: number) => {
+            rangeCalls += 1;
+            if (from === 0) return Promise.resolve({ data: ledgerRows, error: null });
+            return Promise.resolve({
+              data: null,
+              error: { code: "PGRST103", message: "Requested range not satisfiable" },
+            });
+          };
+          return chain;
+        }
+        if (table === "bookings") {
+          const chain: Record<string, unknown> = {};
+          chain.select = () => chain;
+          chain.eq = () => chain;
+          chain.in = (_col: string, ids: string[]) =>
+            Promise.resolve({
+              data: ids.map((id) => ({
+                id,
+                booking_number: `BTN-${id}`,
+                customer_id: null,
+                guest_name: "Guest",
+              })),
+              error: null,
+            });
+          return chain;
+        }
+        if (table === "booking_payments" || table === "users" || table === "product_orders") {
+          const chain: Record<string, unknown> = {};
+          chain.select = () => chain;
+          chain.in = () => Promise.resolve({ data: [], error: null });
+          return chain;
+        }
+        throw new Error(`Unexpected table ${table}`);
+      },
+    };
+
+    const result = await buildProviderTransactionsFeed({
+      db: db as never,
+      providerId: "provider-1",
+      timezone: "Africa/Johannesburg",
+      period: "all",
+      limit: 2,
+      listOffset: 0,
+      locationId: null,
+      typeFilter: "all",
+    });
+
+    expect(rangeCalls).toBe(2);
+    expect(result.list_total).toBe(1000);
+    expect(result.summary.total_in).toBe(10_000);
+    expect(result.transactions).toHaveLength(2);
+  });
 });

@@ -14,6 +14,8 @@ import {
 } from "@/lib/provider/provider-transactions-feed";
 import type { ProviderTxnUiType } from "@/lib/provider/provider-ledger-transaction-view";
 
+export const maxDuration = 60;
+
 const VALID_TYPE_FILTERS = new Set<string>([
   "all",
   "earning",

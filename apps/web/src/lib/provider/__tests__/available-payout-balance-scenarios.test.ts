@@ -22,6 +22,8 @@ type Row = Record<string, unknown>;
 
 class Query {
   private filters: Array<{ op: "eq" | "in" | "gte" | "lte"; key: string; value: unknown }> = [];
+  private rangeFrom?: number;
+  private rangeTo?: number;
 
   constructor(
     private readonly table: string,
@@ -56,7 +58,9 @@ class Query {
     return this;
   }
 
-  range() {
+  range(from?: number, to?: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
     return this;
   }
 
@@ -65,7 +69,7 @@ class Query {
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ) {
     try {
-      const data = (this.rowsByTable[this.table] ?? []).filter((row) =>
+      let data = (this.rowsByTable[this.table] ?? []).filter((row) =>
         this.filters.every((filter) => {
           if (filter.op === "eq") return row[filter.key] === filter.value;
           if (filter.op === "in") return (filter.value as unknown[]).includes(row[filter.key]);
@@ -74,6 +78,9 @@ class Query {
           return true;
         }),
       );
+      if (this.rangeFrom != null && this.rangeTo != null) {
+        data = data.slice(this.rangeFrom, this.rangeTo + 1);
+      }
       return Promise.resolve({ data, error: null }).then(onfulfilled, onrejected);
     } catch (error) {
       return Promise.reject(error).then(onfulfilled, onrejected);
