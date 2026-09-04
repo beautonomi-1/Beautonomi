@@ -431,6 +431,7 @@ export async function GET(request: NextRequest) {
     let rawBalance = EMPTY_PAYOUT_BALANCE.rawBalance;
     let hasNegativeBalance = EMPTY_PAYOUT_BALANCE.hasNegativeBalance;
     let payoutBreakdown = EMPTY_PAYOUT_BALANCE.breakdown;
+    let payoutBalanceUnavailable = false;
     try {
       const payout = await getAvailablePayoutBalance(db, providerId, {
         holdDays,
@@ -442,6 +443,7 @@ export async function GET(request: NextRequest) {
       hasNegativeBalance = payout.hasNegativeBalance;
       payoutBreakdown = payout.breakdown;
     } catch (payoutError) {
+      payoutBalanceUnavailable = true;
       console.warn("[finance] payout balance failed; returning ledger totals without withdrawable balance:", payoutError);
     }
 
@@ -588,6 +590,7 @@ export async function GET(request: NextRequest) {
         period_provider_earnings: thisMonthTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
+        payout_balance_unavailable: payoutBalanceUnavailable,
         raw_payout_balance: rawBalance,
         has_negative_payout_balance: hasNegativeBalance,
         /**

@@ -34,6 +34,10 @@ import { SectionCard } from "@/components/provider/SectionCard";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 
+function roundMoney2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 interface EarningsData {
   total_earnings: number;
   recognized_revenue_total?: number;
@@ -41,6 +45,7 @@ interface EarningsData {
   period_provider_earnings?: number;
   pending_payouts: number;
   available_balance: number;
+  payout_balance_unavailable?: boolean;
   payout_hold_days?: number;
   minimum_payout_amount?: number;
   this_month: number;
@@ -423,12 +428,17 @@ export default function ProviderFinance() {
       return;
     }
 
+    const requested = roundMoney2(parseFloat(payoutAmount));
     const minimumPayout = earnings?.minimum_payout_amount ?? 100;
-    if (parseFloat(payoutAmount) < minimumPayout) {
+    if (requested < minimumPayout) {
       toast.error(`Minimum payout is ${fmt(minimumPayout)}`);
       return;
     }
-    if (!earnings || parseFloat(payoutAmount) > earnings.available_balance) {
+    if (earnings?.payout_balance_unavailable) {
+      toast.error("Withdrawable balance is still loading. Try again in a moment.");
+      return;
+    }
+    if (!earnings || requested > roundMoney2(earnings.available_balance)) {
       toast.error("Insufficient balance for this payout");
       return;
     }
@@ -437,7 +447,7 @@ export default function ProviderFinance() {
       setIsRequestingPayout(true);
       const primaryId = payoutAccounts[0]?.id;
       await fetcher.post("/api/provider/payouts", {
-        amount: parseFloat(payoutAmount),
+        amount: requested,
         notes: payoutNotes || null,
         bank_account_id: selectedBankId || primaryId || undefined,
       });
@@ -465,6 +475,13 @@ export default function ProviderFinance() {
   const openPayoutDialog = () => {
     setShowPayoutDialog(true);
     setShowInlineBankForm(payoutAccounts.length === 0);
+    if (earnings && !earnings.payout_balance_unavailable) {
+      const available = roundMoney2(earnings.available_balance);
+      const minimum = earnings.minimum_payout_amount ?? 100;
+      setPayoutAmount(available >= minimum ? available.toFixed(2) : "");
+    } else {
+      setPayoutAmount("");
+    }
   };
 
   const handleExport = () => {
@@ -587,7 +604,9 @@ export default function ProviderFinance() {
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
                       <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Available</p>
-                      <p className="mt-1 text-2xl font-semibold text-emerald-950">{fmt(earnings.available_balance)}</p>
+                      <p className="mt-1 text-2xl font-semibold text-emerald-950">
+                        {earnings.payout_balance_unavailable ? "—" : fmt(earnings.available_balance)}
+                      </p>
                     </div>
                     <div className="rounded-2xl border bg-white p-4">
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Minimum</p>
@@ -612,12 +631,17 @@ export default function ProviderFinance() {
                       placeholder="Enter amount"
                       className="mt-1"
                     />
-                    {payoutAmount && parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) && (
+                    {earnings.payout_balance_unavailable ? (
+                      <p className="text-sm text-amber-700 mt-1">
+                        Withdrawable balance could not be loaded. Refresh the page and try again.
+                      </p>
+                    ) : null}
+                    {payoutAmount && roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) && (
                       <p className="text-sm text-red-600 mt-1">
                         Below minimum payout ({fmt(earnings.minimum_payout_amount ?? 100)})
                       </p>
                     )}
-                    {payoutAmount && parseFloat(payoutAmount) > earnings.available_balance && (
+                    {payoutAmount && !earnings.payout_balance_unavailable && roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance) && (
                       <p className="text-sm text-red-600 mt-1">
                         Amount exceeds available balance
                       </p>
@@ -805,7 +829,7 @@ export default function ProviderFinance() {
                   </Button>
                   <Button
                     onClick={handleRequestPayout}
-                    disabled={isRequestingPayout || payoutAccounts.length === 0 || !payoutAmount || parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) || parseFloat(payoutAmount) > earnings.available_balance}
+                    disabled={isRequestingPayout || earnings.payout_balance_unavailable || payoutAccounts.length === 0 || !payoutAmount || roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) || roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance)}
                     className="bg-primary hover:bg-primary-hover"
                   >
                     {isRequestingPayout ? "Submitting..." : "Request Payout"}
@@ -885,8 +909,13 @@ export default function ProviderFinance() {
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-bold text-green-600">
-              {fmt(earnings.available_balance)}
+              {earnings.payout_balance_unavailable ? "—" : fmt(earnings.available_balance)}
             </p>
+            {earnings.payout_balance_unavailable ? (
+              <p className="text-xs font-medium text-amber-800 mt-2">
+                Withdrawable balance could not be loaded. Period earnings above are still from the ledger.
+              </p>
+            ) : null}
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
               All payoutable platform-held earnings minus completed payouts and your pending requests
               {(earnings.payout_hold_days ?? 0) > 0

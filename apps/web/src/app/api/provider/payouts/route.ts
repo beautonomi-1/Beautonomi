@@ -3,7 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requireOwnerOrEditSettings } from "@/lib/auth/requirePermission";
-import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { getAvailablePayoutBalance, roundMoney2 } from "@/lib/provider/available-payout-balance";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -48,32 +49,32 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    let query = supabase
-      .from("payouts")
-      .select("*")
-      .eq("provider_id", providerId)
-      .order("created_at", { ascending: false });
+    const payouts = await fetchAllPaged(async (from, to) => {
+      let query = supabase
+        .from("payouts")
+        .select("*")
+        .eq("provider_id", providerId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
-    if (status) {
-      query = query.eq("status", status);
-    }
+      if (status) {
+        query = query.eq("status", status);
+      }
 
-    if (startDate && ymd.test(startDate.slice(0, 10))) {
-      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
-      query = query.gte("created_at", fromIso);
-    }
+      if (startDate && ymd.test(startDate.slice(0, 10))) {
+        const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+        query = query.gte("created_at", fromIso);
+      }
 
-    if (endDate && ymd.test(endDate.slice(0, 10))) {
-      const endYmd = endDate.slice(0, 10);
-      const toIso = dateRangeBoundsUtc(endYmd, endYmd, tz).toIso;
-      query = query.lte("created_at", toIso);
-    }
+      if (endDate && ymd.test(endDate.slice(0, 10))) {
+        const endYmd = endDate.slice(0, 10);
+        const toIso = dateRangeBoundsUtc(endYmd, endYmd, tz).toIso;
+        query = query.lte("created_at", toIso);
+      }
 
-    const { data: payouts, error } = await query;
-
-    if (error) {
-      throw error;
-    }
+      const { data, error } = await query.range(from, to);
+      return { data, error };
+    });
 
     // Map to provider-friendly shape (requested_at = created_at for display)
     const mapped = (payouts || []).map((p: any) => ({
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("Amount must be greater than 0", "VALIDATION_ERROR", 400);
     }
 
-    const numAmount = Number(amount);
+    const numAmount = roundMoney2(Number(amount));
     const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
       supabase: supabase as any,
       table: "platform_settings",
@@ -227,8 +228,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const availableRounded = Math.round(availableBalance * 100) / 100;
-    const requestRounded = Math.round(numAmount * 100) / 100;
+    const availableRounded = roundMoney2(availableBalance);
+    const requestRounded = roundMoney2(numAmount);
     if (requestRounded > availableRounded + 1e-6) {
       return errorResponse(
         `Insufficient balance. Available: ${availableRounded}, Requested: ${requestRounded}`,
@@ -287,8 +288,7 @@ export async function POST(request: NextRequest) {
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
 
-    const maxAvailableBeforeReserve =
-      Math.round((availableBalance + breakdown.pendingPayouts) * 100) / 100;
+    const maxAvailableBeforeReserve = roundMoney2(availableBalance + breakdown.pendingPayouts);
 
     const payoutPayload = {
       payout_number: payoutNumber,
