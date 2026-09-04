@@ -3,7 +3,7 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -59,7 +59,10 @@ export async function GET(request: NextRequest) {
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
+      .lte("scheduled_at", toDate.toISOString())
+      .order("scheduled_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(MAX_BOOKINGS_FOR_REPORT);
 
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);

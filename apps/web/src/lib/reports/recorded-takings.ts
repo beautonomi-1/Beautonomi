@@ -12,6 +12,8 @@ import {
   type LedgerLocationAttributionSummary,
 } from "@/lib/reports/provider-report-utils";
 import { PAID_BOOKING_PAYMENT_STATUSES } from "@/lib/payments/booking-payment-status";
+import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "cash",
@@ -97,6 +99,21 @@ function emptyMethodMap(): Record<string, number> {
   return byPaymentMethod;
 }
 
+export function emptyRecordedTakings(): RecordedTakingsResult {
+  return {
+    byPaymentMethod: emptyMethodMap(),
+    bookingPaymentsTotal: 0,
+    walletTotal: 0,
+    salesTotal: 0,
+    tipsTotal: 0,
+    cashbackTotal: 0,
+    cancellationFeesTotal: 0,
+    totalRecorded: 0,
+    bookingCount: 0,
+    salesCount: 0,
+  };
+}
+
 export async function getRecordedTakingsForRange(
   supabaseAdmin: SupabaseClient,
   params: {
@@ -117,17 +134,28 @@ export async function getRecordedTakingsForRange(
 
   const byPaymentMethod = emptyMethodMap();
 
-  let bpQuery = supabaseAdmin
-    .from("booking_payments")
-    .select("booking_id, amount, payment_method, payment_provider, payment_provider_data, payment_provider_id")
-    .in("status", [...PAID_BOOKING_PAYMENT_STATUSES])
-    .gte("created_at", rangeStartIso)
-    .lte("created_at", rangeEndIso);
-  if (providerTenantId) {
-    bpQuery = bpQuery.eq("tenant_id", providerTenantId);
-  }
-  const { data: bpRows, error: bpError } = await bpQuery;
-  if (bpError) throw bpError;
+  const bpRows = await fetchAllPaged<{
+    booking_id: string;
+    amount?: number;
+    payment_method?: string;
+    payment_provider?: string | null;
+    payment_provider_data?: unknown;
+    payment_provider_id?: string | null;
+  }>(async (from, to) => {
+    let bpQuery = supabaseAdmin
+      .from("booking_payments")
+      .select("id, booking_id, amount, payment_method, payment_provider, payment_provider_data, payment_provider_id")
+      .in("status", [...PAID_BOOKING_PAYMENT_STATUSES])
+      .gte("created_at", rangeStartIso)
+      .lte("created_at", rangeEndIso)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+    if (providerTenantId) {
+      bpQuery = bpQuery.eq("tenant_id", providerTenantId);
+    }
+    const { data, error } = await bpQuery.range(from, to);
+    return { data, error };
+  }, MAX_FINANCE_TRANSACTIONS);
 
   type BpRow = {
     booking_id: string;
@@ -142,16 +170,12 @@ export async function getRecordedTakingsForRange(
   const bookingIds = [...new Set(bpRowList.map((r) => r.booking_id))];
   const providerBookingIds = new Set<string>();
   if (bookingIds.length > 0) {
-    const { data: bookings, error: bookError } = await supabaseAdmin
-      .from("bookings")
-      .select("id, location_id")
-      .eq("provider_id", providerId)
-      .in("id", bookingIds);
-    if (!bookError && bookings) {
-      for (const b of bookings as BookingRow[]) {
-        if (locationId && b.location_id !== locationId) continue;
-        providerBookingIds.add(b.id);
-      }
+    const bookings = await fetchInIdChunks<BookingRow>(bookingIds, (slice) =>
+      supabaseAdmin.from("bookings").select("id, location_id").eq("provider_id", providerId).in("id", slice),
+    );
+    for (const b of bookings) {
+      if (locationId && b.location_id !== locationId) continue;
+      providerBookingIds.add(b.id);
     }
   }
 
@@ -187,14 +211,27 @@ export async function getRecordedTakingsForRange(
   let walletTotal = 0;
   const bookingIdsWithWalletTakings = new Set<string>();
   {
-    const { data: walletBookings } = await supabaseAdmin
-      .from("bookings")
-      .select("id, wallet_amount, total_paid, total_amount, payment_status, location_id")
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", rangeStartIso)
-      .lte("scheduled_at", rangeEndIso)
-      .gt("wallet_amount", 0);
-    for (const wb of (walletBookings ?? []) as {
+    const walletBookings = await fetchAllPaged<{
+      id: string;
+      wallet_amount?: number;
+      total_paid?: number;
+      total_amount?: number;
+      payment_status?: string | null;
+      location_id?: string;
+    }>(async (from, to) => {
+      const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id, wallet_amount, total_paid, total_amount, payment_status, location_id")
+        .eq("provider_id", providerId)
+        .gte("scheduled_at", rangeStartIso)
+        .lte("scheduled_at", rangeEndIso)
+        .gt("wallet_amount", 0)
+        .order("scheduled_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
+    for (const wb of walletBookings as {
       id: string;
       wallet_amount?: number;
       total_paid?: number;
@@ -226,19 +263,26 @@ export async function getRecordedTakingsForRange(
 
   const bookingCount = new Set<string>([...bpBookingIds, ...bookingIdsWithWalletTakings]).size;
 
-  let salesQuery = supabaseAdmin
-    .from("sales")
-    .select("total_amount, payment_method, payment_provider")
-    .eq("provider_id", providerId)
-    .eq("payment_status", "completed")
-    .gte("sale_date", rangeStartIso)
-    .lte("sale_date", rangeEndIso);
-
-  if (locationId) {
-    salesQuery = salesQuery.eq("location_id", locationId);
-  }
-  const { data: salesRows, error: salesError } = await salesQuery;
-  if (salesError) throw salesError;
+  const salesRows = await fetchAllPaged<{
+    total_amount?: number;
+    payment_method?: string;
+    payment_provider?: string | null;
+  }>(async (from, to) => {
+    let salesQuery = supabaseAdmin
+      .from("sales")
+      .select("id, total_amount, payment_method, payment_provider")
+      .eq("provider_id", providerId)
+      .eq("payment_status", "completed")
+      .gte("sale_date", rangeStartIso)
+      .lte("sale_date", rangeEndIso)
+      .order("sale_date", { ascending: true })
+      .order("id", { ascending: true });
+    if (locationId) {
+      salesQuery = salesQuery.eq("location_id", locationId);
+    }
+    const { data, error } = await salesQuery.range(from, to);
+    return { data, error };
+  }, MAX_FINANCE_TRANSACTIONS);
 
   type SalesRow = { total_amount?: number; payment_method?: string; payment_provider?: string | null };
   let salesTotal = 0;
@@ -252,22 +296,31 @@ export async function getRecordedTakingsForRange(
 
   let productOrderSalesCount = 0;
   {
-    let productOrderQuery = supabaseAdmin
-      .from("product_orders")
-      .select("id, total_amount, payment_method, payment_provider, fulfillment_type, collection_location_id")
-      .eq("provider_id", providerId)
-      .eq("order_source", "walk_in")
-      .eq("payment_status", "paid")
-      .gte("paid_at", rangeStartIso)
-      .lte("paid_at", rangeEndIso);
-
-    if (providerTenantId) {
-      productOrderQuery = productOrderQuery.eq("tenant_id", providerTenantId);
-    }
-
-    const { data: productOrderRows, error: productOrderError } = await productOrderQuery;
-    if (productOrderError) throw productOrderError;
-    let walkInOrders = (productOrderRows ?? []) as {
+    const productOrderRows = await fetchAllPaged<{
+      id: string;
+      total_amount?: number;
+      payment_method?: string;
+      payment_provider?: string | null;
+      fulfillment_type?: string | null;
+      collection_location_id?: string | null;
+    }>(async (from, to) => {
+      let productOrderQuery = supabaseAdmin
+        .from("product_orders")
+        .select("id, total_amount, payment_method, payment_provider, fulfillment_type, collection_location_id")
+        .eq("provider_id", providerId)
+        .eq("order_source", "walk_in")
+        .eq("payment_status", "paid")
+        .gte("paid_at", rangeStartIso)
+        .lte("paid_at", rangeEndIso)
+        .order("paid_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (providerTenantId) {
+        productOrderQuery = productOrderQuery.eq("tenant_id", providerTenantId);
+      }
+      const { data, error } = await productOrderQuery.range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
+    let walkInOrders = productOrderRows as {
       id: string;
       total_amount?: number;
       payment_method?: string;
@@ -294,13 +347,25 @@ export async function getRecordedTakingsForRange(
   let cancellationFeesTotal = 0;
   let ledgerLocationAttribution: LedgerLocationAttributionSummary | undefined;
   try {
-    const { data: ledgerRowsRaw } = await supabaseAdmin
-      .from("finance_transactions")
-      .select("transaction_type, amount, net, booking_id, product_order_id")
-      .eq("provider_id", providerId)
-      .in("transaction_type", ["tip", "cashback", "cancellation_fee"])
-      .gte("created_at", rangeStartIso)
-      .lte("created_at", rangeEndIso);
+    const ledgerRowsRaw = await fetchAllPaged<{
+      transaction_type: string;
+      amount?: number;
+      net?: number;
+      booking_id?: string | null;
+      product_order_id?: string | null;
+    }>(async (from, to) => {
+      const { data, error } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("id, transaction_type, amount, net, booking_id, product_order_id")
+        .eq("provider_id", providerId)
+        .in("transaction_type", ["tip", "cashback", "cancellation_fee"])
+        .gte("created_at", rangeStartIso)
+        .lte("created_at", rangeEndIso)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FINANCE_TRANSACTIONS);
     type LedgerTipCancelRow = {
       transaction_type: string;
       amount?: number;

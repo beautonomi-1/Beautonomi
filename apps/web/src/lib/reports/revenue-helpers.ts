@@ -62,7 +62,8 @@ export async function getProviderRevenue(
     .in("transaction_type", types)
     .gte("created_at", fromDate.toISOString())
     .lte("created_at", toDate.toISOString())
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   const financeTransactions = await fetchAllLedgerPages(
     financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
@@ -162,7 +163,9 @@ export async function getProviderNetAfterRefundsByBooking(
     .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES, "refund"])
     .gte("created_at", fromDate.toISOString())
     .lte("created_at", toDate.toISOString())
-    .not("booking_id", "is", null);
+    .not("booking_id", "is", null)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (options?.bookingIds?.length) {
     financeQuery = financeQuery.in("booking_id", options.bookingIds);
@@ -210,7 +213,9 @@ export async function getProviderNetAfterRefundsTotal(
     .eq("provider_id", providerId)
     .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES, "refund"])
     .gte("created_at", fromDate.toISOString())
-    .lte("created_at", toDate.toISOString());
+    .lte("created_at", toDate.toISOString())
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   const financeTransactions = await fetchAllLedgerPages(
     financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
@@ -257,7 +262,7 @@ type NetAfterRefundsLedgerRow = BookingLedgerRow & {
   product_order_id?: string | null;
 };
 
-async function fetchNetAfterRefundsLedgerRows(
+export async function fetchNetAfterRefundsLedgerRows(
   supabaseAdmin: SupabaseClient,
   providerId: string,
   fromDate: Date,
@@ -272,7 +277,9 @@ async function fetchNetAfterRefundsLedgerRows(
     .eq("provider_id", providerId)
     .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES, "refund"])
     .gte("created_at", fromDate.toISOString())
-    .lte("created_at", toDate.toISOString());
+    .lte("created_at", toDate.toISOString())
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   const financeTransactions = await fetchAllLedgerPages(
     financeQuery as Parameters<typeof fetchAllLedgerPages>[0],

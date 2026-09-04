@@ -11,7 +11,7 @@ import {
 import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
-import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
 export type SalesHistorySource = "booking" | "product_order" | "pos";
 
@@ -159,14 +159,44 @@ async function fetchLedgerAggregates(
       .eq("provider_id", providerId)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
-      .in("transaction_type", [...LEDGER_TYPES])
+      .in("transaction_type", LEDGER_TYPES.filter((t) => t !== "payment"))
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to);
     return { data, error };
   }, SALES_HISTORY_MAX_LEDGER_ROWS);
 
-  for (const r of rows as any[]) {
+  const bookingIdsForPayments = [
+    ...new Set((rows as any[]).map((r) => r.booking_id).filter(Boolean)),
+  ] as string[];
+  const orderIdsForPayments = [
+    ...new Set((rows as any[]).map((r) => r.product_order_id).filter(Boolean)),
+  ] as string[];
+  const paymentRows: any[] = [];
+  try {
+    for (const slice of chunkIds(bookingIdsForPayments)) {
+      const { data } = await db
+        .from("finance_transactions")
+        .select("booking_id, product_order_id, transaction_type, amount, net, commission, created_at, refund_component")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "payment")
+        .in("booking_id", slice);
+      paymentRows.push(...((data ?? []) as any[]));
+    }
+    for (const slice of chunkIds(orderIdsForPayments)) {
+      const { data } = await db
+        .from("finance_transactions")
+        .select("booking_id, product_order_id, transaction_type, amount, net, commission, created_at, refund_component")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "payment")
+        .in("product_order_id", slice);
+      paymentRows.push(...((data ?? []) as any[]));
+    }
+  } catch (paymentError) {
+    console.warn("sales-history payment commission:", paymentError);
+  }
+
+  for (const r of [...(rows as any[]), ...paymentRows]) {
     const bid = r.booking_id as string | null;
     const oid = r.product_order_id as string | null;
     if (bid) {

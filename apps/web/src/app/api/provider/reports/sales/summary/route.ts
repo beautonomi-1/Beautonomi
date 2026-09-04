@@ -10,7 +10,9 @@ import {
 import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
-import { getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
+import { emptyRecordedTakings, getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
+
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   try {
@@ -117,6 +119,9 @@ export async function GET(request: NextRequest) {
         rangeStartIso: fromDate.toISOString(),
         rangeEndIso: toDate.toISOString(),
         locationId: locationId || undefined,
+      }).catch((recordedError) => {
+        console.warn("sales-summary recorded takings:", recordedError);
+        return emptyRecordedTakings();
       }),
       getPreviousPeriodNetAfterRefunds(
         supabaseAdmin,

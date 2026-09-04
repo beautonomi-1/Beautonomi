@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  getProviderNetAfterRefundsTotal,
-  getProviderRevenue,
-} from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { fetchNetAfterRefundsLedgerRows } from "@/lib/reports/revenue-helpers";
+import { computeProviderRevenueBreakdown } from "@/lib/reports/provider-revenue-semantics";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+
+export const maxDuration = 60;
 import {
   sumTipNet,
   sumPlatformRetainedFees,
@@ -120,45 +121,59 @@ export async function GET(request: NextRequest) {
     // Ensure current period query only includes up to now (not future)
     const thisMonthEndDate = now < thisMonthEnd ? now : thisMonthEnd;
 
-    // Parallel queries for better performance
+    const ledgerCreatedMs = (row: { created_at?: string | null }) =>
+      new Date(row.created_at ?? 0).getTime();
+    const rowsInRange = <T extends { created_at?: string | null }>(rows: T[], from: Date, to: Date) => {
+      const fromMs = from.getTime();
+      const toMs = to.getTime();
+      return rows.filter((row) => {
+        const t = ledgerCreatedMs(row);
+        return Number.isFinite(t) && t >= fromMs && t <= toMs;
+      });
+    };
+    const recognizedNet = (rows: Parameters<typeof computeProviderRevenueBreakdown>[0]) =>
+      computeProviderRevenueBreakdown(rows).netAfterRefunds;
+    const serviceEarningsNet = (rows: Array<{ transaction_type: string; amount?: number | null; net?: number | null }>) =>
+      rows.reduce((sum, row) => {
+        if (!DASHBOARD_REVENUE_TRANSACTION_TYPES.includes(row.transaction_type as (typeof DASHBOARD_REVENUE_TRANSACTION_TYPES)[number])) {
+          return sum;
+        }
+        return sum + Number(row.net ?? row.amount ?? 0);
+      }, 0);
+
+    // One all-time recognized-revenue scan — period cards and trend buckets reuse it in memory.
     const [
-      revenueResult,
+      allTimeRows,
       bookingsResult,
       upcomingBookingsResult,
       customerDataResult,
     ] = await Promise.all([
-      // Headline revenue — recognized provider revenue net of refund clawbacks (matches business overview)
-      Promise.all([
-        getProviderNetAfterRefundsTotal(supabaseAdmin, providerId, new Date(0), now, locationId),
-        getProviderNetAfterRefundsTotal(
-          supabaseAdmin,
-          providerId,
-          thisMonthStart,
-          thisMonthEndDate,
-          locationId,
-        ),
-        getProviderNetAfterRefundsTotal(
-          supabaseAdmin,
-          providerId,
-          lastMonthStart,
-          lastMonthEnd,
-          locationId,
-        ),
-      ]),
-      // Booking counts (parallel queries)
+      fetchNetAfterRefundsLedgerRows(supabaseAdmin, providerId, new Date(0), now, locationId),
       Promise.all([
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", thisMonthStart.toISOString()).lte("scheduled_at", thisMonthEndDate.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", lastMonthStart.toISOString()).lte("scheduled_at", lastMonthEnd.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
       ]),
-      // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-      // Customer analytics
-      (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+      fetchAllPaged<{ customer_id?: string | null }>(async (from, to) => {
+        let q = supabaseAdmin
+          .from("bookings")
+          .select("id, customer_id")
+          .eq("provider_id", providerId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true });
+        if (locationId) q = q.eq("location_id", locationId);
+        const { data, error } = await q.range(from, to);
+        return { data, error };
+      }, MAX_FINANCE_TRANSACTIONS).catch((customerError) => {
+        console.warn("analytics customer scan:", customerError);
+        return [] as Array<{ customer_id?: string | null }>;
+      }),
     ]);
 
-    // Extract revenue data
-    const [allTimeRevenue, thisMonthRevenue, lastMonthRevenue] = revenueResult;
+    const allTimeRevenue = recognizedNet(allTimeRows);
+    const thisMonthRevenue = recognizedNet(rowsInRange(allTimeRows, thisMonthStart, thisMonthEndDate));
+    const lastMonthRevenue = recognizedNet(rowsInRange(allTimeRows, lastMonthStart, lastMonthEnd));
     const totalRevenue = allTimeRevenue;
 
     // Extract booking counts
@@ -230,31 +245,22 @@ export async function GET(request: NextRequest) {
 
     for (const bucket of trendBuckets) {
       trendPromises.push(
-        Promise.all([
-          getProviderNetAfterRefundsTotal(
-            supabaseAdmin,
-            providerId,
-            bucket.start,
-            bucket.end,
-            locationId,
-          ),
-          (() => {
-            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", bucket.start.toISOString()).lte("scheduled_at", bucket.end.toISOString());
-            if (locationId) q = q.eq("location_id", locationId);
-            return q;
-          })(),
-        ]).then(([revenueData, bookingsData]) => ({
-          month: bucket.label,
-          revenue: revenueData,
-          bookings: bookingsData.count || 0,
-        }))
+        (() => {
+          let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", bucket.start.toISOString()).lte("scheduled_at", bucket.end.toISOString());
+          if (locationId) q = q.eq("location_id", locationId);
+          return q.then((bookingsData) => ({
+            month: bucket.label,
+            revenue: recognizedNet(rowsInRange(allTimeRows, bucket.start, bucket.end)),
+            bookings: bookingsData.count || 0,
+          }));
+        })(),
       );
     }
 
     const trendsData = await Promise.all(trendPromises);
 
     // Customer analytics
-    const customerData = customerDataResult.data || [];
+    const customerData = customerDataResult || [];
     const uniqueCustomers = new Set(customerData.map((b) => b.customer_id).filter(Boolean));
     const customerCounts = new Map<string, number>();
     customerData.forEach((b) => {
@@ -282,21 +288,10 @@ export async function GET(request: NextRequest) {
     }
 
     const currentRange = { from: thisMonthStart, to: thisMonthEndDate };
-    const dashOpts = {
-      transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES,
-      timezone: tz,
+    const allTimeServiceEarnings = { totalRevenue: serviceEarningsNet(allTimeRows) };
+    const currentServiceEarnings = {
+      totalRevenue: serviceEarningsNet(rowsInRange(allTimeRows, thisMonthStart, thisMonthEndDate)),
     };
-    const [allTimeServiceEarnings, currentServiceEarnings] = await Promise.all([
-      getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, locationId, dashOpts),
-      getProviderRevenue(
-        supabaseAdmin,
-        providerId,
-        thisMonthStart,
-        thisMonthEndDate,
-        locationId,
-        dashOpts,
-      ),
-    ]);
 
     let allTimeLB = {
       tips_net: 0,
