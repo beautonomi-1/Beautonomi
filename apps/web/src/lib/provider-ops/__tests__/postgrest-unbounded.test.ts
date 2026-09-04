@@ -68,6 +68,13 @@ describe("chunkIds", () => {
   it("returns no chunks for an empty list", () => {
     expect(chunkIds([], 10)).toEqual([]);
   });
+  it("defaults to POSTGREST_IN_CHUNK when size is omitted", () => {
+    const ids = Array.from({ length: 151 }, (_, i) => i);
+    const chunks = chunkIds(ids);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toHaveLength(150);
+    expect(chunks[1]).toEqual([150]);
+  });
 });
 
 describe("fetchInIdChunks", () => {

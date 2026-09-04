@@ -39,7 +39,7 @@ export async function fetchAllPaged<T>(
 export const POSTGREST_IN_CHUNK = 150;
 
 /** Split large `.in("col", ids)` lists — very large IN clauses can fail or misbehave. */
-export function chunkIds<T>(ids: T[], size: number): T[][] {
+export function chunkIds<T>(ids: T[], size: number = POSTGREST_IN_CHUNK): T[][] {
   if (ids.length === 0) return [];
   const chunks: T[][] = [];
   for (let i = 0; i < ids.length; i += size) {
