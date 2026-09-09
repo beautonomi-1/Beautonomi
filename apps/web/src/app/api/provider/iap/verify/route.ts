@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     const { data: subscription } = await supabase
       .from("provider_subscriptions")
       .select(
-        "*, plan:subscription_plans(id, name, description, price_monthly, price_yearly, currency, features, is_free)",
+        "*, plan:subscription_plans!plan_id(id, name, description, price_monthly, price_yearly, currency, features, is_free)",
       )
       .eq("provider_id", providerId)
       .maybeSingle();

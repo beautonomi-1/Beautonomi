@@ -92,7 +92,7 @@ async function getProviderSubscriptionContext(
   const { data: subscription } = await supabase
     .from("provider_subscriptions")
     .select(
-      `id, plan_id, status, updated_at, plan:subscription_plans(id, name, features, is_free)`,
+      `id, plan_id, status, updated_at, plan:subscription_plans!plan_id(id, name, features, is_free)`,
     )
     .eq("provider_id", providerId)
     .in("status", ["active", "trialing", "past_due"])

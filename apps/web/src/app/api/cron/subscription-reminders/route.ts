@@ -47,7 +47,7 @@ async function runJob(request: NextRequest) {
         provider_id,
         expires_at,
         status,
-        plan:subscription_plans(name)
+        plan:subscription_plans!plan_id(name)
       `)
       .in("status", ["active", "past_due"])
       .not("expires_at", "is", null)
@@ -143,7 +143,7 @@ async function runJob(request: NextRequest) {
     const trialHorizon = new Date(now.getTime() + 3 * 86400000).toISOString();
     const { data: trialing } = await supabase
       .from("provider_subscriptions")
-      .select("id, provider_id, trial_ends_at, plan:subscription_plans(name)")
+      .select("id, provider_id, trial_ends_at, plan:subscription_plans!plan_id(name)")
       .eq("status", "trialing")
       .not("trial_ends_at", "is", null)
       .lte("trial_ends_at", trialHorizon)
